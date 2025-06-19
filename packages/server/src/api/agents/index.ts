@@ -24,13 +24,13 @@ export function agentsRouter(
   router.use('/', createAgentLifecycleRouter(agents, serverInstance));
 
   // Mount world management operations
-  router.use('/', createAgentWorldsRouter(agents, serverInstance));
+  router.use('/', createAgentWorldsRouter(agents));
 
   // Mount panels operations
-  router.use('/', createAgentPanelsRouter(agents, serverInstance));
+  router.use('/', createAgentPanelsRouter(agents));
 
   // Mount logs operations
-  router.use('/', createAgentLogsRouter(agents, serverInstance));
+  router.use('/', createAgentLogsRouter(agents));
 
   // Mount memory operations
   router.use('/', createAgentMemoryRouter(agents, serverInstance));

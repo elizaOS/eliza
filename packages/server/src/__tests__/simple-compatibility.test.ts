@@ -31,7 +31,7 @@ describe('Server Package Compatibility', () => {
         server: any = null;
         socketIO: any = null;
 
-        async initialize(options?: any) {
+        async initialize(_options?: any) {
           this.isInitialized = true;
           this.app = { use: () => {} };
           this.database = {};
@@ -39,7 +39,7 @@ describe('Server Package Compatibility', () => {
           this.socketIO = {};
         }
 
-        start(port: number) {
+        start(_port: number) {
           // Mock start
         }
 
@@ -55,7 +55,7 @@ describe('Server Package Compatibility', () => {
           this.agents.delete(agentId);
         }
 
-        registerMiddleware(middleware: any) {
+        registerMiddleware(_middleware: any) {
           // Mock middleware registration
         }
       }
@@ -207,7 +207,7 @@ describe('Server Package Compatibility', () => {
         middlewares.push(middleware);
       };
 
-      const testMiddleware: MiddlewareFunction = (req, res, next) => {
+      const testMiddleware: MiddlewareFunction = (_req, _res, next) => {
         next();
       };
 

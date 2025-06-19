@@ -2,7 +2,7 @@
  * Unit tests for MessageBusService
  */
 
-import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, afterEach, jest } from 'bun:test';
 import { MessageBusService } from '../services/message';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';
@@ -12,9 +12,9 @@ import internalMessageBus from '../bus';
 // Mock the internal message bus
 mock.module('../bus', () => ({
   default: {
-    on: mock.fn(),
-    off: mock.fn(),
-    emit: mock.fn(),
+    on: jest.fn(),
+    off: jest.fn(),
+    emit: jest.fn(),
   },
 }));
 
@@ -24,16 +24,16 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      info: mock.fn(),
-      debug: mock.fn(),
-      warn: mock.fn(),
-      error: mock.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
     },
   };
 });
 
 // Mock fetch
-const mockFetch = mock.fn() as any;
+const mockFetch = jest.fn() as any;
 global.fetch = mockFetch;
 
 describe('MessageBusService', () => {
@@ -44,24 +44,24 @@ describe('MessageBusService', () => {
     mockRuntime = createMockAgentRuntime();
 
     // Mock runtime database methods
-    mockRuntime.ensureWorldExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
-    mockRuntime.ensureRoomExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
-    mockRuntime.getEntityById = mock.fn().mockReturnValue(Promise.resolve(null));
-    mockRuntime.createEntity = mock.fn().mockReturnValue(Promise.resolve(undefined));
-    mockRuntime.getMemoryById = mock.fn().mockReturnValue(Promise.resolve(null));
-    mockRuntime.createMemory = mock.fn().mockReturnValue(Promise.resolve('mem-123'));
-    mockRuntime.getRoom = mock.fn().mockReturnValue(
+    mockRuntime.ensureWorldExists = jest.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.ensureRoomExists = jest.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getEntityById = jest.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createEntity = jest.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getMemoryById = jest.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createMemory = jest.fn().mockReturnValue(Promise.resolve('mem-123'));
+    mockRuntime.getRoom = jest.fn().mockReturnValue(
       Promise.resolve({
         channelId: '456e7890-e89b-12d3-a456-426614174000',
         serverId: '789e1234-e89b-12d3-a456-426614174000',
       })
     );
-    mockRuntime.getWorld = mock
+    mockRuntime.getWorld = jest
       .fn()
       .mockReturnValue(Promise.resolve({ serverId: '789e1234-e89b-12d3-a456-426614174000' }));
-    mockRuntime.getMemoriesByRoomIds = mock.fn().mockReturnValue(Promise.resolve([]));
-    mockRuntime.emitEvent = mock.fn().mockReturnValue(Promise.resolve(undefined));
-    mockRuntime.getSetting = mock.fn().mockReturnValue('http://localhost:3000');
+    mockRuntime.getMemoriesByRoomIds = jest.fn().mockReturnValue(Promise.resolve([]));
+    mockRuntime.emitEvent = jest.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getSetting = jest.fn().mockReturnValue('http://localhost:3000');
 
     // Mock successful fetch responses
     mockFetch.mockImplementation((url) => {
@@ -337,7 +337,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock existing memory
-      mockRuntime.getMemoryById = mock.fn().mockResolvedValueOnce({
+      mockRuntime.getMemoryById = jest.fn().mockResolvedValueOnce({
         id: 'mem-123',
         content: { text: 'Test message' },
       });
@@ -366,7 +366,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock no memory found
-      mockRuntime.getMemoryById = mock.fn().mockResolvedValueOnce(null);
+      mockRuntime.getMemoryById = jest.fn().mockResolvedValueOnce(null);
 
       await handler(deleteData);
 
@@ -387,7 +387,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock memories in channel
-      mockRuntime.getMemoriesByRoomIds = mock.fn().mockResolvedValueOnce([
+      mockRuntime.getMemoriesByRoomIds = jest.fn().mockResolvedValueOnce([
         { id: 'mem-1', content: { text: 'Message 1' } },
         { id: 'mem-2', content: { text: 'Message 2' } },
       ]);

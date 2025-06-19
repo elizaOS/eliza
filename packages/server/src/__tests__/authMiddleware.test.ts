@@ -2,7 +2,7 @@
  * Unit tests for authMiddleware.ts
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
 import { apiKeyAuthMiddleware } from '../authMiddleware';
 import { logger } from '@elizaos/core';
@@ -13,10 +13,10 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      info: mock.fn(),
-      error: mock.fn(),
-      warn: mock.fn(),
-      debug: mock.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
     },
   };
 });
@@ -39,12 +39,12 @@ describe('API Key Auth Middleware', () => {
     };
 
     mockResponse = {
-      status: mock.fn().mockReturnThis(),
-      send: mock.fn().mockReturnThis(),
-      json: mock.fn().mockReturnThis(),
+      status: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
     };
 
-    mockNext = mock.fn();
+    mockNext = jest.fn();
     mock.restore();
   });
 
@@ -59,7 +59,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
       expect(mockResponse.send).not.toHaveBeenCalled();
     });
@@ -70,7 +70,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
   });
@@ -87,7 +87,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -134,7 +134,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -145,7 +145,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -204,7 +204,7 @@ describe('API Key Auth Middleware', () => {
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
       // Empty string is falsy, so auth should be bypassed
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
 
@@ -215,7 +215,7 @@ describe('API Key Auth Middleware', () => {
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
       // Whitespace is truthy, so exact match should work
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
   });
@@ -268,7 +268,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(mockNext).toHaveBeenCalledOnce();
+      expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
     });
   });

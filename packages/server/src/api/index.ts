@@ -1,10 +1,9 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { ChannelType, createUniqueUuid, EventType, logger, validateUuid } from '@elizaos/core';
+import { logger, validateUuid } from '@elizaos/core';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import crypto from 'node:crypto';
 import http from 'node:http';
 import { match, MatchFunction } from 'path-to-regexp';
 import { Server as SocketIOServer } from 'socket.io';
@@ -25,358 +24,6 @@ import {
   validateContentTypeMiddleware,
   createApiRateLimit,
 } from './shared/middleware';
-import fs from 'fs';
-import path from 'path';
-
-/**
- * Processes attachments to convert localhost URLs to base64 data URIs
- * @param attachments - Array of attachment objects
- * @param agentId - The agent ID for logging purposes
- * @returns Promise<any[]> - Processed attachments with base64 data URIs
- */
-async function processAttachments(attachments: any[], agentId?: string): Promise<any[]> {
-  if (!attachments || attachments.length === 0) {
-    return attachments;
-  }
-
-  logger.info(`[SOCKET] Processing ${attachments.length} attachment(s)`);
-  logger.info(`[SOCKET] Current working directory: ${process.cwd()}`);
-  logger.info(`[SOCKET] Raw attachments:`, JSON.stringify(attachments, null, 2));
-
-  return Promise.all(
-    attachments.map(async (attachment: any) => {
-      // Skip if not a localhost URL
-      if (!attachment.url || !attachment.url.includes('localhost')) {
-        return attachment;
-      }
-
-      logger.info(`[SOCKET] Converting localhost URL to base64: ${attachment.url}`);
-
-      try {
-        // Extract file path from URL
-        // URL format: http://localhost:3000/media/uploads/{agentId}/{filename}
-        const urlParts = attachment.url.split('/');
-        const uploadsIndex = urlParts.indexOf('uploads');
-
-        if (uploadsIndex === -1 || uploadsIndex >= urlParts.length - 2) {
-          logger.warn(`[SOCKET] Invalid URL format: ${attachment.url}`);
-          return attachment;
-        }
-
-        const agentIdFromUrl = urlParts[uploadsIndex + 1];
-        const filename = urlParts[uploadsIndex + 2];
-
-        // Try multiple possible paths based on where the server might be running from
-        const possiblePaths = [
-          path.join(process.cwd(), '.eliza', 'data', 'uploads', agentIdFromUrl, filename),
-          path.join(process.cwd(), 'data', 'uploads', agentIdFromUrl, filename),
-          path.join(
-            process.cwd(),
-            'packages',
-            'project-starter',
-            'data',
-            'uploads',
-            agentIdFromUrl,
-            filename
-          ),
-        ];
-
-        let filePath = null;
-        for (const testPath of possiblePaths) {
-          if (fs.existsSync(testPath)) {
-            filePath = testPath;
-            break;
-          }
-        }
-
-        if (!filePath) {
-          logger.warn(`[SOCKET] File not found in any of the expected paths`);
-          logger.warn(`[SOCKET] Tried paths:`, possiblePaths);
-          return attachment;
-        }
-
-        logger.info(`[SOCKET] Reading file from: ${filePath}`);
-
-        const fileBuffer = fs.readFileSync(filePath);
-        const base64Data = fileBuffer.toString('base64');
-
-        // Determine MIME type from file extension or content
-        let mimeType = attachment.contentType || 'application/octet-stream';
-
-        // If contentType is generic or missing, try to determine from file extension
-        if (
-          !attachment.contentType ||
-          attachment.contentType === 'image' ||
-          attachment.contentType === 'application/octet-stream'
-        ) {
-          const ext = path.extname(filename).toLowerCase();
-          const mimeTypes: { [key: string]: string } = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.gif': 'image/gif',
-            '.webp': 'image/webp',
-            '.svg': 'image/svg+xml',
-            '.bmp': 'image/bmp',
-            '.ico': 'image/x-icon',
-            '.tiff': 'image/tiff',
-            '.tif': 'image/tiff',
-          };
-
-          if (mimeTypes[ext]) {
-            mimeType = mimeTypes[ext];
-          } else {
-            // Try to detect from file content (magic bytes)
-            if (fileBuffer.length >= 4) {
-              const header = fileBuffer.toString('hex', 0, 4).toUpperCase();
-
-              if (header.startsWith('FFD8FF')) {
-                mimeType = 'image/jpeg';
-              } else if (header === '89504E47') {
-                mimeType = 'image/png';
-              } else if (header === '47494638') {
-                mimeType = 'image/gif';
-              } else if (header.startsWith('424D')) {
-                mimeType = 'image/bmp';
-              } else if (
-                fileBuffer.toString('utf8', 0, 5) === '<?xml' ||
-                fileBuffer.toString('utf8', 0, 4) === '<svg'
-              ) {
-                mimeType = 'image/svg+xml';
-              }
-            }
-          }
-        }
-
-        const dataUri = `data:${mimeType};base64,${base64Data}`;
-
-        logger.info(`[SOCKET] Successfully converted to base64 data URI`);
-        logger.info(`[SOCKET] File size: ${fileBuffer.length} bytes`);
-        logger.info(`[SOCKET] MIME type: ${mimeType}`);
-        logger.info(`[SOCKET] Base64 preview: ${base64Data.substring(0, 50)}...`);
-
-        return {
-          ...attachment,
-          url: dataUri,
-          originalUrl: attachment.url,
-          detectedMimeType: mimeType,
-        };
-      } catch (error) {
-        logger.error(`[SOCKET] Error converting localhost URL to base64:`, error);
-        return attachment;
-      }
-    })
-  );
-}
-
-/**
- * Processes an incoming socket message, handling agent logic.
- */
-async function processSocketMessage(
-  runtime: IAgentRuntime,
-  payload: any,
-  socketId: string,
-  socketChannelId: string, // This is the channelId from the client
-  io: SocketIOServer
-) {
-  const agentId = runtime.agentId;
-  const senderId = payload.senderId;
-
-  // Ensure the sender and recipient are different agents
-  if (senderId === agentId) {
-    logger.debug(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
-    return;
-  }
-
-  if (!payload.message || !payload.message.length) {
-    logger.warn(`no message found for agent ${agentId}`);
-    return;
-  }
-
-  const entityId = createUniqueUuid(runtime, senderId);
-  const uniqueChannelId = createUniqueUuid(runtime, socketChannelId);
-  const source = payload.source;
-  const serverId = payload.serverId; // Agent receives serverId from client
-  // Convert serverId to worldId for internal agent processing
-  const worldId = createUniqueUuid(runtime, serverId || 'client-chat');
-
-  const executeLogic = async () => {
-    // Ensure connection between entity and channel
-    await runtime.ensureConnection({
-      entityId: entityId,
-      roomId: uniqueChannelId, // Agent runtime still uses roomId internally
-      userName: payload.senderName || 'User',
-      name: payload.senderName || 'User',
-      source: 'client_chat',
-      channelId: uniqueChannelId,
-      serverId: serverId || 'client-chat',
-      type: ChannelType.DM,
-      worldId: worldId, // Agent's unique worldId derived from serverId
-    });
-
-    // Create unique message ID
-    const messageId = crypto.randomUUID() as UUID;
-
-    // Process attachments to convert localhost URLs to base64
-    let processedAttachments = payload.attachments;
-    if (payload.attachments && payload.attachments.length > 0) {
-      processedAttachments = await processAttachments(payload.attachments, agentId);
-    }
-
-    // Create message object for the agent
-    const newMessage = {
-      id: messageId,
-      entityId: entityId,
-      agentId: runtime.agentId,
-      roomId: uniqueChannelId, // Agent runtime still uses roomId internally
-      content: {
-        text: payload.message,
-        source: `${source}:${payload.senderName}`,
-        attachments: processedAttachments || undefined,
-      },
-      metadata: {
-        entityName: payload.senderName,
-      },
-      createdAt: Date.now(),
-    };
-
-    // Define callback for agent responses
-    const callback = async (content: {
-      inReplyTo?: string;
-      text?: string;
-      simple?: boolean | string;
-      message?: string;
-      actions?: string[];
-      thought?: string;
-      providers?: any[];
-      [key: string]: any;
-    }) => {
-      // NOTE: This callback runs *after* the main span might have ended.
-      // If detailed tracing of the callback is needed, a new linked span could be created here.
-      try {
-        logger.debug('Callback received content:', {
-          contentType: typeof content,
-          contentKeys: content ? Object.keys(content) : 'null',
-        });
-        if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
-
-        const broadcastData: Record<string, any> = {
-          senderId: runtime.agentId,
-          senderName: runtime.character.name,
-          text: content.text || '',
-          channelId: socketChannelId,
-          roomId: socketChannelId, // Keep for backward compatibility
-          serverId: serverId, // Send back serverId to client, not worldId
-          createdAt: Date.now(),
-          source,
-        };
-
-        // Check if the response is simple, has a message, AND has no actions or only a REPLY action
-        const isSimple = content.simple === true || content.simple === 'true';
-        const hasMessage = !!content.message;
-        const actions = content.actions || [];
-        const isReplyOnlyAction =
-          actions.length === 0 || (actions.length === 1 && actions[0] === 'REPLY');
-
-        if (isSimple && hasMessage && isReplyOnlyAction) {
-          broadcastData.text = content.message;
-        }
-
-        if (content.thought) broadcastData.thought = content.thought;
-        if (content.actions) broadcastData.actions = content.actions;
-
-        logger.debug(`Broadcasting message to channel ${socketChannelId}`, {
-          channel: socketChannelId,
-        });
-        io.to(socketChannelId).emit('messageBroadcast', broadcastData);
-        io.emit('messageBroadcast', broadcastData);
-
-        // Save agent's response as memory with provider information
-        const memory = {
-          id: crypto.randomUUID() as UUID,
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            ...content,
-            inReplyTo: messageId,
-            channelType: ChannelType.DM,
-            source: `${source}:agent`,
-            ...(content.providers &&
-              content.providers.length > 0 && {
-                providers: content.providers,
-              }),
-          },
-          roomId: uniqueChannelId,
-          createdAt: Date.now(),
-        };
-        logger.debug('Memory object for response:', memory);
-        try {
-          await runtime.createMemory(memory, 'messages');
-        } catch (error) {
-          // Handle duplicate key constraint gracefully
-          if (error instanceof Error && error.message && error.message.includes('memories_pkey')) {
-            logger.debug('Memory already exists, likely due to duplicate processing:', memory.id);
-          } else {
-            logger.error('Error creating memory:', error);
-            throw error;
-          }
-        }
-        return [content];
-      } catch (error) {
-        logger.error('Error in socket message callback:', error);
-        return [];
-      }
-    };
-
-    logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
-
-    // Immediately disable input for all clients in the channel while agent processes
-    io.to(socketChannelId).emit('controlMessage', {
-      action: 'disable_input',
-      channelId: socketChannelId,
-      roomId: socketChannelId, // Keep for backward compatibility
-    });
-    logger.debug('[SOCKET] Sent disable_input controlMessage', {
-      channelId: socketChannelId,
-      agentId,
-      senderId,
-    });
-
-    // Emit message received event to trigger agent's message handler
-    runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: runtime,
-      message: newMessage,
-      callback,
-      onComplete: () => {
-        // Emit completion event (client might use this for UI like stopping loading indicators)
-        io.to(socketChannelId).emit('messageComplete', {
-          channelId: socketChannelId,
-          roomId: socketChannelId, // Keep for backward compatibility
-          agentId,
-          senderId,
-        });
-        // Also explicitly send control message to re-enable input
-        io.to(socketChannelId).emit('controlMessage', {
-          action: 'enable_input',
-          channelId: socketChannelId,
-          roomId: socketChannelId, // Keep for backward compatibility
-        });
-        logger.debug('[SOCKET] Sent messageComplete and enable_input controlMessage', {
-          channelId: socketChannelId,
-          agentId,
-          senderId,
-        });
-      },
-    });
-  };
-
-  // Execute the logic
-  try {
-    await executeLogic();
-  } catch (error) {
-    logger.error('Error processing socket message:', error);
-  }
-}
 
 /**
  * Sets up Socket.io server for real-time messaging
@@ -774,22 +421,22 @@ export function createApiRouter(
   router.use('/messaging', messagingRouter(agents, serverInstance));
 
   // Mount media router at /media - handles file uploads, downloads, and media management
-  router.use('/media', mediaRouter(agents, serverInstance));
+  router.use('/media', mediaRouter());
 
   // Mount memory router at /memory - handles agent memory storage and retrieval
   router.use('/memory', memoryRouter(agents, serverInstance));
 
   // Mount audio router at /audio - handles audio processing, transcription, and voice operations
-  router.use('/audio', audioRouter(agents, serverInstance));
+  router.use('/audio', audioRouter(agents));
 
   // Mount runtime router at /server - handles server runtime operations and management
   router.use('/server', runtimeRouter(agents, serverInstance));
 
   // Mount TEE router at /tee - handles Trusted Execution Environment operations
-  router.use('/tee', teeRouter(agents, serverInstance));
+  router.use('/tee', teeRouter());
 
   // Mount system router at /system - handles system configuration, health checks, and environment
-  router.use('/system', systemRouter(agents, serverInstance));
+  router.use('/system', systemRouter());
 
   // NOTE: /world routes have been removed - functionality moved to messaging/spaces
 

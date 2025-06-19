@@ -2,7 +2,7 @@
  * Integration tests for AgentServer class
  */
 
-import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
 import { AgentServer } from '../index';
 import { logger, type UUID, ChannelType } from '@elizaos/core';
 import type { ServerOptions } from '../index';
@@ -14,18 +14,18 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      warn: mock.fn(),
-      info: mock.fn(),
-      error: mock.fn(),
-      debug: mock.fn(),
-      success: mock.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+      success: jest.fn(),
     },
     Service: class MockService {
       constructor() {}
       async initialize() {}
       async cleanup() {}
     },
-    createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+    createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
     ChannelType: {
       DIRECT: 'direct',
       GROUP: 'group',
@@ -43,35 +43,35 @@ mock.module('@elizaos/core', async () => {
 });
 
 mock.module('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: mock.fn(() => ({
-    init: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    close: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    getDatabase: mock.fn(() => ({
-      execute: mock.fn().mockReturnValue(Promise.resolve([])),
+  createDatabaseAdapter: jest.fn(() => ({
+    init: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    close: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    getDatabase: jest.fn(() => ({
+      execute: jest.fn().mockReturnValue(Promise.resolve([])),
     })),
-    getMessageServers: mock.fn(() =>
+    getMessageServers: jest.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: mock
+    createMessageServer: jest
       .fn()
       .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
-    getMessageServerById: mock
+    getMessageServerById: jest
       .fn()
       .mockReturnValue(
         Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
       ),
-    addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
-    createChannel: mock
+    addAgentToServer: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    getChannelsForServer: jest.fn().mockReturnValue(Promise.resolve([])),
+    createChannel: jest
       .fn()
       .mockReturnValue(Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' })),
-    getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
-    db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
+    getAgentsForServer: jest.fn().mockReturnValue(Promise.resolve([])),
+    db: { execute: jest.fn().mockReturnValue(Promise.resolve([])) },
   })),
-  DatabaseMigrationService: mock.fn(() => ({
-    initializeWithDatabase: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    discoverAndRegisterPluginSchemas: mock.fn(),
-    runAllPluginMigrations: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+  DatabaseMigrationService: jest.fn(() => ({
+    initializeWithDatabase: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: jest.fn(),
+    runAllPluginMigrations: jest.fn().mockReturnValue(Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
@@ -79,26 +79,26 @@ mock.module('@elizaos/plugin-sql', () => ({
 // Mock filesystem operations
 mock.module('node:fs', () => ({
   default: {
-    mkdirSync: mock.fn(),
-    existsSync: mock.fn(() => true),
-    readFileSync: mock.fn(() => '{}'),
-    writeFileSync: mock.fn(),
+    mkdirSync: jest.fn(),
+    existsSync: jest.fn(() => true),
+    readFileSync: jest.fn(() => '{}'),
+    writeFileSync: jest.fn(),
   },
-  mkdirSync: mock.fn(),
-  existsSync: mock.fn(() => true),
-  readFileSync: mock.fn(() => '{}'),
-  writeFileSync: mock.fn(),
+  mkdirSync: jest.fn(),
+  existsSync: jest.fn(() => true),
+  readFileSync: jest.fn(() => '{}'),
+  writeFileSync: jest.fn(),
 }));
 
 // Mock Socket.IO
 mock.module('socket.io', () => ({
-  Server: mock.fn(() => ({
-    on: mock.fn(),
-    emit: mock.fn(),
-    to: mock.fn(() => ({
-      emit: mock.fn(),
+  Server: jest.fn(() => ({
+    on: jest.fn(),
+    emit: jest.fn(),
+    to: jest.fn(() => ({
+      emit: jest.fn(),
     })),
-    close: mock.fn((callback) => {
+    close: jest.fn((callback) => {
       if (callback) callback();
     }),
   })),
@@ -106,18 +106,18 @@ mock.module('socket.io', () => ({
 
 // Mock the socketio module
 mock.module('../src/socketio/index', () => ({
-  setupSocketIO: mock.fn(() => ({
-    on: mock.fn(),
-    emit: mock.fn(),
-    to: mock.fn(() => ({
-      emit: mock.fn(),
+  setupSocketIO: jest.fn(() => ({
+    on: jest.fn(),
+    emit: jest.fn(),
+    to: jest.fn(() => ({
+      emit: jest.fn(),
     })),
-    close: mock.fn((callback) => {
+    close: jest.fn((callback) => {
       if (callback) callback();
     }),
   })),
-  SocketIORouter: mock.fn(() => ({
-    setupListeners: mock.fn(),
+  SocketIORouter: jest.fn(() => ({
+    setupListeners: jest.fn(),
   })),
 }));
 
@@ -130,23 +130,23 @@ describe('AgentServer Integration Tests', () => {
 
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {
-      listen: mock.fn((port, callback) => {
+      listen: jest.fn((_port, callback) => {
         if (callback) callback();
       }),
-      close: mock.fn((callback) => {
+      close: jest.fn((callback) => {
         if (callback) callback();
       }),
-      listeners: mock.fn(() => []),
-      removeAllListeners: mock.fn(),
-      on: mock.fn(),
-      once: mock.fn(),
-      emit: mock.fn(),
-      address: mock.fn(() => ({ port: 3000 })),
+      listeners: jest.fn(() => []),
+      removeAllListeners: jest.fn(),
+      on: jest.fn(),
+      once: jest.fn(),
+      emit: jest.fn(),
+      address: jest.fn(() => ({ port: 3000 })),
       timeout: 0,
       keepAliveTimeout: 5000,
     };
 
-    mock.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
+    jest.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
   });
@@ -196,7 +196,7 @@ describe('AgentServer Integration Tests', () => {
     it('should prevent double initialization', async () => {
       await server.initialize();
 
-      const loggerWarnSpy = mock.spyOn(logger, 'warn');
+      const loggerWarnSpy = jest.spyOn(logger, 'warn');
       await server.initialize();
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
@@ -207,10 +207,9 @@ describe('AgentServer Integration Tests', () => {
     it('should handle initialization errors gracefully', async () => {
       // Mock database initialization to fail
       const mockDatabaseAdapter = {
-        init: mock.fn().mockRejectedValue(new Error('Database connection failed')),
+        init: jest.fn().mockRejectedValue(new Error('Database connection failed')),
       };
 
-      const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
       mock.module('@elizaos/plugin-sql', () => ({
         createDatabaseAdapter: () => mockDatabaseAdapter,
       }));
@@ -256,22 +255,22 @@ describe('AgentServer Integration Tests', () => {
       mockRuntime = {
         agentId: '123e4567-e89b-12d3-a456-426614174000',
         character: { name: 'TestAgent' },
-        registerPlugin: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-        stop: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        registerPlugin: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+        stop: jest.fn().mockReturnValue(Promise.resolve(undefined)),
         plugins: [],
-        registerProvider: mock.fn(),
-        registerAction: mock.fn(),
+        registerProvider: jest.fn(),
+        registerAction: jest.fn(),
       };
 
       // Mock the database methods
       server.database = {
         ...server.database,
-        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
-        createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
+        getMessageServers: jest.fn().mockReturnValue(Promise.resolve([])),
+        createMessageServer: jest.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
         db: {
-          execute: mock.fn().mockReturnValue(Promise.resolve([])),
+          execute: jest.fn().mockReturnValue(Promise.resolve([])),
         },
-        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        addAgentToServer: jest.fn().mockReturnValue(Promise.resolve(undefined)),
       } as any;
     });
 
@@ -331,7 +330,7 @@ describe('AgentServer Integration Tests', () => {
     });
 
     it('should register custom middleware', () => {
-      const customMiddleware = mock.fn((req, res, next) => next());
+      const customMiddleware = jest.fn((_req, _res, next) => next());
 
       server.registerMiddleware(customMiddleware);
 
@@ -347,17 +346,17 @@ describe('AgentServer Integration Tests', () => {
       // Mock database methods
       server.database = {
         ...server.database,
-        createMessageServer: mock
+        createMessageServer: jest
           .fn()
           .mockReturnValue(Promise.resolve({ id: 'server-id', name: 'Test Server' })),
-        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
-        getMessageServerById: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
-        createChannel: mock.fn().mockReturnValue(Promise.resolve({ id: 'channel-id' })),
-        getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
-        createMessage: mock.fn().mockReturnValue(Promise.resolve({ id: 'message-id' })),
-        getMessagesForChannel: mock.fn().mockReturnValue(Promise.resolve([])),
-        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-        getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
+        getMessageServers: jest.fn().mockReturnValue(Promise.resolve([])),
+        getMessageServerById: jest.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
+        createChannel: jest.fn().mockReturnValue(Promise.resolve({ id: 'channel-id' })),
+        getChannelsForServer: jest.fn().mockReturnValue(Promise.resolve([])),
+        createMessage: jest.fn().mockReturnValue(Promise.resolve({ id: 'message-id' })),
+        getMessagesForChannel: jest.fn().mockReturnValue(Promise.resolve([])),
+        addAgentToServer: jest.fn().mockReturnValue(Promise.resolve(undefined)),
+        getAgentsForServer: jest.fn().mockReturnValue(Promise.resolve([])),
       } as any;
     });
 
@@ -367,7 +366,13 @@ describe('AgentServer Integration Tests', () => {
       const result = await server.createServer(serverData);
 
       expect((server.database as any).createMessageServer).toHaveBeenCalledWith(serverData);
-      expect(result).toEqual({ id: 'server-id', name: 'Test Server' });
+      expect(result).toEqual({
+        id: 'server-id' as UUID,
+        name: 'Test Server',
+        sourceType: 'test',
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      });
     });
 
     it('should get servers', async () => {
@@ -386,7 +391,14 @@ describe('AgentServer Integration Tests', () => {
       const result = await server.createChannel(channelData);
 
       expect((server.database as any).createChannel).toHaveBeenCalledWith(channelData, undefined);
-      expect(result).toEqual({ id: 'channel-id' });
+      expect(result).toEqual({
+        id: 'channel-id' as UUID,
+        messageServerId: 'server-id' as UUID,
+        name: 'Test Channel',
+        type: 'group' as ChannelType,
+        createdAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      });
     });
 
     it('should add agent to server', async () => {
@@ -400,7 +412,7 @@ describe('AgentServer Integration Tests', () => {
     });
 
     it('should throw error when adding agent to non-existent server', async () => {
-      (server.database as any).getMessageServerById = mock
+      (server.database as any).getMessageServerById = jest
         .fn()
         .mockReturnValue(Promise.resolve(null));
 
@@ -416,7 +428,7 @@ describe('AgentServer Integration Tests', () => {
   describe('Error Handling', () => {
     it('should handle constructor errors gracefully', () => {
       // Mock logger to throw error
-      mock.spyOn(logger, 'debug').mockImplementation(() => {
+      jest.spyOn(logger, 'debug').mockImplementation(() => {
         throw new Error('Logger error');
       });
 
@@ -428,15 +440,14 @@ describe('AgentServer Integration Tests', () => {
 
       // Mock database init to fail
       const mockDatabaseAdapter = {
-        init: mock.fn().mockRejectedValue(mockError),
+        init: jest.fn().mockRejectedValue(mockError),
       };
 
-      const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
       mock.module('@elizaos/plugin-sql', () => ({
         createDatabaseAdapter: () => mockDatabaseAdapter,
       }));
 
-      const errorSpy = mock.spyOn(logger, 'error');
+      const errorSpy = jest.spyOn(logger, 'error');
 
       await expect(server.initialize()).rejects.toThrow('Initialization failed');
       expect(errorSpy).toHaveBeenCalledWith(

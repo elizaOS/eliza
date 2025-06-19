@@ -260,7 +260,7 @@ export function createAgentCrudRouter(
 
     const MAX_RETRIES = 2;
     let retryCount = 0;
-    let lastError = null;
+    let lastError: unknown = null;
 
     while (retryCount <= MAX_RETRIES) {
       try {

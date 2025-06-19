@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { AgentServer } from '../../index';
+import { AgentServer, CentralRootMessage } from '../../index';
 import type { UUID } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
 import path from 'node:path';
@@ -47,7 +47,7 @@ describe('Database Operations Integration Tests', () => {
 
     // Wait a bit for database to settle
     await new Promise((resolve) => setTimeout(resolve, 1000));
-  }, 60000); // Increase timeout to 60 seconds
+  }); // Increase timeout to 60 seconds
 
   afterAll(async () => {
     // Stop server
@@ -79,7 +79,7 @@ describe('Database Operations Integration Tests', () => {
       });
 
       // Create multiple messages concurrently
-      const messagePromises = [];
+      const messagePromises: Promise<CentralRootMessage>[] = [];
       for (let i = 0; i < 10; i++) {
         messagePromises.push(
           agentServer.createMessage({
@@ -112,7 +112,7 @@ describe('Database Operations Integration Tests', () => {
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
 
       // Create channel
-      const channel = await agentServer.createChannel({
+      await agentServer.createChannel({
         id: channelId,
         name: 'Integrity Test Channel',
         type: ChannelType.GROUP,
@@ -131,7 +131,7 @@ describe('Database Operations Integration Tests', () => {
         metadata: {},
       });
 
-      const message2 = await agentServer.createMessage({
+      await agentServer.createMessage({
         channelId,
         authorId: 'user-2' as UUID,
         content: 'Reply message',
@@ -242,7 +242,6 @@ describe('Database Operations Integration Tests', () => {
 
   describe('Database State Consistency', () => {
     it('should maintain consistent state across operations', async () => {
-      const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
       const agentId = 'consistency-agent' as UUID;
 
       // Initial state check
@@ -330,7 +329,7 @@ describe('Database Operations Integration Tests', () => {
             sourceId: `bulk-${i}`,
             sourceType: 'test',
             metadata: { index: i },
-          })
+          }) as never
         );
       }
 
@@ -357,7 +356,7 @@ describe('Database Operations Integration Tests', () => {
             type: ChannelType.GROUP,
             messageServerId: serverId,
             metadata: { index: i },
-          })
+          }) as never
         );
       }
 

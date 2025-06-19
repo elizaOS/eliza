@@ -1,17 +1,13 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { validateUuid, logger, ModelType } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError } from '../shared/response-utils';
 import { convertToAudioBuffer } from './audioBuffer';
 
 /**
  * Text-to-speech synthesis functionality
  */
-export function createSynthesisRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Text-to-Speech endpoint

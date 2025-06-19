@@ -24,7 +24,7 @@ export async function parseEnvFile(filePath: string): Promise<EnvVars> {
       return {};
     }
     return dotenv.parse(content);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error parsing .env file: ${error.message}`);
     return {};
   }
@@ -77,7 +77,7 @@ export function createEnvironmentRouter(): express.Router {
   const router = express.Router();
 
   // Get local environment variables
-  (router as any).get('/local', async (req: express.Request, res: express.Response) => {
+  (router as any).get('/local', async (_req: express.Request, res: express.Response) => {
     try {
       const localEnvPath = getLocalEnvPath();
       if (!localEnvPath) {

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
-import { SOCKET_MESSAGE_TYPE, ChannelType, EventType, AgentRuntime } from '@elizaos/core';
+import { SOCKET_MESSAGE_TYPE, ChannelType, AgentRuntime } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -89,7 +89,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
     // Wait a bit for server to fully start
     await new Promise((resolve) => setTimeout(resolve, 1000));
-  }, 60000); // Increase timeout to 60 seconds
+  }); // Increase timeout to 60 seconds
 
   afterAll(async () => {
     // Close all connections

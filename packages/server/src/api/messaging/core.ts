@@ -1,4 +1,4 @@
-import { ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
+import { logger, validateUuid, type UUID } from '@elizaos/core';
 import express from 'express';
 import internalMessageBus from '../../bus'; // Import the bus
 import type { AgentServer } from '../../index';

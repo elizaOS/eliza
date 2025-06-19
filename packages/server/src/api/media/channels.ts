@@ -1,17 +1,14 @@
-import { validateUuid, logger, type UUID } from '@elizaos/core';
+import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import type { AgentServer } from '../../index';
 import { channelUpload, validateMediaFile, processUploadedFile } from '../shared/uploads';
 import { cleanupUploadedFile } from '../shared/file-utils';
-import fs from 'fs';
-import path from 'path';
 import type fileUpload from 'express-fileupload';
 
 // Using express-fileupload file type
 type UploadedFile = fileUpload.UploadedFile;
 
-interface ChannelMediaRequest extends express.Request {
+interface ChannelMediaRequest extends Omit<express.Request, 'files'> {
   files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     channelId: string;
@@ -21,7 +18,7 @@ interface ChannelMediaRequest extends express.Request {
 /**
  * Channel media upload functionality
  */
-export function createChannelMediaRouter(serverInstance: AgentServer): express.Router {
+export function createChannelMediaRouter(): express.Router {
   const router = express.Router();
 
   // Define rate limiter: maximum 100 requests per 15 minutes
@@ -36,8 +33,9 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
     '/:channelId/upload-media',
     uploadMediaRateLimiter, // Apply rate limiter
     channelUpload(),
-    async (req: ChannelMediaRequest, res) => {
-      const channelId = validateUuid(req.params.channelId);
+    async (req, res) => {
+      const channelMediaReq = req as ChannelMediaRequest;
+      const channelId = validateUuid(channelMediaReq.params.channelId);
       if (!channelId) {
         res.status(400).json({ success: false, error: 'Invalid channelId format' });
         return;
@@ -45,12 +43,12 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
 
       // Get the uploaded file from express-fileupload
       let mediaFile: UploadedFile;
-      if (req.files && !Array.isArray(req.files)) {
+      if (channelMediaReq.files && !Array.isArray(channelMediaReq.files)) {
         // files is an object with field names
-        mediaFile = req.files.file as UploadedFile;
-      } else if (Array.isArray(req.files) && req.files.length > 0) {
+        mediaFile = channelMediaReq.files.file as UploadedFile;
+      } else if (Array.isArray(channelMediaReq.files) && channelMediaReq.files.length > 0) {
         // files is an array
-        mediaFile = req.files[0];
+        mediaFile = channelMediaReq.files[0];
       } else {
         res.status(400).json({ success: false, error: 'No media file provided' });
         return;

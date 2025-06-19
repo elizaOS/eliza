@@ -1,20 +1,16 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 
 /**
  * Agent world management operations
  */
-export function createAgentWorldsRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createAgentWorldsRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Get all worlds
-  router.get('/worlds', async (req, res) => {
+  router.get('/worlds', async (_req, res) => {
     try {
       const runtime = Array.from(agents.values())[0];
 

@@ -7,13 +7,13 @@ import {
   validateUuid,
   type UUID,
 } from '@elizaos/core';
-import express, { type RequestHandler } from 'express';
+import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { channelUpload, validateMediaFile, processUploadedFile } from '../../upload';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
-import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+import { MAX_FILE_SIZE } from '../shared/constants';
 import { cleanupUploadedFile } from '../shared/file-utils';
 import type fileUpload from 'express-fileupload';
 
@@ -22,7 +22,7 @@ const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 // Using express-fileupload file type
 type UploadedFile = fileUpload.UploadedFile;
 
-interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
+interface ChannelUploadRequest extends Omit<express.Request<{ channelId: string }>, 'files'> {
   files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     channelId: string;
@@ -944,7 +944,12 @@ export function createChannelsRouter(
           .join('\n');
 
         const prompt = composePromptFromState({
-          state: { recentMessages },
+          state: {
+            recentMessages,
+            values: {},
+            data: {},
+            text: recentMessages,
+          },
           template: `
 Based on the conversation below, generate a short, descriptive title for this chat. The title should capture the main topic or theme of the discussion.
 Rules:

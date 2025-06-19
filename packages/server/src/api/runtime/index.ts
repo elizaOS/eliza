@@ -21,7 +21,7 @@ export function runtimeRouter(
   router.use('/', createLoggingRouter(agents, serverInstance));
 
   // Mount debug endpoints under /debug
-  router.use('/debug', createDebugRouter(agents, serverInstance));
+  router.use('/debug', createDebugRouter(serverInstance));
 
   return router;
 }

@@ -2,16 +2,12 @@ import type { IAgentRuntime, UUID, Memory, MemoryMetadata } from '@elizaos/core'
 import { MemoryType, createUniqueUuid } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 
 /**
  * Agent memory management functionality
  */
-export function createAgentMemoryRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Get memories for a specific room

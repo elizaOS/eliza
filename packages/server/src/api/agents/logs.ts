@@ -1,16 +1,12 @@
 import type { IAgentRuntime, UUID, Log } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
-import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
 
 /**
  * Agent logs management
  */
-export function createAgentLogsRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): express.Router {
+export function createAgentLogsRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
   const router = express.Router();
 
   // Get Agent Logs

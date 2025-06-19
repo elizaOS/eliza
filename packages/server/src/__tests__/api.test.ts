@@ -2,7 +2,7 @@
  * API endpoint basic tests
  */
 
-import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
 import http from 'node:http';
 import { AgentServer } from '../index';
@@ -13,18 +13,18 @@ mock.module('@elizaos/core', async () => {
   return {
     ...actual,
     logger: {
-      warn: mock.fn(),
-      info: mock.fn(),
-      error: mock.fn(),
-      debug: mock.fn(),
-      success: mock.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn(),
+      success: jest.fn(),
     },
     Service: class MockService {
       constructor() {}
       async initialize() {}
       async cleanup() {}
     },
-    createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+    createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
     ChannelType: {
       DIRECT: 'direct',
       GROUP: 'group',
@@ -42,54 +42,54 @@ mock.module('@elizaos/core', async () => {
 });
 
 mock.module('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: mock.fn(() => ({
-    init: mock.fn(() => Promise.resolve(undefined)),
-    close: mock.fn(() => Promise.resolve(undefined)),
-    getDatabase: mock.fn(() => ({
-      execute: mock.fn(() => Promise.resolve([])),
+  createDatabaseAdapter: jest.fn(() => ({
+    init: jest.fn(() => Promise.resolve(undefined)),
+    close: jest.fn(() => Promise.resolve(undefined)),
+    getDatabase: jest.fn(() => ({
+      execute: jest.fn(() => Promise.resolve([])),
     })),
-    getMessageServers: mock
+    getMessageServers: jest
       .fn()
       .mockReturnValue(
         Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
       ),
-    createMessageServer: mock.fn(() =>
+    createMessageServer: jest.fn(() =>
       Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })
     ),
-    getAgentsForServer: mock.fn(() => Promise.resolve([])),
-    addAgentToServer: mock.fn(() => Promise.resolve(undefined)),
-    db: { execute: mock.fn(() => Promise.resolve([])) },
+    getAgentsForServer: jest.fn(() => Promise.resolve([])),
+    addAgentToServer: jest.fn(() => Promise.resolve(undefined)),
+    db: { execute: jest.fn(() => Promise.resolve([])) },
   })),
-  DatabaseMigrationService: mock.fn(() => ({
-    initializeWithDatabase: mock.fn(() => Promise.resolve(undefined)),
-    discoverAndRegisterPluginSchemas: mock.fn(),
-    runAllPluginMigrations: mock.fn(() => Promise.resolve(undefined)),
+  DatabaseMigrationService: jest.fn(() => ({
+    initializeWithDatabase: jest.fn(() => Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: jest.fn(),
+    runAllPluginMigrations: jest.fn(() => Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
 
 mock.module('node:fs', () => ({
   default: {
-    mkdirSync: mock.fn(),
-    existsSync: mock.fn(() => true),
-    readFileSync: mock.fn(() => '{}'),
-    writeFileSync: mock.fn(),
+    mkdirSync: jest.fn(),
+    existsSync: jest.fn(() => true),
+    readFileSync: jest.fn(() => '{}'),
+    writeFileSync: jest.fn(),
   },
-  mkdirSync: mock.fn(),
-  existsSync: mock.fn(() => true),
-  readFileSync: mock.fn(() => '{}'),
-  writeFileSync: mock.fn(),
+  mkdirSync: jest.fn(),
+  existsSync: jest.fn(() => true),
+  readFileSync: jest.fn(() => '{}'),
+  writeFileSync: jest.fn(),
 }));
 
 // Mock Socket.IO
 mock.module('socket.io', () => ({
-  Server: mock.fn(() => ({
-    on: mock.fn(),
-    emit: mock.fn(),
-    to: mock.fn(() => ({
-      emit: mock.fn(),
+  Server: jest.fn(() => ({
+    on: jest.fn(),
+    emit: jest.fn(),
+    to: jest.fn(() => ({
+      emit: jest.fn(),
     })),
-    close: mock.fn((callback) => {
+    close: jest.fn((callback) => {
       if (callback) callback();
     }),
   })),
@@ -97,18 +97,18 @@ mock.module('socket.io', () => ({
 
 // Skip socket.io initialization for API tests
 mock.module('../src/socketio/index', () => ({
-  setupSocketIO: mock.fn(() => ({
-    on: mock.fn(),
-    emit: mock.fn(),
-    to: mock.fn(() => ({
-      emit: mock.fn(),
+  setupSocketIO: jest.fn(() => ({
+    on: jest.fn(),
+    emit: jest.fn(),
+    to: jest.fn(() => ({
+      emit: jest.fn(),
     })),
-    close: mock.fn((callback) => {
+    close: jest.fn((callback) => {
       if (callback) callback();
     }),
   })),
-  SocketIORouter: mock.fn(() => ({
-    setupListeners: mock.fn(),
+  SocketIORouter: jest.fn(() => ({
+    setupListeners: jest.fn(),
   })),
 }));
 
@@ -122,23 +122,23 @@ describe('API Server Functionality', () => {
 
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {
-      listen: mock.fn((port, callback) => {
+      listen: jest.fn((_port, callback) => {
         if (callback) callback();
       }),
-      close: mock.fn((callback) => {
+      close: jest.fn((callback) => {
         if (callback) callback();
       }),
-      listeners: mock.fn(() => []),
-      removeAllListeners: mock.fn(),
-      on: mock.fn(),
-      once: mock.fn(),
-      emit: mock.fn(),
-      address: mock.fn(() => ({ port: 3000 })),
+      listeners: jest.fn(() => []),
+      removeAllListeners: jest.fn(),
+      on: jest.fn(),
+      once: jest.fn(),
+      emit: jest.fn(),
+      address: jest.fn(() => ({ port: 3000 })),
       timeout: 0,
       keepAliveTimeout: 5000,
     };
 
-    mock.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
+    jest.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
     await server.initialize();
