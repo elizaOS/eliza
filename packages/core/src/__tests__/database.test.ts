@@ -1,4 +1,4 @@
-import { describe, expect, beforeEach, it } from 'vitest';
+import { describe, expect, beforeEach, it } from 'bun:test';
 import { DatabaseAdapter } from '../database';
 import type {
   Agent,

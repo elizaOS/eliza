@@ -1,16 +1,7 @@
-import { beforeAll, describe, expect, test, vi, it } from 'vitest';
-import { formatEntities, getEntityDetails } from '../entities';
+import { beforeAll, describe, expect, test, it, jest } from 'bun:test';
+import { formatEntities } from '../entities';
 import { formatMessages, formatTimestamp } from '../utils';
-import type {
-  Content,
-  Entity,
-  IAgentRuntime,
-  IDatabaseAdapter,
-  Memory,
-  Room,
-  UUID,
-} from '../types';
-import { ChannelType } from '../types';
+import type { Content, Entity, IAgentRuntime, IDatabaseAdapter, Memory, UUID } from '../types';
 
 describe('Messages Library', () => {
   let runtime: IAgentRuntime & IDatabaseAdapter;
@@ -21,9 +12,9 @@ describe('Messages Library', () => {
     // Mock runtime with necessary methods
     runtime = {
       // Using vi.fn() instead of jest.fn()
-      getParticipantsForRoom: vi.fn(),
-      getEntityById: vi.fn(),
-      getRoom: vi.fn(),
+      getParticipantsForRoom: jest.fn(),
+      getEntityById: jest.fn(),
+      getRoom: jest.fn(),
     } as unknown as IAgentRuntime & IDatabaseAdapter;
 
     // Mock user data with proper UUID format

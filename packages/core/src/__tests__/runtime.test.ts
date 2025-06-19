@@ -1,12 +1,10 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, jest } from 'bun:test';
 import { AgentRuntime } from '../runtime';
 import { MemoryType, ModelType } from '../types';
 import type {
   Action,
-  Agent,
   Character,
   IDatabaseAdapter,
-  KnowledgeItem,
   Memory,
   ModelTypeName,
   Plugin,
@@ -15,110 +13,88 @@ import type {
   UUID,
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+
+// Import modules to manually mock them
+import * as utils from '../utils';
+
 const stringToUuid = (id: string): UUID => id as UUID;
 
 // --- Mocks ---
 
-// Use vi.hoisted for prompts mock
-const { mockSplitChunks } = vi.hoisted(() => {
-  return { mockSplitChunks: vi.fn() };
-});
-vi.mock('../src/utils', async (importOriginal) => {
-  const original = (await importOriginal()) as any;
-  return {
-    ...original,
-    splitChunks: mockSplitChunks,
-  };
-});
-
-// Use vi.hoisted for ./index mock (safeReplacer)
-const { mockSafeReplacer } = vi.hoisted(() => {
-  return {
-    mockSafeReplacer: vi.fn((key, value) => value), // Simple replacer mock
-  };
-});
-vi.mock('./index', async (importOriginal) => {
-  // Mock only safeReplacer, keep others original (if needed)
-  // Note: This path might need adjustment based on the actual relative path from the test file to src/index
-  // Assuming the test is in __tests__ and index is in src, './index' might not resolve correctly.
-  // Let's try '../src/index' relative to the test file.
-  const original = (await importOriginal()) as any;
-  return {
-    ...original,
-    safeReplacer: () => mockSafeReplacer, // safeReplacer() is called in the source
-  };
-});
+// Create mock functions
+const mockSplitChunks = jest.fn();
+const mockSafeReplacer = jest.fn((key, value) => value);
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
-  init: vi.fn().mockResolvedValue(undefined),
-  initialize: vi.fn().mockResolvedValue(undefined),
-  runMigrations: vi.fn().mockResolvedValue(undefined),
-  isReady: vi.fn().mockResolvedValue(true),
-  close: vi.fn().mockResolvedValue(undefined),
-  getConnection: vi.fn().mockResolvedValue({}),
-  getEntityByIds: vi.fn().mockResolvedValue([]),
-  createEntities: vi.fn().mockResolvedValue(true),
-  getMemories: vi.fn().mockResolvedValue([]),
-  getMemoryById: vi.fn().mockResolvedValue(null),
-  getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
-  getMemoriesByIds: vi.fn().mockResolvedValue([]),
-  getCachedEmbeddings: vi.fn().mockResolvedValue([]),
-  log: vi.fn().mockResolvedValue(undefined),
-  searchMemories: vi.fn().mockResolvedValue([]),
-  createMemory: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  deleteMemory: vi.fn().mockResolvedValue(undefined),
-  deleteManyMemories: vi.fn().mockResolvedValue(undefined),
-  deleteAllMemories: vi.fn().mockResolvedValue(undefined),
-  countMemories: vi.fn().mockResolvedValue(0),
-  getRoomsByIds: vi.fn().mockResolvedValue([]),
-  createRooms: vi.fn().mockResolvedValue([stringToUuid(uuidv4())]),
-  deleteRoom: vi.fn().mockResolvedValue(undefined),
-  getRoomsForParticipant: vi.fn().mockResolvedValue([]),
-  getRoomsForParticipants: vi.fn().mockResolvedValue([]),
-  addParticipantsRoom: vi.fn().mockResolvedValue(true),
-  removeParticipant: vi.fn().mockResolvedValue(true),
-  getParticipantsForEntity: vi.fn().mockResolvedValue([]),
-  getParticipantsForRoom: vi.fn().mockResolvedValue([]),
-  getParticipantUserState: vi.fn().mockResolvedValue(null),
-  setParticipantUserState: vi.fn().mockResolvedValue(undefined),
-  createRelationship: vi.fn().mockResolvedValue(true),
-  getRelationship: vi.fn().mockResolvedValue(null),
-  getRelationships: vi.fn().mockResolvedValue([]),
-  getAgent: vi.fn().mockResolvedValue(null),
-  getAgents: vi.fn().mockResolvedValue([]),
-  createAgent: vi.fn().mockResolvedValue(true),
-  updateAgent: vi.fn().mockResolvedValue(true),
-  deleteAgent: vi.fn().mockResolvedValue(true),
-  ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
-  getEntitiesForRoom: vi.fn().mockResolvedValue([]),
-  updateEntity: vi.fn().mockResolvedValue(undefined),
-  getComponent: vi.fn().mockResolvedValue(null),
-  getComponents: vi.fn().mockResolvedValue([]),
-  createComponent: vi.fn().mockResolvedValue(true),
-  updateComponent: vi.fn().mockResolvedValue(undefined),
-  deleteComponent: vi.fn().mockResolvedValue(undefined),
-  createWorld: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  getWorld: vi.fn().mockResolvedValue(null),
-  getAllWorlds: vi.fn().mockResolvedValue([]),
-  updateWorld: vi.fn().mockResolvedValue(undefined),
-  updateRoom: vi.fn().mockResolvedValue(undefined),
-  getRoomsByWorld: vi.fn().mockResolvedValue([]),
-  updateRelationship: vi.fn().mockResolvedValue(undefined),
-  getCache: vi.fn().mockResolvedValue(undefined),
-  setCache: vi.fn().mockResolvedValue(true),
-  deleteCache: vi.fn().mockResolvedValue(true),
-  createTask: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  getTasks: vi.fn().mockResolvedValue([]),
-  getTask: vi.fn().mockResolvedValue(null),
-  getTasksByName: vi.fn().mockResolvedValue([]),
-  updateTask: vi.fn().mockResolvedValue(undefined),
-  deleteTask: vi.fn().mockResolvedValue(undefined),
-  updateMemory: vi.fn().mockResolvedValue(true),
-  getLogs: vi.fn().mockResolvedValue([]),
-  deleteLog: vi.fn().mockResolvedValue(undefined),
-  removeWorld: vi.fn().mockResolvedValue(undefined),
+  init: jest.fn().mockResolvedValue(undefined),
+  initialize: jest.fn().mockResolvedValue(undefined),
+  runMigrations: jest.fn().mockResolvedValue(undefined),
+  isReady: jest.fn().mockResolvedValue(true),
+  close: jest.fn().mockResolvedValue(undefined),
+  getConnection: jest.fn().mockResolvedValue({}),
+  getEntityByIds: jest.fn().mockResolvedValue([]),
+  createEntities: jest.fn().mockResolvedValue(true),
+  getMemories: jest.fn().mockResolvedValue([]),
+  getMemoryById: jest.fn().mockResolvedValue(null),
+  getMemoriesByRoomIds: jest.fn().mockResolvedValue([]),
+  getMemoriesByIds: jest.fn().mockResolvedValue([]),
+  getCachedEmbeddings: jest.fn().mockResolvedValue([]),
+  log: jest.fn().mockResolvedValue(undefined),
+  searchMemories: jest.fn().mockResolvedValue([]),
+  createMemory: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  deleteMemory: jest.fn().mockResolvedValue(undefined),
+  deleteManyMemories: jest.fn().mockResolvedValue(undefined),
+  deleteAllMemories: jest.fn().mockResolvedValue(undefined),
+  countMemories: jest.fn().mockResolvedValue(0),
+  getRoomsByIds: jest.fn().mockResolvedValue([]),
+  createRooms: jest.fn().mockResolvedValue([stringToUuid(uuidv4())]),
+  deleteRoom: jest.fn().mockResolvedValue(undefined),
+  getRoomsForParticipant: jest.fn().mockResolvedValue([]),
+  getRoomsForParticipants: jest.fn().mockResolvedValue([]),
+  addParticipantsRoom: jest.fn().mockResolvedValue(true),
+  removeParticipant: jest.fn().mockResolvedValue(true),
+  getParticipantsForEntity: jest.fn().mockResolvedValue([]),
+  getParticipantsForRoom: jest.fn().mockResolvedValue([]),
+  getParticipantUserState: jest.fn().mockResolvedValue(null),
+  setParticipantUserState: jest.fn().mockResolvedValue(undefined),
+  createRelationship: jest.fn().mockResolvedValue(true),
+  getRelationship: jest.fn().mockResolvedValue(null),
+  getRelationships: jest.fn().mockResolvedValue([]),
+  getAgent: jest.fn().mockResolvedValue(null),
+  getAgents: jest.fn().mockResolvedValue([]),
+  createAgent: jest.fn().mockResolvedValue(true),
+  updateAgent: jest.fn().mockResolvedValue(true),
+  deleteAgent: jest.fn().mockResolvedValue(true),
+  ensureEmbeddingDimension: jest.fn().mockResolvedValue(undefined),
+  getEntitiesForRoom: jest.fn().mockResolvedValue([]),
+  updateEntity: jest.fn().mockResolvedValue(undefined),
+  getComponent: jest.fn().mockResolvedValue(null),
+  getComponents: jest.fn().mockResolvedValue([]),
+  createComponent: jest.fn().mockResolvedValue(true),
+  updateComponent: jest.fn().mockResolvedValue(undefined),
+  deleteComponent: jest.fn().mockResolvedValue(undefined),
+  createWorld: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  getWorld: jest.fn().mockResolvedValue(null),
+  getAllWorlds: jest.fn().mockResolvedValue([]),
+  updateWorld: jest.fn().mockResolvedValue(undefined),
+  updateRoom: jest.fn().mockResolvedValue(undefined),
+  getRoomsByWorld: jest.fn().mockResolvedValue([]),
+  updateRelationship: jest.fn().mockResolvedValue(undefined),
+  getCache: jest.fn().mockResolvedValue(undefined),
+  setCache: jest.fn().mockResolvedValue(true),
+  deleteCache: jest.fn().mockResolvedValue(true),
+  createTask: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  getTasks: jest.fn().mockResolvedValue([]),
+  getTask: jest.fn().mockResolvedValue(null),
+  getTasksByName: jest.fn().mockResolvedValue([]),
+  updateTask: jest.fn().mockResolvedValue(undefined),
+  deleteTask: jest.fn().mockResolvedValue(undefined),
+  updateMemory: jest.fn().mockResolvedValue(true),
+  getLogs: jest.fn().mockResolvedValue([]),
+  deleteLog: jest.fn().mockResolvedValue(undefined),
+  removeWorld: jest.fn().mockResolvedValue(undefined),
   deleteRoomsByWorldId: function (worldId: UUID): Promise<void> {
     throw new Error('Function not implemented.');
   },
@@ -137,8 +113,8 @@ const createMockAction = (name: string): Action => ({
   description: `Test action ${name}`,
   similes: [`like ${name}`],
   examples: [],
-  handler: vi.fn().mockResolvedValue(undefined),
-  validate: vi.fn().mockImplementation(async () => true),
+  handler: jest.fn().mockResolvedValue(undefined),
+  validate: jest.fn().mockImplementation(async () => true),
 });
 
 // Mock Memory creator
@@ -191,8 +167,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   let agentId: UUID;
 
   beforeEach(() => {
-    vi.clearAllMocks(); // Vitest equivalent of clearAllMocks
+    jest.clearAllMocks(); // Jest equivalent of clearAllMocks
     agentId = mockCharacter.id!; // Use character's ID
+
+    // Use jest.spyOn to mock functions instead of direct assignment
+    jest.spyOn(utils, 'splitChunks').mockImplementation(mockSplitChunks);
 
     // Instantiate runtime correctly, passing adapter in options object
     runtime = new AgentRuntime({
@@ -201,6 +180,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       adapter: mockDatabaseAdapter, // Correct way to pass adapter
       // No plugins passed here by default, tests can pass them if needed
     });
+  });
+
+  afterEach(() => {
+    // Restore all mocks
+    jest.restoreAllMocks();
   });
 
   it('should construct without errors', () => {
@@ -226,7 +210,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should call plugin init function', async () => {
-      const initMock = vi.fn().mockResolvedValue(undefined);
+      const initMock = jest.fn().mockResolvedValue(undefined);
       const mockPlugin: Plugin = {
         name: 'InitPlugin',
         description: 'Plugin with init',
@@ -238,9 +222,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should register plugin features (actions, providers, models) when initialized', async () => {
-      const actionHandler = vi.fn();
-      const providerGet = vi.fn().mockResolvedValue({ text: 'provider_text' });
-      const modelHandler = vi.fn().mockResolvedValue('model_result');
+      const actionHandler = jest.fn();
+      const providerGet = jest.fn().mockResolvedValue({ text: 'provider_text' });
+      const modelHandler = jest.fn().mockResolvedValue('model_result');
 
       const mockPlugin: Plugin = {
         name: 'FeaturesPlugin',
@@ -266,7 +250,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      const ensureAgentExistsSpy = vi
+      const ensureAgentExistsSpy = jest
         .spyOn(AgentRuntime.prototype, 'ensureAgentExists')
         .mockResolvedValue({
           ...mockCharacter,
@@ -276,15 +260,15 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           enabled: true,
         });
 
-      vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
+      (mockDatabaseAdapter.getEntityByIds as jest.Mock).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      vi.mocked(mockDatabaseAdapter.getRoomsByIds).mockResolvedValue([]);
-      vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
+      (mockDatabaseAdapter.getRoomsByIds as jest.Mock).mockResolvedValue([]);
+      (mockDatabaseAdapter.getParticipantsForRoom as jest.Mock).mockResolvedValue([]);
 
       await runtime.initialize(); // Initialize to process registrations
 
@@ -299,7 +283,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     let ensureAgentExistsSpy: any;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      ensureAgentExistsSpy = vi
+      ensureAgentExistsSpy = jest
         .spyOn(AgentRuntime.prototype, 'ensureAgentExists')
         .mockResolvedValue({
           ...mockCharacter,
@@ -308,15 +292,15 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           updatedAt: Date.now(),
           enabled: true,
         });
-      vi.mocked(mockDatabaseAdapter.getEntityByIds).mockResolvedValue([
+      (mockDatabaseAdapter.getEntityByIds as jest.Mock).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      vi.mocked(mockDatabaseAdapter.getRoomsByIds).mockResolvedValue([]);
-      vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
+      (mockDatabaseAdapter.getRoomsByIds as jest.Mock).mockResolvedValue([]);
+      (mockDatabaseAdapter.getParticipantsForRoom as jest.Mock).mockResolvedValue([]);
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
@@ -364,8 +348,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('State Composition', () => {
     it('should call provider get methods', async () => {
-      const provider1Get = vi.fn().mockResolvedValue({ text: 'p1_text', values: { p1_val: 1 } });
-      const provider2Get = vi.fn().mockResolvedValue({ text: 'p2_text', values: { p2_val: 2 } });
+      const provider1Get = jest.fn().mockResolvedValue({ text: 'p1_text', values: { p1_val: 1 } });
+      const provider2Get = jest.fn().mockResolvedValue({ text: 'p2_text', values: { p2_val: 2 } });
       const provider1: Provider = { name: 'P1', get: provider1Get };
       const provider2: Provider = { name: 'P2', get: provider2Get };
 
@@ -399,8 +383,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should filter providers', async () => {
-      const provider1Get = vi.fn().mockResolvedValue({ text: 'p1_text' });
-      const provider2Get = vi.fn().mockResolvedValue({ text: 'p2_text' });
+      const provider1Get = jest.fn().mockResolvedValue({ text: 'p1_text' });
+      const provider2Get = jest.fn().mockResolvedValue({ text: 'p2_text' });
       const provider1: Provider = { name: 'P1', get: provider1Get };
       const provider2: Provider = { name: 'P2', get: provider2Get };
 
@@ -420,7 +404,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Model Usage', () => {
     it('should call registered model handler', async () => {
-      const modelHandler = vi.fn().mockResolvedValue({ result: 'success' });
+      const modelHandler = jest.fn().mockResolvedValue('success'); // Fixed return type
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler, 'test-provider');
@@ -434,7 +418,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         expect.objectContaining({ ...params, runtime: runtime })
       );
-      expect(result).toEqual({ result: 'success' });
+      expect(result).toEqual('success'); // Fixed expectation
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({ type: `useModel:${modelType}` })
@@ -455,7 +439,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     let responseMemory: Memory;
 
     beforeEach(() => {
-      mockActionHandler = vi.fn().mockResolvedValue(undefined);
+      mockActionHandler = jest.fn().mockResolvedValue(undefined);
       testAction = createMockAction('TestAction');
       testAction.handler = mockActionHandler; // Assign mock handler
 
@@ -472,7 +456,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       responseMemory.content.actions = ['TestAction']; // Specify action to run
 
       // Mock composeState as it's called within processActions
-      vi.spyOn(runtime, 'composeState').mockResolvedValue(createMockState('composed state text'));
+      jest.spyOn(runtime, 'composeState').mockResolvedValue(createMockState('composed state text'));
     });
 
     it('should find and execute the correct action handler', async () => {
@@ -529,7 +513,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Event Emitter Tests ---
   describe('Event Emitter (on/emit/off)', () => {
     it('should register and emit events', () => {
-      const handler = vi.fn();
+      const handler = jest.fn();
       const eventName = 'testEvent';
       const eventData = { info: 'data' };
 
@@ -541,7 +525,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should remove event handler with off', () => {
-      const handler = vi.fn();
+      const handler = jest.fn();
       const eventName = 'testEvent';
 
       runtime.on(eventName, handler);
@@ -582,7 +566,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         );
 
         // Mock provider needed by composeState
-        const providerGet = vi.fn().mockResolvedValue({ text: 'provider text' });
+        const providerGet = jest.fn().mockResolvedValue({ text: 'provider text' });
         runtime.registerProvider({ name: 'TestProvider', get: providerGet });
 
         const state = await runtime.composeState(message);

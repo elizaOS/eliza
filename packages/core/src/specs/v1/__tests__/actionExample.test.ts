@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { Content } from '../types';
 import { Content as ContentV2, ActionExample as ActionExampleV2 } from '../../v2';
 import {

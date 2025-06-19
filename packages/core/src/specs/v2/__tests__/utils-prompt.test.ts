@@ -1,17 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, jest } from 'bun:test';
 import * as utils from '../utils';
 import { ModelType } from '../types';
 
 describe('prompt utilities', () => {
   it('composePrompt inserts state values', () => {
-    //const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
+    //const spy = jest.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
     const out = utils.composePrompt({ state: { a: 'x' }, template: 'Hello {{a}}' });
     expect(out).toBe('Hello x');
     //spy.mockRestore();
   });
 
   it('composePromptFromState flattens state values', () => {
-    //const spy = vi.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
+    //const spy = jest.spyOn(utils, 'composeRandomUser').mockImplementation((t) => t);
     const out = utils.composePromptFromState({
       state: {
         values: { b: 'y', c: 'z' },
@@ -51,7 +51,7 @@ describe('prompt utilities', () => {
 
   it('trimTokens truncates using runtime tokenizer', async () => {
     const runtime = {
-      useModel: vi.fn(async (type: string, { prompt, tokens }: any) => {
+      useModel: jest.fn(async (type: string, { prompt, tokens }: any) => {
         if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
         if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
         return [];

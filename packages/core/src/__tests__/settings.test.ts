@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, jest, beforeEach, afterEach } from 'bun:test';
 import {
   createSettingFromConfig,
   getSalt,
@@ -26,32 +26,36 @@ import type {
   Character,
 } from '../types';
 
-// Mock dependencies
-vi.mock('../src/entities', () => ({
-  createUniqueUuid: vi.fn((runtime, serverId) => `world-${serverId}`),
-}));
+// Import modules to manually mock them
+import * as entities from '../entities';
+import * as logger from '../logger';
 
-vi.mock('../src/logger', () => ({
-  logger: {
-    error: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+// Create mock functions
+const mockCreateUniqueUuid = jest.fn((runtime, serverId) => `world-${serverId}`);
+const mockLogger = {
+  error: jest.fn(),
+  info: jest.fn(),
+  debug: jest.fn(),
+};
 
 describe('settings utilities', () => {
   let mockRuntime: IAgentRuntime;
   let mockWorld: World;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
+    
+    // Use jest.spyOn to mock functions instead of direct assignment
+    jest.spyOn(entities, 'createUniqueUuid').mockImplementation(mockCreateUniqueUuid as any);
+    // Note: The logger mock is handled by the actual tests not directly using it
+    
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
 
     mockRuntime = {
       agentId: 'agent-123' as any,
-      getWorld: vi.fn(),
-      updateWorld: vi.fn(),
+      getWorld: jest.fn(),
+      updateWorld: jest.fn(),
     } as unknown as IAgentRuntime;
 
     mockWorld = {
@@ -61,6 +65,11 @@ describe('settings utilities', () => {
       serverId: 'server-123',
       metadata: {},
     };
+  });
+
+  afterEach(() => {
+    // Restore all mocks
+    jest.restoreAllMocks();
   });
 
   describe('createSettingFromConfig', () => {
@@ -176,18 +185,18 @@ describe('settings utilities', () => {
     });
 
     it('should return boolean values as is', () => {
-      expect(encryptStringValue(true as any, salt)).toBe(true);
-      expect(encryptStringValue(false as any, salt)).toBe(false);
+      expect((encryptStringValue as any)(true, salt)).toBe(true);
+      expect((encryptStringValue as any)(false, salt)).toBe(false);
     });
 
     it('should return number values as is', () => {
-      expect(encryptStringValue(123 as any, salt)).toBe(123);
-      expect(encryptStringValue(0 as any, salt)).toBe(0);
+      expect((encryptStringValue as any)(123, salt)).toBe(123);
+      expect((encryptStringValue as any)(0, salt)).toBe(0);
     });
 
     it('should return non-string objects as is', () => {
       const obj = { key: 'value' };
-      expect(encryptStringValue(obj as any, salt)).toBe(obj);
+      expect((encryptStringValue as any)(obj, salt)).toBe(obj);
     });
 
     it('should not re-encrypt already encrypted values', () => {
@@ -223,17 +232,17 @@ describe('settings utilities', () => {
     });
 
     it('should return boolean values as is', () => {
-      expect(decryptStringValue(true as any, salt)).toBe(true);
-      expect(decryptStringValue(false as any, salt)).toBe(false);
+      expect((decryptStringValue as any)(true, salt)).toBe(true);
+      expect((decryptStringValue as any)(false, salt)).toBe(false);
     });
 
     it('should return number values as is', () => {
-      expect(decryptStringValue(123 as any, salt)).toBe(123);
+      expect((decryptStringValue as any)(123, salt)).toBe(123);
     });
 
     it('should return non-string objects as is', () => {
       const obj = { key: 'value' };
-      expect(decryptStringValue(obj as any, salt)).toBe(obj);
+      expect((decryptStringValue as any)(obj, salt)).toBe(obj);
     });
 
     it('should return original value if not in encrypted format', () => {
