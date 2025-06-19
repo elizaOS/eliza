@@ -84,6 +84,7 @@ describe('ElizaOS Agent Commands', () => {
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false, // Ensure proper process cleanup
+        shell: true,
       }
     );
     

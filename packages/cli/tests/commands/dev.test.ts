@@ -154,6 +154,7 @@ describe('ElizaOS Dev Commands', () => {
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: cwd || projectDir,
+        shell: true,
       }
     );
 
@@ -213,6 +214,7 @@ describe('ElizaOS Dev Commands', () => {
           },
           stdio: ['ignore', 'pipe', 'pipe'],
           cwd: projectDir,
+          shell: true,
         }
       );
       
@@ -352,6 +354,7 @@ describe('ElizaOS Dev Commands', () => {
           },
           stdio: ['ignore', 'pipe', 'pipe'],
           cwd: nonElizaDir,
+          shell: true,
         }
       );
       
