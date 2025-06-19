@@ -52,13 +52,19 @@ mock.module('@elizaos/plugin-sql', () => ({
     getMessageServers: mock.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
+    createMessageServer: mock
+      .fn()
+      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
     getMessageServerById: mock
       .fn()
-      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })),
+      .mockReturnValue(
+        Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
+      ),
     addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
     getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
-    createChannel: mock.fn().mockReturnValue(Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' })),
+    createChannel: mock
+      .fn()
+      .mockReturnValue(Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' })),
     getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
     db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
   })),
@@ -149,7 +155,7 @@ describe('AgentServer Integration Tests', () => {
     if (server) {
       await server.stop();
     }
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('Constructor', () => {
@@ -259,7 +265,7 @@ describe('AgentServer Integration Tests', () => {
       server.database = {
         ...server.database,
         getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
-        createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' }))
+        createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
         db: {
           execute: mock.fn().mockReturnValue(Promise.resolve([])),
         },
@@ -339,12 +345,14 @@ describe('AgentServer Integration Tests', () => {
       // Mock database methods
       server.database = {
         ...server.database,
-        createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id', name: 'Test Server' }))
+        createMessageServer: mock
+          .fn()
+          .mockReturnValue(Promise.resolve({ id: 'server-id', name: 'Test Server' })),
         getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
-        getMessageServerById: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' }))
-        createChannel: mock.fn().mockReturnValue(Promise.resolve({ id: 'channel-id' }))
+        getMessageServerById: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
+        createChannel: mock.fn().mockReturnValue(Promise.resolve({ id: 'channel-id' })),
         getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
-        createMessage: mock.fn().mockReturnValue(Promise.resolve({ id: 'message-id' }))
+        createMessage: mock.fn().mockReturnValue(Promise.resolve({ id: 'message-id' })),
         getMessagesForChannel: mock.fn().mockReturnValue(Promise.resolve([])),
         addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
         getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
@@ -390,7 +398,9 @@ describe('AgentServer Integration Tests', () => {
     });
 
     it('should throw error when adding agent to non-existent server', async () => {
-      (server.database as any).getMessageServerById = mock.fn().mockReturnValue(Promise.resolve(null);
+      (server.database as any).getMessageServerById = mock
+        .fn()
+        .mockReturnValue(Promise.resolve(null));
 
       const serverId = 'non-existent-server' as any;
       const agentId = 'agent-id' as any;

@@ -2,7 +2,7 @@
  * Unit tests for SocketIORouter
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { SocketIORouter } from '../socketio';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
@@ -78,18 +78,18 @@ describe('SocketIORouter', () => {
 
     // Create router instance
     router = new SocketIORouter(mockAgents, mockServerInstance);
-  });
+  }));
 
   afterEach(() => {
     mock.restore();
-  });
+  }));
 
   describe('setupListeners', () => {
     it('should setup connection listener on IO server', () => {
       router.setupListeners(mockIO);
 
       expect(mockIO.on).toHaveBeenCalledWith('connection', expect.any(Function));
-    });
+    }));
 
     it('should handle new connections', () => {
       router.setupListeners(mockIO);
@@ -111,9 +111,9 @@ describe('SocketIORouter', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('connection_established', {
         message: 'Connected to Eliza Socket.IO server',
         socketId: 'socket-123',
-      });
-    });
-  });
+      }));
+    }));
+  }));
 
   describe('handleChannelJoining', () => {
     it('should handle channel joining with valid channelId', () => {
@@ -142,7 +142,7 @@ describe('SocketIORouter', () => {
           message: expect.stringContaining('successfully joined'),
         })
       );
-    });
+    }));
 
     it('should handle channel joining with roomId for backward compatibility', () => {
       router.setupListeners(mockIO);
@@ -167,7 +167,7 @@ describe('SocketIORouter', () => {
           roomId: payload.roomId,
         })
       );
-    });
+    }));
 
     it('should emit ENTITY_JOINED event when entityId is provided', () => {
       router.setupListeners(mockIO);
@@ -195,7 +195,7 @@ describe('SocketIORouter', () => {
           roomId: payload.channelId,
         })
       );
-    });
+    }));
 
     it('should reject joining without channelId', () => {
       router.setupListeners(mockIO);
@@ -211,16 +211,16 @@ describe('SocketIORouter', () => {
       expect(mockSocket.join).not.toHaveBeenCalled();
       expect(mockSocket.emit).toHaveBeenCalledWith('messageError', {
         error: 'channelId is required for joining.',
-      });
-    });
-  });
+      }));
+    }));
+  }));
 
   describe('handleMessageSubmission', () => {
     beforeEach(() => {
       router.setupListeners(mockIO);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
-    });
+    }));
 
     it('should handle valid message submission', async () => {
       const messageHandler = mockSocket.on.mock.calls.find(
@@ -237,11 +237,11 @@ describe('SocketIORouter', () => {
         serverId: '00000000-0000-0000-0000-000000000000',
       };
 
-      mockServerInstance.getChannelDetails.mockReturnValue(Promise.resolve({ id: payload.channelId });
+      mockServerInstance.getChannelDetails.mockReturnValue(Promise.resolve({ id: payload.channelId }));
       mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
-      });
+      }));
 
       await messageHandler(payload);
 
@@ -258,7 +258,7 @@ describe('SocketIORouter', () => {
 
       expect(mockSocket.emit).toHaveBeenCalledWith('messageBroadcast', expect.any(Object));
       expect(mockSocket.emit).toHaveBeenCalledWith('messageAck', expect.any(Object));
-    });
+    }));
 
     it('should auto-create channel if it does not exist', async () => {
       const messageHandler = mockSocket.on.mock.calls.find(
@@ -279,7 +279,7 @@ describe('SocketIORouter', () => {
       mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
-      });
+      }));
 
       await messageHandler(payload);
 
@@ -293,7 +293,7 @@ describe('SocketIORouter', () => {
         }),
         [payload.senderId]
       );
-    });
+    }));
 
     it('should handle DM channel creation', async () => {
       const messageHandler = mockSocket.on.mock.calls.find(
@@ -316,7 +316,7 @@ describe('SocketIORouter', () => {
       mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
-      });
+      }));
 
       await messageHandler(payload);
 
@@ -329,7 +329,7 @@ describe('SocketIORouter', () => {
         }),
         [payload.senderId, payload.targetUserId]
       );
-    });
+    }));
 
     it('should reject message without required fields', async () => {
       const messageHandler = mockSocket.on.mock.calls.find(
@@ -346,16 +346,16 @@ describe('SocketIORouter', () => {
       expect(mockServerInstance.createMessage).not.toHaveBeenCalled();
       expect(mockSocket.emit).toHaveBeenCalledWith('messageError', {
         error: expect.stringContaining('required'),
-      });
-    });
-  });
+      }));
+    }));
+  }));
 
   describe('log streaming', () => {
     beforeEach(() => {
       router.setupListeners(mockIO);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
-    });
+    }));
 
     it('should handle log subscription', () => {
       const subscribeHandler = mockSocket.on.mock.calls.find(
@@ -367,8 +367,8 @@ describe('SocketIORouter', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('log_subscription_confirmed', {
         subscribed: true,
         message: 'Successfully subscribed to log stream',
-      });
-    });
+      }));
+    }));
 
     it('should handle log unsubscription', () => {
       const unsubscribeHandler = mockSocket.on.mock.calls.find(
@@ -380,8 +380,8 @@ describe('SocketIORouter', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('log_subscription_confirmed', {
         subscribed: false,
         message: 'Successfully unsubscribed from log stream',
-      });
-    });
+      }));
+    }));
 
     it('should handle log filter updates', () => {
       // First subscribe
@@ -401,8 +401,8 @@ describe('SocketIORouter', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('log_filters_updated', {
         success: true,
         filters: expect.objectContaining(filters),
-      });
-    });
+      }));
+    }));
 
     it('should broadcast logs based on filters', () => {
       // Subscribe and set filters
@@ -414,7 +414,7 @@ describe('SocketIORouter', () => {
       const updateHandler = mockSocket.on.mock.calls.find(
         (call) => call[0] === 'update_log_filters'
       )?.[1];
-      updateHandler({ agentName: 'TestAgent', level: 'info' });
+      updateHandler({ agentName: 'TestAgent', level: 'info' }));
 
       // Clear previous emits
       mockSocket.emit.mockClear();
@@ -424,15 +424,15 @@ describe('SocketIORouter', () => {
         agentName: 'TestAgent',
         level: 20, // info level
         message: 'Test log message',
-      });
+      }));
 
       expect(mockSocket.emit).toHaveBeenCalledWith('log_stream', {
         type: 'log_entry',
         payload: expect.objectContaining({
           agentName: 'TestAgent',
         }),
-      });
-    });
+      }));
+    }));
 
     it('should not broadcast logs that do not match filters', () => {
       // Subscribe and set filters
@@ -444,7 +444,7 @@ describe('SocketIORouter', () => {
       const updateHandler = mockSocket.on.mock.calls.find(
         (call) => call[0] === 'update_log_filters'
       )?.[1];
-      updateHandler({ agentName: 'TestAgent', level: 'error' });
+      updateHandler({ agentName: 'TestAgent', level: 'error' }));
 
       // Clear previous emits
       mockSocket.emit.mockClear();
@@ -454,11 +454,11 @@ describe('SocketIORouter', () => {
         agentName: 'OtherAgent',
         level: 20, // info level (below error)
         message: 'Test log message',
-      });
+      }));
 
       expect(mockSocket.emit).not.toHaveBeenCalledWith('log_stream', expect.any(Object));
-    });
-  });
+    }));
+  }));
 
   describe('disconnect handling', () => {
     it('should clean up connections on disconnect', () => {
@@ -474,7 +474,7 @@ describe('SocketIORouter', () => {
       joinHandler({
         channelId: '123e4567-e89b-12d3-a456-426614174000',
         agentId: 'agent-123',
-      });
+      }));
 
       // Then disconnect
       const disconnectHandler = mockSocket.on.mock.calls.find(
@@ -486,8 +486,8 @@ describe('SocketIORouter', () => {
       // Should clean up internal maps (we can't directly test this without exposing internals)
       // But we can verify the handler was called
       expect(disconnectHandler).toBeDefined();
-    });
-  });
+    }));
+  }));
 
   describe('error handling', () => {
     it('should handle socket errors gracefully', () => {
@@ -502,7 +502,7 @@ describe('SocketIORouter', () => {
 
       // Should not throw, just log the error
       expect(errorHandler).toBeDefined();
-    });
+    }));
 
     it('should handle malformed message event data', () => {
       router.setupListeners(mockIO);
@@ -513,11 +513,11 @@ describe('SocketIORouter', () => {
 
       // Send malformed data
       messageHandler('not an object');
-      messageHandler({ notType: 'missing type' });
-      messageHandler({ type: 'unknown', payload: {} });
+      messageHandler({ notType: 'missing type' }));
+      messageHandler({ type: 'unknown', payload: {} }));
 
       // Should not throw
       expect(messageHandler).toBeDefined();
-    });
-  });
-});
+    }));
+  }));
+}));

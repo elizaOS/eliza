@@ -9,8 +9,8 @@ import {
   cleanupFile,
   cleanupFiles,
 } from '../api/shared/file-utils';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { logger } from '@elizaos/core';
 
 // Mock dependencies
@@ -42,7 +42,7 @@ describe('File Utilities', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('createSecureUploadDir', () => {

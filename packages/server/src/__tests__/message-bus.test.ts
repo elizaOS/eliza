@@ -44,21 +44,23 @@ describe('MessageBusService', () => {
     mockRuntime = createMockAgentRuntime();
 
     // Mock runtime database methods
-    mockRuntime.ensureWorldExists = mock.fn().mockReturnValue(Promise.resolve(undefined);
-    mockRuntime.ensureRoomExists = mock.fn().mockReturnValue(Promise.resolve(undefined);
-    mockRuntime.getEntityById = mock.fn().mockReturnValue(Promise.resolve(null);
-    mockRuntime.createEntity = mock.fn().mockReturnValue(Promise.resolve(undefined);
-    mockRuntime.getMemoryById = mock.fn().mockReturnValue(Promise.resolve(null);
-    mockRuntime.createMemory = mock.fn().mockReturnValue(Promise.resolve('mem-123');
-    mockRuntime.getRoom = mock.fn().mockReturnValue(Promise.resolve({
-      channelId: '456e7890-e89b-12d3-a456-426614174000',
-      serverId: '789e1234-e89b-12d3-a456-426614174000',
-    });
-    mockRuntime.getWorld = vi
+    mockRuntime.ensureWorldExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.ensureRoomExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getEntityById = mock.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createEntity = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getMemoryById = mock.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createMemory = mock.fn().mockReturnValue(Promise.resolve('mem-123'));
+    mockRuntime.getRoom = mock.fn().mockReturnValue(
+      Promise.resolve({
+        channelId: '456e7890-e89b-12d3-a456-426614174000',
+        serverId: '789e1234-e89b-12d3-a456-426614174000',
+      })
+    );
+    mockRuntime.getWorld = mock
       .fn()
-      .mockReturnValue(Promise.resolve({ serverId: '789e1234-e89b-12d3-a456-426614174000' });
-    mockRuntime.getMemoriesByRoomIds = mock.fn().mockReturnValue(Promise.resolve([]);
-    mockRuntime.emitEvent = mock.fn().mockReturnValue(Promise.resolve(undefined);
+      .mockReturnValue(Promise.resolve({ serverId: '789e1234-e89b-12d3-a456-426614174000' }));
+    mockRuntime.getMemoriesByRoomIds = mock.fn().mockReturnValue(Promise.resolve([]));
+    mockRuntime.emitEvent = mock.fn().mockReturnValue(Promise.resolve(undefined));
     mockRuntime.getSetting = mock.fn().mockReturnValue('http://localhost:3000');
 
     // Mock successful fetch responses

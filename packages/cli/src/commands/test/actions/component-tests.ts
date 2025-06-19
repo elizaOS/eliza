@@ -69,11 +69,12 @@ export async function runComponentTests(
     }
 
     const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
-    
+
     // Check if vitest config exists in the target directory
-    const hasVitestConfig = existsSync(path.join(targetPath, 'vitest.config.ts')) || 
-                          existsSync(path.join(targetPath, 'vitest.config.js')) ||
-                          existsSync(path.join(targetPath, 'vitest.config.mjs'));
+    const hasVitestConfig =
+      existsSync(path.join(targetPath, 'vitest.config.ts')) ||
+      existsSync(path.join(targetPath, 'vitest.config.js')) ||
+      existsSync(path.join(targetPath, 'vitest.config.mjs'));
 
     // Only add test patterns if no vitest config exists
     if (!hasVitestConfig && vitestConfig.test?.include && vitestConfig.test.include.length > 0) {

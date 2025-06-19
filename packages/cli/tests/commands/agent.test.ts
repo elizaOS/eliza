@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { spawn, execSync } from 'child_process';
-import { mkdtemp, rm, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { spawn, execSync } from 'node:child_process';
+import { mkdtemp, rm, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { waitForServerReady, killProcessOnPort } from './test-utils';
 

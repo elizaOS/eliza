@@ -49,7 +49,7 @@ describe('service builder', () => {
 
   it('should call custom stop function when provided', async () => {
     // This test covers lines 65-68 - custom stopFn execution
-    const stopFn = vi.fn().mockResolvedValue(undefined);
+    const stopFn = mock().mockResolvedValue(undefined);
 
     const Builder = createService('WITH_STOP')
       .withDescription('Service with custom stop')

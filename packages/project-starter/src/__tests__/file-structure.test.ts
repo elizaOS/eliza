@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { logger } from '@elizaos/core';
 
 // Helper function to check if a file exists

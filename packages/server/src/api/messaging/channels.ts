@@ -1,4 +1,12 @@
-import { composePromptFromState, IAgentRuntime, ModelType, ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
+import {
+  composePromptFromState,
+  IAgentRuntime,
+  ModelType,
+  ChannelType,
+  logger,
+  validateUuid,
+  type UUID,
+} from '@elizaos/core';
 import express, { type RequestHandler } from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
@@ -23,7 +31,7 @@ interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
  * Channel management functionality
  */
 export function createChannelsRouter(
-  agents: Map<UUID, IAgentRuntime>, 
+  agents: Map<UUID, IAgentRuntime>,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -863,7 +871,6 @@ export function createChannelsRouter(
     }
   );
 
-  
   (router as any).post(
     '/central-channels/:channelId/generate-title',
     async (req: express.Request, res: express.Response) => {
@@ -873,30 +880,32 @@ export function createChannelsRouter(
       if (!channelId) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid channel ID format'
+          error: 'Invalid channel ID format',
         });
       }
 
       if (!agentId || !validateUuid(agentId)) {
         return res.status(400).json({
           success: false,
-          error: 'Valid agent ID is required'
+          error: 'Valid agent ID is required',
         });
       }
 
       try {
         const runtime = agents.get(agentId);
-        
+
         if (!runtime) {
           return res.status(404).json({
             success: false,
-            error: 'Agent not found or not active'
+            error: 'Agent not found or not active',
           });
         }
 
         logger.info(`[CHANNEL SUMMARIZE] Summarizing channel ${channelId}`);
         const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
-        const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
+        const before = req.query.before
+          ? Number.parseInt(req.query.before as string, 10)
+          : undefined;
         const beforeDate = before ? new Date(before) : undefined;
 
         const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
@@ -913,17 +922,17 @@ export function createChannelsRouter(
         }
 
         const recentMessages = messages
-            .reverse() // Show in chronological order
-            .map((msg) => {
-                const isUser = msg.authorId !== runtime.agentId;
-                const role = isUser ? 'User' : 'Agent';
-                return `${role}: ${msg.content}`;
-            })
-            .join('\n');
+          .reverse() // Show in chronological order
+          .map((msg) => {
+            const isUser = msg.authorId !== runtime.agentId;
+            const role = isUser ? 'User' : 'Agent';
+            return `${role}: ${msg.content}`;
+          })
+          .join('\n');
 
         const prompt = composePromptFromState({
-            state: { recentMessages },
-            template: `
+          state: { recentMessages },
+          template: `
 Based on the conversation below, generate a short, descriptive title for this chat. The title should capture the main topic or theme of the discussion.
 Rules:
 - Keep it concise (3-6 words)
@@ -940,7 +949,7 @@ Examples:
 Recent conversation:
 {{recentMessages}}
 Respond with just the title, nothing else.
-            `
+            `,
         });
 
         const newTitle = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -964,21 +973,21 @@ Respond with just the title, nothing else.
         };
 
         logger.success(`[CHANNEL SUMMARIZE] Successfully summarized channel ${channelId}`);
-        
+
         res.json({
           success: true,
-          data: result
+          data: result,
         });
-
       } catch (error) {
         logger.error('[CHANNEL SUMMARIZE] Error summarizing channel:', error);
         res.status(500).json({
           success: false,
           error: 'Failed to summarize channel',
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         });
       }
-  });
+    }
+  );
 
   return router;
 }

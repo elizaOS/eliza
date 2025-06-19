@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,

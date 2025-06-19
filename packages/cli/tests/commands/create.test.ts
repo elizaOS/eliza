@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'child_process';
-import { mkdtemp, rm, readFile } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { existsSync } from 'fs';
+import { execSync } from 'node:child_process';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import {
   safeChangeDirectory,
   runCliCommandSilently,

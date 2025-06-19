@@ -175,9 +175,10 @@ export async function loadProject(dir: string): Promise<Project> {
         try {
           const importPath = path.resolve(entryPoint);
           // Convert to file URL for ESM import
-          const importUrl = process.platform === 'win32'
-            ? 'file:///' + importPath.replace(/\\/g, '/')
-            : 'file://' + importPath;
+          const importUrl =
+            process.platform === 'win32'
+              ? 'file:///' + importPath.replace(/\\/g, '/')
+              : 'file://' + importPath;
           projectModule = (await import(importUrl)) as ProjectModule;
           logger.info(`Loaded project from ${entryPoint}`);
 

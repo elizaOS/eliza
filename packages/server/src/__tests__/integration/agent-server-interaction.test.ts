@@ -7,8 +7,8 @@ import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
 import { EventType, ChannelType, AgentRuntime } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
-import path from 'path';
-import fs from 'fs';
+import path from 'node:path';
+import fs from 'node:fs';
 
 describe('Agent-Server Interaction Integration Tests', () => {
   let agentServer: AgentServer;

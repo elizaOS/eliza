@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { plugin } from '../../index';
 import type { IAgentRuntime } from '@elizaos/core';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('PostgreSQL Initialization Tests', () => {
   let mockRuntime: IAgentRuntime;

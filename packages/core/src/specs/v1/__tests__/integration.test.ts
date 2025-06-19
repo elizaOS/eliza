@@ -13,8 +13,8 @@ describe('Integration tests for v1 compatibility layer', () => {
 
   // Setup mock runtime
   const mockRuntime = {
-    getSetting: vi.fn().mockReturnValue('test-setting'),
-    logger: { info: vi.fn(), error: vi.fn() },
+    getSetting: mock().mockReturnValue('test-setting'),
+    logger: { info: mock(), error: mock() },
   } as any;
 
   // Setup mock message

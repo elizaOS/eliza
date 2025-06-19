@@ -50,8 +50,12 @@ mock.module('@elizaos/plugin-sql', () => ({
     })),
     getMessageServers: mock
       .fn()
-      .mockReturnValue(Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])),
-    createMessageServer: mock.fn(() => Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
+      .mockReturnValue(
+        Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
+      ),
+    createMessageServer: mock.fn(() =>
+      Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })
+    ),
     getAgentsForServer: mock.fn(() => Promise.resolve([])),
     addAgentToServer: mock.fn(() => Promise.resolve(undefined)),
     db: { execute: mock.fn(() => Promise.resolve([])) },

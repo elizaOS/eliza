@@ -1,18 +1,18 @@
 import { type Character, logger } from '@elizaos/core';
-import { 
+import {
   tryLoadFile as serverTryLoadFile,
   loadCharactersFromUrl as serverLoadCharactersFromUrl,
   jsonToCharacter as serverJsonToCharacter,
   loadCharacter as serverLoadCharacter,
   loadCharacterTryPath as serverLoadCharacterTryPath,
   hasValidRemoteUrls as serverHasValidRemoteUrls,
-  loadCharacters as serverLoadCharacters
+  loadCharacters as serverLoadCharacters,
 } from '@elizaos/server';
 import { character as defaultCharacter } from '../../../characters/eliza';
 
 /**
  * Attempts to load a file from the given file path.
- * 
+ *
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  * @param {string} filePath - The path to the file to load.
  * @returns {string | null} The contents of the file as a string, or null if an error occurred.
@@ -24,7 +24,7 @@ export function tryLoadFile(filePath: string): string | null {
 
 /**
  * Load characters from a specified URL and return them as an array of Character objects.
- * 
+ *
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  * @param {string} url - The URL from which to load character data.
  * @returns {Promise<Character[]>} - A promise that resolves with an array of Character objects.
@@ -72,7 +72,7 @@ export const hasValidRemoteUrls = () => serverHasValidRemoteUrls();
 /**
  * Load characters from local paths or remote URLs based on configuration.
  * CLI-specific version that falls back to default character when no characters are found.
- * 
+ *
  * @param charactersArg - A comma-separated list of local file paths or remote URLs to load characters from.
  * @returns A promise that resolves to an array of loaded characters.
  */

@@ -78,7 +78,7 @@ describe('Loader Functions', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('tryLoadFile', () => {
@@ -394,8 +394,8 @@ describe('Loader Functions', () => {
       process.env.USE_CHARACTER_STORAGE = 'true';
       const char = { name: 'Storage Character', id: 'storage-1' };
 
-      (fs.promises.mkdir as any).mockReturnValue(Promise.resolve(undefined);
-      (fs.promises.readdir as any).mockReturnValue(Promise.resolve(['storage-char.json']);
+      (fs.promises.mkdir as any).mockReturnValue(Promise.resolve(undefined));
+      (fs.promises.readdir as any).mockReturnValue(Promise.resolve(['storage-char.json']));
       (fs.readFileSync as any).mockImplementation((path: string) => {
         if (path.includes('storage-char.json')) {
           return JSON.stringify(char);

@@ -52,12 +52,16 @@ mock.module('@elizaos/plugin-sql', () => ({
     getMessageServers: mock.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' }))
+    createMessageServer: mock
+      .fn()
+      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
     getMessageServerById: mock
       .fn()
-      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }))
+      .mockReturnValue(
+        Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
+      ),
     addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-    db: { execute: mock.fn().mockReturnValue(Promise.resolve([]) },
+    db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
   })),
   DatabaseMigrationService: mock.fn(() => ({
     initializeWithDatabase: mock.fn().mockReturnValue(Promise.resolve(undefined)),
@@ -272,7 +276,7 @@ describe('CLI Compatibility Tests', () => {
         ...server.database,
         getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
         addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
-        db: { execute: mock.fn().mockReturnValue(Promise.resolve([]) },
+        db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
       } as any;
 
       // Test CLI's agent registration pattern

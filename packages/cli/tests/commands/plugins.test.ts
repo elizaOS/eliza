@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { execSync } from 'child_process';
-import { mkdtemp, rm, readFile } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { execSync } from 'node:child_process';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { safeChangeDirectory } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
