@@ -2,7 +2,7 @@
  * Unit tests for loader.ts
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'bun:test';
 import fs from 'node:fs';
 import {
   tryLoadFile,
@@ -22,35 +22,35 @@ const TEST_MULTI_CHARACTER_URL =
   'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/multi-chars.json';
 
 // Mock modules
-vi.mock('node:fs', () => ({
+mock.module('node:fs', () => ({
   default: {
-    readFileSync: vi.fn(),
+    readFileSync: mock.fn(),
     promises: {
-      mkdir: vi.fn(),
-      readdir: vi.fn(),
+      mkdir: mock.fn(),
+      readdir: mock.fn(),
     },
   },
-  readFileSync: vi.fn(),
+  readFileSync: mock.fn(),
   promises: {
-    mkdir: vi.fn(),
-    readdir: vi.fn(),
+    mkdir: mock.fn(),
+    readdir: mock.fn(),
   },
 }));
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      warn: mock.fn(),
+      debug: mock.fn(),
     },
-    validateCharacter: vi.fn((character) => ({
+    validateCharacter: mock.fn((character) => ({
       success: true,
       data: character,
     })),
-    parseAndValidateCharacter: vi.fn((content) => {
+    parseAndValidateCharacter: mock.fn((content) => {
       try {
         const parsed = JSON.parse(content);
         return {
@@ -68,12 +68,12 @@ vi.mock('@elizaos/core', async () => {
 });
 
 // Mock fetch globally
-const mockFetch = vi.fn();
+const mockFetch = mock.fn();
 global.fetch = mockFetch as any;
 
 describe('Loader Functions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     process.env = {};
   });
 
@@ -394,8 +394,8 @@ describe('Loader Functions', () => {
       process.env.USE_CHARACTER_STORAGE = 'true';
       const char = { name: 'Storage Character', id: 'storage-1' };
 
-      (fs.promises.mkdir as any).mockResolvedValue(undefined);
-      (fs.promises.readdir as any).mockResolvedValue(['storage-char.json']);
+      (fs.promises.mkdir as any).mockReturnValue(Promise.resolve(undefined);
+      (fs.promises.readdir as any).mockReturnValue(Promise.resolve(['storage-char.json']);
       (fs.readFileSync as any).mockImplementation((path: string) => {
         if (path.includes('storage-char.json')) {
           return JSON.stringify(char);

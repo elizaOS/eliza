@@ -2,7 +2,7 @@
  * Unit tests for SocketIORouter
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import { SocketIORouter } from '../socketio';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
@@ -10,18 +10,18 @@ import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 import type { Socket } from 'socket.io';
 
 // Mock dependencies
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+      info: mock.fn(),
+      debug: mock.fn(),
+      warn: mock.fn(),
+      error: mock.fn(),
       levels: { values: { debug: 10, info: 20, warn: 30, error: 40 } },
     },
-    validateUuid: vi.fn((id: string) => {
+    validateUuid: mock.fn((id: string) => {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(id) ? id : null;
     }),
@@ -52,25 +52,25 @@ describe('SocketIORouter', () => {
 
     // Create mock server instance
     mockServerInstance = {
-      getChannelDetails: vi.fn(),
-      createChannel: vi.fn(),
-      createMessage: vi.fn(),
-      getServers: vi.fn().mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000' }]),
+      getChannelDetails: mock.fn(),
+      createChannel: mock.fn(),
+      createMessage: mock.fn(),
+      getServers: mock.fn().mockReturnValue(Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000' }]))
     };
 
     // Create mock socket
     mockSocket = {
       id: 'socket-123',
-      join: vi.fn(),
-      emit: vi.fn(),
-      to: vi.fn().mockReturnThis(),
-      on: vi.fn(),
-      onAny: vi.fn(),
+      join: mock.fn(),
+      emit: mock.fn(),
+      to: mock.fn().mockReturnThis(),
+      on: mock.fn(),
+      onAny: mock.fn(),
     };
 
     // Create mock IO server
     mockIO = {
-      on: vi.fn(),
+      on: mock.fn(),
       sockets: {
         sockets: new Map([[mockSocket.id, mockSocket]]),
       },
@@ -81,7 +81,7 @@ describe('SocketIORouter', () => {
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe('setupListeners', () => {
@@ -237,8 +237,8 @@ describe('SocketIORouter', () => {
         serverId: '00000000-0000-0000-0000-000000000000',
       };
 
-      mockServerInstance.getChannelDetails.mockResolvedValue({ id: payload.channelId });
-      mockServerInstance.createMessage.mockResolvedValue({
+      mockServerInstance.getChannelDetails.mockReturnValue(Promise.resolve({ id: payload.channelId });
+      mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
       });
@@ -276,7 +276,7 @@ describe('SocketIORouter', () => {
       };
 
       mockServerInstance.getChannelDetails.mockRejectedValue(new Error('Channel not found'));
-      mockServerInstance.createMessage.mockResolvedValue({
+      mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
       });
@@ -313,7 +313,7 @@ describe('SocketIORouter', () => {
       };
 
       mockServerInstance.getChannelDetails.mockRejectedValue(new Error('Channel not found'));
-      mockServerInstance.createMessage.mockResolvedValue({
+      mockServerInstance.createMessage.mockReturnValue(Promise.resolve({
         id: 'msg-123',
         createdAt: new Date().toISOString(),
       });

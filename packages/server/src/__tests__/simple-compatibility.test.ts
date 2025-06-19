@@ -3,7 +3,7 @@
  * Tests core export functionality without complex imports
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 
 describe('Server Package Compatibility', () => {

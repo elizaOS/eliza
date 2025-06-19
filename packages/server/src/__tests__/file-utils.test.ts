@@ -2,7 +2,7 @@
  * Unit tests for file utilities
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'bun:test';
 import {
   createSecureUploadDir,
   sanitizeFilename,
@@ -14,31 +14,31 @@ import path from 'path';
 import { logger } from '@elizaos/core';
 
 // Mock dependencies
-vi.mock('fs', () => ({
+mock.module('fs', () => ({
   default: {
-    existsSync: vi.fn(),
-    unlinkSync: vi.fn(),
+    existsSync: mock.fn(),
+    unlinkSync: mock.fn(),
   },
 }));
 
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+      info: mock.fn(),
+      debug: mock.fn(),
+      warn: mock.fn(),
+      error: mock.fn(),
     },
   };
 });
 
 describe('File Utilities', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     // Mock process.cwd() to return a consistent value
-    vi.spyOn(process, 'cwd').mockReturnValue('/test/app');
+    mock.spyOn(process, 'cwd').mockReturnValue('/test/app');
   });
 
   afterEach(() => {

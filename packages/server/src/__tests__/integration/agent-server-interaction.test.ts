@@ -2,7 +2,7 @@
  * Integration tests for agent-server interactions
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
 import { EventType, ChannelType, AgentRuntime } from '@elizaos/core';

@@ -2,7 +2,7 @@
  * Unit tests for validation functions
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'bun:test';
 import {
   validateChannelId,
   validateAgentId,
@@ -15,22 +15,22 @@ import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
 // Mock the logger to capture security logs
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
+      warn: mock.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      debug: mock.fn(),
     },
   };
 });
 
 describe('Validation Functions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe('validateChannelId', () => {

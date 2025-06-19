@@ -1,9 +1,9 @@
 /**
- * Test setup file for vitest
+ * Test setup file for bun:test
  * This file is loaded before all tests and configures the testing environment
  */
 
-import { beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, mock } from 'bun:test';
 import { logger } from '@elizaos/core';
 
 // Mock environment variables for testing
@@ -39,10 +39,10 @@ afterAll(() => {
 
 beforeEach(() => {
   // Clear any mocks before each test
-  vi.clearAllMocks?.();
+  mock.restore?.();
 });
 
 afterEach(() => {
   // Clean up after each test
-  vi.restoreAllMocks?.();
+  mock.restore?.();
 });

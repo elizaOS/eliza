@@ -2,27 +2,27 @@
  * Unit tests for utility functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'bun:test';
 import { expandTildePath, resolvePgliteDir } from '../index';
 import path from 'node:path';
 
 // Mock fs with proper default export
-vi.mock('node:fs', async () => {
-  const actual = await vi.importActual('node:fs');
+mock.module('node:fs', async () => {
+  const actual = await import('node:fs');
   return {
     ...actual,
     default: {
       ...actual,
-      existsSync: vi.fn(),
+      existsSync: mock.fn(),
     },
-    existsSync: vi.fn(),
+    existsSync: mock.fn(),
   };
 });
 
 // Mock dotenv with proper structure for default import
-vi.mock('dotenv', async () => {
-  const actual = await vi.importActual('dotenv');
-  const mockConfig = vi.fn();
+mock.module('dotenv', async () => {
+  const actual = await import('dotenv');
+  const mockConfig = mock.fn();
   return {
     ...actual,
     default: {
@@ -33,13 +33,13 @@ vi.mock('dotenv', async () => {
 });
 
 // Mock environment module
-vi.mock('../api/system/environment', () => ({
-  resolveEnvFile: vi.fn(() => '.env'),
+mock.module('../api/system/environment', () => ({
+  resolveEnvFile: mock.fn(() => '.env'),
 }));
 
 describe('Utility Functions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     // Reset environment variables
     delete process.env.PGLITE_DATA_DIR;
   });

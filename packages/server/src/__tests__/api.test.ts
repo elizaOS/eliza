@@ -2,29 +2,29 @@
  * API endpoint basic tests
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import express from 'express';
 import http from 'node:http';
 import { AgentServer } from '../index';
 
 // Mock dependencies
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      success: vi.fn(),
+      warn: mock.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      debug: mock.fn(),
+      success: mock.fn(),
     },
     Service: class MockService {
       constructor() {}
       async initialize() {}
       async cleanup() {}
     },
-    createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+    createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
     ChannelType: {
       DIRECT: 'direct',
       GROUP: 'group',
@@ -41,70 +41,70 @@ vi.mock('@elizaos/core', async () => {
   };
 });
 
-vi.mock('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getDatabase: vi.fn(() => ({
-      execute: vi.fn().mockResolvedValue([]),
+mock.module('@elizaos/plugin-sql', () => ({
+  createDatabaseAdapter: mock.fn(() => ({
+    init: mock.fn(() => Promise.resolve(undefined)),
+    close: mock.fn(() => Promise.resolve(undefined)),
+    getDatabase: mock.fn(() => ({
+      execute: mock.fn(() => Promise.resolve([])),
     })),
-    getMessageServers: vi
+    getMessageServers: mock
       .fn()
-      .mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }]),
-    createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
-    getAgentsForServer: vi.fn().mockResolvedValue([]),
-    addAgentToServer: vi.fn().mockResolvedValue(undefined),
-    db: { execute: vi.fn().mockResolvedValue([]) },
+      .mockReturnValue(Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])),
+    createMessageServer: mock.fn(() => Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
+    getAgentsForServer: mock.fn(() => Promise.resolve([])),
+    addAgentToServer: mock.fn(() => Promise.resolve(undefined)),
+    db: { execute: mock.fn(() => Promise.resolve([])) },
   })),
-  DatabaseMigrationService: vi.fn(() => ({
-    initializeWithDatabase: vi.fn().mockResolvedValue(undefined),
-    discoverAndRegisterPluginSchemas: vi.fn(),
-    runAllPluginMigrations: vi.fn().mockResolvedValue(undefined),
+  DatabaseMigrationService: mock.fn(() => ({
+    initializeWithDatabase: mock.fn(() => Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: mock.fn(),
+    runAllPluginMigrations: mock.fn(() => Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
 
-vi.mock('node:fs', () => ({
+mock.module('node:fs', () => ({
   default: {
-    mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => true),
-    readFileSync: vi.fn(() => '{}'),
-    writeFileSync: vi.fn(),
+    mkdirSync: mock.fn(),
+    existsSync: mock.fn(() => true),
+    readFileSync: mock.fn(() => '{}'),
+    writeFileSync: mock.fn(),
   },
-  mkdirSync: vi.fn(),
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => '{}'),
-  writeFileSync: vi.fn(),
+  mkdirSync: mock.fn(),
+  existsSync: mock.fn(() => true),
+  readFileSync: mock.fn(() => '{}'),
+  writeFileSync: mock.fn(),
 }));
 
 // Mock Socket.IO
-vi.mock('socket.io', () => ({
-  Server: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    to: vi.fn(() => ({
-      emit: vi.fn(),
+mock.module('socket.io', () => ({
+  Server: mock.fn(() => ({
+    on: mock.fn(),
+    emit: mock.fn(),
+    to: mock.fn(() => ({
+      emit: mock.fn(),
     })),
-    close: vi.fn((callback) => {
+    close: mock.fn((callback) => {
       if (callback) callback();
     }),
   })),
 }));
 
 // Skip socket.io initialization for API tests
-vi.mock('../src/socketio/index', () => ({
-  setupSocketIO: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    to: vi.fn(() => ({
-      emit: vi.fn(),
+mock.module('../src/socketio/index', () => ({
+  setupSocketIO: mock.fn(() => ({
+    on: mock.fn(),
+    emit: mock.fn(),
+    to: mock.fn(() => ({
+      emit: mock.fn(),
     })),
-    close: vi.fn((callback) => {
+    close: mock.fn((callback) => {
       if (callback) callback();
     }),
   })),
-  SocketIORouter: vi.fn(() => ({
-    setupListeners: vi.fn(),
+  SocketIORouter: mock.fn(() => ({
+    setupListeners: mock.fn(),
   })),
 }));
 
@@ -114,27 +114,27 @@ describe('API Server Functionality', () => {
   let mockServer: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {
-      listen: vi.fn((port, callback) => {
+      listen: mock.fn((port, callback) => {
         if (callback) callback();
       }),
-      close: vi.fn((callback) => {
+      close: mock.fn((callback) => {
         if (callback) callback();
       }),
-      listeners: vi.fn(() => []),
-      removeAllListeners: vi.fn(),
-      on: vi.fn(),
-      once: vi.fn(),
-      emit: vi.fn(),
-      address: vi.fn(() => ({ port: 3000 })),
+      listeners: mock.fn(() => []),
+      removeAllListeners: mock.fn(),
+      on: mock.fn(),
+      once: mock.fn(),
+      emit: mock.fn(),
+      address: mock.fn(() => ({ port: 3000 })),
       timeout: 0,
       keepAliveTimeout: 5000,
     };
 
-    vi.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
+    mock.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
     await server.initialize();
