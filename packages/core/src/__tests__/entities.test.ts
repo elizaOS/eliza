@@ -6,6 +6,7 @@ import type { Entity, UUID, Memory, State } from '../types';
 import { parseJSONObjectFromText } from '../utils';
 import * as utils from '../utils';
 import * as index from '../index';
+import * as logger_module from '../logger';
 
 describe('entities', () => {
   let mockRuntime: IAgentRuntime;
@@ -16,11 +17,22 @@ describe('entities', () => {
     mock.restore();
 
     // Mock logger methods to prevent undefined function errors
-    if (index.logger) {
-      spyOn(index.logger, 'warn').mockImplementation(() => {});
-      spyOn(index.logger, 'error').mockImplementation(() => {});
-      spyOn(index.logger, 'info').mockImplementation(() => {});
-    }
+    // Mock both the index-exported logger and direct logger module
+    const loggerInstances = [index.logger, logger_module.logger].filter(Boolean);
+
+    loggerInstances.forEach((loggerInstance) => {
+      if (loggerInstance) {
+        // Always ensure these methods exist and are mocked
+        const methods = ['warn', 'error', 'info', 'debug'];
+        methods.forEach((method) => {
+          if (typeof loggerInstance[method] === 'function') {
+            spyOn(loggerInstance, method).mockImplementation(() => {});
+          } else {
+            loggerInstance[method] = mock(() => {});
+          }
+        });
+      }
+    });
 
     // Create a comprehensive mock runtime
     mockRuntime = {

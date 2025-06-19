@@ -28,9 +28,7 @@ mock.module('../src/utils', () => ({
 
 // Use hoisted for ./index mock (safeReplacer)
 const mockSafeReplacer = mock((key, value) => value); // Simple replacer mock
-mock.module('./index', () => ({
-  safeReplacer: () => mockSafeReplacer, // safeReplacer() is called in the source
-}));
+// Don't mock the entire index module to avoid interfering with other tests
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
@@ -175,14 +173,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   beforeEach(() => {
     mock.restore(); // Bun:test equivalent of clearAllMocks
-    
+
     // Reset all mock call counts manually but keep return values
     Object.values(mockDatabaseAdapter).forEach((mockFn) => {
       if (mockFn && typeof mockFn.mockClear === 'function') {
         mockFn.mockClear();
       }
     });
-    
+
     agentId = mockCharacter.id!; // Use character's ID
 
     // Instantiate runtime correctly, passing adapter in options object
@@ -257,16 +255,18 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      const ensureAgentExistsSpy = spyOn(AgentRuntime.prototype, 'ensureAgentExists')
-        .mockResolvedValue({
-          ...mockCharacter,
-          id: agentId, // ensureAgentExists should return the agent
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          enabled: true,
-        });
+      const ensureAgentExistsSpy = spyOn(
+        AgentRuntime.prototype,
+        'ensureAgentExists'
+      ).mockResolvedValue({
+        ...mockCharacter,
+        id: agentId, // ensureAgentExists should return the agent
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        enabled: true,
+      });
 
-(mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
+      (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -289,15 +289,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     let ensureAgentExistsSpy: any;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      ensureAgentExistsSpy = spyOn(AgentRuntime.prototype, 'ensureAgentExists')
-        .mockResolvedValue({
-          ...mockCharacter,
-          id: agentId, // ensureAgentExists should return the agent
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          enabled: true,
-        });
-(mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
+      ensureAgentExistsSpy = spyOn(AgentRuntime.prototype, 'ensureAgentExists').mockResolvedValue({
+        ...mockCharacter,
+        id: agentId, // ensureAgentExists should return the agent
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        enabled: true,
+      });
+      (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,

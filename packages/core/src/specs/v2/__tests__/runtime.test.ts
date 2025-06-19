@@ -178,7 +178,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     if (mockDatabaseAdapter.log && 'mockReset' in mockDatabaseAdapter.log) {
       (mockDatabaseAdapter.log as any).mockReset();
     }
-    
+
     agentId = mockCharacter.id!; // Use character's ID
 
     // Instantiate runtime correctly, passing adapter in options object
@@ -261,13 +261,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         enabled: true,
       }));
       (mockDatabaseAdapter.updateAgent as any).mockImplementation(async () => true);
-      (mockDatabaseAdapter.getEntityByIds as any).mockImplementation(async () => ([
+      (mockDatabaseAdapter.getEntityByIds as any).mockImplementation(async () => [
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
-      ]));
+      ]);
       (mockDatabaseAdapter.getRoomsByIds as any).mockImplementation(async () => []);
       (mockDatabaseAdapter.getParticipantsForRoom as any).mockImplementation(async () => []);
 
@@ -426,7 +426,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Mock the internal _runtime's composeState method
       // @ts-ignore - accessing private property for testing
       const composeStateSpy = spyOn(runtime._runtime, 'composeState');
-      (composeStateSpy as any).mockImplementation(async () => createMockState('composed state text'));
+      (composeStateSpy as any).mockImplementation(async () =>
+        createMockState('composed state text')
+      );
     });
 
     it('should find and execute the correct action handler', async () => {

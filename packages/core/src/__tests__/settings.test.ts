@@ -27,18 +27,10 @@ import type {
   Character,
 } from '../types';
 
-// Mock dependencies
-mock.module('../src/entities', () => ({
-  createUniqueUuid: mock((runtime, serverId) => `world-${serverId}`),
-}));
+import * as entities from '../entities';
+import * as logger_module from '../logger';
 
-mock.module('../src/logger', () => ({
-  logger: {
-    error: mock(),
-    info: mock(),
-    debug: mock(),
-  },
-}));
+// Remove global module mocks - they interfere with other tests
 
 describe('settings utilities', () => {
   let mockRuntime: IAgentRuntime;
@@ -46,6 +38,24 @@ describe('settings utilities', () => {
 
   beforeEach(() => {
     mock.restore();
+
+    // Set up scoped mocks for this test
+    spyOn(entities, 'createUniqueUuid').mockImplementation(
+      (runtime, serverId) => `world-${serverId}`
+    );
+
+    // Mock logger if it doesn't have the methods
+    if (logger_module.logger) {
+      const methods = ['error', 'info', 'warn', 'debug'];
+      methods.forEach((method) => {
+        if (typeof logger_module.logger[method] === 'function') {
+          spyOn(logger_module.logger, method).mockImplementation(() => {});
+        } else {
+          logger_module.logger[method] = mock(() => {});
+        }
+      });
+    }
+
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
 

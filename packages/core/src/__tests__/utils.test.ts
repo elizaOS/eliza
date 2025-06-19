@@ -1074,11 +1074,13 @@ describe('Utils Comprehensive Tests', () => {
 
   it('trimTokens truncates using runtime tokenizer', async () => {
     const runtime = {
-      useModel: mock(async (type: (typeof ModelType)[keyof typeof ModelType], { prompt, tokens }: any) => {
-        if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
-        if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
-        return [];
-      }),
+      useModel: mock(
+        async (type: (typeof ModelType)[keyof typeof ModelType], { prompt, tokens }: any) => {
+          if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
+          if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
+          return [];
+        }
+      ),
     } as any;
     const result = await utils.trimTokens('a b c d e', 3, runtime);
     expect(result).toBe('c d e');

@@ -2,24 +2,32 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
 import { getUserServerRole, findWorldsForOwner } from '../roles';
 import { Role, type IAgentRuntime, type UUID, type World } from '../types';
-
-// Mock dependencies
-mock.module('../entities', () => ({
-  createUniqueUuid: mock((runtime, serverId) => `unique-${serverId}` as UUID),
-}));
-
-mock.module('../logger', () => ({
-  logger: {
-    error: mock(),
-    info: mock(),
-  },
-}));
+import * as entities from '../entities';
+import * as logger_module from '../logger';
 
 describe('roles utilities', () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
     mock.restore();
+
+    // Set up scoped mocks for this test
+    spyOn(entities, 'createUniqueUuid').mockImplementation(
+      (runtime, serverId) => `unique-${serverId}` as UUID
+    );
+
+    // Mock logger if it doesn't have the methods
+    if (logger_module.logger) {
+      const methods = ['error', 'info', 'warn', 'debug'];
+      methods.forEach((method) => {
+        if (typeof logger_module.logger[method] === 'function') {
+          spyOn(logger_module.logger, method).mockImplementation(() => {});
+        } else {
+          logger_module.logger[method] = mock(() => {});
+        }
+      });
+    }
+
     mockRuntime = {
       agentId: 'agent-123' as UUID,
       getWorld: mock(),

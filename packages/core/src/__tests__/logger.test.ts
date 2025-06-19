@@ -42,11 +42,16 @@ describe('Logger', () => {
       expect(logger).toBeDefined();
       expect(typeof logger.info).toBe('function');
       expect(typeof logger.error).toBe('function');
+      // Note: warn and debug methods exist on the pino logger instance
+      // but may not be enumerable. Test their functionality instead.
+      expect(logger.warn).toBeDefined();
+      expect(logger.debug).toBeDefined();
       expect(typeof logger.warn).toBe('function');
       expect(typeof logger.debug).toBe('function');
     });
 
     it('should export elizaLogger as alias for backward compatibility', () => {
+      expect(elizaLogger).toBeDefined();
       expect(elizaLogger).toBe(logger);
     });
 
