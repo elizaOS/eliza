@@ -1,5 +1,12 @@
 import { Command } from 'commander';
-import { getAgent, removeAgent, setAgentConfig, startAgent, stopAgent } from './actions';
+import {
+  clearAgentMemories,
+  getAgent,
+  removeAgent,
+  setAgentConfig,
+  startAgent,
+  stopAgent,
+} from './actions';
 import { listAgents, getAgents, resolveAgentId } from './utils';
 
 // Export utilities for backward compatibility
@@ -104,3 +111,12 @@ agent
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(setAgentConfig);
+
+agent
+  .command('clear-memories')
+  .alias('clear')
+  .description('Clear all memories for an agent')
+  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
+  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .action(clearAgentMemories);

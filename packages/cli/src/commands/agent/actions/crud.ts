@@ -95,6 +95,41 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 }
 
 /**
+ * Clear memories command implementation - clears all memories for an agent
+ */
+export async function clearAgentMemories(opts: OptionValues): Promise<void> {
+  try {
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
+    const baseUrl = getAgentsBaseUrl(opts);
+
+    console.info(`Clearing all memories for agent ${resolvedAgentId}`);
+
+    // API Endpoint: DELETE /agents/:agentId/memories
+    const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json()) as ApiResponse<unknown>;
+      throw new Error(
+        errorData.error?.message || `Failed to clear agent memories: ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as ApiResponse<{ deletedCount: number }>;
+    const result = data.data;
+
+    console.log(
+      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
+    );
+    return;
+  } catch (error) {
+    await checkServer(opts);
+    handleError(error);
+  }
+}
+
+/**
  * Set command implementation - updates agent configuration
  */
 export async function setAgentConfig(opts: OptionValues): Promise<void> {

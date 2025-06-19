@@ -25,6 +25,8 @@ Evaluators are specialized functions that work with the [`AgentRuntime`](/api/cl
 ### Core Structure
 
 ```typescript
+import { Handler, Validator, EvaluationExample } from '@elizaos/core';
+
 interface Evaluator {
   name: string; // Unique identifier
   similes?: string[]; // Alternative names/triggers
@@ -355,6 +357,8 @@ Evaluators work alongside other components:
 You can create your own evaluators by implementing the `Evaluator` interface:
 
 ```typescript
+import { Evaluator, IAgentRuntime, Memory, State } from '@elizaos/core';
+
 const customEvaluator: Evaluator = {
   name: 'CUSTOM_EVALUATOR',
   similes: ['ANALYZE', 'ASSESS'],

@@ -196,6 +196,36 @@ export function createAgentMemoryRouter(
     }
   });
 
+  // Delete all memories for an agent
+  router.delete('/:agentId/memories', async (req, res) => {
+    try {
+      const agentId = validateUuid(req.params.agentId);
+
+      if (!agentId) {
+        return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID');
+      }
+
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      }
+
+      const deletedCount = (await runtime.getAllMemories()).length;
+      await runtime.clearAllAgentMemories();
+
+      sendSuccess(res, { deletedCount, message: 'All agent memories cleared successfully' });
+    } catch (error) {
+      logger.error('[DELETE ALL AGENT MEMORIES] Error deleting all agent memories:', error);
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Error deleting all agent memories',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  });
+
   // Delete all memories for a room
   router.delete('/:agentId/memories/all/:roomId', async (req, res) => {
     try {

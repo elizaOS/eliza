@@ -5,10 +5,15 @@ description: Launch and manage ElizaOS projects and agents in production mode
 keywords: [start, production, deployment, configuration, runtime, services, agents]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Start Command
 
 Start the Eliza agent with configurable plugins and services.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -22,10 +27,13 @@ elizaos start [options]
 | ------------------------------- | ------------------------------------------------------------------------------ |
 | `-c, --configure`               | Force reconfiguration of services and AI models (bypasses saved configuration) |
 | `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                               |
-| `-b, --build`                   | Build the project before starting                                              |
+| `--build`                       | Build the project before starting                                              |
+| `--no-build`                    | Skip the build step before starting                                            |
 | `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
+| `--quiet`                       | Suppress all non-error output to the console                                   |
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Basic Usage
 
@@ -41,6 +49,12 @@ elizaos start --build
 
 # Force reconfiguration
 elizaos start --configure
+```
+
+### Suppressing Output
+```bash
+# Start quietly, only showing errors
+elizaos start --quiet
 ```
 
 ### Character Configuration
@@ -75,45 +89,32 @@ elizaos start --character ./my-bot.json --port 4000
 elizaos start --character ./production-bot.json --port 3000 --build
 ```
 
-## Character File Formats
-
-The `--character` option supports various input formats:
-
-### Local Files
+### Production Deployment
 
 ```bash
-# Absolute paths
-elizaos start --character /path/to/character.json
+# With environment file
+cp .env.production .env
+elizaos start --build
 
-# Relative paths
-elizaos start --character ./characters/bot.json
-
-# Without .json extension (auto-added)
-elizaos start --character my-character
+# Background process (Linux/macOS)
+nohup elizaos start --build > elizaos.log 2>&1 &
 ```
 
-### Remote URLs
+### Health Checks
 
 ```bash
-# Direct HTTPS URLs
-elizaos start --character https://example.com/characters/assistant.json
+# Verify service is running
+curl http://localhost:3000/health
 
-# Multiple remote characters
-elizaos start --character https://site1.com/bot1.json https://site2.com/bot2.json
+# Check process status
+ps aux | grep elizaos
+
+# Monitor logs
+tail -f elizaos.log
 ```
 
-### Multiple Characters
-
-```bash
-# Space-separated
-elizaos start --character char1.json char2.json char3.json
-
-# Comma-separated
-elizaos start --character "char1.json,char2.json,char3.json"
-
-# Mixed formats
-elizaos start --character ./local.json https://remote.com/char.json assistant
-```
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
 
 ## Production Features
 
@@ -138,6 +139,94 @@ When you run the `start` command, ElizaOS:
 7. **API Server**: Starts the HTTP API server
 8. **Agent Runtime**: Initializes agent runtimes
 9. **Event Listening**: Begins listening for messages and events
+
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
+
+## Troubleshooting
+
+### Startup Failures
+
+```bash
+# Check if another instance is running
+ps aux | grep elizaos
+pkill -f elizaos
+
+# Clear any conflicting processes
+elizaos stop
+elizaos start
+```
+
+### Port Conflicts
+
+```bash
+# Check what's using the port
+lsof -i :3000
+
+# Use different port
+elizaos start --port 3001
+
+# Or stop conflicting service
+sudo kill -9 $(lsof -ti:3000)
+elizaos start
+```
+
+### Character Loading Issues
+
+```bash
+# Verify character file exists and is valid JSON
+cat ./character.json | jq .
+
+# Test with absolute path
+elizaos start --character /full/path/to/character.json
+
+# Start without character to use default
+elizaos start
+```
+
+### Configuration Problems
+
+```bash
+# Force reconfiguration to fix corrupted settings
+elizaos start --configure
+
+# Check environment variables
+elizaos env list
+
+# Reset environment if needed
+elizaos env reset
+elizaos start --configure
+```
+
+### Build Failures
+
+```bash
+# Clean build and retry
+elizaos start --build
+
+# Check for TypeScript errors
+bun run build
+
+# Install dependencies if missing
+bun install
+elizaos start --build
+```
+
+### Service Connection Issues
+
+```bash
+# Check internet connectivity
+ping google.com
+
+# Verify API keys are set
+elizaos env list
+
+# Test with minimal configuration
+elizaos start --configure
+```
+
+</TabItem>
+</Tabs>
 
 ## Project Detection
 
@@ -242,126 +331,7 @@ elizaos start --build
 - **Production deployment**: Guarantee latest build
 - **Troubleshooting**: Eliminate build-related issues
 
-## Troubleshooting
-
-### Bun Installation Issues
-
-If you encounter "command not found: bun" or similar errors:
-
-```bash
-# For macOS (using curl)
-curl -fsSL https://bun.sh/install | bash
-
-# For macOS (using Homebrew)
-brew install bun
-
-# For Linux (using curl)
-curl -fsSL https://bun.sh/install | bash
-
-# For Windows (using PowerShell)
-powershell -c "irm bun.sh/install.ps1 | iex"
-
-# After installation, restart your terminal and verify
-bun --version
-```
-
-### Startup Failures
-
-```bash
-# Check if another instance is running
-ps aux | grep elizaos
-pkill -f elizaos
-
-# Clear any conflicting processes
-elizaos stop
-elizaos start
-```
-
-### Port Conflicts
-
-```bash
-# Check what's using the port
-lsof -i :3000
-
-# Use different port
-elizaos start --port 3001
-
-# Or stop conflicting service
-sudo kill -9 $(lsof -ti:3000)
-elizaos start
-```
-
-### Character Loading Issues
-
-```bash
-# Verify character file exists and is valid JSON
-cat ./character.json | jq .
-
-# Test with absolute path
-elizaos start --character /full/path/to/character.json
-
-# Start without character to use default
-elizaos start
-```
-
-### Configuration Problems
-
-```bash
-# Force reconfiguration to fix corrupted settings
-elizaos start --configure
-
-# Check environment variables
-elizaos env list
-
-# Reset environment if needed
-elizaos env reset
-elizaos start --configure
-```
-
-### Build Failures
-
-```bash
-# Clean build and retry
-elizaos start --build
-
-# Check for TypeScript errors
-bun run build
-
-# Install dependencies if missing
-bun install
-elizaos start --build
-```
-
-### Service Connection Issues
-
-```bash
-# Check internet connectivity
-ping google.com
-
-# Verify API keys are set
-elizaos env list
-
-# Test with minimal configuration
-elizaos start --configure
-```
-
-## Production Deployment
-
-### Best Practices
-
-```bash
-# Complete production startup
-elizaos start --build --character ./production-bot.json --port 3000
-
-# With environment file
-cp .env.production .env
-elizaos start --build
-
-# Background process (Linux/macOS)
-nohup elizaos start --build > elizaos.log 2>&1 &
-```
-
-### Health Checks
+## Health Checks
 
 ```bash
 # Verify service is running
