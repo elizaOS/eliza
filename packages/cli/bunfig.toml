@@ -1,6 +1,6 @@
 [test]
-# Preload test setup to handle global configuration
-preload = ["./tests/global-setup.ts", "./tests/setup.ts"]
+# Preload test setup - removed due to path resolution conflicts in CI 
+# preload = ["packages/cli/tests/global-setup.ts", "packages/cli/tests/setup.ts"]
 
 # Test configuration
 timeout = 60000

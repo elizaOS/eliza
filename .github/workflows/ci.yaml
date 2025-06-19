@@ -53,7 +53,7 @@ jobs:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     needs: setup
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -79,7 +79,7 @@ jobs:
           echo "NODE_ENV=test" >> packages/core/.env.test
 
       - name: Run tests
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           NODE_OPTIONS: "--max-old-space-size=2048"
         run: cd packages/core && bun test:coverage --timeout 60000

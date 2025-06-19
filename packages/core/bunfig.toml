@@ -2,8 +2,8 @@
 # Test timeout in milliseconds
 timeout = 60000
 
-# Test setup files to preload
-preload = ["./src/test_resources/testSetup.ts"]
+# Test setup files - removed preload due to path resolution conflicts in CI
+# preload = ["packages/core/src/test_resources/testSetup.ts"]
 
 # Coverage configuration
 coverage = true

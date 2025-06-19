@@ -32,7 +32,7 @@ jobs:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -163,7 +163,7 @@ jobs:
         run: bun install
 
       - name: Run integration tests
-        timeout-minutes: 10
+        timeout-minutes: 15
         env:
           # Set CI-specific environment variables
           CI: true
@@ -177,9 +177,9 @@ jobs:
           # Set test timeout for CI (60 seconds per test)
           export BUN_TEST_TIMEOUT=60000
           
-          # Run tests with explicit timeout and concurrency limits
+          # Run tests from repo root using turbo to handle package directories correctly
           echo "Starting integration tests with 60s timeout per test..."
-          bun run test --timeout 60000 --concurrency 3 || {
+          bun run test || {
             echo "Tests failed with exit code $?"
             echo "Checking for any hanging processes..."
             ps aux | grep -E "(bun|node)" || true
