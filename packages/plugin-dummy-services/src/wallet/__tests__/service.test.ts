@@ -1,5 +1,4 @@
-/// <reference types="vitest/globals" />
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach } from 'bun:test';
 import { DummyWalletService } from '../service';
 import { type AgentRuntime } from '@elizaos/core';
 

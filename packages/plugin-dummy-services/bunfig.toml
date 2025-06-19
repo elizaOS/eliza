@@ -1,0 +1,5 @@
+[test]
+timeout = 60000
+
+[test.env]
+NODE_ENV = "test"
