@@ -40,7 +40,7 @@ The ElizaOS plugin system maintains the same basic concept as previous versions,
 
 The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
 
-1. **Create**: `bun create eliza` or `elizaos create` - Initialize a new plugin project with proper structure
+1. **Create**: `bun create eliza` - Initialize a new plugin project with proper structure
 2. **Develop**: Edit the plugin code in the generated project structure
 3. **Test**: `elizaos test` - Test the plugin functionality
 4. **Run**: `elizaos start` - Run the plugin with a default agent
@@ -48,14 +48,14 @@ The new CLI tool introduces a streamlined workflow for plugin development withou
 
 ### Creating a New Plugin
 
-You can create a new ElizaOS plugin using either method:
+You can create a new ElizaOS plugin using the CLI:
 
 ```bash
-# Using bun create (recommended)
+# Using bun (recommended)
 bun create eliza
 
-# Or using the CLI directly
-elizaos create
+# Or using bunx
+bunx create-eliza
 ```
 
 When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
@@ -67,41 +67,6 @@ When prompted, select "Plugin" as the type to create. The CLI will guide you thr
 There are several ways to add plugins to your ElizaOS project:
 
 <Tabs>
-  <TabItem value="cli" label="Via CLI Commands (Recommended)">
-    ```bash
-    # Add a plugin - supports multiple formats
-    elizaos plugins add openai                    # Short name
-    elizaos plugins add @elizaos/plugin-openai   # Full package name
-    elizaos plugins add plugin-openai            # With plugin prefix
-    
-    # Add from GitHub
-    elizaos plugins add github:owner/repo
-    elizaos plugins add https://github.com/owner/repo
-    
-    # Add with specific branch or tag
-    elizaos plugins add plugin-name --branch main
-    elizaos plugins add plugin-name --tag v1.0.0
-    
-    # Skip environment variable prompts
-    elizaos plugins add plugin-name --skip-env-prompt
-    
-    # Remove a plugin
-    elizaos plugins remove @elizaos/plugin-farcaster
-    
-    # List available plugins (v1.x by default)
-    elizaos plugins list
-    
-    # List all plugins with version info
-    elizaos plugins list --all
-    
-    # List v0.x compatible plugins
-    elizaos plugins list --v0
-    
-    # List installed plugins in current project
-    elizaos plugins installed-plugins
-    ```
-  </TabItem>
-  
   <TabItem value="package" label="Via package.json">
     ```json
     {
@@ -112,18 +77,28 @@ There are several ways to add plugins to your ElizaOS project:
     }
     ```
   </TabItem>
-  
   <TabItem value="character" label="Via Character Definition">
-    ```json
-    // In your character JSON file
-    {
-      "name": "MyAgent",
-      "plugins": ["@elizaos/plugin-farcaster", "@elizaos/plugin-example"],
+    ```typescript
+    // In src/index.ts
+    export const character: Character = {
+      name: 'MyAgent',
+      plugins: ['@elizaos/plugin-farcaster', '@elizaos/plugin-example'],
       // ...
-    }
+    };
     ```
-    
-    Note: Plugins specified in character files are automatically loaded when the agent starts.
+  </TabItem>
+  <TabItem value="cli" label="Via CLI Commands">
+    ```bash
+    # Add a plugin
+    elizaos plugins add @elizaos/plugin-farcaster
+
+    # Remove a plugin
+    elizaos plugins remove @elizaos/plugin-farcaster
+
+    # List available plugins
+    elizaos plugins list
+    ```
+
   </TabItem>
 </Tabs>
 
@@ -140,9 +115,6 @@ Configure plugin settings in your character definition:
   "settings": {
     "example": {
       "enableFeatureX": true
-    },
-    "secrets": {
-      "EXAMPLE_API_KEY": "your-api-key-here"
     }
   }
 }
@@ -184,28 +156,30 @@ npm run build
 ```
 
 <Tabs>
-  <TabItem value="full" label="Full Publishing (Default)">
-    The default publishing process publishes to npm, GitHub, and submits to the ElizaOS registry:
+  <TabItem value="github" label="GitHub Publishing">
+    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
 
     ```bash
-    # Full publish (npm + GitHub + registry)
+    # Publish to GitHub
     elizaos publish
     ```
 
     This will:
-    1. Build and publish your plugin to npm
-    2. Create or update a GitHub repository
-    3. Submit a pull request to the ElizaOS registry (if you're a maintainer)
+    1. Build and package your plugin
+    2. Create or update a GitHub repository in the elizaos-plugins organization
+    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
 
-    For first-time publishers, the CLI will guide you through setting up GitHub credentials.
+    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
+
+    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
 
   </TabItem>
 
-  <TabItem value="npm" label="npm Only">
-    To publish only to npm (skip GitHub and registry):
+  <TabItem value="npm" label="npm Publishing">
+    You can also publish your plugin to npm:
 
     ```bash
-    # Publish to npm only
+    # Publish to npm
     elizaos publish --npm
     ```
 
@@ -215,15 +189,17 @@ npm run build
     npm install @your-scope/plugin-name
     ```
 
-    npm-only publishing is useful when you want to:
+    npm publishing is useful when you want to:
     - Maintain your own package namespace
-    - Use existing npm workflows
-    - Skip GitHub repository creation
+    - Integrate with existing npm workflows
+    - Set up automated versioning and releases
+
+    Make sure your package.json is properly configured with the correct name, version, and access permissions.
 
   </TabItem>
 
   <TabItem value="testing" label="Test Mode">
-    Before publishing, validate the process without making any changes:
+    Before publishing, you can validate the process without making any external changes:
 
     ```bash
     # Test the publish process
@@ -238,92 +214,39 @@ npm run build
     - Checking that dependencies are properly configured
     - Validating that your plugin can be built successfully
 
-  </TabItem>
-
-  <TabItem value="dry-run" label="Dry Run">
-    Generate registry files locally without publishing:
-
-    ```bash
-    # Generate registry metadata locally
-    elizaos publish --dry-run
-    ```
-
-    This creates the registry metadata files in `packages/registry` without publishing anywhere.
+    Always run in test mode before your first public release to avoid issues.
 
   </TabItem>
 
-  <TabItem value="skip-registry" label="Skip Registry">
-    Publish to npm and GitHub but skip the registry submission:
+  <TabItem value="customizing" label="Additional Options">
+    The publish command supports several additional options to customize the publishing process:
 
     ```bash
-    # Skip registry PR creation
-    elizaos publish --skip-registry
+    # Specify platform compatibility
+    elizaos publish --platform node
+
+    # Set custom version number
+    elizaos publish --version 1.2.3
+
+    # Provide a custom registry URL
+    elizaos publish --registry https://custom-registry.com
+
+    # Publish with public access
+    elizaos publish --access public
     ```
 
-    Useful when you want to publish publicly but not submit to the official registry yet.
+    These options give you fine-grained control over how and where your plugin is published. Refer to `elizaos publish --help` for a complete list of options.
 
   </TabItem>
 </Tabs>
 
-:::info Publishing Requirements
-When publishing a plugin:
+:::info
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
 
-1. **Package.json Requirements**:
-
-   - Valid `name` and `version` fields
-   - Proper `agentConfig` section with `pluginType`
-   - Repository URL (for GitHub publishing)
-
-2. **For Registry Submission**:
-   - Working demo/screenshots
-   - Test results showing successful integration
-   - Configuration examples
-   - Complete documentation
-     :::
-
----
-
-### Advanced Plugin Commands
-
-The CLI also provides commands for plugin development and migration:
-
-<Tabs>
-  <TabItem value="generate" label="Generate Plugin">
-    Generate a new plugin using AI-powered code generation:
-
-    ```bash
-    # Interactive generation
-    elizaos plugins generate
-
-    # With spec file
-    elizaos plugins generate --spec-file plugin-spec.json
-
-    # Skip tests/validation
-    elizaos plugins generate --skip-tests --skip-validation
-    ```
-
-    Requires an Anthropic API key (via `--api-key` or `ANTHROPIC_API_KEY` env var).
-
-  </TabItem>
-
-  <TabItem value="upgrade" label="Upgrade Plugin">
-    Upgrade a v0.x plugin to v1.x using AI-powered migration:
-
-    ```bash
-    # From GitHub repository
-    elizaos plugins upgrade github:owner/repo
-
-    # From local folder
-    elizaos plugins upgrade ./path/to/plugin
-
-    # Skip validation steps
-    elizaos plugins upgrade ./plugin --skip-tests
-    ```
-
-    This command helps migrate legacy plugins to the new architecture.
-
-  </TabItem>
-</Tabs>
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+   :::
 
 ---
 
@@ -352,6 +275,8 @@ Each plugin can provide one or more of the following components:
 All plugins implement the core Plugin interface:
 
 ```typescript
+import { IAgentRuntime, Service, Action, Provider, Evaluator, Adapter, Route, TestSuite } from '@elizaos/core';
+
 interface Plugin {
   name: string;
   description: string;
@@ -371,11 +296,6 @@ interface Plugin {
   routes?: Route[];
   tests?: TestSuite[];
   events?: { [key: string]: ((params: any) => Promise<any>)[] };
-  models?: ModelHandler[]; // For registering model providers
-
-  // Dependencies
-  dependencies?: string[]; // Required plugin dependencies
-  testDependencies?: string[]; // Additional dependencies for testing
 }
 ```
 
@@ -477,8 +397,6 @@ Your plugin's `package.json` should include an `agentConfig` section:
 {
   "name": "@elizaos/plugin-example",
   "version": "1.0.0",
-  "packageType": "plugin",
-  "platform": "node",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
@@ -666,17 +584,12 @@ When developing a new plugin, focus on these key aspects:
 During development, you can test your plugin locally:
 
 ```bash
-# Start with your plugin from character file
-elizaos start --character=./characters/test.character.json
+# Start with your plugin
+elizaos start --plugins=./path/to/plugin
 
-# Character file can specify plugins:
-{
-  "name": "TestAgent",
-  "plugins": ["./path/to/local/plugin", "@elizaos/plugin-example"]
-}
+# Or with a specific character
+elizaos start --character=./characters/test.character.json --plugins=./path/to/plugin
 ```
-
-Note: The `--plugins` flag mentioned in some examples is not currently implemented. Plugins should be specified in character files or added to the project dependencies.
 
 ### Distribution & PR Requirements
 
@@ -707,17 +620,14 @@ Create a plugin when you need custom functionality not available in existing plu
 
 ### How do I manage plugin dependencies?
 
-Plugin dependencies are managed through your project's `package.json`. You can add plugins using the `elizaos plugins add` command or npm directly. Plugins specified in character files are automatically loaded when the agent starts.
+Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
 
 ### Can I use a plugin in development before publishing?
 
-Yes, you can reference local plugins in your character file:
+Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
 
-```json
-{
-  "name": "DevAgent",
-  "plugins": ["./path/to/local/plugin"]
-}
+```bash
+elizaos start --plugins=./path/to/plugin
 ```
 
 ### What's the difference between Actions and Services?
@@ -727,14 +637,6 @@ Actions handle specific agent responses or behaviors, while Services provide pla
 ### How do I handle rate limits with external APIs?
 
 Implement proper backoff strategies in your service implementation and consider using a queue system for message handling to respect platform rate limits.
-
-### What's the difference between publish options?
-
-- **Default (`elizaos publish`)**: Publishes to npm, GitHub, and submits to registry
-- **npm only (`--npm`)**: Only publishes to npm registry
-- **Test (`--test`)**: Validates everything without publishing
-- **Dry run (`--dry-run`)**: Generates registry files locally
-- **Skip registry (`--skip-registry`)**: Publishes to npm/GitHub but skips registry PR
 
 ## Additional Resources
 

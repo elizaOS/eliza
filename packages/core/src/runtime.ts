@@ -1651,6 +1651,26 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<Memory[]> {
     return await this.adapter.getMemories(params);
   }
+  async getAllMemories(): Promise<Memory[]> {
+    const tables = ['memories', 'messages', 'facts', 'documents'];
+    const allMemories: Memory[] = [];
+
+    for (const tableName of tables) {
+      try {
+        const memories = await this.adapter.getMemories({
+          agentId: this.agentId,
+          tableName,
+          count: 10000, // Get a large number to fetch all
+        });
+        allMemories.push(...memories);
+      } catch (error) {
+        // Continue with other tables if one fails
+        this.logger.debug(`Failed to get memories from table ${tableName}:`, error);
+      }
+    }
+
+    return allMemories;
+  }
   async getMemoryById(id: UUID): Promise<Memory | null> {
     return await this.adapter.getMemoryById(id);
   }
@@ -1723,6 +1743,22 @@ export class AgentRuntime implements IAgentRuntime {
   }
   async deleteManyMemories(memoryIds: UUID[]): Promise<void> {
     await this.adapter.deleteManyMemories(memoryIds);
+  }
+  async clearAllAgentMemories(): Promise<void> {
+    this.logger.info(`Clearing all memories for agent ${this.character.name} (${this.agentId})`);
+
+    const allMemories = await this.getAllMemories();
+    const memoryIds = allMemories.map((memory) => memory.id);
+
+    if (memoryIds.length === 0) {
+      this.logger.info('No memories found to delete');
+      return;
+    }
+
+    this.logger.info(`Found ${memoryIds.length} memories to delete`);
+    await this.adapter.deleteManyMemories(memoryIds);
+
+    this.logger.info(`Successfully cleared all ${memoryIds.length} memories for agent`);
   }
   async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
     await this.adapter.deleteAllMemories(roomId, tableName);

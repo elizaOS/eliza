@@ -211,7 +211,30 @@ Check your database for null memory entries and ensure proper content formatting
 
 ### How do I clear or reset my agent's memory?
 
-ElizaOS uses PGLite (local) or PostgreSQL (production) for data storage. There is currently no CLI command to clear memory, so you need to manually reset the database:
+ElizaOS uses PGLite (local) or PostgreSQL (production) for data storage. You can clear agent memories using the CLI or manually reset the database:
+
+**Option 1: Using the CLI (Recommended)**
+
+Clear all memories for a specific agent:
+
+```bash
+elizaos agent clear-memories -n <agent-id-or-name>
+
+# Example with agent ID:
+elizaos agent clear-memories -n b850bc30-45f8-0041-a00a-83df46d8555d
+
+# Example with agent name:
+elizaos agent clear-memories -n "MyAgent"
+
+# Short alias:
+elizaos agent clear -n <agent-id-or-name>
+```
+
+This command safely removes all memories (from all tables: memories, messages, facts, documents) for the specified agent and reports how many memories were deleted.
+
+**Option 2: Manual database reset**
+
+If you need to manually reset the database:
 
 1. **For PGLite (local development)**:
 

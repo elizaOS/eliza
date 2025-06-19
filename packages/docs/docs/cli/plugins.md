@@ -5,10 +5,15 @@ description: Manage ElizaOS plugins within a project - list, add, remove
 keywords: [plugins, extensions, packages, npm, registry, installation, configuration]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Plugin Command
 
 Manage ElizaOS plugins.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -18,15 +23,16 @@ elizaos plugins [options] [command]
 
 ## Subcommands
 
-| Subcommand          | Aliases   | Description                                                                        | Arguments                                                                 | Options                                                                                   |
-| ------------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `list`              | `l`       | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                            |
-| `add`               | `install` | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch <branchName>` (default: main), `-T, --tag <tagname>` |
-| `update`            | `refresh` | Fetch the latest plugin registry and update local cache                            |                                                                           |                                                                                           |
-| `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                           |
-| `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                           |
+| Subcommand          | Aliases   | Description                                                                        | Arguments                                                                 | Options                                                                                             |
+| ------------------- | --------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `list`              | `l`       | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                                      |
+| `add`               | `install` | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-n, --no-env-prompt`, `-b, --branch`, `-T, --tag`, `--dev`, `--force`                               |
+| `update`            | `refresh` | Fetch the latest plugin registry and update local cache                            |                                                                           |                                                                                                     |
+| `installed-plugins` |           | List plugins found in the project dependencies                                     |                                                                           |                                                                                                     |
+| `remove`            | `delete`  | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                                     |
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Listing Available Plugins
 
@@ -52,6 +58,12 @@ elizaos plugins add openai
 
 # Add a plugin by full package name
 elizaos plugins add @elizaos/plugin-anthropic
+
+# Add a plugin as a development dependency
+elizaos plugins add @elizaos/plugin-docs --dev
+
+# Force re-installation of a plugin
+elizaos plugins add @elizaos/plugin-openai --force
 
 # Add plugin and skip environment variable prompts
 elizaos plugins add google-ai --no-env-prompt
@@ -88,12 +100,6 @@ elizaos plugins update
 elizaos plugins refresh
 ```
 
-**When to run this:**
-
-- You see "Plugin cache is empty or not found" messages
-- Want to get the latest available plugins
-- Plugin installation fails due to outdated registry cache
-
 ### Listing Installed Plugins
 
 ```bash
@@ -113,6 +119,17 @@ elizaos plugins remove @elizaos/plugin-anthropic
 # Using alias
 elizaos plugins delete openai
 ```
+
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
+
+### When to run `update`
+
+You should run the `update` command when:
+
+- You see "Plugin cache is empty or not found" messages
+- You want to get the latest available plugins from the registry
+- Plugin installation fails due to an outdated local registry cache
 
 ## Plugin Installation Formats
 
@@ -185,13 +202,18 @@ elizaos test
 
 ### 4. Publish Your Plugin
 
+For detailed instructions on authentication, plugin requirements, and the full publishing process, see the [**`publish` command documentation**](./publish.md).
+
 ```bash
-# Test publishing process
+# Test the publishing process before committing
 elizaos publish --test
 
-# Publish to registry
+# Publish to the registry
 elizaos publish
 ```
+
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
 
 ## Troubleshooting
 
@@ -297,3 +319,5 @@ elizaos plugins add plugin-name --tag v1.0.0
 - [`create`](./create.md): Create a new project or plugin
 - [`env`](./env.md): Manage environment variables needed by plugins
 - [`publish`](./publish.md): Publish your plugin to the registry
+</TabItem>
+</Tabs>

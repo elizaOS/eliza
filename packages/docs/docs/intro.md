@@ -57,9 +57,21 @@ For detailed instructions on each path, including configuration options and exte
 
 ### Prerequisites
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 23.3.0](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Git for version control
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
+
+You can verify your Node.js version with the following command:
+```bash
+node --version
+# Expected output: v23.3.0
+```
+
+If you have a different version, we recommend using [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager) to switch to the correct version:
+```bash
+nvm install 23.3.0
+nvm use 23.3.0
+```
 
 Eliza offers different paths depending on your goals:
 
@@ -70,8 +82,7 @@ import TabItem from '@theme/TabItem';
   <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
 
 ```bash
-# make sure you have bun installed
-npm install -g bun
+# make sure you have bun installed (https://bun.sh/)
 
 # Install the CLI globally
 npm install -g @elizaos/cli
@@ -123,7 +134,7 @@ Develop and test your plugin:
 elizaos start
 
 # Publish your plugin when ready
-elizaos plugins publish
+elizaos publish
 ```
 
   </TabItem>
@@ -133,9 +144,6 @@ elizaos plugins publish
 # Clone the repository
 git clone git@github.com:elizaOS/eliza.git
 cd eliza
-
-# We are currently on the main branch
-git checkout main
 
 # Install dependencies and build
 bun install
@@ -151,6 +159,31 @@ Visit https://localhost:3000 to interact with your agent through a web interface
 </Tabs>
 
 > If it fails the first time try the start command again
+
+---
+
+## Available Commands Reference
+
+The `elizaos` CLI is the primary way to interact with your projects and agents. It is organized into several logical command groups:
+
+| Category | Commands |
+|----------|----------|
+| Project Management | `create`, `start`, `stop` |
+| Agent Management | `agent list`, `agent start`, `agent get` |
+| Development | `dev`, `test`, `update` |
+| Configuration | `env list`, `env edit-local`, `env interactive` |
+| Plugin Ecosystem | `plugins list`, `plugins add`, `publish` |
+
+For a complete list and detailed explanation of every command, see the [**CLI Overview**](./cli/overview.md).
+
+You can also discover commands directly from your terminal:
+```bash
+# Get a list of all top-level commands
+elizaos --help
+
+# Get help for a specific command group
+elizaos agent --help
+```
 
 ---
 
