@@ -10,24 +10,23 @@ mock.module('@elizaos/core', () => ({
     info: mock(),
     success: mock(),
     error: mock(),
-    warn: mock()
-  }
+    warn: mock(),
+  },
 }));
 
 mock.module('execa', () => ({}));
 mock.module('node:fs', () => ({
-  existsSync: mock()
+  existsSync: mock(),
 }));
 
 describe('buildProject', () => {
-  
   it('should build project with bun when build script exists', async () => {
     const mockExecaCommand = mock().mockResolvedValue({ exitCode: 0 });
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     await buildProject('/test/project');
-    
+
     // expect(logger.info).toHaveBeenCalledWith('Building project...'); // TODO: Fix for bun test
     // expect(mockExecaCommand).toHaveBeenCalledWith(
     //   'bun run build',
@@ -44,9 +43,9 @@ describe('buildProject', () => {
     const mockExecaCommand = mock().mockResolvedValue({ exitCode: 0 });
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     await buildProject('/test/plugin', true);
-    
+
     // expect(logger.info).toHaveBeenCalledWith('Building plugin...'); // TODO: Fix for bun test
     // expect(mockExecaCommand).toHaveBeenCalledWith(
     //   'bun run build',
@@ -61,9 +60,9 @@ describe('buildProject', () => {
     const mockExecaCommand = mock();
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => false);
-    
+
     await buildProject('/test/project');
-    
+
     // expect(logger.warn).toHaveBeenCalledWith('No build script found in package.json, skipping build...'); // TODO: Fix for bun test
     expect(mockExecaCommand).not.toHaveBeenCalled();
   });
@@ -73,9 +72,9 @@ describe('buildProject', () => {
     const mockExecaCommand = mock().mockRejectedValue(mockError);
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     await expect(buildProject('/test/project')).rejects.toThrow('Build failed');
-    
+
     // expect(logger.error).toHaveBeenCalledWith('Build failed:', mockError); // TODO: Fix for bun test
   });
 
@@ -83,9 +82,9 @@ describe('buildProject', () => {
     const mockExecaCommand = mock().mockResolvedValue({ exitCode: 1 });
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     await expect(buildProject('/test/project')).rejects.toThrow('Build failed with exit code 1');
-    
+
     // expect(logger.error).toHaveBeenCalledWith('Build failed with exit code 1'); // TODO: Fix for bun test
   });
 
@@ -93,9 +92,9 @@ describe('buildProject', () => {
     const mockExecaCommand = mock().mockResolvedValue({ exitCode: 0 });
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     await buildProject('/test/project');
-    
+
     // expect(mockExecaCommand).toHaveBeenCalledWith(
     //   expect.any(String),
     //   expect.objectContaining({
@@ -110,10 +109,10 @@ describe('buildProject', () => {
     const mockExecaCommand = mock().mockResolvedValue({ exitCode: 0 });
     execa.execaCommand = mockExecaCommand;
     fs.existsSync.mockImplementation(() => true);
-    
+
     const testPath = '/custom/project/path';
     await buildProject(testPath);
-    
+
     // expect(mockExecaCommand).toHaveBeenCalledWith(
     //   expect.any(String),
     //   expect.objectContaining({
@@ -121,4 +120,4 @@ describe('buildProject', () => {
     //   })
     // ); // TODO: Fix for bun test
   });
-}); 
+});

@@ -583,7 +583,8 @@ describe('Role Provider', () => {
       source: 'discord',
     });
 
-    const coreMocksNoRoles = // vi.mocked not available in bun:test, simplifying(await import('@elizaos/core'));
+    // vi.mocked not available in bun:test, simplifying
+    const coreMocksNoRoles = await import('@elizaos/core');
     // vi.importActual not available in bun:test
     const { createUniqueUuid: actualOriginalCreateUniqueUuid } = await import('@elizaos/core');
 
