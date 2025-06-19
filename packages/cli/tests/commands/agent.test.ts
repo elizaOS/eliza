@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { spawn, execSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -39,12 +40,34 @@ describe('ElizaOS Agent Commands', () => {
 
     // Start the ElizaOS server with a default character
     console.log(`[DEBUG] Starting ElizaOS server on port ${testServerPort}`);
-    const defaultCharacter = join(scriptDir, 'test-characters', 'ada.json');
+    // Use resolved path for CLI
+    const cliPath = join(__dirname, '../../dist/index.js');
+    console.log(`[DEBUG] __dirname: ${__dirname}`);
+    console.log(`[DEBUG] CLI path: ${cliPath}`);
+    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
+    
+    const defaultCharacter = join(__dirname, '../test-characters', 'ada.json');
+    console.log(`[DEBUG] Character path: ${defaultCharacter}`);
+    console.log(`[DEBUG] Character exists: ${existsSync(defaultCharacter)}`);
+
+    // Skip agent tests if CLI is not built
+    if (!existsSync(cliPath)) {
+      console.error('[ERROR] CLI not built. Run "bun run build" in the CLI package first.');
+      throw new Error('CLI not built');
+    }
+    
+    // Also verify templates are available
+    const templatesPath = join(__dirname, '../../dist/templates');
+    if (!existsSync(templatesPath)) {
+      console.error('[ERROR] CLI templates not found in dist. Build may have failed.');
+      console.error(`[ERROR] Expected templates at: ${templatesPath}`);
+      throw new Error('CLI templates not built');
+    }
 
     serverProcess = spawn(
       'bun',
       [
-        join(scriptDir, '../dist/index.js'),
+        cliPath,
         'start',
         '--port',
         testServerPort,
@@ -63,28 +86,68 @@ describe('ElizaOS Agent Commands', () => {
         detached: false, // Ensure proper process cleanup
       }
     );
+    
+    if (!serverProcess || !serverProcess.pid) {
+      console.error('[ERROR] Failed to spawn server process');
+      throw new Error('Failed to spawn server process');
+    }
 
     // Capture server output for debugging
+    let serverStarted = false;
+    let serverError: Error | null = null;
+    
     serverProcess.stdout?.on('data', (data: Buffer) => {
-      console.log(`[SERVER STDOUT] ${data.toString()}`);
+      const output = data.toString();
+      console.log(`[SERVER STDOUT] ${output}`);
+      if (output.includes('Server started') || output.includes('listening')) {
+        serverStarted = true;
+      }
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error(`[SERVER STDERR] ${data.toString()}`);
+      const error = data.toString();
+      console.error(`[SERVER STDERR] ${error}`);
+      if (error.includes('Error') || error.includes('error')) {
+        serverError = new Error(error);
+      }
     });
 
     serverProcess.on('error', (error: Error) => {
       console.error('[SERVER ERROR]', error);
+      serverError = error;
     });
 
     serverProcess.on('exit', (code: number | null, signal: string | null) => {
       console.log(`[SERVER EXIT] code: ${code}, signal: ${signal}`);
+      if (code !== 0 && !serverError) {
+        serverError = new Error(`Server exited with code ${code}`);
+      }
     });
 
     // Wait for server to be ready
     console.log('[DEBUG] Waiting for server to be ready...');
-    await waitForServerReady(parseInt(testServerPort, 10));
-    console.log('[DEBUG] Server is ready!');
+    try {
+      // Give server a moment to fail fast if there are immediate errors
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      
+      // Check if server already exited with error
+      if (serverError) {
+        throw serverError;
+      }
+      
+      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
+      console.log('[DEBUG] Server is ready!');
+    } catch (error) {
+      console.error('[ERROR] Server failed to start:', error);
+      
+      // Log current working directory and file paths for debugging
+      console.error('[DEBUG] Current working directory:', process.cwd());
+      console.error('[DEBUG] CLI path exists:', existsSync(cliPath));
+      console.error('[DEBUG] Templates exist:', existsSync(join(__dirname, '../../dist/templates')));
+      console.error('[DEBUG] Character exists:', existsSync(defaultCharacter));
+      
+      throw error;
+    }
 
     // Pre-load additional test characters (ada is already loaded by server)
     const charactersDir = join(scriptDir, 'test-characters');

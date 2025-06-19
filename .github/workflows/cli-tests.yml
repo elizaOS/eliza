@@ -74,6 +74,18 @@ jobs:
 
       - name: Build all packages
         run: bun run build
+      
+      - name: Verify CLI build artifacts
+        run: |
+          echo "Checking CLI build artifacts..."
+          echo "CLI dist contents:"
+          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
+          echo ""
+          echo "CLI templates in dist:"
+          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
+          echo ""
+          echo "CLI executable:"
+          test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
 
       # ── Save Turborepo local cache (only if no hit above) ───────────
       - name: Save Turbo cache

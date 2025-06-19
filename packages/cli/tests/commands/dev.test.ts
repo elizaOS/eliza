@@ -1,4 +1,5 @@
 import { execSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,8 +23,7 @@ describe('ElizaOS Dev Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
 
     // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -137,9 +137,14 @@ describe('ElizaOS Dev Commands', () => {
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
+    const cliPath = join(__dirname, '../../dist/index.js');
+    console.log(`[DEBUG] __dirname: ${__dirname}`);
+    console.log(`[DEBUG] CLI path: ${cliPath}`);
+    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
+
     const devProcess = spawn(
       'bun',
-      [join(__dirname, '..', '../dist/index.js'), 'dev', ...args.split(' ')],
+      [cliPath, 'dev', ...args.split(' ')],
       {
         env: {
           ...process.env,
@@ -151,6 +156,11 @@ describe('ElizaOS Dev Commands', () => {
         cwd: cwd || projectDir,
       }
     );
+
+    if (!devProcess || !devProcess.pid) {
+      console.error('[ERROR] Failed to spawn dev process');
+      throw new Error('Failed to spawn dev process');
+    }
 
     runningProcesses.push(devProcess);
 
@@ -188,9 +198,13 @@ describe('ElizaOS Dev Commands', () => {
     'dev command detects project type correctly',
     async () => {
       // Start dev process and capture output
+      const cliPath = join(__dirname, '../../dist/index.js');
+      console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
+      console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
+      
       const devProcess = spawn(
         'bun',
-        [join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
+        [cliPath, 'dev', '--port', testServerPort.toString()],
         {
           env: {
             ...process.env,
@@ -201,6 +215,11 @@ describe('ElizaOS Dev Commands', () => {
           cwd: projectDir,
         }
       );
+      
+      if (!devProcess || !devProcess.pid) {
+        console.error('[ERROR] Failed to spawn dev process for project detection');
+        throw new Error('Failed to spawn dev process');
+      }
 
       runningProcesses.push(devProcess);
 
@@ -318,9 +337,13 @@ describe('ElizaOS Dev Commands', () => {
 
       let output = '';
       let outputReceived = false;
+      const cliPath = join(__dirname, '../../dist/index.js');
+      console.log(`[DEBUG] CLI path for non-eliza test: ${cliPath}`);
+      console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
+      
       const devProcess = spawn(
         'bun',
-        [join(__dirname, '..', '../dist/index.js'), 'dev', '--port', testServerPort.toString()],
+        [cliPath, 'dev', '--port', testServerPort.toString()],
         {
           env: {
             ...process.env,
@@ -331,6 +354,11 @@ describe('ElizaOS Dev Commands', () => {
           cwd: nonElizaDir,
         }
       );
+      
+      if (!devProcess || !devProcess.pid) {
+        console.error('[ERROR] Failed to spawn dev process for non-eliza test');
+        throw new Error('Failed to spawn dev process');
+      }
 
       runningProcesses.push(devProcess);
 
