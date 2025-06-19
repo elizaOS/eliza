@@ -11,8 +11,7 @@ mock.module('@elizaos/core', () => ({
 
 // Mock process.exit
 const originalmockExit = process.exit;
-const mockExit = mock(();
-process.exit = mockExit; => {
+const mockExit = mock(() => {
   throw new Error('process.exit called');
 });
 

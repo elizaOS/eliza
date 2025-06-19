@@ -11,8 +11,7 @@ mock.module('@elizaos/core', () => ({
 
 // Mock process.exit
 const originalmockExit = process.exit;
-const mockExit = mock((code);
-process.exit = mockExit; => {
+const mockExit = mock((code: number) => {
   throw new Error(`process.exit called with code ${code}`);
 });
 

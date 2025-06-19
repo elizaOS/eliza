@@ -86,8 +86,8 @@ describe('TEE Command', () => {
 
       // Mock process.exit to capture the call
       const originalmockExit = process.exit;
-const mockExit = mock(();
-process.exit = mockExit; => undefined as never);
+      const mockExit = mock(() => undefined as never);
+      process.exit = mockExit;
 
       // Simulate command execution
       phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
@@ -114,11 +114,11 @@ process.exit = mockExit; => undefined as never);
       });
 
       const originalmockExit = process.exit;
-const mockExit = mock(();
-process.exit = mockExit; => undefined as never);
+      const mockExit = mock(() => undefined as never);
+      process.exit = mockExit;
       const originalmockError = console.error;
-const mockError = mock(();
-console.error = mockError; => {});
+      const mockError = mock(() => {});
+      console.error = mockError;
 
       try {
         phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
