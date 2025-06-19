@@ -60,7 +60,7 @@ const require = createRequire(import.meta.url);
           to: './dist',
         },
         {
-          from: './templates',
+          from: './templates/**/*',
           to: './dist/templates',
         },
       ],
