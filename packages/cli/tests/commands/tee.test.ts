@@ -31,7 +31,8 @@ describe('TEE Command', () => {
         stderr: { on: mock() },
       };
       return mockProcess as any;
-    });  });
+    });
+  });
 
   
   describe('teeCommand', () => {
