@@ -106,14 +106,33 @@ export async function copyTemplate(
 ) {
   const packageName = getPackageName(templateType);
 
-  // Always resolve templates from the CLI's own package location.
-  // This ensures that the bundled templates are used, providing consistent behavior
-  // across development and production environments.
-  const templateDir = path.resolve(
-    path.dirname(require.resolve('@elizaos/cli/package.json')),
-    'templates',
-    packageName
-  );
+  // Try multiple locations to find templates, handling different runtime environments
+  const possibleTemplatePaths = [
+    // 1. Direct path from source directory (for tests and development)
+    path.resolve(__dirname, '../../templates', packageName),
+    // 2. Production: templates bundled with the CLI dist
+    path.resolve(path.dirname(require.resolve('@elizaos/cli/package.json')), 'dist', 'templates', packageName),
+    // 3. Development/Test: templates in the CLI package root
+    path.resolve(path.dirname(require.resolve('@elizaos/cli/package.json')), 'templates', packageName),
+    // 4. Fallback: relative to current module (for built dist)
+    path.resolve(__dirname, '..', 'templates', packageName),
+    // 5. Additional fallback: relative to dist directory
+    path.resolve(__dirname, '..', '..', 'templates', packageName),
+  ];
+
+  let templateDir: string | null = null;
+  for (const possiblePath of possibleTemplatePaths) {
+    if (existsSync(possiblePath)) {
+      templateDir = possiblePath;
+      break;
+    }
+  }
+
+  if (!templateDir) {
+    throw new Error(
+      `Template '${packageName}' not found. Searched in:\n${possibleTemplatePaths.join('\n')}`
+    );
+  }
 
   logger.debug(`Copying ${templateType} template from ${templateDir} to ${targetDir}`);
 
