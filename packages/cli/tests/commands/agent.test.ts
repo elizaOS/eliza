@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -20,18 +20,22 @@ describe('ElizaOS Agent Commands', () => {
     testServerUrl = `http://localhost:${testServerPort}`;
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
 
-    // Setup CLI command
+    // Setup CLI command with robust bun path detection
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    const detectedBunPath = getBunPath();
+    elizaosCmd = `${detectedBunPath} ${join(scriptDir, '../dist/index.js')}`;
+    console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
+    console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
 
     // Kill any existing processes on port 3000 with extended cleanup for macOS CI
     console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
     await killProcessOnPort(3000);
-    
+
     // Give macOS CI more time for complete port cleanup
-    const cleanupTime = process.platform === 'darwin' && process.env.CI === 'true' 
-      ? TEST_TIMEOUTS.MEDIUM_WAIT 
-      : TEST_TIMEOUTS.SHORT_WAIT;
+    const cleanupTime =
+      process.platform === 'darwin' && process.env.CI === 'true'
+        ? TEST_TIMEOUTS.MEDIUM_WAIT
+        : TEST_TIMEOUTS.SHORT_WAIT;
     console.log(`[DEBUG] Waiting ${cleanupTime}ms for port cleanup...`);
     await new Promise((resolve) => setTimeout(resolve, cleanupTime));
 
@@ -45,7 +49,7 @@ describe('ElizaOS Agent Commands', () => {
     console.log(`[DEBUG] __dirname: ${__dirname}`);
     console.log(`[DEBUG] CLI path: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-    
+
     const defaultCharacter = join(__dirname, '../test-characters', 'ada.json');
     console.log(`[DEBUG] Character path: ${defaultCharacter}`);
     console.log(`[DEBUG] Character exists: ${existsSync(defaultCharacter)}`);
@@ -55,7 +59,7 @@ describe('ElizaOS Agent Commands', () => {
       console.error('[ERROR] CLI not built. Run "bun run build" in the CLI package first.');
       throw new Error('CLI not built');
     }
-    
+
     // Also verify templates are available
     const templatesPath = join(__dirname, '../../dist/templates');
     if (!existsSync(templatesPath)) {
@@ -64,22 +68,44 @@ describe('ElizaOS Agent Commands', () => {
       throw new Error('CLI templates not built');
     }
 
-    serverProcess = spawn(
-      'sh',
-      ['-c', `bun ${cliPath} start --port ${testServerPort} --character ${defaultCharacter}`],
-      {
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'debug',
-          PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
-          NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
-          SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: false, // Ensure proper process cleanup
-      }
-    );
-    
+    // Use more robust spawning for macOS
+    const serverBunPath = getBunPath();
+    serverProcess =
+      process.platform === 'darwin'
+        ? spawn(
+            serverBunPath,
+            [cliPath, 'start', '--port', testServerPort, '--character', defaultCharacter],
+            {
+              env: {
+                ...process.env,
+                LOG_LEVEL: 'debug',
+                PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+                NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
+                SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
+              },
+              stdio: ['ignore', 'pipe', 'pipe'],
+              detached: false, // Ensure proper process cleanup
+            }
+          )
+        : spawn(
+            'sh',
+            [
+              '-c',
+              `${serverBunPath} ${cliPath} start --port ${testServerPort} --character ${defaultCharacter}`,
+            ],
+            {
+              env: {
+                ...process.env,
+                LOG_LEVEL: 'debug',
+                PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+                NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
+                SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
+              },
+              stdio: ['ignore', 'pipe', 'pipe'],
+              detached: false, // Ensure proper process cleanup
+            }
+          );
+
     if (!serverProcess || !serverProcess.pid) {
       console.error('[ERROR] Failed to spawn server process');
       throw new Error('Failed to spawn server process');
@@ -88,7 +114,7 @@ describe('ElizaOS Agent Commands', () => {
     // Capture server output for debugging
     let serverStarted = false;
     let serverError: Error | null = null;
-    
+
     serverProcess.stdout?.on('data', (data: Buffer) => {
       const output = data.toString();
       console.log(`[SERVER STDOUT] ${output}`);
@@ -122,23 +148,26 @@ describe('ElizaOS Agent Commands', () => {
     try {
       // Give server a moment to fail fast if there are immediate errors
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      
+
       // Check if server already exited with error
       if (serverError) {
         throw serverError;
       }
-      
+
       await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
       console.log('[DEBUG] Server is ready!');
     } catch (error) {
       console.error('[ERROR] Server failed to start:', error);
-      
+
       // Log current working directory and file paths for debugging
       console.error('[DEBUG] Current working directory:', process.cwd());
       console.error('[DEBUG] CLI path exists:', existsSync(cliPath));
-      console.error('[DEBUG] Templates exist:', existsSync(join(__dirname, '../../dist/templates')));
+      console.error(
+        '[DEBUG] Templates exist:',
+        existsSync(join(__dirname, '../../dist/templates'))
+      );
       console.error('[DEBUG] Character exists:', existsSync(defaultCharacter));
-      
+
       throw error;
     }
 
@@ -182,7 +211,7 @@ describe('ElizaOS Agent Commands', () => {
           };
           serverProcess.once('exit', cleanup);
           serverProcess.once('error', cleanup);
-          
+
           // Fallback timeout
           setTimeout(cleanup, 5000);
         });
@@ -193,7 +222,7 @@ describe('ElizaOS Agent Commands', () => {
         // Wait for graceful exit
         await Promise.race([
           exitPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 3000))
+          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
         ]);
 
         // Force kill if still running
@@ -382,7 +411,27 @@ describe('ElizaOS Agent Commands', () => {
       // The command may succeed even if no agents are running
       // Handle case where stdout/stderr might be undefined
       const output = (e.stdout || '') + (e.stderr || '') + (e.message || '');
-      expect(output).toMatch(/(stopped|All ElizaOS agents stopped|Windows|WSL|requires Unix-like commands)/);
+      expect(output).toMatch(
+        /(stopped|All ElizaOS agents stopped|Windows|WSL|requires Unix-like commands)/
+      );
     }
   });
 });
+
+function getBunPath(): string {
+  try {
+    const bunPath = execFileSync('which', ['bun'], {
+      encoding: 'utf8',
+      timeout: 5000, // 5 second timeout for macOS
+    }).trim();
+    if (bunPath && bunPath.length > 0) {
+      console.log(`[DEBUG] Found bun at: ${bunPath}`);
+      return bunPath;
+    }
+    console.log('[DEBUG] Using default bun path');
+    return 'bun';
+  } catch (error) {
+    console.log(`[DEBUG] Failed to find bun with 'which': ${error}, using default 'bun'`);
+    return 'bun';
+  }
+}
