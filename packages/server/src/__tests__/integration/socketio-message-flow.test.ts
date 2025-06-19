@@ -2,14 +2,14 @@
  * Integration tests for Socket.IO end-to-end message flow
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
 import { SOCKET_MESSAGE_TYPE, ChannelType, EventType, AgentRuntime } from '@elizaos/core';
 import { createDatabaseAdapter } from '@elizaos/plugin-sql';
-import path from 'path';
-import fs from 'fs';
+import path from 'node:path';
+import fs from 'node:fs';
 
 describe('Socket.IO End-to-End Message Flow', () => {
   let agentServer: AgentServer;

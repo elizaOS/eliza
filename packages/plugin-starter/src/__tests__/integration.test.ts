@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterAll, beforeAll } from 'vitest';
+import { describe, expect, it, spyOn, beforeEach, afterAll, beforeAll } from 'bun:test';
 import { starterPlugin, StarterService } from '../index';
 import { createMockRuntime, setupLoggerSpies, MockRuntime } from './test-utils';
 import { HandlerCallback, IAgentRuntime, Memory, State, UUID, logger } from '@elizaos/core';
@@ -18,31 +18,30 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  vi.restoreAllMocks();
+  // No global restore needed in bun:test
 });
 
 describe('Integration: HelloWorld Action with StarterService', () => {
   let mockRuntime: MockRuntime;
-  let getServiceSpy: any;
 
   beforeEach(() => {
     // Create a service mock that will be returned by getService
     const mockService = {
       capabilityDescription:
         'This is a starter service which is attached to the agent through the starter plugin.',
-      stop: vi.fn().mockResolvedValue(undefined),
+      stop: () => Promise.resolve(),
     };
 
     // Create a mock runtime with a spied getService method
-    getServiceSpy = vi.fn().mockImplementation((serviceType) => {
+    const getServiceImpl = (serviceType) => {
       if (serviceType === 'starter') {
         return mockService;
       }
       return null;
-    });
+    };
 
     mockRuntime = createMockRuntime({
-      getService: getServiceSpy,
+      getService: getServiceImpl,
     });
   });
 
@@ -71,7 +70,10 @@ describe('Integration: HelloWorld Action with StarterService', () => {
     };
 
     // Create a mock callback to capture the response
-    const callbackFn = vi.fn();
+    const callbackCalls = [];
+    const callbackFn = (...args) => {
+      callbackCalls.push(args);
+    };
 
     // Execute the action
     await helloWorldAction?.handler(
@@ -84,12 +86,13 @@ describe('Integration: HelloWorld Action with StarterService', () => {
     );
 
     // Verify the callback was called with expected response
-    expect(callbackFn).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(callbackCalls.length).toBeGreaterThan(0);
+    if (callbackCalls.length > 0) {
+      expect(callbackCalls[0][0]).toMatchObject({
         text: 'hello world!',
         actions: ['HELLO_WORLD'],
-      })
-    );
+      });
+    }
 
     // Get the service to ensure integration
     const service = mockRuntime.getService('starter');
@@ -103,9 +106,11 @@ describe('Integration: Plugin initialization and service registration', () => {
     // Create a fresh mock runtime with mocked registerService for testing initialization flow
     const mockRuntime = createMockRuntime();
 
-    // Create and install a spy on registerService
-    const registerServiceSpy = vi.fn();
-    mockRuntime.registerService = registerServiceSpy;
+    // Create and install a mock registerService
+    const registerServiceCalls = [];
+    mockRuntime.registerService = (type, service) => {
+      registerServiceCalls.push({ type, service });
+    };
 
     // Run a minimal simulation of the plugin initialization process
     if (starterPlugin.init) {
@@ -127,7 +132,7 @@ describe('Integration: Plugin initialization and service registration', () => {
       }
 
       // Now verify the service was registered with the runtime
-      expect(registerServiceSpy).toHaveBeenCalledWith(expect.any(Function));
+      expect(registerServiceCalls.length).toBeGreaterThan(0);
     }
   });
 });

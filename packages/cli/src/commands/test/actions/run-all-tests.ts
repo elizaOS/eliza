@@ -7,7 +7,7 @@ import { runE2eTests } from './e2e-tests';
 /**
  * Run both component and E2E tests
  *
- * Executes a comprehensive test suite including both component tests (via Vitest) and end-to-end tests (via TestRunner). Component tests run first, followed by e2e tests.
+ * Executes a comprehensive test suite including both component tests (via bun test) and end-to-end tests (via TestRunner). Component tests run first, followed by e2e tests.
  */
 export async function runAllTests(
   testPath: string | undefined,

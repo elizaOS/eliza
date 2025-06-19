@@ -5,13 +5,13 @@
 Cypress.Commands.add('waitForApp', () => {
   // Wait for the root element to exist
   cy.get('#root', { timeout: 30000 }).should('exist');
-  
+
   // Wait for the app to be interactive
   cy.document().its('readyState').should('equal', 'complete');
-  
+
   // Wait a bit for React to hydrate and render
   cy.wait(1000);
-  
+
   // Check if there's any loading indicator and wait for it to disappear
   cy.get('body').then(($body) => {
     if ($body.find('[data-testid="loading"]').length > 0) {
@@ -27,7 +27,7 @@ Cypress.Commands.add('login', (email: string, password: string) => {
   cy.get('input[name="email"]').type(email);
   cy.get('input[name="password"]').type(password);
   cy.get('button[type="submit"]').click();
-  
+
   // Wait for redirect or auth token
   cy.url().should('not.include', '/login');
 });
@@ -58,10 +58,10 @@ Cypress.Commands.add('cleanupTestData', () => {
   cy.window().then((win) => {
     // Clear local storage
     win.localStorage.clear();
-    
+
     // Clear session storage
     win.sessionStorage.clear();
-    
+
     // Clear cookies
     cy.clearCookies();
   });
@@ -89,4 +89,4 @@ declare global {
       waitForApi(alias: string, timeout?: number): Chainable<any>;
     }
   }
-} 
+}

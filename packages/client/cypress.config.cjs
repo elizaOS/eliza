@@ -29,7 +29,7 @@ module.exports = defineConfig({
       framework: 'react',
       bundler: 'vite',
       viteConfig: {
-        configFile: path.resolve(__dirname, 'vite.config.cypress.ts')
+        configFile: path.resolve(__dirname, 'vite.config.cypress.ts'),
       },
     },
     video: false,
@@ -46,11 +46,11 @@ module.exports = defineConfig({
     openMode: 0,
   },
   watchForFileChanges: true,
-  
+
   // Environment variables
   env: {
     SERVER_URL: 'http://localhost:3000',
     API_URL: 'http://localhost:3000/api',
     WS_URL: 'ws://localhost:3000',
   },
-}); 
+});

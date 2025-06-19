@@ -1,6 +1,6 @@
 /**
  * TypeScript Example: Standalone Server Usage
- * 
+ *
  * This example demonstrates how to use @elizaos/server as a standalone package
  * to create a custom agent server without the CLI dependency.
  */
@@ -10,14 +10,18 @@ import { logger } from '@elizaos/core';
 import { Request, Response, NextFunction } from 'express';
 
 // Custom middleware example
-const customLoggingMiddleware: ServerMiddleware = (req: Request, res: Response, next: NextFunction) => {
+const customLoggingMiddleware: ServerMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   const start = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     logger.info(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
   });
-  
+
   next();
 };
 
@@ -31,25 +35,24 @@ const serverOptions: ServerOptions = {
 async function createStandaloneServer() {
   try {
     logger.info('🚀 Creating standalone ElizaOS server...');
-    
+
     // Create server instance
     const server = new AgentServer();
-    
+
     // Initialize with options
     logger.info('⚙️  Initializing server...');
     await server.initialize(serverOptions);
-    
+
     // Register custom middleware if needed
     server.registerMiddleware((req, res, next) => {
       // Custom request processing
       res.setHeader('X-Powered-By', 'ElizaOS-Standalone');
       next();
     });
-    
+
     logger.success('✅ Server initialized successfully');
-    
+
     return server;
-    
   } catch (error) {
     logger.error('❌ Failed to create server:', error);
     throw error;
@@ -59,21 +62,21 @@ async function createStandaloneServer() {
 async function startServer() {
   try {
     const server = await createStandaloneServer();
-    
+
     // Start server
     const port = parseInt(process.env.PORT || '3000');
     const host = process.env.HOST || 'localhost';
-    
+
     logger.info(`🌐 Starting server on ${host}:${port}...`);
     server.start(port);
-    
+
     // Log available endpoints
     logger.info('📡 Available endpoints:');
     logger.info(`   Dashboard: http://${host}:${port}/`);
     logger.info(`   API: http://${host}:${port}/api/`);
     logger.info(`   Health: http://${host}:${port}/api/health`);
     logger.info(`   WebSocket: ws://${host}:${port}/`);
-    
+
     // Graceful shutdown
     const gracefulShutdown = async () => {
       logger.info('🛑 Graceful shutdown initiated...');
@@ -81,10 +84,9 @@ async function startServer() {
       logger.success('✅ Server stopped successfully');
       process.exit(0);
     };
-    
+
     process.on('SIGTERM', gracefulShutdown);
     process.on('SIGINT', gracefulShutdown);
-    
   } catch (error) {
     logger.error('❌ Server startup failed:', error);
     process.exit(1);

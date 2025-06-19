@@ -44,20 +44,18 @@
   },
   "devDependencies": {
     "tsup": "8.5.0",
-    "prettier": "3.5.3",
-    "vitest": "3.1.4",
-    "@vitest/coverage-v8": "3.1.4"
+    "prettier": "3.5.3"
   },
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src ./__tests__",
-    "test:component": "vitest run",
-    "test:e2e": "elizaos test --port 3001",
-    "test": "npm run test:component && npm run test:e2e",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest",
+    "test:component": "bun test",
+    "test:e2e": "bun test --port 3001",
+    "test": "bun run test:component && bun run test:e2e",
+    "test:coverage": "bun test --coverage",
+    "test:watch": "bun test --watch",
     "format": "prettier --write ./src ./__tests__",
     "format:check": "prettier --check ./src ./__tests__"
   },

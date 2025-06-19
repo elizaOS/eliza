@@ -1,18 +1,18 @@
 import { useAgentUpdate } from '../use-agent-update';
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, mock } from 'bun:test';
 
 // Mock the necessary hooks
-vi.mock('react', () => ({
+mock.module('react', () => ({
   useCallback: (fn: Function) => fn,
   useRef: (value: any) => ({ current: value }),
-  useState: (initialValue: any) => [initialValue, vi.fn()],
+  useState: (initialValue: any) => [initialValue, mock()],
 }));
 
-vi.mock('../use-partial-update', () => ({
+mock.module('../use-partial-update', () => ({
   usePartialUpdate: (initialValue: any) => {
     let currentValue = { ...initialValue };
 
-    const updateFieldMock = vi.fn((path: string, value: any) => {
+    const updateFieldMock = mock((path: string, value: any) => {
       // Simple implementation to track updates
       const pathParts = path.split('.');
 
@@ -33,7 +33,7 @@ vi.mock('../use-partial-update', () => ({
       }
     });
 
-    const addArrayItemMock = vi.fn((path: string, item: any) => {
+    const addArrayItemMock = mock((path: string, item: any) => {
       const pathParts = path.split('.');
       if (pathParts.length === 1) {
         if (!Array.isArray(currentValue[path])) {
@@ -43,10 +43,10 @@ vi.mock('../use-partial-update', () => ({
       }
     });
 
-    const removeArrayItemMock = vi.fn();
-    const resetMock = vi.fn();
+    const removeArrayItemMock = mock();
+    const resetMock = mock();
 
-    const updateSettingsMock = vi.fn((settings: any) => {
+    const updateSettingsMock = mock((settings: any) => {
       currentValue.settings = { ...currentValue.settings, ...settings };
     });
 

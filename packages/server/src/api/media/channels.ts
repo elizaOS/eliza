@@ -2,15 +2,17 @@ import { validateUuid, logger, type UUID } from '@elizaos/core';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import type { AgentServer } from '../../index';
-import { channelUpload } from '../shared/uploads';
+import { channelUpload, validateMediaFile, processUploadedFile } from '../shared/uploads';
+import { cleanupUploadedFile } from '../shared/file-utils';
 import fs from 'fs';
 import path from 'path';
+import type fileUpload from 'express-fileupload';
 
-// Using Express.Multer.File type instead of importing from multer directly
-type MulterFile = Express.Multer.File;
+// Using express-fileupload file type
+type UploadedFile = fileUpload.UploadedFile;
 
 interface ChannelMediaRequest extends express.Request {
-  file?: MulterFile;
+  files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     channelId: string;
   };
@@ -33,7 +35,7 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
   router.post(
     '/:channelId/upload-media',
     uploadMediaRateLimiter, // Apply rate limiter
-    channelUpload.single('file'),
+    channelUpload(),
     async (req: ChannelMediaRequest, res) => {
       const channelId = validateUuid(req.params.channelId);
       if (!channelId) {
@@ -41,59 +43,46 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
         return;
       }
 
-      const mediaFile = req.file;
+      // Get the uploaded file from express-fileupload
+      let mediaFile: UploadedFile;
+      if (req.files && !Array.isArray(req.files)) {
+        // files is an object with field names
+        mediaFile = req.files.file as UploadedFile;
+      } else if (Array.isArray(req.files) && req.files.length > 0) {
+        // files is an array
+        mediaFile = req.files[0];
+      } else {
+        res.status(400).json({ success: false, error: 'No media file provided' });
+        return;
+      }
+
       if (!mediaFile) {
         res.status(400).json({ success: false, error: 'No media file provided' });
         return;
       }
 
-      // Basic validation (can be expanded)
-      const validMimeTypes = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'video/mp4',
-        'video/webm',
-        'audio/mpeg',
-        'audio/wav',
-        'audio/ogg',
-        'application/pdf',
-        'text/plain',
-      ];
-
-      if (!validMimeTypes.includes(mediaFile.mimetype)) {
-        try {
-          const UPLOADS_ROOT = path.resolve('/media/uploads/channels');
-          const normalizedPath = path.resolve(mediaFile.path);
-          if (!normalizedPath.startsWith(UPLOADS_ROOT)) {
-            throw new Error('Invalid file path detected during cleanup');
-          }
-          await fs.promises.unlink(normalizedPath);
-        } catch (cleanupError) {
-          logger.error('[Channel Media Upload] Failed to clean up invalid file:', cleanupError);
-        }
+      // Validate file type using the helper function
+      if (!validateMediaFile(mediaFile)) {
+        cleanupUploadedFile(mediaFile);
         res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
         return;
       }
 
       try {
-        // Construct file URL based on where channelUpload saves files
-        // e.g., /media/uploads/channels/:channelId/:filename
-        // This requires a static serving route for /media/uploads/channels too.
-        const fileUrl = `/media/uploads/channels/${channelId}/${mediaFile.filename}`;
+        // Process and move the uploaded file
+        const result = await processUploadedFile(mediaFile, channelId, 'channels');
 
         logger.info(
-          `[Channel Media Upload] File uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
+          `[Channel Media Upload] File uploaded for channel ${channelId}: ${result.filename}. URL: ${result.url}`
         );
 
         res.json({
           success: true,
           data: {
-            url: fileUrl, // Relative URL, client prepends server origin
-            type: mediaFile.mimetype, // More specific type from multer
-            filename: mediaFile.filename,
-            originalName: mediaFile.originalname,
+            url: result.url, // Relative URL, client prepends server origin
+            type: mediaFile.mimetype,
+            filename: result.filename,
+            originalName: mediaFile.name,
             size: mediaFile.size,
           },
         });
@@ -102,7 +91,7 @@ export function createChannelMediaRouter(serverInstance: AgentServer): express.R
           `[Channel Media Upload] Error processing upload for channel ${channelId}: ${error.message}`,
           error
         );
-        // fs.unlinkSync(mediaFile.path); // Attempt cleanup on error
+        cleanupUploadedFile(mediaFile);
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }

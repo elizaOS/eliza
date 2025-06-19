@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Character, logger } from '@elizaos/core';
@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
  */
 export function tryLoadFile(filePath: string): string | null {
   try {
-    return fs.readFileSync(filePath, 'utf8');
+    return readFileSync(filePath, 'utf8');
   } catch (e) {
     throw new Error(`Error loading file ${filePath}: ${e}`);
   }

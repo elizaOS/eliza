@@ -69,19 +69,43 @@ export function safeChangeDirectory(targetDir: string): void {
  */
 export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
   const timeout = TEST_TIMEOUTS.PROJECT_CREATION;
-  
-  const windowsOptions = process.platform === 'win32' ? {
-    timeout: timeout * 1.5,
-    killSignal: 'SIGKILL' as NodeJS.Signals,
-    windowsHide: true,
-  } : {};
 
-  execSync(`${elizaosCmd} create ${projectName} --yes`, {
+  // Platform-specific options
+  const platformOptions: any = {
     stdio: 'pipe',
-    timeout,
-    ...windowsOptions,
-  });
-  process.chdir(projectName);
+  };
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options for project creation
+    platformOptions.timeout = timeout * 1.25;
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
+
+  try {
+    execSync(`${elizaosCmd} create ${projectName} --yes`, platformOptions);
+    process.chdir(projectName);
+  } catch (error: any) {
+    console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
+      status: error.status,
+      signal: error.signal,
+      platform: process.platform,
+      stdout: error.stdout?.toString() || '',
+      stderr: error.stderr?.toString() || ''
+    });
+    throw error;
+  }
 }
 
 /**
@@ -93,20 +117,50 @@ export function runCliCommand(
   options: { timeout?: number } = {}
 ): string {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
-  
-  // On Windows, use different timeout and signal handling
-  const windowsOptions = process.platform === 'win32' ? {
-    timeout: timeout * 1.5, // 50% longer timeout for Windows
-    killSignal: 'SIGKILL' as NodeJS.Signals,   // Use SIGKILL instead of SIGTERM
-    windowsHide: true,       // Hide console window
-  } : {};
 
-  return execSync(`${elizaosCmd} ${args}`, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-    timeout,
-    ...windowsOptions,
-  });
+  // Platform-specific options
+  const platformOptions: any = {};
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5; // 50% longer timeout for Windows
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    // Add environment variables for better macOS compatibility
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
+
+  try {
+    return execSync(`${elizaosCmd} ${args}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
+      ...platformOptions,
+    });
+  } catch (error: any) {
+    // Enhanced error reporting for debugging
+    const errorDetails = {
+      command: `${elizaosCmd} ${args}`,
+      platform: process.platform,
+      timeout: platformOptions.timeout,
+      status: error.status,
+      signal: error.signal,
+      stdout: error.stdout?.toString() || '',
+      stderr: error.stderr?.toString() || '',
+      pid: error.pid
+    };
+    console.error('[CLI Command Error]', errorDetails);
+    throw error;
+  }
 }
 
 /**
@@ -118,19 +172,44 @@ export function runCliCommandSilently(
   options: { timeout?: number } = {}
 ): string {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
-  
-  const windowsOptions = process.platform === 'win32' ? {
-    timeout: timeout * 1.5,
-    killSignal: 'SIGKILL' as NodeJS.Signals,
-    windowsHide: true,
-  } : {};
 
-  return execSync(`${elizaosCmd} ${args}`, {
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout,
-    ...windowsOptions,
-  });
+  // Platform-specific options
+  const platformOptions: any = {};
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
+
+  try {
+    return execSync(`${elizaosCmd} ${args}`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      ...platformOptions,
+    });
+  } catch (error: any) {
+    // Enhanced error reporting for debugging silent commands
+    console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
+      status: error.status,
+      signal: error.signal,
+      platform: process.platform,
+      timeout: platformOptions.timeout
+    });
+    throw error;
+  }
 }
 
 /**
@@ -142,19 +221,33 @@ export function expectCliCommandToFail(
   options: { timeout?: number } = {}
 ): { status: number; output: string } {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
+
+  // Platform-specific options
+  const platformOptions: any = {};
   
-  const windowsOptions = process.platform === 'win32' ? {
-    timeout: timeout * 1.5,
-    killSignal: 'SIGKILL' as NodeJS.Signals,
-    windowsHide: true,
-  } : {};
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25;
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
 
   try {
     const result = execSync(`${elizaosCmd} ${args}`, {
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout,
-      ...windowsOptions,
+      ...platformOptions,
     });
     throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {
@@ -272,30 +365,104 @@ export async function waitForServerReady(
   endpoint: string = '/api/agents'
 ): Promise<void> {
   const startTime = Date.now();
-  const pollInterval = 1000; // Check every 1 second
+  const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+  const isMacOS = process.platform === 'darwin';
   
+  // More conservative timeouts for macOS CI
+  const pollInterval = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
+  const requestTimeout = isMacOS && isCI ? 6000 : (isMacOS ? 4000 : 2000);
+  
+  console.log(`[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`);
+  console.log(`[DEBUG] Environment: CI=${isCI}, macOS=${isMacOS}`);
+
+  // First, check if anything is listening on the port using a simple connection test
+  let connectionAttempts = 0;
+  const maxConnectionAttempts = 3;
+
   while (Date.now() - startTime < maxWaitTime) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      
-      const response = await fetch(`http://localhost:${port}${endpoint}`, {
-        signal: controller.signal,
+      // Try a basic connection test first for better error diagnosis
+      const net = require('net');
+      const canConnect = await new Promise<boolean>((resolve) => {
+        const socket = new net.Socket();
+        const connectTimeout = setTimeout(() => {
+          socket.destroy();
+          resolve(false);
+        }, requestTimeout / 2);
+
+        socket.connect(port, '127.0.0.1', () => {
+          clearTimeout(connectTimeout);
+          socket.destroy();
+          resolve(true);
+        });
+
+        socket.on('error', () => {
+          clearTimeout(connectTimeout);
+          socket.destroy();
+          resolve(false);
+        });
       });
-      
+
+      if (!canConnect) {
+        connectionAttempts++;
+        const timeRemaining = maxWaitTime - (Date.now() - startTime);
+        console.log(`[DEBUG] Connection attempt ${connectionAttempts}/${maxConnectionAttempts} failed - no process listening on port ${port}, ${Math.round(timeRemaining/1000)}s remaining`);
+        
+        if (connectionAttempts >= maxConnectionAttempts) {
+          // Check if process is still running but not bound yet
+          const timeRemaining = maxWaitTime - (Date.now() - startTime);
+          if (timeRemaining < maxWaitTime * 0.3) { // Less than 30% time remaining
+            console.log(`[DEBUG] Giving up on connection test, trying HTTP anyway...`);
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            continue;
+          }
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval / 2));
+          continue;
+        }
+      }
+
+      // Now try HTTP request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+
+      const response = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'ElizaOS-Test-Client/1.0',
+          'Accept': 'application/json',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache'
+        }
+      });
+
       clearTimeout(timeoutId);
       if (response.ok) {
-        // Server is ready, give it one more second to stabilize
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        console.log(`[DEBUG] Server responded with status ${response.status}`);
+        // Server is ready, give it more time to stabilize especially on macOS CI
+        const stabilizationTime = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
+        console.log(`[DEBUG] Stabilizing for ${stabilizationTime}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, stabilizationTime));
         return;
+      } else {
+        console.log(`[DEBUG] Server responded with status ${response.status}, continuing to wait...`);
       }
     } catch (error) {
       // Server not ready yet, continue polling
+      const timeRemaining = maxWaitTime - (Date.now() - startTime);
+      const errorMsg = error instanceof Error ? error.message : 'unknown error';
+      console.log(`[DEBUG] Server not ready yet (${errorMsg}), ${Math.round(timeRemaining/1000)}s remaining`);
+      
+      // Reset connection attempts on network errors
+      if (errorMsg.includes('fetch') || errorMsg.includes('AbortError')) {
+        connectionAttempts = 0;
+      }
     }
-    
+
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
   }
-  
+
   throw new Error(`Server failed to become ready on port ${port} within ${maxWaitTime}ms`);
 }
 
@@ -306,17 +473,19 @@ export async function killProcessOnPort(port: number): Promise<void> {
   try {
     if (process.platform === 'win32') {
       // Windows: More reliable process killing
-      const netstatResult = execSync(
-        `netstat -ano | findstr :${port}`,
-        { encoding: 'utf8', stdio: 'pipe' }
-      );
-      
-      const lines = netstatResult.split('\n').filter(line => line.includes(`:${port}`));
-      const pids = lines.map(line => {
-        const parts = line.trim().split(/\s+/);
-        return parts[parts.length - 1];
-      }).filter(pid => pid && pid !== '0');
-      
+      const netstatResult = execSync(`netstat -ano | findstr :${port}`, {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+
+      const lines = netstatResult.split('\n').filter((line) => line.includes(`:${port}`));
+      const pids = lines
+        .map((line) => {
+          const parts = line.trim().split(/\s+/);
+          return parts[parts.length - 1];
+        })
+        .filter((pid) => pid && pid !== '0');
+
       for (const pid of pids) {
         try {
           execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
@@ -324,13 +493,75 @@ export async function killProcessOnPort(port: number): Promise<void> {
           // Ignore if process is already dead
         }
       }
+    } else if (process.platform === 'darwin') {
+      // macOS: More reliable process killing with better error handling
+      try {
+        // First try to find processes listening on the port with increased timeout
+        const lsofResult = execSync(`lsof -ti:${port}`, {
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 10000 // Increased timeout for CI
+        });
+        
+        const pids = lsofResult.trim().split('\n').filter(pid => pid && /^\d+$/.test(pid));
+        console.log(`[DEBUG] Found ${pids.length} processes on port ${port}: ${pids.join(', ')}`);
+        
+        for (const pid of pids) {
+          try {
+            // Check if process exists first
+            execSync(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            
+            // Try SIGTERM first
+            console.log(`[DEBUG] Sending SIGTERM to PID ${pid}`);
+            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
+            
+            // Wait longer for graceful shutdown on macOS CI
+            const waitTime = process.env.CI === 'true' ? 3000 : 1000;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            
+            // Check if still running, then force kill
+            try {
+              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+              console.log(`[DEBUG] Process ${pid} still running, sending SIGKILL`);
+              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } catch (e) {
+              // Process already dead, good
+              console.log(`[DEBUG] Process ${pid} terminated gracefully`);
+            }
+          } catch (e) {
+            // Process doesn't exist or already killed, ignore
+            console.log(`[DEBUG] Process ${pid} not found or already terminated`);
+          }
+        }
+      } catch (e) {
+        // No processes found on port, which is fine
+        console.log(`[DEBUG] No processes found on port ${port} (expected if port is free)`);
+      }
     } else {
-      // Unix systems
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      // Other Unix systems
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { 
+        stdio: 'ignore',
+        timeout: 5000
+      });
     }
+    
+    // Give processes time to actually terminate
+    await new Promise(resolve => setTimeout(resolve, process.platform === 'darwin' ? 2000 : 1000));
   } catch (e) {
-    // Ignore port cleanup errors
+    // Ignore port cleanup errors but log them for debugging
+    console.log(`[DEBUG] Port cleanup for ${port} encountered error:`, e instanceof Error ? e.message : 'unknown');
   }
+}
+
+/**
+ * Get the correct bun executable path for the platform
+ */
+export function getBunExecutable(): string {
+  // Always use 'bun' - Bun handles platform differences internally
+  const bunCmd = 'bun';
+  console.log(`[DEBUG] Using bun executable: ${bunCmd}`);
+  return bunCmd;
 }
 
 /**
@@ -348,7 +579,7 @@ export const crossPlatform = {
       // Ignore cleanup errors
     }
   },
-  
+
   removeFile: (path: string) => {
     try {
       if (process.platform === 'win32') {
@@ -376,7 +607,7 @@ export class TestProcessManager {
    */
   spawn(command: string, args: string[], options: any = {}): any {
     const { spawn } = require('child_process');
-    
+
     // Force stdio to 'ignore' to prevent hanging streams on Windows
     const processOptions = {
       ...options,
@@ -384,15 +615,15 @@ export class TestProcessManager {
     };
 
     const childProcess = spawn(command, args, processOptions);
-    
+
     // Track the process for cleanup
     this.processes.add(childProcess);
-    
+
     // Remove from tracking when process exits naturally
     childProcess.on('exit', () => {
       this.processes.delete(childProcess);
     });
-    
+
     return childProcess;
   }
 
@@ -411,12 +642,12 @@ export class TestProcessManager {
           resolve();
           return;
         }
-        
+
         const cleanup = () => {
           process.removeAllListeners();
           resolve();
         };
-        
+
         process.once('exit', cleanup);
         process.once('error', cleanup);
       });
@@ -424,17 +655,14 @@ export class TestProcessManager {
       if (process.platform === 'win32') {
         // Windows: Try graceful termination first
         process.kill('SIGTERM');
-        
+
         // Wait briefly for graceful shutdown
         const gracefulTimeout = new Promise<boolean>((resolve) => {
           setTimeout(() => resolve(false), 1000);
         });
-        
-        const wasGraceful = await Promise.race([
-          exitPromise.then(() => true),
-          gracefulTimeout
-        ]);
-        
+
+        const wasGraceful = await Promise.race([exitPromise.then(() => true), gracefulTimeout]);
+
         // Force kill if still running
         if (!wasGraceful && process.exitCode === null) {
           try {
@@ -452,9 +680,8 @@ export class TestProcessManager {
       const timeoutPromise = new Promise<void>((resolve) => {
         setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP);
       });
-      
+
       await Promise.race([exitPromise, timeoutPromise]);
-      
     } catch (error) {
       // Ignore termination errors
     } finally {
@@ -466,10 +693,8 @@ export class TestProcessManager {
    * Clean up all tracked processes
    */
   async cleanup(): Promise<void> {
-    const cleanupPromises = Array.from(this.processes).map(proc => 
-      this.terminateProcess(proc)
-    );
-    
+    const cleanupPromises = Array.from(this.processes).map((proc) => this.terminateProcess(proc));
+
     await Promise.allSettled(cleanupPromises);
     this.processes.clear();
   }

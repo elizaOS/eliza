@@ -15,4 +15,4 @@ export default defineConfig({
     supportFile: 'src/__tests__/cypress/support/e2e.ts',
     specPattern: 'src/__tests__/cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
   },
-}); 
+});

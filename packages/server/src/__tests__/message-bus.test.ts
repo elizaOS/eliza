@@ -2,7 +2,7 @@
  * Unit tests for MessageBusService
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach, Mock } from 'vitest';
+import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test';
 import { MessageBusService } from '../services/message';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';
@@ -10,30 +10,30 @@ import { logger } from '@elizaos/core';
 import internalMessageBus from '../bus';
 
 // Mock the internal message bus
-vi.mock('../bus', () => ({
+mock.module('../bus', () => ({
   default: {
-    on: vi.fn(),
-    off: vi.fn(),
-    emit: vi.fn(),
+    on: mock.fn(),
+    off: mock.fn(),
+    emit: mock.fn(),
   },
 }));
 
 // Mock logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      debug: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+      info: mock.fn(),
+      debug: mock.fn(),
+      warn: mock.fn(),
+      error: mock.fn(),
     },
   };
 });
 
 // Mock fetch
-const mockFetch = vi.fn() as any;
+const mockFetch = mock.fn() as any;
 global.fetch = mockFetch;
 
 describe('MessageBusService', () => {
@@ -44,22 +44,24 @@ describe('MessageBusService', () => {
     mockRuntime = createMockAgentRuntime();
 
     // Mock runtime database methods
-    mockRuntime.ensureWorldExists = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.ensureRoomExists = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getEntityById = vi.fn().mockResolvedValue(null);
-    mockRuntime.createEntity = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getMemoryById = vi.fn().mockResolvedValue(null);
-    mockRuntime.createMemory = vi.fn().mockResolvedValue('mem-123');
-    mockRuntime.getRoom = vi.fn().mockResolvedValue({
-      channelId: '456e7890-e89b-12d3-a456-426614174000',
-      serverId: '789e1234-e89b-12d3-a456-426614174000',
-    });
-    mockRuntime.getWorld = vi
+    mockRuntime.ensureWorldExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.ensureRoomExists = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getEntityById = mock.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createEntity = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getMemoryById = mock.fn().mockReturnValue(Promise.resolve(null));
+    mockRuntime.createMemory = mock.fn().mockReturnValue(Promise.resolve('mem-123'));
+    mockRuntime.getRoom = mock.fn().mockReturnValue(
+      Promise.resolve({
+        channelId: '456e7890-e89b-12d3-a456-426614174000',
+        serverId: '789e1234-e89b-12d3-a456-426614174000',
+      })
+    );
+    mockRuntime.getWorld = mock
       .fn()
-      .mockResolvedValue({ serverId: '789e1234-e89b-12d3-a456-426614174000' });
-    mockRuntime.getMemoriesByRoomIds = vi.fn().mockResolvedValue([]);
-    mockRuntime.emitEvent = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getSetting = vi.fn().mockReturnValue('http://localhost:3000');
+      .mockReturnValue(Promise.resolve({ serverId: '789e1234-e89b-12d3-a456-426614174000' }));
+    mockRuntime.getMemoriesByRoomIds = mock.fn().mockReturnValue(Promise.resolve([]));
+    mockRuntime.emitEvent = mock.fn().mockReturnValue(Promise.resolve(undefined));
+    mockRuntime.getSetting = mock.fn().mockReturnValue('http://localhost:3000');
 
     // Mock successful fetch responses
     mockFetch.mockImplementation((url) => {
@@ -128,7 +130,7 @@ describe('MessageBusService', () => {
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   describe('initialization', () => {
@@ -335,7 +337,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock existing memory
-      mockRuntime.getMemoryById = vi.fn().mockResolvedValueOnce({
+      mockRuntime.getMemoryById = mock.fn().mockResolvedValueOnce({
         id: 'mem-123',
         content: { text: 'Test message' },
       });
@@ -364,7 +366,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock no memory found
-      mockRuntime.getMemoryById = vi.fn().mockResolvedValueOnce(null);
+      mockRuntime.getMemoryById = mock.fn().mockResolvedValueOnce(null);
 
       await handler(deleteData);
 
@@ -385,7 +387,7 @@ describe('MessageBusService', () => {
       };
 
       // Mock memories in channel
-      mockRuntime.getMemoriesByRoomIds = vi.fn().mockResolvedValueOnce([
+      mockRuntime.getMemoriesByRoomIds = mock.fn().mockResolvedValueOnce([
         { id: 'mem-1', content: { text: 'Message 1' } },
         { id: 'mem-2', content: { text: 'Message 2' } },
       ]);

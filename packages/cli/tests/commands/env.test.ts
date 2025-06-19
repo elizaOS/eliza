@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execSync } from 'child_process';
-import { writeFile } from 'fs/promises';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execSync } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,

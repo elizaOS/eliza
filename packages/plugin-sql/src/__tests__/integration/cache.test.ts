@@ -1,5 +1,15 @@
 import { AgentRuntime, type UUID } from '@elizaos/core';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { cacheTable } from '../../schema';

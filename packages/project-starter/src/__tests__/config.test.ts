@@ -1,17 +1,17 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, spyOn, beforeEach, afterEach } from 'bun:test';
 import plugin from '../plugin';
 import { z } from 'zod';
 import { createMockRuntime } from './utils/core-test-utils';
 
 // Mock logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+spyOnmock('@elizaos/core', async () => {
+  const actual = await spyOnimportActual('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
+      info: spyOnfn(),
+      error: spyOnfn(),
+      warn: spyOnfn(),
     },
   };
 });
@@ -24,7 +24,7 @@ describe('Plugin Configuration Schema', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    spyOnclearAllMocks();
     // Reset environment variables before each test
     process.env = { ...originalEnv };
   });
@@ -150,7 +150,7 @@ describe('Plugin Configuration Schema', () => {
 
     // Mock the parseAsync function
     const originalParseAsync = schema.parseAsync;
-    schema.parseAsync = vi.fn().mockRejectedValue(mockZodError);
+    schema.parseAsync = spyOnfn().mockRejectedValue(mockZodError);
 
     try {
       // Use the mocked schema directly to avoid TypeScript errors
@@ -176,7 +176,7 @@ describe('Plugin Configuration Schema', () => {
 
     // Mock the parseAsync function
     const originalParseAsync = schema.parseAsync;
-    schema.parseAsync = vi.fn().mockRejectedValue(genericError);
+    schema.parseAsync = spyOnfn().mockRejectedValue(genericError);
 
     try {
       // Use the mocked schema directly to avoid TypeScript errors

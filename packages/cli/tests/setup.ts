@@ -1,51 +1,94 @@
 /**
- * Global test setup for CLI tests
- * This file is preloaded by Bun test runner via bunfig.toml
+ * Global test setup for CLI package
+ * This file runs before all tests to set up mocks and globals
  */
 
-// Enable test mode to skip dependency installation and other CI optimizations
-process.env.ELIZA_TEST_MODE = 'true';
-process.env.NODE_ENV = 'test';
+import { mock } from 'bun:test';
 
-// Store original handlers
-const originalHandlers = {
-  unhandledRejection: process.listeners('unhandledRejection'),
-  uncaughtException: process.listeners('uncaughtException'),
-};
+// Mock the entire @elizaos/server package
+mock.module('@elizaos/server', () => ({
+  AgentServer: mock(() => ({
+    initialize: mock(),
+    startAgent: mock(),
+    stopAgent: mock(),
+    loadCharacterTryPath: mock(),
+    jsonToCharacter: mock(),
+  })),
+  expandTildePath: mock((path: string) => path),
+  resolvePgliteDir: mock((dir?: string) => dir || './.elizadb'),
+}));
 
-// Add a more intelligent unhandled rejection handler
-// that logs warnings but doesn't fail the test unless it's actually a test failure
-process.on('unhandledRejection', (reason: any) => {
-  // If it's a test-related error, let it bubble up
-  if (reason && typeof reason === 'object' && reason.name === 'AssertionError') {
-    throw reason;
-  }
+// Mock socket.io to prevent server startup issues in tests
+mock.module('socket.io', () => ({
+  Server: mock(() => ({
+    on: mock(),
+    emit: mock(),
+    use: mock(),
+    engine: {
+      on: mock(),
+    },
+  })),
+}));
 
-  // For other unhandled rejections (like process cleanup issues), log and continue
-  console.warn('Unhandled promise rejection (non-test):', reason);
+// Mock express to prevent server startup issues
+mock.module('express', () => {
+  const mockApp = {
+    use: mock(),
+    get: mock(),
+    post: mock(),
+    put: mock(),
+    delete: mock(),
+    listen: mock(),
+    set: mock(),
+  };
+
+  const mockExpress = mock(() => mockApp);
+  mockExpress.static = mock();
+  mockExpress.json = mock();
+  mockExpress.urlencoded = mock();
+  mockExpress.Router = mock(() => ({
+    use: mock(),
+    get: mock(),
+    post: mock(),
+    put: mock(),
+    delete: mock(),
+  }));
+
+  return {
+    default: mockExpress,
+    ...mockExpress,
+  };
 });
 
-// Handle uncaught exceptions similarly
-process.on('uncaughtException', (error: Error) => {
-  // If it's a test-related error, let it bubble up
-  if (error.name === 'AssertionError') {
-    throw error;
-  }
+// Mock body-parser to prevent server startup issues
+mock.module('body-parser', () => ({
+  json: mock(() => (req: any, res: any, next: any) => next()),
+  urlencoded: mock(() => (req: any, res: any, next: any) => next()),
+  text: mock(() => (req: any, res: any, next: any) => next()),
+  raw: mock(() => (req: any, res: any, next: any) => next()),
+}));
 
-  // For other uncaught exceptions (like process cleanup issues), log and continue
-  console.warn('Uncaught exception (non-test):', error.message);
+// Mock helmet for security headers
+mock.module('helmet', () => {
+  const helmet = mock(() => (req: any, res: any, next: any) => next());
+  return {
+    default: helmet,
+    ...helmet,
+  };
 });
 
-// Cleanup function to restore original handlers if needed
-(globalThis as any).__testCleanup = () => {
-  process.removeAllListeners('unhandledRejection');
-  process.removeAllListeners('uncaughtException');
+// Mock cors
+mock.module('cors', () => {
+  const cors = mock(() => (req: any, res: any, next: any) => next());
+  return {
+    default: cors,
+    ...cors,
+  };
+});
 
-  originalHandlers.unhandledRejection.forEach((handler) => {
-    process.on('unhandledRejection', handler);
-  });
-
-  originalHandlers.uncaughtException.forEach((handler) => {
-    process.on('uncaughtException', handler);
-  });
+// Ensure logger is available globally
+global.console = {
+  ...console,
+  debug: console.log,
+  trace: console.log,
 };

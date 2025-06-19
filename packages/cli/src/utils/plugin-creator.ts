@@ -339,8 +339,8 @@ export class PluginCreator {
       scripts: {
         build: 'tsup',
         dev: 'tsup --watch',
-        test: 'vitest run',
-        'test:watch': 'vitest',
+        test: 'bun test',
+        'test:watch': 'bun test --watch',
       },
       dependencies: {
         '@elizaos/core': '^1.0.0',
@@ -348,7 +348,7 @@ export class PluginCreator {
       devDependencies: {
         tsup: '^8.4.0',
         typescript: '^5.3.0',
-        vitest: '^1.3.1',
+        '@types/bun': '^1.0.0',
         '@types/node': '^20.0.0',
       },
       peerDependencies: {
@@ -387,18 +387,10 @@ export default defineConfig({
 
     await fs.writeFile(path.join(this.pluginPath!, 'tsup.config.ts'), tsupConfig);
 
-    // Create vitest.config.ts
-    const vitestConfig = `import { defineConfig } from 'vitest/config';
+    // Bun test doesn't need a separate config file
+    // Configuration is handled in package.json
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-  },
-});
-`;
-
-    await fs.writeFile(path.join(this.pluginPath!, 'vitest.config.ts'), vitestConfig);
+    // No separate config file needed for bun test
 
     // Create .gitignore
     const gitignore = `node_modules/
@@ -407,7 +399,6 @@ dist/
 .env
 .DS_Store
 coverage/
-.vitest/
 `;
 
     await fs.writeFile(path.join(this.pluginPath!, '.gitignore'), gitignore);
@@ -660,7 +651,7 @@ You are now going to implement this plugin following ElizaOS 1.0.0 best practice
 - **All components**: Must be properly exported in index.ts
 
 ### 5. Testing Requirements
-- **Tests must use vitest** and cover all functionality
+- **Tests must use bun test** and cover all functionality
 - **Database compatibility tests**:
   \`\`\`typescript
   describe('Database Compatibility', () => {
@@ -974,7 +965,7 @@ ${allFiles}
 
 ### 4. Testing Coverage
 - ✅ Comprehensive tests exist for all functionality
-- ✅ Tests use vitest framework
+- ✅ Tests use bun test framework
 - ✅ Database compatibility tests included
 - ✅ Tests cover main plugin functionality
 - ✅ Error handling tests included

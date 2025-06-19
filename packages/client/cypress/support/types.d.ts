@@ -25,4 +25,4 @@ declare global {
 import { mount } from 'cypress/react';
 import type { mountWithRouter, mountRadix } from './component';
 
-export {}; 
+export {};

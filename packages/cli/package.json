@@ -40,9 +40,9 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "test": "bun run test:all",
     "test:all": "./run-all-tests.sh",
-    "test:unit": "vitest run",
-    "test:unit:watch": "vitest watch",
-    "test:unit:coverage": "vitest run --coverage",
+    "test:unit": "bun test --timeout 30000",
+    "test:unit:watch": "bun test --watch --timeout 30000",
+    "test:unit:coverage": "bun test --coverage --timeout 30000",
     "test:bats": "bats tests/bats",
     "test:bats:commands": "bats tests/bats/commands",
     "test:bats:integration": "bats tests/bats/integration",
@@ -50,7 +50,7 @@
     "test:types": "tsc --noEmit",
     "coverage": "c8 --reporter=lcov --reporter=text bun test",
     "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
-    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 300000"
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -65,7 +65,6 @@
     "@types/node": "^22.15.3",
     "@types/prompts": "^2.4.2",
     "@types/semver": "^7.5.8",
-    "@vitest/coverage-v8": "3.1.4",
     "axios": "^1.7.9",
     "bats-assert": "^2.0.0",
     "bats-support": "^0.3.0",
@@ -92,7 +91,6 @@
     "type-fest": "^3.8.0",
     "typescript": "5.8.2",
     "vite": "^5.4.1",
-    "vitest": "3.1.4",
     "which": "^4.0.0",
     "ws": "^8.18.0",
     "yoctocolors": "^2.1.1"
@@ -112,7 +110,6 @@
     "@sindresorhus/merge-streams": "^4.0.0",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
-    "@types/multer": "^1.4.12",
     "bun": "^1.2.13",
     "chokidar": "^4.0.3",
     "drizzle-orm": "^0.44.2",
@@ -121,7 +118,6 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "inquirer": "^12.6.3",
-    "multer": "^2.0.0",
     "octokit": "^4.1.3",
     "path-to-regexp": "^8.2.0",
     "semver": "^7.7.2",

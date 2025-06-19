@@ -1,4 +1,4 @@
-import { describe, expect, it, jest } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import { ProviderResult } from '../../v2';
 import { fromV2Provider, Provider, toV2Provider } from '../provider';
 import { fromV2State } from '../state';
@@ -15,8 +15,8 @@ interface ProviderV2 {
 
 // Mock runtime and memory for testing
 const mockRuntime = {
-  getSetting: jest.fn().mockReturnValue('test-setting'),
-  logger: { info: jest.fn(), error: jest.fn() },
+  getSetting: mock().mockReturnValue('test-setting'),
+  logger: { info: mock(), error: mock() },
 } as any;
 
 const mockMessage = {
@@ -37,7 +37,7 @@ describe('Provider adapter', () => {
     const providerV2 = {
       name: 'testProvider',
       description: 'Test provider description',
-      get: jest.fn().mockResolvedValue(mockResult),
+      get: mock().mockResolvedValue(mockResult),
     };
 
     // Act
@@ -62,7 +62,7 @@ describe('Provider adapter', () => {
     const providerV1: Provider = {
       name: 'v1Provider',
       description: 'V1 provider test',
-      get: jest.fn().mockResolvedValue(mockResult),
+      get: mock().mockResolvedValue(mockResult),
     };
 
     // Act
@@ -92,7 +92,7 @@ describe('Provider adapter', () => {
   it('should handle unnamed v1 providers properly', async () => {
     // Arrange
     const unnamedProvider: Provider = {
-      get: jest.fn().mockResolvedValue({ text: 'result' }),
+      get: mock().mockResolvedValue({ text: 'result' }),
     };
 
     // Act
@@ -118,7 +118,7 @@ describe('Provider adapter', () => {
 
     const mockV2Provider = {
       name: 'stateTestProvider',
-      get: jest.fn().mockResolvedValue({ text: 'result' }),
+      get: mock().mockResolvedValue({ text: 'result' }),
     };
 
     // Act
@@ -144,7 +144,7 @@ describe('Provider adapter', () => {
     // Example based on TON wallet provider from plugin-ton
     const mockTonWalletProviderV1: Provider = {
       name: 'tonWalletProvider',
-      get: jest.fn().mockResolvedValue({
+      get: mock().mockResolvedValue({
         text: 'You have 10.5 TON in your wallet.',
         walletAddress: '0x123abc',
         walletBalance: 10.5,
@@ -183,12 +183,12 @@ describe('Provider adapter', () => {
     // Arrange
     const stringProvider: Provider = {
       name: 'stringProvider',
-      get: jest.fn().mockResolvedValue('Just a string result'),
+      get: mock().mockResolvedValue('Just a string result'),
     };
 
     const numberProvider: Provider = {
       name: 'numberProvider',
-      get: jest.fn().mockResolvedValue(42),
+      get: mock().mockResolvedValue(42),
     };
 
     // Act
@@ -224,12 +224,12 @@ describe('Provider adapter', () => {
     // Arrange
     const nullProvider: Provider = {
       name: 'nullProvider',
-      get: jest.fn().mockResolvedValue(null),
+      get: mock().mockResolvedValue(null),
     };
 
     const undefinedProvider: Provider = {
       name: 'undefinedProvider',
-      get: jest.fn().mockResolvedValue(undefined),
+      get: mock().mockResolvedValue(undefined),
     };
 
     // Act

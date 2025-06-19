@@ -2,12 +2,12 @@
  * Integration tests for database operations
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentServer } from '../../index';
 import type { UUID } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
-import path from 'path';
-import fs from 'fs';
+import path from 'node:path';
+import fs from 'node:fs';
 
 describe('Database Operations Integration Tests', () => {
   let agentServer: AgentServer;

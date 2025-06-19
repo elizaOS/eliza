@@ -37,26 +37,26 @@ run_test_suite() {
 }
 
 # 1. TypeScript checks
-run_test_suite "TypeScript checks" "npm run type-check"
+run_test_suite "TypeScript checks" "bun run type-check"
 
 # 2. Format checks
-run_test_suite "Format checks" "npm run format:check"
+run_test_suite "Format checks" "bun run format:check"
 
 # 3. Build project
-run_test_suite "Build" "npm run build"
+run_test_suite "Build" "bun run build"
 
 # 4. Unit tests
-run_test_suite "Unit tests (Vitest)" "npm run test:component"
+run_test_suite "Unit tests (Bun)" "bun run test:component"
 
 # 5. E2E tests
-run_test_suite "E2E tests (ElizaOS)" "npm run test:e2e"
+run_test_suite "E2E tests (ElizaOS)" "bun run test:e2e"
 
 # 6. Cypress component tests
-run_test_suite "Cypress component tests" "npm run cypress:component"
+run_test_suite "Cypress component tests" "bun run cypress:component"
 
 # 7. Start the application for E2E tests
 echo -e "${YELLOW}Starting application for E2E tests...${NC}"
-npm start > /dev/null 2>&1 &
+bun start > /dev/null 2>&1 &
 APP_PID=$!
 
 # Wait for application to start
@@ -68,7 +68,7 @@ if curl -s http://localhost:3000 > /dev/null; then
     echo -e "${GREEN}✓ Application started successfully${NC}"
     
     # 8. Cypress E2E tests
-    run_test_suite "Cypress E2E tests" "npm run cypress:e2e"
+    run_test_suite "Cypress E2E tests" "bun run cypress:e2e"
     
     # Kill the application
     kill $APP_PID 2>/dev/null

@@ -656,10 +656,10 @@ export default function Chat({
     prevMessageCountRef.current = messages.length;
   }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelIdForHooks]);
 
-  const updateChatTitle = async() => {
+  const updateChatTitle = async () => {
     const timestampChatNameRegex = /^Chat - [A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}:\d{2}$/;
-    const shouldUpdate: boolean = 
-      !!chatTitleRef.current && 
+    const shouldUpdate: boolean =
+      !!chatTitleRef.current &&
       timestampChatNameRegex.test(chatTitleRef.current) &&
       chatType === ChannelType.DM;
 
@@ -669,20 +669,20 @@ export default function Chat({
 
     const data = await apiClient.getChannelTitle(finalChannelIdForHooks, contextId);
 
-    const title = data?.data?.title
+    const title = data?.data?.title;
     const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
     if (title && participants) {
       await apiClient.updateChannel(finalChannelIdForHooks, {
         name: title,
-        participantCentralUserIds: participants.data
-      })
+        participantCentralUserIds: participants.data,
+      });
 
       const currentUserId = getEntityId();
       queryClient.invalidateQueries({
         queryKey: ['dmChannels', contextId, currentUserId],
       });
     }
-  }
+  };
 
   const { sendMessage, animatedMessageId } = useSocketChat({
     channelId: finalChannelIdForHooks,

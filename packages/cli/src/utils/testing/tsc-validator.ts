@@ -1,7 +1,7 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import path from 'node:path';
-import fs from 'node:fs';
+import { existsSync } from 'node:fs';
 
 export interface TypeCheckResult {
   success: boolean;
@@ -15,7 +15,7 @@ export async function runTypeCheck(
 ): Promise<TypeCheckResult> {
   const tsconfigPath = path.join(projectPath, 'tsconfig.json');
 
-  if (!fs.existsSync(tsconfigPath)) {
+  if (!existsSync(tsconfigPath)) {
     return {
       success: false,
       errors: [`No tsconfig.json found at ${tsconfigPath}`],

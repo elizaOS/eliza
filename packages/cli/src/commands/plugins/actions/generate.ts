@@ -1,6 +1,6 @@
 import { handleError } from '@/src/utils';
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { emoji } from '@/src/utils/emoji-handler';
 import { GeneratePluginOptions, GenerationResult } from '../types';
@@ -29,7 +29,7 @@ export async function generatePlugin(opts: GeneratePluginOptions): Promise<void>
     let spec = undefined;
     if (opts.specFile) {
       try {
-        const specContent = fs.readFileSync(opts.specFile, 'utf-8');
+        const specContent = readFileSync(opts.specFile, 'utf-8');
         spec = JSON.parse(specContent);
       } catch (error) {
         logger.error(

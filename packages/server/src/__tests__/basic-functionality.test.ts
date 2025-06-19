@@ -2,7 +2,7 @@
  * Basic functionality tests without complex dependencies
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
 
 describe('Basic Server Functionality', () => {

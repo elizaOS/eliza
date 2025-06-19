@@ -16,7 +16,7 @@ import { update } from '@/src/commands/update';
 import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { configureEmojis } from '@/src/utils/emoji-handler';
@@ -49,9 +49,9 @@ async function main() {
 
   // Add a simple check in case the path is incorrect
   let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
+  if (!existsSync(packageJsonPath)) {
   } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     version = packageJson.version;
   }
 

@@ -1,32 +1,35 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { PostgresConnectionManager } from '../../../pg/manager';
 import { Pool } from 'pg';
 
 // Mock the 'pg' module to avoid actual DB connections in unit tests
-vi.mock('pg', () => {
-  // Create a reusable mock pool object
-  const mockPool = {
-    connect: vi.fn(),
-    end: vi.fn(),
-    query: vi.fn(),
-  };
-  // The module exports a class named Pool
-  return {
-    Pool: vi.fn(() => mockPool),
-  };
-});
+// In bun:test, we'll create a simpler mock approach
 
 describe('PostgresConnectionManager', () => {
   let mockPoolInstance: any;
 
   beforeEach(() => {
-    // Get the instance of the mocked Pool
-    mockPoolInstance = new (vi.mocked(Pool, true))();
+    // Create a mock pool instance
+    mockPoolInstance = {
+      connect: mock(),
+      end: mock(),
+      query: mock(),
+    };
   });
 
   afterEach(() => {
     // Clear all mocks after each test
-    vi.clearAllMocks();
+    // Mocks auto-clear in bun:test;
   });
 
   describe('constructor', () => {
@@ -68,8 +71,8 @@ describe('PostgresConnectionManager', () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: vi.fn().mockResolvedValue({ rows: [] }),
-        release: vi.fn(),
+        query: mock().mockResolvedValue({ rows: [] }),
+        release: mock(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);
@@ -95,8 +98,8 @@ describe('PostgresConnectionManager', () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: vi.fn().mockResolvedValue({ rows: [] }),
-        release: vi.fn(),
+        query: mock().mockResolvedValue({ rows: [] }),
+        release: mock(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);
@@ -123,8 +126,8 @@ describe('PostgresConnectionManager', () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: vi.fn().mockRejectedValue(new Error('Query failed')),
-        release: vi.fn(),
+        query: mock().mockRejectedValue(new Error('Query failed')),
+        release: mock(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);

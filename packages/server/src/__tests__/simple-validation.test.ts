@@ -2,17 +2,17 @@
  * Simple validation tests that work without complex mocking
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, mock } from 'bun:test';
 import { expandTildePath } from '../index';
 import path from 'node:path';
 
 // Simple mocks
-vi.mock('@elizaos/core', () => ({
+mock.module('@elizaos/core', () => ({
   logger: {
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
+    warn: mock.fn(),
+    info: mock.fn(),
+    error: mock.fn(),
+    debug: mock.fn(),
   },
   validateUuid: (id: string) => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,7 +23,7 @@ vi.mock('@elizaos/core', () => ({
     async initialize() {}
     async cleanup() {}
   },
-  createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
   ChannelType: {
     DIRECT: 'direct',
     GROUP: 'group',

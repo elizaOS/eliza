@@ -18,10 +18,16 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  // Ensure that all external dependencies are properly handled.
-  // The regex explicitly includes dependencies that should not be externalized.
-  noExternal: [
-    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
+  // Externalize problematic fs-related dependencies
+  external: [
+    'express',
+    'fs-extra', 
+    'multer',
+    'socket.io',
+    'body-parser',
+    'cors',
+    'helmet',
+    'express-rate-limit'
   ],
   platform: 'node',
   minify: false,

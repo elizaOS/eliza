@@ -5,16 +5,16 @@
  * with the CLI package usage patterns.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, mock } from 'bun:test';
 
 // Mock core dependencies
-vi.mock('@elizaos/core', () => ({
+mock.module('@elizaos/core', () => ({
   logger: {
-    warn: vi.fn(),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-    success: vi.fn(),
+    warn: mock.fn(),
+    info: mock.fn(),
+    error: mock.fn(),
+    debug: mock.fn(),
+    success: mock.fn(),
   },
   validateUuid: (id: string) => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,7 +25,7 @@ vi.mock('@elizaos/core', () => ({
     async initialize() {}
     async cleanup() {}
   },
-  createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
   ChannelType: {
     DIRECT: 'direct',
     GROUP: 'group',
@@ -42,43 +42,47 @@ vi.mock('@elizaos/core', () => ({
 }));
 
 // Mock plugin-sql
-vi.mock('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getDatabase: vi.fn(() => ({
-      execute: vi.fn().mockResolvedValue([]),
+mock.module('@elizaos/plugin-sql', () => ({
+  createDatabaseAdapter: mock.fn(() => ({
+    init: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    close: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    getDatabase: mock.fn(() => ({
+      execute: mock.fn().mockReturnValue(Promise.resolve([])),
     })),
-    getMessageServers: vi.fn(() =>
+    getMessageServers: mock.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
-    getMessageServerById: vi
+    createMessageServer: mock
       .fn()
-      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
-    addAgentToServer: vi.fn().mockResolvedValue(undefined),
-    db: { execute: vi.fn().mockResolvedValue([]) },
+      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
+    getMessageServerById: mock
+      .fn()
+      .mockReturnValue(
+        Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
+      ),
+    addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
   })),
-  DatabaseMigrationService: vi.fn(() => ({
-    initializeWithDatabase: vi.fn().mockResolvedValue(undefined),
-    discoverAndRegisterPluginSchemas: vi.fn(),
-    runAllPluginMigrations: vi.fn().mockResolvedValue(undefined),
+  DatabaseMigrationService: mock.fn(() => ({
+    initializeWithDatabase: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: mock.fn(),
+    runAllPluginMigrations: mock.fn().mockReturnValue(Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
 
 // Mock filesystem
-vi.mock('node:fs', () => ({
+mock.module('node:fs', () => ({
   default: {
-    mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => true),
-    readFileSync: vi.fn(() => '{}'),
-    writeFileSync: vi.fn(),
+    mkdirSync: mock.fn(),
+    existsSync: mock.fn(() => true),
+    readFileSync: mock.fn(() => '{}'),
+    writeFileSync: mock.fn(),
   },
-  mkdirSync: vi.fn(),
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => '{}'),
-  writeFileSync: vi.fn(),
+  mkdirSync: mock.fn(),
+  existsSync: mock.fn(() => true),
+  readFileSync: mock.fn(() => '{}'),
+  writeFileSync: mock.fn(),
 }));
 
 describe('CLI Compatibility Tests', () => {
@@ -109,10 +113,10 @@ describe('CLI Compatibility Tests', () => {
       const server = new AgentServer();
 
       // Simulate CLI's pattern of extending the server
-      const mockStartAgent = vi.fn();
-      const mockStopAgent = vi.fn();
-      const mockLoadCharacterTryPath = vi.fn();
-      const mockJsonToCharacter = vi.fn();
+      const mockStartAgent = mock.fn();
+      const mockStopAgent = mock.fn();
+      const mockLoadCharacterTryPath = mock.fn();
+      const mockJsonToCharacter = mock.fn();
 
       (server as any).startAgent = mockStartAgent;
       (server as any).stopAgent = mockStopAgent;
@@ -237,10 +241,10 @@ describe('CLI Compatibility Tests', () => {
 
       // Mock HTTP server for testing
       const mockServer = {
-        listen: vi.fn((port, callback) => {
+        listen: mock.fn((port, callback) => {
           if (callback) callback();
         }),
-        close: vi.fn((callback) => {
+        close: mock.fn((callback) => {
           if (callback) callback();
         }),
       };
@@ -261,18 +265,18 @@ describe('CLI Compatibility Tests', () => {
       const mockRuntime = {
         agentId: '123e4567-e89b-12d3-a456-426614174000' as any,
         character: { name: 'TestAgent' },
-        registerPlugin: vi.fn().mockResolvedValue(undefined),
+        registerPlugin: mock.fn().mockReturnValue(Promise.resolve(undefined)),
         plugins: [],
-        registerProvider: vi.fn(),
-        registerAction: vi.fn(),
+        registerProvider: mock.fn(),
+        registerAction: mock.fn(),
       } as any;
 
       // Mock database methods that registration uses
       server.database = {
         ...server.database,
-        getMessageServers: vi.fn().mockResolvedValue([]),
-        addAgentToServer: vi.fn().mockResolvedValue(undefined),
-        db: { execute: vi.fn().mockResolvedValue([]) },
+        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
+        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
       } as any;
 
       // Test CLI's agent registration pattern

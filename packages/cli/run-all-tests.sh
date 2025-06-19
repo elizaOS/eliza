@@ -53,10 +53,10 @@ echo -e "${YELLOW}⚠ Skipping TypeScript validation due to dependency type issu
 # Run unit tests - disable coverage in CI due to memory constraints
 if [ "$CI" = "true" ]; then
   echo -e "${YELLOW}Running tests without coverage in CI to avoid memory issues${NC}"
-  run_test_suite "Unit Tests" "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands --timeout 300000"
+  run_test_suite "Unit Tests" "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands --timeout 120000 --concurrency 2"
 else
   # Run with coverage locally
-  run_test_suite "Unit Tests" "bun test tests/commands --coverage"
+  run_test_suite "Unit Tests" "bun test tests/commands --coverage --timeout 60000"
 fi
 
 # Run BATS tests if available

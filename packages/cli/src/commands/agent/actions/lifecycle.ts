@@ -1,6 +1,6 @@
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
@@ -76,10 +76,10 @@ export async function startAgent(options: OptionValues): Promise<void> {
       if (options.path) {
         try {
           const filePath = path.resolve(process.cwd(), options.path);
-          if (!fs.existsSync(filePath)) {
+          if (!existsSync(filePath)) {
             throw new Error(`File not found at path: ${filePath}`);
           }
-          const fileContent = fs.readFileSync(filePath, 'utf8');
+          const fileContent = readFileSync(filePath, 'utf8');
           payload.characterJson = JSON.parse(fileContent);
           characterName = await createCharacter(payload);
           if (!characterName) {

@@ -1,8 +1,8 @@
-import { execSync } from 'child_process';
-import { mkdir, mkdtemp, rm } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
   killProcessOnPort,
@@ -123,7 +123,7 @@ describe('ElizaOS Start Commands', () => {
         let result = '';
         let lastError: Error | null = null;
         const maxRetries = 3;
-        
+
         for (let i = 0; i < maxRetries; i++) {
           try {
             result = execSync(
@@ -133,12 +133,12 @@ describe('ElizaOS Start Commands', () => {
                 timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
               }
             );
-            
+
             // If we get a result, check if it contains Ada
             if (result && result.includes('Ada')) {
               break;
             }
-            
+
             // If no Ada found but command succeeded, wait and retry
             if (i < maxRetries - 1) {
               await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));

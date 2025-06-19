@@ -5,7 +5,8 @@
     "rootDir": "./src",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["node", "bun-types"]
   },
   "include": ["src/**/*", "../plugin-local-ai/src/types", "src/__tests__"]
 }

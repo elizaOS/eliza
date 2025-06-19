@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, test, jest } from 'bun:test';
+import { beforeAll, describe, expect, it, test, mock } from 'bun:test';
 import { formatEntities } from '../entities';
 import type { Content, Entity, IAgentRuntime, IDatabaseAdapter, Memory, UUID } from '../types';
 import { formatMessages, formatTimestamp } from '../utils';
@@ -11,10 +11,10 @@ describe('Messages Library', () => {
   beforeAll(() => {
     // Mock runtime with necessary methods
     runtime = {
-      // Using jest.fn() instead of vi.fn()
-      getParticipantsForRoom: jest.fn(),
-      getEntityById: jest.fn(),
-      getRoom: jest.fn(),
+      // Using mock() instead of jest.fn()
+      getParticipantsForRoom: mock(),
+      getEntityById: mock(),
+      getRoom: mock(),
     } as unknown as IAgentRuntime & IDatabaseAdapter;
 
     // Mock user data with proper UUID format
@@ -31,16 +31,16 @@ describe('Messages Library', () => {
   // test("getEntityDetails should return entities based on roomId", async () => {
   // 	const roomId: UUID = "123e4567-e89b-12d3-a456-426614174001" as UUID;
 
-  // 	// Using jest.mocked() type assertion instead of vi.mocked() casting
-  // 	jest.mocked(
+  // 	// Using vi.mocked() type assertion instead of jest.Mock casting
+  // 	vi.mocked(
   // 		runtime.getParticipantsForRoom,
   // 	).mockResolvedValue([entityId]);
-  // 	jest.mocked(runtime.getEntityById).mockResolvedValue({
+  // 	vi.mocked(runtime.getEntityById).mockResolvedValue({
   // 		id: entityId,
   // 		names: ["Test User"],
   // 		agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
   // 	});
-  // 	jest.mocked(runtime.getRoom).mockResolvedValue({
+  // 	vi.mocked(runtime.getRoom).mockResolvedValue({
   // 		id: roomId,
   // 		name: "Test Room",
   // 		participants: [entityId],
@@ -50,7 +50,7 @@ describe('Messages Library', () => {
   // 		serverId: "test",
   // 		worldId: "test" as UUID,
   // 	} as Room);
-  // 	jest.mocked(runtime.getEntitiesForRoom).mockResolvedValue([{
+  // 	vi.mocked(runtime.getEntitiesForRoom).mockResolvedValue([{
   // 		id: entityId,
   // 		names: ["Test User"],
   // 		agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
@@ -191,14 +191,14 @@ describe('Messages', () => {
   // describe("getEntityDetails", () => {
   // 	it("should retrieve actor details from database", async () => {
   // 		const mockRuntime = {
-  // 			getParticipantsForRoom: jest
+  // 			getParticipantsForRoom: vi
   // 				.fn()
   // 				.mockResolvedValue([mockEntities[0].id, mockEntities[1].id]),
-  // 			getEntityById: jest.fn().mockImplementation((id) => {
+  // 			getEntityById: mock().mockImplementation((id) => {
   // 				const actor = mockEntities.find((a) => a.id === id);
   // 				return Promise.resolve(actor);
   // 			}),
-  // 			getRoom: jest.fn().mockResolvedValue({
+  // 			getRoom: mock().mockResolvedValue({
   // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
   // 				name: "Test Room",
   // 				participants: [mockEntities[0].id, mockEntities[1].id],
@@ -208,7 +208,7 @@ describe('Messages', () => {
   // 			serverId: "test",
   // 				worldId: "test" as UUID,
   // 			} as Room),
-  // 			getEntitiesForRoom: jest.fn().mockResolvedValue(mockEntities),
+  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
   // 		};
 
   // 		const entities = await getEntityDetails({
@@ -227,14 +227,14 @@ describe('Messages', () => {
   // 	it("should filter out null entities", async () => {
   // 		const invalidId = "123e4567-e89b-12d3-a456-426614174012" as UUID;
   // 		const mockRuntime = {
-  // 			getParticipantsForRoom: jest
+  // 			getParticipantsForRoom: vi
   // 				.fn()
   // 				.mockResolvedValue([mockEntities[0].id, invalidId]),
-  // 			getEntityById: jest.fn().mockImplementation((id) => {
+  // 			getEntityById: mock().mockImplementation((id) => {
   // 				const actor = mockEntities.find((a) => a.id === id);
   // 				return Promise.resolve(actor || null);
   // 			}),
-  // 			getRoom: jest.fn().mockResolvedValue({
+  // 			getRoom: mock().mockResolvedValue({
   // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
   // 				name: "Test Room",
   // 				participants: [mockEntities[0].id, mockEntities[1].id],
@@ -244,7 +244,7 @@ describe('Messages', () => {
   // 			serverId: "test",
   // 				worldId: "test" as UUID,
   // 			} as Room),
-  // 			getEntitiesForRoom: jest.fn().mockResolvedValue(mockEntities),
+  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
   // 		};
 
   // 		const entities = await getEntityDetails({

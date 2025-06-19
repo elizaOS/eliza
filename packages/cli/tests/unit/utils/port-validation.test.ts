@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { validatePort } from '../../../src/utils/port-validation';
 
 describe('validatePort', () => {
@@ -47,4 +47,4 @@ describe('validatePort', () => {
     expect(() => validatePort('0x1234')).toThrow('Port must be a number between 1 and 65535');
     expect(() => validatePort('Infinity')).toThrow('Port must be a number between 1 and 65535');
   });
-}); 
+});

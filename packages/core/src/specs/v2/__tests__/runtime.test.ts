@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { AgentRuntime } from '../runtime';
 import { AgentRuntime as CoreAgentRuntime } from '../../../runtime';
 import { MemoryType, ModelType } from '../types';
@@ -20,78 +20,85 @@ const stringToUuid = (id: string): UUID => id as UUID;
 
 // --- Mocks ---
 
-// Import modules to manually mock them
-import * as utils from '../utils';
+// Create mock functions
+const mockSplitChunks = mock();
+const mockSafeReplacer = mock((key, value) => value);
 
-// Create mock functions for testing (currently unused, can be removed if not needed)
-// const mockSafeReplacer = jest.fn((key, value) => value); // Simple replacer mock
+// Mock modules using bun:test
+mock.module('../utils', () => ({
+  splitChunks: mockSplitChunks,
+}));
+
+mock.module('./index', () => ({
+  safeReplacer: () => mockSafeReplacer,
+}));
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
-  init: jest.fn().mockResolvedValue(undefined),
-  close: jest.fn().mockResolvedValue(undefined),
-  getConnection: jest.fn().mockResolvedValue({}),
-  getEntityByIds: jest.fn().mockResolvedValue([]),
-  createEntities: jest.fn().mockResolvedValue(true),
-  getMemories: jest.fn().mockResolvedValue([]),
-  getMemoryById: jest.fn().mockResolvedValue(null),
-  getMemoriesByRoomIds: jest.fn().mockResolvedValue([]),
-  getMemoriesByIds: jest.fn().mockResolvedValue([]),
-  getCachedEmbeddings: jest.fn().mockResolvedValue([]),
-  log: jest.fn().mockResolvedValue(undefined),
-  searchMemories: jest.fn().mockResolvedValue([]),
-  createMemory: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  deleteMemory: jest.fn().mockResolvedValue(undefined),
-  deleteAllMemories: jest.fn().mockResolvedValue(undefined),
-  countMemories: jest.fn().mockResolvedValue(0),
-  getRoomsByIds: jest.fn().mockResolvedValue([]),
-  createRooms: jest.fn().mockResolvedValue([stringToUuid(uuidv4())]),
-  deleteRoom: jest.fn().mockResolvedValue(undefined),
-  getRoomsForParticipant: jest.fn().mockResolvedValue([]),
-  getRoomsForParticipants: jest.fn().mockResolvedValue([]),
-  addParticipantsRoom: jest.fn().mockResolvedValue(true),
-  removeParticipant: jest.fn().mockResolvedValue(true),
-  getParticipantsForEntity: jest.fn().mockResolvedValue([]),
-  getParticipantsForRoom: jest.fn().mockResolvedValue([]),
-  getParticipantUserState: jest.fn().mockResolvedValue(null),
-  setParticipantUserState: jest.fn().mockResolvedValue(undefined),
-  createRelationship: jest.fn().mockResolvedValue(true),
-  getRelationship: jest.fn().mockResolvedValue(null),
-  getRelationships: jest.fn().mockResolvedValue([]),
-  getAgent: jest.fn().mockResolvedValue(null),
-  getAgents: jest.fn().mockResolvedValue([]),
-  createAgent: jest.fn().mockResolvedValue(true),
-  updateAgent: jest.fn().mockResolvedValue(true),
-  deleteAgent: jest.fn().mockResolvedValue(true),
-  ensureEmbeddingDimension: jest.fn().mockResolvedValue(undefined),
-  getEntitiesForRoom: jest.fn().mockResolvedValue([]),
-  updateEntity: jest.fn().mockResolvedValue(undefined),
-  getComponent: jest.fn().mockResolvedValue(null),
-  getComponents: jest.fn().mockResolvedValue([]),
-  createComponent: jest.fn().mockResolvedValue(true),
-  updateComponent: jest.fn().mockResolvedValue(undefined),
-  deleteComponent: jest.fn().mockResolvedValue(undefined),
-  createWorld: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  getWorld: jest.fn().mockResolvedValue(null),
-  getAllWorlds: jest.fn().mockResolvedValue([]),
-  updateWorld: jest.fn().mockResolvedValue(undefined),
-  updateRoom: jest.fn().mockResolvedValue(undefined),
-  getRoomsByWorld: jest.fn().mockResolvedValue([]),
-  updateRelationship: jest.fn().mockResolvedValue(undefined),
-  getCache: jest.fn().mockResolvedValue(undefined),
-  setCache: jest.fn().mockResolvedValue(true),
-  deleteCache: jest.fn().mockResolvedValue(true),
-  createTask: jest.fn().mockResolvedValue(stringToUuid(uuidv4())),
-  getTasks: jest.fn().mockResolvedValue([]),
-  getTask: jest.fn().mockResolvedValue(null),
-  getTasksByName: jest.fn().mockResolvedValue([]),
-  updateTask: jest.fn().mockResolvedValue(undefined),
-  deleteTask: jest.fn().mockResolvedValue(undefined),
-  updateMemory: jest.fn().mockResolvedValue(true),
-  getLogs: jest.fn().mockResolvedValue([]),
-  deleteLog: jest.fn().mockResolvedValue(undefined),
-  removeWorld: jest.fn().mockResolvedValue(undefined),
+  init: mock(async () => undefined),
+  close: mock(async () => undefined),
+  getConnection: mock(async () => ({})),
+  getEntityByIds: mock(async () => []),
+  createEntities: mock(async () => true),
+  getMemories: mock(async () => []),
+  getMemoryById: mock(async () => null),
+  getMemoriesByRoomIds: mock(async () => []),
+  getMemoriesByIds: mock(async () => []),
+  getCachedEmbeddings: mock(async () => []),
+  log: mock(async () => undefined),
+  searchMemories: mock(async () => []),
+  createMemory: mock(async () => stringToUuid(uuidv4())),
+  deleteMemory: mock(async () => undefined),
+  deleteAllMemories: mock(async () => undefined),
+  countMemories: mock(async () => 0),
+  getRoomsByIds: mock(async () => []),
+  createRooms: mock(async () => [stringToUuid(uuidv4())]),
+  deleteRoom: mock(async () => undefined),
+  getRoomsForParticipant: mock(async () => []),
+  getRoomsForParticipants: mock(async () => []),
+  addParticipantsRoom: mock(async () => true),
+  removeParticipant: mock(async () => true),
+  getParticipantsForEntity: mock(async () => []),
+  getParticipantsForRoom: mock(async () => []),
+  getParticipantUserState: mock(async () => null),
+  setParticipantUserState: mock(async () => undefined),
+  createRelationship: mock(async () => true),
+  getRelationship: mock(async () => null),
+  getRelationships: mock(async () => []),
+  getAgent: mock(async () => null),
+  getAgents: mock(async () => []),
+  createAgent: mock(async () => true),
+  updateAgent: mock(async () => true),
+  deleteAgent: mock(async () => true),
+  ensureEmbeddingDimension: mock(async () => undefined),
+  getEntitiesForRoom: mock(async () => []),
+  updateEntity: mock(async () => undefined),
+  getComponent: mock(async () => null),
+  getComponents: mock(async () => []),
+  createComponent: mock(async () => true),
+  updateComponent: mock(async () => undefined),
+  deleteComponent: mock(async () => undefined),
+  createWorld: mock(async () => stringToUuid(uuidv4())),
+  getWorld: mock(async () => null),
+  getAllWorlds: mock(async () => []),
+  updateWorld: mock(async () => undefined),
+  updateRoom: mock(async () => undefined),
+  getRoomsByWorld: mock(async () => []),
+  updateRelationship: mock(async () => undefined),
+  getCache: mock(async () => undefined),
+  setCache: mock(async () => true),
+  deleteCache: mock(async () => true),
+  createTask: mock(async () => stringToUuid(uuidv4())),
+  getTasks: mock(async () => []),
+  getTask: mock(async () => null),
+  getTasksByName: mock(async () => []),
+  updateTask: mock(async () => undefined),
+  deleteTask: mock(async () => undefined),
+  updateMemory: mock(async () => true),
+  getLogs: mock(async () => []),
+  deleteLog: mock(async () => undefined),
+  removeWorld: mock(async () => undefined),
   deleteRoomsByWorldId: function (worldId: UUID): Promise<void> {
     throw new Error('Function not implemented.');
   },
@@ -102,7 +109,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   }): Promise<Memory[]> {
     throw new Error('Function not implemented.');
   },
-  deleteManyMemories: jest.fn().mockResolvedValue(undefined),
+  deleteManyMemories: mock(async () => undefined),
 };
 
 // Mock action creator (matches your example)
@@ -111,8 +118,8 @@ const createMockAction = (name: string): Action => ({
   description: `Test action ${name}`,
   similes: [`like ${name}`],
   examples: [],
-  handler: jest.fn().mockResolvedValue(undefined),
-  validate: jest.fn().mockImplementation(async () => true),
+  handler: mock(async () => undefined),
+  validate: mock(async () => true),
 });
 
 // Mock Memory creator
@@ -165,8 +172,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   let agentId: UUID;
 
   beforeEach(() => {
-    jest.clearAllMocks(); // jest equivalent of clearAllMocks
-    
+    // Clear all mocks before each test
+    // Note: bun:test doesn't have a global clearAllMocks equivalent
+    // Only clear mocks that need to be reset between tests
+    if (mockDatabaseAdapter.log && 'mockReset' in mockDatabaseAdapter.log) {
+      (mockDatabaseAdapter.log as any).mockReset();
+    }
+
     agentId = mockCharacter.id!; // Use character's ID
 
     // Instantiate runtime correctly, passing adapter in options object
@@ -176,11 +188,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       adapter: mockDatabaseAdapter, // Correct way to pass adapter
       // No plugins passed here by default, tests can pass them if needed
     });
-  });
-
-  afterEach(() => {
-    // Restore all mocks
-    jest.restoreAllMocks();
   });
 
   it('should construct without errors', () => {
@@ -206,7 +213,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should call plugin init function', async () => {
-      const initMock = jest.fn().mockResolvedValue(undefined);
+      const initMock = mock(async () => undefined);
       const mockPlugin: Plugin = {
         name: 'InitPlugin',
         description: 'Plugin with init',
@@ -218,9 +225,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should register plugin features (actions, providers, models) when initialized', async () => {
-      const actionHandler = jest.fn();
-      const providerGet = jest.fn().mockResolvedValue({ text: 'provider_text' });
-      const modelHandler = jest.fn().mockResolvedValue('model_result');
+      const actionHandler = mock();
+      const providerGet = mock(async () => ({ text: 'provider_text' }));
+      const modelHandler = mock(async () => 'model_result');
 
       const mockPlugin: Plugin = {
         name: 'FeaturesPlugin',
@@ -246,23 +253,23 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Mock adapter calls needed for initialize
-      (mockDatabaseAdapter.getAgent as jest.Mock).mockResolvedValue({
+      (mockDatabaseAdapter.getAgent as any).mockImplementation(async () => ({
         ...mockCharacter,
         id: agentId, // ensureAgentExists should return the agent
         createdAt: Date.now(),
         updatedAt: Date.now(),
         enabled: true,
-      });
-      (mockDatabaseAdapter.updateAgent as jest.Mock).mockResolvedValue(true);
-      (mockDatabaseAdapter.getEntityByIds as jest.Mock).mockResolvedValue([
+      }));
+      (mockDatabaseAdapter.updateAgent as any).mockImplementation(async () => true);
+      (mockDatabaseAdapter.getEntityByIds as any).mockImplementation(async () => [
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      (mockDatabaseAdapter.getRoomsByIds as jest.Mock).mockResolvedValue([]);
-      (mockDatabaseAdapter.getParticipantsForRoom as jest.Mock).mockResolvedValue([]);
+      (mockDatabaseAdapter.getRoomsByIds as any).mockImplementation(async () => []);
+      (mockDatabaseAdapter.getParticipantsForRoom as any).mockImplementation(async () => []);
 
       await runtime.initialize(); // Initialize to process registrations
 
@@ -273,9 +280,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Initialization', () => {
     it('should call the core runtime initialize method', async () => {
-      const coreInitializeSpy = jest
-        .spyOn(CoreAgentRuntime.prototype, 'initialize')
-        .mockResolvedValue();
+      const coreInitializeSpy = spyOn(CoreAgentRuntime.prototype, 'initialize');
+      (coreInitializeSpy as any).mockImplementation(async () => {});
 
       await runtime.initialize();
 
@@ -292,9 +298,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // We expect the core runtime's initialize to throw, so we can mock it to simulate the error
-      const coreInitializeSpy = jest
-        .spyOn(CoreAgentRuntime.prototype, 'initialize')
-        .mockRejectedValue(new Error('Database adapter not initialized'));
+      const coreInitializeSpy = spyOn(CoreAgentRuntime.prototype, 'initialize');
+      (coreInitializeSpy as any).mockImplementation(async () => {
+        throw new Error('Database adapter not initialized');
+      });
 
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
@@ -306,8 +313,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('State Composition', () => {
     it('should call provider get methods', async () => {
-      const provider1Get = jest.fn().mockResolvedValue({ text: 'p1_text', values: { p1_val: 1 } });
-      const provider2Get = jest.fn().mockResolvedValue({ text: 'p2_text', values: { p2_val: 2 } });
+      const provider1Get = mock(async () => ({ text: 'p1_text', values: { p1_val: 1 } }));
+      const provider2Get = mock(async () => ({ text: 'p2_text', values: { p2_val: 2 } }));
       const provider1: Provider = { name: 'P1', get: provider1Get };
       const provider2: Provider = { name: 'P2', get: provider2Get };
 
@@ -341,8 +348,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should filter providers', async () => {
-      const provider1Get = jest.fn().mockResolvedValue({ text: 'p1_text' });
-      const provider2Get = jest.fn().mockResolvedValue({ text: 'p2_text' });
+      const provider1Get = mock(async () => ({ text: 'p1_text' }));
+      const provider2Get = mock(async () => ({ text: 'p2_text' }));
       const provider1: Provider = { name: 'P1', get: provider1Get };
       const provider2: Provider = { name: 'P2', get: provider2Get };
 
@@ -362,7 +369,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Model Usage', () => {
     it('should call registered model handler', async () => {
-      const modelHandler = jest.fn().mockResolvedValue('success');
+      const modelHandler = mock(async () => ({ result: 'success' }));
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler);
@@ -372,14 +379,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(modelHandler).toHaveBeenCalledTimes(1);
       // Check that handler was called with runtime and merged params
-      const [runtimeArg, paramsArg] = modelHandler.mock.calls[0];
+      const [runtimeArg, paramsArg] = (modelHandler as any).mock.calls[0];
       expect(runtimeArg).toBeInstanceOf(AgentRuntime);
       expect(runtimeArg.agentId).toBe(runtime.agentId);
       expect(paramsArg.prompt).toBe(params.prompt);
       expect(paramsArg.someOption).toBe(params.someOption);
       expect(paramsArg.runtime).toBeDefined();
       expect(paramsArg.runtime.agentId).toBe(runtime.agentId);
-      expect(result).toEqual('success');
+      expect(result).toEqual({ result: 'success' });
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({ type: `useModel:${modelType}` })
@@ -400,7 +407,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     let responseMemory: Memory;
 
     beforeEach(() => {
-      mockActionHandler = jest.fn().mockResolvedValue(undefined);
+      mockActionHandler = mock(async () => undefined);
       testAction = createMockAction('TestAction');
       testAction.handler = mockActionHandler; // Assign mock handler
 
@@ -418,7 +425,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       // Mock the internal _runtime's composeState method
       // @ts-ignore - accessing private property for testing
-      jest.spyOn(runtime._runtime, 'composeState').mockResolvedValue(
+      const composeStateSpy = spyOn(runtime._runtime, 'composeState');
+      (composeStateSpy as any).mockImplementation(async () =>
         createMockState('composed state text')
       );
     });
@@ -476,7 +484,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Event Emitter Tests ---
   describe('Event Emitter (on/emit/off)', () => {
     it('should register and emit events', () => {
-      const handler = jest.fn();
+      const handler = mock();
       const eventName = 'testEvent';
       const eventData = { info: 'data' };
 
@@ -488,7 +496,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should remove event handler with off', () => {
-      const handler = jest.fn();
+      const handler = mock();
       const eventName = 'testEvent';
 
       runtime.on(eventName, handler);
@@ -529,7 +537,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         );
 
         // Mock provider needed by composeState
-        const providerGet = jest.fn().mockResolvedValue({ text: 'provider text' });
+        const providerGet = mock(async () => ({ text: 'provider text' }));
         runtime.registerProvider({ name: 'TestProvider', get: providerGet });
 
         const state = await runtime.composeState(message);

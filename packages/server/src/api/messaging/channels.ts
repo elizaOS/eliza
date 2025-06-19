@@ -1,19 +1,29 @@
-import { composePromptFromState, IAgentRuntime, ModelType, ChannelType, logger, validateUuid, type UUID } from '@elizaos/core';
+import {
+  composePromptFromState,
+  IAgentRuntime,
+  ModelType,
+  ChannelType,
+  logger,
+  validateUuid,
+  type UUID,
+} from '@elizaos/core';
 import express, { type RequestHandler } from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
-import { channelUpload } from '../../upload';
+import { channelUpload, validateMediaFile, processUploadedFile } from '../../upload';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+import { cleanupUploadedFile } from '../shared/file-utils';
+import type fileUpload from 'express-fileupload';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
-// Using Express.Multer.File type instead of importing from multer directly
-type MulterFile = Express.Multer.File;
+// Using express-fileupload file type
+type UploadedFile = fileUpload.UploadedFile;
 
 interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
-  file?: MulterFile;
+  files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     channelId: string;
   };
@@ -23,7 +33,7 @@ interface ChannelUploadRequest extends express.Request<{ channelId: string }> {
  * Channel management functionality
  */
 export function createChannelsRouter(
-  agents: Map<UUID, IAgentRuntime>, 
+  agents: Map<UUID, IAgentRuntime>,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -792,7 +802,7 @@ export function createChannelsRouter(
     '/channels/:channelId/upload-media',
     createUploadRateLimit(),
     createFileSystemRateLimit(),
-    channelUpload.single('file'),
+    channelUpload(),
     async (req: ChannelUploadRequest, res: express.Response) => {
       const channelId = validateUuid(req.params.channelId);
       if (!channelId) {
@@ -800,55 +810,63 @@ export function createChannelsRouter(
         return;
       }
 
-      const mediaFile = req.file;
+      // Get the uploaded file from express-fileupload
+      let mediaFile: UploadedFile;
+      if (req.files && !Array.isArray(req.files)) {
+        // files is an object with field names
+        mediaFile = req.files.file as UploadedFile;
+      } else if (Array.isArray(req.files) && req.files.length > 0) {
+        // files is an array
+        mediaFile = req.files[0];
+      } else {
+        res.status(400).json({ success: false, error: 'No media file provided' });
+        return;
+      }
+
       if (!mediaFile) {
         res.status(400).json({ success: false, error: 'No media file provided' });
         return;
       }
 
-      // Enhanced security validation
-      // Validate MIME type
-      if (
-        !ALLOWED_MEDIA_MIME_TYPES.includes(
-          mediaFile.mimetype as (typeof ALLOWED_MEDIA_MIME_TYPES)[number]
-        )
-      ) {
-        res.status(400).json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
-        return;
-      }
-
-      // Additional filename security validation
-      if (
-        !mediaFile.filename ||
-        mediaFile.filename.includes('..') ||
-        mediaFile.filename.includes('/')
-      ) {
-        res.status(400).json({ success: false, error: 'Invalid filename detected' });
-        return;
-      }
-
-      // Validate file size (additional check beyond multer limits)
-      const maxFileSize = 50 * 1024 * 1024; // 50MB
-      if (mediaFile.size > maxFileSize) {
-        res.status(400).json({ success: false, error: 'File too large' });
-        return;
-      }
-
       try {
-        // Construct secure file URL - channelId is already validated as UUID
-        const fileUrl = `/media/uploads/channels/${channelId}/${mediaFile.filename}`;
+        // Enhanced security validation
+        // Validate MIME type
+        if (!validateMediaFile(mediaFile)) {
+          cleanupUploadedFile(mediaFile);
+          res
+            .status(400)
+            .json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
+          return;
+        }
+
+        // Additional filename security validation
+        if (!mediaFile.name || mediaFile.name.includes('..') || mediaFile.name.includes('/')) {
+          cleanupUploadedFile(mediaFile);
+          res.status(400).json({ success: false, error: 'Invalid filename detected' });
+          return;
+        }
+
+        // Validate file size (additional check beyond middleware limits)
+        if (mediaFile.size > MAX_FILE_SIZE) {
+          cleanupUploadedFile(mediaFile);
+          res.status(400).json({ success: false, error: 'File too large' });
+          return;
+        }
+
+        // Process and move the uploaded file
+        const result = await processUploadedFile(mediaFile, channelId, 'channels');
 
         logger.info(
-          `[MessagesRouter /upload-media] Secure file uploaded for channel ${channelId}: ${mediaFile.filename}. URL: ${fileUrl}`
+          `[MessagesRouter /upload-media] Secure file uploaded for channel ${channelId}: ${result.filename}. URL: ${result.url}`
         );
 
         res.json({
           success: true,
           data: {
-            url: fileUrl, // Relative URL, client prepends server origin
-            type: mediaFile.mimetype, // More specific type from multer
-            filename: mediaFile.filename,
-            originalName: mediaFile.originalname,
+            url: result.url, // Relative URL, client prepends server origin
+            type: mediaFile.mimetype,
+            filename: result.filename,
+            originalName: mediaFile.name,
             size: mediaFile.size,
           },
         });
@@ -858,12 +876,14 @@ export function createChannelsRouter(
           `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`,
           error
         );
+        if (mediaFile) {
+          cleanupUploadedFile(mediaFile);
+        }
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
   );
 
-  
   (router as any).post(
     '/central-channels/:channelId/generate-title',
     async (req: express.Request, res: express.Response) => {
@@ -873,30 +893,32 @@ export function createChannelsRouter(
       if (!channelId) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid channel ID format'
+          error: 'Invalid channel ID format',
         });
       }
 
       if (!agentId || !validateUuid(agentId)) {
         return res.status(400).json({
           success: false,
-          error: 'Valid agent ID is required'
+          error: 'Valid agent ID is required',
         });
       }
 
       try {
         const runtime = agents.get(agentId);
-        
+
         if (!runtime) {
           return res.status(404).json({
             success: false,
-            error: 'Agent not found or not active'
+            error: 'Agent not found or not active',
           });
         }
 
         logger.info(`[CHANNEL SUMMARIZE] Summarizing channel ${channelId}`);
         const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
-        const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
+        const before = req.query.before
+          ? Number.parseInt(req.query.before as string, 10)
+          : undefined;
         const beforeDate = before ? new Date(before) : undefined;
 
         const messages = await serverInstance.getMessagesForChannel(channelId, limit, beforeDate);
@@ -913,17 +935,17 @@ export function createChannelsRouter(
         }
 
         const recentMessages = messages
-            .reverse() // Show in chronological order
-            .map((msg) => {
-                const isUser = msg.authorId !== runtime.agentId;
-                const role = isUser ? 'User' : 'Agent';
-                return `${role}: ${msg.content}`;
-            })
-            .join('\n');
+          .reverse() // Show in chronological order
+          .map((msg) => {
+            const isUser = msg.authorId !== runtime.agentId;
+            const role = isUser ? 'User' : 'Agent';
+            return `${role}: ${msg.content}`;
+          })
+          .join('\n');
 
         const prompt = composePromptFromState({
-            state: { recentMessages },
-            template: `
+          state: { recentMessages },
+          template: `
 Based on the conversation below, generate a short, descriptive title for this chat. The title should capture the main topic or theme of the discussion.
 Rules:
 - Keep it concise (3-6 words)
@@ -940,7 +962,7 @@ Examples:
 Recent conversation:
 {{recentMessages}}
 Respond with just the title, nothing else.
-            `
+            `,
         });
 
         const newTitle = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -964,21 +986,21 @@ Respond with just the title, nothing else.
         };
 
         logger.success(`[CHANNEL SUMMARIZE] Successfully summarized channel ${channelId}`);
-        
+
         res.json({
           success: true,
-          data: result
+          data: result,
         });
-
       } catch (error) {
         logger.error('[CHANNEL SUMMARIZE] Error summarizing channel:', error);
         res.status(500).json({
           success: false,
           error: 'Failed to summarize channel',
-          details: error instanceof Error ? error.message : String(error)
+          details: error instanceof Error ? error.message : String(error),
         });
       }
-  });
+    }
+  );
 
   return router;
 }

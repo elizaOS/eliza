@@ -1,4 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import { PGliteClientManager } from '../../pglite/manager';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';

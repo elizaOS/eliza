@@ -33,7 +33,6 @@
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
-    "vitest": "3.1.4",
     "zod": "^3.22.4"
   },
   "scripts": {
@@ -43,9 +42,9 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "test": "elizaos test",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"

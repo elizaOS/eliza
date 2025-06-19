@@ -44,26 +44,30 @@ else
 fi
 cd ..
 
-# 2. Vitest Unit Tests
-echo -e "\n${YELLOW}🧪 Running Vitest Unit Tests...${NC}"
-npx vitest run --coverage
+# 2. Bun Unit Tests
+echo -e "\n${YELLOW}🧪 Running Bun Unit Tests...${NC}"
+./scripts/run-bun-tests.sh --coverage
 if [ $? -ne 0 ]; then
-  echo -e "${RED}❌ Vitest tests failed${NC}"
+  echo -e "${RED}❌ Bun tests failed${NC}"
   FAILED=1
 else
-  echo -e "${GREEN}✅ Vitest tests passed${NC}"
+  echo -e "${GREEN}✅ Bun tests passed${NC}"
 fi
 
-# 3. ElizaOS Core Tests
-echo -e "\n${YELLOW}🤖 Running ElizaOS Core Tests...${NC}"
-cd ../.. && bun test
-if [ $? -ne 0 ]; then
-  echo -e "${RED}❌ ElizaOS core tests failed${NC}"
-  FAILED=1
+# 3. ElizaOS Core Tests - Skip in CI as they're run separately
+if [ "$CI" = "true" ]; then
+  echo -e "\n${YELLOW}🤖 Skipping ElizaOS Core Tests (run separately in CI)...${NC}"
 else
-  echo -e "${GREEN}✅ ElizaOS core tests passed${NC}"
+  echo -e "\n${YELLOW}🤖 Running ElizaOS Core Tests...${NC}"
+  cd ../.. && bun test
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ ElizaOS core tests failed${NC}"
+    FAILED=1
+  else
+    echo -e "${GREEN}✅ ElizaOS core tests passed${NC}"
+  fi
+  cd packages/client
 fi
-cd packages/client
 
 # 4. Cypress Component Tests
 echo -e "\n${YELLOW}🧩 Running Cypress Component Tests...${NC}"

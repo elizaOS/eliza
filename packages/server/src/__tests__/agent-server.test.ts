@@ -2,30 +2,30 @@
  * Integration tests for AgentServer class
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { AgentServer } from '../index';
 import { logger, type UUID, ChannelType } from '@elizaos/core';
 import type { ServerOptions } from '../index';
 import http from 'node:http';
 
 // Mock dependencies
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      success: vi.fn(),
+      warn: mock.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      debug: mock.fn(),
+      success: mock.fn(),
     },
     Service: class MockService {
       constructor() {}
       async initialize() {}
       async cleanup() {}
     },
-    createUniqueUuid: vi.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+    createUniqueUuid: mock.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
     ChannelType: {
       DIRECT: 'direct',
       GROUP: 'group',
@@ -42,76 +42,82 @@ vi.mock('@elizaos/core', async () => {
   };
 });
 
-vi.mock('@elizaos/plugin-sql', () => ({
-  createDatabaseAdapter: vi.fn(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-    getDatabase: vi.fn(() => ({
-      execute: vi.fn().mockResolvedValue([]),
+mock.module('@elizaos/plugin-sql', () => ({
+  createDatabaseAdapter: mock.fn(() => ({
+    init: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    close: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    getDatabase: mock.fn(() => ({
+      execute: mock.fn().mockReturnValue(Promise.resolve([])),
     })),
-    getMessageServers: vi.fn(() =>
+    getMessageServers: mock.fn(() =>
       Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }])
     ),
-    createMessageServer: vi.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
-    getMessageServerById: vi
+    createMessageServer: mock
       .fn()
-      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
-    addAgentToServer: vi.fn().mockResolvedValue(undefined),
-    getChannelsForServer: vi.fn().mockResolvedValue([]),
-    createChannel: vi.fn().mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000' }),
-    getAgentsForServer: vi.fn().mockResolvedValue([]),
-    db: { execute: vi.fn().mockResolvedValue([]) },
+      .mockReturnValue(Promise.resolve({ id: '00000000-0000-0000-0000-000000000000' })),
+    getMessageServerById: mock
+      .fn()
+      .mockReturnValue(
+        Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
+      ),
+    addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
+    createChannel: mock
+      .fn()
+      .mockReturnValue(Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' })),
+    getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
+    db: { execute: mock.fn().mockReturnValue(Promise.resolve([])) },
   })),
-  DatabaseMigrationService: vi.fn(() => ({
-    initializeWithDatabase: vi.fn().mockResolvedValue(undefined),
-    discoverAndRegisterPluginSchemas: vi.fn(),
-    runAllPluginMigrations: vi.fn().mockResolvedValue(undefined),
+  DatabaseMigrationService: mock.fn(() => ({
+    initializeWithDatabase: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+    discoverAndRegisterPluginSchemas: mock.fn(),
+    runAllPluginMigrations: mock.fn().mockReturnValue(Promise.resolve(undefined)),
   })),
   plugin: {},
 }));
 
 // Mock filesystem operations
-vi.mock('node:fs', () => ({
+mock.module('node:fs', () => ({
   default: {
-    mkdirSync: vi.fn(),
-    existsSync: vi.fn(() => true),
-    readFileSync: vi.fn(() => '{}'),
-    writeFileSync: vi.fn(),
+    mkdirSync: mock.fn(),
+    existsSync: mock.fn(() => true),
+    readFileSync: mock.fn(() => '{}'),
+    writeFileSync: mock.fn(),
   },
-  mkdirSync: vi.fn(),
-  existsSync: vi.fn(() => true),
-  readFileSync: vi.fn(() => '{}'),
-  writeFileSync: vi.fn(),
+  mkdirSync: mock.fn(),
+  existsSync: mock.fn(() => true),
+  readFileSync: mock.fn(() => '{}'),
+  writeFileSync: mock.fn(),
 }));
 
 // Mock Socket.IO
-vi.mock('socket.io', () => ({
-  Server: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    to: vi.fn(() => ({
-      emit: vi.fn(),
+mock.module('socket.io', () => ({
+  Server: mock.fn(() => ({
+    on: mock.fn(),
+    emit: mock.fn(),
+    to: mock.fn(() => ({
+      emit: mock.fn(),
     })),
-    close: vi.fn((callback) => {
+    close: mock.fn((callback) => {
       if (callback) callback();
     }),
   })),
 }));
 
 // Mock the socketio module
-vi.mock('../src/socketio/index', () => ({
-  setupSocketIO: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    to: vi.fn(() => ({
-      emit: vi.fn(),
+mock.module('../src/socketio/index', () => ({
+  setupSocketIO: mock.fn(() => ({
+    on: mock.fn(),
+    emit: mock.fn(),
+    to: mock.fn(() => ({
+      emit: mock.fn(),
     })),
-    close: vi.fn((callback) => {
+    close: mock.fn((callback) => {
       if (callback) callback();
     }),
   })),
-  SocketIORouter: vi.fn(() => ({
-    setupListeners: vi.fn(),
+  SocketIORouter: mock.fn(() => ({
+    setupListeners: mock.fn(),
   })),
 }));
 
@@ -120,27 +126,27 @@ describe('AgentServer Integration Tests', () => {
   let mockServer: any;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {
-      listen: vi.fn((port, callback) => {
+      listen: mock.fn((port, callback) => {
         if (callback) callback();
       }),
-      close: vi.fn((callback) => {
+      close: mock.fn((callback) => {
         if (callback) callback();
       }),
-      listeners: vi.fn(() => []),
-      removeAllListeners: vi.fn(),
-      on: vi.fn(),
-      once: vi.fn(),
-      emit: vi.fn(),
-      address: vi.fn(() => ({ port: 3000 })),
+      listeners: mock.fn(() => []),
+      removeAllListeners: mock.fn(),
+      on: mock.fn(),
+      once: mock.fn(),
+      emit: mock.fn(),
+      address: mock.fn(() => ({ port: 3000 })),
       timeout: 0,
       keepAliveTimeout: 5000,
     };
 
-    vi.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
+    mock.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
   });
@@ -149,7 +155,7 @@ describe('AgentServer Integration Tests', () => {
     if (server) {
       await server.stop();
     }
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   describe('Constructor', () => {
@@ -190,7 +196,7 @@ describe('AgentServer Integration Tests', () => {
     it('should prevent double initialization', async () => {
       await server.initialize();
 
-      const loggerWarnSpy = vi.spyOn(logger, 'warn');
+      const loggerWarnSpy = mock.spyOn(logger, 'warn');
       await server.initialize();
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
@@ -201,11 +207,13 @@ describe('AgentServer Integration Tests', () => {
     it('should handle initialization errors gracefully', async () => {
       // Mock database initialization to fail
       const mockDatabaseAdapter = {
-        init: vi.fn().mockRejectedValue(new Error('Database connection failed')),
+        init: mock.fn().mockRejectedValue(new Error('Database connection failed')),
       };
 
       const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
-      vi.mocked(createDatabaseAdapter).mockReturnValue(mockDatabaseAdapter as any);
+      mock.module('@elizaos/plugin-sql', () => ({
+        createDatabaseAdapter: () => mockDatabaseAdapter,
+      }));
 
       await expect(server.initialize()).rejects.toThrow('Database connection failed');
     });
@@ -248,22 +256,22 @@ describe('AgentServer Integration Tests', () => {
       mockRuntime = {
         agentId: '123e4567-e89b-12d3-a456-426614174000',
         character: { name: 'TestAgent' },
-        registerPlugin: vi.fn().mockResolvedValue(undefined),
-        stop: vi.fn().mockResolvedValue(undefined),
+        registerPlugin: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        stop: mock.fn().mockReturnValue(Promise.resolve(undefined)),
         plugins: [],
-        registerProvider: vi.fn(),
-        registerAction: vi.fn(),
+        registerProvider: mock.fn(),
+        registerAction: mock.fn(),
       };
 
       // Mock the database methods
       server.database = {
         ...server.database,
-        getMessageServers: vi.fn().mockResolvedValue([]),
-        createMessageServer: vi.fn().mockResolvedValue({ id: 'server-id' }),
+        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
+        createMessageServer: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
         db: {
-          execute: vi.fn().mockResolvedValue([]),
+          execute: mock.fn().mockReturnValue(Promise.resolve([])),
         },
-        addAgentToServer: vi.fn().mockResolvedValue(undefined),
+        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
       } as any;
     });
 
@@ -323,7 +331,7 @@ describe('AgentServer Integration Tests', () => {
     });
 
     it('should register custom middleware', () => {
-      const customMiddleware = vi.fn((req, res, next) => next());
+      const customMiddleware = mock.fn((req, res, next) => next());
 
       server.registerMiddleware(customMiddleware);
 
@@ -339,15 +347,17 @@ describe('AgentServer Integration Tests', () => {
       // Mock database methods
       server.database = {
         ...server.database,
-        createMessageServer: vi.fn().mockResolvedValue({ id: 'server-id', name: 'Test Server' }),
-        getMessageServers: vi.fn().mockResolvedValue([]),
-        getMessageServerById: vi.fn().mockResolvedValue({ id: 'server-id' }),
-        createChannel: vi.fn().mockResolvedValue({ id: 'channel-id' }),
-        getChannelsForServer: vi.fn().mockResolvedValue([]),
-        createMessage: vi.fn().mockResolvedValue({ id: 'message-id' }),
-        getMessagesForChannel: vi.fn().mockResolvedValue([]),
-        addAgentToServer: vi.fn().mockResolvedValue(undefined),
-        getAgentsForServer: vi.fn().mockResolvedValue([]),
+        createMessageServer: mock
+          .fn()
+          .mockReturnValue(Promise.resolve({ id: 'server-id', name: 'Test Server' })),
+        getMessageServers: mock.fn().mockReturnValue(Promise.resolve([])),
+        getMessageServerById: mock.fn().mockReturnValue(Promise.resolve({ id: 'server-id' })),
+        createChannel: mock.fn().mockReturnValue(Promise.resolve({ id: 'channel-id' })),
+        getChannelsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
+        createMessage: mock.fn().mockReturnValue(Promise.resolve({ id: 'message-id' })),
+        getMessagesForChannel: mock.fn().mockReturnValue(Promise.resolve([])),
+        addAgentToServer: mock.fn().mockReturnValue(Promise.resolve(undefined)),
+        getAgentsForServer: mock.fn().mockReturnValue(Promise.resolve([])),
       } as any;
     });
 
@@ -390,7 +400,9 @@ describe('AgentServer Integration Tests', () => {
     });
 
     it('should throw error when adding agent to non-existent server', async () => {
-      (server.database as any).getMessageServerById = vi.fn().mockResolvedValue(null);
+      (server.database as any).getMessageServerById = mock
+        .fn()
+        .mockReturnValue(Promise.resolve(null));
 
       const serverId = 'non-existent-server' as any;
       const agentId = 'agent-id' as any;
@@ -404,7 +416,7 @@ describe('AgentServer Integration Tests', () => {
   describe('Error Handling', () => {
     it('should handle constructor errors gracefully', () => {
       // Mock logger to throw error
-      vi.spyOn(logger, 'debug').mockImplementation(() => {
+      mock.spyOn(logger, 'debug').mockImplementation(() => {
         throw new Error('Logger error');
       });
 
@@ -416,13 +428,15 @@ describe('AgentServer Integration Tests', () => {
 
       // Mock database init to fail
       const mockDatabaseAdapter = {
-        init: vi.fn().mockRejectedValue(mockError),
+        init: mock.fn().mockRejectedValue(mockError),
       };
 
       const { createDatabaseAdapter } = await import('@elizaos/plugin-sql');
-      vi.mocked(createDatabaseAdapter).mockReturnValue(mockDatabaseAdapter as any);
+      mock.module('@elizaos/plugin-sql', () => ({
+        createDatabaseAdapter: () => mockDatabaseAdapter,
+      }));
 
-      const errorSpy = vi.spyOn(logger, 'error');
+      const errorSpy = mock.spyOn(logger, 'error');
 
       await expect(server.initialize()).rejects.toThrow('Initialization failed');
       expect(errorSpy).toHaveBeenCalledWith(

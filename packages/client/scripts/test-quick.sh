@@ -22,15 +22,15 @@ else
   echo -e "${GREEN}✅ Type checking passed${NC}"
 fi
 
-# 2. Vitest Unit Tests
-echo -e "\n${YELLOW}🧪 Running Vitest Unit Tests...${NC}"
-# Call vitest directly to avoid nested bun calls
-npx vitest run --coverage
+# 2. Bun Unit Tests
+echo -e "\n${YELLOW}🧪 Running Bun Unit Tests...${NC}"
+# Call bun test with path resolution
+./scripts/run-bun-tests.sh --coverage
 if [ $? -ne 0 ]; then
-  echo -e "${RED}❌ Vitest tests failed${NC}"
+  echo -e "${RED}❌ Bun tests failed${NC}"
   FAILED=1
 else
-  echo -e "${GREEN}✅ Vitest tests passed${NC}"
+  echo -e "${GREEN}✅ Bun tests passed${NC}"
 fi
 
 # Summary

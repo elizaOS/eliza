@@ -31,7 +31,7 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --concurrency 5 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
+    "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
@@ -51,8 +51,7 @@
     "lerna": "8.1.4",
     "tsup": "8.5.0",
     "turbo": "^2.5.4",
-    "typescript": "5.8.2",
-    "vitest": "3.1.4"
+    "typescript": "5.8.2"
   },
   "resolutions": {
     "@nrwl/devkit": "19.8.4",

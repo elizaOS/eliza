@@ -1,6 +1,6 @@
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Dependencies } from '../types';
 
@@ -16,7 +16,7 @@ export const getDependenciesFromDirectory = (cwd: string): Dependencies | null =
 
   try {
     const packageJsonPath = path.join(cwd, 'package.json');
-    const packageJsonContent = fs.readFileSync(packageJsonPath, 'utf-8');
+    const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
     const dependencies = packageJson.dependencies || {};
     const devDependencies = packageJson.devDependencies || {};

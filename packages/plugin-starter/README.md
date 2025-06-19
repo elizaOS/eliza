@@ -88,10 +88,10 @@ export const StarterPluginTestSuite: TestSuite = {
         const testMessage = {
           content: { text: 'Can you say hello?' }
         };
-        
+
         // Execute action and capture response
         const response = await helloWorldAction.handler(runtime, testMessage, ...);
-        
+
         // Verify agent responds with "hello world"
         if (!response.text.includes('hello world')) {
           throw new Error('Expected "hello world" in response');

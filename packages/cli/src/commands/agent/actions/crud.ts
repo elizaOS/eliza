@@ -1,7 +1,7 @@
 import type { Agent } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
-import fs from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
@@ -44,7 +44,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 
       // Save file and exit
       const jsonPath = path.resolve(process.cwd(), filename);
-      fs.writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
+      writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
       console.log(`Saved agent configuration to ${jsonPath}`);
       return;
     }
@@ -149,7 +149,7 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
       }
     } else if (opts.file) {
       try {
-        config = JSON.parse(fs.readFileSync(opts.file, 'utf8'));
+        config = JSON.parse(readFileSync(opts.file, 'utf8'));
       } catch (error) {
         throw new Error(
           `Failed to read or parse config file: ${error instanceof Error ? error.message : String(error)}`

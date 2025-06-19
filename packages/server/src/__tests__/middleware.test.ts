@@ -2,7 +2,7 @@
  * Unit tests for middleware functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import express from 'express';
 import {
   agentExistsMiddleware,
@@ -17,17 +17,17 @@ import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
 // Mock dependencies
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      warn: vi.fn(),
-      info: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
+      warn: mock.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      debug: mock.fn(),
     },
-    validateUuid: vi.fn((id: string) => {
+    validateUuid: mock.fn((id: string) => {
       // Simple UUID validation mock
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       return uuidRegex.test(id) ? id : null;
@@ -35,8 +35,8 @@ vi.mock('@elizaos/core', async () => {
   };
 });
 
-vi.mock('../src/api/shared/response-utils', () => ({
-  sendError: vi.fn((res, status, code, message) => {
+mock.module('../src/api/shared/response-utils', () => ({
+  sendError: mock.fn((res, status, code, message) => {
     res.status(status).json({ success: false, error: { code, message } });
   }),
 }));
@@ -47,7 +47,7 @@ describe('Middleware Functions', () => {
   let next: express.NextFunction;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     req = {
       params: {},
@@ -56,17 +56,17 @@ describe('Middleware Functions', () => {
       originalUrl: '/api/test',
       url: '/api/test',
       query: {},
-      get: vi.fn(),
+      get: mock.fn(),
     };
 
     res = {
-      status: vi.fn().mockReturnThis(),
-      json: vi.fn().mockReturnThis(),
-      setHeader: vi.fn().mockReturnThis(),
-      removeHeader: vi.fn().mockReturnThis(),
+      status: mock.fn().mockReturnThis(),
+      json: mock.fn().mockReturnThis(),
+      setHeader: mock.fn().mockReturnThis(),
+      removeHeader: mock.fn().mockReturnThis(),
     };
 
-    next = vi.fn();
+    next = mock.fn();
   });
 
   describe('agentExistsMiddleware', () => {

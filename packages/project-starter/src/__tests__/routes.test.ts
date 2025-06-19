@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import plugin from '../plugin';
 
 describe('Plugin Routes', () => {
@@ -30,7 +30,7 @@ describe('Plugin Routes', () => {
         // Create mock request and response objects
         const mockReq = {};
         const mockRes = {
-          json: vi.fn(),
+          json: spyOnfn(),
         };
 
         // Mock runtime object as third parameter

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, spyOn, beforeEach, afterEach } from 'bun:test';
 import plugin from '../plugin';
 import { StarterService } from '../plugin';
 import { logger } from '@elizaos/core';
@@ -6,25 +6,25 @@ import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 // Mock logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+spyOnmock('@elizaos/core', async () => {
+  const actual = await spyOnimportActual('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
+      info: spyOnfn(),
+      error: spyOnfn(),
+      warn: spyOnfn(),
     },
   };
 });
 
 describe('Error Handling', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    spyOnclearAllMocks();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // No global restore needed in bun:test;
   });
 
   describe('HELLO_WORLD Action Error Handling', () => {
@@ -35,7 +35,7 @@ describe('Error Handling', () => {
       if (action && action.handler) {
         // Force the handler to throw an error
         const mockError = new Error('Test error in action');
-        vi.spyOn(console, 'error').mockImplementation(() => {});
+        spyOn(console, 'error').mockImplementation(() => {});
 
         // Create a custom mock runtime
         const mockRuntime = {
@@ -57,10 +57,10 @@ describe('Error Handling', () => {
           text: '',
         } as State;
 
-        const mockCallback = vi.fn();
+        const mockCallback = spyOnfn();
 
         // Mock the logger.error to verify it's called
-        vi.spyOn(logger, 'error');
+        spyOn(logger, 'error');
 
         // Test the error handling by observing the behavior
         try {
@@ -80,7 +80,7 @@ describe('Error Handling', () => {
   describe('Service Error Handling', () => {
     it('should throw an error when stopping non-existent service', async () => {
       const mockRuntime = {
-        getService: vi.fn().mockReturnValue(null),
+        getService: spyOnfn().mockReturnValue(null),
       } as unknown as IAgentRuntime;
 
       let caughtError = null;
@@ -97,13 +97,13 @@ describe('Error Handling', () => {
 
     it('should handle service stop errors gracefully', async () => {
       const mockServiceWithError = {
-        stop: vi.fn().mockImplementation(() => {
+        stop: spyOnfn().mockImplementation(() => {
           throw new Error('Error stopping service');
         }),
       };
 
       const mockRuntime = {
-        getService: vi.fn().mockReturnValue(mockServiceWithError),
+        getService: spyOnfn().mockReturnValue(mockServiceWithError),
       } as unknown as IAgentRuntime;
 
       // The error should be propagated
@@ -137,7 +137,7 @@ describe('Error Handling', () => {
         };
 
         // Spy on the logger
-        vi.spyOn(logger, 'error');
+        spyOn(logger, 'error');
 
         // This is a partial test - in a real handler, we'd have more robust error handling
         try {

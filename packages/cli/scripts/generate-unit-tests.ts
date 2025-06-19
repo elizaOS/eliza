@@ -12,20 +12,25 @@ interface FileToTest {
 
 async function findAllSourceFiles(dir: string, files: string[] = []): Promise<string[]> {
   const entries = await readdir(dir);
-  
+
   for (const entry of entries) {
     const fullPath = join(dir, entry);
     const stats = await stat(fullPath);
-    
+
     if (stats.isDirectory()) {
       if (!entry.includes('node_modules') && !entry.includes('dist') && !entry.includes('test')) {
         await findAllSourceFiles(fullPath, files);
       }
-    } else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts') && !entry.endsWith('.spec.ts') && !entry.endsWith('.d.ts')) {
+    } else if (
+      entry.endsWith('.ts') &&
+      !entry.endsWith('.test.ts') &&
+      !entry.endsWith('.spec.ts') &&
+      !entry.endsWith('.d.ts')
+    ) {
       files.push(fullPath);
     }
   }
-  
+
   return files;
 }
 
@@ -40,7 +45,7 @@ function getTestPath(sourcePath: string, category: string): string {
   const relativePath = relative(join(process.cwd(), 'src'), sourcePath);
   const testFileName = basename(sourcePath).replace('.ts', '.test.ts');
   const dirPath = dirname(relativePath);
-  
+
   // Map source directories to test directories
   if (category === 'commands') {
     return join(process.cwd(), 'tests/commands', testFileName);
@@ -57,28 +62,28 @@ async function generateTestContent(sourcePath: string): Promise<string> {
   const sourceContent = await readFile(sourcePath, 'utf-8');
   const relativePath = relative(process.cwd(), sourcePath);
   const importPath = relativePath.replace('src/', '../../../src/').replace('.ts', '');
-  
+
   // Extract exported functions and classes
   const exportMatches = sourceContent.matchAll(/export\s+(async\s+)?function\s+(\w+)/g);
   const classMatches = sourceContent.matchAll(/export\s+class\s+(\w+)/g);
   const constMatches = sourceContent.matchAll(/export\s+const\s+(\w+)/g);
-  
-  const functions = Array.from(exportMatches).map(m => m[2]);
-  const classes = Array.from(classMatches).map(m => m[1]);
-  const constants = Array.from(constMatches).map(m => m[1]);
-  
-  let testContent = `import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+  const functions = Array.from(exportMatches).map((m) => m[2]);
+  const classes = Array.from(classMatches).map((m) => m[1]);
+  const constants = Array.from(constMatches).map((m) => m[1]);
+
+  let testContent = `import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 
 // TODO: Import the functions/classes to test
 // import { ${[...functions, ...classes, ...constants].join(', ')} } from '${importPath}';
 
 describe('${basename(sourcePath).replace('.ts', '')}', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 `;
 
@@ -127,60 +132,60 @@ describe('${basename(sourcePath).replace('.ts', '')}', () => {
 
 async function main() {
   console.log('🧪 Generating Unit Test Skeletons for elizaOS CLI...\n');
-  
+
   const srcPath = join(process.cwd(), 'src');
   const sourceFiles = await findAllSourceFiles(srcPath);
-  
+
   const filesToTest: FileToTest[] = [];
   let skipped = 0;
-  
+
   for (const sourcePath of sourceFiles) {
     const category = categorizeFile(sourcePath);
     const testPath = getTestPath(sourcePath, category);
-    
+
     // Skip if test already exists
     if (existsSync(testPath)) {
       skipped++;
       continue;
     }
-    
+
     filesToTest.push({ sourcePath, testPath, category });
   }
-  
+
   console.log(`📊 Found ${sourceFiles.length} source files`);
   console.log(`   ${skipped} already have tests`);
   console.log(`   ${filesToTest.length} need test files\n`);
-  
+
   if (filesToTest.length === 0) {
     console.log('✅ All files already have tests!');
     return;
   }
-  
+
   console.log('Would you like to generate test skeletons for all untested files?');
   console.log('(This will create .todo tests that you can implement later)\n');
-  
+
   const answer = prompt('Generate tests? (y/n): ');
-  
+
   if (answer?.toLowerCase() !== 'y') {
     console.log('Cancelled.');
     return;
   }
-  
+
   let created = 0;
   let failed = 0;
-  
+
   for (const file of filesToTest) {
     try {
       // Ensure directory exists
       const testDir = dirname(file.testPath);
       await mkdir(testDir, { recursive: true });
-      
+
       // Generate test content
       const testContent = await generateTestContent(file.sourcePath);
-      
+
       // Write test file
       await writeFile(file.testPath, testContent);
-      
+
       console.log(`✅ Created: ${relative(process.cwd(), file.testPath)}`);
       created++;
     } catch (error) {
@@ -189,7 +194,7 @@ async function main() {
       failed++;
     }
   }
-  
+
   console.log(`\n📊 Summary:`);
   console.log(`   ✅ Created: ${created} test files`);
   console.log(`   ❌ Failed: ${failed} files`);
@@ -199,4 +204,4 @@ async function main() {
   console.log(`   3. Run coverage report to track progress`);
 }
 
-main().catch(console.error); 
+main().catch(console.error);

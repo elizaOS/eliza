@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, spyOn, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 import { starterPlugin, StarterService } from '../index';
 import { ModelType, logger } from '@elizaos/core';
 import dotenv from 'dotenv';
@@ -8,14 +8,14 @@ dotenv.config();
 
 // Need to spy on logger for documentation
 beforeAll(() => {
-  vi.spyOn(logger, 'info');
-  vi.spyOn(logger, 'error');
-  vi.spyOn(logger, 'warn');
-  vi.spyOn(logger, 'debug');
+  spyOn(logger, 'info');
+  spyOn(logger, 'error');
+  spyOn(logger, 'warn');
+  spyOn(logger, 'debug');
 });
 
 afterAll(() => {
-  vi.restoreAllMocks();
+  // No global restore needed in bun:test
 });
 
 // Create a real runtime for testing
@@ -157,7 +157,7 @@ describe('StarterService', () => {
     runtime.registerService(StarterService.serviceType, service);
 
     // Spy on the real service's stop method
-    const stopSpy = vi.spyOn(service, 'stop');
+    const stopSpy = spyOn(service, 'stop');
 
     // Call the static stop method
     await StarterService.stop(runtime as any);

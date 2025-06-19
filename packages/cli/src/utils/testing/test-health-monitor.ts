@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 export interface TestResult {
@@ -43,8 +43,8 @@ export class TestHealthMonitor {
 
   private ensureDataDir(): void {
     const dir = path.dirname(this.healthDataPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
     }
   }
 
@@ -110,8 +110,8 @@ export class TestHealthMonitor {
   }
 
   getHealth(): TestHealth {
-    if (fs.existsSync(this.healthDataPath)) {
-      const data = JSON.parse(fs.readFileSync(this.healthDataPath, 'utf-8'));
+    if (existsSync(this.healthDataPath)) {
+      const data = JSON.parse(readFileSync(this.healthDataPath, 'utf-8'));
       // Convert dates
       data.lastRun = new Date(data.lastRun);
       data.testHistory = data.testHistory || [];
@@ -134,7 +134,7 @@ export class TestHealthMonitor {
   }
 
   private saveHealth(health: TestHealth): void {
-    fs.writeFileSync(this.healthDataPath, JSON.stringify(health, null, 2));
+    writeFileSync(this.healthDataPath, JSON.stringify(health, null, 2));
   }
 
   generateReport(): string {

@@ -2,21 +2,21 @@
  * Unit tests for authMiddleware.ts
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
 import { apiKeyAuthMiddleware } from '../authMiddleware';
 import { logger } from '@elizaos/core';
 
 // Mock the logger
-vi.mock('@elizaos/core', async () => {
-  const actual = await vi.importActual('@elizaos/core');
+mock.module('@elizaos/core', async () => {
+  const actual = await import('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: vi.fn(),
-      error: vi.fn(),
-      warn: vi.fn(),
-      debug: vi.fn(),
+      info: mock.fn(),
+      error: mock.fn(),
+      warn: mock.fn(),
+      debug: mock.fn(),
     },
   };
 });
@@ -39,13 +39,13 @@ describe('API Key Auth Middleware', () => {
     };
 
     mockResponse = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockReturnThis(),
-      json: vi.fn().mockReturnThis(),
+      status: mock.fn().mockReturnThis(),
+      send: mock.fn().mockReturnThis(),
+      json: mock.fn().mockReturnThis(),
     };
 
-    mockNext = vi.fn();
-    vi.clearAllMocks();
+    mockNext = mock.fn();
+    mock.restore();
   });
 
   afterEach(() => {

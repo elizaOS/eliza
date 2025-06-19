@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
+import type fileUpload from 'express-fileupload';
 
-// Using Express.Multer.File type instead of importing from multer directly
-type MulterFile = Express.Multer.File;
+// Using express-fileupload file type
+type UploadedFile = fileUpload.UploadedFile;
 
 /**
  * Safely constructs and validates upload directory paths to prevent path traversal attacks
@@ -81,10 +82,19 @@ export const cleanupFile = (filePath: string) => {
 };
 
 /**
- * Cleans up multiple files from multer upload
+ * Cleans up multiple files from express-fileupload
  */
-export const cleanupFiles = (files: MulterFile[]) => {
+export const cleanupFiles = (files: UploadedFile[]) => {
   if (files) {
-    files.forEach((file) => cleanupFile(file.path));
+    files.forEach((file) => cleanupFile(file.tempFilePath || ''));
+  }
+};
+
+/**
+ * Cleans up an uploaded file by removing it from temp location
+ */
+export const cleanupUploadedFile = (file: UploadedFile) => {
+  if (file.tempFilePath) {
+    cleanupFile(file.tempFilePath);
   }
 };

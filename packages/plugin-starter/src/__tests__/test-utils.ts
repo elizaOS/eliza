@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { mock, spyOn } from 'bun:test';
 import {
   Content,
   IAgentRuntime,
@@ -28,12 +28,12 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     services: new Map(),
 
     // Core methods
-    getService: vi.fn().mockReturnValue(null),
-    registerService: vi.fn(),
-    getSetting: vi.fn().mockReturnValue(null),
+    getService: mock().mockReturnValue(null),
+    registerService: mock(),
+    getSetting: mock().mockReturnValue(null),
 
     // Model methods
-    useModel: vi.fn().mockImplementation((modelType, params) => {
+    useModel: mock().mockImplementation((modelType, params) => {
       if (modelType === ModelType.TEXT_SMALL) {
         return Promise.resolve('Never gonna give you up, never gonna let you down');
       } else if (modelType === ModelType.TEXT_LARGE) {
@@ -48,7 +48,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     }),
 
     // Additional methods used in tests
-    init: vi.fn().mockResolvedValue(undefined),
+    init: mock().mockResolvedValue(undefined),
     ...overrides,
   };
 
@@ -110,7 +110,7 @@ export function setupTest(
   } = {}
 ) {
   // Create mock callback function
-  const callbackFn = vi.fn();
+  const callbackFn = mock();
 
   // Create a message
   const mockMessage = createMockMemory(overrides.messageOverrides);
@@ -142,21 +142,21 @@ export interface MockRuntime {
     [key: string]: any;
   };
   services: Map<string, Service>;
-  getService: ReturnType<typeof vi.fn>;
-  registerService: ReturnType<typeof vi.fn>;
-  getSetting: ReturnType<typeof vi.fn>;
-  useModel: ReturnType<typeof vi.fn>;
-  init: ReturnType<typeof vi.fn>;
+  getService: ReturnType<typeof mock>;
+  registerService: ReturnType<typeof mock>;
+  getSetting: ReturnType<typeof mock>;
+  useModel: ReturnType<typeof mock>;
+  init: ReturnType<typeof mock>;
   [key: string]: any;
 }
 
 // Add spy on logger for common usage in tests
 export function setupLoggerSpies() {
-  vi.spyOn(logger, 'info').mockImplementation(() => {});
-  vi.spyOn(logger, 'error').mockImplementation(() => {});
-  vi.spyOn(logger, 'warn').mockImplementation(() => {});
-  vi.spyOn(logger, 'debug').mockImplementation(() => {});
+  spyOn(logger, 'info').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 
   // allow tests to restore originals
-  return () => vi.restoreAllMocks();
+  return () => mock.restore();
 }

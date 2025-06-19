@@ -1,4 +1,5 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
   getSalt,
@@ -26,36 +27,42 @@ import type {
   Character,
 } from '../types';
 
-// Import modules to manually mock them
 import * as entities from '../entities';
-import * as logger from '../logger';
+import * as logger_module from '../logger';
 
-// Create mock functions
-const mockCreateUniqueUuid = jest.fn((runtime, serverId) => `world-${serverId}`);
-const mockLogger = {
-  error: jest.fn(),
-  info: jest.fn(),
-  debug: jest.fn(),
-};
+// Remove global module mocks - they interfere with other tests
 
 describe('settings utilities', () => {
   let mockRuntime: IAgentRuntime;
   let mockWorld: World;
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    
-    // Use jest.spyOn to mock functions instead of direct assignment
-    jest.spyOn(entities, 'createUniqueUuid').mockImplementation(mockCreateUniqueUuid as any);
-    // Note: The logger mock is handled by the actual tests not directly using it
-    
+    mock.restore();
+
+    // Set up scoped mocks for this test
+    spyOn(entities, 'createUniqueUuid').mockImplementation(
+      (runtime, serverId) => `world-${serverId}`
+    );
+
+    // Mock logger if it doesn't have the methods
+    if (logger_module.logger) {
+      const methods = ['error', 'info', 'warn', 'debug'];
+      methods.forEach((method) => {
+        if (typeof logger_module.logger[method] === 'function') {
+          spyOn(logger_module.logger, method).mockImplementation(() => {});
+        } else {
+          logger_module.logger[method] = mock(() => {});
+        }
+      });
+    }
+
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
 
     mockRuntime = {
       agentId: 'agent-123' as any,
-      getWorld: jest.fn(),
-      updateWorld: jest.fn(),
+      getWorld: mock(),
+      updateWorld: mock(),
     } as unknown as IAgentRuntime;
 
     mockWorld = {
@@ -65,11 +72,6 @@ describe('settings utilities', () => {
       serverId: 'server-123',
       metadata: {},
     };
-  });
-
-  afterEach(() => {
-    // Restore all mocks
-    jest.restoreAllMocks();
   });
 
   describe('createSettingFromConfig', () => {
@@ -185,18 +187,18 @@ describe('settings utilities', () => {
     });
 
     it('should return boolean values as is', () => {
-      expect((encryptStringValue as any)(true, salt)).toBe(true);
-      expect((encryptStringValue as any)(false, salt)).toBe(false);
+      expect(encryptStringValue(true as any, salt)).toBe(true);
+      expect(encryptStringValue(false as any, salt)).toBe(false);
     });
 
     it('should return number values as is', () => {
-      expect((encryptStringValue as any)(123, salt)).toBe(123);
-      expect((encryptStringValue as any)(0, salt)).toBe(0);
+      expect(encryptStringValue(123 as any, salt)).toBe(123);
+      expect(encryptStringValue(0 as any, salt)).toBe(0);
     });
 
     it('should return non-string objects as is', () => {
       const obj = { key: 'value' };
-      expect((encryptStringValue as any)(obj, salt)).toBe(obj);
+      expect(encryptStringValue(obj as any, salt)).toBe(obj);
     });
 
     it('should not re-encrypt already encrypted values', () => {
@@ -232,17 +234,17 @@ describe('settings utilities', () => {
     });
 
     it('should return boolean values as is', () => {
-      expect((decryptStringValue as any)(true, salt)).toBe(true);
-      expect((decryptStringValue as any)(false, salt)).toBe(false);
+      expect(decryptStringValue(true as any, salt)).toBe(true);
+      expect(decryptStringValue(false as any, salt)).toBe(false);
     });
 
     it('should return number values as is', () => {
-      expect((decryptStringValue as any)(123, salt)).toBe(123);
+      expect(decryptStringValue(123 as any, salt)).toBe(123);
     });
 
     it('should return non-string objects as is', () => {
       const obj = { key: 'value' };
-      expect((decryptStringValue as any)(obj, salt)).toBe(obj);
+      expect(decryptStringValue(obj as any, salt)).toBe(obj);
     });
 
     it('should return original value if not in encrypted format', () => {

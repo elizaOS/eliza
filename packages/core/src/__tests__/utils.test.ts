@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, setSystemTime, mock } from 'bun:test';
 import { Content, Entity, IAgentRuntime, Memory, ModelType, State } from '../types';
 import * as utils from '../utils';
 import {
@@ -83,12 +83,11 @@ describe('Utils Comprehensive Tests', () => {
   describe('formatTimestamp', () => {
     beforeEach(() => {
       // Mock Date.now() to ensure consistent tests
-      jest.useFakeTimers();
-      jest.setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      setSystemTime(new Date('2024-01-15T12:00:00Z'));
     });
 
     afterEach(() => {
-      jest.useRealTimers();
+      setSystemTime(); // Reset to real time
     });
 
     it("should return 'just now' for recent timestamps", () => {
@@ -255,7 +254,7 @@ describe('Utils Comprehensive Tests', () => {
 
     beforeEach(() => {
       mockRuntime = {
-        useModel: jest.fn().mockImplementation(async (type, params) => {
+        useModel: mock(async (type, params) => {
           if (type === 'TEXT_TOKENIZER_ENCODE') {
             // Simple mock: each word is a token
             return params.prompt.split(' ');
@@ -1075,7 +1074,7 @@ describe('Utils Comprehensive Tests', () => {
 
   it('trimTokens truncates using runtime tokenizer', async () => {
     const runtime = {
-      useModel: jest.fn(
+      useModel: mock(
         async (type: (typeof ModelType)[keyof typeof ModelType], { prompt, tokens }: any) => {
           if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
           if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
