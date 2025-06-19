@@ -141,7 +141,7 @@ function AppContent() {
               <Route
                 path="/create"
                 element={
-                  <div className="flex w-full justify-center px-4 sm:px-6">
+                  <div className="flex w-full justify-center px-4 sm:px-6 overflow-y-auto">
                     <div className="w-full md:max-w-4xl">
                       <AgentCreator />
                     </div>
