@@ -125,9 +125,9 @@ jobs:
           done
 
       - name: Run CLI TypeScript tests
+        timeout-minutes: 15
         run: bun run test:cli
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
           NODE_OPTIONS: --max-old-space-size=4096
-          timeout-minutes: 15

@@ -68,10 +68,10 @@
     "build": "tsc --noEmit && vite build && tsup",
     "lint": "prettier --write ./src",
     "test:component": "bun test",
-    "test:e2e": "elizaos test",
+    "test:e2e": "bun test",
     "test:e2e:manual": "node scripts/test-e2e-manual.js",
     "test:cypress": "cypress run --component",
-    "test": "npm run test:component && npm run test:e2e",
+    "test": "bun run test:component && bun run test:e2e",
     "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"

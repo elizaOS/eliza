@@ -50,7 +50,7 @@ This directory contains comprehensive tests for the `@elizaos/server` package.
 ### Run All Working Tests
 
 ```bash
-npx vitest run test/basic-functionality.test.ts
+bun test test/basic-functionality.test.ts
 ```
 
 ### Run All Tests (some may fail due to dependencies)
@@ -62,13 +62,13 @@ npm test
 ### Run with Coverage
 
 ```bash
-npx vitest run --coverage
+bun test --coverage
 ```
 
 ### Watch Mode
 
 ```bash
-npx vitest watch test/basic-functionality.test.ts
+bun test --watch test/basic-functionality.test.ts
 ```
 
 ## Test Categories
