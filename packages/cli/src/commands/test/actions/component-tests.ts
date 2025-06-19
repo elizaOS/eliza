@@ -6,7 +6,7 @@ import path from 'node:path';
 import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
-import { createVitestConfig } from '../utils/vitest-config';
+// Bun test doesn't need separate config creation
 import { existsSync } from 'node:fs';
 
 /**
@@ -49,15 +49,11 @@ export async function runComponentTests(
 
   logger.info('Running component tests...');
 
-  // Create vitest config for proper isolation
-  const vitestConfig = createVitestConfig(
-    testPath || cwd,
-    isPlugin ? path.basename(cwd) : undefined
-  );
+  // Bun test uses built-in configuration
 
   return new Promise((resolve) => {
     // Build command arguments
-    const args = ['run', 'vitest', 'run', '--passWithNoTests', '--reporter=default'];
+    const args = ['test', '--passWithNoTests'];
 
     // Add filter if specified
     if (options.name) {
@@ -70,17 +66,9 @@ export async function runComponentTests(
 
     const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
 
-    // Check if vitest config exists in the target directory
-    const hasVitestConfig =
-      existsSync(path.join(targetPath, 'vitest.config.ts')) ||
-      existsSync(path.join(targetPath, 'vitest.config.js')) ||
-      existsSync(path.join(targetPath, 'vitest.config.mjs'));
+    // Bun test doesn't use separate config files
 
-    // Only add test patterns if no vitest config exists
-    if (!hasVitestConfig && vitestConfig.test?.include && vitestConfig.test.include.length > 0) {
-      // Add the patterns directly as arguments after all options
-      args.push(...vitestConfig.test.include);
-    }
+    // Bun test automatically discovers test files
 
     logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
 

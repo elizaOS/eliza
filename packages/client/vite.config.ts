@@ -5,15 +5,13 @@ import { type Plugin, type UserConfig, defineConfig, loadEnv } from 'vite';
 import viteCompression from 'vite-plugin-compression';
 import tailwindcss from '@tailwindcss/vite';
 // @ts-ignore:next-line
-// @ts-ignore:next-line
-import type { ViteUserConfig } from 'vitest/config'; // Import Vitest config type for test property
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vite.dev/config/
 
-// Combine Vite's UserConfig with Vitest's config for the 'test' property
+// Define custom config interface
 interface CustomUserConfig extends UserConfig {
-  test?: ViteUserConfig['test'];
+  test?: any; // Fallback for test configuration
 }
 
 // Function to get version and write info.json

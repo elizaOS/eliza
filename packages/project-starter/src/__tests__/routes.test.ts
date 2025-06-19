@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import plugin from '../plugin';
 
 describe('Plugin Routes', () => {
