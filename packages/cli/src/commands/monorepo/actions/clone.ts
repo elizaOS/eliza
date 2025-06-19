@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import fs from 'node:fs';
+import { existsSync, readdirSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { CloneInfo } from '../types';
 
@@ -52,13 +52,13 @@ export function prepareDestination(dir: string): string {
   const destinationDir = path.resolve(process.cwd(), dir);
 
   // Check if destination directory already exists and is not empty
-  if (fs.existsSync(destinationDir)) {
-    const files = fs.readdirSync(destinationDir);
+  if (existsSync(destinationDir)) {
+    const files = readdirSync(destinationDir);
     if (files.length > 0) {
       throw new Error(`Destination directory ${destinationDir} already exists and is not empty`);
     }
   } else {
-    fs.mkdirSync(destinationDir, { recursive: true });
+    mkdirSync(destinationDir, { recursive: true });
   }
 
   return destinationDir;

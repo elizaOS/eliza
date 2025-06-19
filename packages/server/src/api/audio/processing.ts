@@ -5,17 +5,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { AgentServer } from '../../index';
-import { cleanupFile } from '../shared/file-utils';
+import { cleanupUploadedFile } from '../shared/file-utils';
 import { sendError, sendSuccess } from '../shared/response-utils';
-import { agentAudioUpload } from '../shared/uploads';
+import { agentAudioUpload, validateAudioFile } from '../shared/uploads';
 import { createFileSystemRateLimit, createUploadRateLimit } from '../shared/middleware';
 import { MAX_FILE_SIZE, MAX_FILE_SIZE_DISPLAY } from '../shared/constants';
+import type fileUpload from 'express-fileupload';
 
-// Using Express.Multer.File type instead of importing from multer directly
-type MulterFile = Express.Multer.File;
+// Using express-fileupload file type
+type UploadedFile = fileUpload.UploadedFile;
 
 interface AudioRequest extends express.Request {
-  file?: MulterFile;
+  files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
   params: {
     agentId: string;
   };
@@ -63,6 +64,20 @@ function validateSecureFilePath(filePath: string): string {
 }
 
 /**
+ * Helper function to get uploaded file from express-fileupload request
+ */
+function getUploadedFile(req: AudioRequest): UploadedFile | null {
+  if (req.files && !Array.isArray(req.files)) {
+    // files is an object with field names
+    return req.files.file as UploadedFile;
+  } else if (Array.isArray(req.files) && req.files.length > 0) {
+    // files is an array
+    return req.files[0];
+  }
+  return null;
+}
+
+/**
  * Audio processing functionality - upload and transcription
  */
 export function createAudioProcessingRouter(
@@ -78,7 +93,7 @@ export function createAudioProcessingRouter(
   // Audio messages endpoints
   router.post(
     '/:agentId/audio-messages',
-    agentAudioUpload.single('file'), // Use agentAudioUpload
+    agentAudioUpload(), // Use agentAudioUpload
     async (req: AudioRequest, res) => {
       logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
@@ -86,7 +101,7 @@ export function createAudioProcessingRouter(
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       }
 
-      const audioFile = req.file;
+      const audioFile = getUploadedFile(req);
       if (!audioFile) {
         return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
       }
@@ -94,16 +109,24 @@ export function createAudioProcessingRouter(
       const runtime = agents.get(agentId);
 
       if (!runtime) {
+        cleanupUploadedFile(audioFile);
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
       try {
+        // Validate file type
+        if (!validateAudioFile(audioFile)) {
+          cleanupUploadedFile(audioFile);
+          return sendError(res, 400, 'INVALID_FILE_TYPE', 'Invalid audio file type');
+        }
+
         // Validate file path security before any file operations
         let securePath: string;
         try {
-          securePath = validateSecureFilePath(audioFile.path);
+          const filePath = audioFile.tempFilePath || '';
+          securePath = validateSecureFilePath(filePath);
         } catch (pathError) {
-          cleanupFile(audioFile.path);
+          cleanupUploadedFile(audioFile);
           return sendError(
             res,
             403,
@@ -115,7 +138,7 @@ export function createAudioProcessingRouter(
         // Additional file validation using secure path
         const stats = await fs.promises.stat(securePath);
         if (stats.size > MAX_FILE_SIZE) {
-          cleanupFile(audioFile.path);
+          cleanupUploadedFile(audioFile);
           return sendError(
             res,
             413,
@@ -129,11 +152,11 @@ export function createAudioProcessingRouter(
 
         // Placeholder: This part needs to be updated to align with message creation.
         logger.info(`[AUDIO MESSAGE] Transcription for agent ${agentId}: ${transcription}`);
-        cleanupFile(audioFile.path);
+        cleanupUploadedFile(audioFile);
         sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });
       } catch (error) {
         logger.error('[AUDIO MESSAGE] Error processing audio:', error);
-        cleanupFile(audioFile?.path);
+        cleanupUploadedFile(audioFile);
         sendError(
           res,
           500,
@@ -148,7 +171,7 @@ export function createAudioProcessingRouter(
   // Transcription endpoint
   router.post(
     '/:agentId/transcriptions',
-    agentAudioUpload.single('file'), // Use agentAudioUpload
+    agentAudioUpload(), // Use agentAudioUpload
     async (req: AudioRequest, res) => {
       logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
@@ -156,7 +179,7 @@ export function createAudioProcessingRouter(
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
       }
 
-      const audioFile = req.file;
+      const audioFile = getUploadedFile(req);
       if (!audioFile) {
         return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
       }
@@ -164,18 +187,26 @@ export function createAudioProcessingRouter(
       const runtime = agents.get(agentId);
 
       if (!runtime) {
+        cleanupUploadedFile(audioFile);
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
       try {
         logger.debug('[TRANSCRIPTION] Reading audio file');
 
+        // Validate file type
+        if (!validateAudioFile(audioFile)) {
+          cleanupUploadedFile(audioFile);
+          return sendError(res, 400, 'INVALID_FILE_TYPE', 'Invalid audio file type');
+        }
+
         // Validate file path security before any file operations
         let securePath: string;
         try {
-          securePath = validateSecureFilePath(audioFile.path);
+          const filePath = audioFile.tempFilePath || '';
+          securePath = validateSecureFilePath(filePath);
         } catch (pathError) {
-          cleanupFile(audioFile.path);
+          cleanupUploadedFile(audioFile);
           return sendError(
             res,
             403,
@@ -186,7 +217,7 @@ export function createAudioProcessingRouter(
 
         const stats = await fs.promises.stat(securePath);
         if (stats.size > MAX_FILE_SIZE) {
-          cleanupFile(audioFile.path);
+          cleanupUploadedFile(audioFile);
           return sendError(
             res,
             413,
@@ -200,7 +231,7 @@ export function createAudioProcessingRouter(
         logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
-        cleanupFile(audioFile.path);
+        cleanupUploadedFile(audioFile);
 
         if (!transcription) {
           return sendError(res, 500, 'PROCESSING_ERROR', 'Failed to transcribe audio');
@@ -210,7 +241,7 @@ export function createAudioProcessingRouter(
         sendSuccess(res, { text: transcription });
       } catch (error) {
         logger.error('[TRANSCRIPTION] Error transcribing audio:', error);
-        cleanupFile(audioFile?.path);
+        cleanupUploadedFile(audioFile);
         sendError(
           res,
           500,

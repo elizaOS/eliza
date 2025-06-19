@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildProject } from './build-project';
 import { normalizePluginName } from './registry';
@@ -45,7 +45,7 @@ export function detectPluginContext(pluginName: string): PluginContext {
   const packageJsonPath = path.join(cwd, 'package.json');
   let packageInfo: PackageInfo;
   try {
-    packageInfo = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    packageInfo = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
   } catch (error) {
     logger.debug(`Failed to parse package.json: ${error}`);
     return { isLocalDevelopment: false };
@@ -66,7 +66,7 @@ export function detectPluginContext(pluginName: string): PluginContext {
   if (isCurrentPlugin) {
     const mainEntry = packageInfo.main || 'dist/index.js';
     const localPath = path.resolve(cwd, mainEntry);
-    const needsBuild = !fs.existsSync(localPath);
+    const needsBuild = !existsSync(localPath);
 
     logger.debug(`Detected local plugin development: ${pluginName}`);
     logger.debug(`Expected output: ${localPath}`);
@@ -100,7 +100,7 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
       await buildProject(process.cwd(), true);
 
       // Verify the build created the expected output
-      if (localPath && fs.existsSync(localPath)) {
+      if (localPath && existsSync(localPath)) {
         logger.success('Plugin built successfully');
         return true;
       } else {

@@ -1,51 +1,195 @@
 /**
- * Global test setup for CLI tests
- * This file is preloaded by Bun test runner via bunfig.toml
+ * Global test setup for CLI package
+ * This file runs before all tests to set up mocks and globals
  */
 
-// Enable test mode to skip dependency installation and other CI optimizations
-process.env.ELIZA_TEST_MODE = 'true';
-process.env.NODE_ENV = 'test';
+import { mock } from 'bun:test';
 
-// Store original handlers
-const originalHandlers = {
-  unhandledRejection: process.listeners('unhandledRejection'),
-  uncaughtException: process.listeners('uncaughtException'),
+
+// Mock the entire @elizaos/server package
+mock.module('@elizaos/server', () => ({
+  AgentServer: mock(() => ({
+    initialize: mock(),
+    startAgent: mock(),
+    stopAgent: mock(),
+    loadCharacterTryPath: mock(),
+    jsonToCharacter: mock(),
+  })),
+  expandTildePath: mock((path: string) => path),
+  resolvePgliteDir: mock((dir?: string) => dir || './.elizadb'),
+}));
+
+// Mock fs module to ensure all exports are available for Node.js v23 compatibility
+const createFsMock = () => {
+  // Get base fs module but handle if createWriteStream is missing in the test environment
+  let fs;
+  try {
+    fs = require('fs');
+  } catch (e) {
+    fs = {};
+  }
+  
+  const mockWriteStream = {
+    write: mock(),
+    end: mock(),
+    on: mock(),
+    once: mock(),
+    emit: mock(),
+    destroy: mock(),
+    path: '',
+  };
+
+  const mockReadStream = {
+    read: mock(),
+    on: mock(),
+    once: mock(),
+    emit: mock(),
+    destroy: mock(),
+    path: '',
+  };
+
+  return {
+    // Include all existing fs exports if available
+    ...fs,
+    // Always provide these functions since they may be missing in test environment
+    createWriteStream: fs.createWriteStream || mock((path: string, options?: any) => {
+      mockWriteStream.path = path;
+      return mockWriteStream;
+    }),
+    createReadStream: fs.createReadStream || mock((path: string, options?: any) => {
+      mockReadStream.path = path;
+      return mockReadStream;
+    }),
+    rmSync: fs.rmSync || mock((path: string, options?: any) => {}),
+    rm: fs.rm || mock((path: string, options: any, callback: Function) => callback()),
+    existsSync: fs.existsSync || mock((path: string) => false),
+    readFileSync: fs.readFileSync || mock((path: string) => ''),
+    writeFileSync: fs.writeFileSync || mock((path: string, data: any) => {}),
+    statSync:
+      fs.statSync || mock((path: string) => ({ isDirectory: () => false, isFile: () => true })),
+    readdirSync: fs.readdirSync || mock((path: string) => []),
+    mkdirSync: fs.mkdirSync || mock((path: string, options?: any) => {}),
+    readFile: fs.readFile || mock((path: string, callback: Function) => callback(null, '')),
+    writeFile: fs.writeFile || mock((path: string, data: any, callback: Function) => callback()),
+    access: fs.access || mock((path: string, callback: Function) => callback()),
+    copyFile: fs.copyFile || mock((src: string, dest: string, callback: Function) => callback()),
+    // Additional fs methods that might be needed
+    promises: fs.promises || {
+      readFile: mock((path: string) => Promise.resolve('')),
+      writeFile: mock((path: string, data: any) => Promise.resolve()),
+      mkdir: mock((path: string, options?: any) => Promise.resolve()),
+      readdir: mock((path: string) => Promise.resolve([])),
+      stat: mock((path: string) => Promise.resolve({ isDirectory: () => false, isFile: () => true })),
+      access: mock((path: string) => Promise.resolve()),
+      copyFile: mock((src: string, dest: string) => Promise.resolve()),
+    },
+  };
 };
 
-// Add a more intelligent unhandled rejection handler
-// that logs warnings but doesn't fail the test unless it's actually a test failure
-process.on('unhandledRejection', (reason: any) => {
-  // If it's a test-related error, let it bubble up
-  if (reason && typeof reason === 'object' && reason.name === 'AssertionError') {
-    throw reason;
-  }
+// Mock both fs and node:fs to handle different import styles
+mock.module('node:fs', createFsMock);
+mock.module('fs', createFsMock);
 
-  // For other unhandled rejections (like process cleanup issues), log and continue
-  console.warn('Unhandled promise rejection (non-test):', reason);
+// Mock fs-extra to prevent createWriteStream issues
+mock.module('fs-extra', () => {
+  const fs = createFsMock();
+  return {
+    // Re-export all fs methods
+    ...fs,
+    // Additional fs-extra methods
+    copy: mock((src: string, dest: string) => Promise.resolve()),
+    ensureDir: mock((path: string) => Promise.resolve()),
+    emptyDir: mock((path: string) => Promise.resolve()),
+    remove: mock((path: string) => Promise.resolve()),
+    move: mock((src: string, dest: string) => Promise.resolve()),
+    outputFile: mock((file: string, data: any) => Promise.resolve()),
+    readJson: mock((file: string) => Promise.resolve({})),
+    writeJson: mock((file: string, object: any) => Promise.resolve()),
+    pathExists: mock((path: string) => Promise.resolve(false)),
+    // Sync versions
+    copySync: mock((src: string, dest: string) => {}),
+    ensureDirSync: mock((path: string) => {}),
+    emptyDirSync: mock((path: string) => {}),
+    removeSync: mock((path: string) => {}),
+    moveSync: mock((src: string, dest: string) => {}),
+    outputFileSync: mock((file: string, data: any) => {}),
+    readJsonSync: mock((file: string) => ({})),
+    writeJsonSync: mock((file: string, object: any) => {}),
+    pathExistsSync: mock((path: string) => false),
+  };
 });
 
-// Handle uncaught exceptions similarly
-process.on('uncaughtException', (error: Error) => {
-  // If it's a test-related error, let it bubble up
-  if (error.name === 'AssertionError') {
-    throw error;
-  }
+// Mock socket.io to prevent server startup issues in tests
+mock.module('socket.io', () => ({
+  Server: mock(() => ({
+    on: mock(),
+    emit: mock(),
+    use: mock(),
+    engine: {
+      on: mock(),
+    },
+  })),
+}));
 
-  // For other uncaught exceptions (like process cleanup issues), log and continue
-  console.warn('Uncaught exception (non-test):', error.message);
+// Mock express to prevent server startup issues
+mock.module('express', () => {
+  const mockApp = {
+    use: mock(),
+    get: mock(),
+    post: mock(),
+    put: mock(),
+    delete: mock(),
+    listen: mock(),
+    set: mock(),
+  };
+
+  const mockExpress = mock(() => mockApp);
+  mockExpress.static = mock();
+  mockExpress.json = mock();
+  mockExpress.urlencoded = mock();
+  mockExpress.Router = mock(() => ({
+    use: mock(),
+    get: mock(),
+    post: mock(),
+    put: mock(),
+    delete: mock(),
+  }));
+
+  return {
+    default: mockExpress,
+    ...mockExpress,
+  };
 });
 
-// Cleanup function to restore original handlers if needed
-(globalThis as any).__testCleanup = () => {
-  process.removeAllListeners('unhandledRejection');
-  process.removeAllListeners('uncaughtException');
+// Mock body-parser to prevent server startup issues
+mock.module('body-parser', () => ({
+  json: mock(() => (req: any, res: any, next: any) => next()),
+  urlencoded: mock(() => (req: any, res: any, next: any) => next()),
+  text: mock(() => (req: any, res: any, next: any) => next()),
+  raw: mock(() => (req: any, res: any, next: any) => next()),
+}));
 
-  originalHandlers.unhandledRejection.forEach((handler) => {
-    process.on('unhandledRejection', handler);
-  });
+// Mock helmet for security headers
+mock.module('helmet', () => {
+  const helmet = mock(() => (req: any, res: any, next: any) => next());
+  return {
+    default: helmet,
+    ...helmet,
+  };
+});
 
-  originalHandlers.uncaughtException.forEach((handler) => {
-    process.on('uncaughtException', handler);
-  });
+// Mock cors
+mock.module('cors', () => {
+  const cors = mock(() => (req: any, res: any, next: any) => next());
+  return {
+    default: cors,
+    ...cors,
+  };
+});
+
+// Ensure logger is available globally
+global.console = {
+  ...console,
+  debug: console.log,
+  trace: console.log,
 };

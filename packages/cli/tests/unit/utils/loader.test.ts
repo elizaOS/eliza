@@ -23,18 +23,14 @@ mock.module('node:fs', () => ({
     mkdir: mock(),
   },
 }));
-mock.module('@elizaos/core', () => {
-  const actual = await vi.importActual('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      error: mock(),
-      warn: mock(),
-      info: mock(),
-      debug: mock(),
-    },
-  };
-});
+mock.module('@elizaos/core', () => ({
+  logger: {
+    error: mock(),
+    warn: mock(),
+    info: mock(),
+    debug: mock(),
+  },
+}));
 
 const mockFs = fs as any;
 

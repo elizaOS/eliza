@@ -1,6 +1,6 @@
 [test]
 # Preload test setup to handle global configuration
-preload = ["./tests/setup.ts"]
+preload = ["./tests/global-setup.ts", "./tests/setup.ts"]
 
 # Test configuration
 timeout = 60000

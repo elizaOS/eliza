@@ -7,7 +7,7 @@ import {
   createMockSocketIO,
   createMockHttpServer,
   createMockService,
-  createMockMulterFile,
+  createMockUploadedFile,
 } from './mocks';
 import { ServiceType } from '@elizaos/core';
 
@@ -151,15 +151,28 @@ describe('Mock Factory Functions', () => {
     });
   });
 
-  describe('createMockMulterFile', () => {
-    it('should create a mock multer file', () => {
-      const file = createMockMulterFile();
+  describe('createMockUploadedFile', () => {
+    it('should create a mock express-fileupload file', () => {
+      const file = createMockUploadedFile();
 
-      expect(file.fieldname).toBe('file');
-      expect(file.originalname).toBe('test.jpg');
+      expect(file.name).toBe('test.jpg');
       expect(file.mimetype).toBe('image/jpeg');
       expect(file.size).toBe(12345);
-      expect(file.buffer).toBeInstanceOf(Buffer);
+      expect(file.data).toBeInstanceOf(Buffer);
+      expect(file.tempFilePath).toBe('/tmp/upload_123456');
+      expect(typeof file.mv).toBe('function');
+    });
+
+    it('should allow overriding file properties', () => {
+      const file = createMockUploadedFile({
+        name: 'custom.png',
+        mimetype: 'image/png',
+        size: 54321,
+      });
+
+      expect(file.name).toBe('custom.png');
+      expect(file.mimetype).toBe('image/png');
+      expect(file.size).toBe(54321);
     });
   });
 });

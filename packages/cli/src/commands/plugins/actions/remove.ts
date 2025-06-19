@@ -2,7 +2,7 @@ import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { handleError } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-import fs from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { findPluginPackageName } from '../utils/naming';
 import { getDependenciesFromDirectory } from '../utils/directory';
@@ -73,9 +73,9 @@ export async function removePlugin(plugin: string): Promise<void> {
   const dirNameToRemove = `plugin-${baseName}`;
 
   const pluginDir = path.join(cwd, dirNameToRemove);
-  if (fs.existsSync(pluginDir)) {
+  if (existsSync(pluginDir)) {
     try {
-      fs.rmSync(pluginDir, { recursive: true, force: true });
+      rmSync(pluginDir, { recursive: true, force: true });
     } catch (rmError) {
       logger.error(
         `Failed to remove directory ${pluginDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`
@@ -83,9 +83,9 @@ export async function removePlugin(plugin: string): Promise<void> {
     }
   } else {
     const nonPrefixedDir = path.join(cwd, baseName);
-    if (fs.existsSync(nonPrefixedDir)) {
+    if (existsSync(nonPrefixedDir)) {
       try {
-        fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
+        rmSync(nonPrefixedDir, { recursive: true, force: true });
       } catch (rmError) {
         logger.error(
           `Failed to remove directory ${nonPrefixedDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`

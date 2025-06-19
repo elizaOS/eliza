@@ -2,47 +2,58 @@
  * Unit tests for file utilities
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import {
   createSecureUploadDir,
   sanitizeFilename,
   cleanupFile,
   cleanupFiles,
+  cleanupUploadedFile,
 } from '../api/shared/file-utils';
 import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 
 // Mock dependencies
+const fsMock = {
+  existsSync: mock(),
+  unlinkSync: mock(),
+};
+
+const loggerMock = {
+  info: mock(),
+  debug: mock(),
+  warn: mock(),
+  error: mock(),
+};
+
 mock.module('fs', () => ({
-  default: {
-    existsSync: mock.fn(),
-    unlinkSync: mock.fn(),
-  },
+  default: fsMock,
 }));
 
 mock.module('@elizaos/core', async () => {
   const actual = await import('@elizaos/core');
   return {
     ...actual,
-    logger: {
-      info: mock.fn(),
-      debug: mock.fn(),
-      warn: mock.fn(),
-      error: mock.fn(),
-    },
+    logger: loggerMock,
   };
 });
 
 describe('File Utilities', () => {
   beforeEach(() => {
-    mock.restore();
+    // Reset mocks before each test
+    fsMock.existsSync.mockReturnValue(false);
+    fsMock.unlinkSync.mockReset();
+    loggerMock.debug.mockReset();
+    loggerMock.error.mockReset();
+    loggerMock.warn.mockReset();
+
     // Mock process.cwd() to return a consistent value
-    mock.spyOn(process, 'cwd').mockReturnValue('/test/app');
+    process.cwd = () => '/test/app';
   });
 
   afterEach(() => {
-    mock.restore();
+    // Clean up mocks after each test
   });
 
   describe('createSecureUploadDir', () => {
@@ -153,30 +164,30 @@ describe('File Utilities', () => {
   describe('cleanupFile', () => {
     it('should delete existing file', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      (fs.existsSync as any).mockReturnValue(true);
+      fsMock.existsSync.mockReturnValue(true);
 
       cleanupFile(filePath);
 
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.resolve(filePath));
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(filePath));
+      expect(loggerMock.debug).toHaveBeenCalledWith(
         expect.stringContaining('Successfully cleaned up file')
       );
     });
 
     it('should handle non-existent file gracefully', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      (fs.existsSync as any).mockReturnValue(false);
+      fsMock.existsSync.mockReturnValue(false);
 
       cleanupFile(filePath);
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
     });
 
     it('should handle empty file path', () => {
       cleanupFile('');
 
-      expect(fs.existsSync).not.toHaveBeenCalled();
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fsMock.existsSync).not.toHaveBeenCalled();
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
     });
 
     it('should block path traversal attempts', () => {
@@ -184,8 +195,8 @@ describe('File Utilities', () => {
 
       cleanupFile(maliciousPath);
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
+      expect(loggerMock.warn).toHaveBeenCalledWith(
         expect.stringContaining('Potentially unsafe file path blocked')
       );
     });
@@ -195,22 +206,22 @@ describe('File Utilities', () => {
 
       cleanupFile(outsidePath);
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
+      expect(loggerMock.warn).toHaveBeenCalledWith(
         expect.stringContaining('Potentially unsafe file path blocked')
       );
     });
 
     it('should handle file deletion errors', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.unlinkSync as any).mockImplementation(() => {
+      fsMock.existsSync.mockReturnValue(true);
+      fsMock.unlinkSync.mockImplementation(() => {
         throw new Error('Permission denied');
       });
 
       cleanupFile(filePath);
 
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(loggerMock.error).toHaveBeenCalledWith(
         expect.stringContaining('Error cleaning up file'),
         expect.any(Error)
       );
@@ -218,54 +229,70 @@ describe('File Utilities', () => {
 
     it('should normalize paths before checking', () => {
       const filePath = '/test/app/uploads/../uploads/test.jpg';
-      (fs.existsSync as any).mockReturnValue(true);
+      fsMock.existsSync.mockReturnValue(true);
 
       cleanupFile(filePath);
 
       // Should normalize to /test/app/uploads/test.jpg
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.resolve('/test/app/uploads/test.jpg'));
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve('/test/app/uploads/test.jpg'));
     });
   });
 
   describe('cleanupFiles', () => {
     it('should cleanup multiple files', () => {
       const files = [
-        { path: '/test/app/uploads/file1.jpg' },
-        { path: '/test/app/uploads/file2.pdf' },
-        { path: '/test/app/uploads/file3.mp3' },
-      ] as Express.Multer.File[];
+        { tempFilePath: '/test/app/uploads/file1.jpg' },
+        { tempFilePath: '/test/app/uploads/file2.pdf' },
+        { tempFilePath: '/test/app/uploads/file3.mp3' },
+      ] as any[];
 
-      (fs.existsSync as any).mockReturnValue(true);
+      fsMock.existsSync.mockReturnValue(true);
 
       cleanupFiles(files);
 
-      expect(fs.unlinkSync).toHaveBeenCalledTimes(3);
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.resolve(files[0].path));
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.resolve(files[1].path));
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.resolve(files[2].path));
+      expect(fsMock.unlinkSync).toHaveBeenCalledTimes(3);
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(files[0].tempFilePath));
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(files[1].tempFilePath));
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(files[2].tempFilePath));
     });
 
     it('should handle empty files array', () => {
       cleanupFiles([]);
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
     });
 
     it('should handle undefined files', () => {
       cleanupFiles(undefined as any);
 
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it('should handle files without tempFilePath', () => {
+      const files = [
+        { tempFilePath: '/test/app/uploads/file1.jpg' },
+        { tempFilePath: undefined },
+        { tempFilePath: '/test/app/uploads/file3.mp3' },
+      ] as any[];
+
+      fsMock.existsSync.mockReturnValue(true);
+
+      cleanupFiles(files);
+
+      expect(fsMock.unlinkSync).toHaveBeenCalledTimes(2);
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(files[0].tempFilePath));
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(files[2].tempFilePath));
     });
 
     it('should continue cleanup even if one file fails', () => {
       const files = [
-        { path: '/test/app/uploads/file1.jpg' },
-        { path: '/test/app/uploads/file2.pdf' },
-        { path: '/test/app/uploads/file3.mp3' },
-      ] as Express.Multer.File[];
+        { tempFilePath: '/test/app/uploads/file1.jpg' },
+        { tempFilePath: '/test/app/uploads/file2.pdf' },
+        { tempFilePath: '/test/app/uploads/file3.mp3' },
+      ] as any[];
 
-      (fs.existsSync as any).mockReturnValue(true);
-      (fs.unlinkSync as any)
+      fsMock.existsSync.mockReturnValue(true);
+      fsMock.unlinkSync
         .mockImplementationOnce(() => {}) // Success
         .mockImplementationOnce(() => {
           throw new Error('Permission denied');
@@ -274,8 +301,28 @@ describe('File Utilities', () => {
 
       cleanupFiles(files);
 
-      expect(fs.unlinkSync).toHaveBeenCalledTimes(3);
-      expect(logger.error).toHaveBeenCalledOnce();
+      expect(fsMock.unlinkSync).toHaveBeenCalledTimes(3);
+      expect(loggerMock.error).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('cleanupUploadedFile', () => {
+    it('should cleanup a single uploaded file', () => {
+      const file = { tempFilePath: '/test/app/uploads/file1.jpg' } as any;
+
+      fsMock.existsSync.mockReturnValue(true);
+
+      cleanupUploadedFile(file);
+
+      expect(fsMock.unlinkSync).toHaveBeenCalledWith(path.resolve(file.tempFilePath));
+    });
+
+    it('should handle file without tempFilePath', () => {
+      const file = { tempFilePath: undefined } as any;
+
+      cleanupUploadedFile(file);
+
+      expect(fsMock.unlinkSync).not.toHaveBeenCalled();
     });
   });
 });

@@ -424,22 +424,19 @@ export function createMockService(overrides?: Partial<Service>): Service {
 }
 
 /**
- * Creates mock multer file
+ * Creates mock express-fileupload file
  */
-export function createMockMulterFile(
-  overrides?: Partial<Express.Multer.File>
-): Express.Multer.File {
+export function createMockUploadedFile(overrides?: Partial<any>): any {
   return {
-    fieldname: 'file',
-    originalname: 'test.jpg',
+    name: 'test.jpg',
     encoding: '7bit',
     mimetype: 'image/jpeg',
-    destination: '/tmp/uploads',
-    filename: 'test-123.jpg',
-    path: '/tmp/uploads/test-123.jpg',
+    data: Buffer.from('test'),
+    tempFilePath: '/tmp/upload_123456',
     size: 12345,
-    stream: null as any,
-    buffer: Buffer.from('test'),
+    truncated: false,
+    md5: 'abc123',
+    mv: mock.fn((path: string) => Promise.resolve()),
     ...overrides,
   };
 }

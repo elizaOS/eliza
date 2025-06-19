@@ -8,6 +8,7 @@ mock.module('node:fs', () => ({
   existsSync: mock(() => true),
   readFileSync: mock(() => '{}'),
   statSync: mock(() => ({ isDirectory: () => true })),
+  readdirSync: mock(() => []),
 }));
 
 // Mock UserEnvironment

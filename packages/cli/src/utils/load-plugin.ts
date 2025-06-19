@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   detectPluginContext,
@@ -48,8 +48,8 @@ function resolveNodeModulesPath(repository: string, ...segments: string[]): stri
 async function readPackageJson(repository: string): Promise<PackageJson | null> {
   const packageJsonPath = resolveNodeModulesPath(repository, 'package.json');
   try {
-    if (fs.existsSync(packageJsonPath)) {
-      return JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    if (existsSync(packageJsonPath)) {
+      return JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     }
   } catch (error) {
     logger.debug(`Failed to read package.json for '${repository}':`, error);
@@ -96,7 +96,7 @@ const importStrategies: ImportStrategy[] = [
         }
 
         // Try to load from built output
-        if (context.localPath && fs.existsSync(context.localPath)) {
+        if (context.localPath && existsSync(context.localPath)) {
           logger.info(`Loading local development plugin: ${repository}`);
           return tryImporting(context.localPath, 'local development plugin', repository);
         }
@@ -118,7 +118,7 @@ const importStrategies: ImportStrategy[] = [
         // Try to find the plugin in the workspace
         const pluginName = repository.replace('@elizaos/', '');
         const workspacePath = path.resolve(process.cwd(), '..', pluginName, 'dist', 'index.js');
-        if (fs.existsSync(workspacePath)) {
+        if (existsSync(workspacePath)) {
           return tryImporting(workspacePath, 'workspace dependency', repository);
         }
       }
@@ -138,7 +138,7 @@ const importStrategies: ImportStrategy[] = [
     name: 'global node_modules',
     tryImport: async (repository: string) => {
       const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
-      if (!fs.existsSync(path.dirname(globalPath))) {
+      if (!existsSync(path.dirname(globalPath))) {
         logger.debug(
           `Global node_modules directory not found at ${path.dirname(globalPath)}, skipping for ${repository}`
         );

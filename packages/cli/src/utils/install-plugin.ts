@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
 import { executeInstallation, executeInstallationWithFallback } from './package-manager';
@@ -26,7 +26,7 @@ function getCliDirectory(): string | null {
       );
 
       // Verify this is actually the CLI directory
-      if (fs.existsSync(path.join(cliDir, 'package.json'))) {
+      if (existsSync(path.join(cliDir, 'package.json'))) {
         return cliDir;
       }
     }

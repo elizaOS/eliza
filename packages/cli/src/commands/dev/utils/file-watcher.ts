@@ -1,5 +1,5 @@
 import chokidar from 'chokidar';
-import fs from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { WatcherConfig } from '../types';
 
@@ -23,7 +23,7 @@ function findTsFiles(dir: string, watchDir: string): string[] {
   let results: string[] = [];
 
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const entries = readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
@@ -67,7 +67,7 @@ export async function watchDirectory(
 
     // Use a simpler approach - watch the src directory directly
     const srcDir = path.join(absoluteDir, 'src');
-    const dirToWatch = fs.existsSync(srcDir) ? srcDir : absoluteDir;
+    const dirToWatch = existsSync(srcDir) ? srcDir : absoluteDir;
 
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };

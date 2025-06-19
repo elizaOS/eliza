@@ -9,6 +9,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+// Ensure logger has all required methods with fallbacks
+const safeLogger = {
+  debug: logger?.debug || console.log,
+  info: logger?.info || console.log,
+  warn: logger?.warn || console.warn,
+  error: logger?.error || console.error,
+  success: logger?.success || console.log,
+};
+
 interface TestStats {
   total: number;
   passed: number;
@@ -64,7 +73,7 @@ export class TestRunner {
         // Store the actual plugin being tested
         this.pluginUnderTest = nonCorePlugins[0];
         this.isDirectPluginTest = true;
-        logger.debug(
+        safeLogger.debug(
           `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
         );
       } else {
@@ -80,7 +89,7 @@ export class TestRunner {
     ) {
       this.pluginUnderTest = projectAgent.plugins[0];
       this.isDirectPluginTest = true;
-      logger.debug(
+      safeLogger.debug(
         `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
       );
     } else {
@@ -114,7 +123,7 @@ export class TestRunner {
    * @param suite The test suite to run
    */
   private async runTestSuite(suite: TestSuite) {
-    logger.info(`\nRunning test suite: ${suite.name}`);
+    safeLogger.info(`\nRunning test suite: ${suite.name}`);
 
     if (suite.tests.length > 0) {
       this.stats.hasTests = true; // Mark that we found tests
@@ -124,14 +133,14 @@ export class TestRunner {
       this.stats.total++;
 
       try {
-        logger.info(`  Running test: ${test.name}`);
+        safeLogger.info(`  Running test: ${test.name}`);
         await test.fn(this.runtime);
         this.stats.passed++;
-        logger.success(`  [✓] ${test.name}`);
+        safeLogger.success(`  [✓] ${test.name}`);
       } catch (error) {
         this.stats.failed++;
-        logger.error(`  [X] ${test.name}`);
-        logger.error(`    ${error instanceof Error ? error.message : String(error)}`);
+        safeLogger.error(`  [X] ${test.name}`);
+        safeLogger.error(`    ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -142,12 +151,12 @@ export class TestRunner {
   private async runProjectTests(options: TestOptions) {
     if (!this.projectAgent?.tests || options.skipProjectTests || this.isDirectPluginTest) {
       if (this.isDirectPluginTest) {
-        logger.info('Skipping project tests when directly testing a plugin');
+        safeLogger.info('Skipping project tests when directly testing a plugin');
       }
       return;
     }
 
-    logger.info('\nRunning project tests...');
+    safeLogger.info('\nRunning project tests...');
 
     const testSuites = Array.isArray(this.projectAgent.tests)
       ? this.projectAgent.tests
@@ -160,7 +169,7 @@ export class TestRunner {
 
       // Apply filter if specified
       if (!this.matchesFilter(suite.name, options.filter)) {
-        logger.info(
+        safeLogger.info(
           `Skipping test suite "${suite.name}" (doesn't match filter "${options.filter}")`
         );
         this.stats.skipped++;
@@ -182,17 +191,17 @@ export class TestRunner {
 
     // Only run plugin tests when we're actually in a plugin directory
     if (this.isDirectPluginTest) {
-      logger.info('\nRunning plugin tests...');
+      safeLogger.info('\nRunning plugin tests...');
 
       // When directly testing a plugin, we test only that plugin
       const plugin = this.pluginUnderTest;
       if (!plugin || !plugin.tests) {
-        logger.info(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
-        logger.info(
+        safeLogger.info(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
+        safeLogger.info(
           "To add tests to your plugin, include a 'tests' property with an array of test suites."
         );
-        logger.info('Example:');
-        logger.info(`
+        safeLogger.info('Example:');
+        safeLogger.info(`
 export const myPlugin = {
   name: "my-plugin",
   description: "My awesome plugin",
@@ -217,7 +226,7 @@ export const myPlugin = {
         return;
       }
 
-      logger.info(`Found test suites for plugin: ${plugin.name}`);
+      safeLogger.info(`Found test suites for plugin: ${plugin.name}`);
 
       // Handle both single suite and array of suites
       const testSuites = Array.isArray(plugin.tests) ? plugin.tests : [plugin.tests];
@@ -229,7 +238,7 @@ export const myPlugin = {
 
         // Apply filter if specified
         if (!this.matchesFilter(suite.name, options.filter)) {
-          logger.info(
+          safeLogger.info(
             `Skipping test suite "${suite.name}" because it doesn't match filter "${options.filter}"`
           );
           this.stats.skipped++;
@@ -240,7 +249,7 @@ export const myPlugin = {
       }
     } else {
       // This should not happen in the new logic since we properly scope tests by directory type
-      logger.info('Plugin tests were requested but this is not a direct plugin test');
+      safeLogger.info('Plugin tests were requested but this is not a direct plugin test');
     }
   }
 
@@ -249,7 +258,7 @@ export const myPlugin = {
    */
   private async runE2eTests(options: TestOptions) {
     if (options.skipE2eTests) {
-      logger.info('Skipping e2e tests (--skip-e2e-tests flag)');
+      safeLogger.info('Skipping e2e tests (--skip-e2e-tests flag)');
       return;
     }
 
@@ -257,11 +266,11 @@ export const myPlugin = {
       // Check for e2e directory
       const e2eDir = path.join(process.cwd(), 'e2e');
       if (!fs.existsSync(e2eDir)) {
-        logger.debug('No e2e directory found, skipping e2e tests');
+        safeLogger.debug('No e2e directory found, skipping e2e tests');
         return;
       }
 
-      logger.info('\nRunning e2e tests...');
+      safeLogger.info('\nRunning e2e tests...');
 
       // Get all .ts files in the e2e directory
       const walk = (dir: string): string[] =>
@@ -277,11 +286,11 @@ export const myPlugin = {
       const testFiles = walk(e2eDir);
 
       if (testFiles.length === 0) {
-        logger.info('No e2e test files found');
+        safeLogger.info('No e2e test files found');
         return;
       }
 
-      logger.info(`Found ${testFiles.length} e2e test files`);
+      safeLogger.info(`Found ${testFiles.length} e2e test files`);
 
       // Check if we have compiled dist versions
       const distE2eDir = path.join(process.cwd(), 'dist', 'e2e');
@@ -293,7 +302,7 @@ export const myPlugin = {
           // Get the file name for logging
           const fileName = path.basename(testFile);
           const fileNameWithoutExt = path.basename(testFile, '.test.ts');
-          logger.info(`Loading test file: ${fileName}`);
+          safeLogger.info(`Loading test file: ${fileName}`);
 
           // Check if we should try to load from the dist directory instead
           let moduleImportPath = testFile;
@@ -302,15 +311,15 @@ export const myPlugin = {
             const distFile = path.join(distE2eDir, `${fileNameWithoutExt}.test.js`);
             if (fs.existsSync(distFile)) {
               moduleImportPath = distFile;
-              logger.debug(`Using compiled version from ${distFile}`);
+              safeLogger.debug(`Using compiled version from ${distFile}`);
             } else {
               // Fall back to TS file, which might fail
-              logger.warn(
+              safeLogger.warn(
                 `No compiled version found for ${fileName}, attempting to import TypeScript directly (may fail)`
               );
             }
           } else {
-            logger.warn(
+            safeLogger.warn(
               `No dist/e2e directory found. E2E tests should be compiled first. Import may fail.`
             );
           }
@@ -320,8 +329,8 @@ export const myPlugin = {
           try {
             testModule = await import(pathToFileURL(moduleImportPath).href);
           } catch (importError) {
-            logger.error(`Failed to import test file ${fileName}:`, importError);
-            logger.info(
+            safeLogger.error(`Failed to import test file ${fileName}:`, importError);
+            safeLogger.info(
               `Make sure your e2e tests are properly compiled with 'npm run build' or 'bun run build'`
             );
             this.stats.failed++;
@@ -332,7 +341,7 @@ export const myPlugin = {
           const testSuite = testModule.default;
 
           if (!testSuite || !testSuite.tests) {
-            logger.warn(`No valid test suite found in ${fileName}`);
+            safeLogger.warn(`No valid test suite found in ${fileName}`);
             continue;
           }
 
@@ -352,7 +361,7 @@ export const myPlugin = {
               : false;
 
             if (!matchesFileName && !matchesSuiteName) {
-              logger.info(
+              safeLogger.info(
                 `Skipping test suite "${testSuite.name || 'unnamed'}" in ${fileName} (doesn't match filter "${options.filter}")`
               );
               this.stats.skipped++;
@@ -363,12 +372,12 @@ export const myPlugin = {
           // Run the test suite
           await this.runTestSuite(testSuite);
         } catch (error) {
-          logger.error(`Error running tests from ${testFile}:`, error);
+          safeLogger.error(`Error running tests from ${testFile}:`, error);
           this.stats.failed++;
         }
       }
     } catch (error) {
-      logger.error(`Error running e2e tests:`, error);
+      safeLogger.error(`Error running e2e tests:`, error);
     }
   }
 
@@ -388,9 +397,9 @@ export const myPlugin = {
 
     // Log summary
     if (!this.stats.hasTests) {
-      logger.info('\nNo test files found, exiting with code 0');
+      safeLogger.info('\nNo test files found, exiting with code 0');
     } else {
-      logger.info(
+      safeLogger.info(
         `\nTest Summary: ${this.stats.passed} passed, ${this.stats.failed} failed, ${this.stats.skipped} skipped`
       );
     }
