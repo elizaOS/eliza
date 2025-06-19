@@ -35,9 +35,9 @@ export const TEST_TIMEOUTS = {
     ? 45 * 1000 // 45 seconds in CI
     : (process.platform === 'win32' ? 2 * 60 * 1000 : 90 * 1000), // 2 minutes/90 seconds locally
 
-  // Server and process timeouts - macOS needs more time
+  // Server and process timeouts - macOS needs more time, especially in CI
   SERVER_STARTUP: isCI 
-    ? (isMacOS ? 30 * 1000 : 15 * 1000) // 30/15 seconds in CI
+    ? (isMacOS ? 60 * 1000 : 15 * 1000) // 60/15 seconds in CI - doubled for macOS CI
     : (isWindows ? 45 * 1000 : isMacOS ? 40 * 1000 : 30 * 1000), // Platform-specific locally
   PROCESS_CLEANUP: isCI 
     ? (isMacOS ? 8 * 1000 : 5 * 1000) // 8/5 seconds in CI

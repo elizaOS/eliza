@@ -819,8 +819,11 @@ export class AgentServer {
       logger.debug(`Current agents count: ${this.agents.size}`);
       logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      // Use http server instead of app.listen
-      this.server.listen(port, () => {
+      // Use http server instead of app.listen with explicit host binding and error handling
+      // For tests and macOS compatibility, prefer 127.0.0.1 when specified
+      const host = process.env.SERVER_HOST || '0.0.0.0';
+      
+      this.server.listen(port, host, () => {
         // Only show the dashboard URL in production mode
         if (process.env.NODE_ENV !== 'development') {
           // Display the dashboard URL with the correct port after the server is actually listening
@@ -833,12 +836,25 @@ export class AgentServer {
         console.log(`AgentServer is listening on port ${port}`);
 
         logger.success(
-          `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
+          `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
         );
         logger.debug(`Active agents: ${this.agents.size}`);
         this.agents.forEach((agent, id) => {
           logger.debug(`- Agent ${id}: ${agent.character.name}`);
         });
+      }).on('error', (error: any) => {
+        logger.error(`Failed to bind server to ${host}:${port}:`, error);
+        
+        // Provide helpful error messages for common issues
+        if (error.code === 'EADDRINUSE') {
+          logger.error(`Port ${port} is already in use. Please try a different port or stop the process using that port.`);
+        } else if (error.code === 'EACCES') {
+          logger.error(`Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`);
+        } else if (error.code === 'EADDRNOTAVAIL') {
+          logger.error(`Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`);
+        }
+        
+        throw error;
       });
 
       // Enhanced graceful shutdown

@@ -365,31 +365,84 @@ export async function waitForServerReady(
   endpoint: string = '/api/agents'
 ): Promise<void> {
   const startTime = Date.now();
-  const pollInterval = process.platform === 'darwin' ? 2000 : 1000; // macOS needs longer intervals
-  const requestTimeout = process.platform === 'darwin' ? 4000 : 2000; // macOS needs longer request timeout
+  const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+  const isMacOS = process.platform === 'darwin';
+  
+  // More conservative timeouts for macOS CI
+  const pollInterval = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
+  const requestTimeout = isMacOS && isCI ? 6000 : (isMacOS ? 4000 : 2000);
   
   console.log(`[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`);
+  console.log(`[DEBUG] Environment: CI=${isCI}, macOS=${isMacOS}`);
+
+  // First, check if anything is listening on the port using a simple connection test
+  let connectionAttempts = 0;
+  const maxConnectionAttempts = 3;
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
+      // Try a basic connection test first for better error diagnosis
+      const net = require('net');
+      const canConnect = await new Promise<boolean>((resolve) => {
+        const socket = new net.Socket();
+        const connectTimeout = setTimeout(() => {
+          socket.destroy();
+          resolve(false);
+        }, requestTimeout / 2);
+
+        socket.connect(port, '127.0.0.1', () => {
+          clearTimeout(connectTimeout);
+          socket.destroy();
+          resolve(true);
+        });
+
+        socket.on('error', () => {
+          clearTimeout(connectTimeout);
+          socket.destroy();
+          resolve(false);
+        });
+      });
+
+      if (!canConnect) {
+        connectionAttempts++;
+        const timeRemaining = maxWaitTime - (Date.now() - startTime);
+        console.log(`[DEBUG] Connection attempt ${connectionAttempts}/${maxConnectionAttempts} failed - no process listening on port ${port}, ${Math.round(timeRemaining/1000)}s remaining`);
+        
+        if (connectionAttempts >= maxConnectionAttempts) {
+          // Check if process is still running but not bound yet
+          const timeRemaining = maxWaitTime - (Date.now() - startTime);
+          if (timeRemaining < maxWaitTime * 0.3) { // Less than 30% time remaining
+            console.log(`[DEBUG] Giving up on connection test, trying HTTP anyway...`);
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, pollInterval));
+            continue;
+          }
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval / 2));
+          continue;
+        }
+      }
+
+      // Now try HTTP request
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
 
-      const response = await fetch(`http://localhost:${port}${endpoint}`, {
+      const response = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
         signal: controller.signal,
-        // Add explicit headers for better macOS compatibility
         headers: {
           'User-Agent': 'ElizaOS-Test-Client/1.0',
           'Accept': 'application/json',
-          'Connection': 'keep-alive'
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache'
         }
       });
 
       clearTimeout(timeoutId);
       if (response.ok) {
         console.log(`[DEBUG] Server responded with status ${response.status}`);
-        // Server is ready, give it more time to stabilize on macOS
-        const stabilizationTime = process.platform === 'darwin' ? 2000 : 1000;
+        // Server is ready, give it more time to stabilize especially on macOS CI
+        const stabilizationTime = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
+        console.log(`[DEBUG] Stabilizing for ${stabilizationTime}ms...`);
         await new Promise((resolve) => setTimeout(resolve, stabilizationTime));
         return;
       } else {
@@ -398,7 +451,13 @@ export async function waitForServerReady(
     } catch (error) {
       // Server not ready yet, continue polling
       const timeRemaining = maxWaitTime - (Date.now() - startTime);
-      console.log(`[DEBUG] Server not ready yet (${error instanceof Error ? error.message : 'unknown error'}), ${Math.round(timeRemaining/1000)}s remaining`);
+      const errorMsg = error instanceof Error ? error.message : 'unknown error';
+      console.log(`[DEBUG] Server not ready yet (${errorMsg}), ${Math.round(timeRemaining/1000)}s remaining`);
+      
+      // Reset connection attempts on network errors
+      if (errorMsg.includes('fetch') || errorMsg.includes('AbortError')) {
+        connectionAttempts = 0;
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
@@ -437,35 +496,47 @@ export async function killProcessOnPort(port: number): Promise<void> {
     } else if (process.platform === 'darwin') {
       // macOS: More reliable process killing with better error handling
       try {
-        // First try to find processes listening on the port
+        // First try to find processes listening on the port with increased timeout
         const lsofResult = execSync(`lsof -ti:${port}`, {
           encoding: 'utf8',
           stdio: 'pipe',
-          timeout: 5000
+          timeout: 10000 // Increased timeout for CI
         });
         
-        const pids = lsofResult.trim().split('\n').filter(pid => pid);
+        const pids = lsofResult.trim().split('\n').filter(pid => pid && /^\d+$/.test(pid));
+        console.log(`[DEBUG] Found ${pids.length} processes on port ${port}: ${pids.join(', ')}`);
         
         for (const pid of pids) {
           try {
+            // Check if process exists first
+            execSync(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            
             // Try SIGTERM first
-            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 2000 });
-            // Wait a moment
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.log(`[DEBUG] Sending SIGTERM to PID ${pid}`);
+            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
+            
+            // Wait longer for graceful shutdown on macOS CI
+            const waitTime = process.env.CI === 'true' ? 3000 : 1000;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
             
             // Check if still running, then force kill
             try {
-              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 1000 });
-              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+              console.log(`[DEBUG] Process ${pid} still running, sending SIGKILL`);
+              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
+              await new Promise(resolve => setTimeout(resolve, 500));
             } catch (e) {
               // Process already dead, good
+              console.log(`[DEBUG] Process ${pid} terminated gracefully`);
             }
           } catch (e) {
-            // Ignore individual process kill errors
+            // Process doesn't exist or already killed, ignore
+            console.log(`[DEBUG] Process ${pid} not found or already terminated`);
           }
         }
       } catch (e) {
         // No processes found on port, which is fine
+        console.log(`[DEBUG] No processes found on port ${port} (expected if port is free)`);
       }
     } else {
       // Other Unix systems

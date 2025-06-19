@@ -23,9 +23,16 @@ describe('ElizaOS Agent Commands', () => {
     const scriptDir = join(__dirname, '..');
     elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
-    // Kill any existing processes on port 3000
+    // Kill any existing processes on port 3000 with extended cleanup for macOS CI
+    console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
     await killProcessOnPort(3000);
-    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+    
+    // Give macOS CI more time for complete port cleanup
+    const cleanupTime = process.platform === 'darwin' && process.env.CI === 'true' 
+      ? TEST_TIMEOUTS.MEDIUM_WAIT 
+      : TEST_TIMEOUTS.SHORT_WAIT;
+    console.log(`[DEBUG] Waiting ${cleanupTime}ms for port cleanup...`);
+    await new Promise((resolve) => setTimeout(resolve, cleanupTime));
 
     // Create database directory
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
@@ -50,8 +57,10 @@ describe('ElizaOS Agent Commands', () => {
           LOG_LEVEL: 'debug',
           PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
           NODE_OPTIONS: '--max-old-space-size=4096', // Give server more memory
+          SERVER_HOST: '127.0.0.1', // Explicit localhost binding for better macOS compatibility
         },
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false, // Ensure proper process cleanup
       }
     );
 
