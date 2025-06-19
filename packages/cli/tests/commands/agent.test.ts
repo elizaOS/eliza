@@ -106,24 +106,43 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   afterAll(async () => {
-    if (serverProcess) {
+    if (serverProcess && serverProcess.exitCode === null) {
       try {
-        // Use SIGTERM for graceful shutdown, fallback to SIGKILL
+        // Create exit promise before killing
+        const exitPromise = new Promise<void>((resolve) => {
+          const cleanup = () => {
+            serverProcess?.removeAllListeners?.('exit');
+            serverProcess?.removeAllListeners?.('error');
+            resolve();
+          };
+          serverProcess.once('exit', cleanup);
+          serverProcess.once('error', cleanup);
+          
+          // Fallback timeout
+          setTimeout(cleanup, 5000);
+        });
+
+        // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
 
-        // Wait briefly, then force kill if still running
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        if (!serverProcess.killed && serverProcess.exitCode === null) {
-          serverProcess.kill('SIGKILL');
-        }
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        // Wait for graceful exit
+        await Promise.race([
+          exitPromise,
+          new Promise<void>((resolve) => setTimeout(resolve, 3000))
+        ]);
 
-        // Wait for process to actually exit
-        if (!serverProcess.killed && serverProcess.exitCode === null) {
-          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.PROCESS_CLEANUP));
+        // Force kill if still running
+        if (serverProcess.exitCode === null) {
+          serverProcess.kill('SIGKILL');
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (e) {
-        // Ignore cleanup errors
+        // Ignore cleanup errors but try force kill
+        try {
+          serverProcess?.kill('SIGKILL');
+        } catch (e2) {
+          // Ignore force kill errors
+        }
       }
     }
 
