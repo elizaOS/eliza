@@ -67,6 +67,11 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'core/characters',
+          label: 'Character Files',
+        },
+        {
+          type: 'doc',
           id: 'core/knowledge',
           label: 'Knowledge',
         },
