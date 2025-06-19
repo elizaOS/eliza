@@ -60,14 +60,19 @@ jobs:
         run: bun --version
       
       - name: Debug Bun Setup
+        shell: bash
         run: |
           echo "PATH: $PATH"
-          echo "which bun: $(which bun)"
-          echo "bun location: $(command -v bun)"
-          echo "ls -la $(which bun):"
-          ls -la $(which bun) || echo "Failed to ls bun"
-          echo "Bun executable info:"
-          file $(which bun) || echo "Failed to get bun file info"
+          echo "which bun: $(which bun 2>/dev/null || echo 'which not found')"
+          echo "command -v bun: $(command -v bun 2>/dev/null || echo 'command not found')"
+          if command -v bun &> /dev/null; then
+            BUN_PATH=$(which bun 2>/dev/null || command -v bun)
+            echo "Bun found at: $BUN_PATH"
+            ls -la "$BUN_PATH" 2>/dev/null || echo "Failed to ls bun"
+            file "$BUN_PATH" 2>/dev/null || echo "Failed to get bun file info"
+          else
+            echo "Bun not found in PATH"
+          fi
 
       - name: Cache Bun dependencies
         uses: actions/cache@v4
