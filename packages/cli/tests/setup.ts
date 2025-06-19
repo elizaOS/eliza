@@ -21,14 +21,6 @@ mock.module('@elizaos/server', () => ({
 
 // Mock fs module to ensure all exports are available for Node.js v23 compatibility
 const createFsMock = () => {
-  // Get base fs module but handle if createWriteStream is missing in the test environment
-  let fs;
-  try {
-    fs = require('fs');
-  } catch (e) {
-    fs = {};
-  }
-  
   const mockWriteStream = {
     write: mock(),
     end: mock(),
@@ -49,9 +41,7 @@ const createFsMock = () => {
   };
 
   return {
-    // Include all existing fs exports if available
-    ...fs,
-    // Always provide these functions since they may be missing in test environment
+    // Core fs functions
     createWriteStream: mock((path: string, options?: any) => {
       mockWriteStream.path = path;
       return mockWriteStream;
@@ -72,8 +62,12 @@ const createFsMock = () => {
     writeFile: mock((path: string, data: any, callback: Function) => callback()),
     access: mock((path: string, callback: Function) => callback()),
     copyFile: mock((src: string, dest: string, callback: Function) => callback()),
-    // Additional fs methods that might be needed
-    promises: fs.promises || {
+    lstatSync: mock((path: string) => ({ isDirectory: () => false, isFile: () => true })),
+    unlinkSync: mock((path: string) => {}),
+    rmdirSync: mock((path: string, options?: any) => {}),
+    chmodSync: mock((path: string, mode: any) => {}),
+    // Promises interface
+    promises: {
       readFile: mock((path: string) => Promise.resolve('')),
       writeFile: mock((path: string, data: any) => Promise.resolve()),
       mkdir: mock((path: string, options?: any) => Promise.resolve()),
@@ -81,13 +75,29 @@ const createFsMock = () => {
       stat: mock((path: string) => Promise.resolve({ isDirectory: () => false, isFile: () => true })),
       access: mock((path: string) => Promise.resolve()),
       copyFile: mock((src: string, dest: string) => Promise.resolve()),
+      rmdir: mock((path: string, options?: any) => Promise.resolve()),
+      unlink: mock((path: string) => Promise.resolve()),
+      lstat: mock((path: string) => Promise.resolve({ isDirectory: () => false, isFile: () => true })),
     },
   };
 };
 
 // Mock both fs and node:fs to handle different import styles
-mock.module('node:fs', createFsMock);
-mock.module('fs', createFsMock);
+mock.module('node:fs', () => {
+  const fsMock = createFsMock();
+  return {
+    ...fsMock,
+    default: fsMock,
+  };
+});
+
+mock.module('fs', () => {
+  const fsMock = createFsMock();
+  return {
+    ...fsMock,
+    default: fsMock,
+  };
+});
 
 // Mock fs-extra to prevent createWriteStream issues
 mock.module('fs-extra', () => {

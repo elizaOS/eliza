@@ -19,9 +19,20 @@ export default defineConfig({
   dts: true,
   sourcemap: false,
   // Ensure that all external dependencies are properly handled.
-  // The regex explicitly includes dependencies that should not be externalized.
-  noExternal: [
-    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
+  // The regex explicitly includes dependencies that should be externalized (NOT bundled).
+  external: [
+    'express',
+    'fs-extra', 
+    'multer',
+    'socket.io',
+    '@elizaos/server',
+    'node:fs',
+    'node:path',
+    'node:http',
+    'node:https',
+    'node:stream',
+    'node:buffer',
+    'node:events'
   ],
   platform: 'node',
   minify: false,
