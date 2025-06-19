@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * This script copies the built CLI files into the create-eliza package
- * It should be run as part of the CLI build process
+ * This script copies template packages from the monorepo into the CLI templates directory
+ * It runs before the CLI build to prepare templates that will be included in the distribution
  */
 
 import path from 'node:path';
@@ -48,8 +48,8 @@ async function updatePackageJson(packagePath: string, cliVersion: string) {
 
 async function main() {
   try {
-    // Skip the CLI dist check - this script runs before tsup builds the CLI
-    // The templates directory will be created by tsup's assets configuration
+    // This script prepares templates in the source directory before the CLI is built
+    // It copies from monorepo packages to packages/cli/templates/
 
     // Prepare templates directory
     if (!fs.existsSync(TEMPLATES_DIR)) {
