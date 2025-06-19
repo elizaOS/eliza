@@ -13,4 +13,4 @@ auto = "fallback"
 
 [run]
 # Bun runtime optimizations
-shell = "/bin/bash"
+shell = "system"

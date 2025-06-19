@@ -10,12 +10,12 @@ const isMacOS = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
 export const TEST_TIMEOUTS = {
-  // Test framework timeouts - Platform-specific adjustments
+  // Test framework timeouts - More conservative for CI stability
   SUITE_TIMEOUT: isCI 
-    ? (isMacOS ? 3 * 60 * 1000 : 2 * 60 * 1000) // 3/2 minutes in CI
+    ? 2 * 60 * 1000 // 2 minutes in CI for all platforms
     : (isWindows ? 8 * 60 * 1000 : isMacOS ? 6 * 60 * 1000 : 5 * 60 * 1000), // Platform-specific locally
   INDIVIDUAL_TEST: isCI 
-    ? (isMacOS ? 90 * 1000 : 60 * 1000) // 90/60 seconds in CI
+    ? 30 * 1000 // 30 seconds in CI for all platforms
     : (isWindows ? 5 * 60 * 1000 : isMacOS ? 4 * 60 * 1000 : 3 * 60 * 1000), // Platform-specific locally
 
   // Command execution timeouts (execSync) - Platform-specific
@@ -43,15 +43,15 @@ export const TEST_TIMEOUTS = {
     ? (isMacOS ? 8 * 1000 : 5 * 1000) // 8/5 seconds in CI
     : (isWindows ? 15 * 1000 : isMacOS ? 12 * 1000 : 10 * 1000), // Platform-specific locally
 
-  // Wait times (for setTimeout) - Platform-specific adjustments
+  // Wait times (for setTimeout) - Simplified for CI stability
   SHORT_WAIT: isCI 
-    ? (isMacOS ? 2 * 1000 : 1 * 1000) // 2/1 seconds in CI
+    ? 1 * 1000 // 1 second in CI for all platforms
     : (isWindows ? 3 * 1000 : isMacOS ? 3 * 1000 : 2 * 1000), // Platform-specific locally
   MEDIUM_WAIT: isCI 
-    ? (isMacOS ? 4 * 1000 : 2 * 1000) // 4/2 seconds in CI
+    ? 2 * 1000 // 2 seconds in CI for all platforms
     : (isWindows ? 8 * 1000 : isMacOS ? 7 * 1000 : 5 * 1000), // Platform-specific locally
   LONG_WAIT: isCI 
-    ? (isMacOS ? 6 * 1000 : 3 * 1000) // 6/3 seconds in CI
+    ? 3 * 1000 // 3 seconds in CI for all platforms
     : (isWindows ? 15 * 1000 : isMacOS ? 12 * 1000 : 10 * 1000), // Platform-specific locally
 } as const;
 
