@@ -6,23 +6,25 @@
 
 // Detect CI environment to use shorter timeouts
 const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+const isMacOS = process.platform === 'darwin';
+const isWindows = process.platform === 'win32';
 
 export const TEST_TIMEOUTS = {
-  // Test framework timeouts - Reduced for CI, Windows needs longer timeouts
+  // Test framework timeouts - Platform-specific adjustments
   SUITE_TIMEOUT: isCI 
-    ? 2 * 60 * 1000 // 2 minutes in CI
-    : (process.platform === 'win32' ? 8 * 60 * 1000 : 5 * 60 * 1000), // 8/5 minutes locally
+    ? (isMacOS ? 3 * 60 * 1000 : 2 * 60 * 1000) // 3/2 minutes in CI
+    : (isWindows ? 8 * 60 * 1000 : isMacOS ? 6 * 60 * 1000 : 5 * 60 * 1000), // Platform-specific locally
   INDIVIDUAL_TEST: isCI 
-    ? 60 * 1000 // 1 minute in CI
-    : (process.platform === 'win32' ? 5 * 60 * 1000 : 3 * 60 * 1000), // 5/3 minutes locally
+    ? (isMacOS ? 90 * 1000 : 60 * 1000) // 90/60 seconds in CI
+    : (isWindows ? 5 * 60 * 1000 : isMacOS ? 4 * 60 * 1000 : 3 * 60 * 1000), // Platform-specific locally
 
-  // Command execution timeouts (execSync) - Reduced for CI
+  // Command execution timeouts (execSync) - Platform-specific
   QUICK_COMMAND: isCI 
-    ? 15 * 1000 // 15 seconds in CI
-    : (process.platform === 'win32' ? 45 * 1000 : 30 * 1000), // 45/30 seconds locally
+    ? (isMacOS ? 25 * 1000 : 15 * 1000) // 25/15 seconds in CI
+    : (isWindows ? 45 * 1000 : isMacOS ? 40 * 1000 : 30 * 1000), // Platform-specific locally
   STANDARD_COMMAND: isCI 
-    ? 30 * 1000 // 30 seconds in CI
-    : (process.platform === 'win32' ? 90 * 1000 : 60 * 1000), // 90/60 seconds locally
+    ? (isMacOS ? 45 * 1000 : 30 * 1000) // 45/30 seconds in CI
+    : (isWindows ? 90 * 1000 : isMacOS ? 75 * 1000 : 60 * 1000), // Platform-specific locally
   PLUGIN_INSTALLATION: isCI 
     ? 60 * 1000 // 1 minute in CI
     : (process.platform === 'win32' ? 3 * 60 * 1000 : 2 * 60 * 1000), // 3/2 minutes locally
@@ -33,24 +35,24 @@ export const TEST_TIMEOUTS = {
     ? 45 * 1000 // 45 seconds in CI
     : (process.platform === 'win32' ? 2 * 60 * 1000 : 90 * 1000), // 2 minutes/90 seconds locally
 
-  // Server and process timeouts - Reduced for CI
+  // Server and process timeouts - macOS needs more time
   SERVER_STARTUP: isCI 
-    ? 15 * 1000 // 15 seconds in CI
-    : (process.platform === 'win32' ? 45 * 1000 : 30 * 1000), // 45/30 seconds locally
+    ? (isMacOS ? 30 * 1000 : 15 * 1000) // 30/15 seconds in CI
+    : (isWindows ? 45 * 1000 : isMacOS ? 40 * 1000 : 30 * 1000), // Platform-specific locally
   PROCESS_CLEANUP: isCI 
-    ? 5 * 1000 // 5 seconds in CI
-    : (process.platform === 'win32' ? 15 * 1000 : 10 * 1000), // 15/10 seconds locally
+    ? (isMacOS ? 8 * 1000 : 5 * 1000) // 8/5 seconds in CI
+    : (isWindows ? 15 * 1000 : isMacOS ? 12 * 1000 : 10 * 1000), // Platform-specific locally
 
-  // Wait times (for setTimeout) - Significantly reduced for CI
+  // Wait times (for setTimeout) - Platform-specific adjustments
   SHORT_WAIT: isCI 
-    ? 1 * 1000 // 1 second in CI
-    : (process.platform === 'win32' ? 3 * 1000 : 2 * 1000), // 3/2 seconds locally
+    ? (isMacOS ? 2 * 1000 : 1 * 1000) // 2/1 seconds in CI
+    : (isWindows ? 3 * 1000 : isMacOS ? 3 * 1000 : 2 * 1000), // Platform-specific locally
   MEDIUM_WAIT: isCI 
-    ? 2 * 1000 // 2 seconds in CI
-    : (process.platform === 'win32' ? 8 * 1000 : 5 * 1000), // 8/5 seconds locally
+    ? (isMacOS ? 4 * 1000 : 2 * 1000) // 4/2 seconds in CI
+    : (isWindows ? 8 * 1000 : isMacOS ? 7 * 1000 : 5 * 1000), // Platform-specific locally
   LONG_WAIT: isCI 
-    ? 3 * 1000 // 3 seconds in CI
-    : (process.platform === 'win32' ? 15 * 1000 : 10 * 1000), // 15/10 seconds locally
+    ? (isMacOS ? 6 * 1000 : 3 * 1000) // 6/3 seconds in CI
+    : (isWindows ? 15 * 1000 : isMacOS ? 12 * 1000 : 10 * 1000), // Platform-specific locally
 } as const;
 
 /**

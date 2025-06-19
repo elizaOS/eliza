@@ -70,21 +70,42 @@ export function safeChangeDirectory(targetDir: string): void {
 export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
   const timeout = TEST_TIMEOUTS.PROJECT_CREATION;
 
-  const windowsOptions =
-    process.platform === 'win32'
-      ? {
-          timeout: timeout * 1.5,
-          killSignal: 'SIGKILL' as NodeJS.Signals,
-          windowsHide: true,
-        }
-      : {};
-
-  execSync(`${elizaosCmd} create ${projectName} --yes`, {
+  // Platform-specific options
+  const platformOptions: any = {
     stdio: 'pipe',
-    timeout,
-    ...windowsOptions,
-  });
-  process.chdir(projectName);
+  };
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options for project creation
+    platformOptions.timeout = timeout * 1.25;
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
+
+  try {
+    execSync(`${elizaosCmd} create ${projectName} --yes`, platformOptions);
+    process.chdir(projectName);
+  } catch (error: any) {
+    console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
+      status: error.status,
+      signal: error.signal,
+      platform: process.platform,
+      stdout: error.stdout?.toString() || '',
+      stderr: error.stderr?.toString() || ''
+    });
+    throw error;
+  }
 }
 
 /**
@@ -97,22 +118,49 @@ export function runCliCommand(
 ): string {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
 
-  // On Windows, use different timeout and signal handling
-  const windowsOptions =
-    process.platform === 'win32'
-      ? {
-          timeout: timeout * 1.5, // 50% longer timeout for Windows
-          killSignal: 'SIGKILL' as NodeJS.Signals, // Use SIGKILL instead of SIGTERM
-          windowsHide: true, // Hide console window
-        }
-      : {};
+  // Platform-specific options
+  const platformOptions: any = {};
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5; // 50% longer timeout for Windows
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    // Add environment variables for better macOS compatibility
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
 
-  return execSync(`${elizaosCmd} ${args}`, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-    timeout,
-    ...windowsOptions,
-  });
+  try {
+    return execSync(`${elizaosCmd} ${args}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
+      ...platformOptions,
+    });
+  } catch (error: any) {
+    // Enhanced error reporting for debugging
+    const errorDetails = {
+      command: `${elizaosCmd} ${args}`,
+      platform: process.platform,
+      timeout: platformOptions.timeout,
+      status: error.status,
+      signal: error.signal,
+      stdout: error.stdout?.toString() || '',
+      stderr: error.stderr?.toString() || '',
+      pid: error.pid
+    };
+    console.error('[CLI Command Error]', errorDetails);
+    throw error;
+  }
 }
 
 /**
@@ -125,21 +173,43 @@ export function runCliCommandSilently(
 ): string {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
 
-  const windowsOptions =
-    process.platform === 'win32'
-      ? {
-          timeout: timeout * 1.5,
-          killSignal: 'SIGKILL' as NodeJS.Signals,
-          windowsHide: true,
-        }
-      : {};
+  // Platform-specific options
+  const platformOptions: any = {};
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
 
-  return execSync(`${elizaosCmd} ${args}`, {
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout,
-    ...windowsOptions,
-  });
+  try {
+    return execSync(`${elizaosCmd} ${args}`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      ...platformOptions,
+    });
+  } catch (error: any) {
+    // Enhanced error reporting for debugging silent commands
+    console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
+      status: error.status,
+      signal: error.signal,
+      platform: process.platform,
+      timeout: platformOptions.timeout
+    });
+    throw error;
+  }
 }
 
 /**
@@ -152,21 +222,32 @@ export function expectCliCommandToFail(
 ): { status: number; output: string } {
   const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
 
-  const windowsOptions =
-    process.platform === 'win32'
-      ? {
-          timeout: timeout * 1.5,
-          killSignal: 'SIGKILL' as NodeJS.Signals,
-          windowsHide: true,
-        }
-      : {};
+  // Platform-specific options
+  const platformOptions: any = {};
+  
+  if (process.platform === 'win32') {
+    platformOptions.timeout = timeout * 1.5;
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    platformOptions.timeout = timeout * 1.25;
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    platformOptions.env = {
+      ...process.env,
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8'
+    };
+  } else {
+    platformOptions.timeout = timeout;
+  }
 
   try {
     const result = execSync(`${elizaosCmd} ${args}`, {
       encoding: 'utf8',
       stdio: 'pipe',
-      timeout,
-      ...windowsOptions,
+      ...platformOptions,
     });
     throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {
@@ -284,25 +365,40 @@ export async function waitForServerReady(
   endpoint: string = '/api/agents'
 ): Promise<void> {
   const startTime = Date.now();
-  const pollInterval = 1000; // Check every 1 second
+  const pollInterval = process.platform === 'darwin' ? 2000 : 1000; // macOS needs longer intervals
+  const requestTimeout = process.platform === 'darwin' ? 4000 : 2000; // macOS needs longer request timeout
+  
+  console.log(`[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`);
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
 
       const response = await fetch(`http://localhost:${port}${endpoint}`, {
         signal: controller.signal,
+        // Add explicit headers for better macOS compatibility
+        headers: {
+          'User-Agent': 'ElizaOS-Test-Client/1.0',
+          'Accept': 'application/json',
+          'Connection': 'keep-alive'
+        }
       });
 
       clearTimeout(timeoutId);
       if (response.ok) {
-        // Server is ready, give it one more second to stabilize
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        console.log(`[DEBUG] Server responded with status ${response.status}`);
+        // Server is ready, give it more time to stabilize on macOS
+        const stabilizationTime = process.platform === 'darwin' ? 2000 : 1000;
+        await new Promise((resolve) => setTimeout(resolve, stabilizationTime));
         return;
+      } else {
+        console.log(`[DEBUG] Server responded with status ${response.status}, continuing to wait...`);
       }
     } catch (error) {
       // Server not ready yet, continue polling
+      const timeRemaining = maxWaitTime - (Date.now() - startTime);
+      console.log(`[DEBUG] Server not ready yet (${error instanceof Error ? error.message : 'unknown error'}), ${Math.round(timeRemaining/1000)}s remaining`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
@@ -338,12 +434,52 @@ export async function killProcessOnPort(port: number): Promise<void> {
           // Ignore if process is already dead
         }
       }
+    } else if (process.platform === 'darwin') {
+      // macOS: More reliable process killing with better error handling
+      try {
+        // First try to find processes listening on the port
+        const lsofResult = execSync(`lsof -ti:${port}`, {
+          encoding: 'utf8',
+          stdio: 'pipe',
+          timeout: 5000
+        });
+        
+        const pids = lsofResult.trim().split('\n').filter(pid => pid);
+        
+        for (const pid of pids) {
+          try {
+            // Try SIGTERM first
+            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            // Wait a moment
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check if still running, then force kill
+            try {
+              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 1000 });
+              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            } catch (e) {
+              // Process already dead, good
+            }
+          } catch (e) {
+            // Ignore individual process kill errors
+          }
+        }
+      } catch (e) {
+        // No processes found on port, which is fine
+      }
     } else {
-      // Unix systems
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      // Other Unix systems
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { 
+        stdio: 'ignore',
+        timeout: 5000
+      });
     }
+    
+    // Give processes time to actually terminate
+    await new Promise(resolve => setTimeout(resolve, process.platform === 'darwin' ? 2000 : 1000));
   } catch (e) {
-    // Ignore port cleanup errors
+    // Ignore port cleanup errors but log them for debugging
+    console.log(`[DEBUG] Port cleanup for ${port} encountered error:`, e instanceof Error ? e.message : 'unknown');
   }
 }
 
