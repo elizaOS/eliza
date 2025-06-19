@@ -125,6 +125,21 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
         </div>
         {/* Action buttons in header */}
         <div className="flex items-center gap-1 ml-auto">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/settings/${agentIdForNav}`);
+                }}
+                variant="ghost"
+                size="icon"
+              >
+                <Settings className="h-4 w-4 m-2" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Configure Agent</TooltipContent>
+          </Tooltip>
           {isActive && !isStopping && (
             <Tooltip>
               <TooltipTrigger asChild>
