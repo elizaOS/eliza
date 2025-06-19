@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import { getUserServerRole, findWorldsForOwner } from '../roles';
 import { Role } from '../types';
 

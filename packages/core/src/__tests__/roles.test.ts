@@ -1,29 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, jest, beforeEach, afterEach } from 'bun:test';
 import { getUserServerRole, findWorldsForOwner } from '../roles';
 import { Role, type IAgentRuntime, type UUID, type World } from '../types';
 
-// Mock dependencies
-vi.mock('../entities', () => ({
-  createUniqueUuid: vi.fn((runtime, serverId) => `unique-${serverId}` as UUID),
-}));
+// Import modules to manually mock them
+import * as entities from '../entities';
+import * as logger from '../logger';
 
-vi.mock('../logger', () => ({
-  logger: {
-    error: vi.fn(),
-    info: vi.fn(),
-  },
-}));
+// Create mock functions
+const mockCreateUniqueUuid = jest.fn((runtime, serverId) => `unique-${serverId}` as UUID);
+const mockLogger = {
+  error: jest.fn(),
+  info: jest.fn(),
+};
 
 describe('roles utilities', () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Use jest.spyOn to mock functions instead of direct assignment
+    jest.spyOn(entities, 'createUniqueUuid').mockImplementation(mockCreateUniqueUuid);
+    
+    // Mock the logger methods directly
+    jest.spyOn(logger.logger, 'error').mockImplementation(mockLogger.error);
+    jest.spyOn(logger.logger, 'info').mockImplementation(mockLogger.info);
+
+    jest.clearAllMocks();
     mockRuntime = {
       agentId: 'agent-123' as UUID,
-      getWorld: vi.fn(),
-      getAllWorlds: vi.fn(),
+      getWorld: jest.fn(),
+      getAllWorlds: jest.fn(),
     } as unknown as IAgentRuntime;
+  });
+
+  afterEach(() => {
+    // Restore all mocks
+    jest.restoreAllMocks();
   });
 
   describe('getUserServerRole', () => {
@@ -194,48 +205,40 @@ describe('roles utilities', () => {
 
       expect(ownerWorlds).toBeDefined();
       expect(ownerWorlds?.length).toBe(2);
-      expect(ownerWorlds?.[0].id).toBe('world-1');
-      expect(ownerWorlds?.[1].id).toBe('world-3');
+      expect(ownerWorlds?.[0].id).toBe('world-1' as UUID);
+      expect(ownerWorlds?.[1].id).toBe('world-3' as UUID);
     });
 
     it('should return null when entityId is empty', async () => {
-      const { logger } = await import('../logger');
-
       const result = await findWorldsForOwner(mockRuntime, '');
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
+      expect(mockLogger.error).toHaveBeenCalledWith('User ID is required to find server');
     });
 
     it('should return null when entityId is null', async () => {
-      const { logger } = await import('../logger');
-
       const result = await findWorldsForOwner(mockRuntime, null as any);
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
+      expect(mockLogger.error).toHaveBeenCalledWith('User ID is required to find server');
     });
 
     it('should return null when no worlds exist', async () => {
-      const { logger } = await import('../logger');
-
       (mockRuntime.getAllWorlds as any).mockResolvedValue([]);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
       expect(result).toBeNull();
-      expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
+      expect(mockLogger.info).toHaveBeenCalledWith('No worlds found for this agent');
     });
 
     it('should return null when getAllWorlds returns null', async () => {
-      const { logger } = await import('../logger');
-
       (mockRuntime.getAllWorlds as any).mockResolvedValue(null);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
       expect(result).toBeNull();
-      expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
+      expect(mockLogger.info).toHaveBeenCalledWith('No worlds found for this agent');
     });
 
     it('should return null when no worlds match the owner', async () => {
