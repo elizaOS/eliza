@@ -60,15 +60,14 @@
     "prettier": "3.5.3",
     "tailwindcss-animate": "^1.0.7",
     "tsup": "8.5.0",
-    "typescript": "5.8.2",
-    "vitest": "3.1.4"
+    "typescript": "5.8.2"
   },
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "tsc --noEmit && vite build && tsup",
     "lint": "prettier --write ./src",
-    "test:component": "vitest run",
+    "test:component": "bun test",
     "test:e2e": "elizaos test",
     "test:e2e:manual": "node scripts/test-e2e-manual.js",
     "test:cypress": "cypress run --component",
