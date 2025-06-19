@@ -107,7 +107,7 @@ describe('ElizaOS Plugin Commands', () => {
           cwd: projectDir,
         });
 
-        const packageJson = await readFile('package.json', 'utf8');
+        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-telegram');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
@@ -129,7 +129,7 @@ describe('ElizaOS Plugin Commands', () => {
           cwd: projectDir,
         });
 
-        const packageJson = await readFile('package.json', 'utf8');
+        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-openai');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
@@ -151,7 +151,7 @@ describe('ElizaOS Plugin Commands', () => {
           cwd: projectDir,
         });
 
-        const packageJson = await readFile('package.json', 'utf8');
+        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
@@ -177,7 +177,7 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson1 = await readFile('package.json', 'utf8');
+        const packageJson1 = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson1).toContain('plugin-video-understanding');
 
         // Second GitHub URL install with shorthand syntax
@@ -190,7 +190,7 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson2 = await readFile('package.json', 'utf8');
+        const packageJson2 = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson2).toContain('plugin-openrouter');
       } catch (error: any) {
         console.error('[ERROR] GitHub plugin installation failed:', error.message);
@@ -224,7 +224,7 @@ describe('ElizaOS Plugin Commands', () => {
           cwd: projectDir,
         });
 
-        let packageJson = await readFile('package.json', 'utf8');
+        let packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-sql');
 
         execSync(`${elizaosCmd} plugins remove @elizaos/plugin-sql`, {
@@ -233,7 +233,7 @@ describe('ElizaOS Plugin Commands', () => {
           cwd: projectDir,
         });
 
-        packageJson = await readFile('package.json', 'utf8');
+        packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).not.toContain('@elizaos/plugin-sql');
       } catch (error: any) {
         console.error('[ERROR] Plugin remove failed:', error.message);
@@ -321,7 +321,7 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson = await readFile('package.json', 'utf8');
+        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('github:elizaos-plugins/plugin-evm#1.x');
       } catch (error: any) {
         console.error('[ERROR] GitHub shorthand plugin installation failed:', error.message);
