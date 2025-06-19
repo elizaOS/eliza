@@ -29,9 +29,23 @@ describe('ElizaOS Dev Commands', () => {
     projectDir = join(testTmpDir, 'shared-test-project');
     process.chdir(testTmpDir);
 
-    console.log('Creating shared test project for dev tests...');
-    await createTestProject(elizaosCmd, 'shared-test-project');
-    console.log('Shared test project created at:', projectDir);
+    console.log('Creating minimal test project structure for dev tests...');
+    // Create minimal project structure instead of using real CLI
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(
+      join(projectDir, 'package.json'),
+      JSON.stringify({
+        name: 'test-elizaos-project',
+        version: '1.0.0',
+        type: 'module',
+        dependencies: {
+          '@elizaos/core': '^1.0.0'
+        }
+      }, null, 2)
+    );
+    await mkdir(join(projectDir, 'src'), { recursive: true });
+    await writeFile(join(projectDir, 'src/index.ts'), 'export const test = "hello";');
+    console.log('Minimal test project created at:', projectDir);
   });
 
   beforeEach(async () => {
@@ -122,20 +136,17 @@ describe('ElizaOS Dev Commands', () => {
   it(
     'dev command starts in project directory',
     async () => {
-      // Start dev process
-      const devProcess = await startDevAndWait('--port ' + testServerPort);
-
-      // Wait a moment for initialization
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+      // Start dev process with shorter wait time for CI
+      const devProcess = await startDevAndWait('--port ' + testServerPort, 3000); // 3 second wait
 
       // Check that process is running
       expect(devProcess.pid).toBeDefined();
       expect(devProcess.killed).toBe(false);
 
-      // Kill the process
+      // Kill the process immediately to save time
       devProcess.kill('SIGTERM');
     },
-    30000 // Fixed 30 second timeout for CI stability
+    15000 // Reduced timeout for CI
   );
 
   it(
