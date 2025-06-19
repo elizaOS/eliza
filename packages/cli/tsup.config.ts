@@ -18,21 +18,17 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  // Ensure that all external dependencies are properly handled.
-  // The regex explicitly includes dependencies that should be externalized (NOT bundled).
+  // Externalize problematic fs-related dependencies
   external: [
     'express',
     'fs-extra', 
     'multer',
     'socket.io',
     '@elizaos/server',
-    'node:fs',
-    'node:path',
-    'node:http',
-    'node:https',
-    'node:stream',
-    'node:buffer',
-    'node:events'
+    'body-parser',
+    'cors',
+    'helmet',
+    'express-rate-limit'
   ],
   platform: 'node',
   minify: false,
