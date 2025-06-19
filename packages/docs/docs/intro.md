@@ -53,24 +53,26 @@ New in Eliza v2!
 
 ## Installation
 
-For detailed instructions on each path, including configuration options and extended capabilities, see our [Quickstart Guide](./quickstart.md).
+We offer several installation paths depending on your goal. If you're new to ElizaOS, we recommend starting with the **Install CLI Tool** tab. If you want to contribute to the core project, head to the **Contribute to ElizaOS Core** tab.
+
+For detailed instructions on each path, including configuration options and extended capabilities, see our [Quickstart Guide](./quickstart.md). If you run into any issues, check our [**Frequently Asked Questions**](./faq.md).
 
 ### Prerequisites
 
-- [Node.js 23.3.0](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Git for version control
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 
 You can verify your Node.js version with the following command:
 ```bash
 node --version
-# Expected output: v23.3.0
+# Expected output: v23.0.0 or higher
 ```
 
 If you have a different version, we recommend using [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager) to switch to the correct version:
 ```bash
-nvm install 23.3.0
-nvm use 23.3.0
+nvm install 23
+nvm use 23
 ```
 
 Eliza offers different paths depending on your goals:
@@ -81,13 +83,14 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="cli" label="Install CLI Tool (Recommended)" default>
 
-```bash
-# make sure you have bun installed (https://bun.sh/)
+While you can use `npm`, we strongly recommend using `bun` for performance and compatibility with the ElizaOS ecosystem.
 
-# Install the CLI globally
-npm install -g @elizaos/cli
-# or install via bun
+```bash
+# Recommended: Install via bun (https://bun.sh/)
 bun install -g @elizaos/cli
+
+# Alternative: Install via npm
+npm install -g @elizaos/cli
 
 # From a folder to install a project
 elizaos create

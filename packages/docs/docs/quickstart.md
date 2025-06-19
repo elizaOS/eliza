@@ -1,226 +1,61 @@
 ---
 sidebar_position: 2
 title: Quickstart Guide
-description: Get started quickly with ElizaOS - from installation to running your first AI agent
+description: Get started quickly with ElizaOS - from installation to running your first AI agent in 5 minutes.
 keywords:
-  [quickstart, installation, setup, configuration, CLI, agents, plugins, development, deployment]
+  [quickstart, install, setup, run, create, agent]
 image: /img/eliza_banner.jpg
 ---
 
 # Quickstart Guide
 
-## Prerequisites
+This guide will get you from zero to a running AI agent in under 5 minutes.
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [Bun](https://bun.sh/docs/installation) - Fast JavaScript runtime and package manager
-- Git for version control
-- For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
+### Prerequisites
+- Node.js 23+
+- [Bun](https://bun.sh) package manager
+- Git
+- Ollama or an API key from Openrouter, OpenAI, Anthropic, etc
 
-## Installation
+> **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required to run ElizaOS.
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="global" label="Install Globally (Recommended)" default>
-
+### 1. Install ElizaOS CLI
 ```bash
-# Install globally with Bun
 bun install -g @elizaos/cli
-# Start ElizaOS
+```
+
+### 2. Create Your First Project
+```bash
+elizaos create my-agent
+cd my-agent
+```
+
+### 3. Configure Your API Key
+Your new project includes a `.env.example` file. You need to copy it to a new `.env` file to store your secret API keys.
+
+```bash
+# Copy the environment template to a new .env file
+cp .env.example .env
+
+# Open the file for editing
+elizaos env edit-local
+
+# Add either OPENAI_API_KEY or ANTHROPIC_API_KEY
+```
+Your agent will not work without an API key. For more details on environment configuration, see the [Environment Guide](./cli/env.md).
+
+### 4. Start Your Agent
+```bash
 elizaos start
 ```
 
-  </TabItem>
-  <TabItem value="source" label="Install from Source">
+Your agent is now running at [http://localhost:3000](http://localhost:3000)! 🎉
 
-```bash
-# Clone the repository
-git clone git@github.com:elizaOS/eliza.git
-cd eliza
+## What's Next?
 
-# Switch to development branch
-git checkout main
+Congratulations, you have a running ElizaOS agent! Here's where to go next to explore its full power:
 
-# Install dependencies
-bun install
-
-# Build the project
-bun run build
-
-# Start ElizaOS
-bun start
-```
-
-  </TabItem>
-</Tabs>
-
-This will:
-
-1. Start ElizaOS with default settings
-2. Load the default character
-3. Make the agent accessible via terminal and REST API
-
-> **Note:** If you encounter any errors on first startup, try running the start command again. The initial startup sometimes needs a second attempt to properly initialize all components.
-
-### Chat with your agent:
-
-Visit https://localhost:3000 to interact with your agent through a web interface.
-
-## 2. Creating a Project
-
-If you want to create a custom ElizaOS project with your own characters and configurations:
-
-```bash
-# Create a new project with the interactive wizard
-elizaos create
-# Or specify project type directly
-elizaos create --type project
-```
-
-Follow the interactive prompts to configure your project. Once created:
-
-```bash
-# Navigate to your project directory
-cd my-project-name
-# Start your project
-elizaos start
-```
-
-> If it fails the first time try the start command again
-
-### Project Structure
-
-A typical ElizaOS project structure looks like this:
-
-```
-my-project/
-├── src/
-│   └── index.ts      # Main entry point with character definitions
-├── knowledge/        # Knowledge files for RAG (or use 'docs' folder)
-├── package.json      # Project configuration and dependencies
-└── tsconfig.json     # TypeScript configuration
-```
-
-The character definition is located in `src/index.ts` where you can modify the agent's personality, plugins, and settings. This is the core file for customizing your agent's behavior.
-
-### Add plugins to your project:
-
-```bash
-# List available plugins for a project
-elizaos plugins list
-# Add a plugin
-elizaos plugins add @elizaos/plugin-discord
-```
-
-### Working with Character Files
-
-You can work with character files using the agent commands:
-
-```bash
-# Create a new character file
-elizaos create --type agent my-character
-
-# Start an agent with a character file
-elizaos agent start --path ./my-character.json
-
-# Get agent details and save to file
-elizaos agent get --name eliza --output my-exported-character.json
-
-# Start agent with character file
-elizaos agent start --path my-character.json
-
-# Load character from remote URL
-elizaos agent start --remote-character https://example.com/characters/assistant.json
-```
-
-This is particularly useful for those migrating from v1 who are used to working with standalone character files.
-
-## 3. Creating a Plugin
-
-Want to extend ElizaOS with custom functionality?
-
-```bash
-# Create a new plugin project
-elizaos create --type plugin
-```
-
-Develop your plugin following the structure in your generated project:
-
-```bash
-# Test your plugin
-elizaos start
-# Publish your plugin when ready
-elizaos publish
-```
-
-### Publishing options:
-
-```bash
-# Test publish without making changes
-elizaos publish --test
-# Publish to npm instead of GitHub
-elizaos publish --npm
-# Generate files locally without publishing
-elizaos publish --dry-run
-```
-
----
-
-## Troubleshooting
-
-### Node Version
-
-- Use Node.js 23.3.0+ (`node -v` to check)
-- Try using NVM: `nvm use 23`
-
-### Installation Problems
-
-```bash
-# Clean and reinstall
-bun clean
-bun install --no-frozen-lockfile
-bun build
-```
-
-### Plugin Issues
-
-If you encounter issues with plugins:
-
-```bash
-# Clear cache and reinstall
-bun clean
-bun install
-```
-
-### Docker Setup
-
-```bash
-# Start ElizaOS with PostgreSQL using Docker Compose
-docker compose up -d
-
-# View logs
-docker compose logs -f eliza
-```
-
-### First-time Startup Issues
-
-If your agent fails to start on the first attempt:
-
-- Run the start command again
-- Check logs for specific errors
-- Ensure all dependencies are properly installed
-- Verify that your database configuration is correct
-
----
-
-## Next Steps
-
-Once you have your agent running, explore:
-
-- [Understand Agents](./core/agents.md)
-- [Add Custom Actions](./core/actions.md)
-- [Configure Knowledge](./core/knowledge.md)
-- [Add Services](./core/services.md)
-
-Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
+-   **[Explore all CLI Commands](./cli/overview.md)**: See everything you can do from the command line, including managing agents and plugins.
+-   **[Customize Your Agent](./core/characters.md)**: Learn how to edit your agent's personality, knowledge, and abilities using Character Files.
+-   **[Understand the Project Structure](./core/project.md)**: Get a detailed breakdown of every file in your new project.
+-   **[Extend Your Agent with Plugins](./core/plugins.md)**: Discover how to add new capabilities to your agent.

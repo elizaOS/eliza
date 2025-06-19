@@ -29,7 +29,7 @@ For a detailed comparison, see our [V2 announcement blog post](/blog/v1-v2).
 
 ### What are the system requirements for running Eliza?
 
-- Node.js version 23+ (specifically 23.3.0 is recommended)
+- Node.js version 23+
 - At least 4GB RAM
 - For Windows users: WSL2 (Windows Subsystem for Linux)
 
@@ -37,14 +37,50 @@ For a detailed comparison, see our [V2 announcement blog post](/blog/v1-v2).
 
 If you encounter build failures or dependency errors:
 
-1. Ensure you're using Node.js v23.3.0: `nvm install 23.3.0 && nvm use 23.3.0`
-2. Clean your environment: `bun clean`
-3. Install dependencies: `bun install --no-frozen-lockfile`
-4. Rebuild: `bun build`
-5. If issues persist, try checking out the latest release:
-   ```bash
-   git checkout $(git describe --tags --abbrev=0)
-   ```
+1.  **Check Your Node.js Version**: Ensure you are using Node.js v23 or higher.
+    ```bash
+    node --version
+    ```
+    If you have a different version, we recommend using [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager) to switch to the correct version:
+    ```bash
+    nvm install 23
+    nvm use 23
+    ```
+
+2.  **Clean your environment**: `bun clean`
+3.  **Install dependencies**: `bun install --no-frozen-lockfile`
+4.  **Rebuild**: `bun build`
+5.  If issues persist, try checking out the latest release:
+    ```bash
+    git checkout $(git describe --tags --abbrev=0)
+    ```
+
+### How do I set up my API keys?
+
+If you see an error related to a "Missing API Key" or "401 Unauthorized" when your agent tries to use an AI model, it means you haven't configured your environment correctly.
+
+**Solution:**
+
+1.  **Ensure `.env` File Exists**: Every project needs a `.env` file for secrets. If you don't have one, copy the template:
+    ```bash
+    cp .env.example .env
+    ```
+
+2.  **Add Your Key**: Open the `.env` file for editing and add your API key for the desired service (e.g., OpenAI or Anthropic).
+    ```bash
+    elizaos env edit-local
+    ```
+    Your file should contain a line like this:
+    ```
+    OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    ```
+
+3.  **Restart the Agent**: After saving your changes, restart the agent for the new environment variables to take effect.
+    ```bash
+    elizaos start
+    ```
+
+For more details, see the [Environment Configuration Guide](./cli/env.md).
 
 ### How do I use local models with Eliza?
 
@@ -211,30 +247,7 @@ Check your database for null memory entries and ensure proper content formatting
 
 ### How do I clear or reset my agent's memory?
 
-ElizaOS uses PGLite (local) or PostgreSQL (production) for data storage. You can clear agent memories using the CLI or manually reset the database:
-
-**Option 1: Using the CLI (Recommended)**
-
-Clear all memories for a specific agent:
-
-```bash
-elizaos agent clear-memories -n <agent-id-or-name>
-
-# Example with agent ID:
-elizaos agent clear-memories -n b850bc30-45f8-0041-a00a-83df46d8555d
-
-# Example with agent name:
-elizaos agent clear-memories -n "MyAgent"
-
-# Short alias:
-elizaos agent clear -n <agent-id-or-name>
-```
-
-This command safely removes all memories (from all tables: memories, messages, facts, documents) for the specified agent and reports how many memories were deleted.
-
-**Option 2: Manual database reset**
-
-If you need to manually reset the database:
+ElizaOS uses PGLite (local) or PostgreSQL (production) for data storage. There is currently no CLI command to clear memory, so you need to manually reset the database:
 
 1. **For PGLite (local development)**:
 
@@ -722,30 +735,33 @@ When creating new projects:
 
 ## Troubleshooting
 
+### What do I do if the port is already in use?
+
+By default, the ElizaOS web interface runs on port 3000. If you see an error like `EADDRINUSE: address already in use :::3000`, it means another application is already using that port.
+
+**Solution:**
+
+1.  **Stop the Other Application**: Identify and stop the other process that is using port 3000.
+
+2.  **Run on a Different Port**: Alternatively, you can tell ElizaOS to use a different port with the `--port` flag.
+    ```bash
+    elizaos start --port 3001
+    ```
+    You can then access the web interface at `http://localhost:3001`.
+
 ### How do I fix database connection issues?
 
-1. For PGLite (default local database):
-   - Delete the `.elizadb` folder (or the path specified in `PGLITE_DATA_DIR`)
-   - Default location: `.eliza/.elizadb` in your project root
-   - Example: `rm -rf /path/to/your/project/.eliza/.elizadb`
-   - Restart your agent to create a fresh database
-2. For PostgreSQL:
+1.  **For PGLite (default local database)**:
+    -   Delete the `.elizadb` folder (or the path specified in `PGLITE_DATA_DIR`). The default location is `.eliza/.elizadb` in your project root.
+    -   Restart your agent to create a fresh database.
+    ```bash
+    rm -rf .eliza/.elizadb
+    ```
 
-   - Verify connection string in your `.env` file
-   - Check database exists and is accessible
-   - Ensure proper credentials
-   - To drop and recreate the database:
-
-     ```bash
-     # Connect to PostgreSQL
-     psql -U your_username
-
-     # Drop the database (WARNING: This deletes all data!)
-     DROP DATABASE your_database_name;
-
-     # Create a new database
-     CREATE DATABASE your_database_name;
-     ```
+2.  **For PostgreSQL**:
+    -   **Check Connection String**: Ensure your `DATABASE_URL` in the `.env` file is correct and accessible from your machine.
+    -   **Verify Database is Running**: Make sure your PostgreSQL server is running and you can connect to it with a standard client (like `psql` or DBeaver).
+    -   **Check Firewall Rules**: Ensure no firewall is blocking the connection between your machine and the database server.
 
 ### How do I resolve embedding dimension mismatch errors?
 
