@@ -74,25 +74,17 @@ describe('ElizaOS Dev Commands', () => {
       }
 
       try {
+        // For Bun.spawn processes, use the exited promise
+        const exitPromise = proc.exited ? proc.exited.catch(() => {}) : Promise.resolve();
+        
         // First attempt graceful shutdown
         proc.kill('SIGTERM');
 
         // Wait for graceful exit with timeout
-        const exitPromise = new Promise<void>((resolve) => {
-          const cleanup = () => {
-            proc.removeAllListeners('exit');
-            proc.removeAllListeners('error');
-            resolve();
-          };
-          proc.once('exit', cleanup);
-          proc.once('error', cleanup);
-        });
-
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(resolve, 3000); // 3 second graceful timeout
-        });
-
-        await Promise.race([exitPromise, timeoutPromise]);
+        await Promise.race([
+          exitPromise,
+          new Promise<void>((resolve) => setTimeout(resolve, 3000))
+        ]);
 
         // Force kill if still running
         if (!proc.killed && proc.exitCode === null) {
@@ -102,7 +94,9 @@ describe('ElizaOS Dev Commands', () => {
       } catch (e) {
         // Ignore cleanup errors but try force kill
         try {
-          proc.kill('SIGKILL');
+          if (!proc.killed) {
+            proc.kill('SIGKILL');
+          }
         } catch (e2) {
           // Ignore force kill errors
         }

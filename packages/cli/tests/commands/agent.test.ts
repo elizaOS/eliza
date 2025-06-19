@@ -233,38 +233,29 @@ describe('ElizaOS Agent Commands', () => {
   afterAll(async () => {
     if (serverProcess && serverProcess.exitCode === null) {
       try {
-        // Create exit promise before killing
-        const exitPromise = new Promise<void>((resolve) => {
-          const cleanup = () => {
-            serverProcess?.removeAllListeners?.('exit');
-            serverProcess?.removeAllListeners?.('error');
-            resolve();
-          };
-          serverProcess.once('exit', cleanup);
-          serverProcess.once('error', cleanup);
-
-          // Fallback timeout
-          setTimeout(cleanup, 5000);
-        });
-
+        // For Bun.spawn processes, we use the exited promise
+        const exitPromise = serverProcess.exited.catch(() => {});
+        
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
 
-        // Wait for graceful exit
+        // Wait for graceful exit with timeout
         await Promise.race([
           exitPromise,
           new Promise<void>((resolve) => setTimeout(resolve, 3000)),
         ]);
 
         // Force kill if still running
-        if (serverProcess.exitCode === null) {
+        if (serverProcess.exitCode === null && !serverProcess.killed) {
           serverProcess.kill('SIGKILL');
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (e) {
         // Ignore cleanup errors but try force kill
         try {
-          serverProcess?.kill('SIGKILL');
+          if (!serverProcess.killed) {
+            serverProcess.kill('SIGKILL');
+          }
         } catch (e2) {
           // Ignore force kill errors
         }
