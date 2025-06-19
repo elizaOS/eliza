@@ -52,27 +52,26 @@ const createFsMock = () => {
     // Include all existing fs exports if available
     ...fs,
     // Always provide these functions since they may be missing in test environment
-    createWriteStream: fs.createWriteStream || mock((path: string, options?: any) => {
+    createWriteStream: mock((path: string, options?: any) => {
       mockWriteStream.path = path;
       return mockWriteStream;
     }),
-    createReadStream: fs.createReadStream || mock((path: string, options?: any) => {
+    createReadStream: mock((path: string, options?: any) => {
       mockReadStream.path = path;
       return mockReadStream;
     }),
-    rmSync: fs.rmSync || mock((path: string, options?: any) => {}),
-    rm: fs.rm || mock((path: string, options: any, callback: Function) => callback()),
-    existsSync: fs.existsSync || mock((path: string) => false),
-    readFileSync: fs.readFileSync || mock((path: string) => ''),
-    writeFileSync: fs.writeFileSync || mock((path: string, data: any) => {}),
-    statSync:
-      fs.statSync || mock((path: string) => ({ isDirectory: () => false, isFile: () => true })),
-    readdirSync: fs.readdirSync || mock((path: string) => []),
-    mkdirSync: fs.mkdirSync || mock((path: string, options?: any) => {}),
-    readFile: fs.readFile || mock((path: string, callback: Function) => callback(null, '')),
-    writeFile: fs.writeFile || mock((path: string, data: any, callback: Function) => callback()),
-    access: fs.access || mock((path: string, callback: Function) => callback()),
-    copyFile: fs.copyFile || mock((src: string, dest: string, callback: Function) => callback()),
+    rmSync: mock((path: string, options?: any) => {}),
+    rm: mock((path: string, options: any, callback: Function) => callback()),
+    existsSync: mock((path: string) => false),
+    readFileSync: mock((path: string) => ''),
+    writeFileSync: mock((path: string, data: any) => {}),
+    statSync: mock((path: string) => ({ isDirectory: () => false, isFile: () => true })),
+    readdirSync: mock((path: string) => []),
+    mkdirSync: mock((path: string, options?: any) => {}),
+    readFile: mock((path: string, callback: Function) => callback(null, '')),
+    writeFile: mock((path: string, data: any, callback: Function) => callback()),
+    access: mock((path: string, callback: Function) => callback()),
+    copyFile: mock((src: string, dest: string, callback: Function) => callback()),
     // Additional fs methods that might be needed
     promises: fs.promises || {
       readFile: mock((path: string) => Promise.resolve('')),

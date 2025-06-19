@@ -10,9 +10,9 @@ import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
 import { existsSync } from 'node:fs';
 
 /**
- * Run component tests using Vitest
+ * Run component tests using bun test
  *
- * Executes component tests for the project using Vitest as the test runner. Supports filtering by test name and can optionally skip the build step for faster iteration.
+ * Executes component tests for the project using bun test as the test runner. Supports filtering by test name and can optionally skip the build step for faster iteration.
  */
 export async function runComponentTests(
   testPath: string | undefined,

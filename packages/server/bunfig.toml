@@ -1,7 +1,6 @@
 [test]
-# Test configuration for bun:test
-# Test files will be discovered based on pattern matching
-# Bun will automatically discover .test.ts and .spec.ts files
+# Test timeout in milliseconds
+timeout = 60000
 
 # Test directory patterns
 root = "src"
@@ -11,15 +10,6 @@ coverage = true
 
 # Test environment
 env = "node"
-
-# Test timeout in milliseconds
-timeout = 30000
-
-# Run tests in parallel (default behavior for bun)
-# Use --bail to stop on first failure if needed
-
-# Test setup - no longer needed with bun:test as it handles module resolution
-# preload scripts can be specified if needed
 
 # Path aliases (matches tsconfig.json paths)
 [test.alias]

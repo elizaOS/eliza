@@ -51,8 +51,7 @@
     "lerna": "8.1.4",
     "tsup": "8.5.0",
     "turbo": "^2.5.4",
-    "typescript": "5.8.2",
-    "vitest": "3.1.4"
+    "typescript": "5.8.2"
   },
   "resolutions": {
     "@nrwl/devkit": "19.8.4",

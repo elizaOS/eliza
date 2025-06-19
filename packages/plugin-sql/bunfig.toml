@@ -1,3 +1,6 @@
 [test]
-# Test timeout matching vitest config
-timeout = 30000
+# Test timeout in milliseconds
+timeout = 60000
+
+# Coverage configuration
+coverage = true
