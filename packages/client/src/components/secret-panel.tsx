@@ -302,7 +302,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         </div>
       )}
 
-      <div className="mt-2">
+      <div className="mt-2 overflow-y-auto max-h-72">
         {envs.map((env, index) => (
           <div
             key={index}
