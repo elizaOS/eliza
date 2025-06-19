@@ -63,6 +63,10 @@ const require = createRequire(import.meta.url);
           from: './templates/**/*',
           to: './dist/templates',
         },
+        {
+          from: './templates/**/.*',
+          to: './dist/templates',
+        },
       ],
       // Setting this to true will output a list of copied files
       verbose: true,
