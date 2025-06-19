@@ -15,7 +15,7 @@ export const TEST_TIMEOUTS = {
     ? 2 * 60 * 1000 // 2 minutes in CI for all platforms
     : (isWindows ? 8 * 60 * 1000 : isMacOS ? 6 * 60 * 1000 : 5 * 60 * 1000), // Platform-specific locally
   INDIVIDUAL_TEST: isCI 
-    ? 30 * 1000 // 30 seconds in CI for all platforms
+    ? 60 * 1000 // 60 seconds in CI for all platforms - matches bunfig.toml
     : (isWindows ? 5 * 60 * 1000 : isMacOS ? 4 * 60 * 1000 : 3 * 60 * 1000), // Platform-specific locally
 
   // Command execution timeouts (execSync) - Platform-specific
