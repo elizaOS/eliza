@@ -48,10 +48,8 @@ async function updatePackageJson(packagePath: string, cliVersion: string) {
 
 async function main() {
   try {
-    if (!fs.existsSync(CLI_DIST_DIR)) {
-      console.error('CLI build not found! Build the CLI first.');
-      process.exit(1);
-    }
+    // Skip the CLI dist check - this script runs before tsup builds the CLI
+    // The templates directory will be created by tsup's assets configuration
 
     // Prepare templates directory
     if (!fs.existsSync(TEMPLATES_DIR)) {
