@@ -105,7 +105,7 @@ describe('Messaging Integration Tests', () => {
     it('should add and retrieve agents for a server', async () => {
       const agent1 = uuidv4() as UUID;
       const agent2 = uuidv4() as UUID;
-      
+
       // Create the agents first before adding them to server
       await adapter.createAgent({
         id: agent1,
@@ -119,7 +119,7 @@ describe('Messaging Integration Tests', () => {
         bio: 'Test agent bio',
         configurationId: uuidv4() as UUID,
       });
-      
+
       await adapter.addAgentToServer(serverId, agent1);
       await adapter.addAgentToServer(serverId, agent2);
 

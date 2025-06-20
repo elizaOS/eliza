@@ -111,9 +111,18 @@ export async function copyTemplate(
     // 1. Direct path from source directory (for tests and development)
     path.resolve(__dirname, '../../templates', packageName),
     // 2. Production: templates bundled with the CLI dist
-    path.resolve(path.dirname(require.resolve('@elizaos/cli/package.json')), 'dist', 'templates', packageName),
+    path.resolve(
+      path.dirname(require.resolve('@elizaos/cli/package.json')),
+      'dist',
+      'templates',
+      packageName
+    ),
     // 3. Development/Test: templates in the CLI package root
-    path.resolve(path.dirname(require.resolve('@elizaos/cli/package.json')), 'templates', packageName),
+    path.resolve(
+      path.dirname(require.resolve('@elizaos/cli/package.json')),
+      'templates',
+      packageName
+    ),
     // 4. Fallback: relative to current module (for built dist)
     path.resolve(__dirname, '..', 'templates', packageName),
     // 5. Additional fallback: relative to dist directory
