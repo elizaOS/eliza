@@ -14,7 +14,15 @@ import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
 import { SecretPanel } from './secret-panel';
 
-export default function AgentSettings({ agent, agentId, onSaveComplete }: { agent: Agent; agentId: UUID; onSaveComplete?: () => void }) {
+export default function AgentSettings({
+  agent,
+  agentId,
+  onSaveComplete,
+}: {
+  agent: Agent;
+  agentId: UUID;
+  onSaveComplete?: () => void;
+}) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -73,7 +81,7 @@ export default function AgentSettings({ agent, agentId, onSaveComplete }: { agen
             title: 'Success',
             description: 'Agent secrets updated successfully',
           });
-          
+
           if (onSaveComplete) {
             onSaveComplete();
           } else {
@@ -86,7 +94,7 @@ export default function AgentSettings({ agent, agentId, onSaveComplete }: { agen
           title: 'No Changes',
           description: 'No changes were made to the agent',
         });
-        
+
         if (onSaveComplete) {
           onSaveComplete();
         } else {

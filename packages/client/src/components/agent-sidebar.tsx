@@ -99,9 +99,9 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
             )}
             {!isLoadingAgent && !agentError && agent && (
               <div className="w-full max-w-full">
-                <AgentSettings 
-                  agent={agent} 
-                  agentId={agentId} 
+                <AgentSettings
+                  agent={agent}
+                  agentId={agentId}
                   onSaveComplete={() => {
                     // Stay on the same page after save in sidebar context
                     // Agent settings saved from sidebar

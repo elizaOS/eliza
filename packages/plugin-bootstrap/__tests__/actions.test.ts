@@ -1062,10 +1062,9 @@ describe('Send Message Action (Extended)', () => {
     });
 
     // Mock getRooms to return the target room
-    mockRuntime.getRooms = mock()
-      .mockResolvedValue([
-        { id: 'target-room-id', name: 'test-channel', worldId: 'test-world-id' },
-      ]);
+    mockRuntime.getRooms = mock().mockResolvedValue([
+      { id: 'target-room-id', name: 'test-channel', worldId: 'test-world-id' },
+    ]);
 
     // Create custom implementation that closely follows the actual handler
     const customSendHandler = async (

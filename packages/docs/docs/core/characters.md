@@ -21,23 +21,23 @@ import { Character } from '@elizaos/core';
 
 export const myCharacter: Character = {
   // The agent's name
-  name: "Eliza",
-  
+  name: 'Eliza',
+
   // A custom system prompt to guide the LLM's behavior
-  system: "You are a helpful and friendly AI assistant.",
-  
+  system: 'You are a helpful and friendly AI assistant.',
+
   // A list of plugins the agent should use
-  plugins: ["@elizaos/plugin-discord", "@elizaos/plugin-openai"],
-  
+  plugins: ['@elizaos/plugin-discord', '@elizaos/plugin-openai'],
+
   // Example conversations to train the agent's style
   messageExamples: [
     // ... see Message Examples Format section ...
   ],
-  
+
   // Configuration settings for the agent and its plugins
   settings: {
     // ... see Settings section ...
-  }
+  },
 };
 ```
 
@@ -50,14 +50,14 @@ export const myCharacter: Character = {
 ```typescript
 // From @elizaos/core
 interface MessageExample {
-  name: string;           // Participant's name (e.g., a user variable or the agent's name)
-  content: Content;       // The message content object
+  name: string; // Participant's name (e.g., a user variable or the agent's name)
+  content: Content; // The message content object
 }
 
 interface Content {
-  text: string;           // Required: The text of the message
-  providers?: string[];   // Optional: Context providers to use for this turn
-  actions?: string[];     // Optional: A list of actions performed in response
+  text: string; // Required: The text of the message
+  providers?: string[]; // Optional: Context providers to use for this turn
+  actions?: string[]; // Optional: A list of actions performed in response
   attachments?: Attachment[]; // Optional: Media attached to the message
 }
 ```
@@ -92,8 +92,8 @@ This example shows a simple two-turn conversation.
 
 You can make the agent's responses more dynamic by specifying `providers` and `actions`.
 
--   `providers`: Inject real-time context (like the current time or specific knowledge) into the agent's brain before it responds.
--   `actions`: Tell the agent which of its capabilities it used to formulate the response.
+- `providers`: Inject real-time context (like the current time or specific knowledge) into the agent's brain before it responds.
+- `actions`: Tell the agent which of its capabilities it used to formulate the response.
 
 ```json
 {
@@ -120,7 +120,7 @@ The `settings` object allows you to configure the agent's core behavior and the 
     "discord": {
       "shouldRespondOnlyToMentions": false
     },
-    
+
     // Provide secrets securely
     "secrets": {
       "OPENAI_API_KEY": "your-api-key"
@@ -174,4 +174,4 @@ Some very old formats used a flat `response` field. This should be converted to 
     "content": { "text": "Answer." }
   }
 ]
-``` 
+```

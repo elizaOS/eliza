@@ -71,7 +71,7 @@ jobs:
       - name: Run tests
         timeout-minutes: 15
         env:
-          NODE_OPTIONS: "--max-old-space-size=2048"
+          NODE_OPTIONS: '--max-old-space-size=2048'
         run: cd packages/core && bun test:coverage --timeout 60000
 
   # Lint and format job - runs in parallel

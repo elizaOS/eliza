@@ -200,7 +200,7 @@ describe('Reflection Evaluator', () => {
     } catch (e) {
       error = e as Error;
     }
-    
+
     // Assert - Should not have thrown
     expect(error).toBeUndefined();
 
