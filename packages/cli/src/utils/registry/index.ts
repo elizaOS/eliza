@@ -387,16 +387,13 @@ export function normalizePluginName(pluginName: string): string[] {
   // Remove any existing prefixes
   baseName = baseName.replace(/^plugin-/, '');
 
-  // Generate all possible formats to try
+  // Generate all possible formats to try (removed duplicates and incorrect namespace)
   return [
     pluginName, // Original input
     baseName, // Just the base name
     `plugin-${baseName}`, // With plugin- prefix
     `@elizaos/${baseName}`, // Scoped with elizaos
     `@elizaos/plugin-${baseName}`, // Scoped with elizaos and plugin prefix
-    `@elizaos/${baseName}`, // Scoped with elizaos-plugins
-    `@elizaos/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
-    `@elizaos-plugins/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
   ];
 }
 
