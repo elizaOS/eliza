@@ -1,4 +1,4 @@
-import { sql, type SQL } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import { logger } from '@elizaos/core';
@@ -688,7 +688,7 @@ export class DrizzleSchemaIntrospector {
           }
         } else if (extraConfig && typeof extraConfig === 'object') {
           // Handle object form of extraConfig (e.g., { pk: primaryKey(...) })
-          for (const [key, value] of Object.entries(extraConfig)) {
+          for (const [_key, value] of Object.entries(extraConfig)) {
             // Check if this is a primary key definition
             if (value && typeof value === 'object' && (value as any)._) {
               const config = (value as any)._;

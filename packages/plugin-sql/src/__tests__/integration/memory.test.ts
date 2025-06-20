@@ -1,6 +1,6 @@
 import {
-  AgentRuntime,
   ChannelType,
+  Content,
   MemoryType,
   type Entity,
   type Memory,
@@ -10,17 +10,7 @@ import {
   type World,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { embeddingTable, memoryTable } from '../../schema';
@@ -37,7 +27,6 @@ import {
 
 describe('Memory Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testRoomId: UUID;
@@ -52,7 +41,7 @@ describe('Memory Integration Tests', () => {
       testEntityId = v4() as UUID;
       testWorldId = v4() as UUID;
 
-      ({ adapter, runtime, cleanup } = await createTestDatabase(testAgentId));
+      ({ adapter, cleanup } = await createTestDatabase(testAgentId));
 
       console.log('ADAPTER IS', adapter);
 
@@ -80,7 +69,7 @@ describe('Memory Integration Tests', () => {
       console.error('Failed to create test database for memory tests:', error);
       throw error; // Fail the test instead of continuing
     }
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {
@@ -212,7 +201,7 @@ describe('Memory Integration Tests', () => {
       // Verify only content changed, embedding and metadata preserved
       const afterContentUpdate = await adapter.getMemoryById(memoryId);
       expect(afterContentUpdate?.content.text).toBe('This is updated content only');
-      expect(afterContentUpdate?.embedding).toEqual(memory.embedding);
+      expect(afterContentUpdate?.embedding).toEqual(memory.embedding as number[]);
       expect(afterContentUpdate?.metadata).toEqual(memory.metadata);
 
       // Update only one field in metadata
@@ -296,7 +285,7 @@ describe('Memory Integration Tests', () => {
 
       // Verify metadata was updated and content preserved
       const afterSourceUpdate = await adapter.getMemoryById(memoryId);
-      expect(afterSourceUpdate?.content).toEqual(afterContentTextUpdate?.content);
+      expect(afterSourceUpdate?.content).toEqual(afterContentTextUpdate?.content as Content);
       expect(afterSourceUpdate?.metadata?.type).toBe('test-original');
       expect(afterSourceUpdate?.metadata?.source).toBe('updated-source');
       expect(afterSourceUpdate?.metadata?.tags).toEqual(['original', 'test']);
@@ -399,7 +388,7 @@ describe('Memory Integration Tests', () => {
       });
 
       expect(results.length).toBe(1);
-      expect(results[0].id).toBe(memory1.id);
+      expect(results[0].id).toBe(memory1.id as UUID);
       expect(results[0].similarity).toBeGreaterThan(0.99);
     });
   });
@@ -490,12 +479,12 @@ describe('Memory Integration Tests', () => {
       expect(retrievedMemory).not.toBeNull();
 
       // Verify all fields were properly mapped
-      expect(retrievedMemory!.id).toBe(testMemory.id);
+      expect(retrievedMemory!.id).toBe(testMemory.id as UUID);
       expect(retrievedMemory!.entityId).toBe(testMemory.entityId);
       expect(retrievedMemory!.roomId).toBe(testMemory.roomId);
       expect(retrievedMemory!.agentId).toBe(testMemory.agentId);
-      expect(retrievedMemory!.content.text).toBe(testMemory.content.text);
-      expect(retrievedMemory!.metadata?.type).toBe(testMemory.metadata?.type);
+      expect(retrievedMemory!.content.text).toBe(testMemory.content.text as string);
+      expect(retrievedMemory!.metadata?.type).toBe(testMemory.metadata?.type as string);
     });
 
     it('should handle partial Memory objects in mapToMemoryModel', async () => {

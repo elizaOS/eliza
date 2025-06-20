@@ -1,16 +1,5 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { PostgresConnectionManager } from '../../../pg/manager';
-import { Pool } from 'pg';
 
 // Mock the 'pg' module to avoid actual DB connections in unit tests
 // In bun:test, we'll create a simpler mock approach
@@ -78,7 +67,7 @@ describe('PostgresConnectionManager', () => {
       mockPoolInstance.connect.mockResolvedValue(mockClient);
 
       const client = await manager.getClient();
-      expect(client).toBe(mockClient);
+      expect(client).toBe(mockClient as any);
       expect(mockPoolInstance.connect).toHaveBeenCalled();
     });
 
