@@ -66,13 +66,6 @@ jobs:
               "model": "gpt-4o"
             }
 
-      # Upload each translated file as an artifact
-      - name: Upload translation
-        uses: actions/upload-artifact@v4
-        with:
-          name: readme-${{ matrix.language.code }}
-          path: README_${{ matrix.language.code }}.md
-
   commit:
     needs: translation
     runs-on: ubuntu-latest
@@ -81,13 +74,6 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.GH_TOKEN }}
-
-      # Download all translation artifacts
-      - name: Download all translations
-        uses: actions/download-artifact@v4
-        with:
-          pattern: readme-*
-          merge-multiple: true
 
       - name: Commit all translations
         uses: stefanzweifel/git-auto-commit-action@v5
