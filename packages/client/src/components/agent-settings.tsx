@@ -60,6 +60,25 @@ export default function AgentSettings({
         throw new Error('Agent ID is missing');
       }
 
+      // Validate required secrets if we have a secret panel ref
+      if (secretPanelRef?.current) {
+        const secretValidation = secretPanelRef.current.validateSecrets();
+        if (!secretValidation.isValid) {
+          // Show confirmation dialog for missing secrets
+          const confirmed = await confirm({
+            title: 'Missing Required Secrets',
+            description: `The following required secrets are missing: ${secretValidation.missingSecrets.join(', ')}. Do you want to save anyway?`,
+            confirmText: 'Save Anyway',
+            cancelText: 'Cancel',
+            variant: 'destructive',
+          });
+
+          if (!confirmed) {
+            return;
+          }
+        }
+      }
+
       // Get secrets from state (or ref as fallback)
       const secrets = currentSecrets || secretPanelRef.current?.getSecrets() || {};
 
