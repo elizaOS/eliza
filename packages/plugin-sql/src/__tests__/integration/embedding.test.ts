@@ -3,22 +3,11 @@ import {
   type Memory,
   type Room,
   type UUID,
-  AgentRuntime,
   ChannelType,
   MemoryType,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { embeddingTable, memoryTable } from '../../schema';
@@ -26,7 +15,6 @@ import { createIsolatedTestDatabase } from '../test-helpers';
 
 describe('Embedding Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testEntityId: UUID;
@@ -35,7 +23,6 @@ describe('Embedding Integration Tests', () => {
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase('embedding-tests');
     adapter = setup.adapter;
-    runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
@@ -55,7 +42,7 @@ describe('Embedding Integration Tests', () => {
         type: ChannelType.GROUP,
       } as Room,
     ]);
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {
@@ -87,7 +74,7 @@ describe('Embedding Integration Tests', () => {
       };
 
       const memoryId = await adapter.createMemory(memory, 'embedding_test');
-      expect(memoryId).toBe(memory.id);
+      expect(memoryId).toBe(memory.id as UUID);
 
       const retrieved = await adapter.getMemoryById(memoryId);
       expect(retrieved).toBeDefined();

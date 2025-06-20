@@ -5,11 +5,8 @@ import {
   it,
   expect,
   beforeEach,
-  afterEach,
   beforeAll,
   afterAll,
-  mock,
-  spyOn,
 } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
@@ -28,7 +25,7 @@ describe('World Integration Tests', () => {
     runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {

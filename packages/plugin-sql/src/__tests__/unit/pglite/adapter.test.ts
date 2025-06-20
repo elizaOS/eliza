@@ -1,16 +1,5 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
-import { PGliteClientManager } from '../../../pglite/manager';
 import { logger } from '@elizaos/core';
 
 // Mock the logger to avoid console output during tests
@@ -96,7 +85,7 @@ describe('PgliteDatabaseAdapter', () => {
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const result = await adapter.getConnection();
-      expect(result).toBe(mockConnection);
+      expect(result).toBe(mockConnection as any);
       expect(mockManager.getConnection).toHaveBeenCalled();
     });
   });

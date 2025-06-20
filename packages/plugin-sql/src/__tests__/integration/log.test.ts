@@ -1,16 +1,6 @@
 import { type Entity, type Room, type UUID, AgentRuntime, ChannelType } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { logTable } from '../../schema';
@@ -48,7 +38,7 @@ describe('Log Integration Tests', () => {
         type: ChannelType.GROUP,
       } as Room,
     ]);
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {

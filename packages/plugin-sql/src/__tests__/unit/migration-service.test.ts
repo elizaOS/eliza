@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { DatabaseMigrationService } from '../../migration-service';
-import { logger, type Plugin } from '@elizaos/core';
-import * as customMigrator from '../../custom-migrator';
+import { type Plugin } from '@elizaos/core';
 
 // Mock the logger to avoid console output during tests
 const mockLogger = {

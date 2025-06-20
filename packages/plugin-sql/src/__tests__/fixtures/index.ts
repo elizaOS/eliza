@@ -31,7 +31,7 @@ export const helloWorldPlugin: Plugin = {
   name: 'test-hello-world',
   description: 'A simple test plugin with a database schema.',
   schema: helloWorldSchema,
-  init: async (runtime) => {
+  init: async (_runtime) => {
     console.log('Hello World Plugin initialized!');
   },
 };
