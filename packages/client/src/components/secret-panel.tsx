@@ -289,7 +289,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
             </div>
           </div>
         </div>
-        <Button 
+        <Button
           className="shrink-0"
           onClick={(e) => {
             e.preventDefault();
