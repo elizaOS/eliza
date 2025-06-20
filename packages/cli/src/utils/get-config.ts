@@ -36,7 +36,7 @@ const SAMPLE_ENV_TEMPLATE = `### elizaOS Environment Variables ###
 ## You can use the .env or environment variables generally for shared keys, such as to model providers, 
 ## database, etc, with scoped keys for services such as Telegram, Discord, etc
 
-### MODEL PROVIDER KEYS ###
+## MODEL PROVIDER KEYS ##
 ## Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
 ## and you can use them by overriding the base URL
 
