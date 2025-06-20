@@ -1,7 +1,5 @@
 import { z } from 'zod';
-import type { Character, MessageExample } from '../types/agent';
-import type { DirectoryItem } from '../types/knowledge';
-import type { Content, UUID } from '../types/primitives';
+import type { Character } from '../types/agent';
 
 // UUID validation schema
 const uuidSchema = z

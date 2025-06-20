@@ -25,7 +25,7 @@ describe('UUID Module', () => {
       validUUIDStrings.forEach((validUUID) => {
         const result = asUUID(validUUID);
         // The function should normalize to lowercase
-        expect(result).toBe(validUUID.toLowerCase());
+        expect(result).toBe(validUUID.toLowerCase() as UUID);
       });
     });
 

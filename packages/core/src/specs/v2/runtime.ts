@@ -139,7 +139,7 @@ export class AgentRuntime implements IAgentRuntime {
     const wrappedPlugin = {
       ...plugin,
       init: plugin.init
-        ? async (config: Record<string, string>, runtime: any) => {
+        ? async (config: Record<string, string>, _runtime: any) => {
             // Pass the v2 runtime instance (this) instead of the core runtime
             return plugin.init!(config, this);
           }
@@ -192,7 +192,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Wrap the provider to ensure it receives the v2 runtime instance
     const wrappedProvider = {
       ...provider,
-      get: async (runtime: any, message: Memory, state: State) => {
+      get: async (_runtime: any, message: Memory, state: State) => {
         // Pass the v2 runtime instance (this) instead of the core runtime
         return provider.get(this, message, state);
       },
@@ -209,7 +209,7 @@ export class AgentRuntime implements IAgentRuntime {
     const wrappedAction = {
       ...action,
       handler: async (
-        runtime: any,
+        _runtime: any,
         message: Memory,
         state: State,
         options: any,
@@ -388,7 +388,7 @@ export class AgentRuntime implements IAgentRuntime {
     provider = 'v2'
   ) {
     // Wrap the handler to ensure it receives the v2 runtime instance
-    const wrappedHandler = async (runtime: any, params: any) => {
+    const wrappedHandler = async (_runtime: any, params: any) => {
       // Pass the v2 runtime instance (this) instead of the core runtime
       return handler(this, params);
     };

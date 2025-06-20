@@ -564,7 +564,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
 
 export function safeReplacer() {
   const seen = new WeakSet();
-  return function (key: string, value: any) {
+  return function (_key: string, value: any) {
     if (typeof value === 'object' && value !== null) {
       if (seen.has(value)) {
         return '[Circular]';

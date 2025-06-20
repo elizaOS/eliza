@@ -1,31 +1,13 @@
-import { mock, beforeAll, describe, expect, test, it } from 'bun:test';
-import { formatEntities, getEntityDetails } from '../entities';
+import { beforeAll, describe, expect, test, it } from 'bun:test';
+import { formatEntities } from '../entities';
 import { formatMessages, formatTimestamp } from '../utils';
-import type {
-  Content,
-  Entity,
-  IAgentRuntime,
-  IDatabaseAdapter,
-  Memory,
-  Room,
-  UUID,
-} from '../types';
-import { ChannelType } from '../types';
+import type { Content, Entity, Memory, UUID } from '../types';
 
 describe('Messages Library', () => {
-  let runtime: IAgentRuntime & IDatabaseAdapter;
   let entities: Entity[];
   let entityId: UUID;
 
   beforeAll(() => {
-    // Mock runtime with necessary methods
-    runtime = {
-      // Using mock() instead of jest.fn()
-      getParticipantsForRoom: mock(),
-      getEntityById: mock(),
-      getRoom: mock(),
-    } as unknown as IAgentRuntime & IDatabaseAdapter;
-
     // Mock user data with proper UUID format
     entityId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
     entities = [
@@ -36,41 +18,6 @@ describe('Messages Library', () => {
       },
     ];
   });
-
-  // test("getEntityDetails should return entities based on roomId", async () => {
-  // 	const roomId: UUID = "123e4567-e89b-12d3-a456-426614174001" as UUID;
-
-  // 	// Using vi.mocked() type assertion instead of jest.Mock casting
-  // 	vi.mocked(
-  // 		runtime.getParticipantsForRoom,
-  // 	).mockResolvedValue([entityId]);
-  // 	vi.mocked(runtime.getEntityById).mockResolvedValue({
-  // 		id: entityId,
-  // 		names: ["Test User"],
-  // 		agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-  // 	});
-  // 	vi.mocked(runtime.getRoom).mockResolvedValue({
-  // 		id: roomId,
-  // 		name: "Test Room",
-  // 		participants: [entityId],
-  // 		source: "test",
-  // 		type: ChannelType.GROUP,
-  // 		channelId: "test",
-  // 		serverId: "test",
-  // 		worldId: "test" as UUID,
-  // 	} as Room);
-  // 	vi.mocked(runtime.getEntitiesForRoom).mockResolvedValue([{
-  // 		id: entityId,
-  // 		names: ["Test User"],
-  // 		agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
-  // 		components: []
-  // 	}]);
-
-  // 	const result = await getEntityDetails({ runtime, roomId });
-
-  // 	expect(result.length).toBeGreaterThan(0);
-  // 	expect(result[0].name).toBe("Test User");
-  // });
 
   test('formatEntities should format entities into a readable string', () => {
     const formattedEntities = formatEntities({ entities });
@@ -165,106 +112,6 @@ describe('Messages', () => {
       agentId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
     },
   ];
-
-  const mockMessages: Memory[] = [
-    {
-      id: '123e4567-e89b-12d3-a456-426614174008' as UUID,
-      roomId: '123e4567-e89b-12d3-a456-426614174009' as UUID,
-      entityId: mockEntities[0].id as UUID,
-      createdAt: Date.now() - 5000, // 5 seconds ago
-      content: {
-        text: 'Hello everyone!',
-        action: 'wave',
-      } as Content,
-      agentId: '123e4567-e89b-12d3-a456-426614174001',
-    },
-    {
-      id: '123e4567-e89b-12d3-a456-426614174010' as UUID,
-      roomId: '123e4567-e89b-12d3-a456-426614174009' as UUID,
-      entityId: mockEntities[1].id as UUID,
-      createdAt: Date.now() - 60000, // 1 minute ago
-      content: {
-        text: 'Hi Alice!',
-        attachments: [
-          {
-            id: '123e4567-e89b-12d3-a456-426614174011' as UUID,
-            title: 'Document',
-            url: 'https://example.com/doc.pdf',
-          },
-        ],
-      } as Content,
-      agentId: '123e4567-e89b-12d3-a456-426614174001',
-    },
-  ];
-
-  // describe("getEntityDetails", () => {
-  // 	it("should retrieve actor details from database", async () => {
-  // 		const mockRuntime = {
-  // 			getParticipantsForRoom: vi
-  // 				.fn()
-  // 				.mockResolvedValue([mockEntities[0].id, mockEntities[1].id]),
-  // 			getEntityById: mock().mockImplementation((id) => {
-  // 				const actor = mockEntities.find((a) => a.id === id);
-  // 				return Promise.resolve(actor);
-  // 			}),
-  // 			getRoom: mock().mockResolvedValue({
-  // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
-  // 				name: "Test Room",
-  // 				participants: [mockEntities[0].id, mockEntities[1].id],
-  // 				source: "test",
-  // 			type: ChannelType.GROUP,
-  // 			channelId: "test",
-  // 			serverId: "test",
-  // 				worldId: "test" as UUID,
-  // 			} as Room),
-  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
-  // 		};
-
-  // 		const entities = await getEntityDetails({
-  // 			runtime: mockRuntime as any,
-  // 			roomId: "123e4567-e89b-12d3-a456-426614174009" as UUID,
-  // 		});
-
-  // 		expect(entities).toHaveLength(2);
-  // 		expect(entities[0].name).toBe("Alice");
-  // 		expect(entities[1].name).toBe("Bob");
-  // 		expect(
-  // 			mockRuntime.getParticipantsForRoom,
-  // 		).toHaveBeenCalled();
-  // 	});
-
-  // 	it("should filter out null entities", async () => {
-  // 		const invalidId = "123e4567-e89b-12d3-a456-426614174012" as UUID;
-  // 		const mockRuntime = {
-  // 			getParticipantsForRoom: vi
-  // 				.fn()
-  // 				.mockResolvedValue([mockEntities[0].id, invalidId]),
-  // 			getEntityById: mock().mockImplementation((id) => {
-  // 				const actor = mockEntities.find((a) => a.id === id);
-  // 				return Promise.resolve(actor || null);
-  // 			}),
-  // 			getRoom: mock().mockResolvedValue({
-  // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
-  // 				name: "Test Room",
-  // 				participants: [mockEntities[0].id, mockEntities[1].id],
-  // 				source: "test",
-  // 			type: ChannelType.GROUP,
-  // 			channelId: "test",
-  // 			serverId: "test",
-  // 				worldId: "test" as UUID,
-  // 			} as Room),
-  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
-  // 		};
-
-  // 		const entities = await getEntityDetails({
-  // 			runtime: mockRuntime as any,
-  // 			roomId: "123e4567-e89b-12d3-a456-426614174009" as UUID,
-  // 		});
-
-  // 		expect(entities).toHaveLength(1);
-  // 		expect(entities[0].name).toBe("Alice");
-  // 	});
-  // });
 
   describe('formatEntities', () => {
     it('should format entities with complete details', () => {

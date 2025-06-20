@@ -3,16 +3,6 @@ import { ProviderResult } from '../../v2';
 import { fromV2Provider, Provider, toV2Provider } from '../provider';
 import { fromV2State } from '../state';
 
-// Define ProviderV2 interface for testing
-interface ProviderV2 {
-  name: string;
-  description?: string;
-  dynamic?: boolean;
-  position?: number;
-  private?: boolean;
-  get: (runtime: any, message: any, state: any) => Promise<any>;
-}
-
 // Mock runtime and memory for testing
 const mockRuntime = {
   getSetting: mock().mockReturnValue('test-setting'),
@@ -170,7 +160,7 @@ describe('Provider adapter', () => {
       text: 'You have 10.5 TON in your wallet.',
       values: {},
       data: {},
-    });
+    } as any);
 
     // Convert back to v1 and verify it still works
     const tonWalletProviderV1Again = fromV2Provider(tonWalletProviderV2);

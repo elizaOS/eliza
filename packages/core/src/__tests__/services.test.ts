@@ -63,7 +63,7 @@ describe('service builder', () => {
       .withStop(stopFn)
       .build();
 
-    const instance = await (Builder as any).start(mockRuntime);
+    await (Builder as any).start(mockRuntime);
     const builtInstance = new Builder();
     await builtInstance.stop();
 
@@ -101,10 +101,10 @@ describe('service builder', () => {
       // Note: no stop function provided
     });
 
-    const instance = await (Def as any).start(mockRuntime);
+    await (Def as any).start(mockRuntime);
     const defInstance = new Def();
     // Should not throw when using default stop
-    await expect(defInstance.stop()).resolves.toBeUndefined();
+    expect(defInstance.stop()).resolves.toBeUndefined();
   });
 
   it('should set all properties correctly with chaining', () => {
