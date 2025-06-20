@@ -481,9 +481,11 @@ describe('Agent Integration Tests', () => {
         expect(updatedAgent?.settings).not.toHaveProperty('topLevelToBeRemoved');
         expect(updatedAgent?.settings?.anotherTopLevel).toBe('this should stay');
         expect(updatedAgent?.settings?.secrets).not.toHaveProperty('secretKeyToRemove');
-        expect(updatedAgent?.settings?.secrets?.["anotherSecret"]).toBe('this secret should also stay');
+        expect(updatedAgent?.settings?.secrets?.['anotherSecret']).toBe(
+          'this secret should also stay'
+        );
         expect(updatedAgent?.settings?.nestedObject).not.toHaveProperty('propToRemove');
-        expect(updatedAgent?.settings?.nestedObject?.["prop1"]).toBe('value1');
+        expect(updatedAgent?.settings?.nestedObject?.['prop1']).toBe('value1');
       });
 
       it('should correctly remove specific secrets from a complex settings object when set to null', async () => {

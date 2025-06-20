@@ -22,7 +22,7 @@
     "baseUrl": ".",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "allowUnusedLabels": true,
+    "allowUnusedLabels": true
   },
   "include": ["src/**/*.ts"]
 }

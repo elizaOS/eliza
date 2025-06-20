@@ -1,10 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { v4 as uuidv4 } from 'uuid';
 import type { UUID, Entity, Memory, Component, Agent, ChannelType } from '@elizaos/core';
 import { DatabaseMigrationService } from '../../migration-service';
