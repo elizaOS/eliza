@@ -27,12 +27,12 @@ env:
   ELIZA_NONINTERACTIVE: true
 
 jobs:
-  # Setup job - builds once and caches artifacts
-  setup:
+  # Validation job
+  validate:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,43 +52,6 @@ jobs:
 
       - name: Build packages
         run: bun run build
-
-      - name: Cache build artifacts
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            node_modules
-            packages/*/dist
-            packages/*/build
-          key: integration-build-${{ runner.os }}-${{ github.sha }}
-
-  # Validation job - runs in parallel
-  validate:
-    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
-    needs: setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '23'
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            packages/*/dist
-            packages/*/build
-          key: integration-build-${{ runner.os }}-${{ github.sha }}
 
       - name: Install global packages
         run: npm install -g @anthropic-ai/claude-code
@@ -110,11 +73,10 @@ jobs:
               exit 1
           fi
 
-  # Integration tests job - runs in parallel
+  # Integration tests job
   integration-tests:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -129,14 +91,13 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            packages/*/dist
-            packages/*/build
-          key: integration-build-${{ runner.os }}-${{ github.sha }}
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
 
       - name: Install global packages
         run: npm install -g @anthropic-ai/claude-code
@@ -180,7 +141,6 @@ jobs:
   cli-tests:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
-    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -195,14 +155,13 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            packages/*/dist
-            packages/*/build
-          key: integration-build-${{ runner.os }}-${{ github.sha }}
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
 
       - name: Run CLI tests
         timeout-minutes: 25
