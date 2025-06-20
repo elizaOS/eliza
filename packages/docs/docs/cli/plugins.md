@@ -319,5 +319,6 @@ elizaos plugins add plugin-name --tag v1.0.0
 - [`create`](./create.md): Create a new project or plugin
 - [`env`](./env.md): Manage environment variables needed by plugins
 - [`publish`](./publish.md): Publish your plugin to the registry
+
 </TabItem>
 </Tabs>

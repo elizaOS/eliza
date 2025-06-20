@@ -373,9 +373,6 @@ elizaos agent get --name 0
 - [`start`](./start.md): Start the agent runtime server
 - [`dev`](./dev.md): Run in development mode with hot-reload
 - [`env`](./env.md): Configure environment variables for agents
+
 </TabItem>
 </Tabs>
-
-```
-
-```
