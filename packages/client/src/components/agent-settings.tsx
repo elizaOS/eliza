@@ -14,7 +14,7 @@ import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
 import { SecretPanel } from './secret-panel';
 
-export default function AgentSettings({ agent, agentId }: { agent: Agent; agentId: UUID }) {
+export default function AgentSettings({ agent, agentId, onSaveComplete }: { agent: Agent; agentId: UUID; onSaveComplete?: () => void }) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -55,11 +55,42 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
 
       // No need to send update if nothing changed
       if (Object.keys(changedFields).length === 0) {
+        // Force include secrets if they exist even if no other changes detected
+        if (secrets && Object.keys(secrets).length > 0) {
+          const forceUpdate = {
+            id: agentId,
+            settings: { secrets },
+          };
+
+          await apiClient.updateAgent(agentId, forceUpdate as Agent);
+
+          queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+          queryClient.invalidateQueries({ queryKey: ['agents'] });
+          navigate('/');
+
+          toast({
+            title: 'Success',
+            description: 'Agent secrets updated successfully',
+          });
+          
+          if (onSaveComplete) {
+            onSaveComplete();
+          } else {
+            navigate('/');
+          }
+          return;
+        }
+
         toast({
           title: 'No Changes',
           description: 'No changes were made to the agent',
         });
-        navigate('/');
+        
+        if (onSaveComplete) {
+          onSaveComplete();
+        } else {
+          navigate('/');
+        }
         return;
       }
 
@@ -76,12 +107,17 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
       queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
 
-      navigate('/');
-
       toast({
         title: 'Success',
-        description: 'Agent updated and restarted successfully',
+        description: 'Agent updated successfully',
       });
+
+      // Call the onSaveComplete callback if provided, otherwise navigate
+      if (onSaveComplete) {
+        onSaveComplete();
+      } else {
+        navigate('/');
+      }
     } catch (error) {
       toast({
         title: 'Error',

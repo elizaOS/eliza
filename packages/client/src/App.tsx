@@ -25,6 +25,7 @@ import { Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from './components/ui/sheet';
 import { Button } from './components/ui/button';
 import CreateGroupPage from './routes/group-new';
+import AgentSettingsRoute from './routes/agent-settings';
 import clientLogger from '@/lib/logger';
 
 // Create a query client with optimized settings
@@ -135,6 +136,10 @@ function AppContent() {
                     <Chat />
                   </div>
                 }
+              />
+              <Route
+                path="settings/:agentId"
+                element={<AgentSettingsRoute />}
               />
               <Route path="group/new" element={<CreateGroupPage />} />
               <Route path="agents/new" element={<AgentCreatorRoute />} />
