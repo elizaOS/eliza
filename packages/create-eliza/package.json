@@ -11,7 +11,8 @@
     "create-eliza": "index.mjs"
   },
   "scripts": {
-    "create-eliza": "bun run index.mjs"
+    "create-eliza": "bun run index.mjs",
+    "test": "echo \"No tests configured for create-eliza\""
   },
   "license": "MIT",
   "author": {
