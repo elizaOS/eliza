@@ -9,8 +9,6 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
   return [
     'pglite',
     'postgres',
-    // "pglite",
-    // "supabase"
   ];
 }
 
@@ -20,23 +18,23 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI (free to use, no API key required)',
+      title: 'Local AI',
       value: 'local',
       description:
-        'Use local AI models without external API requirements. Will download model to run locally.',
+        'Use local AI models without external API requirements. Will download model to run locally',
     },
     {
-      title: 'OpenAI (ChatGPT)',
+      title: 'OpenAI',
       value: 'openai',
-      description: 'Use OpenAI models like GPT-4',
+      description: 'Use OpenAI models like GPT-4o, GPT-4o-mini, GPT-4o-mini-2024-07-18',
     },
     {
-      title: 'Anthropic (Claude)',
+      title: 'Anthropic',
       value: 'claude',
-      description: 'Use Anthropic Claude models',
+      description: 'Use Anthropic models like Claude 4.0 Sonnet',
     },
     {
-      title: 'Ollama (self-hosted, free to use)',
+      title: 'Ollama',
       value: 'ollama',
       description: 'Use self-hosted Ollama models for complete privacy and control',
     },
@@ -49,16 +47,16 @@ export function getAvailableAIModels(): AIModelOption[] {
 export function getAvailableDatabases(): DatabaseOption[] {
   return [
     {
-      title: 'Pglite (Pglite) - Recommended for development',
+      title: 'Pglite (Pglite)',
       value: 'pglite',
       description:
-        'Fast, file-based database. Perfect for development and single-user deployments.',
+        'Recommended for local development, single-user deployments',
     },
     {
-      title: 'PostgreSQL - Recommended for production',
+      title: 'PostgreSQL',
       value: 'postgres',
       description:
-        'Full-featured database with vector search. Best for production and multi-user systems.',
+        'Recommended for production',
     },
   ];
 }
