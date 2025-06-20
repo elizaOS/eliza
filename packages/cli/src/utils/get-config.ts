@@ -533,6 +533,18 @@ export function isValidAnthropicKey(key: string): boolean {
 }
 
 /**
+ * Validates a Google Generative AI API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid
+ */
+export function isValidGoogleKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+
+  // Google API keys are typically 39 characters long and contain alphanumeric chars with dashes
+  return key.length === 39 && /^[A-Za-z0-9_-]+$/.test(key);
+}
+
+/**
  * Stores OpenAI API key in the .env file
  * @param key The OpenAI API key to store
  * @param envFilePath Path to the .env file
@@ -557,6 +569,37 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
     logger.success('OpenAI API key saved to configuration');
   } catch (error) {
     logger.error('Error saving OpenAI API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Stores Google Generative AI API key in the .env file
+ * @param key The Google API key to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeGoogleKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing GOOGLE_GENERATIVE_AI_API_KEY line if present
+    const lines = content
+      .split('\n')
+      .filter((line) => !line.startsWith('GOOGLE_GENERATIVE_AI_API_KEY='));
+    lines.push(`GOOGLE_GENERATIVE_AI_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
+
+    logger.success('Google Generative AI API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving Google API key:', error);
     throw error;
   }
 }
@@ -591,49 +634,113 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
 }
 
 /**
+ * Generic configuration for provider prompts
+ */
+interface ProviderPromptConfig {
+  name: string;
+  icon: string;
+  noteText: string;
+  inputs: Array<{
+    key: string;
+    message: string;
+    placeholder?: string;
+    initialValue?: string;
+    type: 'text' | 'password';
+    validate: (value: string) => string | undefined;
+  }>;
+  storeFunction: (config: any, envFilePath: string) => Promise<void>;
+  successMessage: string;
+}
+
+/**
+ * Generic function to prompt for provider configuration
+ * @param config Provider-specific configuration
+ * @param envFilePath Path to the .env file
+ * @returns The configured values or null if user cancels
+ */
+async function promptAndStoreProviderConfig<T>(
+  config: ProviderPromptConfig,
+  envFilePath: string
+): Promise<T | null> {
+  clack.intro(`${config.icon} ${config.name} Configuration`);
+
+  if (config.noteText) {
+    clack.note(config.noteText, 'API Key Information');
+  }
+
+  const results: any = {};
+
+  // Collect all inputs
+  for (const input of config.inputs) {
+    const promptFn = input.type === 'password' ? clack.password : clack.text;
+    const promptConfig: any = {
+      message: input.message,
+      validate: input.validate,
+    };
+
+    if (input.placeholder) promptConfig.placeholder = input.placeholder;
+    if (input.initialValue) promptConfig.initialValue = input.initialValue;
+
+    const response = await promptFn(promptConfig);
+
+    if (clack.isCancel(response)) {
+      clack.cancel('Operation cancelled.');
+      return null;
+    }
+
+    results[input.key] = input.type === 'text' ? response.trim() : response;
+  }
+
+  // Store the configuration
+  const spinner = clack.spinner();
+  spinner.start(`Saving ${config.name} configuration...`);
+
+  try {
+    await config.storeFunction(results, envFilePath);
+    spinner.stop(`${config.name} configuration saved successfully!`);
+    clack.outro(`✓ ${config.successMessage}`);
+    return results as T;
+  } catch (error) {
+    spinner.stop('Failed to save configuration');
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
  * Prompts the user for an OpenAI API key, validates it, and stores it
  * @param envFilePath Path to the .env file
  * @returns The configured OpenAI API key or null if user cancels
  */
 export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<string | null> {
-  clack.intro('🤖 OpenAI API Configuration');
-
-  clack.note('Get your API key from: https://platform.openai.com/api-keys', 'API Key Information');
-
-  const response = await clack.password({
-    message: 'Enter your OpenAI API key:',
-    validate: (value) => {
-      if (value.trim() === '') return 'OpenAI API key cannot be empty';
-      return undefined;
+  const config: ProviderPromptConfig = {
+    name: 'OpenAI API',
+    icon: '🤖',
+    noteText: 'Get your API key from: https://platform.openai.com/api-keys',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your OpenAI API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'OpenAI API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidOpenAIKey(results.key);
+      if (!isValid) {
+        clack.log.warn('Invalid API key format detected. Expected format: sk-...');
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeOpenAIKey(results.key, envPath);
     },
-  });
+    successMessage: 'OpenAI integration configured',
+  };
 
-  if (clack.isCancel(response)) {
-    clack.cancel('Operation cancelled.');
-    return null;
-  }
-
-  // Check if the API key format is valid and warn if not
-  const isValid = isValidOpenAIKey(response);
-  if (!isValid) {
-    clack.log.warn('Invalid API key format detected. Expected format: sk-...');
-    clack.log.warn('The key has been saved but may not work correctly.');
-  }
-
-  // Store the key in the .env file (even if invalid)
-  const spinner = clack.spinner();
-  spinner.start('Saving OpenAI API key...');
-
-  try {
-    await storeOpenAIKey(response, envFilePath);
-    spinner.stop('OpenAI API key saved successfully!');
-    clack.outro('\u2713 OpenAI integration configured');
-    return response;
-  } catch (error) {
-    spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
 }
 
 /**
@@ -642,47 +749,34 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
  * @returns The configured Anthropic API key or null if user cancels
  */
 export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<string | null> {
-  clack.intro('🤖 Anthropic Claude Configuration');
-
-  clack.note(
-    'Get your API key from: https://console.anthropic.com/settings/keys',
-    'API Key Information'
-  );
-
-  const response = await clack.password({
-    message: 'Enter your Anthropic API key:',
-    validate: (value) => {
-      if (value.trim() === '') return 'Anthropic API key cannot be empty';
-      return undefined;
+  const config: ProviderPromptConfig = {
+    name: 'Anthropic Claude',
+    icon: '🤖',
+    noteText: 'Get your API key from: https://console.anthropic.com/settings/keys',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your Anthropic API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'Anthropic API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidAnthropicKey(results.key);
+      if (!isValid) {
+        clack.log.warn('Invalid API key format detected. Expected format: sk-ant-...');
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeAnthropicKey(results.key, envPath);
     },
-  });
+    successMessage: 'Claude integration configured',
+  };
 
-  if (clack.isCancel(response)) {
-    clack.cancel('Operation cancelled.');
-    return null;
-  }
-
-  // Check if the API key format is valid and warn if not
-  const isValid = isValidAnthropicKey(response);
-  if (!isValid) {
-    clack.log.warn('Invalid API key format detected. Expected format: sk-ant-...');
-    clack.log.warn('The key has been saved but may not work correctly.');
-  }
-
-  // Store the key in the .env file (even if invalid)
-  const spinner = clack.spinner();
-  spinner.start('Saving Anthropic API key...');
-
-  try {
-    await storeAnthropicKey(response, envFilePath);
-    spinner.stop('Anthropic API key saved successfully!');
-    clack.outro('\u2713 Claude integration configured');
-    return response;
-  } catch (error) {
-    spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
 }
 
 /**
@@ -756,60 +850,85 @@ export async function storeOllamaConfig(
 export async function promptAndStoreOllamaConfig(
   envFilePath: string
 ): Promise<{ endpoint: string; model: string } | null> {
-  clack.intro('🦙 Ollama Configuration');
+  const config: ProviderPromptConfig = {
+    name: 'Ollama',
+    icon: '🦙',
+    noteText:
+      'Make sure Ollama is installed and running on your system.\nDefault endpoint: http://localhost:11434\nGet started: https://ollama.ai/',
+    inputs: [
+      {
+        key: 'endpoint',
+        message: 'Enter your Ollama API endpoint:',
+        placeholder: 'http://localhost:11434',
+        initialValue: 'http://localhost:11434',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Ollama endpoint cannot be empty';
+          if (!isValidOllamaEndpoint(value))
+            return 'Invalid URL format (http:// or https:// required)';
+          return undefined;
+        },
+      },
+      {
+        key: 'model',
+        message: 'Enter your preferred Ollama model:',
+        placeholder: 'llama2',
+        initialValue: 'llama2',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Model name cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      await storeOllamaConfig({ endpoint: results.endpoint, model: results.model }, envPath);
+    },
+    successMessage: 'Ollama integration configured',
+  };
 
-  clack.note(
-    'Make sure Ollama is installed and running on your system.\nDefault endpoint: http://localhost:11434\nGet started: https://ollama.ai/',
-    'Ollama Information'
+  return await promptAndStoreProviderConfig<{ endpoint: string; model: string }>(
+    config,
+    envFilePath
   );
+}
 
-  const endpoint = await clack.text({
-    message: 'Enter your Ollama API endpoint:',
-    placeholder: 'http://localhost:11434',
-    initialValue: 'http://localhost:11434',
-    validate: (value) => {
-      if (value.trim() === '') return 'Ollama endpoint cannot be empty';
-      if (!isValidOllamaEndpoint(value)) return 'Invalid URL format (http:// or https:// required)';
-      return undefined;
+/**
+ * Prompts the user for a Google Generative AI API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured Google API key or null if user cancels
+ */
+export async function promptAndStoreGoogleKey(envFilePath: string): Promise<string | null> {
+  const config: ProviderPromptConfig = {
+    name: 'Google Generative AI',
+    icon: '🤖',
+    noteText: 'Get your API key from: https://aistudio.google.com/apikey',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your Google Generative AI API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'Google API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidGoogleKey(results.key);
+      if (!isValid) {
+        clack.log.warn(
+          'Invalid API key format detected. Expected format: 39 character alphanumeric key'
+        );
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeGoogleKey(results.key, envPath);
     },
-  });
+    successMessage: 'Google Generative AI integration configured',
+  };
 
-  if (clack.isCancel(endpoint)) {
-    clack.cancel('Operation cancelled.');
-    return null;
-  }
-
-  const model = await clack.text({
-    message: 'Enter your preferred Ollama model:',
-    placeholder: 'llama2',
-    initialValue: 'llama2',
-    validate: (value) => {
-      if (value.trim() === '') return 'Model name cannot be empty';
-      return undefined;
-    },
-  });
-
-  if (clack.isCancel(model)) {
-    clack.cancel('Operation cancelled.');
-    return null;
-  }
-
-  const config = { endpoint: endpoint.trim(), model: model.trim() };
-
-  // Store the configuration in the .env file
-  const spinner = clack.spinner();
-  spinner.start('Saving Ollama configuration...');
-
-  try {
-    await storeOllamaConfig(config, envFilePath);
-    spinner.stop('Ollama configuration saved successfully!');
-    clack.outro('✓ Ollama integration configured');
-    return config;
-  } catch (error) {
-    spinner.stop('Failed to save configuration');
-    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    return null;
-  }
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
 }
 
 /**

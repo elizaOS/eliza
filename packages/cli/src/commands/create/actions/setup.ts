@@ -6,6 +6,7 @@ import {
   promptAndStoreOpenAIKey,
   promptAndStoreAnthropicKey,
   promptAndStoreOllamaConfig,
+  promptAndStoreGoogleKey,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
@@ -108,6 +109,32 @@ export async function setupAIModelConfig(
         } else {
           // Interactive mode - prompt for Ollama configuration
           await promptAndStoreOllamaConfig(envFilePath);
+        }
+        break;
+      }
+
+      case 'google': {
+        if (isNonInteractive) {
+          // In non-interactive mode, just add placeholder
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# AI Model Configuration\n';
+          content += '# Google Generative AI Configuration\n';
+          content += 'GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key_here\n';
+          content += '# Get your API key from: https://aistudio.google.com/apikey\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+          console.info('[√] Google Generative AI placeholder configuration added to .env file');
+        } else {
+          // Interactive mode - prompt for Google API key
+          await promptAndStoreGoogleKey(envFilePath);
         }
         break;
       }
