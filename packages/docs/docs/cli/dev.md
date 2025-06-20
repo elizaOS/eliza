@@ -309,5 +309,6 @@ elizaos env list
 - [`test`](./test.md): Run tests for your project
 - [`env`](./env.md): Configure environment variables for development
 - [`create`](./create.md): Create new projects with development structure
+
 </TabItem>
 </Tabs>

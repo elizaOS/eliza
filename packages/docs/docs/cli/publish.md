@@ -242,5 +242,6 @@ elizaos publish --skip-registry
 - [`plugins`](./plugins.md): Manage and discover published plugins
 - [`test`](./test.md): Test your plugin before publishing
 - [`env`](./env.md): Configure environment variables for publishing
+
 </TabItem>
 </Tabs>

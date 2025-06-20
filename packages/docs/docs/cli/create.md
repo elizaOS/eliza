@@ -329,5 +329,6 @@ elizaos create -t invalid    # Invalid template type
 - [`start`](./start.md): Start your created project
 - [`dev`](./dev.md): Run your project in development mode
 - [`env`](./env.md): Configure environment variables
+
 </TabItem>
 </Tabs>
