@@ -79,7 +79,6 @@ ANTHROPIC_API_KEY=
 # Local AI Configuration
 ## REMEMBER A GOOD AMOUNT OF VRAM IS NEEDED FOR THE LARGE LOCAL MODELS
 --------------------------------
-# Local AI Configuration
 # LOCAL_SMALL_MODEL=DeepHermes-3-Llama-3-3B-Preview-q4.gguf
 # LOCAL_LARGE_MODEL=DeepHermes-3-Llama-3-70B-Preview-q4.gguf
 # LOCAL_EMBEDDING_MODEL=bge-small-en-v1.5.Q4_K_M.gguf
