@@ -96,11 +96,7 @@ export default function AgentRoute() {
         <h2 className="text-2xl font-semibold mb-4">{agentFromHook.name} is not active.</h2>
         <p className="text-muted-foreground mb-6">Press the button below to start this agent.</p>
         <div className="flex gap-3">
-          <Button
-            onClick={() => navigate(`/settings/${agentId}`)}
-            variant="outline"
-            size="lg"
-          >
+          <Button onClick={() => navigate(`/settings/${agentId}`)} variant="outline" size="lg">
             <Settings className="h-5 w-5" />
           </Button>
           <Button onClick={handleStartAgent} disabled={isStarting} size="lg">

@@ -162,11 +162,11 @@ jobs:
           # Prevent interactive prompts
           ELIZA_NONINTERACTIVE: true
           # Set memory limits for CI
-          NODE_OPTIONS: "--max-old-space-size=2048"
+          NODE_OPTIONS: '--max-old-space-size=2048'
         run: |
           # Set test timeout for CI (60 seconds per test)
           export BUN_TEST_TIMEOUT=60000
-          
+
           # TEMPORARY: Skip hanging CLI tests, run only core and other stable packages
           echo "Starting integration tests (excluding CLI tests that hang)..."
           bun test --timeout 60000 --concurrency 3 --filter='!@elizaos/cli' || {
@@ -214,11 +214,11 @@ jobs:
           # Prevent interactive prompts
           ELIZA_NONINTERACTIVE: true
           # Set memory limits for CI
-          NODE_OPTIONS: "--max-old-space-size=2048"
+          NODE_OPTIONS: '--max-old-space-size=2048'
         run: |
           # Set longer timeout for CLI tests (120 seconds per test)
           export BUN_TEST_TIMEOUT=120000
-          
+
           echo "Starting CLI tests with extended timeout (120s per test)..."
           cd packages/cli && bun test --timeout 120000 || {
             echo "CLI tests failed with exit code $?"

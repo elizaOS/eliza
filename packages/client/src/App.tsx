@@ -137,10 +137,7 @@ function AppContent() {
                   </div>
                 }
               />
-              <Route
-                path="settings/:agentId"
-                element={<AgentSettingsRoute />}
-              />
+              <Route path="settings/:agentId" element={<AgentSettingsRoute />} />
               <Route path="group/new" element={<CreateGroupPage />} />
               <Route path="agents/new" element={<AgentCreatorRoute />} />
               <Route

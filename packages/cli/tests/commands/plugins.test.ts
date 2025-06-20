@@ -94,7 +94,6 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins add installs a plugin',
     async () => {
-
       try {
         execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
           stdio: 'pipe',

@@ -76,14 +76,14 @@ describe('ElizaOS Dev Commands', () => {
       try {
         // For Bun.spawn processes, use the exited promise
         const exitPromise = proc.exited ? proc.exited.catch(() => {}) : Promise.resolve();
-        
+
         // First attempt graceful shutdown
         proc.kill('SIGTERM');
 
         // Wait for graceful exit with timeout
         await Promise.race([
           exitPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 3000))
+          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
         ]);
 
         // Force kill if still running
@@ -149,7 +149,7 @@ describe('ElizaOS Dev Commands', () => {
     // Use Bun.spawn for better compatibility
     console.log(`[DEBUG] Using Bun.spawn for dev command`);
     console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev ${args}`);
-    
+
     try {
       const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
         cwd: cwd || projectDir,
@@ -165,14 +165,14 @@ describe('ElizaOS Dev Commands', () => {
         // Windows-specific options
         ...(process.platform === 'win32' && {
           windowsHide: true,
-          windowsVerbatimArguments: false
-        })
+          windowsVerbatimArguments: false,
+        }),
       });
-      
+
       if (!devProcess.pid) {
         throw new Error('Bun.spawn failed to create process - no PID returned');
       }
-      
+
       return devProcess;
     } catch (spawnError) {
       console.error(`[ERROR] Failed to spawn dev process:`, spawnError);
@@ -226,7 +226,7 @@ describe('ElizaOS Dev Commands', () => {
     // Use Bun.spawn for project detection test
     console.log(`[DEBUG] Using Bun.spawn for project detection test`);
     console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
-    
+
     let devProcess: any;
     try {
       devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
@@ -242,10 +242,10 @@ describe('ElizaOS Dev Commands', () => {
         // Windows-specific options
         ...(process.platform === 'win32' && {
           windowsHide: true,
-          windowsVerbatimArguments: false
-        })
+          windowsVerbatimArguments: false,
+        }),
       });
-      
+
       if (!devProcess.pid) {
         throw new Error('Bun.spawn failed to create process - no PID returned');
       }
@@ -267,21 +267,24 @@ describe('ElizaOS Dev Commands', () => {
     let outputReceived = false;
     const outputPromise = new Promise<void>((resolve) => {
       // Handle Bun.spawn's ReadableStream
-      const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, streamName: string) => {
+      const handleStream = async (
+        stream: ReadableStream<Uint8Array> | undefined,
+        streamName: string
+      ) => {
         if (!stream) return;
-        
+
         const reader = stream.getReader();
         const decoder = new TextDecoder();
-        
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             const text = decoder.decode(value, { stream: true });
             output += text;
             console.log(`[DEV ${streamName}] ${text}`);
-            
+
             if (!outputReceived && text.length > 0) {
               outputReceived = true;
               // Give more time for complete output on macOS
@@ -292,12 +295,12 @@ describe('ElizaOS Dev Commands', () => {
           reader.releaseLock();
         }
       };
-      
+
       // Start reading both streams
       Promise.all([
         handleStream(devProcess.stdout, 'STDOUT'),
-        handleStream(devProcess.stderr, 'STDERR')
-      ]).catch(err => console.error('[DEV TEST] Stream error:', err));
+        handleStream(devProcess.stderr, 'STDERR'),
+      ]).catch((err) => console.error('[DEV TEST] Stream error:', err));
 
       // Fallback timeout
       setTimeout(() => {
@@ -406,7 +409,7 @@ describe('ElizaOS Dev Commands', () => {
     // Use Bun.spawn for non-eliza test
     console.log(`[DEBUG] Using Bun.spawn for non-eliza test`);
     console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
-    
+
     let devProcess: any;
     try {
       devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
@@ -422,10 +425,10 @@ describe('ElizaOS Dev Commands', () => {
         // Windows-specific options
         ...(process.platform === 'win32' && {
           windowsHide: true,
-          windowsVerbatimArguments: false
-        })
+          windowsVerbatimArguments: false,
+        }),
       });
-      
+
       if (!devProcess.pid) {
         throw new Error('Bun.spawn failed to create process - no PID returned');
       }
@@ -447,21 +450,24 @@ describe('ElizaOS Dev Commands', () => {
 
     const outputPromise = new Promise<void>((resolve) => {
       // Handle Bun.spawn's ReadableStream
-      const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, streamName: string) => {
+      const handleStream = async (
+        stream: ReadableStream<Uint8Array> | undefined,
+        streamName: string
+      ) => {
         if (!stream) return;
-        
+
         const reader = stream.getReader();
         const decoder = new TextDecoder();
-        
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             const text = decoder.decode(value, { stream: true });
             output += text;
             console.log(`[NON-ELIZA DIR ${streamName}] ${text}`);
-            
+
             if (!outputReceived && text.length > 0) {
               outputReceived = true;
               // Give more time for complete output on macOS
@@ -472,12 +478,12 @@ describe('ElizaOS Dev Commands', () => {
           reader.releaseLock();
         }
       };
-      
+
       // Start reading both streams
       Promise.all([
         handleStream(devProcess.stdout, 'STDOUT'),
-        handleStream(devProcess.stderr, 'STDERR')
-      ]).catch(err => console.error('[NON-ELIZA DIR TEST] Stream error:', err));
+        handleStream(devProcess.stderr, 'STDERR'),
+      ]).catch((err) => console.error('[NON-ELIZA DIR TEST] Stream error:', err));
 
       // Fallback timeout
       setTimeout(() => {

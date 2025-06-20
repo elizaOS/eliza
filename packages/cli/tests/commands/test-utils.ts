@@ -74,7 +74,7 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
   const platformOptions: any = {
     stdio: 'pipe',
   };
-  
+
   if (process.platform === 'win32') {
     platformOptions.timeout = timeout * 1.5;
     platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
@@ -87,7 +87,7 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
       ...process.env,
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8'
+      LC_ALL: 'en_US.UTF-8',
     };
   } else {
     platformOptions.timeout = timeout;
@@ -102,7 +102,7 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
       signal: error.signal,
       platform: process.platform,
       stdout: error.stdout?.toString() || '',
-      stderr: error.stderr?.toString() || ''
+      stderr: error.stderr?.toString() || '',
     });
     throw error;
   }
@@ -120,7 +120,7 @@ export function runCliCommand(
 
   // Platform-specific options
   const platformOptions: any = {};
-  
+
   if (process.platform === 'win32') {
     platformOptions.timeout = timeout * 1.5; // 50% longer timeout for Windows
     platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
@@ -134,7 +134,7 @@ export function runCliCommand(
       ...process.env,
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8'
+      LC_ALL: 'en_US.UTF-8',
     };
   } else {
     platformOptions.timeout = timeout;
@@ -156,7 +156,7 @@ export function runCliCommand(
       signal: error.signal,
       stdout: error.stdout?.toString() || '',
       stderr: error.stderr?.toString() || '',
-      pid: error.pid
+      pid: error.pid,
     };
     console.error('[CLI Command Error]', errorDetails);
     throw error;
@@ -175,7 +175,7 @@ export function runCliCommandSilently(
 
   // Platform-specific options
   const platformOptions: any = {};
-  
+
   if (process.platform === 'win32') {
     platformOptions.timeout = timeout * 1.5;
     platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
@@ -188,7 +188,7 @@ export function runCliCommandSilently(
       ...process.env,
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8'
+      LC_ALL: 'en_US.UTF-8',
     };
   } else {
     platformOptions.timeout = timeout;
@@ -206,7 +206,7 @@ export function runCliCommandSilently(
       status: error.status,
       signal: error.signal,
       platform: process.platform,
-      timeout: platformOptions.timeout
+      timeout: platformOptions.timeout,
     });
     throw error;
   }
@@ -224,7 +224,7 @@ export function expectCliCommandToFail(
 
   // Platform-specific options
   const platformOptions: any = {};
-  
+
   if (process.platform === 'win32') {
     platformOptions.timeout = timeout * 1.5;
     platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
@@ -237,7 +237,7 @@ export function expectCliCommandToFail(
       ...process.env,
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8'
+      LC_ALL: 'en_US.UTF-8',
     };
   } else {
     platformOptions.timeout = timeout;
@@ -367,12 +367,14 @@ export async function waitForServerReady(
   const startTime = Date.now();
   const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
   const isMacOS = process.platform === 'darwin';
-  
+
   // More conservative timeouts for macOS CI
-  const pollInterval = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
-  const requestTimeout = isMacOS && isCI ? 6000 : (isMacOS ? 4000 : 2000);
-  
-  console.log(`[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`);
+  const pollInterval = isMacOS && isCI ? 3000 : isMacOS ? 2000 : 1000;
+  const requestTimeout = isMacOS && isCI ? 6000 : isMacOS ? 4000 : 2000;
+
+  console.log(
+    `[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`
+  );
   console.log(`[DEBUG] Environment: CI=${isCI}, macOS=${isMacOS}`);
 
   // First, check if anything is listening on the port using a simple connection test
@@ -406,12 +408,15 @@ export async function waitForServerReady(
       if (!canConnect) {
         connectionAttempts++;
         const timeRemaining = maxWaitTime - (Date.now() - startTime);
-        console.log(`[DEBUG] Connection attempt ${connectionAttempts}/${maxConnectionAttempts} failed - no process listening on port ${port}, ${Math.round(timeRemaining/1000)}s remaining`);
-        
+        console.log(
+          `[DEBUG] Connection attempt ${connectionAttempts}/${maxConnectionAttempts} failed - no process listening on port ${port}, ${Math.round(timeRemaining / 1000)}s remaining`
+        );
+
         if (connectionAttempts >= maxConnectionAttempts) {
           // Check if process is still running but not bound yet
           const timeRemaining = maxWaitTime - (Date.now() - startTime);
-          if (timeRemaining < maxWaitTime * 0.3) { // Less than 30% time remaining
+          if (timeRemaining < maxWaitTime * 0.3) {
+            // Less than 30% time remaining
             console.log(`[DEBUG] Giving up on connection test, trying HTTP anyway...`);
           } else {
             await new Promise((resolve) => setTimeout(resolve, pollInterval));
@@ -431,29 +436,33 @@ export async function waitForServerReady(
         signal: controller.signal,
         headers: {
           'User-Agent': 'ElizaOS-Test-Client/1.0',
-          'Accept': 'application/json',
-          'Connection': 'keep-alive',
-          'Cache-Control': 'no-cache'
-        }
+          Accept: 'application/json',
+          Connection: 'keep-alive',
+          'Cache-Control': 'no-cache',
+        },
       });
 
       clearTimeout(timeoutId);
       if (response.ok) {
         console.log(`[DEBUG] Server responded with status ${response.status}`);
         // Server is ready, give it more time to stabilize especially on macOS CI
-        const stabilizationTime = isMacOS && isCI ? 3000 : (isMacOS ? 2000 : 1000);
+        const stabilizationTime = isMacOS && isCI ? 3000 : isMacOS ? 2000 : 1000;
         console.log(`[DEBUG] Stabilizing for ${stabilizationTime}ms...`);
         await new Promise((resolve) => setTimeout(resolve, stabilizationTime));
         return;
       } else {
-        console.log(`[DEBUG] Server responded with status ${response.status}, continuing to wait...`);
+        console.log(
+          `[DEBUG] Server responded with status ${response.status}, continuing to wait...`
+        );
       }
     } catch (error) {
       // Server not ready yet, continue polling
       const timeRemaining = maxWaitTime - (Date.now() - startTime);
       const errorMsg = error instanceof Error ? error.message : 'unknown error';
-      console.log(`[DEBUG] Server not ready yet (${errorMsg}), ${Math.round(timeRemaining/1000)}s remaining`);
-      
+      console.log(
+        `[DEBUG] Server not ready yet (${errorMsg}), ${Math.round(timeRemaining / 1000)}s remaining`
+      );
+
       // Reset connection attempts on network errors
       if (errorMsg.includes('fetch') || errorMsg.includes('AbortError')) {
         connectionAttempts = 0;
@@ -500,31 +509,34 @@ export async function killProcessOnPort(port: number): Promise<void> {
         const lsofResult = execSync(`lsof -ti:${port}`, {
           encoding: 'utf8',
           stdio: 'pipe',
-          timeout: 10000 // Increased timeout for CI
+          timeout: 10000, // Increased timeout for CI
         });
-        
-        const pids = lsofResult.trim().split('\n').filter(pid => pid && /^\d+$/.test(pid));
+
+        const pids = lsofResult
+          .trim()
+          .split('\n')
+          .filter((pid) => pid && /^\d+$/.test(pid));
         console.log(`[DEBUG] Found ${pids.length} processes on port ${port}: ${pids.join(', ')}`);
-        
+
         for (const pid of pids) {
           try {
             // Check if process exists first
             execSync(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
-            
+
             // Try SIGTERM first
             console.log(`[DEBUG] Sending SIGTERM to PID ${pid}`);
             execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
-            
+
             // Wait longer for graceful shutdown on macOS CI
             const waitTime = process.env.CI === 'true' ? 3000 : 1000;
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+
             // Check if still running, then force kill
             try {
               execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
               console.log(`[DEBUG] Process ${pid} still running, sending SIGKILL`);
               execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise((resolve) => setTimeout(resolve, 500));
             } catch (e) {
               // Process already dead, good
               console.log(`[DEBUG] Process ${pid} terminated gracefully`);
@@ -540,17 +552,22 @@ export async function killProcessOnPort(port: number): Promise<void> {
       }
     } else {
       // Other Unix systems
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { 
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, {
         stdio: 'ignore',
-        timeout: 5000
+        timeout: 5000,
       });
     }
-    
+
     // Give processes time to actually terminate
-    await new Promise(resolve => setTimeout(resolve, process.platform === 'darwin' ? 2000 : 1000));
+    await new Promise((resolve) =>
+      setTimeout(resolve, process.platform === 'darwin' ? 2000 : 1000)
+    );
   } catch (e) {
     // Ignore port cleanup errors but log them for debugging
-    console.log(`[DEBUG] Port cleanup for ${port} encountered error:`, e instanceof Error ? e.message : 'unknown');
+    console.log(
+      `[DEBUG] Port cleanup for ${port} encountered error:`,
+      e instanceof Error ? e.message : 'unknown'
+    );
   }
 }
 
