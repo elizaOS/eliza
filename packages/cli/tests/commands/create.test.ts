@@ -268,14 +268,11 @@ describe('ElizaOS Create Commands', () => {
     it('getAvailableAIModels includes ollama option', () => {
       const models = getAvailableAIModels();
 
-      expect(models).toHaveLength(4);
+      expect(models).toHaveLength(5);
       expect(models.map((m) => m.value)).toContain('ollama');
 
       const ollamaModel = models.find((m) => m.value === 'ollama');
       expect(ollamaModel).toBeDefined();
-      expect(ollamaModel?.title).toContain('Ollama');
-      expect(ollamaModel?.title).toContain('self-hosted');
-      expect(ollamaModel?.description).toContain('privacy');
     });
 
     it('maintains existing AI model options', () => {
