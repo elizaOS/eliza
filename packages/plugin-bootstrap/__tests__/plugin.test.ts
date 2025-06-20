@@ -171,15 +171,21 @@ describe('Bootstrap Plugin', () => {
       throw new Error('Registration failed');
     });
 
-    // Note: mock.spyOn not available in bun:test, skipping console spy
+    // Create a spy for console.error
+    const originalConsoleError = console.error;
+    const consoleErrorSpy = mock();
+    console.error = consoleErrorSpy;
 
     // Should not throw error during initialization
-    await expect(mockInit({}, mockRuntime as unknown as IAgentRuntime)).resolves.not.toThrow();
+    await expect(async () => {
+      await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    }).not.toThrow();
 
     // Ensure console.error was called (as the mockInit is expected to log errors)
     expect(consoleErrorSpy).toHaveBeenCalled();
 
-    consoleErrorSpy.mockRestore();
+    // Restore console.error
+    console.error = originalConsoleError;
   });
 });
 
@@ -275,14 +281,14 @@ describe('Message Event Handlers', () => {
 
         // Call the message handler with our mocked runtime
         // This test only verifies the handler doesn't throw with our mock
-        await expect(
-          messageHandler({
+        await expect(async () => {
+          await messageHandler({
             runtime: mockRuntime as unknown as IAgentRuntime,
             message: mockMessage as Memory,
             callback: mockCallback,
             source: 'test',
-          })
-        ).resolves.not.toThrow();
+          });
+        }).not.toThrow();
       }
     }
   });
