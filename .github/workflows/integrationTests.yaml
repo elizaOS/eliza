@@ -130,9 +130,36 @@ jobs:
 
           # CLI tests are handled by the dedicated cli-tests.yml workflow
           echo "Starting integration tests (excluding CLI tests)..."
-          bun test --timeout 60000 --concurrency 3 --filter='!@elizaos/cli' || {
-            echo "Tests failed with exit code $?"
+          
+          # Track if any tests fail
+          TESTS_FAILED=0
+          
+          # Run tests in each package that has them (excluding CLI and other excluded packages)
+          for package in core client server plugin-bootstrap plugin-dummy-services project-tee-starter; do
+            echo ""
+            echo "========================================="
+            echo "Running tests in packages/$package"
+            echo "========================================="
+            
+            cd "packages/$package"
+            
+            if bun run test --timeout 60000; then
+              echo "✅ Tests passed for $package"
+            else
+              echo "❌ Tests failed for $package"
+              TESTS_FAILED=1
+            fi
+            
+            cd ../..
+          done
+          
+          if [ $TESTS_FAILED -ne 0 ]; then
+            echo ""
+            echo "❌ Some tests failed"
             echo "Checking for any hanging processes..."
             ps aux | grep -E "(bun|node)" || true
             exit 1
-          }
+          else
+            echo ""
+            echo "✅ All integration tests passed!"
+          fi
