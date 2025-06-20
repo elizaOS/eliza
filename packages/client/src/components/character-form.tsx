@@ -36,6 +36,8 @@ import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
 import type { SecretPanelRef } from './secret-panel';
+import { MissingSecretsDialog } from './missing-secrets-dialog';
+import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 
 export type InputField = {
   name: string;
@@ -140,6 +142,12 @@ export default function CharacterForm({
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
+  const [showMissingSecretsDialog, setShowMissingSecretsDialog] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState<Agent | null>(null);
+  
+  // Get required secrets based on enabled plugins
+  const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
+  const { requiredSecrets } = useRequiredSecrets(enabledPlugins);
 
   // Use the custom hook to detect container width
   const { containerRef, showLabels } = useContainerWidth(640); // Adjust threshold as needed
@@ -427,23 +435,31 @@ export default function CharacterForm({
     setIsSubmitting(true);
 
     try {
+      const updatedCharacter = await ensureAvatarSize(characterValue);
+      
       // Validate required secrets if we have a secret panel ref
       if (secretPanelRef?.current) {
         const secretValidation = secretPanelRef.current.validateSecrets();
         if (!secretValidation.isValid) {
-          toast({
-            title: 'Missing Required Secrets',
-            description: `Please provide the following required secrets: ${secretValidation.missingSecrets.join(', ')}`,
-            variant: 'destructive',
-          });
+          // Show the warning dialog instead of blocking
           setIsSubmitting(false);
-          // Switch to the Secret tab to show the user what's missing
-          setActiveTab('custom-Secret');
+          setPendingSubmit(updatedCharacter);
+          
+          // Prepare missing secrets data with plugin info
+          const missingSecretsWithInfo = secretValidation.missingSecrets.map(secretName => {
+            const reqSecret = requiredSecrets.find(s => s.name === secretName);
+            return {
+              name: secretName,
+              plugin: reqSecret?.plugin,
+              description: reqSecret?.description,
+            };
+          });
+          
+          setShowMissingSecretsDialog(true);
           return;
         }
       }
 
-      const updatedCharacter = await ensureAvatarSize(characterValue);
       await onSubmit(updatedCharacter);
     } catch (error) {
       toast({
@@ -454,6 +470,34 @@ export default function CharacterForm({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Handle confirmation from missing secrets dialog
+  const handleConfirmSaveWithMissingSecrets = async () => {
+    setShowMissingSecretsDialog(false);
+    if (pendingSubmit) {
+      setIsSubmitting(true);
+      try {
+        await onSubmit(pendingSubmit);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update agent',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsSubmitting(false);
+        setPendingSubmit(null);
+      }
+    }
+  };
+
+  // Handle cancellation from missing secrets dialog
+  const handleCancelSaveWithMissingSecrets = () => {
+    setShowMissingSecretsDialog(false);
+    setPendingSubmit(null);
+    // Switch to the Secret tab to show the user what's missing
+    setActiveTab('custom-Secret');
   };
 
   const renderInputField = (field: InputField) => (
@@ -921,6 +965,26 @@ export default function CharacterForm({
           />
         </div>
       </form>
+
+      {/* Missing Secrets Warning Dialog */}
+      <MissingSecretsDialog
+        open={showMissingSecretsDialog}
+        onOpenChange={setShowMissingSecretsDialog}
+        missingSecrets={(() => {
+          if (!secretPanelRef?.current) return [];
+          const validation = secretPanelRef.current.validateSecrets();
+          return validation.missingSecrets.map(secretName => {
+            const reqSecret = requiredSecrets.find(s => s.name === secretName);
+            return {
+              name: secretName,
+              plugin: reqSecret?.plugin,
+              description: reqSecret?.description,
+            };
+          });
+        })()}
+        onConfirm={handleConfirmSaveWithMissingSecrets}
+        onCancel={handleCancelSaveWithMissingSecrets}
+      />
     </div>
   );
 }

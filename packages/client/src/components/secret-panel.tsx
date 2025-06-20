@@ -117,17 +117,23 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       // Only reset if we're switching to a different agent or this is the first load
       if (characterValue.id !== lastAgentIdRef.current || !lastAgentIdRef.current) {
         const existingSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
-          ([name, value]) => ({
-            name,
-            value: String(value),
-            isNew: false,
-            isModified: false,
-            isDeleted: false,
-            isRequired: false,
-            description: undefined,
-            example: undefined,
-            plugin: undefined,
-          })
+          ([name, value]) => {
+            // Filter out process.env values - these should not be stored as actual values
+            const stringValue = String(value);
+            const cleanValue = stringValue.startsWith('process.env.') ? '' : stringValue;
+            
+            return {
+              name,
+              value: cleanValue,
+              isNew: false,
+              isModified: false,
+              isDeleted: false,
+              isRequired: false,
+              description: undefined,
+              example: undefined,
+              plugin: undefined,
+            };
+          }
         );
 
         // Create a map for quick lookup
@@ -366,13 +372,15 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
               prev.map(({ name, value, ...rest }) => [name, { value, ...rest }])
             );
             for (const [key, val] of Object.entries(newEnvs)) {
+              // Filter out process.env values
+              const cleanValue = val.startsWith('process.env.') ? '' : val;
               const existing = merged.get(key);
               if (existing) {
-                merged.set(key, { ...existing, value: val, isModified: true });
+                merged.set(key, { ...existing, value: cleanValue, isModified: true });
               } else {
                 const reqSecret = requiredSecrets.find((s) => s.name === key);
                 merged.set(key, {
-                  value: val,
+                  value: cleanValue,
                   isNew: true,
                   isModified: false,
                   isRequired: reqSecret?.required || false,
@@ -455,6 +463,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     const addEnv = () => {
       if (name && value) {
         const exists = envs.some((env) => env.name === name);
+        
+        // Filter out process.env values
+        const cleanValue = value.startsWith('process.env.') ? '' : value;
 
         if (!exists) {
           if (deletedKeys.includes(name)) {
@@ -464,7 +475,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           const reqSecret = requiredSecrets.find((s) => s.name === name);
           const newEnv: EnvVariable = {
             name,
-            value,
+            value: cleanValue,
             isNew: true,
             isRequired: reqSecret?.required || false,
             description: reqSecret?.description,
@@ -485,7 +496,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           setValue('');
         } else {
           setEnvs(
-            envs.map((env) => (env.name === name ? { ...env, value, isModified: true } : env))
+            envs.map((env) => (env.name === name ? { ...env, value: cleanValue, isModified: true } : env))
           );
           setName('');
           setValue('');
@@ -507,8 +518,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
     const saveEdit = (index: number) => {
       const updatedEnvs = [...envs];
-      if (updatedEnvs[index].value !== editedValue) {
-        updatedEnvs[index].value = editedValue;
+      // Filter out process.env values
+      const cleanValue = editedValue.startsWith('process.env.') ? '' : editedValue;
+      
+      if (updatedEnvs[index].value !== cleanValue) {
+        updatedEnvs[index].value = cleanValue;
         updatedEnvs[index].isModified = true;
       }
       setEnvs(updatedEnvs);
