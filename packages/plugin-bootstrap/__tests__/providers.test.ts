@@ -558,9 +558,7 @@ describe('Role Provider', () => {
     // Ensure state.data.room is undefined so runtime.getRoom is called
     mockState.data = { ...mockState.data, room: undefined };
 
-    (mockRuntime.getRoom as any).mockRejectedValue(
-      new Error('Simulated DB error getting room')
-    );
+    (mockRuntime.getRoom as any).mockRejectedValue(new Error('Simulated DB error getting room'));
 
     await expect(
       roleProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory, mockState as State)

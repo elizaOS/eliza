@@ -4,7 +4,7 @@ import { exportCharacterAsJson } from '@/lib/export-utils';
 import { formatAgentName, moment } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
-import { Brain, Cog, Loader2, Play, X, Download } from 'lucide-react';
+import { Brain, Cog, Loader2, Play, X, Download, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAgent } from '../hooks/use-query-hooks';
 import StopAgentButton from './stop-agent-button';
@@ -243,6 +243,24 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <p>Export character as JSON</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/settings/${agentId}`)}
+                  disabled={!agent}
+                  className="h-9"
+                  size="sm"
+                >
+                  <Settings size={16} className="mr-1" />
+                  Settings
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Configure agent settings</p>
               </TooltipContent>
             </Tooltip>
           </div>

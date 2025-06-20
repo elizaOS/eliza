@@ -32,6 +32,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     return (
       <div ref={ref} className={cn('flex w-full', className)}>
         <Button
+          type="button"
           variant={variant}
           size={size}
           onClick={mainAction.onClick}
@@ -48,6 +49,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
+              type="button"
               variant={variant}
               size={size}
               disabled={disabled}

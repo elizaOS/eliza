@@ -5,6 +5,7 @@ description: Configure environment variables and API keys for ElizaOS projects
 keywords: [environment, configuration, API keys, secrets, settings, .env]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -34,13 +35,13 @@ elizaos env [command] [options]
 
 ### List Command Options
 
-| Option             | Description                                          |
-| ------------------ | ---------------------------------------------------- |
-| `--system`         | List only system information                         |
-| `--local`          | List only local environment variables                |
-| `--show-values`    | Display the actual values of secrets (use with caution) |
-| `--filter <text>`  | Filter variables by a text pattern                   |
-| `--output <file>`  | Export the environment variables to a file           |
+| Option            | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| `--system`        | List only system information                            |
+| `--local`         | List only local environment variables                   |
+| `--show-values`   | Display the actual values of secrets (use with caution) |
+| `--filter <text>` | Filter variables by a text pattern                      |
+| `--output <file>` | Export the environment variables to a file              |
 
 ### General Options
 

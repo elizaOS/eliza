@@ -5,6 +5,7 @@ description: Publish a plugin to npm, GitHub, and the registry
 keywords: [CLI, publish, registry, npm, GitHub, packages, distribution]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -68,6 +69,7 @@ elizaos publish --test --npm
 # Test publishing while skipping registry
 elizaos publish --test --skip-registry
 ```
+
 </TabItem>
 <TabItem value="guides" label="Guides & Concepts">
 
@@ -76,6 +78,7 @@ elizaos publish --test --skip-registry
 ### Default: GitHub + Registry Publishing
 
 This is the standard mode, executed by running `elizaos publish`. It will:
+
 - Publishes your package to npm.
 - Creates or updates a GitHub repository for source code access.
 - Submits your plugin to the ElizaOS registry for discoverability.
@@ -87,6 +90,7 @@ Using the `--npm` flag publishes only to the npm registry, skipping the GitHub a
 ## Publishing Process
 
 When you run the `publish` command, ElizaOS performs the following steps:
+
 1. **Check CLI version** and prompt for updates if needed.
 2. **Validate plugin structure** and `package.json` requirements.
 3. **Update `package.json`** with actual values, replacing placeholders.
@@ -101,6 +105,7 @@ When you run the `publish` command, ElizaOS performs the following steps:
 A typical plugin development and publishing lifecycle looks like this:
 
 1.  **Create and Develop Plugin**
+
     ```bash
     elizaos create -t plugin my-awesome-plugin
     cd my-awesome-plugin
@@ -110,6 +115,7 @@ A typical plugin development and publishing lifecycle looks like this:
     ```
 
 2.  **Prepare for Publishing**
+
     ```bash
     # Test the publish process
     elizaos publish --test
@@ -149,6 +155,7 @@ You must be logged into npm. Run `npm login` if you are not.
 ### GitHub Authentication
 
 A GitHub token is required for repository creation and registry submission. You can either:
+
 1. Set the `GITHUB_TOKEN` environment variable.
 2. Enter your GitHub Personal Access Token (PAT) when prompted.
 
@@ -159,6 +166,7 @@ Your PAT should have these scopes: `repo`, `read:org`, and `workflow`.
 Before publishing, ensure your plugin's `package.json` and directory structure meet the requirements.
 
 ### `package.json` Configuration
+
 Your `package.json` must be configured correctly, including fields like `name`, `description`, `version`, and a special `agentConfig` section. The `publish` command will help auto-fill placeholders.
 
 ### Required Files and Directories

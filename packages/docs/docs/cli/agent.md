@@ -5,6 +5,7 @@ description: Managing ElizaOS agents through the CLI - list, configure, start, s
 keywords: [CLI, agent, management, configuration, commands, options, actions]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -23,14 +24,14 @@ elizaos agent [options] [command]
 
 ## Subcommands
 
-| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                              |
-| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `list`     | `ls`    | List available agents                   |                                                                | `--format <format>`, `-r, --remote-url <url>`, `-p, --port <port>`                  |
-| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `--format <format>`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port`        |
-| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                                       |
-| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
-| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                           |
+| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `list`     | `ls`    | List available agents                   |                                                                | `--format <format>`, `-r, --remote-url <url>`, `-p, --port <port>`           |
+| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `--format <format>`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
+| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                                |
 
 ## Options Reference
 
@@ -201,7 +202,9 @@ elizaos agent set --name eliza --file ./config.json --port 4000
 The `list` and `get` commands support multiple output formats via the `--format` option, making it easy to use the CLI in scripts or for human readability.
 
 ### `table` (Default)
+
 The default format is a human-readable table, best for viewing in the terminal.
+
 ```bash
 $ elizaos agent list
 ┌─────────┬──────────────┬─────────┬──────────┐
@@ -212,14 +215,18 @@ $ elizaos agent list
 ```
 
 ### `json`
+
 Outputs raw JSON data. Useful for piping into other tools like `jq`. The `-j` flag is a convenient shorthand for `--format json`.
+
 ```bash
 # Get JSON output
 elizaos agent get --name eliza --format json
 ```
 
 ### `yaml`
+
 Outputs YAML data, which can be more human-readable than JSON for complex configurations.
+
 ```bash
 # Get YAML output
 elizaos agent get --name eliza --format yaml

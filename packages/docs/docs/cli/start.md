@@ -5,6 +5,7 @@ description: Launch and manage ElizaOS projects and agents in production mode
 keywords: [start, production, deployment, configuration, runtime, services, agents]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -52,6 +53,7 @@ elizaos start --configure
 ```
 
 ### Suppressing Output
+
 ```bash
 # Start quietly, only showing errors
 elizaos start --quiet

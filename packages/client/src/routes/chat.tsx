@@ -9,9 +9,9 @@ import {
   AgentStatus as CoreAgentStatusEnum,
   type UUID,
 } from '@elizaos/core';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, Play, Settings } from 'lucide-react';
 import { useEffect } from 'react';
-import { useParams } from 'react-router';
+import { useParams, useNavigate } from 'react-router';
 import type { AgentWithStatus } from '../types';
 
 /**
@@ -22,6 +22,7 @@ import type { AgentWithStatus } from '../types';
 export default function AgentRoute() {
   // useParams will include agentId and optionally channelId for /chat/:agentId/:channelId routes
   const { agentId, channelId } = useParams<{ agentId: UUID; channelId?: UUID }>();
+  const navigate = useNavigate();
 
   useEffect(() => {
     clientLogger.info('[AgentRoute] Component mounted/updated', { agentId, channelId });
@@ -94,14 +95,19 @@ export default function AgentRoute() {
       <div className="flex flex-col items-center justify-center h-full w-full p-8 text-center">
         <h2 className="text-2xl font-semibold mb-4">{agentFromHook.name} is not active.</h2>
         <p className="text-muted-foreground mb-6">Press the button below to start this agent.</p>
-        <Button onClick={handleStartAgent} disabled={isStarting} size="lg">
-          {isStarting ? (
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-          ) : (
-            <Play className="mr-2 h-5 w-5" />
-          )}
-          {isStarting ? 'Starting Agent...' : 'Start Agent'}
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={() => navigate(`/settings/${agentId}`)} variant="outline" size="lg">
+            <Settings className="h-5 w-5" />
+          </Button>
+          <Button onClick={handleStartAgent} disabled={isStarting} size="lg">
+            {isStarting ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-5 w-5" />
+            )}
+            {isStarting ? 'Starting Agent...' : 'Start Agent'}
+          </Button>
+        </div>
       </div>
     );
   }
