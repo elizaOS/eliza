@@ -5,6 +5,7 @@ description: Update your project's ElizaOS dependencies and CLI to the latest pu
 keywords: [CLI, update, dependencies, versions, packages, maintenance]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -46,7 +47,9 @@ elizaos update
 # Check for available updates without applying them
 elizaos update --check
 ```
-*Example Output:*
+
+_Example Output:_
+
 ```bash
 $ elizaos update --check
 
@@ -118,7 +121,9 @@ For the smoothest update experience, follow this sequence:
 ## Troubleshooting
 
 ### CLI Update Issues
+
 If you have trouble updating the global CLI:
+
 ```bash
 # Check if the CLI is installed globally
 bun pm ls -g @elizaos/cli
@@ -133,7 +138,9 @@ sudo chown -R $(whoami) ~/.bun
 ```
 
 ### Package Update Failures
+
 If package updates fail, a clean reinstall usually fixes it:
+
 ```bash
 # Clear caches and old dependencies
 rm -rf node_modules
@@ -145,7 +152,9 @@ bun install
 ```
 
 ### Build Failures After Update
+
 If your project fails to build after an update:
+
 ```bash
 # Try a clean build
 bun run build
@@ -154,6 +163,7 @@ bun run build
 elizaos update --skip-build
 bun install && bun run build
 ```
+
 </TabItem>
 </Tabs>
 

@@ -38,10 +38,13 @@ For a detailed comparison, see our [V2 announcement blog post](/blog/v1-v2).
 If you encounter build failures or dependency errors:
 
 1.  **Check Your Node.js Version**: Ensure you are using Node.js v23 or higher.
+
     ```bash
     node --version
     ```
+
     If you have a different version, we recommend using [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager) to switch to the correct version:
+
     ```bash
     nvm install 23
     nvm use 23
@@ -62,15 +65,19 @@ If you see an error related to a "Missing API Key" or "401 Unauthorized" when yo
 **Solution:**
 
 1.  **Ensure `.env` File Exists**: Every project needs a `.env` file for secrets. If you don't have one, copy the template:
+
     ```bash
     cp .env.example .env
     ```
 
 2.  **Add Your Key**: Open the `.env` file for editing and add your API key for the desired service (e.g., OpenAI or Anthropic).
+
     ```bash
     elizaos env edit-local
     ```
+
     Your file should contain a line like this:
+
     ```
     OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     ```
@@ -752,16 +759,18 @@ By default, the ElizaOS web interface runs on port 3000. If you see an error lik
 ### How do I fix database connection issues?
 
 1.  **For PGLite (default local database)**:
-    -   Delete the `.elizadb` folder (or the path specified in `PGLITE_DATA_DIR`). The default location is `.eliza/.elizadb` in your project root.
-    -   Restart your agent to create a fresh database.
+
+    - Delete the `.elizadb` folder (or the path specified in `PGLITE_DATA_DIR`). The default location is `.eliza/.elizadb` in your project root.
+    - Restart your agent to create a fresh database.
+
     ```bash
     rm -rf .eliza/.elizadb
     ```
 
 2.  **For PostgreSQL**:
-    -   **Check Connection String**: Ensure your `DATABASE_URL` in the `.env` file is correct and accessible from your machine.
-    -   **Verify Database is Running**: Make sure your PostgreSQL server is running and you can connect to it with a standard client (like `psql` or DBeaver).
-    -   **Check Firewall Rules**: Ensure no firewall is blocking the connection between your machine and the database server.
+    - **Check Connection String**: Ensure your `DATABASE_URL` in the `.env` file is correct and accessible from your machine.
+    - **Verify Database is Running**: Make sure your PostgreSQL server is running and you can connect to it with a standard client (like `psql` or DBeaver).
+    - **Check Firewall Rules**: Ensure no firewall is blocking the connection between your machine and the database server.
 
 ### How do I resolve embedding dimension mismatch errors?
 

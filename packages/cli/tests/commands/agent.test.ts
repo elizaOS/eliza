@@ -71,38 +71,41 @@ describe('ElizaOS Agent Commands', () => {
     // Spawn server process using Bun.spawn
     const serverBunPath = getBunPath();
     console.log(`[DEBUG] Spawning server with: ${serverBunPath} ${cliPath} start`);
-    
+
     try {
-      const proc = Bun.spawn([
-        serverBunPath,
-        cliPath,
-        'start',
-        '--port',
-        testServerPort,
-        '--character',
-        defaultCharacter
-      ], {
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'debug',
-          PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
-          NODE_OPTIONS: '--max-old-space-size=4096',
-          SERVER_HOST: '127.0.0.1',
-        },
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        // Windows-specific options
-        ...(process.platform === 'win32' && {
-          windowsHide: true,
-          windowsVerbatimArguments: false
-        })
-      });
-      
+      const proc = Bun.spawn(
+        [
+          serverBunPath,
+          cliPath,
+          'start',
+          '--port',
+          testServerPort,
+          '--character',
+          defaultCharacter,
+        ],
+        {
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'debug',
+            PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
+            NODE_OPTIONS: '--max-old-space-size=4096',
+            SERVER_HOST: '127.0.0.1',
+          },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+          // Windows-specific options
+          ...(process.platform === 'win32' && {
+            windowsHide: true,
+            windowsVerbatimArguments: false,
+          }),
+        }
+      );
+
       if (!proc.pid) {
         throw new Error('Failed to spawn server process - no PID returned');
       }
-      
+
       // Wrap to maintain compatibility with existing code
       serverProcess = proc as any;
     } catch (spawnError) {
@@ -122,19 +125,22 @@ describe('ElizaOS Agent Commands', () => {
     let serverError: Error | null = null;
 
     // Handle Bun.spawn's ReadableStream for stdout/stderr
-    const handleStream = async (stream: ReadableStream<Uint8Array> | undefined, isError: boolean) => {
+    const handleStream = async (
+      stream: ReadableStream<Uint8Array> | undefined,
+      isError: boolean
+    ) => {
       if (!stream) return;
-      
+
       const reader = stream.getReader();
       const decoder = new TextDecoder();
-      
+
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           const text = decoder.decode(value, { stream: true });
-          
+
           if (isError) {
             console.error(`[SERVER STDERR] ${text}`);
             if (text.includes('Error') || text.includes('error')) {
@@ -156,23 +162,25 @@ describe('ElizaOS Agent Commands', () => {
         reader.releaseLock();
       }
     };
-    
+
     // Start reading both streams
     Promise.all([
       handleStream(serverProcess.stdout, false),
-      handleStream(serverProcess.stderr, true)
+      handleStream(serverProcess.stderr, true),
     ]);
-    
+
     // Handle process exit
-    serverProcess.exited.then((code) => {
-      console.log(`[SERVER EXIT] code: ${code}`);
-      if (code !== 0 && !serverError) {
-        serverError = new Error(`Server exited with code ${code}`);
-      }
-    }).catch((error) => {
-      console.error('[SERVER ERROR]', error);
-      serverError = error;
-    });
+    serverProcess.exited
+      .then((code) => {
+        console.log(`[SERVER EXIT] code: ${code}`);
+        if (code !== 0 && !serverError) {
+          serverError = new Error(`Server exited with code ${code}`);
+        }
+      })
+      .catch((error) => {
+        console.error('[SERVER ERROR]', error);
+        serverError = error;
+      });
 
     // Wait for server to be ready
     console.log('[DEBUG] Waiting for server to be ready...');
@@ -235,7 +243,7 @@ describe('ElizaOS Agent Commands', () => {
       try {
         // For Bun.spawn processes, we use the exited promise
         const exitPromise = serverProcess.exited.catch(() => {});
-        
+
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
 

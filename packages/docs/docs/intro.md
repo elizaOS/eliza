@@ -64,12 +64,14 @@ For detailed instructions on each path, including configuration options and exte
 - For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 
 You can verify your Node.js version with the following command:
+
 ```bash
 node --version
 # Expected output: v23.0.0 or higher
 ```
 
 If you have a different version, we recommend using [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager) to switch to the correct version:
+
 ```bash
 nvm install 23
 nvm use 23
@@ -169,17 +171,18 @@ Visit https://localhost:3000 to interact with your agent through a web interface
 
 The `elizaos` CLI is the primary way to interact with your projects and agents. It is organized into several logical command groups:
 
-| Category | Commands |
-|----------|----------|
-| Project Management | `create`, `start`, `stop` |
-| Agent Management | `agent list`, `agent start`, `agent get` |
-| Development | `dev`, `test`, `update` |
-| Configuration | `env list`, `env edit-local`, `env interactive` |
-| Plugin Ecosystem | `plugins list`, `plugins add`, `publish` |
+| Category           | Commands                                        |
+| ------------------ | ----------------------------------------------- |
+| Project Management | `create`, `start`, `stop`                       |
+| Agent Management   | `agent list`, `agent start`, `agent get`        |
+| Development        | `dev`, `test`, `update`                         |
+| Configuration      | `env list`, `env edit-local`, `env interactive` |
+| Plugin Ecosystem   | `plugins list`, `plugins add`, `publish`        |
 
 For a complete list and detailed explanation of every command, see the [**CLI Overview**](./cli/overview.md).
 
 You can also discover commands directly from your terminal:
+
 ```bash
 # Get a list of all top-level commands
 elizaos --help

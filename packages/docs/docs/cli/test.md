@@ -5,6 +5,7 @@ description: Run and manage tests for ElizaOS projects and plugins
 keywords: [testing, component tests, e2e tests, Vitest, test runner, development]
 image: /img/cli.jpg
 ---
+
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
@@ -31,14 +32,14 @@ elizaos test [options] [command]
 
 ## Options
 
-| Option                | Description                                                   |
-| --------------------- | ------------------------------------------------------------- |
-| `-p, --port <port>`   | Server port for e2e tests                                     |
-| `-n, --name <n>`      | Filter tests by name (matches file names or test suite names) |
-| `--skip-build`        | Skip building before running tests                            |
-| `--skip-type-check`   | Skip TypeScript type checking for faster test runs            |
-| `--watch`             | Enable watch mode to re-run tests on file changes             |
-| `--coverage`          | Generate a test coverage report                               |
+| Option              | Description                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `-p, --port <port>` | Server port for e2e tests                                     |
+| `-n, --name <n>`    | Filter tests by name (matches file names or test suite names) |
+| `--skip-build`      | Skip building before running tests                            |
+| `--skip-type-check` | Skip TypeScript type checking for faster test runs            |
+| `--watch`           | Enable watch mode to re-run tests on file changes             |
+| `--coverage`        | Generate a test coverage report                               |
 
 </TabItem>
 <TabItem value="examples" label="Examples & Guides">

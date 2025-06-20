@@ -46,14 +46,14 @@ These options apply to all commands:
 
 ## Output and Logging
 
--   `--no-emoji`: Disables emoji characters in the output. This is useful for CI/CD environments or terminals that do not render emojis correctly.
--   `--verbose`: Enables verbose logging, providing detailed, step-by-step output for debugging purposes.
--   `--quiet`: Suppresses all non-essential output, showing only critical errors.
+- `--no-emoji`: Disables emoji characters in the output. This is useful for CI/CD environments or terminals that do not render emojis correctly.
+- `--verbose`: Enables verbose logging, providing detailed, step-by-step output for debugging purposes.
+- `--quiet`: Suppresses all non-essential output, showing only critical errors.
 
 ## Configuration
 
--   `--config <path>`: Specifies a path to a custom configuration file, overriding the default configuration.
--   `--no-auto-install`: Disables the automatic prompt to install Bun if it is not detected.
+- `--config <path>`: Specifies a path to a custom configuration file, overriding the default configuration.
+- `--no-auto-install`: Disables the automatic prompt to install Bun if it is not detected.
 
 ## Examples
 

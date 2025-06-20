@@ -275,7 +275,16 @@ Each plugin can provide one or more of the following components:
 All plugins implement the core Plugin interface:
 
 ```typescript
-import { IAgentRuntime, Service, Action, Provider, Evaluator, Adapter, Route, TestSuite } from '@elizaos/core';
+import {
+  IAgentRuntime,
+  Service,
+  Action,
+  Provider,
+  Evaluator,
+  Adapter,
+  Route,
+  TestSuite,
+} from '@elizaos/core';
 
 interface Plugin {
   name: string;

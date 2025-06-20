@@ -21,13 +21,13 @@ export default defineConfig({
   // Externalize problematic fs-related dependencies
   external: [
     'express',
-    'fs-extra', 
+    'fs-extra',
     'multer',
     'socket.io',
     'body-parser',
     'cors',
     'helmet',
-    'express-rate-limit'
+    'express-rate-limit',
   ],
   platform: 'node',
   minify: false,
