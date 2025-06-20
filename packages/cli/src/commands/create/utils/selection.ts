@@ -6,12 +6,7 @@ import type { AIModelOption, DatabaseOption } from '../types';
  */
 export async function getLocalAvailableDatabases(): Promise<string[]> {
   // Hard-coded list of available databases to avoid GitHub API calls
-  return [
-    'pglite',
-    'postgres',
-    // "pglite",
-    // "supabase"
-  ];
+  return ['pglite', 'postgres'];
 }
 
 /**
@@ -20,25 +15,29 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI (free to use, no API key required)',
+      title: 'Local AI',
       value: 'local',
-      description:
-        'Use local AI models without external API requirements. Will download model to run locally.',
+      description: 'Local models, no API required',
     },
     {
-      title: 'OpenAI (ChatGPT)',
+      title: 'OpenAI',
       value: 'openai',
-      description: 'Use OpenAI models like GPT-4',
+      description: 'GPT-4 models',
     },
     {
-      title: 'Anthropic (Claude)',
+      title: 'Anthropic',
       value: 'claude',
-      description: 'Use Anthropic Claude models',
+      description: 'Claude models',
     },
     {
-      title: 'Ollama (self-hosted, free to use)',
+      title: 'Ollama',
       value: 'ollama',
-      description: 'Use self-hosted Ollama models for complete privacy and control',
+      description: 'Self-hosted models',
+    },
+    {
+      title: 'Google Generative AI',
+      value: 'google',
+      description: 'Gemini models',
     },
   ];
 }
@@ -49,16 +48,14 @@ export function getAvailableAIModels(): AIModelOption[] {
 export function getAvailableDatabases(): DatabaseOption[] {
   return [
     {
-      title: 'Pglite (Pglite) - Recommended for development',
+      title: 'Pglite (Pglite)',
       value: 'pglite',
-      description:
-        'Fast, file-based database. Perfect for development and single-user deployments.',
+      description: 'Local development',
     },
     {
-      title: 'PostgreSQL - Recommended for production',
+      title: 'PostgreSQL',
       value: 'postgres',
-      description:
-        'Full-featured database with vector search. Best for production and multi-user systems.',
+      description: 'Production database',
     },
   ];
 }
