@@ -55,6 +55,7 @@ export default function AgentSettings({ agent, agentId, onSaveComplete }: { agen
 
       // No need to send update if nothing changed
       if (Object.keys(changedFields).length === 0) {
+        const secrets = agentState.agent?.settings?.secrets;
         // Force include secrets if they exist even if no other changes detected
         if (secrets && Object.keys(secrets).length > 0) {
           const forceUpdate = {
@@ -62,7 +63,7 @@ export default function AgentSettings({ agent, agentId, onSaveComplete }: { agen
             settings: { secrets },
           };
 
-          await apiClient.updateAgent(agentId, forceUpdate as Agent);
+          await apiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
 
           queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
           queryClient.invalidateQueries({ queryKey: ['agents'] });
