@@ -58,6 +58,21 @@ jobs:
 
       - name: Mention Bun version
         run: bun --version
+      
+      - name: Debug Bun Setup
+        shell: bash
+        run: |
+          echo "PATH: $PATH"
+          echo "which bun: $(which bun 2>/dev/null || echo 'which not found')"
+          echo "command -v bun: $(command -v bun 2>/dev/null || echo 'command not found')"
+          if command -v bun &> /dev/null; then
+            BUN_PATH=$(which bun 2>/dev/null || command -v bun)
+            echo "Bun found at: $BUN_PATH"
+            ls -la "$BUN_PATH" 2>/dev/null || echo "Failed to ls bun"
+            file "$BUN_PATH" 2>/dev/null || echo "Failed to get bun file info"
+          else
+            echo "Bun not found in PATH"
+          fi
 
       - name: Cache Bun dependencies
         uses: actions/cache@v4
@@ -74,6 +89,18 @@ jobs:
 
       - name: Build all packages
         run: bun run build
+      
+      - name: Verify CLI build artifacts
+        run: |
+          echo "Checking CLI build artifacts..."
+          echo "CLI dist contents:"
+          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
+          echo ""
+          echo "CLI templates in dist:"
+          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
+          echo ""
+          echo "CLI executable:"
+          test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
 
       # ── Save Turborepo local cache (only if no hit above) ───────────
       - name: Save Turbo cache
@@ -125,7 +152,9 @@ jobs:
           done
 
       - name: Run CLI TypeScript tests
+        timeout-minutes: 15
         run: bun run test:cli
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
+          NODE_OPTIONS: --max-old-space-size=4096

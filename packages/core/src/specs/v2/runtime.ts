@@ -534,6 +534,14 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.addEmbeddingToMemory(memory);
   }
 
+  async getAllMemories(): Promise<Memory[]> {
+    return this._runtime.getAllMemories();
+  }
+
+  async clearAllAgentMemories(): Promise<void> {
+    return this._runtime.clearAllAgentMemories();
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;

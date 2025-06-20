@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { mock } from 'bun:test';
 import { composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
 import type { Action, Content, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { logger } from '@elizaos/core';
@@ -112,8 +112,8 @@ export const createMockRuntime = (): IAgentRuntime => {
     },
     actions: [],
     providers: [],
-    getService: vi.fn(),
-    processActions: vi.fn(),
+    getService: mock(),
+    processActions: mock(),
   } as any as IAgentRuntime;
 };
 

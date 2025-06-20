@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import logger from './logger';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
-import { ModelType, UUID } from './types';
+import { ModelType, UUID, ContentType } from './types';
 
 // Text Utils
 
@@ -663,3 +663,13 @@ export function stringToUuid(target: string | number): UUID {
 
   return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
 }
+
+export const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
+  if (mimeType.startsWith('image/')) return ContentType.IMAGE;
+  if (mimeType.startsWith('video/')) return ContentType.VIDEO;
+  if (mimeType.startsWith('audio/')) return ContentType.AUDIO;
+  if (mimeType.includes('pdf') || mimeType.includes('document') || mimeType.startsWith('text/')) {
+    return ContentType.DOCUMENT;
+  }
+  return undefined;
+};

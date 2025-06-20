@@ -2,13 +2,25 @@
 sidebar_position: 7
 title: Database System
 description: Understanding ElizaOS database system - persistent storage and data management for agents
-keywords: [database, storage, adapters, PostgreSQL, PGLite, entities, memories, relationships]
+keywords:
+  [
+    database,
+    storage,
+    adapters,
+    PostgreSQL,
+    PGLite,
+    entities,
+    memories,
+    relationships,
+    multi-tenant,
+    embeddings,
+  ]
 image: /img/database.jpg
 ---
 
 # 💾 Database System
 
-The ElizaOS database system provides persistent storage capabilities for agents. It handles memory storage, entity relationships, knowledge management, and more through a flexible adapter-based architecture.
+The ElizaOS database system provides persistent storage capabilities for agents. It handles memory storage, entity relationships, knowledge management, and more through a flexible adapter-based architecture with built-in multi-tenancy support.
 
 ## Overview
 
@@ -20,7 +32,7 @@ graph TB
     DbConnection[("Database (PGLite/PostgreSQL)")]
 
     %% Data Models in compact form
-    DataModels["Data Models: Entities, Components, Memories, Relationships, Rooms, Worlds, Tasks Cache"]
+    DataModels["Data Models: Entities, Components, Memories, Relationships, Rooms, Worlds, Tasks, Cache"]
 
     %% Vector Search
     VectorStore[(Vector Store)]
@@ -59,7 +71,16 @@ ElizaOS uses a unified database architecture based on Drizzle ORM with adapters 
 | **PGLite**     | Local development & testing | Lightweight PostgreSQL implementation running in Node.js process  |
 | **PostgreSQL** | Production deployments      | Full PostgreSQL with vector search, scaling, and high reliability |
 
-Additional database adapters will be supported in future releases as ElizaOS continues to evolve.
+## Multi-Tenancy Architecture
+
+ElizaOS implements a multi-tenant architecture where each agent operates in its own isolated data space:
+
+- **Agent Isolation**: Each agent has its own `agentId` that scopes all database operations
+- **Data Segregation**: All queries are automatically filtered by the agent's ID
+- **Shared Infrastructure**: Multiple agents can share the same database instance while maintaining complete data isolation
+- **Embedding Consistency**: Each agent must use consistent embedding dimensions throughout its lifecycle
+
+> ⚠️ **Important**: Each agent MUST use the same embedding model throughout its lifetime. Mixing different embedding models (e.g., OpenAI with Google embeddings) within the same agent will cause vector search failures and inconsistent results.
 
 ## Core Functionality
 
@@ -67,17 +88,20 @@ All database adapters extend the `BaseDrizzleAdapter` abstract class, which prov
 
 ### Entity System
 
-| Method                 | Description                           |
-| ---------------------- | ------------------------------------- |
-| `createEntity()`       | Create a new entity                   |
-| `getEntityById()`      | Retrieve an entity by ID              |
-| `getEntitiesForRoom()` | Get all entities in a room            |
-| `updateEntity()`       | Update entity attributes              |
-| `getComponent()`       | Get a specific component of an entity |
-| `getComponents()`      | Get all components for an entity      |
-| `createComponent()`    | Add a component to an entity          |
-| `updateComponent()`    | Update a component                    |
-| `deleteComponent()`    | Remove a component                    |
+| Method                   | Description                           |
+| ------------------------ | ------------------------------------- |
+| `createEntities()`       | Create new entities                   |
+| `getEntityByIds()`       | Retrieve entities by IDs              |
+| `getEntitiesForRoom()`   | Get all entities in a room            |
+| `updateEntity()`         | Update entity attributes              |
+| `deleteEntity()`         | Delete an entity                      |
+| `getEntitiesByNames()`   | Find entities by their names          |
+| `searchEntitiesByName()` | Search entities with fuzzy matching   |
+| `getComponent()`         | Get a specific component of an entity |
+| `getComponents()`        | Get all components for an entity      |
+| `createComponent()`      | Add a component to an entity          |
+| `updateComponent()`      | Update a component                    |
+| `deleteComponent()`      | Remove a component                    |
 
 ### Memory Management
 
@@ -88,9 +112,12 @@ All database adapters extend the `BaseDrizzleAdapter` abstract class, which prov
 | `getMemories()`               | Get memories matching criteria       |
 | `getMemoriesByIds()`          | Get multiple memories by IDs         |
 | `getMemoriesByRoomIds()`      | Get memories from multiple rooms     |
+| `getMemoriesByWorldId()`      | Get memories from a world            |
 | `searchMemories()`            | Search memories by vector similarity |
 | `searchMemoriesByEmbedding()` | Search using raw embedding vector    |
+| `updateMemory()`              | Update an existing memory            |
 | `deleteMemory()`              | Remove a specific memory             |
+| `deleteManyMemories()`        | Remove multiple memories in batch    |
 | `deleteAllMemories()`         | Remove all memories in a room        |
 | `countMemories()`             | Count memories matching criteria     |
 
@@ -98,15 +125,19 @@ All database adapters extend the `BaseDrizzleAdapter` abstract class, which prov
 
 | Method                       | Description                     |
 | ---------------------------- | ------------------------------- |
-| `createRoom()`               | Create a new conversation room  |
-| `getRoom()`                  | Get room by ID                  |
-| `getRooms()`                 | Get all rooms in a world        |
+| `createRooms()`              | Create new conversation rooms   |
+| `getRoomsByIds()`            | Get rooms by their IDs          |
+| `getRoomsByWorld()`          | Get all rooms in a world        |
 | `updateRoom()`               | Update room attributes          |
 | `deleteRoom()`               | Remove a room                   |
+| `deleteRoomsByWorldId()`     | Remove all rooms in a world     |
 | `addParticipant()`           | Add entity to room              |
+| `addParticipantsRoom()`      | Add multiple entities to room   |
 | `removeParticipant()`        | Remove entity from room         |
 | `getParticipantsForEntity()` | Get all rooms an entity is in   |
 | `getParticipantsForRoom()`   | List entities in a room         |
+| `getRoomsForParticipant()`   | Get rooms for an entity         |
+| `getRoomsForParticipants()`  | Get rooms for multiple entities |
 | `getParticipantUserState()`  | Get entity's state in a room    |
 | `setParticipantUserState()`  | Update entity's state in a room |
 
@@ -145,23 +176,54 @@ All database adapters extend the `BaseDrizzleAdapter` abstract class, which prov
 
 ### Agent Management
 
-| Method          | Description               |
-| --------------- | ------------------------- |
-| `createAgent()` | Create a new agent record |
-| `getAgent()`    | Get agent by ID           |
-| `getAgents()`   | List all agents           |
-| `updateAgent()` | Update agent attributes   |
-| `deleteAgent()` | Remove an agent           |
-| `countAgents()` | Count total agents        |
+| Method            | Description                      |
+| ----------------- | -------------------------------- |
+| `createAgent()`   | Create a new agent record        |
+| `getAgent()`      | Get agent by ID                  |
+| `getAgents()`     | List all agents                  |
+| `updateAgent()`   | Update agent attributes          |
+| `deleteAgent()`   | Remove an agent and all its data |
+| `countAgents()`   | Count total agents               |
+| `cleanupAgents()` | Clean up orphaned agents         |
 
 ### Embedding & Search
 
-| Method                        | Description                    |
-| ----------------------------- | ------------------------------ |
-| `ensureEmbeddingDimension()`  | Configure embedding dimensions |
-| `getCachedEmbeddings()`       | Retrieve cached embeddings     |
-| `searchMemories()`            | Vector search for memories     |
-| `searchMemoriesByEmbedding()` | Advanced vector search         |
+| Method                        | Description                           |
+| ----------------------------- | ------------------------------------- |
+| `ensureEmbeddingDimension()`  | Configure embedding dimensions        |
+| `getCachedEmbeddings()`       | Retrieve cached embeddings            |
+| `searchMemories()`            | Vector search for memories            |
+| `searchMemoriesByEmbedding()` | Advanced vector search with embedding |
+
+### Logging System
+
+| Method        | Description                 |
+| ------------- | --------------------------- |
+| `log()`       | Create a log entry          |
+| `getLogs()`   | Retrieve logs by criteria   |
+| `deleteLog()` | Delete a specific log entry |
+
+### Message Server Operations (Central Database)
+
+| Method                     | Description                   |
+| -------------------------- | ----------------------------- |
+| `createMessageServer()`    | Create a new message server   |
+| `getMessageServers()`      | Get all message servers       |
+| `getMessageServerById()`   | Get a specific message server |
+| `createChannel()`          | Create a new channel          |
+| `getChannelsForServer()`   | Get channels for a server     |
+| `getChannelDetails()`      | Get channel information       |
+| `updateChannel()`          | Update channel attributes     |
+| `deleteChannel()`          | Delete a channel              |
+| `createMessage()`          | Create a new message          |
+| `getMessagesForChannel()`  | Get messages from a channel   |
+| `deleteMessage()`          | Delete a message              |
+| `addChannelParticipants()` | Add users to a channel        |
+| `getChannelParticipants()` | Get users in a channel        |
+| `addAgentToServer()`       | Add agent to a server         |
+| `getAgentsForServer()`     | Get agents for a server       |
+| `removeAgentFromServer()`  | Remove agent from server      |
+| `findOrCreateDmChannel()`  | Find or create DM channel     |
 
 ## Architecture
 
@@ -180,6 +242,7 @@ ElizaOS uses a singleton pattern for database connections to ensure efficient re
                 ▼
 ┌─────────────────────────────────────┐
 │       BaseDrizzleAdapter            │
+│   (Full implementation in base.ts)  │
 └───────────────┬─────────────────────┘
                 │
         ┌───────┴───────┐
@@ -239,8 +302,31 @@ Configure the database adapter using environment variables or settings:
 process.env.POSTGRES_URL = 'postgresql://username:password@localhost:5432/elizaos';
 
 // For PGLite (default)
-process.env.SQLITE_DATA_DIR = './.elizadb'; // Optional, defaults to './sqlite'
+process.env.SQLITE_DATA_DIR = './.elizadb'; // Optional, defaults to './.elizadb'
 ```
+
+### Embedding Dimension Management
+
+The embedding dimension is set during agent initialization based on the text embedding model:
+
+```typescript
+// The dimension is automatically determined by the embedding model
+// Common dimensions:
+// - OpenAI: 1536
+// - Google: 768
+// - Anthropic: 1024
+// - Local models: varies (384, 512, 768, etc.)
+
+// The system automatically calls ensureEmbeddingDimension()
+// when creating the first memory with embeddings
+```
+
+> ⚠️ **Critical**: Once an agent starts using a specific embedding model, it MUST continue using the same model. Switching embedding models mid-operation will result in:
+>
+> - Vector search failures
+> - Inconsistent similarity scores
+> - Potential runtime errors
+> - Degraded agent performance
 
 ### Retry Logic & Error Handling
 
@@ -248,28 +334,24 @@ The database system includes built-in retry logic with exponential backoff and j
 
 ```typescript
 protected async withRetry<T>(operation: () => Promise<T>): Promise<T> {
-  let attempt = 0;
-  let lastError: Error | null = null;
+  let lastError: Error = new Error('Unknown error');
 
-  while (attempt < this.maxRetries) {
+  for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error as Error;
-      const isRetryable = this.isRetryableError(error);
 
-      if (!isRetryable) {
-        break;
+      if (attempt < this.maxRetries) {
+        const backoffDelay = Math.min(
+          this.baseDelay * 2 ** (attempt - 1),
+          this.maxDelay
+        );
+        const jitter = Math.random() * this.jitterMax;
+        const delay = backoffDelay + jitter;
+
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-
-      // Calculate delay with exponential backoff and jitter
-      const delay = Math.min(
-        this.baseDelay * Math.pow(2, attempt) + Math.random() * this.jitterMax,
-        this.maxDelay
-      );
-
-      await new Promise(resolve => setTimeout(resolve, delay));
-      attempt++;
     }
   }
 
@@ -284,6 +366,7 @@ Here are examples of common database operations:
 ### Store a Memory
 
 ```typescript
+// Memory creation automatically uses the agent's configured embedding dimension
 await runtime.createMemory(
   {
     entityId: message.entityId,
@@ -301,6 +384,7 @@ await runtime.createMemory(
 ### Search for Memories
 
 ```typescript
+// Embedding must be from the same model type as used during creation
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
   text: 'What did we discuss about databases?',
 });
@@ -310,6 +394,7 @@ const relevantMemories = await runtime.searchMemories({
   embedding,
   roomId: message.roomId,
   count: 5,
+  match_threshold: 0.8,
 });
 ```
 
@@ -340,16 +425,26 @@ The schema is managed by Drizzle ORM and includes the following key tables:
 
 ### Core Tables
 
+- **agents**: Agent configuration and state (multi-tenant root)
 - **entities**: The fundamental objects in the system (users, agents, etc.)
 - **components**: Modular data attached to entities (profiles, settings, etc.)
 - **memories**: Conversation history and other remembered information
+- **embeddings**: Vector embeddings for semantic search (supports multiple dimensions)
 - **relationships**: Connections between entities
 - **rooms**: Conversation channels
 - **participants**: Entity participation in rooms
 - **worlds**: Container for multiple rooms
 - **tasks**: Scheduled or queued operations
 - **cache**: Temporary key-value storage
-- **agents**: Agent configuration and state
+- **logs**: System and event logs
+
+### Message Server Tables (Central Database)
+
+- **message_servers**: Server definitions
+- **channels**: Communication channels
+- **messages**: Message history
+- **channel_participants**: Channel membership
+- **server_agents**: Agent-server associations
 
 ### Entity-Component System
 
@@ -363,15 +458,24 @@ For example, a user entity might have profile, preferences, and authentication c
 
 ## Vector Search
 
-Both adapters support vector-based semantic search with some differences:
+Both adapters support vector-based semantic search with embedding dimension flexibility:
 
 - **PostgreSQL**: Uses pgvector extension for optimized vector operations
-- **PGLite**: Implements vector search in JavaScript with an efficient algorithm
+- **PGLite**: Implements vector search using cosine distance calculations
 
-The embedding dimension is configurable based on the model used:
+The system supports multiple embedding dimensions (384, 512, 768, 1024, 1536, 3072) but each agent must use only one consistently:
 
 ```typescript
-await adapter.ensureEmbeddingDimension(1536); // For OpenAI embeddings
+// The embedding dimension is automatically set based on the first embedding stored
+// Supported dimensions are defined in DIMENSION_MAP
+const DIMENSION_MAP = {
+  384: 'dim_384',
+  512: 'dim_512',
+  768: 'dim_768',
+  1024: 'dim_1024',
+  1536: 'dim_1536',
+  3072: 'dim_3072',
+};
 ```
 
 ## FAQ
@@ -404,39 +508,53 @@ For PGLite, set the data directory (optional):
 SQLITE_DATA_DIR=./my-data
 ```
 
+### What about embedding model consistency?
+
+**Critical Requirements:**
+
+1. Each agent must use the same embedding model throughout its lifetime
+2. Never mix embedding models within the same agent
+3. If you need to change models, create a new agent
+4. Document which embedding model each agent uses
+
+**Why this matters:**
+
+- Different models produce embeddings of different dimensions
+- Embeddings from different models are not comparable
+- Mixing models will break vector search functionality
+
+### How does multi-tenancy work?
+
+- Each agent operates in its own isolated data space
+- All database operations are automatically scoped by `agentId`
+- Multiple agents can share the same database instance
+- Data isolation is enforced at the query level
+- No cross-agent data access is possible
+
 ### How can I inspect the database contents?
 
 For PostgreSQL, use standard PostgreSQL tools like pgAdmin or psql.
 
-For PGLite, the data is stored in the specified data directory as files. You can use tools like DB Browser for SQLite to inspect the SQLite files that PGLite generates.
+For PGLite, the data is stored in the specified data directory. You can use the PGLite Studio or standard PostgreSQL clients that support local connections.
 
-### How do I migrate between different database adapters?
+### How do I handle agent deletion?
 
-Currently, there's no built-in migration tool between adapters. For production systems, it's recommended to start with PostgreSQL if you anticipate needing its features.
+The `deleteAgent()` method performs a complete cascade deletion:
 
-### What about vector embedding dimension mismatches?
+1. Deletes all memories and embeddings
+2. Removes all entities and components
+3. Cleans up rooms and participants
+4. Removes relationships and logs
+5. Deletes the agent record itself
 
-The system automatically handles embedding dimensions based on the model used. If you change embedding models, make sure to:
-
-1. Set the correct dimension with `ensureEmbeddingDimension()`
-2. Be aware that mixing different dimensions in the same database can cause issues
-
-### How does the entity-component system work?
-
-The entity-component system (ECS) provides a flexible way to model data:
-
-- **Entities** are base objects with unique IDs
-- **Components** are pieces of data attached to entities
-- This allows for dynamic composition of objects without complex inheritance
-
-For example, a user entity might have profile, preferences, and authentication components.
+This ensures no orphaned data remains in the database.
 
 ### How can I improve database performance?
 
 - For **PostgreSQL**:
 
   - Ensure the pgvector extension is properly installed
-  - Index frequently queried fields
+  - Create indexes on frequently queried fields
   - Use connection pooling
   - Consider partitioning for large datasets
 
@@ -447,15 +565,7 @@ For example, a user entity might have profile, preferences, and authentication c
 
 ### Will other database adapters be supported in the future?
 
-Yes, future releases will add support for additional databases such as:
-
-- MongoDB
-- SQLite
-- Supabase
-- Qdrant
-- SQL.js
-
-The adapter interface is designed to be extensible to support a wide range of storage solutions.
+The adapter interface is designed to be extensible. Future releases may include support for additional databases, but all will need to implement the full `IDatabaseAdapter` interface as defined in the `BaseDrizzleAdapter`.
 
 ## Further Reading
 

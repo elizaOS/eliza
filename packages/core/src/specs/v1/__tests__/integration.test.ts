@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, mock } from 'bun:test';
 import { ActionExample, fromV2ActionExample, toV2ActionExample } from '../actionExample';
 import { Provider, fromV2Provider, toV2Provider } from '../provider';
 import { State, toV2State } from '../state';
@@ -13,8 +13,8 @@ describe('Integration tests for v1 compatibility layer', () => {
 
   // Setup mock runtime
   const mockRuntime = {
-    getSetting: vi.fn().mockReturnValue('test-setting'),
-    logger: { info: vi.fn(), error: vi.fn() },
+    getSetting: mock().mockReturnValue('test-setting'),
+    logger: { info: mock(), error: mock() },
   } as any;
 
   // Setup mock message

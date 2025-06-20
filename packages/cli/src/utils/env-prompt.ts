@@ -1,10 +1,9 @@
-import { promises as fs } from 'node:fs';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { logger } from '@elizaos/core';
+import { UserEnvironment } from '@/src/utils';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { UserEnvironment } from './user-environment';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { logger } from '@elizaos/core';
 
 /**
  * Interface for environment variable configuration
@@ -346,11 +345,13 @@ export async function promptForEnvVars(pluginName: string): Promise<Record<strin
     const value = await promptForEnvVar(config);
 
     // Save to our record
-    result[config.key] = value;
-    envVars[config.key] = value;
+    if (value !== null) {
+      result[config.key] = value;
+      envVars[config.key] = value;
 
-    // Also set in process.env for immediate use
-    process.env[config.key] = value;
+      // Also set in process.env for immediate use
+      process.env[config.key] = value;
+    }
 
     changes = true;
   }

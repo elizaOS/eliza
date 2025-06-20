@@ -17,7 +17,7 @@
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format --filter=./packages/*",
     "format:check": "turbo run format:check --filter=./packages/*",
-    "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && npx turbo run clean --filter=./packages/* && bun install && bun run build",
     "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
@@ -31,10 +31,10 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
+    "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/docs --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
-    "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
+    "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
     "prepare": "husky"
   },
   "packageManager": "bun@1.2.15",
@@ -51,8 +51,7 @@
     "lerna": "8.1.4",
     "tsup": "8.5.0",
     "turbo": "^2.5.4",
-    "typescript": "5.8.2",
-    "vitest": "3.1.4"
+    "typescript": "5.8.2"
   },
   "resolutions": {
     "@nrwl/devkit": "19.8.4",

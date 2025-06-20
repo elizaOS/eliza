@@ -1,0 +1,69 @@
+{
+  "name": "@elizaos/server",
+  "version": "1.0.10",
+  "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
+  "publishConfig": {
+    "access": "public",
+    "workspaces": {
+      "preserveIfPresent": true
+    }
+  },
+  "license": "MIT",
+  "author": {
+    "name": "elizaOS",
+    "url": "https://twitter.com/eliza_OS"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/server"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "keywords": [],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --project tsconfig.build.json --noEmit",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test": "bun test src/**/*.test.ts",
+    "test:unit": "bun test src/**/*.test.ts --exclude **/integration/**",
+    "test:integration": "bun test src/__tests__/integration/**/*.test.ts",
+    "test:coverage": "bun test --coverage",
+    "test:watch": "bun test --watch",
+    "test:cli": "bun test tests/commands/"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.1",
+    "dotenv": "^16.5.0",
+    "prettier": "3.5.3",
+    "tsup": "8.5.0",
+    "tsx": "4.19.4",
+    "typescript": "^5.5.4",
+    "which": "^4.0.0",
+    "ws": "^8.18.0"
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@types/express": "^5.0.2",
+    "@types/express-fileupload": "^1.5.1",
+    "@types/helmet": "^4.0.0",
+    "express": "^5.1.0",
+    "express-fileupload": "^1.5.1",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "path-to-regexp": "^8.2.0",
+    "socket.io": "^4.8.1"
+  }
+}

@@ -1263,6 +1263,10 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
+  getAllMemories(): Promise<Memory[]>;
+
+  clearAllAgentMemories(): Promise<void>;
+
   // Run tracking methods
   createRunId(): UUID;
   startRun(): UUID;

@@ -28,6 +28,9 @@ export interface ServiceTypeRegistry {
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
   DATABASE_MIGRATION: 'database_migration';
+  PLUGIN_MANAGER: 'PLUGIN_MANAGER';
+  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION';
+  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION';
 }
 
 /**
@@ -95,6 +98,9 @@ export const ServiceType = {
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
   DATABASE_MIGRATION: 'database_migration',
+  PLUGIN_MANAGER: 'PLUGIN_MANAGER',
+  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION',
+  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION',
 } as const satisfies ServiceTypeRegistry;
 
 /**

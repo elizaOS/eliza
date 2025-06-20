@@ -1,6 +1,5 @@
 import { loadProject } from '@/src/project';
-import { AgentServer } from '@/src/server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import {
   buildProject,
   findNextAvailablePort,
@@ -151,7 +150,7 @@ export async function runE2eTests(
       logger.info('Setting up server properties...');
       server.startAgent = async (character) => {
         logger.info(`Starting agent for character ${character.name}`);
-        return startAgent(character, server, undefined, [], { isTestMode: true });
+        return startAgent(character, server!, undefined, [], { isTestMode: true });
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
       server.jsonToCharacter = jsonToCharacter;
@@ -211,9 +210,12 @@ export async function runE2eTests(
 
             server.registerAgent(runtime); // Ensure server knows about the runtime
             runtimes.push(runtime);
+
+            // Pass all loaded plugins to the projectAgent so TestRunner can identify
+            // which one is the plugin under test vs dependencies
             projectAgents.push({
               character: defaultElizaCharacter,
-              plugins: runtime.plugins,
+              plugins: runtime.plugins, // Pass all plugins, not just the one under test
             });
 
             logger.info('Default test agent started successfully');
@@ -297,7 +299,7 @@ export async function runE2eTests(
         }
 
         // Return success (false) if no tests were found, or if tests ran but none failed
-        // This aligns with standard testing tools like vitest/jest behavior
+        // This aligns with standard testing tools behavior
         return { failed: anyTestsFound ? totalFailed > 0 : false };
       } catch (error) {
         logger.error('Error in runE2eTests:', error);
@@ -315,6 +317,11 @@ export async function runE2eTests(
         }
         return { failed: true };
       } finally {
+        // Clean up the ELIZA_TESTING_PLUGIN environment variable
+        if (process.env.ELIZA_TESTING_PLUGIN) {
+          delete process.env.ELIZA_TESTING_PLUGIN;
+        }
+
         // Clean up database directory after tests complete
         try {
           if (fs.existsSync(elizaDbDir)) {

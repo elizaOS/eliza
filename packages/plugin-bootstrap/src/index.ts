@@ -504,7 +504,7 @@ const messageReceivedHandler = async ({
 
             responseContent.simple = isSimple;
 
-            const responseMesssage = {
+            const responseMessage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
@@ -513,7 +513,7 @@ const messageReceivedHandler = async ({
               createdAt: Date.now(),
             };
 
-            responseMessages = [responseMesssage];
+            responseMessages = [responseMessage];
           }
 
           // Clean up the response ID
@@ -537,15 +537,7 @@ const messageReceivedHandler = async ({
           } else {
             await runtime.processActions(message, responseMessages, state, callback);
           }
-          await runtime.evaluate(
-            message,
-            state,
-            shouldRespond,
-            async (memory: Content) => {
-              return [];
-            },
-            responseMessages
-          );
+          await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
         } else {
           // Handle the case where the agent decided not to respond
           logger.debug('[Bootstrap] Agent decided not to respond (shouldRespond is false).');

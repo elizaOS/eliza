@@ -1,5 +1,4 @@
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import fs from 'node:fs/promises';
 import { execa } from 'execa';
 import { logger } from '@elizaos/core';
 import { getPackageManager } from '@/src/utils';
@@ -88,6 +87,8 @@ export async function installDependencies(cwd: string): Promise<void> {
     await execa(packageManager, ['install'], { cwd, stdio: 'inherit' });
     console.log('Dependencies installed successfully [✓]');
   } catch (error) {
-    throw new Error(`Failed to install dependencies: ${error.message}`);
+    throw new Error(
+      `Failed to install dependencies: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

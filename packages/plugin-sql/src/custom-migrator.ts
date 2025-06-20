@@ -1134,20 +1134,15 @@ export class PluginNamespaceManager {
 export class ExtensionManager {
   constructor(private db: DrizzleDB) {}
 
-  async installRequiredExtensions(): Promise<void> {
-    // For PGLite, extensions are loaded at initialization, so we can skip this.
-    // This check is a bit brittle but avoids a direct dependency on the PGlite class.
-    if ((this.db as any)?.driver?.constructor?.name === 'PGlite') {
-      logger.debug('[CUSTOM MIGRATOR] PGLite detected, skipping extension creation via SQL.');
-      return;
-    }
-
-    const extensions = ['vector', 'fuzzystrmatch'];
-    for (const extension of extensions) {
+  async installRequiredExtensions(requiredExtensions: string[]): Promise<void> {
+    for (const extension of requiredExtensions) {
       try {
         await this.db.execute(sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extension}"`));
-      } catch (e) {
-        logger.warn(`Could not install extension ${extension}:`, e);
+      } catch (error) {
+        logger.warn(`Could not install extension ${extension}:`, {
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        });
       }
     }
   }
@@ -1205,7 +1200,7 @@ export async function runPluginMigrations(
   const introspector = new DrizzleSchemaIntrospector();
   const extensionManager = new ExtensionManager(db);
 
-  await extensionManager.installRequiredExtensions();
+  await extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch']);
   const schemaName = await namespaceManager.getPluginSchema(pluginName);
   await namespaceManager.ensureNamespace(schemaName);
   const existingTables = await namespaceManager.introspectExistingTables(schemaName);

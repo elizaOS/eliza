@@ -238,7 +238,7 @@ export function MessageContent({
             </>
           )}
           {isUser && message.text && !message.isLoading && onRetry && (
-            <RetryButton onClick={() => onRetry(message.text!)} />
+            <RetryButton onClick={() => onRetry(message)} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
@@ -301,6 +301,8 @@ export default function Chat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const inputDisabledRef = useRef<boolean>(false);
+  const chatTitleRef = useRef<string>('');
 
   // For DM, we need agent data. For GROUP, we need channel data
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(
@@ -321,6 +323,7 @@ export default function Chat({
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined
   );
+
   const createDmChannelMutation = useCreateDmChannel();
 
   // Group chat specific data
@@ -500,6 +503,17 @@ export default function Chat({
     currentClientEntityId,
   ]);
 
+  useEffect(() => {
+    inputDisabledRef.current = chatState.inputDisabled;
+  }, [chatState.inputDisabled]);
+
+  useEffect(() => {
+    const currentChannel = agentDmChannels.find((c) => c.id === chatState.currentDmChannelId);
+    if (currentChannel?.name) {
+      chatTitleRef.current = currentChannel.name;
+    }
+  }, [agentDmChannels, chatState.currentDmChannelId]);
+
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
     if (chatType === ChannelType.DM && targetAgentData?.id) {
@@ -642,6 +656,34 @@ export default function Chat({
     prevMessageCountRef.current = messages.length;
   }, [messages, autoScrollEnabled, safeScrollToBottom, finalChannelIdForHooks]);
 
+  const updateChatTitle = async () => {
+    const timestampChatNameRegex = /^Chat - [A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}:\d{2}$/;
+    const shouldUpdate: boolean =
+      !!chatTitleRef.current &&
+      timestampChatNameRegex.test(chatTitleRef.current) &&
+      chatType === ChannelType.DM;
+
+    if (!shouldUpdate) {
+      return;
+    }
+
+    const data = await apiClient.getChannelTitle(finalChannelIdForHooks, contextId);
+
+    const title = data?.data?.title;
+    const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
+    if (title && participants) {
+      await apiClient.updateChannel(finalChannelIdForHooks, {
+        name: title,
+        participantCentralUserIds: participants.data,
+      });
+
+      const currentUserId = getEntityId();
+      queryClient.invalidateQueries({
+        queryKey: ['dmChannels', contextId, currentUserId],
+      });
+    }
+  };
+
   const { sendMessage, animatedMessageId } = useSocketChat({
     channelId: finalChannelIdForHooks,
     currentUserId: currentClientEntityId,
@@ -651,6 +693,7 @@ export default function Chat({
     messages,
     onAddMessage: (message: UiMessage) => {
       addMessage(message);
+      updateChatTitle();
       if (message.isAgent) safeScrollToBottom();
     },
     onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
@@ -731,7 +774,7 @@ export default function Chat({
 
     if (
       (!chatState.input.trim() && selectedFiles.length === 0) ||
-      chatState.inputDisabled ||
+      inputDisabledRef.current ||
       !channelIdToUse ||
       !finalServerIdForHooks ||
       !currentClientEntityId ||
@@ -739,11 +782,10 @@ export default function Chat({
     )
       return;
 
-    updateChatState({ inputDisabled: true });
     const tempMessageId = randomUUID() as UUID;
     let messageText = chatState.input.trim();
     const currentInputVal = chatState.input;
-    updateChatState({ input: '' });
+    updateChatState({ input: '', inputDisabled: true });
     const currentSelectedFiles = [...selectedFiles];
     clearFiles();
     formRef.current?.reset();
@@ -821,8 +863,11 @@ export default function Chat({
         isLoading: false,
         text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
       });
-    } finally {
+      // Re-enable input on error
       updateChatState({ inputDisabled: false });
+    } finally {
+      // Let the server control input state via control messages
+      // Only focus the input, don't re-enable it
       inputRef.current?.focus();
     }
   };
@@ -838,20 +883,55 @@ export default function Chat({
     }
   };
 
-  const handleRetryMessage = (messageText: string) => {
-    if (!messageText.trim() || chatState.inputDisabled) return;
-    // Set the input to the message text and submit it
-    updateChatState({ input: messageText });
-    // Focus the input after a brief delay to ensure state has updated
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        // Trigger form submission
-        if (formRef.current) {
-          formRef.current.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-        }
-      }
-    }, 10);
+  const handleRetryMessage = async (message: UiMessage) => {
+    if (inputDisabledRef.current || (!message.text?.trim() && message.attachments?.length === 0)) {
+      return;
+    }
+    updateChatState({ inputDisabled: true });
+    const retryMessageId = randomUUID() as UUID;
+    const finalTextContent =
+      message.text?.trim() || `Shared ${message.attachments?.length} file(s).`;
+
+    const optimisticUiMessage: UiMessage = {
+      id: retryMessageId,
+      text: message.text,
+      name: USER_NAME,
+      createdAt: Date.now(),
+      senderId: currentClientEntityId,
+      isAgent: false,
+      isLoading: true,
+      channelId: message.channelId,
+      serverId: finalServerIdForHooks,
+      source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+      attachments: message.attachments,
+    };
+
+    addMessage(optimisticUiMessage);
+    safeScrollToBottom();
+
+    try {
+      await sendMessage(
+        finalTextContent,
+        finalServerIdForHooks!,
+        chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
+        message.attachments,
+        retryMessageId,
+        undefined,
+        finalChannelIdForHooks!
+      );
+    } catch (error) {
+      clientLogger.error('Error sending message or uploading files:', error);
+      toast({
+        title: 'Error Sending Message',
+        description: error instanceof Error ? error.message : 'Could not send message.',
+        variant: 'destructive',
+      });
+      updateMessage(retryMessageId, {
+        isLoading: false,
+        text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
+      });
+      updateChatState({ inputDisabled: false });
+    }
   };
 
   const handleClearChat = () => {
@@ -1379,18 +1459,22 @@ export default function Chat({
             {(() => {
               let sidebarAgentId: UUID | undefined = undefined;
               let sidebarAgentName: string = 'Agent';
+              let sidebarChannelId: UUID | undefined = undefined;
 
               if (chatType === ChannelType.DM) {
                 sidebarAgentId = contextId; // This is agentId for DM
                 sidebarAgentName = targetAgentData?.name || 'Agent';
+                sidebarChannelId = chatState.currentDmChannelId || undefined;
               } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
                 sidebarAgentId = chatState.selectedGroupAgentId;
                 const selectedAgent = allAgents.find(
                   (a) => a.id === chatState.selectedGroupAgentId
                 );
                 sidebarAgentName = selectedAgent?.name || 'Group Member';
+                sidebarChannelId = contextId; // contextId is the channelId for GROUP
               } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
                 sidebarAgentName = 'Group';
+                sidebarChannelId = contextId; // contextId is the channelId for GROUP
               }
 
               return (
@@ -1399,7 +1483,11 @@ export default function Chat({
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                      <AgentSidebar
+                        agentId={sidebarAgentId}
+                        agentName={sidebarAgentName}
+                        channelId={sidebarChannelId}
+                      />
                     </ResizablePanel>
                   </>
                 )
@@ -1412,16 +1500,20 @@ export default function Chat({
         {(() => {
           let sidebarAgentId: UUID | undefined = undefined;
           let sidebarAgentName: string = 'Agent';
+          let sidebarChannelId: UUID | undefined = undefined;
 
           if (chatType === ChannelType.DM) {
             sidebarAgentId = contextId; // This is agentId for DM
             sidebarAgentName = targetAgentData?.name || 'Agent';
+            sidebarChannelId = chatState.currentDmChannelId || undefined;
           } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
             sidebarAgentId = chatState.selectedGroupAgentId;
             const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
             sidebarAgentName = selectedAgent?.name || 'Group Member';
+            sidebarChannelId = contextId; // contextId is the channelId for GROUP
           } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {
             sidebarAgentName = 'Group';
+            sidebarChannelId = contextId; // contextId is the channelId for GROUP
           }
 
           return (
@@ -1443,7 +1535,11 @@ export default function Chat({
                       </Button>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                      <AgentSidebar agentId={sidebarAgentId} agentName={sidebarAgentName} />
+                      <AgentSidebar
+                        agentId={sidebarAgentId}
+                        agentName={sidebarAgentName}
+                        channelId={sidebarChannelId}
+                      />
                     </div>
                   </div>
                 </div>

@@ -1,10 +1,8 @@
 import { logger } from '@elizaos/core';
-import { spawn } from 'node:child_process';
 import { UserEnvironment } from './user-environment';
 import { displayBunInstallationTipCompact } from './bun-installation-helper';
 import { runBunCommand } from './run-bun';
-import which from 'which';
-import fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { execa } from 'execa';
 
@@ -62,7 +60,7 @@ export function getInstallCommand(isGlobal: boolean): string[] {
 export async function removeFromBunLock(packageName: string, directory: string): Promise<void> {
   const lockFilePath = path.join(directory, 'bun.lock');
 
-  if (!fs.existsSync(lockFilePath)) {
+  if (!existsSync(lockFilePath)) {
     logger.debug(`No bun.lock file found at ${lockFilePath}, skipping removal`);
     return;
   }

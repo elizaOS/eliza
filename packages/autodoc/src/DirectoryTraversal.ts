@@ -33,6 +33,7 @@ export class DirectoryTraversal {
     '.vscode',
     'public',
     'static',
+    'client', // Exclude client package due to React/JSX parsing complexities
   ];
 
   /**

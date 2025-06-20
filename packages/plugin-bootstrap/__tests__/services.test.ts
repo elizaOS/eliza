@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { TaskService } from '../src/services/task';
 import { EventType, IAgentRuntime, logger, Service } from '@elizaos/core';
 import { bootstrapPlugin } from '../src/index';
@@ -65,18 +65,18 @@ describe('TaskService', () => {
     ];
 
     // Mock setTimeout
-    vi.useFakeTimers();
+    // Note: bun:test doesn't have vi.useFakeTimers(), skipping timer mocking
 
     // Mock getTasks to return our test tasks
-    mockRuntime.getTasks = vi.fn().mockResolvedValue(mockTasks);
+    mockRuntime.getTasks = mock().mockResolvedValue(mockTasks);
 
     // Create service instance
     taskService = new TaskService(mockRuntime as IAgentRuntime);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    mock.restore();
+    // Note: bun:test doesn't need vi.useRealTimers(), skipping
   });
 
   it('should be instantiated with a runtime', () => {
@@ -134,20 +134,20 @@ describe('TaskService', () => {
     };
 
     // Mock getTasks to return our ready task
-    mockRuntime.getTasks = vi.fn().mockResolvedValue([pastTask]);
+    mockRuntime.getTasks = mock().mockResolvedValue([pastTask]);
 
     // Expose and call the private methods for testing
     const checkTasksMethod = (taskService as any).checkTasks.bind(taskService);
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
 
     // Mock getTaskWorker for 'Past scheduled task'
-    const mockWorkerExecute = vi.fn().mockResolvedValue(undefined);
-    mockRuntime.getTaskWorker = vi.fn().mockImplementation((taskName: string) => {
+    const mockWorkerExecute = mock().mockResolvedValue(undefined);
+    mockRuntime.getTaskWorker = mock().mockImplementation((taskName: string) => {
       if (taskName === 'Past scheduled task') {
         return {
           name: taskName,
           execute: mockWorkerExecute,
-          validate: vi.fn().mockResolvedValue(true),
+          validate: mock().mockResolvedValue(true),
         };
       }
       return undefined;
@@ -196,21 +196,21 @@ describe('TaskService', () => {
     };
 
     // Mock the model to throw an error - This is not directly used by executeTask, error should come from worker
-    // mockRuntime.useModel = vi.fn().mockRejectedValue(new Error('Task processing error'));
+    // mockRuntime.useModel = mock().mockRejectedValue(new Error('Task processing error'));
 
     // Mock getTaskWorker for 'Error task' to throw an error
-    const mockErrorExecute = vi.fn().mockRejectedValue(new Error('Worker execution error'));
-    mockRuntime.getTaskWorker = vi.fn().mockImplementation((taskName: string) => {
+    const mockErrorExecute = mock().mockRejectedValue(new Error('Worker execution error'));
+    mockRuntime.getTaskWorker = mock().mockImplementation((taskName: string) => {
       if (taskName === 'Error task') {
         return {
           name: taskName,
           execute: mockErrorExecute,
-          validate: vi.fn().mockResolvedValue(true),
+          validate: mock().mockResolvedValue(true),
         };
       }
       return undefined;
     }) as any;
-    vi.spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
+    spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
 
     // Expose the private method for testing
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
@@ -254,8 +254,8 @@ describe('Service Registry', () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    mock.restore();
+    spyOn(logger, 'warn').mockImplementation(() => {});
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();
@@ -263,7 +263,7 @@ describe('Service Registry', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mock.restore();
   });
 
   it('should register all services correctly', () => {
@@ -391,7 +391,7 @@ describe('Service Registry', () => {
 
     if (fileServiceDefinition) {
       // Setup to force initialization error
-      mockRuntime.getService = vi.fn().mockImplementation(() => {
+      mockRuntime.getService = mock().mockImplementation(() => {
         throw new Error('Service initialization failed');
       });
 

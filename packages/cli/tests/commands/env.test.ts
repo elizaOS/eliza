@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'child_process';
-import { writeFile } from 'fs/promises';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execSync } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
@@ -20,12 +20,12 @@ describe('ElizaOS Env Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  test('env --help shows usage', () => {
+  it('env --help shows usage', () => {
     const result = runCliCommand(context.elizaosCmd, 'env --help');
     expectHelpOutput(result, 'env');
   });
 
-  test('env list shows environment variables', async () => {
+  it('env list shows environment variables', async () => {
     // First call: no local .env file present
     let result = runCliCommand(context.elizaosCmd, 'env list');
 
@@ -44,7 +44,7 @@ describe('ElizaOS Env Commands', () => {
     expect(result).toContain('test_value');
   });
 
-  test('env list --local shows only local environment', async () => {
+  it('env list --local shows only local environment', async () => {
     await writeFile('.env', 'LOCAL_TEST=local_value');
 
     const result = runCliCommand(context.elizaosCmd, 'env list --local');
@@ -54,7 +54,7 @@ describe('ElizaOS Env Commands', () => {
     expect(result).not.toContain('System Information');
   });
 
-  test('env edit-local creates local .env if missing', async () => {
+  it('env edit-local creates local .env if missing', async () => {
     // Skip this test on Windows due to complex shell input handling
     if (process.platform === 'win32') {
       console.warn('Skipping env edit-local test on Windows due to shell input limitations');
@@ -71,7 +71,7 @@ describe('ElizaOS Env Commands', () => {
     expect(result).toBeTruthy();
   });
 
-  test('env reset shows all necessary options', async () => {
+  it('env reset shows all necessary options', async () => {
     await writeFile('.env', 'DUMMY=value');
 
     const result = runCliCommand(context.elizaosCmd, 'env reset --yes');

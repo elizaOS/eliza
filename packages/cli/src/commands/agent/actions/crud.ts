@@ -1,7 +1,7 @@
 import type { Agent } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
-import fs from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
@@ -21,12 +21,15 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     // API Endpoint: GET /agents/:agentId
     const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
       logger.error(`Failed to get agent`);
       process.exit(1);
     }
 
     const { data: agent } = (await response.json()) as ApiResponse<Agent>;
+
+    if (!agent) {
+      throw new Error('No agent data received from server');
+    }
 
     // Save to file if output option is specified - exit early
     if (opts.output !== undefined) {
@@ -41,7 +44,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 
       // Save file and exit
       const jsonPath = path.resolve(process.cwd(), filename);
-      fs.writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
+      writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
       console.log(`Saved agent configuration to ${jsonPath}`);
       return;
     }
@@ -92,6 +95,41 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 }
 
 /**
+ * Clear memories command implementation - clears all memories for an agent
+ */
+export async function clearAgentMemories(opts: OptionValues): Promise<void> {
+  try {
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
+    const baseUrl = getAgentsBaseUrl(opts);
+
+    console.info(`Clearing all memories for agent ${resolvedAgentId}`);
+
+    // API Endpoint: DELETE /agents/:agentId/memories
+    const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json()) as ApiResponse<unknown>;
+      throw new Error(
+        errorData.error?.message || `Failed to clear agent memories: ${response.statusText}`
+      );
+    }
+
+    const data = (await response.json()) as ApiResponse<{ deletedCount: number }>;
+    const result = data.data;
+
+    console.log(
+      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
+    );
+    return;
+  } catch (error) {
+    await checkServer(opts);
+    handleError(error);
+  }
+}
+
+/**
  * Set command implementation - updates agent configuration
  */
 export async function setAgentConfig(opts: OptionValues): Promise<void> {
@@ -105,13 +143,17 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
       try {
         config = JSON.parse(opts.config);
       } catch (error) {
-        throw new Error(`Failed to parse config JSON string: ${error.message}`);
+        throw new Error(
+          `Failed to parse config JSON string: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     } else if (opts.file) {
       try {
-        config = JSON.parse(fs.readFileSync(opts.file, 'utf8'));
+        config = JSON.parse(readFileSync(opts.file, 'utf8'));
       } catch (error) {
-        throw new Error(`Failed to read or parse config file: ${error.message}`);
+        throw new Error(
+          `Failed to read or parse config file: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     } else {
       throw new Error('Please provide either a config JSON string (-c) or a config file path (-f)');

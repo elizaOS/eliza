@@ -192,6 +192,28 @@
           }
         },
         {
+          "name": "Get Server Logs (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"since\": \"2024-01-01T00:00:00Z\",\n  \"level\": \"info\",\n  \"agentName\": \"Agent Name\",\n  \"agentId\": \"{{agentId}}\",\n  \"limit\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/server/logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "server", "logs"]
+            },
+            "description": "Get server logs using POST method with query parameters in body"
+          }
+        },
+        {
           "name": "Clear Server Logs",
           "request": {
             "method": "DELETE",
@@ -215,6 +237,54 @@
               "path": ["api", "server", "debug", "servers"]
             },
             "description": "Get debug information about servers"
+          }
+        },
+        {
+          "name": "Get Server Configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/server/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "server", "config"]
+            },
+            "description": "Get server configuration settings"
+          }
+        },
+        {
+          "name": "Update Server Configuration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setting\": \"value\",\n  \"logLevel\": \"info\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/server/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "server", "config"]
+            },
+            "description": "Update server configuration settings"
+          }
+        },
+        {
+          "name": "Get Server Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/server/metrics",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "server", "metrics"]
+            },
+            "description": "Get server performance metrics and statistics"
           }
         }
       ]
@@ -271,7 +341,7 @@
           }
         },
         {
-          "name": "Update Agent",
+          "name": "Update Agent (Partial)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -289,7 +359,29 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "agents", "{{agentId}}"]
             },
-            "description": "Update an existing agent"
+            "description": "Update an existing agent (partial update)"
+          }
+        },
+        {
+          "name": "Update Agent (Full)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Agent Name\",\n  \"bio\": \"Updated description\",\n  \"settings\": {\n    \"model\": \"gpt-4\",\n    \"temperature\": 0.7\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}"]
+            },
+            "description": "Update an existing agent (full replacement)"
           }
         },
         {
@@ -332,6 +424,19 @@
           }
         },
         {
+          "name": "Restart Agent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}/restart",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}", "restart"]
+            },
+            "description": "Restart an agent (stop and start)"
+          }
+        },
+        {
           "name": "Get Agent Panels",
           "request": {
             "method": "GET",
@@ -350,11 +455,38 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs",
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs?roomId={{roomId}}&type=info&count=50&offset=0&excludeTypes=debug,trace",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "logs"]
+              "path": ["api", "agents", "{{agentId}}", "logs"],
+              "query": [
+                {
+                  "key": "roomId",
+                  "value": "{{roomId}}",
+                  "description": "Filter by room ID"
+                },
+                {
+                  "key": "type",
+                  "value": "info",
+                  "description": "Filter by log type"
+                },
+                {
+                  "key": "count",
+                  "value": "50",
+                  "description": "Limit number of results"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Pagination offset"
+                },
+                {
+                  "key": "excludeTypes",
+                  "value": "debug,trace",
+                  "description": "Exclude specific log types"
+                }
+              ]
             },
-            "description": "Get agent logs"
+            "description": "Get agent logs with filtering options"
           }
         },
         {
@@ -426,6 +558,19 @@
             },
             "description": "Update an agent's world"
           }
+        },
+        {
+          "name": "Delete Agent World",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}/worlds/{{worldId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "agents", "{{agentId}}", "worlds", "{{worldId}}"]
+            },
+            "description": "Delete an agent's world"
+          }
         }
       ]
     },
@@ -487,6 +632,32 @@
               "path": ["api", "messaging", "central-servers"]
             },
             "description": "Get all central messaging servers"
+          }
+        },
+        {
+          "name": "Get All Servers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/servers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "servers"]
+            },
+            "description": "Get all messaging servers"
+          }
+        },
+        {
+          "name": "Get Specific Server",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "servers", "{{serverId}}"]
+            },
+            "description": "Get details of a specific server"
           }
         },
         {
@@ -570,6 +741,41 @@
               "path": ["api", "messaging", "agents", "{{agentId}}", "servers"]
             },
             "description": "Get all servers for an agent"
+          }
+        },
+        {
+          "name": "Update Server",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Server Name\",\n  \"description\": \"Updated server description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "servers", "{{serverId}}"]
+            },
+            "description": "Update server details"
+          }
+        },
+        {
+          "name": "Delete Server",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "servers", "{{serverId}}"]
+            },
+            "description": "Delete a messaging server"
           }
         }
       ]
@@ -758,6 +964,61 @@
           }
         },
         {
+          "name": "Add Agent to Channel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+            },
+            "description": "Add an agent to a channel"
+          }
+        },
+        {
+          "name": "Remove Agent from Channel",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents/{{agentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "agents",
+                "{{agentId}}"
+              ]
+            },
+            "description": "Remove an agent from a channel"
+          }
+        },
+        {
+          "name": "List Channel Agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+            },
+            "description": "List all agents in a channel"
+          }
+        },
+        {
           "name": "Update Channel",
           "request": {
             "method": "PATCH",
@@ -793,7 +1054,7 @@
           }
         },
         {
-          "name": "Create Group Channel",
+          "name": "Create Group Channel (Legacy)",
           "request": {
             "method": "POST",
             "header": [
@@ -811,35 +1072,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "messaging", "group-channels"]
             },
-            "description": "Create a group channel"
-          }
-        },
-        {
-          "name": "Upload Channel Media (Alternative)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "multipart/form-data"
-              }
-            ],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "file",
-                  "type": "file",
-                  "src": []
-                }
-              ]
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/messaging/channels/{{channelId}}/upload-media",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "channels", "{{channelId}}", "upload-media"]
-            },
-            "description": "Upload media to specific messaging channel"
+            "description": "Create a group channel (legacy endpoint)"
           }
         }
       ]
@@ -886,6 +1119,28 @@
           }
         },
         {
+          "name": "Create Memory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"New memory content\",\n  \"importance\": 0.8,\n  \"roomId\": \"{{roomId}}\",\n  \"metadata\": {}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "{{agentId}}", "memories"]
+            },
+            "description": "Create a new memory for an agent"
+          }
+        },
+        {
           "name": "Update Memory",
           "request": {
             "method": "PATCH",
@@ -908,6 +1163,19 @@
           }
         },
         {
+          "name": "Delete Memory",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories/{{memoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "{{agentId}}", "memories", "{{memoryId}}"]
+            },
+            "description": "Delete a specific memory"
+          }
+        },
+        {
           "name": "Delete All Room Memories",
           "request": {
             "method": "DELETE",
@@ -918,6 +1186,19 @@
               "path": ["api", "memory", "{{agentId}}", "memories", "all", "{{roomId}}"]
             },
             "description": "Delete all memories for a specific room"
+          }
+        },
+        {
+          "name": "Get Memory Group",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "groups", "{{serverId}}"]
+            },
+            "description": "Get memory group details for a server"
           }
         },
         {
@@ -940,6 +1221,28 @@
               "path": ["api", "memory", "groups", "{{serverId}}"]
             },
             "description": "Create a memory group for a server"
+          }
+        },
+        {
+          "name": "Update Memory Group",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Memory Group Name\",\n  \"description\": \"Updated group description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "groups", "{{serverId}}"]
+            },
+            "description": "Update memory group for a server"
           }
         },
         {
@@ -980,7 +1283,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Room Name\",\n  \"description\": \"Room description\"\n}"
+              "raw": "{\n  \"name\": \"Room Name\",\n  \"type\": \"dm\",\n  \"source\": \"client\",\n  \"worldId\": \"{{worldId}}\",\n  \"serverId\": \"{{serverId}}\",\n  \"metadata\": {}\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms",
@@ -1014,6 +1317,41 @@
               "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
             },
             "description": "Get details of a specific room"
+          }
+        },
+        {
+          "name": "Update Room",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Room Name\",\n  \"metadata\": {\n    \"updated\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
+            },
+            "description": "Update room details"
+          }
+        },
+        {
+          "name": "Delete Room",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
+            },
+            "description": "Delete a specific room"
           }
         }
       ]
@@ -1180,9 +1518,9 @@
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/media/agents/{{agentId}}/upload",
+              "raw": "{{baseUrl}}/api/media/agents/{{agentId}}/upload-media",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "media", "agents", "{{agentId}}", "upload"]
+              "path": ["api", "media", "agents", "{{agentId}}", "upload-media"]
             },
             "description": "Upload media file for an agent"
           }
@@ -1247,7 +1585,7 @@
           }
         },
         {
-          "name": "Submit TEE Logs",
+          "name": "Query TEE Logs",
           "request": {
             "method": "POST",
             "header": [
@@ -1258,14 +1596,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"level\": \"info\",\n  \"message\": \"TEE log message\",\n  \"agentId\": \"{{agentId}}\"\n}"
+              "raw": "{\n  \"query\": {\n    \"agentId\": \"{{agentId}}\",\n    \"roomId\": \"{{roomId}}\",\n    \"entityId\": \"\",\n    \"type\": \"\",\n    \"containsContent\": \"\",\n    \"startTimestamp\": null,\n    \"endTimestamp\": null\n  },\n  \"page\": 1,\n  \"pageSize\": 10\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/tee/logs",
               "host": ["{{baseUrl}}"],
               "path": ["api", "tee", "logs"]
             },
-            "description": "Submit TEE-specific logs"
+            "description": "Query TEE logs with filtering and pagination"
           }
         }
       ]

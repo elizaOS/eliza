@@ -1,5 +1,3 @@
-import { handleError } from '@/src/utils';
-import { logger } from '@elizaos/core';
 import { DevOptions } from '../types';
 import { createDevContext, performInitialBuild, performRebuild } from '../utils/build-utils';
 import { watchDirectory } from '../utils/file-watcher';
@@ -69,7 +67,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       // Start the server with the args
       await serverManager.start(cliArgs);
     } catch (error) {
-      console.error(`Error during rebuild and restart: ${error.message}`);
+      console.error(
+        `Error during rebuild and restart: ${error instanceof Error ? error.message : String(error)}`
+      );
       // Try to restart the server even if build fails
       if (!serverManager.process) {
         console.info('Attempting to restart server regardless of build failure...');
@@ -95,6 +95,10 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     await watchDirectory(context.watchDirectory, rebuildAndRestart);
 
     console.log('Dev mode is active! The server will restart when files change.');
+    console.log('Press Ctrl+C to exit');
+  } else {
+    // In standalone mode, just keep the server running without watching files
+    console.log('Server is running in standalone dev mode.');
     console.log('Press Ctrl+C to exit');
   }
 }

@@ -44,9 +44,10 @@ ElizaOS provides a comprehensive testing structure for plugins:
   - **Integration Tests**: Test how components work together
   - Run with: `elizaos test component`
 
-- **End-to-End Tests** (`e2e/` directory):
+- **End-to-End Tests** (`__tests__/e2e/` directory):
 
   - Test the plugin within a full ElizaOS runtime
+  - Validate complete user scenarios with a real agent
   - Run with: `elizaos test e2e`
 
 - **Running All Tests**:
@@ -72,26 +73,50 @@ describe('Integration: HelloWorld Action with StarterService', () => {
 });
 ```
 
-E2E tests use ElizaOS test interface:
+E2E tests run in a real ElizaOS runtime:
 
 ```typescript
-// E2E test example (e2e/starter-plugin.test.ts)
-export class StarterPluginTestSuite implements TestSuite {
-  name = 'plugin_starter_test_suite';
-  tests = [
+// E2E test example (__tests__/e2e/starter-plugin.ts)
+export const StarterPluginTestSuite: TestSuite = {
+  name: 'plugin_starter_test_suite',
+  description: 'E2E tests for the starter plugin',
+  tests: [
     {
-      name: 'example_test',
+      name: 'hello_world_action_test',
       fn: async (runtime) => {
-        // Test plugin in a real runtime
+        // Simulate user asking agent to say hello
+        const testMessage = {
+          content: { text: 'Can you say hello?' }
+        };
+
+        // Execute action and capture response
+        const response = await helloWorldAction.handler(runtime, testMessage, ...);
+
+        // Verify agent responds with "hello world"
+        if (!response.text.includes('hello world')) {
+          throw new Error('Expected "hello world" in response');
+        }
       },
     },
-  ];
-}
-
-export default new StarterPluginTestSuite();
+  ],
+};
 ```
 
-The test utilities in `__tests__/test-utils.ts` provide mock objects and setup functions to simplify writing tests.
+#### Key E2E Testing Features:
+
+- **Real Runtime Environment**: Tests run with a fully initialized ElizaOS runtime
+- **Plugin Interaction**: Test how your plugin behaves with the actual agent
+- **Scenario Testing**: Validate complete user interactions, not just individual functions
+- **No Mock Required**: Access real services, actions, and providers
+
+#### Writing New E2E Tests:
+
+1. Add a new test object to the `tests` array in your test suite
+2. Each test receives the runtime instance as a parameter
+3. Throw errors to indicate test failures (no assertion library needed)
+4. See the comprehensive documentation in `__tests__/e2e/starter-plugin.ts` for detailed examples
+
+The test utilities in `__tests__/test-utils.ts` provide mock objects and setup functions to simplify writing component tests.
 
 ## Publishing & Continuous Development
 

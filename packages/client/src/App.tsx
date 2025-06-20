@@ -102,7 +102,7 @@ function AppContent() {
           <div className="md:hidden absolute top-4 left-4 z-50">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" data-testid="mobile-menu-button">
                   <Menu className="h-5 w-5" />
                   <span className="sr-only">Toggle menu</span>
                 </Button>
@@ -141,7 +141,7 @@ function AppContent() {
               <Route
                 path="/create"
                 element={
-                  <div className="flex w-full justify-center px-4 sm:px-6">
+                  <div className="flex w-full justify-center px-4 sm:px-6 overflow-y-auto">
                     <div className="w-full md:max-w-4xl">
                       <AgentCreator />
                     </div>

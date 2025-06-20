@@ -1,10 +1,9 @@
 // Export function to display banner and version
 
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
-import { yellow } from 'yoctocolors';
 
 // Function to get the package version
 // --- Utility: Get local CLI version from package.json ---
@@ -18,11 +17,11 @@ export function getVersion(): string {
 
   // Add a simple check in case the path is incorrect
   let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
+  if (!existsSync(packageJsonPath)) {
     console.error(`Warning: package.json not found at ${packageJsonPath}`);
   } else {
     try {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
       version = packageJson.version || '0.0.0';
     } catch (error) {
       console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
@@ -152,7 +151,6 @@ export async function displayBanner(skipUpdateCheck: boolean = false) {
   const w = '\x1b[38;5;255m';
   const r = '\x1b[0m';
   const orange = '\x1b[38;5;208m';
-  const green = '\x1b[38;5;118m';
   let versionColor = lightblue;
 
   const version = getVersion();

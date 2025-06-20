@@ -1,8 +1,8 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'child_process';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
@@ -21,7 +21,7 @@ describe('ElizaOS Update Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
   });
 
   afterEach(async () => {
@@ -46,7 +46,7 @@ describe('ElizaOS Update Commands', () => {
   };
 
   // --help
-  test('update --help shows usage and options', () => {
+  it('update --help shows usage and options', () => {
     const result = execSync(`${elizaosCmd} update --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos update');
     expect(result).toContain('--cli');
@@ -56,7 +56,7 @@ describe('ElizaOS Update Commands', () => {
   });
 
   // Basic runs
-  test(
+  it(
     'update runs in a valid project',
     async () => {
       await makeProj('update-app');
@@ -73,7 +73,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update --check works',
     async () => {
       await makeProj('update-check-app');
@@ -87,7 +87,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update --skip-build works',
     async () => {
       await makeProj('update-skip-build-app');
@@ -101,7 +101,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update --packages works',
     async () => {
       await makeProj('update-packages-app');
@@ -118,7 +118,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update --cli works outside a project',
     () => {
       const result = runCliCommandSilently(elizaosCmd, 'update --cli', {
@@ -133,7 +133,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.STANDARD_COMMAND
   );
 
-  test(
+  it(
     'update --cli --packages works',
     async () => {
       await makeProj('update-combined-app');
@@ -150,7 +150,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update succeeds outside a project (global check)',
     () => {
       const result = runCliCommandSilently(elizaosCmd, 'update', {
@@ -166,7 +166,7 @@ describe('ElizaOS Update Commands', () => {
   );
 
   // Non-project directory handling
-  test(
+  it(
     'update --packages shows helpful message in empty directory',
     () => {
       const result = runCliCommandSilently(elizaosCmd, 'update --packages', {
@@ -178,7 +178,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.STANDARD_COMMAND
   );
 
-  test(
+  it(
     'update --packages shows helpful message in non-elizaos project',
     async () => {
       // Create a non-ElizaOS package.json
@@ -207,7 +207,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.STANDARD_COMMAND
   );
 
-  test(
+  it(
     'update --packages works in elizaos project with dependencies',
     async () => {
       await makeProj('update-elizaos-project');
@@ -237,7 +237,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  test(
+  it(
     'update --packages shows message for project without elizaos dependencies',
     async () => {
       await makeProj('update-no-deps-project');

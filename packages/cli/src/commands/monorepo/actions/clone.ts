@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import fs from 'node:fs';
+import { existsSync, readdirSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { CloneInfo } from '../types';
 
@@ -27,7 +27,7 @@ export async function cloneRepository(
     });
   } catch (error) {
     // Special handling for likely branch errors
-    if (error.message && error.message.includes('exit code 128')) {
+    if (error instanceof Error && error.message.includes('exit code 128')) {
       console.error(`\n[X] Branch '${branch}' doesn't exist in the ElizaOS repository.`);
       console.error(`Please specify a valid branch name. Common branches include:`);
       console.error(`  • main - The main branch`);
@@ -37,7 +37,9 @@ export async function cloneRepository(
       );
       throw new Error(`Branch '${branch}' not found`);
     }
-    throw new Error(`Failed to clone repository: ${error.message}`);
+    throw new Error(
+      `Failed to clone repository: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -50,13 +52,13 @@ export function prepareDestination(dir: string): string {
   const destinationDir = path.resolve(process.cwd(), dir);
 
   // Check if destination directory already exists and is not empty
-  if (fs.existsSync(destinationDir)) {
-    const files = fs.readdirSync(destinationDir);
+  if (existsSync(destinationDir)) {
+    const files = readdirSync(destinationDir);
     if (files.length > 0) {
       throw new Error(`Destination directory ${destinationDir} already exists and is not empty`);
     }
   } else {
-    fs.mkdirSync(destinationDir, { recursive: true });
+    mkdirSync(destinationDir, { recursive: true });
   }
 
   return destinationDir;

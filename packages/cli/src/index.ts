@@ -16,7 +16,7 @@ import { update } from '@/src/commands/update';
 import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { configureEmojis } from '@/src/utils/emoji-handler';
@@ -49,17 +49,14 @@ async function main() {
 
   // Add a simple check in case the path is incorrect
   let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
+  if (!existsSync(packageJsonPath)) {
   } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     version = packageJson.version;
   }
 
   // Check for built-in flags that exit early (before preAction hook runs)
   const args = process.argv.slice(2);
-  const isVersionFlag = args.includes('-v') || args.includes('--version');
-  const isHelpFlag =
-    args.includes('-h') || args.includes('--help') || (args.length === 1 && args[0] === 'help');
   const isUpdateCommand = args.includes('update');
   const willShowBanner = args.length === 0;
 
@@ -81,27 +78,6 @@ async function main() {
   // They will still be passed to all commands for backward compatibility
   // Note: Removed --remote-url global option as it conflicts with subcommand options
 
-  // Create a stop command for testing purposes
-  const stopCommand = new Command('stop')
-    .description('Stop all running ElizaOS agents running locally')
-    .action(async () => {
-      logger.info('Stopping all ElizaOS agents...');
-      // Use pkill to terminate all ElizaOS processes
-      try {
-        await import('node:child_process').then(({ exec }) => {
-          exec('pkill -f "node.*elizaos" || true', (error) => {
-            if (error) {
-              logger.error(`Error stopping processes: ${error.message}`);
-            } else {
-              logger.success('Server shutdown complete');
-            }
-          });
-        });
-      } catch (error) {
-        logger.error(`Failed to stop processes: ${error.message}`);
-      }
-    });
-
   program
     .addCommand(create)
     .addCommand(monorepo)
@@ -113,8 +89,7 @@ async function main() {
     .addCommand(test)
     .addCommand(env)
     .addCommand(dev)
-    .addCommand(publish)
-    .addCommand(stopCommand);
+    .addCommand(publish);
 
   // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {

@@ -2,20 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import * as fs from 'fs-extra';
+import inquirer from 'inquirer';
 import ora from 'ora';
 import * as path from 'path';
-import { dirname } from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
-import { fileURLToPath } from 'url';
 import * as os from 'os';
-import inquirer from 'inquirer';
 import { runBunCommand } from './run-bun';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // Configuration
-const MAX_TOKENS = 100000;
 const MAX_BUILD_ITERATIONS = 5;
 const MAX_TEST_ITERATIONS = 5;
 const MAX_REVISION_ITERATIONS = 3;
@@ -185,30 +179,29 @@ export class PluginCreator {
         type: 'input',
         name: 'name',
         message: 'Plugin name (without "plugin-" prefix):',
-        validate: (input) => {
-          if (!input) return 'Plugin name is required';
-          if (!/^[a-z0-9-]+$/.test(input)) {
-            return 'Plugin name must be lowercase with hyphens only';
+        validate: (input: string) => {
+          if (!input || input.trim() === '') {
+            return 'Plugin name is required';
           }
           return true;
         },
-        filter: (input) => input.toLowerCase().replace(/\s+/g, '-'),
+        filter: (input: string) => input.toLowerCase().replace(/\s+/g, '-'),
       },
       {
         type: 'input',
         name: 'description',
         message: 'Plugin description:',
-        validate: (input) => input.length > 0 || 'Description is required',
+        validate: (input: string) => input.length > 0 || 'Description is required',
       },
       {
         type: 'input',
         name: 'features',
         message: 'Main features (comma-separated):',
-        filter: (input) =>
+        filter: (input: string) =>
           input
             .split(',')
-            .map((f) => f.trim())
-            .filter((f) => f),
+            .map((f: string) => f.trim())
+            .filter((f: string) => f),
       },
       {
         type: 'checkbox',
@@ -237,11 +230,11 @@ export class PluginCreator {
           type: 'input',
           name: 'actions',
           message: 'Action names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((a) => a.trim())
-              .filter((a) => a),
+              .map((a: string) => a.trim())
+              .filter((a: string) => a),
         },
       ]);
       spec.actions = actionAnswers.actions;
@@ -253,11 +246,11 @@ export class PluginCreator {
           type: 'input',
           name: 'providers',
           message: 'Provider names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((p) => p.trim())
-              .filter((p) => p),
+              .map((p: string) => p.trim())
+              .filter((p: string) => p),
         },
       ]);
       spec.providers = providerAnswers.providers;
@@ -269,11 +262,11 @@ export class PluginCreator {
           type: 'input',
           name: 'evaluators',
           message: 'Evaluator names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((e) => e.trim())
-              .filter((e) => e),
+              .map((e: string) => e.trim())
+              .filter((e: string) => e),
         },
       ]);
       spec.evaluators = evaluatorAnswers.evaluators;
@@ -285,11 +278,11 @@ export class PluginCreator {
           type: 'input',
           name: 'services',
           message: 'Service names (comma-separated):',
-          filter: (input) =>
+          filter: (input: string) =>
             input
               .split(',')
-              .map((s) => s.trim())
-              .filter((s) => s),
+              .map((s: string) => s.trim())
+              .filter((s: string) => s),
         },
       ]);
       spec.services = serviceAnswers.services;
@@ -346,8 +339,8 @@ export class PluginCreator {
       scripts: {
         build: 'tsup',
         dev: 'tsup --watch',
-        test: 'vitest run',
-        'test:watch': 'vitest',
+        test: 'bun test',
+        'test:watch': 'bun test --watch',
       },
       dependencies: {
         '@elizaos/core': '^1.0.0',
@@ -355,7 +348,7 @@ export class PluginCreator {
       devDependencies: {
         tsup: '^8.4.0',
         typescript: '^5.3.0',
-        vitest: '^1.3.1',
+        '@types/bun': '^1.0.0',
         '@types/node': '^20.0.0',
       },
       peerDependencies: {
@@ -394,18 +387,10 @@ export default defineConfig({
 
     await fs.writeFile(path.join(this.pluginPath!, 'tsup.config.ts'), tsupConfig);
 
-    // Create vitest.config.ts
-    const vitestConfig = `import { defineConfig } from 'vitest/config';
+    // Bun test doesn't need a separate config file
+    // Configuration is handled in package.json
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-  },
-});
-`;
-
-    await fs.writeFile(path.join(this.pluginPath!, 'vitest.config.ts'), vitestConfig);
+    // No separate config file needed for bun test
 
     // Create .gitignore
     const gitignore = `node_modules/
@@ -414,7 +399,6 @@ dist/
 .env
 .DS_Store
 coverage/
-.vitest/
 `;
 
     await fs.writeFile(path.join(this.pluginPath!, '.gitignore'), gitignore);
@@ -667,7 +651,7 @@ You are now going to implement this plugin following ElizaOS 1.0.0 best practice
 - **All components**: Must be properly exported in index.ts
 
 ### 5. Testing Requirements
-- **Tests must use vitest** and cover all functionality
+- **Tests must use bun test** and cover all functionality
 - **Database compatibility tests**:
   \`\`\`typescript
   describe('Database Compatibility', () => {
@@ -981,7 +965,7 @@ ${allFiles}
 
 ### 4. Testing Coverage
 - ✅ Comprehensive tests exist for all functionality
-- ✅ Tests use vitest framework
+- ✅ Tests use bun test framework
 - ✅ Database compatibility tests included
 - ✅ Tests cover main plugin functionality
 - ✅ Error handling tests included

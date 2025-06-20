@@ -5,10 +5,15 @@ description: Managing ElizaOS agents through the CLI - list, configure, start, s
 keywords: [CLI, agent, management, configuration, commands, options, actions]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Agent Command
 
 Manage ElizaOS agents.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -18,11 +23,11 @@ elizaos agent [options] [command]
 
 ## Subcommands
 
-| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                    |
-| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `list`     | `ls`    | List available agents                   |                                                                | `-j, --json`, `-r, --remote-url <url>`, `-p, --port <port>`           |
-| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `-j, --json`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
-| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                         |
+| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                              |
+| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `list`     | `ls`    | List available agents                   |                                                                | `--format <format>`, `-r, --remote-url <url>`, `-p, --port <port>`                  |
+| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `--format <format>`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port`        |
+| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                                       |
 | `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 | `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                         |
 | `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                         |
@@ -34,15 +39,15 @@ elizaos agent [options] [command]
 - `-r, --remote-url <url>`: URL of the remote agent runtime
 - `-p, --port <port>`: Port to listen on
 
-### List Specific Options
+### Output Options (for `list` and `get`)
 
-- `-j, --json`: Output as JSON
+- `--format <format>`: Specify the output format. Options are `table` (default), `json`, or `yaml`.
+- `-j, --json`: A shorthand for `--format json`.
+- `-o, --output [file]`: For the `get` command, saves the agent's configuration to a JSON file. If no filename is provided, defaults to `{name}.json`.
 
 ### Get Specific Options
 
 - `-n, --name <name>`: Agent id, name, or index number from list (required)
-- `-j, --json`: Display agent configuration as JSON in the console
-- `-o, --output [file]`: Save agent config to JSON (defaults to `{name}.json`)
 
 ### Start Specific Options
 
@@ -60,7 +65,8 @@ elizaos agent [options] [command]
 - `-c, --config <json>`: Agent configuration as JSON string
 - `-f, --file <path>`: Path to agent configuration JSON file
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Listing Agents
 
@@ -72,7 +78,12 @@ elizaos agent list
 elizaos agent ls
 
 # List agents in JSON format
-elizaos agent list --json
+elizaos agent list --format json
+# Or using the shorthand
+elizaos agent list --j
+
+# List agents in YAML format
+elizaos agent list --format yaml
 
 # List agents from remote runtime
 elizaos agent list --remote-url http://server:3000
@@ -94,7 +105,10 @@ elizaos agent get --name agent_123456
 elizaos agent get --name 0
 
 # Display configuration as JSON in console
-elizaos agent get --name eliza --json
+elizaos agent get --name eliza --format json
+
+# Display configuration as YAML in console
+elizaos agent get --name eliza --format yaml
 
 # Save agent configuration to file
 elizaos agent get --name eliza --output
@@ -177,6 +191,38 @@ elizaos agent set --name pmairca --config '{"model":"gpt-4"}' --remote-url http:
 
 # Update agent on specific port
 elizaos agent set --name eliza --file ./config.json --port 4000
+```
+
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
+
+## Output Formatting
+
+The `list` and `get` commands support multiple output formats via the `--format` option, making it easy to use the CLI in scripts or for human readability.
+
+### `table` (Default)
+The default format is a human-readable table, best for viewing in the terminal.
+```bash
+$ elizaos agent list
+┌─────────┬──────────────┬─────────┬──────────┐
+│ (index) │     name     │   id    │  status  │
+├─────────┼──────────────┼─────────┼──────────┤
+│    0    │   'eliza'    │ 'agent…'│ 'running'│
+└─────────┴──────────────┴─────────┴──────────┘
+```
+
+### `json`
+Outputs raw JSON data. Useful for piping into other tools like `jq`. The `-j` flag is a convenient shorthand for `--format json`.
+```bash
+# Get JSON output
+elizaos agent get --name eliza --format json
+```
+
+### `yaml`
+Outputs YAML data, which can be more human-readable than JSON for complex configurations.
+```bash
+# Get YAML output
+elizaos agent get --name eliza --format yaml
 ```
 
 ## Character File Structure
@@ -284,6 +330,9 @@ elizaos agent stop --name eliza
 elizaos agent remove --name eliza
 ```
 
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
+
 ## Troubleshooting
 
 ### Connection Issues
@@ -324,6 +373,8 @@ elizaos agent get --name 0
 - [`start`](./start.md): Start the agent runtime server
 - [`dev`](./dev.md): Run in development mode with hot-reload
 - [`env`](./env.md): Configure environment variables for agents
+</TabItem>
+</Tabs>
 
 ```
 

@@ -31,16 +31,6 @@ elizaos --no-auto-install create my-project
 ELIZA_NO_AUTO_INSTALL=true elizaos create my-project
 ```
 
-### Alternative usage with npx
-
-You can also run the CLI directly without installation using npx:
-
-```bash
-npx @elizaos/cli [command]
-```
-
-This is useful for trying out commands without installing the CLI globally.
-
 ## Global Options
 
 The following options are available for all ElizaOS CLI commands:
@@ -194,6 +184,7 @@ Manage ElizaOS agents.
   - `stop` (alias: `st`): Stop an agent
     - Options:
       - `-n, --name <name>`: Agent id, name, or index number from list
+      - `--all`: Stop all running ElizaOS agents locally
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
   - `remove` (alias: `rm`): Remove an agent
@@ -536,11 +527,13 @@ Manage environment variables and secrets.
 
 ### Process Management
 
-#### `elizaos stop`
+To stop all running ElizaOS agents locally, use:
 
-Stop all running ElizaOS agents running locally.
+```bash
+elizaos agent stop --all
+```
 
-This command uses `pkill` to terminate all ElizaOS processes and does not accept any options.
+This command uses `pkill` to terminate all ElizaOS processes. For stopping individual agents, see the [Agent Management](#elizaos-agent-subcommand) section.
 
 ## Development Guide
 
@@ -661,7 +654,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 6. **Publish your plugin**:
 
    ```bash
-   # Login to npm first
+   # Login to npm first (still needed for publishing)
    npm login
 
    # Test your plugin thoroughly
@@ -684,8 +677,8 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    elizaos test
 
    # Update version and publish updates
-   bun version patch  # or minor/major (or npm version if preferred)
-   npm publish
+   bun version patch  # or minor/major
+   npm publish  # Note: npm publish is still required for registry
    git push origin main && git push --tags
    ```
 

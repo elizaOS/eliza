@@ -1,39 +1,34 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync, spawn } from 'child_process';
-import { mkdtemp, rm, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { safeChangeDirectory } from './test-utils';
+import { execSync } from 'node:child_process';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import {
+  killProcessOnPort,
+  safeChangeDirectory,
+  TestProcessManager,
+  waitForServerReady,
+} from './test-utils';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
-  let runningProcesses: any[] = [];
+  let processManager: TestProcessManager;
 
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
 
+    // Initialize process manager
+    processManager = new TestProcessManager();
+
     // ---- Ensure port is free.
     testServerPort = 3000;
-    try {
-      if (process.platform === 'win32') {
-        // Windows: Use netstat and taskkill to free the port
-        execSync(
-          `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${testServerPort}') do taskkill /f /pid %a`,
-          { stdio: 'ignore' }
-        );
-      } else {
-        // Unix/Linux/macOS: Use lsof and kill
-        execSync(`lsof -t -i :${testServerPort} | xargs kill -9`, { stdio: 'ignore' });
-      }
-      await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-    } catch (e) {
-      // Ignore if no processes found
-    }
+    await killProcessOnPort(testServerPort);
+    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
@@ -41,7 +36,7 @@ describe('ElizaOS Start Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun run ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -50,16 +45,8 @@ describe('ElizaOS Start Commands', () => {
   });
 
   afterEach(async () => {
-    // Kill any running processes
-    for (const proc of runningProcesses) {
-      try {
-        proc.kill();
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
-      } catch (e) {
-        // Ignore cleanup errors
-      }
-    }
-    runningProcesses = [];
+    // Clean up all processes
+    await processManager.cleanup();
 
     // Clean up environment variables
     delete process.env.LOCAL_SMALL_MODEL;
@@ -81,15 +68,13 @@ describe('ElizaOS Start Commands', () => {
   // Helper function to start server and wait for it to be ready
   const startServerAndWait = async (
     args: string,
-    logFile: string,
-    waitTime: number = TEST_TIMEOUTS.MEDIUM_WAIT
+    maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    const charactersDir = join(__dirname, '../test-characters');
-    const serverProcess = spawn(
+    const serverProcess = processManager.spawn(
       'bun',
-      ['run', join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
+      [join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
       {
         env: {
           ...process.env,
@@ -97,51 +82,83 @@ describe('ElizaOS Start Commands', () => {
           PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           SERVER_PORT: testServerPort.toString(),
         },
-        stdio: ['ignore', 'pipe', 'pipe'],
         cwd: testTmpDir,
       }
     );
 
-    runningProcesses.push(serverProcess);
-
     // Wait for server to be ready
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    await waitForServerReady(testServerPort, maxWaitTime);
+
+    // Check if process is still running after startup
+    if (serverProcess.killed || serverProcess.exitCode !== null) {
+      throw new Error('Server process died during startup');
+    }
 
     return serverProcess;
   };
 
   // Basic agent check
-  test('start command shows help', () => {
+  it('start command shows help', () => {
     const result = execSync(`${elizaosCmd} start --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
   });
 
-  test(
+  it(
     'start and list shows Ada agent running',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start a temporary server with Ada character
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`,
-        'server.log'
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
-        // Wait a bit more for agent to register
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        // Wait longer for agent to fully register - CI environments may be slower
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
 
-        // Test that agent list shows Ada
-        const result = execSync(
-          `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-          {
-            encoding: 'utf8',
-            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        // Retry logic for CI environments where agent registration might be delayed
+        // GitHub Actions and other CI runners may have slower process startup times
+        let result = '';
+        let lastError: Error | null = null;
+        const maxRetries = 3;
+
+        for (let i = 0; i < maxRetries; i++) {
+          try {
+            result = execSync(
+              `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
+              {
+                encoding: 'utf8',
+                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+              }
+            );
+
+            // If we get a result, check if it contains Ada
+            if (result && result.includes('Ada')) {
+              break;
+            }
+
+            // If no Ada found but command succeeded, wait and retry
+            if (i < maxRetries - 1) {
+              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+            }
+          } catch (error: any) {
+            lastError = error;
+            // If command failed and we have retries left, wait and retry
+            if (i < maxRetries - 1) {
+              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+            }
           }
-        );
+        }
+
+        // If we never got a successful result with Ada, throw the last error
+        if (!result || !result.includes('Ada')) {
+          if (lastError) {
+            throw lastError;
+          }
+          throw new Error(`Agent list did not contain 'Ada'. Output: ${result}`);
+        }
 
         expect(result).toContain('Ada');
       } finally {
@@ -154,7 +171,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Custom port flag (-p)
-  test(
+  it(
     'custom port spin-up works',
     async () => {
       const newPort = 3456;
@@ -163,10 +180,9 @@ describe('ElizaOS Start Commands', () => {
 
       await mkdir(join(testTmpDir, 'elizadb2'), { recursive: true });
 
-      const serverProcess = spawn(
+      const serverProcess = processManager.spawn(
         'bun',
         [
-          'run',
           join(__dirname, '..', '../dist/index.js'),
           'start',
           '-p',
@@ -180,18 +196,15 @@ describe('ElizaOS Start Commands', () => {
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb2'),
           },
-          stdio: ['ignore', 'pipe', 'pipe'],
           cwd: testTmpDir,
         }
       );
 
-      runningProcesses.push(serverProcess);
-
       try {
-        // Wait for server to start
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
+        // Wait for server to be ready
+        await waitForServerReady(newPort);
 
-        // Try to connect to the custom port
+        // Verify server is accessible
         const response = await fetch(`http://localhost:${newPort}/api/agents`);
         expect(response.ok).toBe(true);
       } finally {
@@ -203,7 +216,7 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  test('multiple character formats parse', () => {
+  it('multiple character formats parse', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -219,7 +232,7 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  test('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
@@ -231,13 +244,13 @@ describe('ElizaOS Start Commands', () => {
   });
 
   // --build flag accepted
-  test('build option flag accepted', () => {
+  it('build option flag accepted', () => {
     const result = execSync(`${elizaosCmd} start --build --help`, { encoding: 'utf8' });
     expect(result).toContain('start');
   });
 
   // --configure flag triggers reconfiguration message in log
-  test(
+  it(
     'configure option runs',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
@@ -245,28 +258,18 @@ describe('ElizaOS Start Commands', () => {
 
       await mkdir(join(testTmpDir, 'elizadb3'), { recursive: true });
 
-      const serverProcess = spawn(
+      const serverProcess = processManager.spawn(
         'bun',
-        [
-          'run',
-          join(__dirname, '..', '../dist/index.js'),
-          'start',
-          '--configure',
-          '--character',
-          adaPath,
-        ],
+        [join(__dirname, '..', '../dist/index.js'), 'start', '--configure', '--character', adaPath],
         {
           env: {
             ...process.env,
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb3'),
           },
-          stdio: ['ignore', 'pipe', 'pipe'],
           cwd: testTmpDir,
         }
       );
-
-      runningProcesses.push(serverProcess);
 
       try {
         // Wait for configuration to start
@@ -283,17 +286,14 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Basic server startup test without advanced features that require models
-  test(
+  it(
     'server starts and responds to health check',
     async () => {
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
       // Start server
-      const serverProcess = await startServerAndWait(
-        `-p ${testServerPort} --character ${adaPath}`,
-        'health.log'
-      );
+      const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait for server to be fully ready

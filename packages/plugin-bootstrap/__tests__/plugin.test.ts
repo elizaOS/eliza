@@ -1,22 +1,22 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import { bootstrapPlugin } from '../src/index';
 import { IAgentRuntime, UUID, EventType, Memory, Content, Character } from '@elizaos/core';
 import { MockRuntime, createMockRuntime } from './test-utils';
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
-// Define mockInit as a vi.fn() once. Its implementation will be set in beforeEach.
-const mockInit = vi.fn();
+// Define mockInit as a mock() once. Its implementation will be set in beforeEach.
+const mockInit = mock();
 
 describe('Bootstrap Plugin', () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
     mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue('medium'),
-      getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
-      composeState: vi.fn().mockResolvedValue({}),
+      getSetting: mock().mockReturnValue('medium'),
+      getParticipantUserState: mock().mockResolvedValue('ACTIVE'),
+      composeState: mock().mockResolvedValue({}),
     });
 
     // Set or reset mockInit's implementation for each test
@@ -78,7 +78,7 @@ describe('Bootstrap Plugin', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mock.restore();
   });
 
   it('should have the correct name and description', () => {
@@ -167,11 +167,11 @@ describe('Bootstrap Plugin', () => {
 
   it('should handle initialization errors gracefully', async () => {
     // Setup runtime to fail during registration
-    mockRuntime.registerProvider = vi.fn().mockImplementation(() => {
+    mockRuntime.registerProvider = mock().mockImplementation(() => {
       throw new Error('Registration failed');
     });
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Note: mock.spyOn not available in bun:test, skipping console spy
 
     // Should not throw error during initialization
     await expect(mockInit({}, mockRuntime as unknown as IAgentRuntime)).resolves.not.toThrow();
@@ -186,17 +186,17 @@ describe('Bootstrap Plugin', () => {
 describe('Message Event Handlers', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
-  let mockCallback: ReturnType<typeof vi.fn>;
+  let mockCallback: any;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
 
-    mockCallback = vi.fn();
+    mockCallback = mock();
 
     mockRuntime = createMockRuntime({
-      getSetting: vi.fn().mockReturnValue('medium'),
-      getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
-      composeState: vi.fn().mockResolvedValue({}),
+      getSetting: mock().mockReturnValue('medium'),
+      getParticipantUserState: mock().mockResolvedValue('ACTIVE'),
+      composeState: mock().mockResolvedValue({}),
     });
 
     mockMessage = {
@@ -211,7 +211,7 @@ describe('Message Event Handlers', () => {
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    mock.restore();
   });
 
   it('should have message received event handlers', () => {

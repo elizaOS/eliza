@@ -48,95 +48,142 @@ Actions work in concert with:
 
 ## Implementation
 
-The core Action interface includes the following components:
+The core `Action` interface and its related types define the structure for all actions in ElizaOS.
+
+> **Source Reference**: The `Action` interface and its supporting types are defined in [`packages/core/src/types/components.ts`](https://github.com/elizaos/eliza/blob/main/packages/core/src/types/components.ts).
+
+### The Action Interface
 
 ```typescript
-interface Action {
-  name: string; // Unique identifier
-  similes: string[]; // Alternative names/triggers
-  description: string; // Purpose and usage explanation
-  validate: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
-  handler: (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: any,
-    callback?: HandlerCallback
-  ) => Promise<boolean>;
-  examples: ActionExample[][];
-  suppressInitialMessage?: boolean; // Optional flag
-}
+// Source: packages/core/src/types/components.ts
+import { Action, Handler, Validator, ActionExample, IAgentRuntime, Memory, State, Content, HandlerCallback } from '@elizaos/core';
 
-// Handler callback for generating responses
-type HandlerCallback = (content: Content) => Promise<void>;
+/**
+ * Represents an action the agent can perform.
+ */
+export interface Action {
+  /** A unique, descriptive name for the action. */
+  name: string;
 
-// Response content structure
-interface Content {
-  text: string;
-  thought?: string; // Internal reasoning (not shown to users)
-  actions?: string[]; // List of action names being performed
-  action?: string; // Legacy single action name
-  attachments?: Attachment[]; // Optional media attachments
+  /** A detailed description of what the action does and when it should be used. */
+  description: string;
+
+  /** The function that executes the action's logic. */
+  handler: Handler;
+
+  /** A function that quickly determines if the action is valid for the current context. */
+  validate: Validator;
+
+  /** (Optional) Alternative names or trigger phrases for the action. */
+  similes?: string[];
+
+  /** (Optional) A list of examples demonstrating how the action is used. */
+  examples?: ActionExample[][];
 }
 ```
 
+### Supporting Type Definitions
+
+-   **`Handler`**: The function that contains the core logic of the action.
+    ```typescript
+    // Source: packages/core/src/types/components.ts
+    export type Handler = (
+      runtime: IAgentRuntime,
+      message: Memory,
+      state?: State,
+      options?: { [key: string]: unknown },
+      callback?: HandlerCallback,
+      responses?: Memory[]
+    ) => Promise<unknown>;
+    ```
+-   **`Validator`**: A lightweight function that checks if an action is applicable to the current message. It should execute quickly.
+    ```typescript
+    // Source: packages/core/src/types/components.ts
+    export type Validator = (
+      runtime: IAgentRuntime,
+      message: Memory,
+      state?: State
+    ) => Promise<boolean>;
+    ```
+-   **`HandlerCallback`**: A function passed to the handler to send a response back to the user.
+    ```typescript
+    // Source: packages/core/src/types/components.ts
+    export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
+    ```
+-   **`ActionExample`**: Defines the structure for providing examples of the action's usage.
+    ```typescript
+    // Source: packages/core/src/types/components.ts
+    interface ActionExample {
+      name: string;
+      content: Content;
+    }
+    ```
+
 ### Basic Action Template
 
-Here's a simplified template for creating a custom action:
+Here is a complete and up-to-date template for creating a custom action.
 
 ```typescript
+import { Action, IAgentRuntime, Memory, State, HandlerCallback, Content } from '@elizaos/core';
+
 const customAction: Action = {
   name: 'CUSTOM_ACTION',
+  description: 'Detailed description of when and how to use this action.',
+  
+  // Optional fields for better agent performance
   similes: ['ALTERNATE_NAME', 'OTHER_TRIGGER'],
-  description: 'Detailed description of when and how to use this action',
-
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    // Logic to determine if this action applies to the current message
-    // Should be efficient and quick to check
-    return true; // Return true if action is valid for this message
-  },
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: any,
-    callback?: HandlerCallback
-  ) => {
-    // Implementation logic - what the action actually does
-
-    // Generate a response with thought and text components
-    const responseContent = {
-      thought: 'Internal reasoning about what to do (not shown to users)',
-      text: 'The actual message to send to the conversation',
-      actions: ['CUSTOM_ACTION'], // List of actions being performed
-    };
-
-    // Send the response using the callback
-    if (callback) {
-      await callback(responseContent);
-    }
-
-    return true; // Return true if action executed successfully
-  },
-
   examples: [
     [
       {
-        name: '{{name1}}',
-        content: { text: 'Trigger message' },
+        name: '{{name1}}', // A variable representing the user's name
+        content: { text: 'A message that would trigger this action.' },
       },
       {
-        name: '{{name2}}',
+        name: '{{name2}}', // A variable representing the agent's name
         content: {
-          text: 'Response',
-          thought: 'Internal reasoning',
-          actions: ['CUSTOM_ACTION'],
+          text: 'An example of the text response from the agent.',
+          thought: 'An example of the internal thought process of the agent.',
+          actions: ['CUSTOM_ACTION'], // The action being performed
         },
       },
     ],
   ],
+
+  // The validation function, runs quickly to check if the action is relevant
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    // Add logic here to determine if this action applies to the current message.
+    // For example, check for keywords in message.content.text
+    return message.content.text.toLowerCase().includes('custom keyword');
+  },
+
+  // The handler function, contains the core logic of the action
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: { [key: string]: unknown },
+    callback?: HandlerCallback
+  ): Promise<unknown> => {
+    // This is where the main logic for your action goes.
+    // You can interact with services, APIs, or the database here.
+
+    const responseContent: Content = {
+      thought: "The user mentioned 'custom keyword', so I am executing CUSTOM_ACTION.",
+      text: "I have successfully executed the custom action.",
+      actions: ['CUSTOM_ACTION'],
+    };
+
+    // Use the callback to send the response to the user
+    if (callback) {
+      await callback(responseContent);
+    }
+
+    // You can also return data that might be used by other parts of the system.
+    return { success: true };
+  },
 };
+
+export default customAction;
 ```
 
 ### Character File Example
@@ -147,13 +194,13 @@ Actions can be referenced in character files to define how an agent should respo
 "messageExamples": [
     [
         {
-            "user": "{{user1}}",
+            "name": "{{user1}}",
             "content": {
                 "text": "Can you help transfer some SOL?"
             }
         },
         {
-            "user": "SBF",
+            "name": "SBF",
             "content": {
                 "text": "yeah yeah for sure, sending SOL is pretty straightforward. just need the recipient and amount. everything else is basically fine, trust me.",
                 "actions": ["SEND_SOL"]
@@ -165,55 +212,111 @@ Actions can be referenced in character files to define how an agent should respo
 
 ### The Reply Action
 
-The most fundamental action is the `REPLY` action, which allows agents to respond to messages with text. It serves as the default action when no specialized behavior is needed:
+The `REPLY` action is the most fundamental action, allowing agents to respond with text. It serves as the default action when no specialized behavior is needed. The implementation below showcases several important patterns used in ElizaOS.
+
+> **Source Reference**: The complete implementation is in [`packages/plugin-bootstrap/src/actions/reply.ts`](https://github.com/elizaos/eliza/blob/main/packages/plugin-bootstrap/src/actions/reply.ts).
 
 ```typescript
+import { 
+  Action, 
+  IAgentRuntime, 
+  Memory, 
+  State, 
+  HandlerCallback,
+  ModelType,
+  composePromptFromState,
+  parseJSONObjectFromText,
+  Content
+} from '@elizaos/core';
+// Note: replyTemplate would be imported from a local file in a real plugin.
+import { replyTemplate } from '../templates/reply'; 
+
 const replyAction: Action = {
   name: 'REPLY',
   similes: ['GREET', 'REPLY_TO_MESSAGE', 'SEND_REPLY', 'RESPOND', 'RESPONSE'],
-  description: 'Replies to the current conversation with the text from the generated message.',
+  description: 'Replies to the current conversation with text. This is the default action for standard conversation.',
 
-  validate: async (_runtime: IAgentRuntime) => true, // Always valid
+  validate: async (_runtime: IAgentRuntime): Promise<boolean> => {
+    // The REPLY action is always considered valid as a fallback.
+    return true;
+  },
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback
-  ) => {
-    // Compose state with necessary providers
-    state = await runtime.composeState(message, [
-      ...(message.content.providers ?? []),
-      'RECENT_MESSAGES',
-    ]);
+    state?: State,
+    _options?: { [key: string]: unknown },
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ): Promise<unknown> => {
+    try {
+      // 1. Collect providers from all available sources to build a comprehensive context.
+      const allProviders = [
+        ...new Set([
+          ...(message.content.providers ?? []),
+          ...(responses?.flatMap(response => response.content.providers ?? []) ?? []),
+          'RECENT_MESSAGES', // Always include recent messages for context.
+        ]),
+      ];
 
-    // Generate response using LLM
-    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: composePromptFromState({
-        state,
-        template: replyTemplate,
-      }),
-    });
+      // 2. Compose the state with the collected providers.
+      state = await runtime.composeState(message, allProviders);
 
-    // Parse and format response
-    const responseContentObj = parseJSONObjectFromText(response);
-    const responseContent = {
-      thought: responseContentObj.thought,
-      text: responseContentObj.message || '',
-      actions: ['REPLY'],
-    };
+      // 3. Use a structured model type for reliable JSON output.
+      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        prompt: composePromptFromState({
+          state,
+          template: replyTemplate,
+        }),
+      });
 
-    // Send response via callback
-    await callback(responseContent);
-    return true;
+      // 4. Parse the JSON response from the model.
+      const responseContentObj = parseJSONObjectFromText(response);
+      
+      const responseContent: Content = {
+        thought: responseContentObj.thought,
+        text: responseContentObj.message || '',
+        actions: ['REPLY'],
+      };
+
+      // 5. Send the response back to the user via the callback.
+      if (callback) {
+        await callback(responseContent);
+      }
+
+      return { success: true };
+      
+    } catch (error) {
+      console.error('Error in reply action handler:', error);
+      
+      // 6. Provide a fallback response in case of an error.
+      if (callback) {
+        await callback({
+          text: "I'm having a little trouble formulating a response right now. Please try again in a moment.",
+          actions: ['REPLY'],
+        });
+      }
+      
+      return { success: false, error: 'Failed to generate model response.' };
+    }
   },
 
   examples: [
-    /* Examples omitted for brevity */
+    // ... examples would be included here ...
   ],
 };
+
+export default replyAction;
 ```
+
+#### Implementation Deep Dive
+
+The `REPLY` action demonstrates several best practices for creating robust actions:
+
+-   **Comprehensive Context**: It gathers context from multiple sources (`message`, previous `responses`) using a `Set` to ensure no duplicate providers are requested. This gives the Language Model the richest possible context to formulate a reply.
+-   **Structured Model Usage**: It uses `ModelType.OBJECT_LARGE` instead of a simple text model. This forces the LLM to return a predictable JSON structure containing both a `thought` and a `message`, which is more reliable than trying to parse a plain text response.
+-   **Robust Error Handling**: The entire handler logic is wrapped in a `try...catch` block. If the model fails or the response is invalid, it logs the error and sends a user-friendly fallback message instead of crashing.
+-   **State Composition**: It uses `runtime.composeState` to build the final state object that gets passed to the prompt, ensuring all necessary data is fetched and formatted correctly.
 
 ---
 
@@ -292,11 +395,20 @@ ElizaOS includes a wide variety of predefined actions across various plugins in 
 Here's a more detailed example of an image generation action:
 
 ```typescript
+import { 
+  Action, 
+  IAgentRuntime, 
+  Memory, 
+  State, 
+  HandlerCallback, 
+  ServiceType, 
+  generateId 
+} from '@elizaos/core';
+
 const generateImageAction: Action = {
   name: 'GENERATE_IMAGE',
   similes: ['CREATE_IMAGE', 'MAKE_IMAGE', 'DRAW'],
   description: "Generates an image based on the user's description",
-  suppressInitialMessage: true, // Don't send initial text response
 
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text.toLowerCase();

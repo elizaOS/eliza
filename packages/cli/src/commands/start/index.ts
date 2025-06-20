@@ -1,6 +1,6 @@
 import { displayBanner, handleError } from '@/src/utils';
 import { validatePort } from '@/src/utils/port-validation';
-import { loadCharacterTryPath } from '@/src/server/loader';
+import { loadCharacterTryPath } from '@elizaos/server';
 import { loadProject } from '@/src/project';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
@@ -15,7 +15,7 @@ export const start = new Command()
   .description('Start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
   .option('-p, --port <port>', 'Port to listen on', validatePort)
-  .option('-char, --character [paths...]', 'Character file(s) to use')
+  .option('--character <paths...>', 'Character file(s) to use')
   .hook('preAction', async () => {
     await displayBanner();
   })
@@ -27,13 +27,30 @@ export const start = new Command()
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
 
-      if (options.character) {
-        // Load characters from provided paths
-        for (const path of options.character) {
+      if (options.character && options.character.length > 0) {
+        // Validate and load characters from provided paths
+        for (const charPath of options.character) {
+          const resolvedPath = path.resolve(charPath);
+
+          if (!fs.existsSync(resolvedPath)) {
+            logger.error(`Character file not found: ${resolvedPath}`);
+            throw new Error(`Character file not found: ${resolvedPath}`);
+          }
+
           try {
-            characters.push(await loadCharacterTryPath(path));
+            const character = await loadCharacterTryPath(resolvedPath);
+            if (character) {
+              characters.push(character);
+              logger.info(`Successfully loaded character: ${character.name}`);
+            } else {
+              logger.error(
+                `Failed to load character from ${resolvedPath}: Invalid or empty character file`
+              );
+              throw new Error(`Invalid character file: ${resolvedPath}`);
+            }
           } catch (e) {
-            logger.error(`Failed to load character from ${path}:`, e);
+            logger.error(`Failed to load character from ${resolvedPath}:`, e);
+            throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
       } else {
@@ -67,6 +84,7 @@ export const start = new Command()
       await startAgents({ ...options, characters, projectAgents });
     } catch (e: any) {
       handleError(e);
+      process.exit(1);
     }
   });
 

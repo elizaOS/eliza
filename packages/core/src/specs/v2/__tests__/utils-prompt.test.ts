@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, mock } from 'bun:test';
 import * as utils from '../utils';
 import { ModelType } from '../types';
 
@@ -51,7 +51,7 @@ describe('prompt utilities', () => {
 
   it('trimTokens truncates using runtime tokenizer', async () => {
     const runtime = {
-      useModel: vi.fn(async (type: string, { prompt, tokens }: any) => {
+      useModel: mock(async (type: string, { prompt, tokens }: any) => {
         if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
         if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
         return [];

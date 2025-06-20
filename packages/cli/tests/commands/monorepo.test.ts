@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { writeFile, mkdir } from 'fs/promises';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { writeFile, mkdir } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
@@ -21,12 +21,12 @@ describe('ElizaOS Monorepo Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  test('monorepo --help shows usage', () => {
+  it('monorepo --help shows usage', () => {
     const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
     expectHelpOutput(result, 'monorepo', ['-b', '--branch', '-d', '--dir']);
   });
 
-  test('monorepo uses default branch and directory', () => {
+  it('monorepo uses default branch and directory', () => {
     // This would try to clone, so we just test that it recognizes the command
     // without actually performing the network operation
     const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
@@ -34,7 +34,7 @@ describe('ElizaOS Monorepo Commands', () => {
     expect(result).toContain('develop'); // default branch
   });
 
-  test('monorepo fails when directory is not empty', async () => {
+  it('monorepo fails when directory is not empty', async () => {
     await mkdir('not-empty-dir');
     await writeFile('not-empty-dir/placeholder', '');
 

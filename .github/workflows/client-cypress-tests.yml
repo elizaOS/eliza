@@ -1,0 +1,218 @@
+name: Client Cypress Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: client-cypress-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ELIZA_NONINTERACTIVE: true
+  # Skip unnecessary downloads during CI
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'develop'
+    paths:
+      - 'packages/client/**'
+      - 'packages/core/**'
+      - 'packages/server/**'
+      - '.github/workflows/client-cypress-tests.yml'
+  pull_request:
+    branches:
+      - 'main'
+      - 'develop'
+    paths:
+      - 'packages/client/**'
+      - 'packages/core/**'
+      - 'packages/server/**'
+      - '.github/workflows/client-cypress-tests.yml'
+
+jobs:
+  # Component tests (no server needed)
+  cypress-component:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Restore Turborepo local cache ───────────────────────────────
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: |
+            ${{ runner.os }}-turbo-${{ hashFiles('turbo.json', '**/bun.lock', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: ${{ runner.os }}-cypress-${{ hashFiles('packages/client/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cypress-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages (Turbo cached)
+        run: bun run build
+
+      - name: Install Cypress binary
+        working-directory: packages/client
+        run: bunx cypress install
+
+      - name: Run Cypress Component Tests
+        working-directory: packages/client
+        run: |
+          bun run test:component
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload component test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-component-artifacts
+          path: |
+            packages/client/cypress/screenshots
+            packages/client/cypress/videos
+          retention-days: 7
+
+  # E2E tests (needs server)
+  cypress-e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Can add parallelization here: containers: [1, 2, 3]
+        containers: [1]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Restore Turborepo local cache ───────────────────────────────
+      - name: Restore Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: |
+            ${{ runner.os }}-turbo-${{ hashFiles('turbo.json', '**/bun.lock', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: ${{ runner.os }}-cypress-${{ hashFiles('packages/client/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cypress-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages (Turbo cached)
+        run: bun run build
+
+      - name: Install Cypress binary
+        working-directory: packages/client
+        run: bunx cypress install
+
+      - name: Create .env file
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Run E2E tests with server
+        working-directory: packages/client
+        run: |
+          chmod +x scripts/test-e2e-with-server.sh
+          ./scripts/test-e2e-with-server.sh
+        env:
+          SERVER_PORT: 3000
+          CLIENT_PORT: 5173
+
+      - name: Upload E2E test artifacts
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-e2e-artifacts-${{ matrix.containers }}
+          path: |
+            packages/client/cypress/screenshots
+            packages/client/cypress/videos
+            /tmp/elizaos-server.log
+            /tmp/elizaos-client.log
+          retention-days: 7
+
+  # Summary job
+  cypress-tests-summary:
+    needs: [cypress-component, cypress-e2e]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          component_result="${{ needs.cypress-component.result }}"
+          e2e_result="${{ needs.cypress-e2e.result }}"
+
+          if [[ "$component_result" == "failure" || "$e2e_result" == "failure" ]]; then
+            echo "❌ Cypress tests failed"
+            echo "Component tests: $component_result"
+            echo "E2E tests: $e2e_result"
+            exit 1
+          elif [[ "$component_result" == "cancelled" || "$e2e_result" == "cancelled" ]]; then
+            echo "⏹️ Cypress tests were cancelled"
+            exit 1
+          else
+            echo "✅ All Cypress tests passed"
+            echo "Component tests: $component_result"
+            echo "E2E tests: $e2e_result"
+          fi

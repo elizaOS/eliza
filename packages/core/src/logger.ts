@@ -1,6 +1,12 @@
 import pino, { type DestinationStream, type LogFn } from 'pino';
 import { Sentry } from './sentry/instrument';
-import { parseBooleanFromText } from './utils';
+
+// Local utility function to avoid circular dependency
+function parseBooleanFromText(value: string | undefined | null): boolean {
+  if (!value) return false;
+  const normalized = value.toLowerCase().trim();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
 
 /**
  * Interface representing a log entry.

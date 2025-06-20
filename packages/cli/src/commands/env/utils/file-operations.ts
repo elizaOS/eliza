@@ -41,7 +41,9 @@ export async function parseEnvFile(filePath: string): Promise<EnvVars> {
     }
     return dotenv.parse(content);
   } catch (error) {
-    console.error(`Error parsing .env file: ${error.message}`);
+    console.error(
+      `Error parsing .env file: ${error instanceof Error ? error.message : String(error)}`
+    );
     return {};
   }
 }
@@ -64,7 +66,9 @@ export async function writeEnvFile(filePath: string, envVars: EnvVars): Promise<
 
     await fs.writeFile(filePath, content);
   } catch (error) {
-    console.error(`Error writing .env file: ${error.message}`);
+    console.error(
+      `Error writing .env file: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -92,7 +96,9 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
     await writeEnvFile(filePath, resetVars);
     return true;
   } catch (error) {
-    console.error(`Error resetting environment file: ${error.message}`);
+    console.error(
+      `Error resetting environment file: ${error instanceof Error ? error.message : String(error)}`
+    );
     return false;
   }
 }

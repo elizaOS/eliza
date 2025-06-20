@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadPluginModule } from './load-plugin';
 import { executeInstallation, executeInstallationWithFallback } from './package-manager';
@@ -26,7 +26,7 @@ function getCliDirectory(): string | null {
       );
 
       // Verify this is actually the CLI directory
-      if (fs.existsSync(path.join(cliDir, 'package.json'))) {
+      if (existsSync(path.join(cliDir, 'package.json'))) {
         return cliDir;
       }
     }
@@ -102,7 +102,9 @@ async function attemptInstallation(
     return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
     // Catch any unexpected errors during the process
-    logger.warn(`Error during installation attempt ${context}: ${installError.message}`);
+    logger.warn(
+      `Error during installation attempt ${context}: ${installError instanceof Error ? installError.message : String(installError)}`
+    );
     return false;
   }
 }

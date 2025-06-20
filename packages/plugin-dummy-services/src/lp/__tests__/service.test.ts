@@ -1,7 +1,6 @@
-/// <reference types="vitest/globals" />
 import { IAgentRuntime } from '@elizaos/core';
 import { Keypair } from '@solana/web3.js';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach } from 'bun:test';
 import { DummyLpService } from '../service';
 
 describe('DummyLpService', () => {

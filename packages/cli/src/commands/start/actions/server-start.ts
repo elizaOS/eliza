@@ -1,6 +1,5 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { AgentServer } from '@/src/server/index';
-import { jsonToCharacter, loadCharacterTryPath } from '@/src/server/loader';
+import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
@@ -27,7 +26,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
   const server = new AgentServer();
-  await server.initialize({ dataDir: pgliteDataDir, postgresUrl });
+  await server.initialize({ dataDir: pgliteDataDir, postgresUrl: postgresUrl || undefined });
 
   server.startAgent = (character) => startAgent(character, server);
   server.stopAgent = (runtime) => stopAgent(runtime, server);

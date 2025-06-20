@@ -1,13 +1,13 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { usePanelWidthState } from '../use-panel-width-state';
 
 // Mock localStorage
 const localStorageMock = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
+  getItem: mock(),
+  setItem: mock(),
+  removeItem: mock(),
+  clear: mock(),
 };
 
 Object.defineProperty(window, 'localStorage', {
@@ -15,15 +15,15 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 // Mock clientLogger
-vi.mock('@/lib/logger', () => ({
+mock.module('../../lib/logger', () => ({
   default: {
-    error: vi.fn(),
+    error: mock(),
   },
 }));
 
 describe('usePanelWidthState', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mock.restore();
     localStorageMock.getItem.mockReturnValue(null);
     // Reset window dimensions (above 1400 threshold)
     Object.defineProperty(window, 'innerWidth', {

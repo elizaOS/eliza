@@ -69,7 +69,11 @@ export async function installPluginDependencies(projectInfo: DirectoryInfo): Pro
   }
 
   const project = await loadProject(process.cwd());
-  if (project.isPlugin && project.pluginModule?.dependencies?.length > 0) {
+  if (
+    project.isPlugin &&
+    project.pluginModule?.dependencies &&
+    project.pluginModule.dependencies.length > 0
+  ) {
     const pluginsDir = path.join(process.cwd(), '.eliza', 'plugins');
     if (!fs.existsSync(pluginsDir)) {
       await fs.promises.mkdir(pluginsDir, { recursive: true });

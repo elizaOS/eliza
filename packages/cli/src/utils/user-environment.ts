@@ -123,9 +123,8 @@ export class UserEnvironment {
 
   /**
    * Detects the active package manager - always returns bun for ElizaOS CLI
-   * @param directory Optional directory to check for lock files. Defaults to process.cwd().
    */
-  private async getPackageManagerInfo(directory?: string): Promise<PackageManagerInfo> {
+  private async getPackageManagerInfo(): Promise<PackageManagerInfo> {
     logger.debug('[UserEnvironment] Using bun as the package manager for ElizaOS CLI');
 
     const isNpx = process.env.npm_execpath?.includes('npx');
@@ -204,7 +203,11 @@ export class UserEnvironment {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
         // Check if bun has the CLI installed globally
-        execSync(`bun pm ls -g | grep -q "${packageName}"`, { stdio: 'ignore' });
+        const command =
+          process.platform === 'win32'
+            ? `bun pm ls -g | findstr "${packageName}"`
+            : `bun pm ls -g | grep -q "${packageName}"`;
+        execSync(command, { stdio: 'ignore' });
         isGlobalCheck = true;
       }
     } catch (error) {
@@ -219,7 +222,7 @@ export class UserEnvironment {
       name: 'bun',
       version,
       global: isGlobal,
-      isNpx,
+      isNpx: !!isNpx,
       isBunx,
     };
   }
@@ -308,7 +311,7 @@ export class UserEnvironment {
     const [os, cli, packageManager, paths, env] = await Promise.all([
       this.getOSInfo(),
       this.getCLIInfo(),
-      this.getPackageManagerInfo(directory), // Pass directory here
+      this.getPackageManagerInfo(),
       this.getPathInfo(),
       this.getEnvInfo(),
     ]);

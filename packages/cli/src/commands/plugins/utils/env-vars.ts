@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import fs from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'readline';
 import { emoji } from '@/src/utils/emoji-handler';
@@ -17,12 +17,12 @@ export const extractPluginEnvRequirements = async (
     // Try to find the plugin's package.json in node_modules
     const nodeModulesPath = path.join(cwd, 'node_modules', packageName, 'package.json');
 
-    if (!fs.existsSync(nodeModulesPath)) {
+    if (!existsSync(nodeModulesPath)) {
       logger.debug(`Plugin package.json not found at: ${nodeModulesPath}`);
       return {};
     }
 
-    const packageJsonContent = fs.readFileSync(nodeModulesPath, 'utf-8');
+    const packageJsonContent = readFileSync(nodeModulesPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
 
     // Extract environment variables from agentConfig.pluginParameters
@@ -38,7 +38,9 @@ export const extractPluginEnvRequirements = async (
 
     return agentConfig.pluginParameters;
   } catch (error) {
-    logger.debug(`Error reading plugin package.json for ${packageName}: ${error.message}`);
+    logger.debug(
+      `Error reading plugin package.json for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
+    );
     return {};
   }
 };
@@ -49,7 +51,7 @@ export const extractPluginEnvRequirements = async (
 export const readEnvFile = (cwd: string): string => {
   const envPath = path.join(cwd, '.env');
   try {
-    return fs.readFileSync(envPath, 'utf-8');
+    return readFileSync(envPath, 'utf-8');
   } catch (error) {
     // File doesn't exist, return empty string
     return '';
@@ -61,7 +63,7 @@ export const readEnvFile = (cwd: string): string => {
  */
 export const writeEnvFile = (cwd: string, content: string): void => {
   const envPath = path.join(cwd, '.env');
-  fs.writeFileSync(envPath, content, 'utf-8');
+  writeFileSync(envPath, content, 'utf-8');
 };
 
 /**
@@ -155,7 +157,9 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
         console.log(`⚠ Skipped ${varName} (no value provided)`);
       }
     } catch (error) {
-      logger.warn(`Failed to prompt for ${varName}: ${error.message}`);
+      logger.warn(
+        `Failed to prompt for ${varName}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

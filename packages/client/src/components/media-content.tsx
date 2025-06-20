@@ -199,9 +199,11 @@ export default function MediaContent({
   if (isAudioUrl(url)) {
     return (
       <div className={cn('relative rounded-lg bg-card border p-4', className)} style={{ maxWidth }}>
-        <div className="flex items-center space-x-3 mb-3">
+        <div className="flex items-center space-x-3 mb-3 overflow-hidden">
           <Volume2 className="w-5 h-5 text-muted-foreground" />
-          <span className="text-sm font-medium">{title || 'Audio File'}</span>
+          <span className="text-sm text-primary font-medium truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-44">
+            {title || 'Audio File'}
+          </span>
         </div>
         {hasError ? (
           <div className="flex items-center text-muted-foreground">
@@ -232,10 +234,12 @@ export default function MediaContent({
         className={cn('relative rounded-lg overflow-hidden bg-card border', className)}
         style={{ maxWidth }}
       >
-        <div className="flex items-center justify-between p-3 bg-muted/50 border-b">
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between p-3 bg-muted/50 border-b gap-10">
+          <div className="flex items-center space-x-2 overflow-hidden">
             <FileText className="w-5 h-5 text-muted-foreground" />
-            <span className="text-sm font-medium">{title || 'PDF Document'}</span>
+            <span className="text-sm text-primary font-medium truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-44">
+              {title || 'PDF Document'}
+            </span>
           </div>
           <div className="flex items-center space-x-2">
             <a
@@ -336,8 +340,10 @@ export default function MediaContent({
       <div className={cn('rounded-lg bg-card border p-4', className)} style={{ maxWidth }}>
         <div className="flex items-center space-x-3">
           <FileText className="w-8 h-8 text-muted-foreground" />
-          <div className="flex-1">
-            <p className="text-sm font-medium">{title || 'Document'}</p>
+          <div className="flex-1 overflow-hidden mr-6">
+            <p className="text-sm text-primary font-medium truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-44">
+              {title || 'Document'}
+            </p>
             <p className="text-xs text-muted-foreground">
               {url.split('.').pop()?.toUpperCase()} file
             </p>
@@ -362,7 +368,7 @@ export default function MediaContent({
       <div className="flex items-center space-x-3">
         <ExternalLink className="w-8 h-8 text-muted-foreground" />
         <div className="flex-1">
-          <p className="text-sm font-medium">{title || 'External Link'}</p>
+          <p className="text-sm text-primary font-medium">{title || 'External Link'}</p>
           <p className="text-xs text-muted-foreground truncate">{url}</p>
         </div>
         <a

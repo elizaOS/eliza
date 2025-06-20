@@ -34,10 +34,6 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: '🧠 Core Concepts',
       collapsed: false,
-      link: {
-        type: 'doc',
-        id: 'core/overview',
-      },
       items: [
         {
           type: 'doc',
@@ -68,6 +64,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'core/evaluators',
           label: 'Evaluators',
+        },
+        {
+          type: 'doc',
+          id: 'core/characters',
+          label: 'Character Files',
         },
         {
           type: 'doc',

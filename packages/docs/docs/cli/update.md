@@ -5,10 +5,15 @@ description: Update your project's ElizaOS dependencies and CLI to the latest pu
 keywords: [CLI, update, dependencies, versions, packages, maintenance]
 image: /img/cli.jpg
 ---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Update Command
 
 Update ElizaOS CLI and project dependencies.
+
+<Tabs>
+<TabItem value="overview" label="Overview & Options" default>
 
 ## Usage
 
@@ -25,109 +30,23 @@ elizaos update [options]
 | `--cli`             | Update only the global CLI installation (without updating packages) |
 | `--packages`        | Update only packages (without updating the CLI)                     |
 
-## Examples
+</TabItem>
+<TabItem value="examples" label="Examples">
 
 ### Basic Update
 
 ```bash
-# Update both CLI and project dependencies (default)
-elizaos update
-
-# Update with confirmation of what will be updated
+# Update both CLI and project dependencies (default behavior)
 elizaos update
 ```
 
-### Update Options
+### Checking for Updates
 
 ```bash
 # Check for available updates without applying them
 elizaos update --check
-
-# Update only the global CLI
-elizaos update --cli
-
-# Update only project packages
-elizaos update --packages
-
-# Update without rebuilding afterward
-elizaos update --skip-build
 ```
-
-### Combined Options
-
-```bash
-# Check only CLI updates
-elizaos update --check --cli
-
-# Update packages without building
-elizaos update --packages --skip-build
-
-# Check packages only
-elizaos update --check --packages
-```
-
-## Update Process
-
-### Default Behavior
-
-When you run `elizaos update` without options:
-
-1. **Detects Project Type**: Determines if you're in an ElizaOS project or plugin
-2. **Checks CLI Version**: Compares installed CLI with latest available
-3. **Scans Dependencies**: Finds all `@elizaos/*` packages in package.json
-4. **Shows Update Plan**: Lists what will be updated
-5. **Prompts for Confirmation**: Asks before proceeding with updates
-6. **Updates Packages**: Installs latest versions
-7. **Rebuilds Project**: Compiles updated dependencies (unless `--skip-build`)
-
-### CLI-Only Updates
-
-```bash
-elizaos update --cli
-```
-
-1. **Checks Global Installation**: Verifies CLI is installed globally
-2. **Compares Versions**: Current vs latest available
-3. **Updates CLI**: Installs latest version globally
-4. **Confirms Update**: Shows success status
-
-### Package-Only Updates
-
-```bash
-elizaos update --packages
-```
-
-1. **Scans Project**: Identifies ElizaOS dependencies
-2. **Checks Versions**: Compares with latest available
-3. **Updates Dependencies**: Installs latest versions
-4. **Rebuilds**: Compiles project (unless `--skip-build`)
-
-## Project Detection
-
-The update command automatically detects:
-
-- **ElizaOS Projects**: Updates project dependencies and rebuilds
-- **ElizaOS Plugins**: Updates plugin dependencies and rebuilds
-- **Non-ElizaOS Projects**: Shows error message
-
-## Version Handling
-
-### Package Selection
-
-- Updates all `@elizaos/*` packages in dependencies and devDependencies
-- Skips workspace references (e.g., `workspace:*`)
-- Updates to the same version as the latest CLI
-
-### Version Constraints
-
-- Respects existing version prefixes (`^`, `~`, exact)
-- Updates to latest published version on npm
-- Handles pre-release versions appropriately
-
-## Examples Output
-
-### Check Mode
-
+*Example Output:*
 ```bash
 $ elizaos update --check
 
@@ -138,40 +57,113 @@ Latest CLI version: 1.4.0
 ElizaOS packages that can be updated:
   - @elizaos/core (1.3.0) → 1.4.0
   - @elizaos/plugin-openai (1.2.5) → 1.4.0
-  - @elizaos/plugin-discord (1.1.8) → 1.4.0
 
 To apply updates, run: elizaos update
 ```
 
-### CLI Update
+### Scoped Updates
 
 ```bash
-$ elizaos update --cli
+# Update only the global CLI
+elizaos update --cli
 
-Updating ElizaOS CLI...
-Current version: 1.3.5
-Latest version: 1.4.0
-✓ Successfully updated to 1.4.0
-Please restart your terminal for changes to take effect.
+# Update only project packages
+elizaos update --packages
 ```
 
-### Package Update
+### Combined Options
 
 ```bash
-$ elizaos update --packages
+# Check only for CLI updates
+elizaos update --check --cli
 
-Updating project dependencies...
-Found 3 ElizaOS packages to update:
-  - @elizaos/core: 1.3.0 → 1.4.0
-  - @elizaos/plugin-openai: 1.2.5 → 1.4.0
-  - @elizaos/plugin-discord: 1.1.8 → 1.4.0
-
-Proceed with update? (Y/n) Y
-✓ Updated dependencies
-✓ Installing packages...
-✓ Building project...
-Update completed successfully!
+# Update packages without rebuilding afterward
+elizaos update --packages --skip-build
 ```
+
+</TabItem>
+<TabItem value="guides" label="Guides & Concepts">
+
+## Update Process Explained
+
+When you run `elizaos update`, it performs the following steps:
+
+1.  **Detects Project Type**: Determines if you're in an ElizaOS project or plugin.
+2.  **Checks CLI Version**: Compares your installed CLI version with the latest available on npm.
+3.  **Scans Dependencies**: Finds all `@elizaos/*` packages in your project's `package.json`.
+4.  **Shows Update Plan**: Lists the packages and/or CLI that have available updates.
+5.  **Prompts for Confirmation**: Asks for your approval before making any changes.
+6.  **Updates Packages**: Installs the latest versions of the packages.
+7.  **Rebuilds Project**: Compiles the updated dependencies (unless `--skip-build` is used).
+
+### Workspace & Monorepo Support
+
+The update command is smart enough to detect monorepo workspaces. It will automatically skip any packages that are linked via `workspace:*` in your `package.json`, as these should be managed within the monorepo, not from the npm registry.
+
+## Best Practices
+
+### Safe Update Process
+
+For the smoothest update experience, follow this sequence:
+
+1.  **Check what will be updated**: `elizaos update --check`
+2.  **Commit your current work**: `git commit -am "chore: pre-update savepoint"`
+3.  **Update the CLI first**: `elizaos update --cli`
+4.  **Then, update project packages**: `elizaos update --packages`
+5.  **Test your project thoroughly**: `elizaos test`
+
+</TabItem>
+<TabItem value="troubleshooting" label="Troubleshooting">
+
+## Troubleshooting
+
+### CLI Update Issues
+If you have trouble updating the global CLI:
+```bash
+# Check if the CLI is installed globally
+bun pm ls -g @elizaos/cli
+
+# If not, install it
+bun install -g @elizaos/cli
+
+# On macOS/Linux, you may need sudo
+sudo bun install -g @elizaos/cli
+# Or fix permissions on your bun directory
+sudo chown -R $(whoami) ~/.bun
+```
+
+### Package Update Failures
+If package updates fail, a clean reinstall usually fixes it:
+```bash
+# Clear caches and old dependencies
+rm -rf node_modules
+bun pm cache rm
+rm bun.lockb
+
+# Reinstall everything
+bun install
+```
+
+### Build Failures After Update
+If your project fails to build after an update:
+```bash
+# Try a clean build
+bun run build
+
+# Or try updating without the build step, then build manually
+elizaos update --skip-build
+bun install && bun run build
+```
+</TabItem>
+</Tabs>
+
+## Project Detection
+
+The update command automatically detects:
+
+- **ElizaOS Projects**: Updates project dependencies and rebuilds
+- **ElizaOS Plugins**: Updates plugin dependencies and rebuilds
+- **Non-ElizaOS Projects**: Shows error message
 
 ## Workspace Support
 
@@ -192,139 +184,6 @@ ElizaOS packages found:
   - @elizaos/plugin-discord (workspace:*) → Skipped (workspace reference)
 
 Only non-workspace packages will be updated.
-```
-
-## Troubleshooting
-
-### Bun Installation Issues
-
-If you encounter errors related to bun not being found:
-
-```bash
-# For Linux/macOS (using curl)
-curl -fsSL https://bun.sh/install | bash
-
-# For macOS (using Homebrew)
-brew install bun
-
-# For Windows (using PowerShell)
-powershell -c "irm bun.sh/install.ps1 | iex"
-
-# After installation, restart your terminal and verify
-bun --version
-```
-
-### CLI Update Issues
-
-```bash
-# Check if CLI is installed globally
-bun pm ls -g @elizaos/cli
-
-# Install CLI globally if needed
-bun install -g @elizaos/cli
-
-# Update with administrator privileges (if needed)
-sudo bun install -g @elizaos/cli
-```
-
-### Package Update Failures
-
-```bash
-# Clear package manager cache
-bun pm cache rm
-rm -rf node_modules
-bun i && bun run build
-
-# Update with fresh installation
-elizaos update --packages
-```
-
-### Build Failures After Update
-
-```bash
-# Check for TypeScript errors
-bun run build
-
-# Update with build skip, then manual build
-elizaos update --skip-build
-bun i && bun run build
-```
-
-### Dependency Resolution Issues
-
-```bash
-# Check for conflicting versions
-bun pm ls
-
-# Clear lockfile and reinstall
-rm bun.lockb
-bun i && bun run build
-elizaos update
-```
-
-### Permission Errors
-
-```bash
-# For global CLI updates on macOS/Linux
-sudo elizaos update --cli
-
-# Or change bun global directory ownership
-sudo chown -R $(whoami) ~/.bun
-```
-
-### Network Issues
-
-```bash
-# Check registry connectivity
-bun config get registry
-
-# Update with different registry
-bun config set registry https://registry.npmjs.org/
-elizaos update
-```
-
-## Best Practices
-
-### Before Updating
-
-```bash
-# Always check first
-elizaos update --check
-
-# Backup your project
-git add . && git commit -m "Pre-update backup"
-
-# Check current versions
-bun pm ls | grep @elizaos
-```
-
-### Safe Update Process
-
-```bash
-# 1. Check what will be updated
-elizaos update --check
-
-# 2. Update CLI first
-elizaos update --cli
-
-# 3. Update packages
-elizaos update --packages
-
-# 4. Test your project
-elizaos start --build
-```
-
-### After Updating
-
-```bash
-# Verify update success
-elizaos --version
-
-# Test project functionality
-elizaos dev
-
-# Check for any issues
-elizaos test
 ```
 
 ## Version Strategy

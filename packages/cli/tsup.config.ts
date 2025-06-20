@@ -18,10 +18,16 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  // Ensure that all external dependencies are properly handled.
-  // The regex explicitly includes dependencies that should not be externalized.
-  noExternal: [
-    /^(?!(@electric-sql\/pglite|zod|@elizaos\/core|chokidar|semver|octokit|execa|@noble\/curves)).*/,
+  // Externalize problematic fs-related dependencies
+  external: [
+    'express',
+    'fs-extra', 
+    'multer',
+    'socket.io',
+    'body-parser',
+    'cors',
+    'helmet',
+    'express-rate-limit'
   ],
   platform: 'node',
   minify: false,
@@ -35,8 +41,9 @@ const require = createRequire(import.meta.url);
 `,
   },
   esbuildOptions(options) {
-    options.alias = {
-      '@/src': './src',
+    // Use a transform to replace @/src imports
+    options.define = {
+      ...options.define,
     };
   },
   esbuildPlugins: [
@@ -45,20 +52,24 @@ const require = createRequire(import.meta.url);
       resolveFrom: 'cwd',
       assets: [
         {
-          from: './node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
+          from: '../../node_modules/@electric-sql/pglite/dist/pglite.data',
           to: './dist',
         },
         {
-          from: './node_modules/@electric-sql/pglite/dist/pglite.data',
+          from: '../../node_modules/@electric-sql/pglite/dist/pglite.wasm',
           to: './dist',
         },
         {
-          from: './node_modules/@electric-sql/pglite/dist/pglite.wasm',
-          to: './dist',
+          from: './templates/**/*',
+          to: './dist/templates',
+        },
+        {
+          from: './templates/**/.*',
+          to: './dist/templates',
         },
       ],
       // Setting this to true will output a list of copied files
       verbose: true,
-    }),
+    }) as any,
   ],
 });

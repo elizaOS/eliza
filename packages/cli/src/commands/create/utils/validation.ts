@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import * as clack from '@clack/prompts';
 import { z } from 'zod';
 import type { CreateOptions } from '../types';
 import { initOptionsSchema } from '../types';

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 
 describe('TEE Actions', () => {
   it("should use plugin-tee's remoteAttestationAction", () => {

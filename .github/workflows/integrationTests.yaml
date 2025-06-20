@@ -32,6 +32,7 @@ jobs:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,6 +78,7 @@ jobs:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -124,6 +126,7 @@ jobs:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     needs: setup
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -160,4 +163,78 @@ jobs:
         run: bun install
 
       - name: Run integration tests
-        run: bun run test
+        timeout-minutes: 15
+        env:
+          # Set CI-specific environment variables
+          CI: true
+          NODE_ENV: test
+          PGLITE_WASM_MODE: node
+          # Prevent interactive prompts
+          ELIZA_NONINTERACTIVE: true
+          # Set memory limits for CI
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          # Set test timeout for CI (60 seconds per test)
+          export BUN_TEST_TIMEOUT=60000
+          
+          # TEMPORARY: Skip hanging CLI tests, run only core and other stable packages
+          echo "Starting integration tests (excluding CLI tests that hang)..."
+          bun test --timeout 60000 --concurrency 3 --filter='!@elizaos/cli' || {
+            echo "Tests failed with exit code $?"
+            echo "Checking for any hanging processes..."
+            ps aux | grep -E "(bun|node)" || true
+            exit 1
+          }
+
+  # CLI tests job - separate due to hanging process issues
+  cli-tests:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Restore build artifacts
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            packages/*/dist
+            packages/*/build
+          key: integration-build-${{ runner.os }}-${{ github.sha }}
+
+      - name: Run CLI tests
+        timeout-minutes: 25
+        env:
+          # Set CI-specific environment variables
+          CI: true
+          NODE_ENV: test
+          PGLITE_WASM_MODE: node
+          # Prevent interactive prompts
+          ELIZA_NONINTERACTIVE: true
+          # Set memory limits for CI
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          # Set longer timeout for CLI tests (120 seconds per test)
+          export BUN_TEST_TIMEOUT=120000
+          
+          echo "Starting CLI tests with extended timeout (120s per test)..."
+          cd packages/cli && bun test --timeout 120000 || {
+            echo "CLI tests failed with exit code $?"
+            echo "Checking for any hanging processes..."
+            ps aux | grep -E "(bun|node|elizaos)" || true
+            # Kill any remaining processes
+            pkill -f "elizaos\|bun.*test" || true
+            exit 1
+          }

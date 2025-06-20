@@ -1,8 +1,7 @@
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Character, logger } from '@elizaos/core';
-import multer from 'multer';
 import { getElizaCharacter } from '../characters/eliza';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +16,7 @@ const __dirname = path.dirname(__filename);
  */
 export function tryLoadFile(filePath: string): string | null {
   try {
-    return fs.readFileSync(filePath, 'utf8');
+    return readFileSync(filePath, 'utf8');
   } catch (e) {
     throw new Error(`Error loading file ${filePath}: ${e}`);
   }
@@ -292,7 +291,7 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
   if (hasValidRemoteUrls()) {
     logger.info('Loading characters from remote URLs');
-    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS);
+    const characterUrls = commaSeparatedStringToArray(process.env.REMOTE_CHARACTER_URLS || '');
     for (const characterUrl of characterUrls) {
       const characters = await loadCharactersFromUrl(characterUrl);
       loadedCharacters.push(...characters);

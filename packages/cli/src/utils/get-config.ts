@@ -226,8 +226,8 @@ export function isValidPostgresUrl(url: string): boolean {
     const parsedUrl = new URL(url);
     return (
       parsedUrl.protocol === 'postgresql:' &&
-      parsedUrl.hostname &&
-      parsedUrl.pathname &&
+      !!parsedUrl.hostname &&
+      !!parsedUrl.pathname &&
       parsedUrl.pathname !== '/'
     );
   } catch {
@@ -369,7 +369,7 @@ export async function setupPgLite(
   targetProjectDir?: string
 ): Promise<void> {
   const dirs = await ensureElizaDir(targetProjectDir);
-  const { elizaDir, elizaDbDir, envFilePath } = dirs;
+  const { elizaDbDir, envFilePath } = dirs;
 
   // Use provided parameters or defaults from dirs
   const targetDbDir = dbDir || elizaDbDir;
@@ -503,7 +503,7 @@ export async function promptAndStorePostgresUrl(envFilePath: string): Promise<st
     return response;
   } catch (error) {
     spinner.stop('Failed to save configuration');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -631,7 +631,7 @@ export async function promptAndStoreOpenAIKey(envFilePath: string): Promise<stri
     return response;
   } catch (error) {
     spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -680,7 +680,134 @@ export async function promptAndStoreAnthropicKey(envFilePath: string): Promise<s
     return response;
   } catch (error) {
     spinner.stop('Failed to save API key');
-    clack.log.error(`Error: ${error.message}`);
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Validates an Ollama API endpoint format
+ * @param endpoint The endpoint URL to validate
+ * @returns True if the endpoint appears valid
+ */
+export function isValidOllamaEndpoint(endpoint: string): boolean {
+  if (!endpoint || typeof endpoint !== 'string') return false;
+
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stores Ollama configuration in the .env file
+ * @param config The Ollama configuration to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeOllamaConfig(
+  config: { endpoint: string; model: string },
+  envFilePath: string
+): Promise<void> {
+  if (!config.endpoint || !config.model) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing Ollama lines if present
+    const lines = content
+      .split('\n')
+      .filter(
+        (line) =>
+          !line.startsWith('OLLAMA_API_ENDPOINT=') &&
+          !line.startsWith('OLLAMA_MODEL=') &&
+          !line.startsWith('USE_OLLAMA_TEXT_MODELS=')
+      );
+
+    // Add new Ollama configuration
+    lines.push(`OLLAMA_API_ENDPOINT=${config.endpoint}`);
+    lines.push(`OLLAMA_MODEL=${config.model}`);
+    lines.push('USE_OLLAMA_TEXT_MODELS=true');
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+
+    // Update process.env
+    process.env.OLLAMA_API_ENDPOINT = config.endpoint;
+    process.env.OLLAMA_MODEL = config.model;
+    process.env.USE_OLLAMA_TEXT_MODELS = 'true';
+
+    logger.success('Ollama configuration saved to configuration');
+  } catch (error) {
+    logger.error('Error saving Ollama configuration:', error);
+    throw error;
+  }
+}
+
+/**
+ * Prompts the user for Ollama configuration, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured Ollama settings or null if user cancels
+ */
+export async function promptAndStoreOllamaConfig(
+  envFilePath: string
+): Promise<{ endpoint: string; model: string } | null> {
+  clack.intro('🦙 Ollama Configuration');
+
+  clack.note(
+    'Make sure Ollama is installed and running on your system.\nDefault endpoint: http://localhost:11434\nGet started: https://ollama.ai/',
+    'Ollama Information'
+  );
+
+  const endpoint = await clack.text({
+    message: 'Enter your Ollama API endpoint:',
+    placeholder: 'http://localhost:11434',
+    initialValue: 'http://localhost:11434',
+    validate: (value) => {
+      if (value.trim() === '') return 'Ollama endpoint cannot be empty';
+      if (!isValidOllamaEndpoint(value)) return 'Invalid URL format (http:// or https:// required)';
+      return undefined;
+    },
+  });
+
+  if (clack.isCancel(endpoint)) {
+    clack.cancel('Operation cancelled.');
+    return null;
+  }
+
+  const model = await clack.text({
+    message: 'Enter your preferred Ollama model:',
+    placeholder: 'llama2',
+    initialValue: 'llama2',
+    validate: (value) => {
+      if (value.trim() === '') return 'Model name cannot be empty';
+      return undefined;
+    },
+  });
+
+  if (clack.isCancel(model)) {
+    clack.cancel('Operation cancelled.');
+    return null;
+  }
+
+  const config = { endpoint: endpoint.trim(), model: model.trim() };
+
+  // Store the configuration in the .env file
+  const spinner = clack.spinner();
+  spinner.start('Saving Ollama configuration...');
+
+  try {
+    await storeOllamaConfig(config, envFilePath);
+    spinner.stop('Ollama configuration saved successfully!');
+    clack.outro('✓ Ollama integration configured');
+    return config;
+  } catch (error) {
+    spinner.stop('Failed to save configuration');
+    clack.log.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }

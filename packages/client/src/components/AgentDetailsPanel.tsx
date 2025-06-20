@@ -13,7 +13,7 @@ export default function AgentDetailsPanel({ agent }: AgentDetailsPanelProps) {
   const isActive = agent.status === AgentStatus.ACTIVE;
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full flex flex-col bg-background" data-testid="agent-details">
       <div className="p-6 space-y-4">
         {/* Agent Header */}
         <div className="flex items-center gap-4">

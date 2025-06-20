@@ -1,7 +1,7 @@
-import { promises as fs, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
-import { UserEnvironment } from './user-environment';
 
 /**
  * Copy a directory recursively
@@ -16,11 +16,15 @@ import { UserEnvironment } from './user-environment';
  * @returns {Promise<void>} A Promise that resolves when the copy operation is complete.
  */
 export async function copyDir(src: string, dest: string, exclude: string[] = []) {
+  // Ensure paths are properly resolved as absolute paths
+  const resolvedSrc = path.resolve(src);
+  const resolvedDest = path.resolve(dest);
+
   // Create destination directory if it doesn't exist
-  await fs.mkdir(dest, { recursive: true });
+  await fs.mkdir(resolvedDest, { recursive: true });
 
   // Read source directory
-  const entries = await fs.readdir(src, { withFileTypes: true });
+  const entries = await fs.readdir(resolvedSrc, { withFileTypes: true });
 
   // Separate files and directories for different processing strategies
   const files: typeof entries = [];
@@ -58,8 +62,8 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
   for (let i = 0; i < files.length; i += MAX_CONCURRENT_FILES) {
     const batch = files.slice(i, i + MAX_CONCURRENT_FILES);
     const batchPromises = batch.map(async (entry) => {
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
+      const srcPath = path.join(resolvedSrc, entry.name);
+      const destPath = path.join(resolvedDest, entry.name);
       await fs.copyFile(srcPath, destPath);
     });
     filePromises.push(...batchPromises);
@@ -71,8 +75,8 @@ export async function copyDir(src: string, dest: string, exclude: string[] = [])
   // Process directories sequentially to avoid too much recursion depth
   // but still get benefits from parallel file copying within each directory
   for (const entry of directories) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+    const srcPath = path.join(resolvedSrc, entry.name);
+    const destPath = path.join(resolvedDest, entry.name);
     await copyDir(srcPath, destPath, exclude);
   }
 }
@@ -98,32 +102,44 @@ function getPackageName(templateType: string): string {
  */
 export async function copyTemplate(
   templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin',
-  targetDir: string,
-  name: string
+  targetDir: string
 ) {
   const packageName = getPackageName(templateType);
-  const userEnv = UserEnvironment.getInstance();
-  const pathsInfo = await userEnv.getPathInfo();
 
-  let templateDir: string;
-  if (process.env.NODE_ENV === 'development' && pathsInfo.monorepoRoot) {
-    // Use monorepoRoot if in development and monorepoRoot is found
-    logger.debug(
-      `Development mode: Using monorepo root at ${pathsInfo.monorepoRoot} to find templates.`
-    );
-    templateDir = path.resolve(pathsInfo.monorepoRoot, 'packages', packageName);
-  } else if (process.env.NODE_ENV === 'development') {
-    // Fallback for development if monorepoRoot is not found (e.g., running CLI from a strange location)
-    logger.warn(
-      'Development mode: monorepoRoot not found. Falling back to process.cwd() for template path. This might be unreliable.'
-    );
-    templateDir = path.resolve(process.cwd(), 'packages', packageName);
-  } else {
-    // In production, use the templates directory from the CLI package
-    templateDir = path.resolve(
+  // Try multiple locations to find templates, handling different runtime environments
+  const possibleTemplatePaths = [
+    // 1. Direct path from source directory (for tests and development)
+    path.resolve(__dirname, '../../templates', packageName),
+    // 2. Production: templates bundled with the CLI dist
+    path.resolve(
+      path.dirname(require.resolve('@elizaos/cli/package.json')),
+      'dist',
+      'templates',
+      packageName
+    ),
+    // 3. Development/Test: templates in the CLI package root
+    path.resolve(
       path.dirname(require.resolve('@elizaos/cli/package.json')),
       'templates',
       packageName
+    ),
+    // 4. Fallback: relative to current module (for built dist)
+    path.resolve(__dirname, '..', 'templates', packageName),
+    // 5. Additional fallback: relative to dist directory
+    path.resolve(__dirname, '..', '..', 'templates', packageName),
+  ];
+
+  let templateDir: string | null = null;
+  for (const possiblePath of possibleTemplatePaths) {
+    if (existsSync(possiblePath)) {
+      templateDir = possiblePath;
+      break;
+    }
+  }
+
+  if (!templateDir) {
+    throw new Error(
+      `Template '${packageName}' not found. Searched in:\n${possibleTemplatePaths.join('\n')}`
     );
   }
 
@@ -189,7 +205,7 @@ export async function copyTemplate(
 }
 
 /**
- * Replace hardcoded "plugin-starter" strings in TypeScript files with the actual plugin name
+ * Replace hardcoded "plugin-starter" strings in source files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
   const filesToProcess = [
@@ -197,7 +213,7 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
     '__tests__/plugin.test.ts',
     'e2e/starter-plugin.test.ts',
     'README.md',
-    // Note: package.json excluded to maintain npm package structure
+    // package.json name is handled by the publish command
   ];
 
   // Process files in parallel
@@ -213,14 +229,16 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
       ) {
         let content = await fs.readFile(fullPath, 'utf8');
 
-        // Replace the hardcoded plugin name
+        // Replace the hardcoded plugin name in source files
         content = content.replace(/plugin-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');
         logger.debug(`Updated plugin name in ${filePath}`);
       }
     } catch (error) {
-      logger.warn(`Could not update ${filePath}: ${error.message}`);
+      logger.warn(
+        `Could not update ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   });
 

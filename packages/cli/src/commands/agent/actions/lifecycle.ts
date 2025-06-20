@@ -1,6 +1,6 @@
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
-import fs from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
@@ -76,10 +76,10 @@ export async function startAgent(options: OptionValues): Promise<void> {
       if (options.path) {
         try {
           const filePath = path.resolve(process.cwd(), options.path);
-          if (!fs.existsSync(filePath)) {
+          if (!existsSync(filePath)) {
             throw new Error(`File not found at path: ${filePath}`);
           }
-          const fileContent = fs.readFileSync(filePath, 'utf8');
+          const fileContent = readFileSync(filePath, 'utf8');
           payload.characterJson = JSON.parse(fileContent);
           characterName = await createCharacter(payload);
           if (!characterName) {
@@ -87,7 +87,9 @@ export async function startAgent(options: OptionValues): Promise<void> {
           }
         } catch (error) {
           console.error('Error reading or parsing local JSON file:', error);
-          throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
+          throw new Error(
+            `Failed to read or parse local JSON file: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
 
@@ -207,6 +209,69 @@ export async function startAgent(options: OptionValues): Promise<void> {
  */
 export async function stopAgent(opts: OptionValues): Promise<void> {
   try {
+    // Validate that either --name or --all is provided
+    const hasValidName = opts.name && opts.name !== true && opts.name !== '';
+    if (!hasValidName && !opts.all) {
+      console.error('\nError: Must provide either --name <name> or --all flag');
+      console.error('Examples:');
+      console.error('  elizaos agent stop --name eliza');
+      console.error('  elizaos agent stop --all');
+      process.exit(1);
+    }
+
+    // If --all flag is provided, stop all local ElizaOS processes
+    if (opts.all) {
+      logger.info('Stopping all ElizaOS agents...');
+
+      // Check platform compatibility
+      if (process.platform === 'win32') {
+        logger.error('The --all flag requires Unix-like commands (pgrep, kill).');
+        logger.error('On Windows, please use WSL 2 or stop agents individually with --name.');
+        logger.error('See: https://learn.microsoft.com/en-us/windows/wsl/install-manual');
+        process.exit(1);
+      }
+
+      try {
+        const { exec } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execAsync = promisify(exec);
+
+        // Unix-like: Use pgrep/xargs, excluding current CLI process to prevent self-termination
+        // Support both node and bun executables, and look for common ElizaOS patterns
+        const patterns = [
+          '(node|bun).*elizaos',
+          '(node|bun).*eliza.*start',
+          '(node|bun).*dist/index.js.*start',
+        ];
+
+        for (const pattern of patterns) {
+          try {
+            const { stdout } = await execAsync(`pgrep -f "${pattern}"`);
+            const pids = stdout
+              .trim()
+              .split('\n')
+              .filter((pid) => pid && pid !== process.pid.toString());
+
+            if (pids.length > 0) {
+              await execAsync(`echo "${pids.join(' ')}" | xargs -r kill`);
+            }
+          } catch (pgrepError) {
+            // pgrep returns exit code 1 when no processes match, which is expected
+            // Only log actual errors, not "no processes found"
+          }
+        }
+
+        logger.success('All ElizaOS agents stopped successfully!');
+      } catch (error) {
+        logger.error(
+          `Error stopping processes: ${error instanceof Error ? error.message : String(error)}`
+        );
+        process.exit(1);
+      }
+      return;
+    }
+
+    // Stop individual agent by name/ID
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
     const baseUrl = getAgentsBaseUrl(opts);
 

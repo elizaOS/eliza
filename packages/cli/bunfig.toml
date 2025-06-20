@@ -1,0 +1,14 @@
+[test]
+# Preload test setup - removed due to path resolution conflicts in CI 
+# preload = ["packages/cli/tests/global-setup.ts", "packages/cli/tests/setup.ts"]
+
+# Test configuration
+timeout = 60000
+bail = 0
+
+# Coverage configuration
+coverage = true
+
+# Test file patterns
+root = "."
+testNamePattern = ""

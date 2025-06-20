@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, test, vi } from 'vitest';
+import { beforeAll, describe, expect, it, test, mock } from 'bun:test';
 import { formatEntities } from '../entities';
 import type { Content, Entity, IAgentRuntime, IDatabaseAdapter, Memory, UUID } from '../types';
 import { formatMessages, formatTimestamp } from '../utils';
@@ -11,10 +11,10 @@ describe('Messages Library', () => {
   beforeAll(() => {
     // Mock runtime with necessary methods
     runtime = {
-      // Using vi.fn() instead of jest.fn()
-      getParticipantsForRoom: vi.fn(),
-      getEntityById: vi.fn(),
-      getRoom: vi.fn(),
+      // Using mock() instead of jest.fn()
+      getParticipantsForRoom: mock(),
+      getEntityById: mock(),
+      getRoom: mock(),
     } as unknown as IAgentRuntime & IDatabaseAdapter;
 
     // Mock user data with proper UUID format
@@ -194,11 +194,11 @@ describe('Messages', () => {
   // 			getParticipantsForRoom: vi
   // 				.fn()
   // 				.mockResolvedValue([mockEntities[0].id, mockEntities[1].id]),
-  // 			getEntityById: vi.fn().mockImplementation((id) => {
+  // 			getEntityById: mock().mockImplementation((id) => {
   // 				const actor = mockEntities.find((a) => a.id === id);
   // 				return Promise.resolve(actor);
   // 			}),
-  // 			getRoom: vi.fn().mockResolvedValue({
+  // 			getRoom: mock().mockResolvedValue({
   // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
   // 				name: "Test Room",
   // 				participants: [mockEntities[0].id, mockEntities[1].id],
@@ -208,7 +208,7 @@ describe('Messages', () => {
   // 			serverId: "test",
   // 				worldId: "test" as UUID,
   // 			} as Room),
-  // 			getEntitiesForRoom: vi.fn().mockResolvedValue(mockEntities),
+  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
   // 		};
 
   // 		const entities = await getEntityDetails({
@@ -230,11 +230,11 @@ describe('Messages', () => {
   // 			getParticipantsForRoom: vi
   // 				.fn()
   // 				.mockResolvedValue([mockEntities[0].id, invalidId]),
-  // 			getEntityById: vi.fn().mockImplementation((id) => {
+  // 			getEntityById: mock().mockImplementation((id) => {
   // 				const actor = mockEntities.find((a) => a.id === id);
   // 				return Promise.resolve(actor || null);
   // 			}),
-  // 			getRoom: vi.fn().mockResolvedValue({
+  // 			getRoom: mock().mockResolvedValue({
   // 				id: "123e4567-e89b-12d3-a456-426614174009" as UUID,
   // 				name: "Test Room",
   // 				participants: [mockEntities[0].id, mockEntities[1].id],
@@ -244,7 +244,7 @@ describe('Messages', () => {
   // 			serverId: "test",
   // 				worldId: "test" as UUID,
   // 			} as Room),
-  // 			getEntitiesForRoom: vi.fn().mockResolvedValue(mockEntities),
+  // 			getEntitiesForRoom: mock().mockResolvedValue(mockEntities),
   // 		};
 
   // 		const entities = await getEntityDetails({
