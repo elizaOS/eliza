@@ -8,7 +8,9 @@ Below is a summary of the existing workflows:
 
 - **`ci.yaml`**: Handles general Continuous Integration tasks, likely running linters, and basic checks on pushes and pull requests.
 - **`cli-tests.yml`**: Executes tests specifically for the CLI package (`packages/cli`).
-- **`integrationTests.yaml`**: Runs integration tests to ensure different parts of the system work together correctly.
+- **`core-package-tests.yaml`**: Runs unit tests for core backend packages (core, server, plugins) excluding CLI and client packages.
+- **`client-cypress-tests.yml`**: Runs Cypress component and E2E tests for the client package.
+- **`plugin-sql-tests.yaml`**: Tests specifically for the SQL plugin package.
 - **`pr.yaml`**: Defines checks and processes that run on every pull request to `main` or `develop` branches.
 - **`tauri-ci.yml`**: Manages Continuous Integration for the Tauri desktop application, including building and testing across different platforms.
 

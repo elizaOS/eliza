@@ -1,8 +1,8 @@
-name: Integration Tests
+name: Core Package Tests
 
 # Cancel previous runs for the same PR/branch
 concurrency:
-  group: integration-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: core-package-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
@@ -11,13 +11,13 @@ on:
       - '*'
     paths:
       - 'packages/**'
-      - '.github/workflows/integrationTests.yaml'
+      - '.github/workflows/core-package-tests.yaml'
   pull_request_target:
     branches:
       - '*'
     paths:
       - 'packages/**'
-      - '.github/workflows/integrationTests.yaml'
+      - '.github/workflows/core-package-tests.yaml'
 
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -73,11 +73,19 @@ jobs:
               exit 1
           fi
 
-  # Integration tests job
-  # Runs tests for core packages except:
-  # - CLI: handled by cli-tests.yml (multi-OS, model downloads)
-  # - Client: handled by client-cypress-tests.yml (browser/DOM environment)
-  integration-tests:
+  # Core package tests job
+  # Runs unit tests for backend/server-side packages:
+  # - Core framework (@elizaos/core)
+  # - Server (@elizaos/server)
+  # - Core plugins (bootstrap, dummy-services)
+  # - Project templates (tee-starter)
+  #
+  # Excluded packages:
+  # - CLI: handled by cli-tests.yml (requires multi-OS, model downloads)
+  # - Client: handled by client-cypress-tests.yml (requires browser/DOM environment)
+  # - Plugin/Project starters: no real tests, just templates
+  # - SQL plugin: excluded in main package.json
+  core-tests:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
@@ -116,7 +124,7 @@ jobs:
           SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
         run: bun install
 
-      - name: Run integration tests
+      - name: Run core package tests
         timeout-minutes: 15
         env:
           # Set CI-specific environment variables
@@ -133,13 +141,16 @@ jobs:
 
           # CLI tests are handled by the dedicated cli-tests.yml workflow
           # Client tests are handled by the dedicated client-cypress-tests.yml workflow
-          echo "Starting integration tests (excluding CLI and client tests)..."
-          
+          echo "Starting core package tests..."
+
           # Track if any tests fail
           TESTS_FAILED=0
-          
+
           # Run tests in each package that has them (excluding CLI, client, and other excluded packages)
-          # Note: client tests are handled by client-cypress-tests.yml workflow
+          # These packages are tested together because they:
+          # - Use standard bun test without special environment requirements
+          # - Form the core backend functionality of ElizaOS
+          # - Can run with in-memory PGLite database
           for package in core server plugin-bootstrap plugin-dummy-services project-tee-starter; do
             echo ""
             echo "========================================="
@@ -157,7 +168,7 @@ jobs:
             
             cd ../..
           done
-          
+
           if [ $TESTS_FAILED -ne 0 ]; then
             echo ""
             echo "❌ Some tests failed"
@@ -166,5 +177,5 @@ jobs:
             exit 1
           else
             echo ""
-            echo "✅ All integration tests passed!"
+            echo "✅ All core package tests passed!"
           fi
