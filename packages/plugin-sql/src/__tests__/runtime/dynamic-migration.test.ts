@@ -12,18 +12,7 @@ import {
 } from '@elizaos/core';
 import { pgTable, serial, text, uuid } from 'drizzle-orm/pg-core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
-import { DatabaseMigrationService } from '../../migration-service';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { createIsolatedTestDatabase } from '../test-helpers';
@@ -80,7 +69,6 @@ describe('Dynamic Migration Tests', () => {
   let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
-  let migrationService: DatabaseMigrationService;
 
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase('dynamic-migration-tests', [
@@ -91,10 +79,7 @@ describe('Dynamic Migration Tests', () => {
     runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
-
-    // Get migration service from the runtime
-    migrationService = new DatabaseMigrationService();
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {

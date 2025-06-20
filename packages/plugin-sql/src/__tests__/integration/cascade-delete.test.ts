@@ -1,16 +1,6 @@
 import { type UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { createIsolatedTestDatabase } from '../test-helpers';
@@ -26,7 +16,7 @@ describe('Cascade Delete Tests', () => {
     adapter = setup.adapter;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {

@@ -1,14 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { PGliteClientManager } from '../../../pglite/manager';
 
 describe('PGliteClientManager', () => {

@@ -6,10 +6,6 @@ import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
 import { resolvePgliteDir } from './utils';
 import * as schema from './schema';
-import { sql } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { runPluginMigrations } from './custom-migrator';
-import { DatabaseMigrationService } from './migration-service';
 
 /**
  * Global Singleton Instances (Package-scoped)

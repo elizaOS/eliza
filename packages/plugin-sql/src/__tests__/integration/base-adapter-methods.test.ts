@@ -1,22 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { createIsolatedTestDatabase } from '../test-helpers';
 import { v4 as uuidv4 } from 'uuid';
-import type {
-  Entity,
-  Memory,
-  Component,
-  Room,
-  UUID,
-  Content,
-  AgentRuntime,
-  ChannelType,
-} from '@elizaos/core';
+import type { Entity, Memory, Component, Room, UUID, Content, ChannelType } from '@elizaos/core';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 
 describe('Base Adapter Methods Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testEntityId: UUID;
@@ -24,7 +14,6 @@ describe('Base Adapter Methods Integration Tests', () => {
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase('base-adapter-methods');
     adapter = setup.adapter;
-    runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
@@ -38,7 +27,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         metadata: { type: 'test' },
       },
     ]);
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {
@@ -212,7 +201,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         agentId: testAgentId,
       });
       expect(retrieved.length).toBe(1);
-      expect(retrieved[0]?.id).toBe(entity.id);
+      expect(retrieved[0]?.id).toBe(entity.id as UUID);
       expect(retrieved[0]?.metadata?.version).toBe(2);
     });
 

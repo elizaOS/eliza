@@ -1,7 +1,6 @@
 import { logger } from '@elizaos/core';
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { PgDatabaseAdapter } from '../../../pg/adapter';
-import { PostgresConnectionManager } from '../../../pg/manager';
 
 // Mock the logger to avoid console output during tests
 const mockLogger = {
@@ -111,7 +110,7 @@ describe('PgDatabaseAdapter', () => {
       mockManager.getConnection.mockReturnValue(mockConnection);
 
       const result = await adapter.getConnection();
-      expect(result).toBe(mockConnection);
+      expect(result).toBe(mockConnection as any);
       expect(mockManager.getConnection).toHaveBeenCalled();
     });
   });
