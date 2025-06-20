@@ -6,10 +6,7 @@ import type { AIModelOption, DatabaseOption } from '../types';
  */
 export async function getLocalAvailableDatabases(): Promise<string[]> {
   // Hard-coded list of available databases to avoid GitHub API calls
-  return [
-    'pglite',
-    'postgres',
-  ];
+  return ['pglite', 'postgres'];
 }
 
 /**
@@ -20,23 +17,27 @@ export function getAvailableAIModels(): AIModelOption[] {
     {
       title: 'Local AI',
       value: 'local',
-      description:
-        'Use local AI models without external API requirements. Will download model to run locally',
+      description: 'Local models, no API required',
     },
     {
       title: 'OpenAI',
       value: 'openai',
-      description: 'Use OpenAI models like GPT-4o, GPT-4o-mini, GPT-4o-mini-2024-07-18',
+      description: 'GPT-4 models',
     },
     {
       title: 'Anthropic',
       value: 'claude',
-      description: 'Use Anthropic models like Claude 4.0 Sonnet',
+      description: 'Claude models',
     },
     {
       title: 'Ollama',
       value: 'ollama',
-      description: 'Use self-hosted Ollama models for complete privacy and control',
+      description: 'Self-hosted models',
+    },
+    {
+      title: 'Google Generative AI',
+      value: 'google',
+      description: 'Gemini models',
     },
   ];
 }
@@ -49,14 +50,12 @@ export function getAvailableDatabases(): DatabaseOption[] {
     {
       title: 'Pglite (Pglite)',
       value: 'pglite',
-      description:
-        'Recommended for local development, single-user deployments',
+      description: 'Local development',
     },
     {
       title: 'PostgreSQL',
       value: 'postgres',
-      description:
-        'Recommended for production',
+      description: 'Production database',
     },
   ];
 }

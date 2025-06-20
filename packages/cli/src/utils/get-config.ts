@@ -533,6 +533,18 @@ export function isValidAnthropicKey(key: string): boolean {
 }
 
 /**
+ * Validates a Google Generative AI API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid
+ */
+export function isValidGoogleKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+
+  // Google API keys are typically 39 characters long and contain alphanumeric chars with dashes
+  return key.length === 39 && /^[A-Za-z0-9_-]+$/.test(key);
+}
+
+/**
  * Stores OpenAI API key in the .env file
  * @param key The OpenAI API key to store
  * @param envFilePath Path to the .env file
@@ -557,6 +569,37 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
     logger.success('OpenAI API key saved to configuration');
   } catch (error) {
     logger.error('Error saving OpenAI API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Stores Google Generative AI API key in the .env file
+ * @param key The Google API key to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeGoogleKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing GOOGLE_GENERATIVE_AI_API_KEY line if present
+    const lines = content
+      .split('\n')
+      .filter((line) => !line.startsWith('GOOGLE_GENERATIVE_AI_API_KEY='));
+    lines.push(`GOOGLE_GENERATIVE_AI_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
+
+    logger.success('Google Generative AI API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving Google API key:', error);
     throw error;
   }
 }
@@ -810,7 +853,8 @@ export async function promptAndStoreOllamaConfig(
   const config: ProviderPromptConfig = {
     name: 'Ollama',
     icon: '🦙',
-    noteText: 'Make sure Ollama is installed and running on your system.\nDefault endpoint: http://localhost:11434\nGet started: https://ollama.ai/',
+    noteText:
+      'Make sure Ollama is installed and running on your system.\nDefault endpoint: http://localhost:11434\nGet started: https://ollama.ai/',
     inputs: [
       {
         key: 'endpoint',
@@ -820,7 +864,8 @@ export async function promptAndStoreOllamaConfig(
         type: 'text',
         validate: (value) => {
           if (value.trim() === '') return 'Ollama endpoint cannot be empty';
-          if (!isValidOllamaEndpoint(value)) return 'Invalid URL format (http:// or https:// required)';
+          if (!isValidOllamaEndpoint(value))
+            return 'Invalid URL format (http:// or https:// required)';
           return undefined;
         },
       },
@@ -842,7 +887,48 @@ export async function promptAndStoreOllamaConfig(
     successMessage: 'Ollama integration configured',
   };
 
-  return await promptAndStoreProviderConfig<{ endpoint: string; model: string }>(config, envFilePath);
+  return await promptAndStoreProviderConfig<{ endpoint: string; model: string }>(
+    config,
+    envFilePath
+  );
+}
+
+/**
+ * Prompts the user for a Google Generative AI API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured Google API key or null if user cancels
+ */
+export async function promptAndStoreGoogleKey(envFilePath: string): Promise<string | null> {
+  const config: ProviderPromptConfig = {
+    name: 'Google Generative AI',
+    icon: '🤖',
+    noteText: 'Get your API key from: https://aistudio.google.com/apikey',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your Google Generative AI API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'Google API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidGoogleKey(results.key);
+      if (!isValid) {
+        clack.log.warn(
+          'Invalid API key format detected. Expected format: 39 character alphanumeric key'
+        );
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeGoogleKey(results.key, envPath);
+    },
+    successMessage: 'Google Generative AI integration configured',
+  };
+
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
 }
 
 /**
