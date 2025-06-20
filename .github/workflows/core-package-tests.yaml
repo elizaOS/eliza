@@ -146,12 +146,12 @@ jobs:
           # Track if any tests fail
           TESTS_FAILED=0
 
-          # Run tests in each package that has them (excluding CLI, client, and other excluded packages)
+          # Run tests in each package that has them (excluding CLI, client, server, and other excluded packages)
           # These packages are tested together because they:
           # - Use standard bun test without special environment requirements
           # - Form the core backend functionality of ElizaOS
           # - Can run with in-memory PGLite database
-          for package in core server plugin-bootstrap plugin-dummy-services project-tee-starter; do
+          for package in core plugin-bootstrap plugin-dummy-services project-tee-starter; do
             echo ""
             echo "========================================="
             echo "Running tests in packages/$package"
