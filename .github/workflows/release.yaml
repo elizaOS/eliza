@@ -24,16 +24,6 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: 'Setup npm for npmjs'
         run: |
           npm config set registry https://registry.npmjs.org/
