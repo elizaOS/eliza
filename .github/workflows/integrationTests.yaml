@@ -74,6 +74,9 @@ jobs:
           fi
 
   # Integration tests job
+  # Runs tests for core packages except:
+  # - CLI: handled by cli-tests.yml (multi-OS, model downloads)
+  # - Client: handled by client-cypress-tests.yml (browser/DOM environment)
   integration-tests:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
@@ -129,13 +132,15 @@ jobs:
           export BUN_TEST_TIMEOUT=60000
 
           # CLI tests are handled by the dedicated cli-tests.yml workflow
-          echo "Starting integration tests (excluding CLI tests)..."
+          # Client tests are handled by the dedicated client-cypress-tests.yml workflow
+          echo "Starting integration tests (excluding CLI and client tests)..."
           
           # Track if any tests fail
           TESTS_FAILED=0
           
-          # Run tests in each package that has them (excluding CLI and other excluded packages)
-          for package in core client server plugin-bootstrap plugin-dummy-services project-tee-starter; do
+          # Run tests in each package that has them (excluding CLI, client, and other excluded packages)
+          # Note: client tests are handled by client-cypress-tests.yml workflow
+          for package in core server plugin-bootstrap plugin-dummy-services project-tee-starter; do
             echo ""
             echo "========================================="
             echo "Running tests in packages/$package"
