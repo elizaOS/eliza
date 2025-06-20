@@ -711,8 +711,8 @@ describe('settings utilities', () => {
 
       const decrypted = decryptedCharacter(character, mockRuntime);
 
-      expect(decrypted.settings?.secrets?.["API_KEY"]).toBe('secret-api-key');
-      expect(decrypted.settings?.secrets?.["PASSWORD"]).toBe('secret-password');
+      expect(decrypted.settings?.secrets?.['API_KEY']).toBe('secret-api-key');
+      expect(decrypted.settings?.secrets?.['PASSWORD']).toBe('secret-password');
     });
 
     it('should decrypt character.secrets', () => {

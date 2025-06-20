@@ -77,7 +77,7 @@ describe('Integration tests for v1 compatibility layer', () => {
     // Verify result
     expect(result.text).toBe('Provider processed state: Original state');
     expect(result.walletBalance).toBe(123.45);
-    expect(result.userInfo.name).toBe("Test User");
+    expect(result.userInfo.name).toBe('Test User');
 
     // Convert provider back to v1
     const v1ProviderAgain = fromV2Provider(v2Provider);
