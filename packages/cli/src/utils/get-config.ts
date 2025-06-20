@@ -28,54 +28,67 @@ const SAMPLE_ENV_TEMPLATE = `### elizaOS Environment Variables ###
 # To get started, copy this file to .env, or make a .env and add the settings you'd like to override
 # Please read the comments for each of the configurations
 
-# The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
-# i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai plugin
-# Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
-# For multi-agent, each agent will need keys for the various services it is connected to
-# You can use the .env or environment variables generally for shared keys, such as to model providers, 
-# database, etc, with scoped keys for services such as Telegram, Discord, etc
+## The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
+## i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai or ollama plugin
+## Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
+## For multi-agent, each agent will need keys for the various services it is connected to
+-------------------------------
+## You can use the .env or environment variables generally for shared keys, such as to model providers, 
+## database, etc, with scoped keys for services such as Telegram, Discord, etc
 
 ### MODEL PROVIDER KEYS ###
-# Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
-# and you can use them by overriding the base URL
+## Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
+## and you can use them by overriding the base URL
 
-# NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
-# need to get embeddings using another provider, for example openai or our local-ai plugin
+## NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
+## need to get embeddings using another provider, for example openai or our local-ai plugin
 
 # OpenAI Configuration
 OPENAI_API_KEY=
-# Use this to override the openai endpoint, for example for using together.ai, fireworks or other providers
+## Use this to override the openai endpoint, for example for using together.ai, fireworks or other providers
+## Optional overrides:
+--------------------------------
 # OPENAI_BASE_URL=
+# OPENAI_SMALL_MODEL=gpt-4o-mini
+# OPENAI_LARGE_MODEL=gpt-4o
+# OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+# OPENAI_EMBEDDING_URL=
+# OPENAI_EMBEDDING_DIMENSIONS=1536
+# OPENAI_IMAGE_DESCRIPTION_MODEL=gpt-4o-mini
+# OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS=8192
 
 # Anthropic Configuration
-# By default in most of our starter kits, Anthropic will take precedence over OpenAI in handling requests
-# Anthropic does not handle embeddings, so you may wish to use OpenAI for that, even while Claude is handling text generation
+## By default in most of our starter kits, Anthropic will take precedence over OpenAI in handling requests
+## Anthropic does not handle embeddings, so you may wish to use OpenAI for that, even while Claude is handling text generation
+--------------------------------
 ANTHROPIC_API_KEY=
+# Optional overrides:
+# ANTHROPIC_SMALL_MODEL=claude-3-5-haiku-latest
+# ANTHROPIC_LARGE_MODEL=claude-3-5-sonnet-latest
 
-# Cloudflare AI
-CLOUDFLARE_GW_ENABLED=
-CLOUDFLARE_AI_ACCOUNT_ID=
-CLOUDFLARE_AI_GATEWAY_ID=
-
-### LOCAL AI CONFIGURATION ###
-USE_LOCAL_AI=
-USE_STUDIOLM_TEXT_MODELS=
-USE_OLLAMA_TEXT_MODELS=
 
 # Ollama Configuration
-OLLAMA_API_ENDPOINT=
-OLLAMA_MODEL=
-USE_OLLAMA_EMBEDDING=
-OLLAMA_EMBEDDING_MODEL=
-OLLAMA_SMALL_MODEL=
-OLLAMA_MEDIUM_MODEL=
-OLLAMA_LARGE_MODEL=
+## Highly recommended to use gemma3:latest for text generation
+--------------------------------
+# OLLAMA_API_ENDPOINT=http://localhost:11434/api
+# OLLAMA_SMALL_MODEL=gemma3:latest
+# OLLAMA_MEDIUM_MODEL=gemma3:latest
+# OLLAMA_LARGE_MODEL=gemma3:latest
 
-# StudioLM Configuration
-STUDIOLM_SERVER_URL=
-STUDIOLM_SMALL_MODEL=
-STUDIOLM_MEDIUM_MODEL=
-STUDIOLM_EMBEDDING_MODEL=
+
+# Local AI Configuration
+## REMEMBER A GOOD AMOUNT OF VRAM IS NEEDED FOR THE LARGE LOCAL MODELS
+--------------------------------
+# Local AI Configuration
+# LOCAL_SMALL_MODEL=DeepHermes-3-Llama-3-3B-Preview-q4.gguf
+# LOCAL_LARGE_MODEL=DeepHermes-3-Llama-3-70B-Preview-q4.gguf
+# LOCAL_EMBEDDING_MODEL=bge-small-en-v1.5.Q4_K_M.gguf
+
+
+
+
+# Highly recommended to use nomic-embed-text for embeddings
+# OLLAMA_EMBEDDING_MODEL=nomic-embed-text 
 
 ### DATABASE ###
 # By default, Eliza will use a local pglite instance
@@ -91,6 +104,14 @@ POSTGRES_URL=
 # Logging Configuration (supported: fatal, error, warn, info, debug, trace | default: info)
 LOG_LEVEL=
 
+
+# Sentry Configuration
+--------------------------------
+## DO NOT CHANGE THIS UNLESS YOU KNOW WHAT YOU ARE DOING
+--------------------------------
+# Sentry is a tool for monitoring and logging errors and exceptions
+# It is used to track errors and exceptions in the agent
+--------------------------------
 # Sentry Configuration
 SENTRY_LOGGING=true
 SENTRY_DSN=
@@ -98,119 +119,6 @@ SENTRY_ENVIRONMENT=
 SENTRY_TRACES_SAMPLE_RATE=
 SENTRY_SEND_DEFAULT_PII=
 
-### API KEYS ###
-# Many services require API keys to function
-# Most plugins will indicate what is needed in their README.md and throw helpful errors if they are missing
-BIRDEYE_API_KEY=
-JUPITER_API_KEY=
-HELIUS_API_KEY=
-COINMARKETCAP_API_KEY=
-ZEROEX_API_KEY=
-COINGECKO_API_KEY=
-
-### SINGLE AGENT VARIABLES ###
-# If you are running multiple agents, you will need to configure these variables in the agent secrets 
-# (available in the GUI) OR you can namespace the secrets and connect them up in your character definition
-
-# Example: 
-# settings: {
-#   process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN
-# }
-
-# Note: See below for multi-agent examples
-
-# Discord Configuration
-DISCORD_APPLICATION_ID=
-DISCORD_API_TOKEN=
-
-# Telegram Configuration
-TELEGRAM_BOT_TOKEN=
-
-# ===============================================================================
-# TWITTER PLUGIN CONFIGURATION
-# ===============================================================================
-
-# Required Twitter API Credentials
-TWITTER_API_KEY=
-TWITTER_API_SECRET_KEY=
-TWITTER_ACCESS_TOKEN=
-TWITTER_ACCESS_TOKEN_SECRET=
-
-# Target Users and Search Configuration
-TWITTER_TARGET_USERS=
-TWITTER_RETRY_LIMIT=5
-TWITTER_POLL_INTERVAL=120
-TWITTER_SEARCH_ENABLE=true
-TWITTER_DRY_RUN=false
-
-# Autonomous Posting Configuration
-TWITTER_POST_ENABLE=false
-TWITTER_POST_INTERVAL_MIN=90
-TWITTER_POST_INTERVAL_MAX=180
-TWITTER_POST_IMMEDIATELY=false
-TWITTER_POST_INTERVAL_VARIANCE=0.2
-
-# Interaction Configuration
-TWITTER_INTERACTION_INTERVAL_MIN=15
-TWITTER_INTERACTION_INTERVAL_MAX=30
-TWITTER_INTERACTION_INTERVAL_VARIANCE=0.3
-
-# Timeline Algorithm Configuration
-TWITTER_TIMELINE_ALGORITHM=weighted
-TWITTER_TIMELINE_USER_BASED_WEIGHT=3
-TWITTER_TIMELINE_TIME_BASED_WEIGHT=2
-TWITTER_TIMELINE_RELEVANCE_WEIGHT=5
-
-# Tweet and Processing Limits
-TWITTER_MAX_TWEET_LENGTH=4000
-TWITTER_MAX_INTERACTIONS_PER_RUN=10
-
-# Response Behavior
-TWITTER_DM_ONLY=false
-TWITTER_ENABLE_ACTION_PROCESSING=false
-TWITTER_ACTION_INTERVAL=240
-TWITTER_AUTO_RESPOND_MENTIONS=true
-TWITTER_AUTO_RESPOND_REPLIES=true
-
-# EVM Configuration
-EVM_PRIVATE_KEY=
-EVM_CHAINS=mainnet,sepolia,base,arbitrum,polygon
-EVM_PROVIDER_URL=
-
-# Solana Configuration
-SOLANA_PUBLIC_KEY=
-SOLANA_PRIVATE_KEY=
-
-### MULTI-AGENT CONFIGURATION ###
-# Settings for The Org
-# The Org is an example of a multi-agent swarm
-# Available here: https://github.com/elizaOS/the-org
-# This is an example of how environment variables can be scoped per-project
-
-# Community Manager
-COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=
-COMMUNITY_MANAGER_DISCORD_API_TOKEN=
-
-# Social Media Manager
-SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=
-SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=
-
-# Liaison
-LIAISON_DISCORD_APPLICATION_ID=
-LIAISON_DISCORD_API_TOKEN=
-
-# Project Manager
-PROJECT_MANAGER_DISCORD_APPLICATION_ID=
-PROJECT_MANAGER_DISCORD_API_TOKEN=
-
-# Developer Relations
-DEV_REL_DISCORD_APPLICATION_ID=
-DEV_REL_DISCORD_API_TOKEN=
-DEVREL_IMPORT_KNOWLEDGE=true
-
-# Investment Manager
-INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=
-INVESTMENT_MANAGER_DISCORD_API_TOKEN=
 `;
 
 /**
