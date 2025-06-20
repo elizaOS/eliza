@@ -595,13 +595,30 @@ export function AppSidebar({
 }
 
 /* ---------- footer link ---------- */
-const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label: string }) => (
-  <SidebarMenuItem>
-    <NavLink to={to}>
-      <SidebarMenuButton>
-        <Icon className="h-4 w-4 mr-3" />
-        {label}
-      </SidebarMenuButton>
-    </NavLink>
-  </SidebarMenuItem>
-);
+const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label: string }) => {
+  const isExternal = to.startsWith('http://') || to.startsWith('https://');
+
+  if (isExternal) {
+    return (
+      <SidebarMenuItem>
+        <a href={to} target="_blank" rel="noopener noreferrer">
+          <SidebarMenuButton>
+            <Icon className="h-4 w-4 mr-3" />
+            {label}
+          </SidebarMenuButton>
+        </a>
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <SidebarMenuItem>
+      <NavLink to={to}>
+        <SidebarMenuButton>
+          <Icon className="h-4 w-4 mr-3" />
+          {label}
+        </SidebarMenuButton>
+      </NavLink>
+    </SidebarMenuItem>
+  );
+};
