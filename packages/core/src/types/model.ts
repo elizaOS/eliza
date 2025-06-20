@@ -195,7 +195,7 @@ export type JSONSchema = {
  * Parameters for object generation models
  * @template T - The expected return type, inferred from schema if provided
  */
-export interface ObjectGenerationParams<T = any> extends BaseModelParams {
+export interface ObjectGenerationParams extends BaseModelParams {
   /** The prompt describing the object to generate */
   prompt: string;
   /** Optional JSON schema for validation */
@@ -229,8 +229,8 @@ export interface ModelParamsMap {
   [ModelType.TEXT_TO_SPEECH]: TextToSpeechParams | string;
   [ModelType.AUDIO]: AudioProcessingParams;
   [ModelType.VIDEO]: VideoProcessingParams;
-  [ModelType.OBJECT_SMALL]: ObjectGenerationParams<any>;
-  [ModelType.OBJECT_LARGE]: ObjectGenerationParams<any>;
+  [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
+  [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
   // Allow string index for custom model types
   [key: string]: BaseModelParams | any;
 }

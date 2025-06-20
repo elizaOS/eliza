@@ -17,10 +17,4 @@
     "typeRoots": ["./node_modules/@types"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": [
-    "src/**/__tests__/**",
-    "src/**/*.test.ts",
-    "src/**/*.spec.ts",
-    "src/**/test_resources/**"
-  ]
 }

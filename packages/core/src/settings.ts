@@ -353,7 +353,7 @@ export function encryptedCharacter(character: Character): Character {
  * @param {IAgentRuntime} runtime - The runtime information needed for salt generation
  * @returns {Character} - A copy of the character with decrypted secrets
  */
-export function decryptedCharacter(character: Character, runtime: IAgentRuntime): Character {
+export function decryptedCharacter(character: Character, _runtime: IAgentRuntime): Character {
   // Create a deep copy to avoid modifying the original
   const decryptedChar = JSON.parse(JSON.stringify(character));
   const salt = getSalt();

@@ -43,7 +43,7 @@ describe('Integration tests for v1 compatibility layer', () => {
     // Create a v1 provider
     const v1Provider: Provider = {
       name: 'testProvider',
-      get: async (runtime, message, state) => {
+      get: async (_runtime, _message, state) => {
         // Verify the state has correct v1 structure
         expect(state?.userId).toBe(userId);
         expect(state?.bio).toBe('Test bio');
@@ -69,7 +69,7 @@ describe('Integration tests for v1 compatibility layer', () => {
     const result = (await v2Provider.get(mockRuntime, mockMessage, v2State)) as {
       text: string;
       walletBalance: number;
-      userInfo: { name: 'string' };
+      userInfo: { name: string };
     };
 
     console.log('result', result);
@@ -77,7 +77,7 @@ describe('Integration tests for v1 compatibility layer', () => {
     // Verify result
     expect(result.text).toBe('Provider processed state: Original state');
     expect(result.walletBalance).toBe(123.45);
-    expect(result.userInfo.name).toBe('Test User');
+    expect(result.userInfo.name).toBe("Test User");
 
     // Convert provider back to v1
     const v1ProviderAgain = fromV2Provider(v2Provider);

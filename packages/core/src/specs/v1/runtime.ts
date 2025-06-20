@@ -117,10 +117,10 @@ export class AgentRuntime implements IAgentRuntime {
     return (this._runtime as any).clients;
   }
 
-  registerMemoryManager(manager: IMemoryManager): void {
+  registerMemoryManager(_manager: IMemoryManager): void {
     // WRITE ME
   }
-  getMemoryManager(tableName: string): any {
+  getMemoryManager(_tableName: string): any {
     // WRITE ME
   }
   getService<T extends Service>(service: ServiceType): T | null {
@@ -221,7 +221,7 @@ export class AgentRuntime implements IAgentRuntime {
    * Register an adapter for the agent to use.
    * @param adapter The adapter to register.
    */
-  registerAdapter(adapter: Adapter) {
+  registerAdapter(_adapter: Adapter) {
     // WRITE ME, maybe...
   }
 
@@ -262,7 +262,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @param userId - The user ID to ensure the existence of.
    * @throws An error if the participant cannot be added.
    */
-  async ensureParticipantExists(userId: UUID, roomId: UUID) {
+  async ensureParticipantExists(_userId: UUID, _roomId: UUID) {
     // WRITE ME
   }
 
@@ -273,11 +273,11 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns
    */
   async ensureUserExists(
-    userId: UUID,
-    userName: string | null,
-    name: string | null,
-    email?: string | null,
-    source?: string | null
+    _userId: UUID,
+    _userName: string | null,
+    _name: string | null,
+    _email?: string | null,
+    _source?: string | null
   ) {}
 
   async ensureParticipantInRoom(userId: UUID, roomId: UUID) {
@@ -288,7 +288,7 @@ export class AgentRuntime implements IAgentRuntime {
     userId: UUID,
     roomId: UUID,
     userName?: string,
-    userScreenName?: string,
+    _userScreenName?: string,
     source?: string
   ) {
     return this._runtime.ensureConnection({
@@ -325,7 +325,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @param message The message to compose the state from.
    * @returns The state of the agent.
    */
-  async composeState(message: Memory, additionalKeys: { [key: string]: unknown } = {}) {
+  async composeState(message: Memory, _additionalKeys: { [key: string]: unknown } = {}) {
     return this._runtime.composeState(message as any, []);
   }
 

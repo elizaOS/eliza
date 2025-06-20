@@ -6,7 +6,10 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": ["node", "bun-types"]
+    "types": ["node", "bun-types"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": true
   },
   "include": ["src/**/*", "../plugin-local-ai/src/types", "src/__tests__"]
 }
