@@ -106,8 +106,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <AvatarImage src={avatarUrl} alt={agentName} />
           {/* Fallback can be initials or generic icon */}
         </Avatar>
-        <div className="flex-1">
-          <CardTitle className="text-lg truncate" title={agentName}>
+        <div className="overflow-hidden">
+          <CardTitle className="text-lg truncate overflow-hidden whitespace-nowrap text-ellipsis" title={agentName}>
             {agentName}
           </CardTitle>
           <div className="flex items-center gap-1.5 mt-1">
