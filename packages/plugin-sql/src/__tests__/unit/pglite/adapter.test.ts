@@ -1,9 +1,18 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
-import { logger } from '@elizaos/core';
 
-// Mock the logger to avoid console output during tests
-// In bun:test, we'll use a simpler approach
+// Mock the logger module
+mock.module('@elizaos/core', () => ({
+  logger: {
+    debug: mock(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+  }
+}));
+
+// Import after mocking
+import { logger } from '@elizaos/core';
 
 describe('PgliteDatabaseAdapter', () => {
   let adapter: PgliteDatabaseAdapter;
@@ -11,7 +20,11 @@ describe('PgliteDatabaseAdapter', () => {
   const agentId = '00000000-0000-0000-0000-000000000000';
 
   beforeEach(() => {
-    // Mocks auto-clear in bun:test;
+    // Clear mocks before each test
+    (logger.debug as any).mockClear();
+    (logger.info as any).mockClear();
+    (logger.warn as any).mockClear();
+    (logger.error as any).mockClear();
 
     // Create a mock manager
     mockManager = {

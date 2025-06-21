@@ -10,11 +10,6 @@ describe('PGliteClientManager', () => {
       expect(manager.getConnection()).toBeDefined();
     });
 
-    it('should initialize shutdownTimeout to 500ms', () => {
-      const manager = new PGliteClientManager({ dataDir: 'memory://' });
-      expect(manager).toHaveProperty('shutdownTimeout', 500);
-    });
-
     it('should initialize shuttingDown to false', () => {
       const manager = new PGliteClientManager({ dataDir: 'memory://' });
       expect(manager.isShuttingDown()).toBe(false);

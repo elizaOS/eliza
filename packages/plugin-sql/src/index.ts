@@ -50,8 +50,6 @@ export function createDatabaseAdapter(
   },
   agentId: UUID
 ): IDatabaseAdapter {
-  const dataDir = resolvePgliteDir(config.dataDir);
-
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -60,6 +58,9 @@ export function createDatabaseAdapter(
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
+
+  // Only resolve PGLite directory when we're actually using PGLite
+  const dataDir = resolvePgliteDir(config.dataDir);
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
