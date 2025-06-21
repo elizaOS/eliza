@@ -95,25 +95,60 @@ export type CharacterFormProps = {
 const useContainerWidth = (threshold: number = 768) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentWidthRef = useRef<number>(0);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Debounced resize handler
+    const handleResize = (width: number) => {
+      // Clear existing timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      // Set new timer
+      debounceTimerRef.current = setTimeout(() => {
+        const shouldShowLabels = width >= threshold;
+        // Only update if the value actually changes
+        setShowLabels((prev) => {
+          if (prev !== shouldShowLabels) {
+            return shouldShowLabels;
+          }
+          return prev;
+        });
+        currentWidthRef.current = width;
+      }, 150); // 150ms debounce
+    };
+
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width } = entry.contentRect;
-        setShowLabels(width >= threshold);
+        // Only trigger if width actually changed significantly (more than 5px)
+        if (Math.abs(width - currentWidthRef.current) > 5) {
+          handleResize(width);
+        }
       }
     });
 
     resizeObserver.observe(container);
 
-    // Initial check
-    const { width } = container.getBoundingClientRect();
-    setShowLabels(width >= threshold);
+    // Initial check with delay to avoid race conditions
+    setTimeout(() => {
+      const { width } = container.getBoundingClientRect();
+      currentWidthRef.current = width;
+      setShowLabels(width >= threshold);
+    }, 0);
 
-    return () => resizeObserver.disconnect();
+    // Cleanup
+    return () => {
+      resizeObserver.disconnect();
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [threshold]);
 
   return { containerRef, showLabels };
@@ -144,7 +179,7 @@ export default function CharacterForm({
   const [showRightScroll, setShowRightScroll] = useState(false);
   const [showMissingSecretsDialog, setShowMissingSecretsDialog] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<Agent | null>(null);
-  
+
   // Get required secrets based on enabled plugins
   const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
   const { requiredSecrets } = useRequiredSecrets(enabledPlugins);
@@ -242,7 +277,7 @@ export default function CharacterForm({
             name: 'settings.voice.model',
             description: 'Voice model for audio synthesis',
             fieldType: 'select',
-            getValue: (char) => char.settings?.voice?.model || '',
+            getValue: (char) => (char.settings as Record<string, any>)?.voice?.model || '',
             options: allVoiceModels.map((model) => ({
               value: model.value,
               label: model.label,
@@ -348,7 +383,9 @@ export default function CharacterForm({
             const currentPlugins = Array.isArray(characterValue.plugins)
               ? [...characterValue.plugins]
               : [];
-            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
+            const previousVoiceModel = getVoiceModelByValue(
+              (characterValue.settings as Record<string, any>)?.voice?.model
+            );
 
             // Get the required plugin for the new voice model
             const requiredPlugin = providerPluginMap[voiceModel.provider];
@@ -410,11 +447,11 @@ export default function CharacterForm({
   const ensureAvatarSize = async (char: Agent): Promise<Agent> => {
     if (char.settings?.avatar) {
       const img = new Image();
-      img.src = char.settings.avatar;
+      img.src = char.settings.avatar as string;
       await new Promise((resolve) => (img.onload = resolve));
 
       if (img.width > AVATAR_IMAGE_MAX_SIZE || img.height > AVATAR_IMAGE_MAX_SIZE) {
-        const response = await fetch(char.settings.avatar);
+        const response = await fetch(char.settings.avatar as string);
         const blob = await response.blob();
         const file = new File([blob], 'avatar.jpg', { type: blob.type });
         const compressedImage = await compressImage(file);
@@ -436,7 +473,7 @@ export default function CharacterForm({
 
     try {
       const updatedCharacter = await ensureAvatarSize(characterValue);
-      
+
       // Validate required secrets if we have a secret panel ref
       if (secretPanelRef?.current) {
         const secretValidation = secretPanelRef.current.validateSecrets();
@@ -444,17 +481,6 @@ export default function CharacterForm({
           // Show the warning dialog instead of blocking
           setIsSubmitting(false);
           setPendingSubmit(updatedCharacter);
-          
-          // Prepare missing secrets data with plugin info
-          const missingSecretsWithInfo = secretValidation.missingSecrets.map(secretName => {
-            const reqSecret = requiredSecrets.find(s => s.name === secretName);
-            return {
-              name: secretName,
-              plugin: reqSecret?.plugin,
-              description: reqSecret?.description,
-            };
-          });
-          
           setShowMissingSecretsDialog(true);
           return;
         }
@@ -973,8 +999,8 @@ export default function CharacterForm({
         missingSecrets={(() => {
           if (!secretPanelRef?.current) return [];
           const validation = secretPanelRef.current.validateSecrets();
-          return validation.missingSecrets.map(secretName => {
-            const reqSecret = requiredSecrets.find(s => s.name === secretName);
+          return validation.missingSecrets.map((secretName) => {
+            const reqSecret = requiredSecrets.find((s) => s.name === secretName);
             return {
               name: secretName,
               plugin: reqSecret?.plugin,

@@ -1,7 +1,29 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { Agent } from '@elizaos/core';
-import { Check, CloudUpload, Eye, EyeOff, MoreVertical, X, AlertCircle } from 'lucide-react';
+import {
+  Check,
+  CloudUpload,
+  Eye,
+  EyeOff,
+  X,
+  AlertCircle,
+  FileText,
+  Copy,
+  Trash2,
+  Edit3,
+} from 'lucide-react';
 import {
   useEffect,
   useRef,
@@ -14,6 +36,7 @@ import {
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type EnvVariable = {
   name: string;
@@ -48,9 +71,13 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     const [isDragging, setIsDragging] = useState(false);
     const [deletedKeys, setDeletedKeys] = useState<string[]>([]);
     const [visibleSecrets, setVisibleSecrets] = useState<Set<number>>(new Set());
+
+    // Raw editor modal state
+    const [rawEditorOpen, setRawEditorOpen] = useState(false);
+    const [rawEditorContent, setRawEditorContent] = useState('');
+
     const lastAgentIdRef = useRef<string | null>(null);
     const lastSecretsRef = useRef<string>('');
-
     const dropRef = useRef<HTMLDivElement>(null);
     const lastRequiredSecretsKeyRef = useRef<string>('');
 
@@ -112,6 +139,134 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       });
     };
 
+    // Convert envs to raw editor format - include ALL variables, even empty required ones
+    const envsToRawText = useCallback(() => {
+      const lines: string[] = [];
+
+      // Add a header comment
+      lines.push('# Environment Variables');
+      lines.push('');
+
+      // Group by required vs optional
+      const requiredEnvs = envs.filter((env) => env.isRequired);
+      const optionalEnvs = envs.filter(
+        (env) => !env.isRequired && env.value && env.value.trim() !== ''
+      );
+
+      // Add required secrets section
+      if (requiredEnvs.length > 0) {
+        lines.push('# Required Secrets');
+        requiredEnvs.forEach((env) => {
+          if (env.plugin) {
+            lines.push(`# Required by ${env.plugin}`);
+          }
+          if (env.description) {
+            lines.push(`# ${env.description}`);
+          }
+          lines.push(`${env.name}=${env.value || ''}`);
+          lines.push('');
+        });
+      }
+
+      // Add optional secrets section
+      if (optionalEnvs.length > 0) {
+        lines.push('# Optional Variables');
+        optionalEnvs.forEach((env) => {
+          lines.push(`${env.name}=${env.value}`);
+        });
+      }
+
+      return lines.join('\n');
+    }, [envs]);
+
+    // Parse raw editor content back to envs
+    const parseRawText = useCallback((text: string) => {
+      const lines = text.split('\n');
+      const parsedEnvs: Record<string, string> = {};
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+
+        const [key, ...rest] = trimmedLine.split('=');
+        const val = rest
+          .join('=')
+          .trim()
+          .replace(/^['"]|['"]$/g, '');
+        if (key && key.trim()) {
+          parsedEnvs[key.trim()] = val;
+        }
+      }
+
+      return parsedEnvs;
+    }, []);
+
+    // Handle raw editor save - this should trigger the parent onChange
+    const handleRawEditorSave = () => {
+      const parsedEnvs = parseRawText(rawEditorContent);
+
+      // Create a new envs array with updates from raw editor
+      const newEnvs = envs
+        .map((env) => {
+          if (parsedEnvs.hasOwnProperty(env.name)) {
+            const cleanValue = parsedEnvs[env.name].startsWith('process.env.')
+              ? ''
+              : parsedEnvs[env.name];
+            return { ...env, value: cleanValue, isModified: env.value !== cleanValue };
+          }
+          // Keep required secrets even if not in parsed content
+          if (env.isRequired) {
+            return { ...env, value: '', isModified: env.value !== '' };
+          }
+          // Remove non-required secrets that aren't in parsed content
+          return null;
+        })
+        .filter(Boolean) as EnvVariable[];
+
+      // Add new secrets from parsed content
+      Object.entries(parsedEnvs).forEach(([key, value]) => {
+        const exists = newEnvs.some((env) => env.name === key);
+        if (!exists) {
+          const cleanValue = value.startsWith('process.env.') ? '' : value;
+          const reqSecret = requiredSecrets.find((s) => s.name === key);
+          newEnvs.push({
+            name: key,
+            value: cleanValue,
+            isNew: true,
+            isModified: false,
+            isDeleted: false,
+            isRequired: reqSecret?.required || false,
+            description: reqSecret?.description,
+            example: reqSecret?.example,
+            plugin: reqSecret?.plugin,
+          });
+        }
+      });
+
+      // Sort: required secrets first, then alphabetically
+      newEnvs.sort((a, b) => {
+        if (a.isRequired && !b.isRequired) return -1;
+        if (!a.isRequired && b.isRequired) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setEnvs(newEnvs);
+      setRawEditorOpen(false);
+
+      // The useEffect watching envs will trigger onChange to parent
+    };
+
+    // Open raw editor modal
+    const openRawEditor = () => {
+      setRawEditorContent(envsToRawText());
+      setRawEditorOpen(true);
+    };
+
+    // Copy env content to clipboard
+    const copyEnvContent = () => {
+      navigator.clipboard.writeText(rawEditorContent);
+    };
+
     // Load initial secrets from characterValue and merge with required secrets
     useEffect(() => {
       // Only reset if we're switching to a different agent or this is the first load
@@ -121,7 +276,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
             // Filter out process.env values - these should not be stored as actual values
             const stringValue = String(value);
             const cleanValue = stringValue.startsWith('process.env.') ? '' : stringValue;
-            
+
             return {
               name,
               value: cleanValue,
@@ -188,7 +343,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           .join(',');
         lastRequiredSecretsKeyRef.current = requiredSecretsKey;
       }
-    }, [characterValue.id, characterValue.settings?.secrets, requiredSecrets]); // Be more specific about dependencies
+    }, [characterValue.id, characterValue.settings?.secrets, requiredSecrets]);
 
     // Sync secrets when plugins change (not just when agent changes)
     useEffect(() => {
@@ -274,12 +429,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
         return updatedEnvs;
       });
-    }, [
-      requiredSecrets,
-      isLoadingSecrets,
-      requiredSecrets.length,
-      requiredSecrets.map((s) => s.name).join(','),
-    ]);
+    }, [requiredSecrets, isLoadingSecrets]);
 
     // Force cleanup of non-required secrets (alternative approach)
     useEffect(() => {
@@ -345,7 +495,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       }, 100); // 100ms debounce
 
       return () => clearTimeout(timeoutId);
-    }, [envs, deletedKeys, onChange, characterValue?.settings?.secrets]); // Remove getCurrentSecrets from dependencies
+    }, [envs, deletedKeys, onChange, characterValue?.settings?.secrets, getCurrentSecrets]);
 
     const handleFileUpload = useCallback(
       (file: File) => {
@@ -425,17 +575,17 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
         e.stopPropagation();
       };
 
-      const highlight = (e: Event) => {
+      const highlight = () => {
         setIsDragging(true);
       };
 
-      const unhighlight = (e: Event) => {
+      const unhighlight = () => {
         setIsDragging(false);
       };
 
       const handleDrop = (e: DragEvent) => {
         preventDefaults(e);
-        unhighlight(e);
+        unhighlight();
 
         const file = e.dataTransfer?.files?.[0];
         if (file && file.name.endsWith('.env')) {
@@ -463,7 +613,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     const addEnv = () => {
       if (name && value) {
         const exists = envs.some((env) => env.name === name);
-        
+
         // Filter out process.env values
         const cleanValue = value.startsWith('process.env.') ? '' : value;
 
@@ -496,7 +646,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           setValue('');
         } else {
           setEnvs(
-            envs.map((env) => (env.name === name ? { ...env, value: cleanValue, isModified: true } : env))
+            envs.map((env) =>
+              env.name === name ? { ...env, value: cleanValue, isModified: true } : env
+            )
           );
           setName('');
           setValue('');
@@ -520,7 +672,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       const updatedEnvs = [...envs];
       // Filter out process.env values
       const cleanValue = editedValue.startsWith('process.env.') ? '' : editedValue;
-      
+
       if (updatedEnvs[index].value !== cleanValue) {
         updatedEnvs[index].value = cleanValue;
         updatedEnvs[index].isModified = true;
@@ -565,53 +717,583 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       return !env || !env.value || env.value.trim() === '';
     });
 
+    // Custom scrollbar styles for input containers - visible scrollbar like Railway
+    const scrollbarContainerClass = `
+      overflow-x-auto 
+      overflow-y-hidden
+      [&::-webkit-scrollbar]:h-2
+      [&::-webkit-scrollbar]:block
+      [&::-webkit-scrollbar]:visible
+      [&::-webkit-scrollbar-track]:bg-gray-100
+      [&::-webkit-scrollbar-track]:dark:bg-gray-800
+      [&::-webkit-scrollbar-track]:rounded-full
+      [&::-webkit-scrollbar-thumb]:bg-gray-400
+      [&::-webkit-scrollbar-thumb]:dark:bg-gray-600
+      [&::-webkit-scrollbar-thumb]:rounded-full
+      [&::-webkit-scrollbar-thumb]:hover:bg-gray-500
+      [&::-webkit-scrollbar-thumb]:dark:hover:bg-gray-500
+      [scrollbar-width:thin]
+      [scrollbar-color:theme(colors.gray.400)_theme(colors.gray.100)]
+      dark:[scrollbar-color:theme(colors.gray.600)_theme(colors.gray.800)]
+    `
+      .replace(/\s+/g, ' ')
+      .trim();
+
     return (
-      <div className="w-full h-full overflow-y-auto">
-        <div className="rounded-lg w-full flex flex-col gap-3">
-          <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Environment Settings</h2>
+      <div className="w-full h-full flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Variables</h2>
+            <Badge variant="secondary" className="text-xs">
+              {envs.filter((env) => env.value && env.value.trim() !== '').length} Service Variables
+            </Badge>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openRawEditor}
+            className="flex items-center gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            Raw Editor
+          </Button>
+        </div>
 
-          {/* Show loading state for required secrets */}
-          {isLoadingSecrets && (
-            <div className="mb-4">
-              <Skeleton className="h-4 w-48 mb-2" />
-              <Skeleton className="h-4 w-64" />
+        {/* Content */}
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-4">
+            {/* Show loading state for required secrets */}
+            {isLoadingSecrets && (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            )}
+
+            {/* Show alert if there are missing required secrets */}
+            {!isLoadingSecrets && missingRequiredSecrets.length > 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Missing required secrets:</strong>
+                  <ul className="mt-2 space-y-1">
+                    {missingRequiredSecrets.map((secret) => (
+                      <li key={secret.name} className="text-sm">
+                        • <code className="font-mono">{secret.name}</code>
+                        {secret.plugin && (
+                          <span className="text-muted-foreground ml-1">
+                            (required by {secret.plugin})
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Add new variable form */}
+            <div className="space-y-2">
+              {/* Desktop layout */}
+              <div className="hidden md:grid md:grid-cols-[1fr_2fr_auto] gap-2 items-end">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="new-secret-name"
+                    className="text-xs font-medium text-muted-foreground uppercase"
+                  >
+                    Name
+                  </label>
+                  <Input
+                    id="new-secret-name"
+                    placeholder="VARIABLE_NAME"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="font-mono text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addEnv();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="new-secret-value"
+                    className="text-xs font-medium text-muted-foreground uppercase"
+                  >
+                    Value
+                  </label>
+                  <div className="relative">
+                    <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                      <Input
+                        id="new-secret-value"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Enter value..."
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                        style={{ minWidth: '100%' }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addEnv();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <Button type="button" onClick={addEnv} size="sm">
+                  Add
+                </Button>
+              </div>
+
+              {/* Mobile layout */}
+              <div className="md:hidden space-y-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="new-secret-name-mobile"
+                    className="text-xs font-medium text-muted-foreground uppercase"
+                  >
+                    Name
+                  </label>
+                  <Input
+                    id="new-secret-name-mobile"
+                    placeholder="VARIABLE_NAME"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="font-mono text-sm w-full"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        // Focus on value input on mobile
+                        document.getElementById('new-secret-value-mobile')?.focus();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="new-secret-value-mobile"
+                    className="text-xs font-medium text-muted-foreground uppercase"
+                  >
+                    Value
+                  </label>
+                  <div className="relative">
+                    <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                      <Input
+                        id="new-secret-value-mobile"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Enter value..."
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                        style={{ minWidth: '100%' }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addEnv();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <Button type="button" onClick={addEnv} size="sm" className="w-full">
+                  Add Variable
+                </Button>
+              </div>
             </div>
-          )}
 
-          {/* Show alert if there are missing required secrets */}
-          {!isLoadingSecrets && missingRequiredSecrets.length > 0 && (
-            <Alert className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Missing required secrets:</strong>
-                <ul className="mt-2 space-y-1">
-                  {missingRequiredSecrets.map((secret) => (
-                    <li key={secret.name} className="text-sm">
-                      • <code className="font-mono">{secret.name}</code>
-                      {secret.plugin && (
-                        <span className="text-muted-foreground ml-1">
-                          (required by {secret.plugin})
-                        </span>
-                      )}
-                    </li>
+            {/* Variables Table */}
+            {envs.length > 0 && (
+              <TooltipProvider>
+                {/* Desktop Table Layout */}
+                <div className="hidden md:block border rounded-lg overflow-hidden relative">
+                  <div className="bg-muted/50 px-4 py-2 border-b">
+                    <div className="grid grid-cols-[1fr_2fr_auto] gap-4 text-xs font-medium text-muted-foreground uppercase">
+                      <div>Name</div>
+                      <div>Value</div>
+                      <div className="text-center">Actions</div>
+                    </div>
+                  </div>
+
+                  {/* Scrollable content area for variables */}
+                  <div className="max-h-[400px] overflow-y-auto">
+                    {envs.map((env, index) => (
+                      <div
+                        key={`${env.name}-${index}`}
+                        className={`grid grid-cols-[1fr_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${
+                          env.isRequired && (!env.value || env.value.trim() === '')
+                            ? 'bg-red-500/5'
+                            : ''
+                        }`}
+                      >
+                        {/* Name Column */}
+                        <div className="min-w-0 pr-2">
+                          <div className="flex items-center gap-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <code className="font-mono text-sm font-medium truncate cursor-default block">
+                                  {env.name}
+                                </code>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="font-mono">{env.name}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                            {env.isRequired && (
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                Required
+                              </Badge>
+                            )}
+                          </div>
+                          {env.description && (
+                            <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {env.description}
+                            </div>
+                          )}
+                          {env.plugin && (
+                            <div className="text-xs text-muted-foreground truncate">
+                              Required by: {env.plugin}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Value Column */}
+                        <div className="min-w-0">
+                          {editingIndex === index ? (
+                            <div className="flex items-center gap-2">
+                              <div className="relative flex-1">
+                                <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                                  <Input
+                                    value={editedValue}
+                                    onChange={(e) => setEditedValue(e.target.value)}
+                                    className="font-mono text-sm border-0 focus-visible:ring-0 w-auto min-w-full"
+                                    style={{ minWidth: '100%' }}
+                                    type={visibleSecrets.has(index) ? 'text' : 'password'}
+                                    placeholder={env.example || 'Enter value...'}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        saveEdit(index);
+                                      } else if (e.key === 'Escape') {
+                                        cancelEdit();
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleSecretVisibility(index)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  {visibleSecrets.has(index) ? (
+                                    <EyeOff className="w-4 h-4" />
+                                  ) : (
+                                    <Eye className="w-4 h-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => saveEdit(index)}
+                                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={cancelEdit}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 group">
+                              <div
+                                className={`flex-1 border rounded-md px-3 py-1 ${scrollbarContainerClass}`}
+                              >
+                                {visibleSecrets.has(index) ? (
+                                  <code className="font-mono text-sm whitespace-nowrap block">
+                                    {env.value || (
+                                      <span className="text-muted-foreground italic">
+                                        {env.example ? `e.g. ${env.example}` : 'Not set'}
+                                      </span>
+                                    )}
+                                  </code>
+                                ) : env.value ? (
+                                  <code className="font-mono text-sm text-muted-foreground block">
+                                    ••••••••
+                                  </code>
+                                ) : (
+                                  <span className="text-muted-foreground italic text-sm block">
+                                    Not set
+                                  </span>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleSecretVisibility(index)}
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                {visibleSecrets.has(index) ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions Column */}
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditing(index)}
+                            disabled={editingIndex !== null && editingIndex !== index}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeEnv(index)}
+                            disabled={editingIndex !== null}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mobile Card Layout */}
+                <div className="md:hidden space-y-3">
+                  {envs.map((env, index) => (
+                    <div
+                      key={`${env.name}-${index}-mobile`}
+                      className={`border rounded-lg p-4 space-y-3 ${
+                        env.isRequired && (!env.value || env.value.trim() === '')
+                          ? 'border-red-500/50 bg-red-500/5'
+                          : ''
+                      }`}
+                    >
+                      {/* Header with name and required badge */}
+                      <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <code className="font-mono text-sm font-medium break-all">
+                                {env.name}
+                              </code>
+                              {env.isRequired && (
+                                <Badge variant="outline" className="text-xs">
+                                  Required
+                                </Badge>
+                              )}
+                            </div>
+                            {env.description && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {env.description}
+                              </div>
+                            )}
+                            {env.plugin && (
+                              <div className="text-xs text-muted-foreground">
+                                Required by: {env.plugin}
+                              </div>
+                            )}
+                          </div>
+                          {/* Actions on mobile */}
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEditing(index)}
+                              disabled={editingIndex !== null && editingIndex !== index}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeEnv(index)}
+                              disabled={editingIndex !== null}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Value section */}
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-muted-foreground uppercase">
+                          Value
+                        </div>
+                        {editingIndex === index ? (
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                                <Input
+                                  value={editedValue}
+                                  onChange={(e) => setEditedValue(e.target.value)}
+                                  className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                                  style={{ minWidth: '100%' }}
+                                  type={visibleSecrets.has(index) ? 'text' : 'password'}
+                                  placeholder={env.example || 'Enter value...'}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      saveEdit(index);
+                                    } else if (e.key === 'Escape') {
+                                      cancelEdit();
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleSecretVisibility(index)}
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                              >
+                                {visibleSecrets.has(index) ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => saveEdit(index)}
+                                className="flex-1"
+                              >
+                                <Check className="w-4 h-4 mr-2" />
+                                Save
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={cancelEdit}
+                                className="flex-1"
+                              >
+                                <X className="w-4 h-4 mr-2" />
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`flex-1 border rounded-md px-3 py-1 ${scrollbarContainerClass}`}
+                            >
+                              {visibleSecrets.has(index) ? (
+                                <code className="font-mono text-sm whitespace-nowrap block">
+                                  {env.value || (
+                                    <span className="text-muted-foreground italic">
+                                      {env.example ? `e.g. ${env.example}` : 'Not set'}
+                                    </span>
+                                  )}
+                                </code>
+                              ) : env.value ? (
+                                <code className="font-mono text-sm text-muted-foreground block">
+                                  ••••••••
+                                </code>
+                              ) : (
+                                <span className="text-muted-foreground italic text-sm block">
+                                  Not set
+                                </span>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => toggleSecretVisibility(index)}
+                              className="h-8 w-8 p-0"
+                            >
+                              {visibleSecrets.has(index) ? (
+                                <EyeOff className="w-4 h-4" />
+                              ) : (
+                                <Eye className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
+                </div>
+              </TooltipProvider>
+            )}
 
-          <div className="flex items-center justify-center w-full px-10">
+            {/* File Upload Area */}
             <div
               ref={dropRef}
-              className={`flex flex-col gap-2 items-center justify-center text-gray-500 w-full border-2 border-dashed border-muted rounded-lg p-16 mb-16 text-center cursor-pointer transition ${
-                isDragging ? 'bg-muted' : ''
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                isDragging
+                  ? 'border-primary bg-primary/5'
+                  : 'border-muted-foreground/25 hover:border-muted-foreground/50'
               }`}
               onClick={() => document.getElementById('env-upload')?.click()}
             >
-              <CloudUpload />
-              <p className="text-sm">
-                Drag & drop <code>.env</code> file or select file
-              </p>
+              <CloudUpload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <div className="text-sm text-muted-foreground">
+                Drag & drop <code className="bg-muted px-1 rounded">.env</code> file or click to
+                select
+              </div>
               <input
                 id="env-upload"
                 type="file"
@@ -626,212 +1308,39 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
               />
             </div>
           </div>
+        </ScrollArea>
 
-          <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-end w-full pb-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="secret-name" className="ml-2 text-xs font-medium text-gray-400">
-                NAME
-              </label>
-              <Input
-                id="secret-name"
-                placeholder="VARIABLE_NAME"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addEnv();
-                  }
-                }}
+        {/* Raw Editor Modal */}
+        <Dialog open={rawEditorOpen} onOpenChange={setRawEditorOpen}>
+          <DialogContent className="max-w-3xl h-[600px] flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Raw Editor</DialogTitle>
+              <DialogDescription>
+                Add, edit, or delete your project variables in .env format
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 border rounded-lg overflow-hidden">
+              <Textarea
+                value={rawEditorContent}
+                onChange={(e) => setRawEditorContent(e.target.value)}
+                placeholder="# Environment Variables&#10;&#10;# Required Secrets&#10;API_KEY=your_api_key_here&#10;&#10;# Optional Variables&#10;DEBUG=true&#10;&#10;# Comments are supported"
+                className="w-full h-full resize-none border-0 font-mono text-sm focus-visible:ring-0"
               />
             </div>
-            <div className="flex flex-col gap-1 relative">
-              <label htmlFor="secret-value" className="ml-2 text-xs font-medium text-gray-400">
-                VALUE
-              </label>
-              <div className="relative">
-                <Input
-                  id="secret-value"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="i9ju23nfsdf56"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  className="pr-10"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      addEnv();
-                    }
-                  }}
-                />
-                <div
-                  className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
-                  onClick={() => setShowPassword(!showPassword)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      setShowPassword(!showPassword);
-                    }
-                  }}
-                >
-                  {showPassword ? <EyeOff /> : <Eye />}
-                </div>
-              </div>
-            </div>
-            <Button type="button" className="shrink-0" onClick={addEnv}>
-              Add
-            </Button>
-          </div>
-
-          {envs.length > 0 && (
-            <>
-              <div className="grid grid-cols-[1fr_2fr_auto] gap-4 mt-6 font-medium text-gray-400 border-b pb-2 ml-1">
-                <div>Name</div>
-                <div>Value</div>
-                <div className="text-center">Actions</div>
-              </div>
-
-              <div className="mt-2 space-y-2">
-                {envs.map((env, index) => (
-                  <div
-                    key={`${env.name}-${index}`}
-                    className={`grid grid-cols-[1fr_2fr_auto] gap-4 items-center border-b py-3 ml-1 ${
-                      env.isRequired && (!env.value || env.value.trim() === '')
-                        ? 'border-red-500/50'
-                        : ''
-                    }`}
-                  >
-                    <div className="truncate">
-                      <div className="font-mono text-sm flex items-center gap-2">
-                        {env.name}
-                        {env.isRequired && <span className="text-red-500 text-xs">*</span>}
-                      </div>
-                      {env.description && (
-                        <div className="text-xs text-muted-foreground mt-1">{env.description}</div>
-                      )}
-                      {env.plugin && (
-                        <div className="text-xs text-muted-foreground">
-                          Required by: {env.plugin}
-                        </div>
-                      )}
-                      {env.isRequired === false &&
-                        env.plugin &&
-                        (!env.value || env.value.trim() === '') && (
-                          <div className="text-xs text-yellow-600 mt-1">
-                            Plugin removed - this secret will be cleaned up
-                          </div>
-                        )}
-                    </div>
-                    <div>
-                      {editingIndex === index ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={editedValue}
-                            onChange={(e) => setEditedValue(e.target.value)}
-                            className="w-full font-mono text-sm"
-                            type={visibleSecrets.has(index) ? 'text' : 'password'}
-                            placeholder={env.example || 'Enter value...'}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                saveEdit(index);
-                              } else if (e.key === 'Escape') {
-                                cancelEdit();
-                              }
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleSecretVisibility(index)}
-                            className="px-2"
-                          >
-                            {visibleSecrets.has(index) ? (
-                              <EyeOff className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <Eye className="w-4 h-4 text-gray-500" />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => saveEdit(index)}
-                          >
-                            <Check className="w-4 h-4 text-green-500" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>
-                            <X className="w-4 h-4 text-red-500" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 truncate text-gray-500 font-mono text-sm">
-                            {visibleSecrets.has(index) ? (
-                              env.value || (
-                                <span className="text-muted-foreground italic">
-                                  {env.example ? `e.g. ${env.example}` : 'Not set'}
-                                </span>
-                              )
-                            ) : env.value ? (
-                              env.value.includes(':') && env.value.length > 50 ? (
-                                'Encrypted'
-                              ) : (
-                                '••••••••'
-                              )
-                            ) : (
-                              <span className="text-muted-foreground italic">Not set</span>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleSecretVisibility(index)}
-                            className="px-2"
-                          >
-                            {visibleSecrets.has(index) ? (
-                              <EyeOff className="w-4 h-4 text-gray-500" />
-                            ) : (
-                              <Eye className="w-4 h-4 text-gray-500" />
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-center gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                        onClick={() => {
-                          startEditing(index);
-                        }}
-                        disabled={editingIndex !== null && editingIndex !== index}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => {
-                          removeEnv(index);
-                        }}
-                        disabled={editingIndex !== null}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={copyEnvContent}>
+                <Copy className="w-4 h-4 mr-2" />
+                Copy ENV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setRawEditorOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleRawEditorSave}>
+                Update Variables
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
