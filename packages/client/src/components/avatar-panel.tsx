@@ -101,6 +101,7 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
 
           <div className="flex gap-2">
             <Button
+              type="button"
               className="flex items-center gap-2 flex-1"
               onClick={() => fileInputRef.current?.click()}
             >
@@ -109,7 +110,12 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
             </Button>
 
             {avatar && (
-              <Button variant="outline" className="flex items-center" onClick={handleRemoveAvatar}>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex items-center"
+                onClick={handleRemoveAvatar}
+              >
                 <X className="w-5 h-5" />
               </Button>
             )}

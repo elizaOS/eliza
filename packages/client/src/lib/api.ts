@@ -205,8 +205,9 @@ export const apiClient = {
     fetcher({ url: `/agents/${agentId}` }),
   deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
     fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
-  updateAgent: (agentId: string, agentData: Partial<Agent>) =>
-    fetcher({ url: `/agents/${agentId}`, method: 'PATCH', body: agentData }),
+  updateAgent: (agentId: string, agentData: Partial<Agent>) => {
+    return fetcher({ url: `/agents/${agentId}`, method: 'PATCH', body: agentData });
+  },
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({ url: '/agents/', method: 'POST', body: params }),
   startAgent: (agentId: UUID): Promise<{ data: { id: UUID; name: string; status: string } }> =>

@@ -8,11 +8,11 @@ import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
-import { SecretPanel } from './secret-panel';
+import { SecretPanel, type SecretPanelRef } from './secret-panel';
 
 export default function AgentSettings({
   agent,
@@ -29,6 +29,8 @@ export default function AgentSettings({
   const [isDeleting, setIsDeleting] = useState(false);
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
   const isActive = agent?.status === AgentStatus.ACTIVE;
+  const secretPanelRef = useRef<SecretPanelRef>(null);
+  const [currentSecrets, setCurrentSecrets] = useState<Record<string, string | null>>({});
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
@@ -58,8 +60,50 @@ export default function AgentSettings({
         throw new Error('Agent ID is missing');
       }
 
+      // Validate required secrets if we have a secret panel ref
+      if (secretPanelRef?.current) {
+        const secretValidation = secretPanelRef.current.validateSecrets();
+        if (!secretValidation.isValid) {
+          // Show confirmation dialog for missing secrets
+          const confirmed = await confirm({
+            title: 'Missing Required Secrets',
+            description: `The following required secrets are missing: ${secretValidation.missingSecrets.join(', ')}. Do you want to save anyway?`,
+            confirmText: 'Save Anyway',
+            cancelText: 'Cancel',
+            variant: 'destructive',
+          });
+
+          if (!confirmed) {
+            return;
+          }
+        }
+      }
+
+      // Get secrets from state (or ref as fallback)
+      const secrets = currentSecrets || secretPanelRef.current?.getSecrets() || {};
+
       // Get only the fields that have changed
       const changedFields = agentState.getChangedFields();
+
+      // Manually add secrets to changedFields if they exist
+      if (secrets && Object.keys(secrets).length > 0) {
+        // Ensure settings object exists in changedFields
+        if (!changedFields.settings) {
+          changedFields.settings = {};
+        }
+
+        // Filter out null values (deleted secrets) and log them separately
+        const deletedSecrets = Object.entries(secrets)
+          .filter(([_, value]) => value === null)
+          .map(([key]) => key);
+
+        const activeSecrets = Object.entries(secrets)
+          .filter(([_, value]) => value !== null)
+          .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+
+        // Add secrets to the settings
+        changedFields.settings.secrets = secrets;
+      }
 
       // No need to send update if nothing changed
       if (Object.keys(changedFields).length === 0) {
@@ -307,17 +351,11 @@ export default function AgentSettings({
             component: (
               <SecretPanel
                 characterValue={agentState.agent}
-                onChange={(updatedAgent) => {
-                  if (updatedAgent.settings?.secrets) {
-                    // Create a new settings object with the updated secrets
-                    const updatedSettings = {
-                      ...agentState.agent.settings,
-                      secrets: updatedAgent.settings.secrets,
-                    };
-
-                    // Use updateSettings to properly handle the secrets
-                    agentState.updateSettings(updatedSettings);
-                  }
+                ref={secretPanelRef}
+                onChange={(secrets) => {
+                  setCurrentSecrets(secrets);
+                  // Also update the agent state so changes persist across tab switches
+                  agentState.updateSettings({ secrets });
                 }}
               />
             ),

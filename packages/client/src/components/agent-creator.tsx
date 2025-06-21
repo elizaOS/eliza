@@ -3,11 +3,11 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
 import type { Agent } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
-import { SecretPanel } from './secret-panel';
+import { SecretPanel, type SecretPanelRef } from './secret-panel';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
 import { getTemplateById } from '@/config/agent-templates';
 
@@ -30,6 +30,8 @@ export default function AgentCreator() {
   const [initialCharacter] = useState<Partial<Agent>>({
     ...defaultCharacter,
   });
+  const secretPanelRef = useRef<SecretPanelRef>(null);
+  const [currentSecrets, setCurrentSecrets] = useState<Record<string, string | null>>({});
 
   // Use agent update hook for proper handling of nested fields
   const agentState = useAgentUpdate(initialCharacter as Agent);
@@ -55,6 +57,17 @@ export default function AgentCreator() {
   const handleSubmit = async (character: Agent) => {
     try {
       const completeCharacter = ensureRequiredFields(character);
+
+      // Get secrets from state (or ref as fallback)
+      const secrets = currentSecrets || secretPanelRef.current?.getSecrets() || {};
+      if (secrets && Object.keys(secrets).length > 0) {
+        // Add secrets to the character settings
+        completeCharacter.settings = {
+          ...completeCharacter.settings,
+          secrets,
+        };
+      }
+
       await apiClient.createAgent({
         characterJson: completeCharacter,
       });
@@ -78,42 +91,53 @@ export default function AgentCreator() {
   };
 
   return (
-    <CharacterForm
-      characterValue={agentState.agent}
-      setCharacterValue={agentState}
-      title="Agent Settings"
-      description="Configure your AI agent's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
-      onSubmit={handleSubmit}
-      onReset={() => agentState.reset()}
-      onDelete={() => {
-        navigate('/');
-      }}
-      isAgent={true}
-      customComponents={[
-        {
-          name: 'Plugins',
-          component: (
-            <PluginsPanel characterValue={agentState.agent} setCharacterValue={agentState} />
-          ),
-        },
-        {
-          name: 'Secret',
-          component: (
-            <SecretPanel
-              characterValue={agentState.agent}
-              onChange={(updatedAgent) => {
-                agentState.updateSettings(updatedAgent.settings);
-              }}
-            />
-          ),
-        },
-        {
-          name: 'Avatar',
-          component: (
-            <AvatarPanel characterValue={agentState.agent} setCharacterValue={agentState} />
-          ),
-        },
-      ]}
-    />
+    <div className="h-full w-full">
+      <CharacterForm
+        characterValue={agentState.agent}
+        setCharacterValue={agentState}
+        title="Agent Settings"
+        description="Configure your AI agent's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
+        onSubmit={handleSubmit}
+        onReset={() => {
+          agentState.reset();
+          setCurrentSecrets({});
+        }}
+        onDelete={() => {
+          navigate('/');
+        }}
+        onTemplateChange={() => {
+          setCurrentSecrets({});
+        }}
+        isAgent={true}
+        secretPanelRef={secretPanelRef}
+        customComponents={[
+          {
+            name: 'Plugins',
+            component: (
+              <PluginsPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            ),
+          },
+          {
+            name: 'Secret',
+            component: (
+              <SecretPanel
+                characterValue={agentState.agent}
+                ref={secretPanelRef}
+                onChange={(secrets) => {
+                  // Only update local state, don't update agent state to avoid circular updates
+                  setCurrentSecrets(secrets);
+                }}
+              />
+            ),
+          },
+          {
+            name: 'Avatar',
+            component: (
+              <AvatarPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }
