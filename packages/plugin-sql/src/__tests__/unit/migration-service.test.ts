@@ -126,9 +126,8 @@ describe('DatabaseMigrationService', () => {
 
       migrationService.discoverAndRegisterPluginSchemas(plugins);
 
-      // Run migrations - in bun:test we can't easily mock the function call
-      // but we can verify it doesn't throw
-      await expect(migrationService.runAllPluginMigrations()).resolves.not.toThrow();
+      // Simply await - if it throws, the test fails automatically
+      await migrationService.runAllPluginMigrations();
     });
 
     it('should handle migration errors', async () => {
@@ -144,8 +143,8 @@ describe('DatabaseMigrationService', () => {
         },
       ]);
 
-      // In bun:test, we'll just verify it runs without throwing for now
-      await expect(migrationService.runAllPluginMigrations()).resolves.not.toThrow();
+      // Simply await - if it throws, the test fails automatically
+      await migrationService.runAllPluginMigrations();
     });
 
     it('should run migrations even with no plugins', async () => {
