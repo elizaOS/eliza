@@ -97,6 +97,7 @@
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.0",
     "@clack/prompts": "^0.11.0",
     "@electric-sql/pglite": "^0.3.2",
     "@elizaos/core": "workspace:*",

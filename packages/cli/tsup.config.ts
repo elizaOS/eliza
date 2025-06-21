@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 import { copy } from 'esbuild-plugin-copy';
-import path from 'path';
+import path from 'node:path';
 
 export default defineConfig({
   clean: true,
@@ -66,6 +66,10 @@ const require = createRequire(import.meta.url);
         {
           from: './templates/**/.*',
           to: './dist/templates',
+        },
+        {
+          from: './src/utils/upgrade/TEST_CASES.md',
+          to: './dist/',
         },
       ],
       // Setting this to true will output a list of copied files
