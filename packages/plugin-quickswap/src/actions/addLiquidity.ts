@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-04: Adds liquidity to a Quickswap pool.
  */
 export const addLiquidityAction: Action = {
-  name: 'addLiquidity',
+  name: 'QUICKSWAP_ADD_LIQUIDITY',
   description: 'Adds liquidity for a specified token pair to a Quickswap pool.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(`[addLiquidityAction] Validate called for message: "${message.content?.text}"`);
@@ -44,7 +44,7 @@ export const addLiquidityAction: Action = {
       ) {
         return {
           text: '❌ **Error**: Invalid amounts. Please provide positive numbers for both tokens.',
-          actions: ['addLiquidity'],
+          actions: ['QUICKSWAP_ADD_LIQUIDITY'],
         };
       }
 
@@ -63,7 +63,7 @@ export const addLiquidityAction: Action = {
         const responseText = `✅ **Liquidity Added Successfully**\n\n**Liquidity Details:**\n• **Token 0**: ${token0SymbolOrAddress.toUpperCase()}\n• **Token 1**: ${token1SymbolOrAddress.toUpperCase()}\n• **Amount 0**: ${amount0}\n• **Amount 1**: ${amount1}\n• **LP Tokens Received**: ${addLiquidityResult.lpTokensReceived}\n• **Transaction Hash**: ${addLiquidityResult.transactionHash}`;
         return {
           text: responseText,
-          actions: ['addLiquidity'],
+          actions: ['QUICKSWAP_ADD_LIQUIDITY'],
           data: {
             success: true,
             addLiquidityDetails: addLiquidityResult,
@@ -73,7 +73,7 @@ export const addLiquidityAction: Action = {
       } else {
         return {
           text: `❌ **Error**: ${addLiquidityResult.error || 'Failed to add liquidity.'}`,
-          actions: ['addLiquidity'],
+          actions: ['QUICKSWAP_ADD_LIQUIDITY'],
           data: {
             success: false,
             error: addLiquidityResult.error,
@@ -95,7 +95,7 @@ export const addLiquidityAction: Action = {
       logger.error(`[addLiquidityAction] Error adding liquidity:`, error);
       return {
         text: `❌ **Error**: ${errorMessage}`,
-        actions: ['addLiquidity'],
+        actions: ['QUICKSWAP_ADD_LIQUIDITY'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),

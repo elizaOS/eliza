@@ -6,7 +6,7 @@ import { Action, IAgentRuntime, logger, Memory } from '@elizaos/core';
  * and its configuration processed.
  */
 export const initializeQuickswapPluginAction: Action = {
-  name: 'initializeQuickswapPlugin',
+  name: 'QUICKSWAP_INITIALIZE_PLUGIN',
   description: 'Initializes the Quickswap Plugin and confirms its configuration.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(

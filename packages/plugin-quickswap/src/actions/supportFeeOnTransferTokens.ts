@@ -12,7 +12,7 @@ interface SupportFeeOnTransferTokensParams {
  * M5-11: Checks if a given token is a fee-on-transfer token and if Quickswap supports it.
  */
 export const supportFeeOnTransferTokensAction: Action = {
-  name: 'supportFeeOnTransferTokens',
+  name: 'QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS',
   similes: ['CHECK_TOKEN_COMPATIBILITY', 'IS_FEE_ON_TRANSFER', 'FEE_TOKEN_CHECK', 'TOKEN_SUPPORT'],
   description:
     'Checks if a token is a fee-on-transfer token and if Quickswap can handle it for trades.',
@@ -78,7 +78,7 @@ export const supportFeeOnTransferTokensAction: Action = {
 
 **Required parameters:**
 - Token Symbol/Address`,
-          actions: ['supportFeeOnTransferTokens'],
+          actions: ['QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS'],
           data: { error: errorMessage },
         };
       }
@@ -94,7 +94,7 @@ export const supportFeeOnTransferTokensAction: Action = {
         const responseText = `✅ **Quickswap Support Check for ${params.tokenSymbolOrAddress.toUpperCase()}**\n\n• **Token**: ${params.tokenSymbolOrAddress.toUpperCase()}\n• **Is Fee-on-Transfer**: ${supportResult.isFeeOnTransfer ? 'Yes' : 'No'}\n• **Quickswap Supported**: Yes`;
         return {
           text: responseText,
-          actions: ['supportFeeOnTransferTokens'],
+          actions: ['QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS'],
           data: {
             success: true,
             token: params.tokenSymbolOrAddress,
@@ -107,7 +107,7 @@ export const supportFeeOnTransferTokensAction: Action = {
         const responseText = `⚠️ **Quickswap Support Check for ${params.tokenSymbolOrAddress.toUpperCase()}**\n\n• **Token**: ${params.tokenSymbolOrAddress.toUpperCase()}\n• **Is Fee-on-Transfer**: ${supportResult.isFeeOnTransfer ? 'Yes' : 'No'}\n• **Quickswap Supported**: No - ${supportResult.error || 'Reason unknown'}`;
         return {
           text: responseText,
-          actions: ['supportFeeOnTransferTokens'],
+          actions: ['QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS'],
           data: {
             success: false,
             token: params.tokenSymbolOrAddress,
@@ -121,7 +121,7 @@ export const supportFeeOnTransferTokensAction: Action = {
         const errorMessage = 'Failed to determine fee-on-transfer support.';
         return {
           text: `❌ **Error**: ${errorMessage}`,
-          actions: ['supportFeeOnTransferTokens'],
+          actions: ['QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS'],
           data: {
             success: false,
             error: errorMessage,
@@ -139,7 +139,7 @@ export const supportFeeOnTransferTokensAction: Action = {
 
       return {
         text: `❌ **Error**: ${errorMessage}\n\nPlease check your configuration and try again.`,
-        actions: ['supportFeeOnTransferTokens'],
+        actions: ['QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS'],
         data: {
           error: errorMessage,
           params,
@@ -153,14 +153,14 @@ export const supportFeeOnTransferTokensAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Check if the token XYZ is a fee-on-transfer token',
+          text: 'Check if the token XYZ is a fee-on-transfer token via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Checking token support...',
-          action: 'supportFeeOnTransferTokens',
+          text: 'Checking token support via Quickswap...',
+          action: 'QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS',
         },
       },
     ],
@@ -174,8 +174,8 @@ export const supportFeeOnTransferTokensAction: Action = {
       {
         name: '{{user2}} ',
         content: {
-          text: 'Checking token support...',
-          action: 'supportFeeOnTransferTokens',
+          text: 'Checking token support via Quickswap...',
+          action: 'QUICKSWAP_SUPPORT_FEE_ON_TRANSFER_TOKENS',
         },
       },
     ],

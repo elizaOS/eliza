@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-03: Swaps tokens on Quickswap.
  */
 export const swapTokensAction: Action = {
-  name: 'swapTokens',
+  name: 'QUICKSWAP_SWAP_TOKENS',
   description: 'Swaps a specified amount of an input token for an output token on Quickswap.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(`[swapTokensAction] Validate called for message: "${message.content?.text}"`);
@@ -42,7 +42,7 @@ export const swapTokensAction: Action = {
       if (isNaN(parsedAmount) || parsedAmount <= 0) {
         return {
           text: '❌ **Error**: Invalid amount. Please provide a positive number.',
-          actions: ['swapTokens'],
+          actions: ['QUICKSWAP_SWAP_TOKENS'],
         };
       }
 
@@ -60,7 +60,7 @@ export const swapTokensAction: Action = {
         const responseText = `✅ **Swap Executed Successfully**\n\n**Swap Details:**\n• **Input Token**: ${inputTokenSymbolOrAddress.toUpperCase()}\n• **Output Token**: ${outputTokenSymbolOrAddress.toUpperCase()}\n• **Amount Swapped**: ${amount}\n• **Amount Received**: ${swapResult.amountReceived}\n• **Transaction Hash**: ${swapResult.transactionHash}`;
         return {
           text: responseText,
-          actions: ['swapTokens'],
+          actions: ['QUICKSWAP_SWAP_TOKENS'],
           data: {
             success: true,
             swapDetails: swapResult,
@@ -70,7 +70,7 @@ export const swapTokensAction: Action = {
       } else {
         return {
           text: `❌ **Error**: ${swapResult.error || 'Failed to execute swap.'}`,
-          actions: ['swapTokens'],
+          actions: ['QUICKSWAP_SWAP_TOKENS'],
           data: {
             success: false,
             error: swapResult.error,
@@ -91,7 +91,7 @@ export const swapTokensAction: Action = {
       logger.error(`[swapTokensAction] Error executing swap:`, error);
       return {
         text: `❌ **Error**: ${errorMessage}`,
-        actions: ['swapTokens'],
+        actions: ['QUICKSWAP_SWAP_TOKENS'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),
@@ -104,14 +104,14 @@ export const swapTokensAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Swap 10 USDC for WMATIC',
+          text: 'Swap 10 USDC for WMATIC via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Attempting to swap 10 USDC for WMATIC...',
-          action: 'swapTokens',
+          text: 'Attempting to swap 10 USDC for WMATIC via Quickswap...',
+          action: 'QUICKSWAP_SWAP_TOKENS',
         },
       },
     ],
@@ -119,14 +119,14 @@ export const swapTokensAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'I want to exchange 5 WMATIC for DAI, with at least 4.9 DAI',
+          text: 'I want to exchange 5 WMATIC for DAI via Quickswap, with at least 4.9 DAI',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Processing your exchange for 5 WMATIC for DAI...',
-          action: 'swapTokens',
+          text: 'Processing your exchange for 5 WMATIC for DAI via Quickswap...',
+          action: 'QUICKSWAP_SWAP_TOKENS',
         },
       },
     ],

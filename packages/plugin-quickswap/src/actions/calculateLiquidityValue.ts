@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-07: Calculates the value of liquidity provided to a Quickswap pool.
  */
 export const calculateLiquidityValueAction: Action = {
-  name: 'calculateLiquidityValue',
+  name: 'QUICKSWAP_CALCULATE_LIQUIDITY_VALUE',
   description:
     'Calculates the current value of provided liquidity (LP tokens) for a given token pair in a Quickswap pool.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
@@ -47,7 +47,7 @@ export const calculateLiquidityValueAction: Action = {
       if (isNaN(parsedLpTokensAmount) || parsedLpTokensAmount <= 0) {
         return {
           text: '❌ **Error**: Invalid LP token amount. Please provide a positive number.',
-          actions: ['calculateLiquidityValue'],
+          actions: ['QUICKSWAP_CALCULATE_LIQUIDITY_VALUE'],
         };
       }
 
@@ -65,7 +65,7 @@ export const calculateLiquidityValueAction: Action = {
         const responseText = `✅ **Liquidity Value Calculated**\n\n**Details:**\n• **Token 0**: ${token0SymbolOrAddress.toUpperCase()}\n• **Token 1**: ${token1SymbolOrAddress.toUpperCase()}\n• **LP Tokens**: ${lpTokensAmount}\n• **Value in Token 0**: ${liquidityValueResult.token0Value}\n• **Value in Token 1**: ${liquidityValueResult.token1Value}`;
         return {
           text: responseText,
-          actions: ['calculateLiquidityValue'],
+          actions: ['QUICKSWAP_CALCULATE_LIQUIDITY_VALUE'],
           data: {
             success: true,
             liquidityValue: liquidityValueResult,
@@ -75,7 +75,7 @@ export const calculateLiquidityValueAction: Action = {
       } else {
         return {
           text: `❌ **Error**: ${liquidityValueResult.error || 'Failed to calculate liquidity value.'}`,
-          actions: ['calculateLiquidityValue'],
+          actions: ['QUICKSWAP_CALCULATE_LIQUIDITY_VALUE'],
           data: {
             success: false,
             error: liquidityValueResult.error,
@@ -96,7 +96,7 @@ export const calculateLiquidityValueAction: Action = {
       logger.error(`[calculateLiquidityValueAction] Error calculating liquidity value:`, error);
       return {
         text: `❌ **Error**: ${errorMessage}`,
-        actions: ['calculateLiquidityValue'],
+        actions: ['QUICKSWAP_CALCULATE_LIQUIDITY_VALUE'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),
@@ -109,14 +109,14 @@ export const calculateLiquidityValueAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Calculate the value of 10 LP tokens for the USDC/WMATIC pool',
+          text: 'Calculate the value of 10 LP tokens for the USDC/WMATIC pool via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Calculating liquidity value...',
-          action: 'calculateLiquidityValue',
+          text: 'Calculating liquidity value via Quickswap...',
+          action: 'QUICKSWAP_CALCULATE_LIQUIDITY_VALUE',
         },
       },
     ],
@@ -124,14 +124,14 @@ export const calculateLiquidityValueAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'What is my 5 LP token value for DAI/ETH?',
+          text: 'What is my 5 LP token value for DAI/ETH via Quickswap?',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Estimating LP token value...',
-          action: 'calculateLiquidityValue',
+          text: 'Estimating LP token value via Quickswap...',
+          action: 'QUICKSWAP_CALCULATE_LIQUIDITY_VALUE',
         },
       },
     ],

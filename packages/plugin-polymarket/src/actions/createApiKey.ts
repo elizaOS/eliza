@@ -1,4 +1,4 @@
-import { IAgentRuntime, Memory, State, HandlerCallback, logger } from '@elizaos/core';
+import { IAgentRuntime, Memory, State, HandlerCallback, logger, Action } from '@elizaos/core';
 import { initializeClobClient } from '../utils/clobClient';
 import { ethers } from 'ethers';
 
@@ -18,8 +18,8 @@ export interface ApiKeyResponse {
  * Create API Key Action for Polymarket CLOB
  * Generates L2 authentication credentials for order posting
  */
-export const createApiKeyAction = {
-  name: 'CREATE_API_KEY',
+export const createApiKeyAction: Action = {
+  name: 'POLYMARKET_CREATE_API_KEY',
   similes: [
     'CREATE_POLYMARKET_API_KEY',
     'GENERATE_API_CREDENTIALS',
@@ -39,7 +39,7 @@ export const createApiKeyAction = {
         name: '{{user2}}',
         content: {
           text: "I'll generate new API credentials for your Polymarket account. This will create the L2 authentication needed for order posting.",
-          action: 'CREATE_API_KEY',
+          action: 'POLYMARKET_CREATE_API_KEY',
         },
       },
     ],
@@ -47,14 +47,14 @@ export const createApiKeyAction = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Generate new CLOB API credentials',
+          text: 'Generate new CLOB API credentials via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
           text: 'Creating new API key credentials for Polymarket CLOB access...',
-          action: 'CREATE_API_KEY',
+          action: 'POLYMARKET_CREATE_API_KEY',
         },
       },
     ],

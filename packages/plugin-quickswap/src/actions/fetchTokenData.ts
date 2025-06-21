@@ -12,7 +12,7 @@ interface FetchTokenDataParams {
  * M5-01: Fetches token data for a given token symbol or address from Quickswap.
  */
 export const fetchTokenDataAction: Action = {
-  name: 'fetchTokenData',
+  name: 'QUICKSWAP_FETCH_TOKEN_DATA',
   similes: [
     'GET_TOKEN_INFO',
     'RETRIEVE_TOKEN_DATA',
@@ -73,7 +73,7 @@ export const fetchTokenDataAction: Action = {
 
         return {
           text: `❌ **Error**: ${errorMessage}\n\nExamples:\n• "What is the data for USDC?"\n• "Get details for WMATIC"\n• "Fetch token info for 0x2791B072600277340f1aDa76aE19A6C09bED2737"\n\n**Required parameters:**\n- Token Symbol or Address`,
-          actions: ['fetchTokenData'],
+          actions: ['QUICKSWAP_FETCH_TOKEN_DATA'],
           data: { error: errorMessage },
         };
       }
@@ -88,7 +88,7 @@ export const fetchTokenDataAction: Action = {
 
         return {
           text: responseText,
-          actions: ['fetchTokenData'],
+          actions: ['QUICKSWAP_FETCH_TOKEN_DATA'],
           data: {
             success: true,
             tokenDetails: tokenData,
@@ -99,7 +99,7 @@ export const fetchTokenDataAction: Action = {
         const errorMessage = `Token data for '${tokenSymbolOrAddress}' not found on Quickswap.`;
         return {
           text: `❌ **Error**: ${errorMessage}\n\nPlease verify the token symbol or address and try again.`,
-          actions: ['fetchTokenData'],
+          actions: ['QUICKSWAP_FETCH_TOKEN_DATA'],
           data: {
             success: false,
             error: errorMessage,
@@ -115,7 +115,7 @@ export const fetchTokenDataAction: Action = {
 
       return {
         text: `❌ **Error**: ${errorMessage}\n\nPlease check your configuration and try again. Make sure:\n• Quickswap API URL is properly configured\n• Network connection is stable`,
-        actions: ['fetchTokenData'],
+        actions: ['QUICKSWAP_FETCH_TOKEN_DATA'],
         data: {
           error: errorMessage,
           tokenSymbolOrAddress,
@@ -129,14 +129,14 @@ export const fetchTokenDataAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Get token data for USDC',
+          text: 'Get token data for USDC via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Fetching data for USDC...',
-          action: 'fetchTokenData',
+          text: 'Fetching data for USDC via Quickswap...',
+          action: 'QUICKSWAP_FETCH_TOKEN_DATA',
         },
       },
     ],
@@ -144,14 +144,14 @@ export const fetchTokenDataAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'What are the details of WMATIC?',
+          text: 'What are the details of WMATIC via Quickswap?',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Retrieving WMATIC token information...',
-          action: 'fetchTokenData',
+          text: 'Retrieving WMATIC token information via Quickswap...',
+          action: 'QUICKSWAP_FETCH_TOKEN_DATA',
         },
       },
     ],
@@ -159,14 +159,14 @@ export const fetchTokenDataAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Tell me about the token at 0x2791B072600277340f1aDa76aE19A6C09bED2737',
+          text: 'Tell me about the token at 0x2791B072600277340f1aDa76aE19A6C09bED2737 via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Looking up token by address...',
-          action: 'fetchTokenData',
+          text: 'Looking up token by address via Quickswap...',
+          action: 'QUICKSWAP_FETCH_TOKEN_DATA',
         },
       },
     ],

@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-06: Fetches the status of a Quickswap transaction.
  */
 export const getTransactionStatusAction: Action = {
-  name: 'getTransactionStatus',
+  name: 'QUICKSWAP_GET_TRANSACTION_STATUS',
   description: 'Fetches the current status of a transaction on Quickswap using its hash.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(

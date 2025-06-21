@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-15: Claims farming rewards from a Quickswap pool.
  */
 export const claimFarmingRewardsAction: Action = {
-  name: 'claimFarmingRewards',
+  name: 'QUICKSWAP_CLAIM_FARMING_REWARDS',
   description: 'Claims farming rewards for a given wallet from a specified Quickswap farming pool.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(

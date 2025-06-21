@@ -14,7 +14,7 @@ interface CalculatePriceImpactParams {
  * M5-12: Calculates the estimated price impact for a given trade on Quickswap.
  */
 export const calculatePriceImpactAction: Action = {
-  name: 'calculatePriceImpact',
+  name: 'QUICKSWAP_CALCULATE_PRICE_IMPACT',
   similes: ['ESTIMATE_SLIPPAGE', 'PRICE_IMPACT_CHECK', 'TRADE_COST_ANALYSIS', 'SWAP_IMPACT'],
   description: 'Calculates the potential price impact for a swap between two tokens on Quickswap.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
@@ -84,7 +84,7 @@ export const calculatePriceImpactAction: Action = {
 - Input Token Symbol/Address
 - Output Token Symbol/Address
 - Input Amount`,
-          actions: ['calculatePriceImpact'],
+          actions: ['QUICKSWAP_CALCULATE_PRICE_IMPACT'],
           data: { error: errorMessage },
         };
       }
@@ -103,7 +103,7 @@ export const calculatePriceImpactAction: Action = {
 
         return {
           text: responseText,
-          actions: ['calculatePriceImpact'],
+          actions: ['QUICKSWAP_CALCULATE_PRICE_IMPACT'],
           data: {
             success: true,
             inputToken: params.inputTokenSymbolOrAddress,
@@ -118,7 +118,7 @@ export const calculatePriceImpactAction: Action = {
         const errorMessage = priceImpactResult?.error || 'Failed to calculate price impact.';
         return {
           text: `❌ **Error**: ${errorMessage}\n\nPlease verify token pair and amount and try again.`,
-          actions: ['calculatePriceImpact'],
+          actions: ['QUICKSWAP_CALCULATE_PRICE_IMPACT'],
           data: {
             success: false,
             error: errorMessage,
@@ -136,7 +136,7 @@ export const calculatePriceImpactAction: Action = {
 
       return {
         text: `❌ **Error**: ${errorMessage}\n\nPlease check your configuration and try again.`,
-        actions: ['calculatePriceImpact'],
+        actions: ['QUICKSWAP_CALCULATE_PRICE_IMPACT'],
         data: {
           error: errorMessage,
           params,
@@ -150,14 +150,14 @@ export const calculatePriceImpactAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Calculate price impact for 10 WMATIC to USDC',
+          text: 'Calculate price impact for 10 WMATIC to USDC via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Calculating price impact...',
-          action: 'calculatePriceImpact',
+          text: 'Calculating price impact via Quickswap...',
+          action: 'QUICKSWAP_CALCULATE_PRICE_IMPACT',
         },
       },
     ],
@@ -165,14 +165,14 @@ export const calculatePriceImpactAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'What is the price impact if I swap 5 ETH for DAI?',
+          text: 'What is the price impact if I swap 5 ETH for DAI via Quickswap?',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Calculating price impact...',
-          action: 'calculatePriceImpact',
+          text: 'Calculating price impact via Quickswap...',
+          action: 'QUICKSWAP_CALCULATE_PRICE_IMPACT',
         },
       },
     ],

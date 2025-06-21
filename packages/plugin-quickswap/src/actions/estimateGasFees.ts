@@ -15,7 +15,7 @@ interface EstimateGasFeesParams {
  * M5-17: Estimates the gas fees for a given type of transaction on Quickswap.
  */
 export const estimateGasFeesAction: Action = {
-  name: 'estimateGasFees',
+  name: 'QUICKSWAP_ESTIMATE_GAS_FEES',
   similes: ['CHECK_TRANSACTION_COST', 'GAS_PRICE_PREDICTION', 'FEE_ESTIMATION', 'TRANSACTION_FEES'],
   description: 'Estimates the current gas fees for a specified type of transaction on Quickswap.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
@@ -76,7 +76,7 @@ export const estimateGasFeesAction: Action = {
         logger.error(`[estimateGasFeesAction] Parameter extraction failed`);
         return {
           text: `❌ **Error**: ${errorMessage}\n\nExamples:\n• "Estimate gas fees for a swap"\n• "How much gas will it cost to add liquidity?"\n• "What are the fees for approving USDC?"\n\n**Required parameters:**\n- Transaction Type (swap, addLiquidity, removeLiquidity, approve)\n- Optional: Input Token, Output Token, Amount (for more precise estimation)`,
-          actions: ['estimateGasFees'],
+          actions: ['QUICKSWAP_ESTIMATE_GAS_FEES'],
           data: { error: errorMessage },
         };
       }
@@ -91,7 +91,7 @@ export const estimateGasFeesAction: Action = {
 
         return {
           text: responseText,
-          actions: ['estimateGasFees'],
+          actions: ['QUICKSWAP_ESTIMATE_GAS_FEES'],
           data: {
             success: true,
             transactionType: params.transactionType,
@@ -103,7 +103,7 @@ export const estimateGasFeesAction: Action = {
         const errorMessage = gasEstimateResult?.error || 'Failed to estimate gas fees.';
         return {
           text: `❌ **Error**: ${errorMessage}\n\nPlease verify transaction type and parameters and try again.`,
-          actions: ['estimateGasFees'],
+          actions: ['QUICKSWAP_ESTIMATE_GAS_FEES'],
           data: {
             success: false,
             error: errorMessage,
@@ -119,7 +119,7 @@ export const estimateGasFeesAction: Action = {
 
       return {
         text: `❌ **Error**: ${errorMessage}\n\nPlease check your configuration and try again.`,
-        actions: ['estimateGasFees'],
+        actions: ['QUICKSWAP_ESTIMATE_GAS_FEES'],
         data: {
           error: errorMessage,
           params,
@@ -133,14 +133,14 @@ export const estimateGasFeesAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Estimate gas fees for a swap of 10 WMATIC to USDC',
+          text: 'Estimate gas fees for a swap of 10 WMATIC to USDC via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Estimating gas...',
-          action: 'estimateGasFees',
+          text: 'Estimating gas via Quickswap...',
+          action: 'QUICKSWAP_ESTIMATE_GAS_FEES',
         },
       },
     ],
@@ -148,14 +148,14 @@ export const estimateGasFeesAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'How much will it cost to add liquidity to the ETH-DAI pool?',
+          text: 'How much will it cost to add liquidity to the ETH-DAI pool via Quickswap?',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Estimating gas...',
-          action: 'estimateGasFees',
+          text: 'Estimating gas via Quickswap...',
+          action: 'QUICKSWAP_ESTIMATE_GAS_FEES',
         },
       },
     ],

@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-14: Retrieves details of a Quickswap farming pool.
  */
 export const getFarmingPoolDetailsAction: Action = {
-  name: 'getFarmingPoolDetails',
+  name: 'QUICKSWAP_GET_FARMING_POOL_DETAILS',
   description:
     'Retrieves details of a specific Quickswap farming pool by its ID or by the token pair it holds.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {

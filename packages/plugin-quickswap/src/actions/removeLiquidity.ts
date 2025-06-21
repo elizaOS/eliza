@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-05: Removes liquidity from a Quickswap pool.
  */
 export const removeLiquidityAction: Action = {
-  name: 'removeLiquidity',
+  name: 'QUICKSWAP_REMOVE_LIQUIDITY',
   description:
     'Removes a specified amount of liquidity (LP tokens) from a Quickswap pool and receives back the underlying tokens.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
@@ -39,7 +39,7 @@ export const removeLiquidityAction: Action = {
       if (isNaN(parsedLpTokensAmount) || parsedLpTokensAmount <= 0) {
         return {
           text: '❌ **Error**: Invalid LP token amount. Please provide a positive number.',
-          actions: ['removeLiquidity'],
+          actions: ['QUICKSWAP_REMOVE_LIQUIDITY'],
         };
       }
 
@@ -57,7 +57,7 @@ export const removeLiquidityAction: Action = {
         const responseText = `✅ **Liquidity Removed Successfully**\n\n**Liquidity Details:**\n• **Token 0**: ${token0SymbolOrAddress.toUpperCase()}\n• **Token 1**: ${token1SymbolOrAddress.toUpperCase()}\n• **LP Tokens Removed**: ${lpTokensAmount}\n• **Token 0 Received**: ${removeLiquidityResult.token0Received}\n• **Token 1 Received**: ${removeLiquidityResult.token1Received}\n• **Transaction Hash**: ${removeLiquidityResult.transactionHash}`;
         return {
           text: responseText,
-          actions: ['removeLiquidity'],
+          actions: ['QUICKSWAP_REMOVE_LIQUIDITY'],
           data: {
             success: true,
             removeLiquidityDetails: removeLiquidityResult,
@@ -67,7 +67,7 @@ export const removeLiquidityAction: Action = {
       } else {
         return {
           text: `❌ **Error**: ${removeLiquidityResult.error || 'Failed to remove liquidity.'}`,
-          actions: ['removeLiquidity'],
+          actions: ['QUICKSWAP_REMOVE_LIQUIDITY'],
           data: {
             success: false,
             error: removeLiquidityResult.error,
@@ -88,7 +88,7 @@ export const removeLiquidityAction: Action = {
       logger.error(`[removeLiquidityAction] Error removing liquidity:`, error);
       return {
         text: `❌ **Error**: ${errorMessage}`,
-        actions: ['removeLiquidity'],
+        actions: ['QUICKSWAP_REMOVE_LIQUIDITY'],
         data: {
           error: errorMessage,
           timestamp: new Date().toISOString(),
@@ -101,14 +101,14 @@ export const removeLiquidityAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Remove 10 LP tokens from USDC/WMATIC pool',
+          text: 'Remove 10 LP tokens from USDC/WMATIC pool via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Attempting to remove liquidity for USDC/WMATIC...',
-          action: 'removeLiquidity',
+          text: 'Attempting to remove liquidity for USDC/WMATIC via Quickswap...',
+          action: 'QUICKSWAP_REMOVE_LIQUIDITY',
         },
       },
     ],
@@ -116,14 +116,14 @@ export const removeLiquidityAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Withdraw 5 LP tokens from WETH-DAI',
+          text: 'Withdraw 5 LP tokens from WETH-DAI via Quickswap',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Processing your liquidity withdrawal...',
-          action: 'removeLiquidity',
+          text: 'Processing your liquidity withdrawal via Quickswap...',
+          action: 'QUICKSWAP_REMOVE_LIQUIDITY',
         },
       },
     ],

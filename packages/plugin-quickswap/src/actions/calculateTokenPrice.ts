@@ -6,7 +6,7 @@ import { z } from 'zod';
  * M5-09: Calculates the price of a token against another token in a Quickswap pool.
  */
 export const calculateTokenPriceAction: Action = {
-  name: 'calculateTokenPrice',
+  name: 'QUICKSWAP_CALCULATE_TOKEN_PRICE',
   description: 'Calculates the price of a given token against another token on Quickswap.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info(

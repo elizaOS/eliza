@@ -13,7 +13,7 @@ interface FetchPairDataParams {
  * M5-02: Fetches token pair data (e.g., liquidity, reserves, price) for a given pair of token symbols or addresses from Quickswap.
  */
 export const fetchPairDataAction: Action = {
-  name: 'fetchPairData',
+  name: 'QUICKSWAP_FETCH_PAIR_DATA',
   similes: [
     'GET_PAIR_INFO',
     'RETRIEVE_PAIR_DATA',
@@ -77,7 +77,7 @@ export const fetchPairDataAction: Action = {
 
         return {
           text: `❌ **Error**: ${errorMessage}\n\nExamples:\n• "What is the pair data for WMATIC and USDC?"\n• "Get liquidity info for DAI/ETH"\n• "Fetch pair details for 0x... (tokenA) and 0x... (tokenB)"\n\n**Required parameters:**\n- Token A Symbol or Address\n- Token B Symbol or Address`,
-          actions: ['fetchPairData'],
+          actions: ['QUICKSWAP_FETCH_PAIR_DATA'],
           data: { error: errorMessage },
         };
       }
@@ -95,7 +95,7 @@ export const fetchPairDataAction: Action = {
 
         return {
           text: responseText,
-          actions: ['fetchPairData'],
+          actions: ['QUICKSWAP_FETCH_PAIR_DATA'],
           data: {
             success: true,
             pairDetails: pairData,
@@ -106,7 +106,7 @@ export const fetchPairDataAction: Action = {
         const errorMessage = `Pair data for '${tokenASymbolOrAddress}/${tokenBSymbolOrAddress}' not found on Quickswap.`;
         return {
           text: `❌ **Error**: ${errorMessage}\n\nPlease verify the token symbols/addresses and try again.`,
-          actions: ['fetchPairData'],
+          actions: ['QUICKSWAP_FETCH_PAIR_DATA'],
           data: {
             success: false,
             error: errorMessage,
@@ -123,7 +123,7 @@ export const fetchPairDataAction: Action = {
 
       return {
         text: `❌ **Error**: ${errorMessage}\n\nPlease check your configuration and try again.`,
-        actions: ['fetchPairData'],
+        actions: ['QUICKSWAP_FETCH_PAIR_DATA'],
         data: {
           error: errorMessage,
           tokenASymbolOrAddress,
@@ -138,14 +138,14 @@ export const fetchPairDataAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'Get pair data for WMATIC and USDC',
+          text: 'Get pair data for WMATIC and USDC via Quickswap',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Fetching WMATIC/USDC pair data...',
-          action: 'fetchPairData',
+          text: 'Fetching WMATIC/USDC pair data via Quickswap...',
+          action: 'QUICKSWAP_FETCH_PAIR_DATA',
         },
       },
     ],
@@ -153,14 +153,14 @@ export const fetchPairDataAction: Action = {
       {
         name: '{{user1}}',
         content: {
-          text: 'What is the liquidity for DAI/ETH?',
+          text: 'What is the liquidity for DAI/ETH via Quickswap?',
         },
       },
       {
         name: '{{user2}} ',
         content: {
-          text: 'Retrieving DAI/ETH liquidity information...',
-          action: 'fetchPairData',
+          text: 'Retrieving DAI/ETH liquidity information via Quickswap...',
+          action: 'QUICKSWAP_FETCH_PAIR_DATA',
         },
       },
     ],

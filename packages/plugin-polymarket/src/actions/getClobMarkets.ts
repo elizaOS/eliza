@@ -145,39 +145,39 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: { text: 'Show me markets available for trading' },
+        content: { text: 'Show me markets available for trading via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '📈 **CLOB Markets (Trading Available)**\n\nFound 150 markets ready for trading:\n\n🎯 **Will Donald Trump win the 2024 election?**\n├─ Category: Politics\n├─ Trading: ✅ Active\n├─ Tokens: Yes (0.67) | No (0.33)\n└─ Min Order: $0.01 • Min Tick: $0.01\n\n🎯 **Will Bitcoin reach $100k by end of 2024?**\n├─ Category: Crypto\n├─ Trading: ✅ Active\n├─ Tokens: Yes (0.45) | No (0.55)\n└─ Min Order: $0.01 • Min Tick: $0.01\n\n🎯 **Will Lakers make NBA playoffs?**\n├─ Category: Sports\n├─ Trading: ✅ Active\n├─ Tokens: Yes (0.78) | No (0.22)\n└─ Min Order: $0.01 • Min Tick: $0.01\n\n📊 **Total**: 150 tradeable markets • All CLOB-enabled',
-          action: 'clob_markets_retrieved',
+          action: 'POLYMARKET_GET_CLOB_MARKETS',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: { text: 'GET_CLOB_MARKETS for politics category' },
+        content: { text: 'GET_CLOB_MARKETS for politics category via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '🗳️ **Politics CLOB Markets**\n\nShowing politics markets available for trading:\n\n📊 **Markets Found**: 25\n📈 **All CLOB-Enabled**: Ready for order placement\n🕒 **Last Updated**: 2024-01-15T10:30:00Z\n\n**Sample Markets:**\n• 2024 Presidential Election (Active)\n• Senate Control predictions (Active)\n• Gubernatorial races (Active)\n• Policy outcome markets (Active)\n\n💡 **Trading Ready**: All markets support limit orders, market orders, and real-time execution via CLOB',
-          action: 'clob_markets_retrieved',
+          action: 'POLYMARKET_GET_CLOB_MARKETS',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: { text: 'List active trading markets with limit 10' },
+        content: { text: 'List active trading markets with limit 10 via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '⚡ **Active CLOB Markets (Limited)**\n\nShowing 10 active markets for trading:\n\n1. **Presidential Election 2024** - Politics\n   └─ Trading: ✅ • Min Order: $0.01\n\n2. **Fed Rate Decision March** - Economics\n   └─ Trading: ✅ • Min Order: $0.01\n\n3. **Super Bowl Winner** - Sports\n   └─ Trading: ✅ • Min Order: $0.01\n\n... and 7 more markets\n\n🔧 **CLOB Features**: Limit orders, market orders, real-time matching\n📋 **Filter Applied**: active=true, limit=10',
-          action: 'clob_markets_retrieved',
+          action: 'POLYMARKET_GET_CLOB_MARKETS',
         },
       },
     ],

@@ -202,39 +202,39 @@ Please check:
     [
       {
         name: '{{user1}}',
-        content: { text: 'Show me the latest open markets' },
+        content: { text: 'Show me the latest open markets via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '🆕 **Latest Open Markets (Available for Trading)**\n\nFound 15 markets currently open and active:\n\n🔓 **Will Bitcoin reach $150k by end of 2025?**\n├─ Category: Crypto\n├─ Status: 🟢 Open & Active\n├─ Ends: Dec 31, 2025\n├─ Tokens: Yes (0.12) | No (0.88)\n└─ Min Order: $0.01 • Trading: ✅ Live\n\n🔓 **Will Trump be GOP nominee in 2028?**\n├─ Category: Politics\n├─ Status: 🟢 Open & Active\n├─ Ends: Jun 30, 2028\n├─ Tokens: Yes (0.75) | No (0.25)\n└─ Min Order: $0.01 • Trading: ✅ Live\n\n🔓 **Will AI achieve AGI by 2030?**\n├─ Category: Technology\n├─ Status: 🟢 Open & Active\n├─ Ends: Dec 31, 2030\n├─ Tokens: Yes (0.35) | No (0.65)\n└─ Min Order: $0.01 • Trading: ✅ Live\n\n📊 **Total**: 15 open markets • **Sorted**: By end date (newest first)',
-          action: 'open_markets_retrieved',
+          action: 'POLYMARKET_GET_OPEN_MARKETS',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: { text: 'Get newest crypto markets still open' },
+        content: { text: 'Get newest crypto markets still open via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '🪙 **Latest Open Crypto Markets**\n\nShowing newest crypto markets available for trading:\n\n📈 **Markets Found**: 8\n🔓 **All Open**: Ready for trading\n🕒 **Sorted**: By listing time (newest first)\n\n**Top Open Crypto Markets:**\n• Bitcoin price predictions (3 markets)\n• Ethereum milestone markets (2 markets)\n• DeFi protocol outcomes (2 markets)\n• NFT market predictions (1 market)\n\n💡 **All Active**: Real-time trading available on all markets!',
-          action: 'open_markets_retrieved',
+          action: 'POLYMARKET_GET_OPEN_MARKETS',
         },
       },
     ],
     [
       {
         name: '{{user1}}',
-        content: { text: 'Fetch latest open markets limit 5' },
+        content: { text: 'Fetch latest open markets limit 5 via Polymarket' },
       },
       {
         name: '{{user2}}',
         content: {
           text: '⚡ **Top 5 Latest Open Markets**\n\nShowing 5 newest markets open for trading:\n\n1. **AI Stock Market Crash by 2025** - Technology\n   └─ Status: 🟢 Open • Ends: Dec 31, 2025\n\n2. **Climate Tipping Point in 2024** - Science\n   └─ Status: 🟢 Open • Ends: Dec 31, 2024\n\n3. **SpaceX Mars Mission Success** - Space\n   └─ Status: 🟢 Open • Ends: Dec 31, 2026\n\n4. **Next US Recession Timing** - Economics\n   └─ Status: 🟢 Open • Ends: Dec 31, 2025\n\n5. **Social Media Platform Winner** - Technology\n   └─ Status: 🟢 Open • Ends: Dec 31, 2024\n\n🔧 **Filter Applied**: limit=5, active=true, closed=false',
-          action: 'open_markets_retrieved',
+          action: 'POLYMARKET_GET_OPEN_MARKETS',
         },
       },
     ],

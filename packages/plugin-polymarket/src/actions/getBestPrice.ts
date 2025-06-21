@@ -140,7 +140,7 @@ Please provide a token ID in your request. Examples:
 • "Get best price for token 123456 on buy side"
 • "What's the sell price for market token 789012?"
 • "Show me the best bid for 456789"`,
-          actions: ['GET_BEST_PRICE'],
+          actions: ['POLYMARKET_GET_BEST_PRICE'],
           data: { error: errorMessage },
         };
 
@@ -184,7 +184,7 @@ ${
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['GET_BEST_PRICE'],
+        actions: ['POLYMARKET_GET_BEST_PRICE'],
         data: {
           tokenId,
           side,
@@ -214,7 +214,7 @@ Please check:
 
 **Token ID**: \`${tokenId}\`
 **Side**: \`${side}\``,
-        actions: ['GET_BEST_PRICE'],
+        actions: ['POLYMARKET_GET_BEST_PRICE'],
         data: {
           error: errorMessage,
           tokenId,
@@ -235,14 +235,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Get best price for token 123456 on buy side',
+          text: 'Get best price for token 123456 on buy side via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll fetch the best buy price for that token.",
-          actions: ['GET_BEST_PRICE'],
+          text: "I'll fetch the best buy price for that token via Polymarket.",
+          actions: ['POLYMARKET_GET_BEST_PRICE'],
         },
       },
     ],
@@ -250,14 +250,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: "What's the sell price for market token 789012?",
+          text: "What's the sell price for market token 789012 via Polymarket?",
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the best sell price for that token.',
-          actions: ['GET_BEST_PRICE'],
+          text: 'Let me get the best sell price for that token via Polymarket.',
+          actions: ['POLYMARKET_GET_BEST_PRICE'],
         },
       },
     ],
@@ -265,14 +265,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Show me the best bid for 456789',
+          text: 'Show me the best bid for 456789 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Getting the best bid price for token 456789.',
-          actions: ['GET_BEST_PRICE'],
+          text: 'Getting the best bid price for token 456789 via Polymarket.',
+          actions: ['POLYMARKET_GET_BEST_PRICE'],
         },
       },
     ],

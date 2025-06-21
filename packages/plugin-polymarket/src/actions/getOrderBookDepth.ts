@@ -238,7 +238,7 @@ Please provide one or more token IDs in your request. Examples:
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['GET_ORDER_BOOK_DEPTH'],
+        actions: ['POLYMARKET_GET_ORDER_BOOK_DEPTH'],
         data: {
           orderBooks,
           tokenIds,
@@ -275,7 +275,7 @@ Please check:
 • Polymarket CLOB service is operational
 
 **Token IDs provided**: \`${tokenIds.join(', ')}\``,
-        actions: ['GET_ORDER_BOOK_DEPTH'],
+        actions: ['POLYMARKET_GET_ORDER_BOOK_DEPTH'],
         data: {
           error: errorMessage,
           tokenIds,
@@ -295,14 +295,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Show order book depth for token 123456',
+          text: 'Show order book depth for token 123456 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll fetch the order book depth data for that token.",
-          actions: ['GET_ORDER_BOOK_DEPTH'],
+          text: "I'll fetch the order book depth data for that token via Polymarket.",
+          actions: ['POLYMARKET_GET_ORDER_BOOK_DEPTH'],
         },
       },
     ],
@@ -310,14 +310,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Get depth for tokens 123456, 789012',
+          text: 'Get depth for tokens 123456, 789012 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the order book depth for those tokens.',
-          actions: ['GET_ORDER_BOOK_DEPTH'],
+          text: 'Let me get the order book depth for those tokens via Polymarket.',
+          actions: ['POLYMARKET_GET_ORDER_BOOK_DEPTH'],
         },
       },
     ],
@@ -325,14 +325,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'ORDER_BOOK_DEPTH 345678 999999',
+          text: 'ORDER_BOOK_DEPTH 345678 999999 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Fetching order book depth data for multiple tokens.',
-          actions: ['GET_ORDER_BOOK_DEPTH'],
+          text: 'Fetching order book depth data for multiple tokens via Polymarket.',
+          actions: ['POLYMARKET_GET_ORDER_BOOK_DEPTH'],
         },
       },
     ],

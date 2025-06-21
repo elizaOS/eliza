@@ -348,7 +348,7 @@ Please check your parameters and try again. Common issues:
 
       const responseContent: Content = {
         text: responseText,
-        actions: ['PLACE_ORDER'],
+        actions: ['POLYMARKET_PLACE_ORDER'],
         data: responseData,
       };
 
@@ -378,7 +378,7 @@ Please check your configuration and try again. Make sure:
 • Token ID is valid and active
 • Price and size are within acceptable ranges
 • Network connection is stable`,
-        actions: ['PLACE_ORDER'],
+        actions: ['POLYMARKET_PLACE_ORDER'],
         data: {
           error: errorMessage,
           orderDetails: { tokenId, side, price, size, orderType },
@@ -397,14 +397,14 @@ Please check your configuration and try again. Make sure:
       {
         name: '{{user1}}',
         content: {
-          text: 'I want to buy 100 shares of token 52114319501245915516055106046884209969926127482827954674443846427813813222426 at $0.50 as a limit order',
+          text: 'I want to buy 100 shares of token 52114319501245915516055106046884209969926127482827954674443846427813813222426 at $0.50 as a limit order via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll place a limit buy order for you. Creating order for 100 shares at $0.50...",
-          action: 'PLACE_ORDER',
+          text: "I'll place a limit buy order for you via Polymarket. Creating order for 100 shares at $0.50...",
+          action: 'POLYMARKET_PLACE_ORDER',
         },
       },
     ],
@@ -412,14 +412,14 @@ Please check your configuration and try again. Make sure:
       {
         name: '{{user1}}',
         content: {
-          text: 'Place a market sell order for 50 tokens of 71321045679252212594626385532706912750332728571942532289631379312455583992563',
+          text: 'Place a market sell order for 50 tokens of 71321045679252212594626385532706912750332728571942532289631379312455583992563 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll place a market sell order for you. This will execute immediately at the best available price...",
-          action: 'PLACE_ORDER',
+          text: "I'll place a market sell order for you via Polymarket. This will execute immediately at the best available price...",
+          action: 'POLYMARKET_PLACE_ORDER',
         },
       },
     ],
@@ -427,14 +427,14 @@ Please check your configuration and try again. Make sure:
       {
         name: '{{user1}}',
         content: {
-          text: 'Create a GTC order to buy 25 shares at 0.75 for market 123456789',
+          text: 'Create a GTC order to buy 25 shares at 0.75 for market 123456789 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll create a Good-Till-Cancelled buy order for you at $0.75 per share...",
-          action: 'PLACE_ORDER',
+          text: "I'll create a Good-Till-Cancelled buy order for you at $0.75 per share via Polymarket...",
+          action: 'POLYMARKET_PLACE_ORDER',
         },
       },
     ],

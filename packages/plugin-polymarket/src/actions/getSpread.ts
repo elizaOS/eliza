@@ -22,7 +22,7 @@ interface SpreadParams {
  * Fetches the spread (difference between best ask and best bid) for a specific token
  */
 export const getSpreadAction: Action = {
-  name: 'GET_SPREAD',
+  name: 'POLYMARKET_GET_SPREAD',
   similes: [
     'SPREAD',
     'GET_SPREAD',
@@ -111,7 +111,7 @@ Please provide a token ID in your request. Examples:
 • "Get spread for token 123456"
 • "What's the spread for market token 789012?"
 • "Show me the bid-ask spread for 456789"`,
-            actions: ['GET_SPREAD'],
+            actions: ['POLYMARKET_GET_SPREAD'],
             data: { error: errorMessage },
           };
 
@@ -146,7 +146,7 @@ Please provide a token ID in your request. Examples:
 
       const responseContent: Content = {
         text: successMessage,
-        actions: ['GET_SPREAD'],
+        actions: ['POLYMARKET_GET_SPREAD'],
         data: {
           tokenId,
           spread: spreadResponse.spread,
@@ -173,7 +173,7 @@ Please check:
 
       const errorContent: Content = {
         text: errorMessage,
-        actions: ['GET_SPREAD'],
+        actions: ['POLYMARKET_GET_SPREAD'],
         data: {
           error: error instanceof Error ? error.message : String(error),
           timestamp: new Date().toISOString(),
@@ -191,14 +191,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Get spread for token 71321045679252212594626385532706912750332728571942532289631379312455583992563',
+          text: 'Get spread for token 71321045679252212594626385532706912750332728571942532289631379312455583992563 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: "I'll fetch the spread for that token.",
-          actions: ['GET_SPREAD'],
+          text: "I'll fetch the spread for that token via Polymarket.",
+          actions: ['POLYMARKET_GET_SPREAD'],
         },
       },
     ],
@@ -206,14 +206,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: "What's the bid-ask spread for market token 123456?",
+          text: "What's the bid-ask spread for market token 123456 via Polymarket?",
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Let me get the spread for that market token.',
-          actions: ['GET_SPREAD'],
+          text: 'Let me get the spread for that market token via Polymarket.',
+          actions: ['POLYMARKET_GET_SPREAD'],
         },
       },
     ],
@@ -221,14 +221,14 @@ Please check:
       {
         name: '{{user1}}',
         content: {
-          text: 'Show me the spread for 789012',
+          text: 'Show me the spread for 789012 via Polymarket',
         },
       },
       {
         name: '{{user2}}',
         content: {
-          text: 'Getting the spread for token 789012.',
-          actions: ['GET_SPREAD'],
+          text: 'Getting the spread for token 789012 via Polymarket.',
+          actions: ['POLYMARKET_GET_SPREAD'],
         },
       },
     ],

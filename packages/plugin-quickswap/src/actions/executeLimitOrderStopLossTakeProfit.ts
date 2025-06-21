@@ -6,7 +6,7 @@ import { initializeQuickswapClient } from '../utils/quickswapClient.js';
  * M5-10: Executes a limit order, stop-loss order, or take-profit order on Quickswap.
  */
 export const executeLimitOrderStopLossTakeProfitAction: Action = {
-  name: 'executeLimitOrderStopLossTakeProfit',
+  name: 'QUICKSWAP_EXECUTE_LIMIT_ORDER_STOP_LOSS_TAKE_PROFIT',
   description:
     'Executes a limit, stop-loss, or take-profit order for a specified token pair on Quickswap.',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
