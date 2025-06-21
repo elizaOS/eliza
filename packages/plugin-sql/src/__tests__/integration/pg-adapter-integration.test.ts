@@ -170,8 +170,16 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Error Handling', () => {
       it('should handle query errors gracefully', async () => {
         const db = adapter.getDatabase();
-
-        await expect(db.execute(sql`SELECT * FROM non_existent_table`)).rejects.toThrow();
+        
+        let errorThrown = false;
+        try {
+          await db.execute(sql`SELECT * FROM non_existent_table`);
+        } catch (error) {
+          errorThrown = true;
+          expect(error).toBeDefined();
+        }
+        
+        expect(errorThrown).toBe(true);
       });
 
       it('should maintain connection after error', async () => {
