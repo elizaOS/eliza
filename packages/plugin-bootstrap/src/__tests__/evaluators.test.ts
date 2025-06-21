@@ -25,6 +25,12 @@ mock.module('@elizaos/core', () => ({
     ]);
   }),
   composePrompt: mock().mockReturnValue('Composed prompt'),
+  logger: {
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+  },
 }));
 
 describe('Reflection Evaluator', () => {
