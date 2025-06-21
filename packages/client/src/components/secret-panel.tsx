@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { Agent } from '@elizaos/core';
+import { decryptObjectValues, getSalt } from '@elizaos/core';
 import {
   Check,
   CloudUpload,
@@ -271,7 +272,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     useEffect(() => {
       // Only reset if we're switching to a different agent or this is the first load
       if (characterValue.id !== lastAgentIdRef.current || !lastAgentIdRef.current) {
-        const existingSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
+        // Decrypt secrets from the server using the core decryption function
+        const salt = getSalt();
+        const decryptedSecrets = decryptObjectValues(characterValue?.settings?.secrets || {}, salt);
+        
+        const existingSecrets = Object.entries(decryptedSecrets).map(
           ([name, value]) => {
             // Filter out process.env values - these should not be stored as actual values
             const stringValue = String(value);
