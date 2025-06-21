@@ -97,9 +97,14 @@ async function fetchPluginRegistry(): Promise<RegistryResponse | null> {
 }
 
 /**
- * Convert plugin name from @elizaos to @elizaos-plugins format for registry lookup
+ * Convert plugin name for registry lookup - handles both @elizaos and @elizaos-plugins formats
  */
 function getRegistryPluginName(pluginName: string): string {
+  // If already in @elizaos-plugins format, return as is
+  if (pluginName.startsWith('@elizaos-plugins/')) {
+    return pluginName;
+  }
+  // Convert @elizaos to @elizaos-plugins format
   return pluginName.replace('@elizaos/', '@elizaos-plugins/');
 }
 
@@ -127,13 +132,29 @@ function getGitHubRepoPath(
     return null;
   }
 
+  // Try both naming conventions
   const registryName = getRegistryPluginName(pluginName);
-  clientLogger.debug(`Looking for ${pluginName} in registry as ${registryName}`);
+  const alternativeName = pluginName; // Try the original name as well
 
-  const pluginInfo = registryData.registry[registryName];
+  clientLogger.debug(
+    `Looking for ${pluginName} in registry as ${registryName} or ${alternativeName}`
+  );
+
+  // Try primary registry name first
+  let pluginInfo = registryData.registry[registryName];
+
+  // If not found, try the alternative name
+  if (!pluginInfo && registryName !== alternativeName) {
+    pluginInfo = registryData.registry[alternativeName];
+    if (pluginInfo) {
+      clientLogger.debug(`Found plugin under alternative name: ${alternativeName}`);
+    }
+  }
 
   if (!pluginInfo?.git?.repo) {
-    clientLogger.warn(`No GitHub repo found in registry for plugin: ${pluginName}`);
+    clientLogger.warn(
+      `No GitHub repo found in registry for plugin: ${pluginName} (tried ${registryName} and ${alternativeName})`
+    );
     return null;
   }
 
@@ -168,10 +189,6 @@ function getGitHubRepoPath(
   }
 
   clientLogger.debug(`Parsed owner/repo for ${pluginName}: ${ownerRepo}`);
-
-  // For the initial path, we'll try with the branch if available
-  // The fetchPluginPackageJson function will try multiple paths
-  const packageName = pluginName.replace('@elizaos/', '');
 
   // Return a simple path without packages subdirectory
   // fetchPluginPackageJson will try various combinations
@@ -284,7 +301,8 @@ function extractRequiredSecrets(
   if (packageJson?.agentConfig?.pluginParameters) {
     const secrets: PluginSecret[] = [];
     for (const [name, config] of Object.entries(packageJson.agentConfig.pluginParameters)) {
-      if (config.required === true || config.required === 'true') {
+      // Fix linter error: only check for boolean true since required is typed as boolean
+      if (config.required === true) {
         secrets.push({
           name,
           description: config.description,
@@ -353,6 +371,12 @@ export function usePluginDetails(pluginNames: string[]) {
           '[usePluginDetails] Registry data fetched:',
           registryData ? 'success' : 'failed'
         );
+
+        // Log available plugins in registry for debugging
+        if (registryData) {
+          const availablePlugins = Object.keys(registryData.registry);
+          clientLogger.debug('[usePluginDetails] Available plugins in registry:', availablePlugins);
+        }
 
         // Fetch package.json for each external plugin in parallel
         const packageJsonPromises = externalPlugins.map(async (name) => {
