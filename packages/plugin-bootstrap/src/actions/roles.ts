@@ -48,46 +48,6 @@ const canModifyRole = (currentRole: Role, targetRole: Role | null, newRole: Role
 };
 
 /**
- * Template for extracting role assignments from a conversation.
- *
- * @type {string} extractionTemplate - The template string containing information about the task, server members, available roles, recent messages, current speaker role, and extraction instructions.
- * @returns {string} JSON format of role assignments if valid role assignments are found, otherwise an empty array.
- */
-const extractionTemplate = `# Task: Extract role assignments from the conversation
-
-# Current Server Members:
-{{serverMembers}}
-
-# Available Roles:
-- OWNER: Full control over the organization
-- ADMIN: Administrative privileges
-- NONE: Standard member access
-
-# Recent Conversation:
-{{recentMessages}}
-
-# Current speaker role: {{speakerRole}}
-
-# Instructions: Analyze the conversation and extract any role assignments being made by the speaker.
-Only extract role assignments if:
-1. The speaker has appropriate permissions to make the change
-2. The role assignment is clearly stated
-3. The target user is a valid server member
-4. The new role is one of: OWNER, ADMIN, or NONE
-
-Return the results in this JSON format:
-{
-"roleAssignments": [
-  {
-    "entityId": "<UUID of the entity being assigned to>",
-    "newRole": "ROLE_NAME"
-  }
-]
-}
-
-If no valid role assignments are found, return an empty array.`;
-
-/**
  * Interface representing a role assignment to a user.
  */
 interface RoleAssignment {
@@ -110,7 +70,7 @@ export const updateRoleAction: Action = {
   similes: ['CHANGE_ROLE', 'SET_PERMISSIONS', 'ASSIGN_ROLE', 'MAKE_ADMIN'],
   description: 'Assigns a role (Admin, Owner, None) to a user or list of users in a channel.',
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     // Only activate in group chats where the feature is enabled
     const channelType = message.content.channelType as ChannelType;
     const serverId = message.content.serverId as string;

@@ -6,17 +6,9 @@ import {
   unmuteRoomAction,
   unfollowRoomAction,
   replyAction,
-  choiceAction,
-  sendMessageAction,
-  updateEntityAction,
   noneAction,
-} from '../src/actions';
-import {
-  createMockRuntime,
-  createMockMemory,
-  createMockState,
-  setupActionTest,
-} from './test-utils';
+} from '../actions';
+import { createMockMemory, setupActionTest } from './test-utils';
 import type { MockRuntime } from './test-utils';
 import {
   type IAgentRuntime,
@@ -24,9 +16,6 @@ import {
   type State,
   type HandlerCallback,
   ModelType,
-  ChannelType,
-  Role,
-  getUserServerRole,
   logger,
 } from '@elizaos/core';
 
@@ -116,9 +105,9 @@ describe('Reply Action', () => {
       ...replyAction,
       handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
+        _message: Memory,
+        _state: State,
+        _options: any,
         cb: HandlerCallback
       ) => {
         try {
@@ -224,8 +213,8 @@ describe('Follow Room Action', () => {
     const customErrorHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {
@@ -388,8 +377,8 @@ describe('Mute Room Action', () => {
     const customMuteErrorHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {
@@ -507,8 +496,8 @@ describe('Unmute Room Action', () => {
     const customUnmuteErrorHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {
@@ -625,8 +614,8 @@ describe('Unfollow Room Action', () => {
     const customUnfollowErrorHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {
@@ -760,7 +749,7 @@ describe('Reply Action (Extended)', () => {
 
     // Patch replyAction.validate for this test only
     const originalValidate = replyAction.validate;
-    replyAction.validate = async (runtime, message) => {
+    replyAction.validate = async (_runtime, message) => {
       return !!(message.content && message.content.text);
     };
 
@@ -775,10 +764,10 @@ describe('Reply Action (Extended)', () => {
   it('should handle empty model response with fallback text', async () => {
     // Create a modified handler with fallback
     const customHandler = async (
-      runtime: IAgentRuntime,
-      message: Memory,
-      state: State,
-      options: any,
+      _runtime: IAgentRuntime,
+      _message: Memory,
+      _state: State,
+      _options: any,
       callback: any
     ) => {
       // Use empty response
@@ -831,7 +820,7 @@ describe('Choice Action (Extended)', () => {
     callbackFn = setup.callbackFn as HandlerCallback;
 
     // Mock realistic response that parses the task from message content
-    mockRuntime.useModel = mock().mockImplementation((modelType, params) => {
+    mockRuntime.useModel = mock().mockImplementation((_modelType, params) => {
       if (params?.prompt?.includes('Extract selected task and option')) {
         return Promise.resolve(`
 \`\`\`json
@@ -899,8 +888,8 @@ describe('Choice Action (Extended)', () => {
     const customChoiceHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       const tasks = await runtime.getTasks({
@@ -980,8 +969,8 @@ describe('Choice Action (Extended)', () => {
     const customChoiceHandler = async (
       runtime: IAgentRuntime,
       message: Memory,
-      state: State,
-      options: any,
+      _state: State,
+      _options: any,
       callback: HandlerCallback
     ) => {
       const tasks = await runtime.getTasks({
@@ -1071,7 +1060,7 @@ describe('Send Message Action (Extended)', () => {
       runtime: IAgentRuntime,
       message: Memory,
       state: State,
-      options: any,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {
@@ -1165,9 +1154,9 @@ describe('Send Message Action (Extended)', () => {
     // Create custom implementation for this test case
     const customSendHandler = async (
       runtime: IAgentRuntime,
-      message: Memory,
+      _message: Memory,
       state: State,
-      options: any,
+      _options: any,
       callback: HandlerCallback
     ) => {
       try {

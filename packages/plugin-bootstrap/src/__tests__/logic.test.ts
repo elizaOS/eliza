@@ -10,21 +10,15 @@ import {
   Memory,
   MessagePayload,
   ModelType,
-  State,
   UUID,
 } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
-import { bootstrapPlugin } from '../src/index';
+import { bootstrapPlugin } from '../index';
 import { MockRuntime, setupActionTest } from './test-utils';
-
-// Helper to create unique mock IDs
-const createMockId = () => uuidv4() as UUID;
 
 describe('Message Handler Logic', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
-  let mockState: Partial<State>;
   let mockCallback: HandlerCallback;
 
   beforeEach(() => {
@@ -88,7 +82,6 @@ describe('Message Handler Logic', () => {
 
     mockRuntime = setup.mockRuntime;
     mockMessage = setup.mockMessage;
-    mockState = setup.mockState;
     mockCallback = setup.callbackFn as HandlerCallback;
 
     // Add required templates to character
@@ -263,14 +256,18 @@ describe('Message Handler Logic', () => {
 
     if (messageHandler) {
       // Should not throw when handling invalid JSON
-      await expect(
-        messageHandler({
+      let error: Error | undefined;
+      try {
+        await messageHandler({
           runtime: mockRuntime as unknown as IAgentRuntime,
           message: mockMessage as Memory,
           callback: mockCallback,
           source: 'test',
-        } as MessagePayload)
-      ).resolves.not.toThrow();
+        } as MessagePayload);
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeUndefined();
     }
   });
 });
@@ -327,13 +324,17 @@ describe('Reaction Events', () => {
 
     if (reactionHandler) {
       // Should not throw when handling duplicate error
-      await expect(
-        reactionHandler({
+      let error: Error | undefined;
+      try {
+        await reactionHandler({
           runtime: mockRuntime as unknown as IAgentRuntime,
           message: mockReaction as Memory,
           source: 'test',
-        } as MessagePayload)
-      ).resolves.not.toThrow();
+        } as MessagePayload);
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeUndefined();
     }
   });
 });
@@ -438,14 +439,18 @@ describe('World and Entity Events', () => {
 
     if (entityLeftHandler) {
       // Should not throw when handling error
-      await expect(
-        entityLeftHandler({
+      let error: Error | undefined;
+      try {
+        await entityLeftHandler({
           runtime: mockRuntime as unknown as IAgentRuntime,
           entityId: 'test-entity-id' as UUID,
           worldId: 'test-world-id' as UUID,
           source: 'test',
-        } as EntityPayload)
-      ).resolves.not.toThrow();
+        } as EntityPayload);
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeUndefined();
 
       // Should not call updateEntity
       expect(mockRuntime.updateEntity).not.toHaveBeenCalled();

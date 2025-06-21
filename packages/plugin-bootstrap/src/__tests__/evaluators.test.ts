@@ -1,23 +1,14 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import {
-  Evaluator,
   IAgentRuntime,
   logger,
   ModelType,
-  UUID,
   Memory,
   State,
-  Content,
   ChannelType,
+  composePrompt,
 } from '@elizaos/core';
-import * as entityUtils from '@elizaos/core';
-import {
-  createMockMemory,
-  createMockRuntime,
-  createMockState,
-  MockRuntime,
-  setupActionTest,
-} from './test-utils';
+import { MockRuntime, setupActionTest } from './test-utils';
 
 // Import the actual module first
 const coreModule = await import('@elizaos/core');
@@ -57,14 +48,15 @@ describe('Reflection Evaluator', () => {
 
   it('should call the model with the correct prompt', async () => {
     // Import the evaluator dynamically to avoid polluting the test scope
-    const { reflectionEvaluator } = await import('../src/evaluators/reflection');
+    const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Arrange
     // Ensure mockMessage.content.channelType is defined for the roomType
     mockMessage.content = { ...mockMessage.content, channelType: ChannelType.GROUP };
     // Mock getRelationships and getMemories as they are called before composePrompt
     mockRuntime.getRelationships.mockResolvedValue([]);
-    mockRuntime.getMemories.mockResolvedValue([]); // For knownFacts
+    mockRuntime.getMemories &&
+      (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]);
 
     // Set up the reflection template
     if (!mockRuntime.character) mockRuntime.character = {} as any;
@@ -104,7 +96,7 @@ describe('Reflection Evaluator', () => {
 
   it('should store new facts and relationships', async () => {
     // Import the evaluator dynamically to avoid polluting the test scope
-    const { reflectionEvaluator } = await import('../src/evaluators/reflection');
+    const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Spy on the composePrompt function in the @elizaos/core module
     // Note: We can't easily spy on imported functions from external modules,
@@ -121,7 +113,8 @@ describe('Reflection Evaluator', () => {
 
     // Arrange
     mockRuntime.getRelationships.mockResolvedValue([]); // Ensure getRelationships returns an array
-    mockRuntime.getMemories.mockResolvedValue([]); // Ensure getMemories for knownFacts returns an array
+    mockRuntime.getMemories &&
+      (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]); // Ensure getMemories for knownFacts returns an array
 
     mockRuntime.useModel.mockResolvedValueOnce({
       thought: 'I am doing well in this conversation.',
@@ -132,7 +125,7 @@ describe('Reflection Evaluator', () => {
     });
 
     // Mock the createRelationship implementation
-    mockRuntime.createRelationship.mockImplementation((relationship) => {
+    mockRuntime.createRelationship.mockImplementation((_relationship) => {
       return Promise.resolve(true);
     });
 
@@ -184,7 +177,7 @@ describe('Reflection Evaluator', () => {
 
   it('should handle model errors without crashing', async () => {
     // Import the evaluator dynamically to avoid polluting the test scope
-    const { reflectionEvaluator } = await import('../src/evaluators/reflection');
+    const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Arrange - Mock a model error
     mockRuntime.useModel.mockRejectedValueOnce(new Error('Model failed'));
@@ -212,7 +205,7 @@ describe('Reflection Evaluator', () => {
 
   it('should filter out invalid facts', async () => {
     // Import the evaluator dynamically to avoid polluting the test scope
-    const { reflectionEvaluator } = await import('../src/evaluators/reflection');
+    const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Arrange
     mockRuntime.useModel.mockResolvedValueOnce({
@@ -245,19 +238,20 @@ describe('Reflection Evaluator', () => {
 
   it('should validate against the reflection evaluator schema', async () => {
     // Import the evaluator dynamically to avoid polluting the test scope
-    const { reflectionEvaluator } = await import('../src/evaluators/reflection');
+    const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Mock the getCache method to return a previous message ID
     mockRuntime.getCache.mockResolvedValueOnce('previous-message-id');
 
     // Mock the getMemories method to return a list of messages
-    mockRuntime.getMemories.mockResolvedValueOnce([
-      { id: 'previous-message-id' },
-      { id: 'message-1' },
-      { id: 'message-2' },
-      { id: 'message-3' },
-      { id: 'message-4' },
-    ]);
+    mockRuntime.getMemories &&
+      (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValueOnce([
+        { id: 'previous-message-id' },
+        { id: 'message-1' },
+        { id: 'message-2' },
+        { id: 'message-3' },
+        { id: 'message-4' },
+      ]);
 
     // Basic validation checks
     expect(reflectionEvaluator).toHaveProperty('name');
@@ -306,6 +300,9 @@ describe('Multiple Prompt Evaluator Factory', () => {
   });
 
   it('should create a valid evaluator with multiple prompts', async () => {
+    // Reset the composePrompt mock to clear previous calls
+    (composePrompt as any).mockClear();
+
     // Test the evaluator creation pattern rather than importing it
     // Create mock evaluator factory
     const createMultiplePromptEvaluator = (config: {
@@ -322,12 +319,12 @@ describe('Multiple Prompt Evaluator Factory', () => {
       return {
         name: config.name,
         description: config.description,
-        handler: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+        handler: async (runtime: IAgentRuntime, _message: Memory, state: State) => {
           const results: Record<string, any> = {};
 
           for (const prompt of config.prompts) {
             try {
-              const composedPrompt = runtime.composePrompt({
+              const composedPrompt = composePrompt({
                 template: prompt.template,
                 state,
               });
@@ -392,18 +389,18 @@ describe('Multiple Prompt Evaluator Factory', () => {
       mockState as State
     );
 
-    // Check that the model was called for each prompt
-    expect(mockRuntime.composePrompt).toHaveBeenCalledTimes(2);
+    // Check that the mocked composePrompt from core module was called
+    expect(composePrompt).toHaveBeenCalledTimes(2);
     expect(mockRuntime.useModel).toHaveBeenCalledTimes(2);
 
     // First prompt should be called with the correct parameters
-    expect(mockRuntime.composePrompt).toHaveBeenNthCalledWith(1, {
+    expect(composePrompt).toHaveBeenNthCalledWith(1, {
       template: 'First prompt template {{recentMessages}}',
       state: expect.any(Object),
     });
 
     // Second prompt should be called with the correct parameters
-    expect(mockRuntime.composePrompt).toHaveBeenNthCalledWith(2, {
+    expect(composePrompt).toHaveBeenNthCalledWith(2, {
       template: 'Second prompt template {{agentName}}',
       state: expect.any(Object),
     });
@@ -450,12 +447,12 @@ describe('Multiple Prompt Evaluator Factory', () => {
       return {
         name: config.name,
         description: config.description,
-        handler: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+        handler: async (runtime: IAgentRuntime, _message: Memory, state: State) => {
           const results: Record<string, any> = {};
 
           for (const prompt of config.prompts) {
             try {
-              const composedPrompt = runtime.composePrompt({
+              const composedPrompt = composePrompt({
                 template: prompt.template,
                 state,
               });
@@ -501,10 +498,6 @@ describe('Multiple Prompt Evaluator Factory', () => {
       prompts: testPrompts,
       validate: async () => true,
     });
-
-    // Spy on logger
-    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
-    const loggerWarnSpy = mock();
 
     // Call the handler - should not throw even with one prompt failing
     const result = await testEvaluator.handler(

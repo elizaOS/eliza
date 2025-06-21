@@ -1,6 +1,6 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
-import { bootstrapPlugin } from '../src/index';
-import { IAgentRuntime, UUID, EventType, Memory, Content, Character } from '@elizaos/core';
+import { bootstrapPlugin } from '../index';
+import { IAgentRuntime, UUID, EventType, Memory, Content } from '@elizaos/core';
 import { MockRuntime, createMockRuntime } from './test-utils';
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
@@ -20,7 +20,7 @@ describe('Bootstrap Plugin', () => {
     });
 
     // Set or reset mockInit's implementation for each test
-    mockInit.mockImplementation(async (config, runtime) => {
+    mockInit.mockImplementation(async (_config, runtime) => {
       if (bootstrapPlugin.providers) {
         bootstrapPlugin.providers.forEach((provider) => {
           try {
@@ -52,9 +52,6 @@ describe('Bootstrap Plugin', () => {
       if (bootstrapPlugin.services) {
         bootstrapPlugin.services.forEach((service) => {
           try {
-            // Services are classes, so we need to get their static serviceType or name
-            const serviceName =
-              (service as any).serviceType || (service as any).name || 'unknown service';
             runtime.registerService(service);
           } catch (error) {
             const serviceName =
