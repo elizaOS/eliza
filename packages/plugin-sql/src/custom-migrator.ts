@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import { logger } from '@elizaos/core';
+import { DatabaseErrorHandler } from './db-error-handler';
 
 type DrizzleDB = NodePgDatabase | PgliteDatabase;
 
@@ -1195,6 +1196,11 @@ export async function runPluginMigrations(
   schema: any
 ): Promise<void> {
   logger.debug(`[CUSTOM MIGRATOR] Starting migration for plugin: ${pluginName}`);
+
+  // Validate database connection first to catch authentication errors early
+  await DatabaseErrorHandler.validateConnection(async () => {
+    await db.execute(sql.raw('SELECT 1 as connection_test'));
+  }, 'during migration setup');
 
   const namespaceManager = new PluginNamespaceManager(db);
   const introspector = new DrizzleSchemaIntrospector();
