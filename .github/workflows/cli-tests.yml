@@ -70,6 +70,7 @@ jobs:
         run: bun run build
 
       - name: Verify CLI build artifacts
+        shell: bash
         run: |
           echo "Checking CLI build artifacts..."
           echo "CLI dist contents:"
