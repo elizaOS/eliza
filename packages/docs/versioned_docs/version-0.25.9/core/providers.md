@@ -69,7 +69,7 @@ Visit the [ElizaOS Plugin Registry](https://github.com/elizaos-plugins/registry)
 
 ### Time Provider
 
-[Source: packages/plugin-bootstrap/src/providers/time.ts](/packages/plugin-bootstrap/src/providers/time.ts)
+[Source: packages/plugin-message-handilng/src/providers/time.ts](/packages/plugin-message-handilng/src/providers/time.ts)
 
 Provides temporal awareness by injecting current date/time information:
 
@@ -90,7 +90,7 @@ const timeProvider: Provider = {
 
 ### Facts Provider
 
-[Source: packages/plugin-bootstrap/src/providers/facts.ts](/packages/plugin-bootstrap/src/providers/facts.ts)
+[Source: packages/plugin-message-handilng/src/providers/facts.ts](/packages/plugin-message-handilng/src/providers/facts.ts)
 
 Manages and serves conversation facts and knowledge:
 
@@ -129,7 +129,7 @@ const factsProvider: Provider = {
 
 ### Boredom Provider
 
-[Source: packages/plugin-bootstrap/src/providers/boredom.ts](/packages/plugin-bootstrap/src/providers/boredom.ts)
+[Source: packages/plugin-message-handilng/src/providers/boredom.ts](/packages/plugin-message-handilng/src/providers/boredom.ts)
 
 Manages conversation dynamics and engagement by calculating a "boredom score". The provider helps agents maintain appropriate conversation engagement levels by analyzing recent messages (last 15 minutes) and tracking conversational dynamics through keywords and pattern detection that then generates status messages reflecting interaction quality.
 

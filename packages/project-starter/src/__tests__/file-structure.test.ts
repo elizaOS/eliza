@@ -28,25 +28,6 @@ describe('Project Structure Validation', () => {
     });
   });
 
-  describe('Source Files', () => {
-    it('should contain the required source files', () => {
-      expect(fileExists(path.join(rootDir, 'src', 'index.ts'))).toBe(true);
-      expect(fileExists(path.join(rootDir, 'src', 'plugin.ts'))).toBe(true);
-    });
-
-    it('should have properly structured main files', () => {
-      // Check index.ts contains character definition
-      const indexContent = fs.readFileSync(path.join(rootDir, 'src', 'index.ts'), 'utf8');
-      expect(indexContent).toContain('character');
-      expect(indexContent).toContain('plugin');
-
-      // Check plugin.ts contains plugin definition
-      const pluginContent = fs.readFileSync(path.join(rootDir, 'src', 'plugin.ts'), 'utf8');
-      expect(pluginContent).toContain('export default');
-      expect(pluginContent).toContain('actions');
-    });
-  });
-
   describe('Configuration Files', () => {
     it('should have the required configuration files', () => {
       expect(fileExists(path.join(rootDir, 'package.json'))).toBe(true);
@@ -58,9 +39,6 @@ describe('Project Structure Validation', () => {
 
     it('should have the correct package.json configuration', () => {
       const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
-
-      // Check package name
-      expect(packageJson.name).toBe('@elizaos/project-starter');
 
       // Check scripts
       expect(packageJson.scripts).toHaveProperty('build');

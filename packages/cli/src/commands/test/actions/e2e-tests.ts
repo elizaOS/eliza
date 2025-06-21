@@ -208,7 +208,6 @@ export async function runE2eTests(
               { isTestMode: true }
             );
 
-            server.registerAgent(runtime); // Ensure server knows about the runtime
             runtimes.push(runtime);
 
             // Pass all loaded plugins to the projectAgent so TestRunner can identify
@@ -266,6 +265,8 @@ export async function runE2eTests(
         // Run tests for each agent
         let totalFailed = 0;
         let anyTestsFound = false;
+        let isPluginWithoutTests = false;
+
         for (let i = 0; i < runtimes.length; i++) {
           const runtime = runtimes[i];
           const projectAgent = projectAgents[i];
@@ -292,15 +293,22 @@ export async function runE2eTests(
             skipProjectTests: currentDirInfo.type !== 'elizaos-project',
             skipE2eTests: false, // Always allow E2E tests
           });
+
           totalFailed += results.failed;
           if (results.hasTests) {
             anyTestsFound = true;
           }
+
+          // Check if this is a plugin without tests
+          if (project.isPlugin && results.failed === 1 && results.total === 0) {
+            isPluginWithoutTests = true;
+          }
         }
 
-        // Return success (false) if no tests were found, or if tests ran but none failed
-        // This aligns with standard testing tools behavior
-        return { failed: anyTestsFound ? totalFailed > 0 : false };
+        // Return failure if:
+        // 1. We're testing a plugin but it has no tests
+        // 2. Tests were found and some failed
+        return { failed: isPluginWithoutTests || (anyTestsFound && totalFailed > 0) };
       } catch (error) {
         logger.error('Error in runE2eTests:', error);
         if (error instanceof Error) {
@@ -337,6 +345,19 @@ export async function runE2eTests(
         } catch (cleanupError) {
           console.warn(`Failed to clean up test database directory: ${cleanupError}`);
           // Don't fail the test run due to cleanup issues
+        }
+
+        // Stop the server to prevent hanging
+        if (server) {
+          try {
+            logger.info('Stopping test server...');
+            // Give any remaining async operations time to complete
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await server.stop();
+            logger.info('Test server stopped successfully');
+          } catch (stopError) {
+            logger.warn('Error stopping test server:', stopError);
+          }
         }
       }
     } catch (error) {

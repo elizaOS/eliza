@@ -3,6 +3,7 @@ import { execa } from 'execa';
 import * as semver from 'semver';
 import { UserEnvironment } from '@/src/utils/user-environment';
 import { VersionCheckResult } from '../types';
+import { isWorkspacePackage } from '@/src/utils/workspace-packages';
 
 // Constants
 export const SPECIAL_VERSION_TAGS = ['latest', 'next', 'canary', 'rc', 'dev', 'nightly', 'alpha'];
@@ -86,6 +87,13 @@ export function isMajorUpdate(currentVersion: string, targetVersion: string): bo
  */
 export async function fetchLatestVersion(packageName: string): Promise<string | null> {
   try {
+    // Check if this is a workspace package first
+    const isWorkspace = await isWorkspacePackage(packageName);
+    if (isWorkspace) {
+      logger.debug(`${packageName} is a workspace package, skipping version check`);
+      return null;
+    }
+
     // Always check npm registry for the actual latest version
     const { stdout } = await execa('npm', ['view', packageName, 'version'], {
       env: { NODE_ENV: 'production' },
@@ -94,9 +102,14 @@ export async function fetchLatestVersion(packageName: string): Promise<string | 
     logger.debug(`Latest version of ${packageName} from npm: ${version}`);
     return version;
   } catch (error) {
-    logger.error(
-      `Failed to fetch version for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
-    );
+    // Check if the error is specifically a 404 (package not found)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('404') || errorMessage.includes('E404')) {
+      logger.debug(`Package ${packageName} not found on npm registry (likely a workspace package)`);
+      return null;
+    }
+
+    logger.error(`Failed to fetch version for ${packageName}: ${errorMessage}`);
     return null;
   }
 }

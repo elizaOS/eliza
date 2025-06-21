@@ -25,7 +25,7 @@ describe('Mr. TEE Character Configuration', () => {
     expect(character.plugins).toContain('@elizaos/plugin-sql');
     expect(character.plugins).toContain('@elizaos/plugin-openai');
     expect(character.plugins).toContain('@elizaos/plugin-discord');
-    expect(character.plugins).toContain('@elizaos/plugin-bootstrap');
+    expect(character.plugins).toContain('@elizaos/plugin-message-handling');
   });
 
   it("should have a system prompt embodying Mr. TEE's persona", () => {

@@ -32,8 +32,8 @@ The key thing to remember is: evaluators are your agent's way of learning and gr
 
 ### Common Uses
 
-- **[Fact Evaluator](https://github.com/elizaOS/eliza/blob/main/packages/plugin-bootstrap/src/evaluators/fact.ts)**: Learns and remembers facts about users
-- **[Goal Evaluator](https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/main/packages/plugin-bootstrap/src/evaluators/goal.ts)**: Tracks progress on objectives
+- **[Fact Evaluator](https://github.com/elizaOS/eliza/blob/main/packages/plugin-message-handilng/src/evaluators/fact.ts)**: Learns and remembers facts about users
+- **[Goal Evaluator](https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/main/packages/plugin-message-handilng/src/evaluators/goal.ts)**: Tracks progress on objectives
 - **Trust Evaluator**: Builds understanding of relationships
 - **Sentiment Evaluator**: Tracks emotional tone of conversations
 
@@ -424,7 +424,7 @@ json\`\`\`
 ```
 
 </details>
-Source: https://github.com/elizaOS/eliza/blob/main/packages/plugin-bootstrap/src/evaluators/fact.ts
+Source: https://github.com/elizaOS/eliza/blob/main/packages/plugin-message-handilng/src/evaluators/fact.ts
 
 ## Goal Evaluator
 
@@ -801,7 +801,7 @@ Goals:
 ```
 </details>
 
-Source: https://github.com/elizaOS/eliza/blob/main/packages/plugin-bootstrap/src/evaluators/goals.ts
+Source: https://github.com/elizaOS/eliza/blob/main/packages/plugin-message-handilng/src/evaluators/goals.ts
 
 ---
 

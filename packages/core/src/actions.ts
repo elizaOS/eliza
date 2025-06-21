@@ -27,7 +27,7 @@ export const composeActionExamples = (actionsData: Action[], count: number): str
 
   // Create a working copy of the examples
   const examplesCopy: ActionExample[][][] = actionsWithExamples.map((action) => [
-    ...action.examples,
+    ...(action.examples || []),
   ]);
 
   const selectedExamples: ActionExample[][] = [];

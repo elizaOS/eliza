@@ -39,7 +39,7 @@ interface Task {
 
 ## Task Service
 
-The Task Service (provided by `@elizaos/plugin-bootstrap`) automatically manages task execution:
+The Task Service (provided by `@elizaos/plugin-message-handling`) automatically manages task execution:
 
 ```typescript
 export class TaskService extends Service {

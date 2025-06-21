@@ -10,6 +10,8 @@ import { stringToUuid } from '@elizaos/core';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { getElizaCharacter } from '@/src/characters/eliza';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { buildProject } from '@/src/utils/build-project';
 
 /**
  * Interface for a project module that can be loaded.
@@ -132,7 +134,7 @@ function extractPlugin(module: any): Plugin {
  */
 export async function loadProject(dir: string): Promise<Project> {
   try {
-    // TODO: Get the package.json and get the main field
+    // Get the package.json and get the main field
     const packageJson = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const main = packageJson.main;
     if (!main) {
@@ -159,49 +161,78 @@ export async function loadProject(dir: string): Promise<Project> {
       };
     }
 
-    // Try to find the project's entry point
-    const entryPoints = [
-      path.join(dir, main),
-      path.join(dir, 'dist/index.js'),
-      path.join(dir, 'src/index.ts'),
-      path.join(dir, 'src/index.js'),
-      path.join(dir, 'index.ts'),
-      path.join(dir, 'index.js'),
-    ];
+    // Only try the main field entry point - no fallbacks to source files
+    const entryPoint = path.join(dir, main);
 
-    let projectModule: ProjectModule | null = null;
-    for (const entryPoint of entryPoints) {
-      if (fs.existsSync(entryPoint)) {
+    // Check if this is a plugin that needs building
+    const directoryInfo = detectDirectoryType(dir);
+    const isPluginDirectory = directoryInfo.type === 'elizaos-plugin';
+
+    if (!fs.existsSync(entryPoint)) {
+      // If it's a plugin in the current directory and has a build script, try building it
+      if (isPluginDirectory && packageJson.scripts?.build) {
+        logger.info(`Module entry point not found at ${entryPoint}, attempting to build...`);
         try {
-          const importPath = path.resolve(entryPoint);
-          // Convert to file URL for ESM import
-          const importUrl =
-            process.platform === 'win32'
-              ? 'file:///' + importPath.replace(/\\/g, '/')
-              : 'file://' + importPath;
-          projectModule = (await import(importUrl)) as ProjectModule;
-          logger.info(`Loaded project from ${entryPoint}`);
+          await buildProject(dir, true);
+          logger.info('Build completed successfully');
 
-          // Debug the module structure
-          const exportKeys = Object.keys(projectModule);
-          logger.debug(`Module exports: ${exportKeys.join(', ')}`);
-
-          if (exportKeys.includes('default')) {
-            logger.debug(`Default export type: ${typeof projectModule.default}`);
-            if (typeof projectModule.default === 'object' && projectModule.default !== null) {
-              logger.debug(`Default export keys: ${Object.keys(projectModule.default).join(', ')}`);
-            }
+          // Check again after building
+          if (!fs.existsSync(entryPoint)) {
+            throw new Error('Build completed but entry point still not found');
           }
-
-          break;
-        } catch (error) {
-          logger.warn(`Failed to import project from ${entryPoint}:`, error);
+        } catch (buildError) {
+          logger.error(`Failed to build plugin: ${buildError}`);
+          logger.error('Please build your plugin manually. Try running:');
+          logger.error('  npm run build');
+          logger.error('  or');
+          logger.error('  bun run build');
+          throw new Error(`Module not found: ${main}. Failed to auto-build plugin.`);
         }
+      } else {
+        logger.error(`Module entry point not found: ${entryPoint}`);
+        logger.error(
+          `The main field in package.json points to "${main}" but this file doesn't exist.`
+        );
+        logger.error('Please build your project first. Try running:');
+        logger.error('  npm run build');
+        logger.error('  or');
+        logger.error('  bun run build');
+        throw new Error(`Module not found: ${main}. Please build your project first.`);
       }
     }
 
+    let projectModule: ProjectModule | null = null;
+    try {
+      const importPath = path.resolve(entryPoint);
+      // Convert to file URL for ESM import
+      const importUrl =
+        process.platform === 'win32'
+          ? 'file:///' + importPath.replace(/\\/g, '/')
+          : 'file://' + importPath;
+      projectModule = (await import(importUrl)) as ProjectModule;
+      logger.info(`Loaded project from ${entryPoint}`);
+
+      // Debug the module structure
+      const exportKeys = Object.keys(projectModule);
+      logger.debug(`Module exports: ${exportKeys.join(', ')}`);
+
+      if (exportKeys.includes('default')) {
+        logger.debug(`Default export type: ${typeof projectModule.default}`);
+        if (typeof projectModule.default === 'object' && projectModule.default !== null) {
+          logger.debug(`Default export keys: ${Object.keys(projectModule.default).join(', ')}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to import module from ${entryPoint}:`, error);
+      logger.error('This might be due to:');
+      logger.error('  1. Missing dependencies - try running: npm install or bun install');
+      logger.error('  2. Build errors - check your build output');
+      logger.error('  3. Invalid module format - ensure your module exports are correct');
+      throw new Error(`Failed to load module: ${error}`);
+    }
+
     if (!projectModule) {
-      throw new Error('Could not find project entry point');
+      throw new Error('Could not load project module');
     }
 
     // Check if it's a plugin using our improved detection

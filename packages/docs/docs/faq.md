@@ -365,7 +365,7 @@ Here's the required loading order:
     "@elizaos/plugin-sql", // 1. MUST BE FIRST - provides database
     "@elizaos/plugin-anthropic", // 2. Primary LLM provider
     "@elizaos/plugin-openai", // 3. Fallback for embeddings (if needed)
-    "@elizaos/plugin-bootstrap" // 4. Core message handling
+    "@elizaos/plugin-message-handling" // 4. Core message handling
     // ... other plugins can go here in any order
   ]
 }
@@ -399,7 +399,7 @@ Here's the required loading order:
    }
    ```
 
-4. **Bootstrap Plugin (`@elizaos/plugin-bootstrap`)** - Highly recommended
+4. **Bootstrap Plugin (`@elizaos/plugin-message-handling`)** - Highly recommended
 
    - Provides all core message handling, actions, and evaluators
    - Without this, your agent won't respond to messages or perform basic actions
@@ -438,7 +438,7 @@ Here's the required loading order:
 - **Text Generation**: Most LLM plugins (`openai`, `anthropic`, `google-genai`, `ollama`)
 - **Embeddings**: `@elizaos/plugin-openai`, `@elizaos/plugin-google-genai`, `@elizaos/plugin-ollama`
 - **Image Generation**: `@elizaos/plugin-openai`, dedicated image plugins
-- **Core Functionality**: `@elizaos/plugin-bootstrap`
+- **Core Functionality**: `@elizaos/plugin-message-handling`
 
 ### Can I skip the bootstrap plugin?
 
@@ -631,7 +631,7 @@ If you encounter issues after updates or during development:
    {
      "dependencies": {
        "@elizaos/core": "1.0.0",  // Will always install this exact version
-       "@elizaos/plugin-bootstrap": "1.0.0"
+       "@elizaos/plugin-message-handling": "1.0.0"
      }
    }
 
@@ -639,7 +639,7 @@ If you encounter issues after updates or during development:
    {
      "dependencies": {
        "@elizaos/core": "latest",  // Will update to compatible versions
-       "@elizaos/plugin-bootstrap": "latest"
+       "@elizaos/plugin-message-handling": "latest"
      }
    }
    ```
@@ -824,7 +824,7 @@ Your character JSON file should follow this structure:
   "description": "A custom AI agent",
   "system": "You are a helpful assistant specialized in...",
   "bio": ["I am a custom AI assistant.", "I specialize in helping users with..."],
-  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-message-handling"],
   "messageExamples": [
     [
       {

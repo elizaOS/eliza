@@ -2,6 +2,7 @@ import type { Memory } from './memory';
 import type { Content } from './primitives';
 import type { IAgentRuntime } from './runtime';
 import type { State } from './state';
+import type { ActionResult, ActionContext } from './planning';
 
 /**
  * Example content with associated user for demonstration purposes
@@ -29,7 +30,7 @@ export type Handler = (
   options?: { [key: string]: unknown },
   callback?: HandlerCallback,
   responses?: Memory[]
-) => Promise<unknown>;
+) => Promise<ActionResult | void | boolean | null>;
 
 /**
  * Validator function type for actions/evaluators
@@ -61,6 +62,16 @@ export interface Action {
 
   /** Validation function */
   validate: Validator;
+
+  /** Optional effects for planning - defines what this action provides, requires, and modifies */
+  effects?: {
+    provides: string[]; // What this action provides
+    requires: string[]; // What this action needs
+    modifies: string[]; // What state it changes
+  };
+
+  /** Optional cost estimation for planning */
+  estimateCost?: (params: any) => number;
 }
 
 /**

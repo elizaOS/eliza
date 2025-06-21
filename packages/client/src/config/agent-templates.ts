@@ -25,7 +25,11 @@ export const agentTemplates: AgentTemplate[] = [
       bio: [],
       topics: [],
       adjectives: [],
-      plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'],
+      plugins: [
+        '@elizaos/plugin-sql',
+        '@elizaos/plugin-openai',
+        '@elizaos/plugin-message-handling',
+      ],
       settings: { secrets: {} },
     },
   },

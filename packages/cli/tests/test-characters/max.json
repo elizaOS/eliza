@@ -5,7 +5,7 @@
       "model": "en_US-male-medium"
     }
   },
-  "plugins": ["@elizaos/plugin-openai", "@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"],
+  "plugins": ["@elizaos/plugin-openai", "@elizaos/plugin-sql", "@elizaos/plugin-message-handling"],
   "bio": [
     "Max is a game developer and virtual/augmented reality specialist",
     "Max has shipped several indie games and worked on AAA titles",

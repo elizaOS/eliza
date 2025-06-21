@@ -6,6 +6,8 @@ import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
 import { installDependencies, setupProjectEnvironment } from './setup';
+import { spawn } from 'child_process';
+import path from 'path';
 
 /**
  * Creates a new plugin with the specified name and configuration.
@@ -152,9 +154,51 @@ export async function createTEEProject(
   await buildProject(teeTargetDir);
 
   console.info(`\n${colors.green('✓')} TEE project "${projectName}" created successfully!`);
-  console.info(`\nNext steps:`);
-  console.info(`  cd ${projectName}`);
-  console.info(`  bun run dev\n`);
+
+  // Display documentation link
+  console.info(`\n${colors.cyan('📚 Learn more about ElizaOS:')}`);
+  console.info(`   ${colors.blue('https://eliza.how')}\n`);
+
+  // Only start the project if not in test mode
+  if (process.env.ELIZA_TEST_MODE !== 'true') {
+    if (!isNonInteractive) {
+      const shouldStart = await clack.confirm({
+        message: 'Would you like to start your TEE project now?',
+        initialValue: true,
+      });
+
+      if (clack.isCancel(shouldStart) || !shouldStart) {
+        console.info(`\nTo start your TEE project later:`);
+        console.info(`  cd ${projectName}`);
+        console.info(`  bun run dev\n`);
+        return;
+      }
+    }
+
+    console.info(`\n${colors.cyan('Starting your ElizaOS TEE project...')}\n`);
+
+    // Start the project using spawn
+    const startProcess = spawn('bun', ['run', 'dev'], {
+      cwd: path.resolve(teeTargetDir),
+      stdio: 'inherit',
+      shell: true,
+    });
+
+    startProcess.on('error', (error) => {
+      console.error(`\n${colors.red('Failed to start the TEE project:')}`);
+      console.error(error.message);
+      console.info(`\nYou can start it manually:`);
+      console.info(`  cd ${projectName}`);
+      console.info(`  bun run dev\n`);
+    });
+
+    // The process will continue running, so we don't need to wait for it
+  } else {
+    // In test mode, just show the manual start instructions
+    console.info(`\nTo start your TEE project:`);
+    console.info(`  cd ${projectName}`);
+    console.info(`  bun run dev\n`);
+  }
 }
 
 /**
@@ -201,7 +245,49 @@ export async function createProject(
 
   const displayName = projectName === '.' ? 'Project' : `Project "${projectName}"`;
   console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);
-  console.info(`\nNext steps:`);
-  console.info(`  cd ${projectName}`);
-  console.info(`  bun run dev\n`);
+
+  // Display documentation link
+  console.info(`\n${colors.cyan('📚 Learn more about ElizaOS:')}`);
+  console.info(`   ${colors.blue('https://eliza.how')}\n`);
+
+  // Only start the project if not in test mode
+  if (process.env.ELIZA_TEST_MODE !== 'true') {
+    if (!isNonInteractive) {
+      const shouldStart = await clack.confirm({
+        message: 'Would you like to start your project now?',
+        initialValue: true,
+      });
+
+      if (clack.isCancel(shouldStart) || !shouldStart) {
+        console.info(`\nTo start your project later:`);
+        console.info(`  cd ${projectName}`);
+        console.info(`  bun run dev\n`);
+        return;
+      }
+    }
+
+    console.info(`\n${colors.cyan('Starting your ElizaOS project...')}\n`);
+
+    // Start the project using spawn
+    const startProcess = spawn('bun', ['run', 'dev'], {
+      cwd: path.resolve(projectTargetDir),
+      stdio: 'inherit',
+      shell: true,
+    });
+
+    startProcess.on('error', (error) => {
+      console.error(`\n${colors.red('Failed to start the project:')}`);
+      console.error(error.message);
+      console.info(`\nYou can start it manually:`);
+      console.info(`  cd ${projectName}`);
+      console.info(`  bun run dev\n`);
+    });
+
+    // The process will continue running, so we don't need to wait for it
+  } else {
+    // In test mode, just show the manual start instructions
+    console.info(`\nTo start your project:`);
+    console.info(`  cd ${projectName}`);
+    console.info(`  bun run dev\n`);
+  }
 }

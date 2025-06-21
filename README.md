@@ -315,7 +315,7 @@ Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient packa
   - `client/`: Client libraries for web interfaces
   - `create-eliza/`: Project scaffolding tool
   - `docs/`: Official documentation source files
-  - `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
+  - `plugin-message-handling/`: Core agent initialization (@elizaos/plugin-message-handling)
     - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
     - Implements core evaluators and providers
     - Handles message processing and world events

@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/plugin-configuration-demo",
+  "version": "0.1.0",
+  "description": "Demo plugin showcasing dynamic component configuration system",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "files": [
+    "dist"
+  ]
+}

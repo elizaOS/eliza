@@ -204,6 +204,7 @@ ElizaOS providers typically fall into these categories, with examples from the e
 - **Giphy Provider**: Provides GIF responses using Giphy API
 - **GitBook Provider**: Supplies documentation context from GitBook
 - **Topics Provider**: Caches and serves Allora Network topic information
+- **Action State Provider**: Exposes previous action results and working memory during action chaining
 
 ### Blockchain & DeFi
 
@@ -293,6 +294,49 @@ const weatherProvider: Provider = {
   },
 };
 ```
+
+### Action State Provider
+
+The Action State Provider is a special system provider that exposes the state of action execution during action chaining:
+
+```typescript
+const actionStateProvider: Provider = {
+  name: 'ACTION_STATE',
+  description: 'Current and previous action execution state',
+  position: -5, // High priority
+
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    // Access action results from previous executions in the chain
+    const actionResults = state.data?.actionResults || [];
+
+    // Get working memory for the conversation
+    const workingMemory = runtime.getWorkingMemory(message.roomId);
+
+    // Format results for context
+    const formattedResults = actionResults
+      .map((result, index) => {
+        return `Step ${index + 1}: ${result.success ? '✓' : '✗'} ${
+          result.data?.actionName || 'Unknown Action'
+        }`;
+      })
+      .join('\n');
+
+    return {
+      text: `Previous Actions:\n${formattedResults}`,
+      values: {
+        previousActionCount: actionResults.length,
+        lastActionSuccess: actionResults[actionResults.length - 1]?.success,
+      },
+      data: {
+        actionResults,
+        workingMemory: workingMemory?.serialize(),
+      },
+    };
+  },
+};
+```
+
+This provider is automatically included when actions are chained together, giving subsequent actions visibility into what has already been executed.
 
 ---
 

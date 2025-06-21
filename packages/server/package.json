@@ -55,6 +55,8 @@
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-message-handling": "workspace:*",
+    "@elizaos/plugin-local-ai": "latest",
     "@elizaos/plugin-sql": "workspace:*",
     "@types/express": "^5.0.2",
     "@types/express-fileupload": "^1.5.1",

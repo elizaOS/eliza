@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-import { taskTable } from '../../schema';
+import { tasksTable } from '../../schema';
 import { createIsolatedTestDatabase } from '../test-helpers';
 
 describe('Task Integration Tests', () => {
@@ -68,7 +68,7 @@ describe('Task Integration Tests', () => {
 
   describe('Task Tests', () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(taskTable);
+      await adapter.getDatabase().delete(tasksTable);
     });
     it('should create and retrieve a task', async () => {
       const taskId = uuidv4() as UUID;

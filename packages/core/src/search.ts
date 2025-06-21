@@ -1193,9 +1193,9 @@ export class BM25 {
     // Use Array.prototype.reduce for compatibility, though typed array reduce might be faster
     const totalLength = Array.prototype.reduce.call(
       this.documentLengths,
-      (sum: number, len: number) => sum + len,
+      (sum: unknown, len: any) => (sum as number) + len,
       0
-    );
+    ) as number;
     this.averageDocLength = totalLength / this.documentLengths.length;
   }
 
@@ -1285,7 +1285,9 @@ export class BM25 {
         candidateDocs = currentTermDocs;
       } else {
         // Intersect: Keep only documents present in both sets
-        candidateDocs = new Set([...candidateDocs].filter((docIdx) => currentTermDocs.has(docIdx)));
+        candidateDocs = new Set(
+          [...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx))
+        );
       }
 
       // If intersection becomes empty, the phrase cannot exist

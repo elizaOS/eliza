@@ -1,7 +1,8 @@
-import { describe, it, expect, mock } from 'bun:test';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createService, defineService } from '../services';
-import { Service } from '../types';
+import { Service, ServiceType } from '../types';
 import type { IAgentRuntime } from '../types';
+import { AgentRuntime } from '../runtime';
 
 describe('service builder', () => {
   // Mock runtime
@@ -132,5 +133,91 @@ describe('service builder', () => {
 
     const BuiltClass = withStop.build();
     expect((BuiltClass as any).serviceType).toBe(serviceType);
+  });
+});
+
+describe('AgentRuntime v2 service methods', () => {
+  let runtime: AgentRuntime;
+
+  beforeEach(() => {
+    const mockAdapter = {
+      init: vi.fn().mockResolvedValue(undefined),
+      runMigrations: vi.fn().mockResolvedValue(undefined),
+      ensureAgentExists: vi.fn().mockResolvedValue({ id: 'agent-123' }),
+      getEntityById: vi.fn().mockResolvedValue(null),
+      createEntity: vi.fn().mockResolvedValue(true),
+      getRoom: vi.fn().mockResolvedValue(null),
+      createRoom: vi.fn().mockResolvedValue('room-123'),
+      getParticipantsForRoom: vi.fn().mockResolvedValue([]),
+      addParticipant: vi.fn().mockResolvedValue(true),
+      ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    runtime = new AgentRuntime({
+      character: { name: 'TestBot', bio: '' } as any,
+      adapter: mockAdapter,
+    });
+  });
+
+  it('getServicesByType should return all services of a given type', async () => {
+    class WalletServiceA extends Service {
+      static serviceName = 'WALLET_A';
+      static serviceType = ServiceType.WALLET;
+      capabilityDescription = 'd';
+      static async start(runtime: IAgentRuntime) {
+        return new this(runtime);
+      }
+      async stop() {}
+    }
+    class WalletServiceB extends Service {
+      static serviceName = 'WALLET_B';
+      static serviceType = ServiceType.WALLET;
+      capabilityDescription = 'd';
+      static async start(runtime: IAgentRuntime) {
+        return new this(runtime);
+      }
+      async stop() {}
+    }
+    class TaskService extends Service {
+      static serviceName = 'TASK_A';
+      static serviceType = ServiceType.TASK;
+      capabilityDescription = 'd';
+      static async start(runtime: IAgentRuntime) {
+        return new this(runtime);
+      }
+      async stop() {}
+    }
+
+    await runtime.registerService(WalletServiceA);
+    await runtime.registerService(WalletServiceB);
+    await runtime.registerService(TaskService);
+
+    expect(runtime.getService('WALLET_A')).toBeInstanceOf(WalletServiceA);
+    expect(runtime.getService('WALLET_B')).toBeInstanceOf(WalletServiceB);
+
+    const walletServices = runtime.getServicesByType(ServiceType.WALLET);
+    expect(walletServices).toHaveLength(2);
+    expect(walletServices.some((s) => s instanceof WalletServiceA)).toBe(true);
+    expect(walletServices.some((s) => s instanceof WalletServiceB)).toBe(true);
+
+    const taskServices = runtime.getServicesByType(ServiceType.TASK);
+    expect(taskServices).toHaveLength(1);
+    expect(taskServices[0]).toBeInstanceOf(TaskService);
+  });
+
+  it('getServicesByType should return an empty array if no services match', async () => {
+    class TaskServiceDef extends Service {
+      static serviceName = 'TASK_A';
+      static serviceType = ServiceType.TASK;
+      capabilityDescription = 'd';
+      static async start(runtime: IAgentRuntime) {
+        return new this(runtime);
+      }
+      async stop() {}
+    }
+
+    await runtime.registerService(TaskServiceDef);
+    const browserServices = runtime.getServicesByType(ServiceType.BROWSER);
+    expect(browserServices).toHaveLength(0);
   });
 });

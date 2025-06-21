@@ -36,8 +36,8 @@ async function buildCorePackages(monorepoRoot: string): Promise<BuildResult[]> {
       isPlugin: false,
     },
     {
-      name: 'plugin-bootstrap',
-      path: path.join(monorepoRoot, 'packages', 'plugin-bootstrap'),
+      name: 'plugin-message-handling',
+      path: path.join(monorepoRoot, 'packages', 'plugin-message-handling'),
       isPlugin: true,
     },
   ];

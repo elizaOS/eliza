@@ -1,0 +1,69 @@
+{
+  "success": true,
+  "data": {
+    "pluginName": "@elizaos/plugin-openai",
+    "configuration": {
+      "pluginName": "@elizaos/plugin-openai",
+      "enabled": true,
+      "actions": {
+        "GENERATE_TEXT": {
+          "enabled": true,
+          "settings": {}
+        },
+        "GENERATE_IMAGE": {
+          "enabled": false,
+          "settings": {}
+        }
+      },
+      "providers": {
+        "MODEL_INFO": {
+          "enabled": true,
+          "settings": {}
+        }
+      },
+      "evaluators": {},
+      "services": {
+        "OPENAI_SERVICE": {
+          "enabled": true,
+          "settings": {}
+        }
+      }
+    },
+    "runtime": {
+      "actions": ["GENERATE_TEXT"],
+      "providers": ["MODEL_INFO"],
+      "evaluators": [],
+      "services": ["OPENAI_SERVICE"]
+    },
+    "comparison": {
+      "actions": {
+        "GENERATE_TEXT": {
+          "configured": true,
+          "registered": true,
+          "inSync": true
+        },
+        "GENERATE_IMAGE": {
+          "configured": false,
+          "registered": false,
+          "inSync": true
+        }
+      },
+      "providers": {
+        "MODEL_INFO": {
+          "configured": true,
+          "registered": true,
+          "inSync": true
+        }
+      },
+      "evaluators": {},
+      "services": {
+        "OPENAI_SERVICE": {
+          "configured": true,
+          "registered": true,
+          "inSync": true
+        }
+      }
+    },
+    "inSync": true
+  }
+}

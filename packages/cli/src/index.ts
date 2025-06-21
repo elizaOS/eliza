@@ -2,24 +2,10 @@
 process.env.NODE_OPTIONS = '--no-deprecation';
 process.env.NODE_NO_WARNINGS = '1';
 
-import { agent } from '@/src/commands/agent';
-import { create } from '@/src/commands/create';
-import { dev } from '@/src/commands/dev';
-import { env } from '@/src/commands/env';
-import { plugins } from '@/src/commands/plugins';
-import { publish } from '@/src/commands/publish';
-import { monorepo } from '@/src/commands/monorepo';
-import { start } from '@/src/commands/start';
-import { teeCommand as tee } from '@/src/commands/tee';
-import { test } from '@/src/commands/test';
-import { update } from '@/src/commands/update';
-import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
-import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { configureEmojis } from '@/src/utils/emoji-handler';
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
@@ -32,6 +18,7 @@ process.on('SIGTERM', () => process.exit(0));
 async function main() {
   // Check for --no-emoji flag early (before command parsing)
   if (process.argv.includes('--no-emoji')) {
+    const { configureEmojis } = await import('./utils/emoji-handler.js');
     configureEmojis({ forceDisable: true });
   }
 
@@ -64,6 +51,7 @@ async function main() {
   // - when banner will show (it handles its own notification)
   // - when running update command
   if (!willShowBanner && !isUpdateCommand) {
+    const { getVersion, checkAndShowUpdateNotification } = await import('./utils/index.js');
     const currentVersion = getVersion();
     await checkAndShowUpdateNotification(currentVersion);
   }
@@ -78,21 +66,53 @@ async function main() {
   // They will still be passed to all commands for backward compatibility
   // Note: Removed --remote-url global option as it conflicts with subcommand options
 
-  program
-    .addCommand(create)
-    .addCommand(monorepo)
-    .addCommand(plugins)
-    .addCommand(agent)
-    .addCommand(tee)
-    .addCommand(start)
-    .addCommand(update)
-    .addCommand(test)
-    .addCommand(env)
-    .addCommand(dev)
-    .addCommand(publish);
+  // Add commands dynamically to avoid static imports that trigger schema loading
+  const commands = [
+    { name: 'create', path: './commands/create/index.js' },
+    { name: 'plugins', path: './commands/plugins/index.js' },
+    { name: 'agent', path: './commands/agent/index.js' },
+    { name: 'start', path: './commands/start/index.js' },
+    { name: 'update', path: './commands/update/index.js' },
+    { name: 'test', path: './commands/test/index.js' },
+    { name: 'scenario', path: './commands/scenario/index.js' },
+    { name: 'test-production-verification', path: './commands/test-production-verification.js' },
+    { name: 'stress-test-verification', path: './commands/stress-test-verification.js' },
+    { name: 'env', path: './commands/env/index.js' },
+    { name: 'publish', path: './commands/publish.js' },
+  ];
+
+  // For scenario command specifically, set database type early
+  const isScenarioCommand = process.argv.includes('scenario');
+  if (isScenarioCommand) {
+    console.log('🔧 CLI: Detected scenario command, setting database type to PGLite...');
+    try {
+      const sqlModule = await import('@elizaos/plugin-sql');
+      if ('setDatabaseType' in sqlModule && typeof sqlModule.setDatabaseType === 'function') {
+        sqlModule.setDatabaseType('pglite');
+        console.log('✅ CLI: Set database type to PGLite for scenario testing');
+      } else {
+        console.warn('⚠️  CLI: setDatabaseType not found in plugin-sql exports:', Object.keys(sqlModule));
+      }
+    } catch (error) {
+      console.warn('⚠️  CLI: Failed to set database type for scenario:', error);
+    }
+  }
+
+  for (const cmd of commands) {
+    try {
+      const commandModule = await import(cmd.path);
+      const command = commandModule.default || commandModule[cmd.name] || commandModule[`${cmd.name}Command`];
+      if (command) {
+        program.addCommand(command);
+      }
+    } catch (error) {
+      console.warn(`Failed to load command ${cmd.name}:`, error);
+    }
+  }
 
   // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {
+    const { displayBanner } = await import('./utils/index.js');
     await displayBanner(false); // Let banner handle update check and show enhanced notification
   }
 
@@ -100,6 +120,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error('An error occurred:', error);
+  console.error('An error occurred:', error);
   process.exit(1);
 });

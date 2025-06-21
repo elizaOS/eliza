@@ -2,8 +2,49 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import { spawn } from 'child_process';
 import { detectDirectoryType } from './directory-detection';
 import { runBunCommand } from './run-bun';
+
+/**
+ * Check if we're running under bun
+ */
+function isRunningUnderBun(): boolean {
+  return (
+    process.argv[0]?.includes('bun') ||
+    process.execPath?.includes('bun') ||
+    process.env.BUN_RUNTIME === '1'
+  );
+}
+
+/**
+ * Execute a command using spawn to avoid bun-within-bun issues
+ */
+async function executeCommand(command: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: 'inherit',
+      shell: true,
+      env: {
+        ...process.env,
+        FORCE_COLOR: '1',
+      },
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Command failed with exit code ${code}: ${command} ${args.join(' ')}`));
+      }
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
 
 /**
  * Builds a project or plugin in the specified directory using the most appropriate available build method.
@@ -56,7 +97,16 @@ export async function buildProject(cwd: string = process.cwd(), isPlugin = false
 
       try {
         logger.debug('Building with bun...');
-        await runBunCommand(['run', 'build'], cwd);
+
+        // Check if we're already running under bun
+        if (isRunningUnderBun()) {
+          // Use spawn with shell to avoid bun-within-bun issues
+          await executeCommand('bun', ['run', 'build'], cwd);
+        } else {
+          // Use the normal approach when not under bun
+          await runBunCommand(['run', 'build'], cwd);
+        }
+
         logger.info(`Build completed successfully`);
         return;
       } catch (buildError) {
@@ -73,7 +123,14 @@ export async function buildProject(cwd: string = process.cwd(), isPlugin = false
     if (fs.existsSync(tsconfigPath)) {
       try {
         logger.debug('Found tsconfig.json, attempting to build with bunx tsc...');
-        await execa('bunx', ['tsc', '--build'], { cwd, stdio: 'inherit' });
+
+        if (isRunningUnderBun()) {
+          // Use spawn with shell to avoid issues
+          await executeCommand('bunx', ['tsc', '--build'], cwd);
+        } else {
+          await execa('bunx', ['tsc', '--build'], { cwd, stdio: 'inherit' });
+        }
+
         logger.info(`Build completed successfully`);
         return;
       } catch (tscError) {

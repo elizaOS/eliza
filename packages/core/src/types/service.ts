@@ -15,6 +15,7 @@ import type { IAgentRuntime } from './runtime';
  * ```
  */
 export interface ServiceTypeRegistry {
+  UNKNOWN: 'UNKNOWN';
   TRANSCRIPTION: 'transcription';
   VIDEO: 'video';
   BROWSER: 'browser';
@@ -27,10 +28,8 @@ export interface ServiceTypeRegistry {
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
-  DATABASE_MIGRATION: 'database_migration';
-  PLUGIN_MANAGER: 'PLUGIN_MANAGER';
-  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION';
-  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION';
+  TUNNEL: 'tunnel';
+  MIGRATION: 'migration';
 }
 
 /**
@@ -85,6 +84,7 @@ export type ServiceRegistry<T extends ServiceTypeName = ServiceTypeName> = Map<T
  * Each service typically implements the `Service` abstract class or a more specific interface like `IVideoService`.
  */
 export const ServiceType = {
+  UNKNOWN: 'UNKNOWN',
   TRANSCRIPTION: 'transcription',
   VIDEO: 'video',
   BROWSER: 'browser',
@@ -97,10 +97,8 @@ export const ServiceType = {
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
-  DATABASE_MIGRATION: 'database_migration',
-  PLUGIN_MANAGER: 'PLUGIN_MANAGER',
-  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION',
-  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION',
+  TUNNEL: 'tunnel',
+  MIGRATION: 'migration',
 } as const satisfies ServiceTypeRegistry;
 
 /**
@@ -114,14 +112,24 @@ export abstract class Service {
     if (runtime) {
       this.runtime = runtime;
     }
+    this.serviceName = (this.constructor as typeof Service).serviceName;
   }
 
   abstract stop(): Promise<void>;
 
-  /** Service type */
-  static serviceType: string;
+  /** The unique name/key for this service, used for registration and direct retrieval. */
+  static serviceName: string;
 
-  /** Service name */
+  /** Optional. The generic type or category of the service (e.g., 'WALLET', 'TASK'). */
+  static serviceType?: ServiceTypeName | string;
+
+  /** Optional. Array of service names that this service depends on. */
+  static dependencies?: string[];
+
+  /** The unique name of this service instance. Defaults to the static serviceName. */
+  serviceName: string;
+
+  /** A human-readable description of the service's capabilities. */
   abstract capabilityDescription: string;
 
   /** Service configuration */

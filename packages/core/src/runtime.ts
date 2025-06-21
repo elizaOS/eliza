@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
+import type { PluginConfiguration } from './types/plugin-config.js';
 import {
   ChannelType,
   ModelType,
@@ -16,6 +17,7 @@ import {
   type Entity,
   type Room,
   type World,
+  type GetWorldsOptions,
   type SendHandlerFunction,
   type TargetInfo,
   type ModelParamsMap,
@@ -38,10 +40,30 @@ import {
   type RuntimeSettings,
   type Component,
   IAgentRuntime,
+  type ActionResult,
+  type ActionContext,
+  type WorkingMemory as IWorkingMemory,
 } from './types';
 
 import { BM25 } from './search';
 import { stringToUuid } from './utils';
+import { EventEmitter } from 'events';
+import {
+  PlanExecutionContext,
+  composePlanningPrompt,
+  parsePlan,
+  validatePlan as validatePlanUtil,
+  executeStep,
+  getExecutionOrder,
+} from './planning';
+import type { ActionPlan, PlanningContext, PlanExecutionResult } from './types/planning';
+import { ConfigurationManager } from './managers/ConfigurationManager.js';
+import { CharacterConfigurationSource } from './configuration/CharacterConfigurationSource.js';
+import type {
+  ConfigurablePlugin,
+  ConfigurableAction,
+  ConfigurableProvider,
+} from './types/plugin-config.js';
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -53,20 +75,66 @@ export class Semaphore {
   }
   async acquire(): Promise<void> {
     if (this.permits > 0) {
-      this.permits -= 1;
-      return Promise.resolve();
+      this.permits--;
+      return;
     }
-    return new Promise<void>((resolve) => {
-      this.waiting.push(resolve);
-    });
+    await new Promise<void>((resolve) => this.waiting.push(resolve));
   }
   release(): void {
-    this.permits += 1;
-    const nextResolve = this.waiting.shift();
-    if (nextResolve && this.permits > 0) {
-      this.permits -= 1;
-      nextResolve();
+    this.permits++;
+    if (this.waiting.length > 0) {
+      const next = this.waiting.shift();
+      if (next) next();
     }
+  }
+}
+
+// WorkingMemory implementation
+class WorkingMemory implements IWorkingMemory {
+  private memory: Map<string, any> = new Map();
+  private history: Array<{ timestamp: number; key: string; value: any }> = [];
+
+  set(key: string, value: any): void {
+    this.memory.set(key, value);
+    this.history.push({ timestamp: Date.now(), key, value });
+  }
+
+  get(key: string): any {
+    return this.memory.get(key);
+  }
+
+  has(key: string): boolean {
+    return this.memory.has(key);
+  }
+
+  delete(key: string): boolean {
+    return this.memory.delete(key);
+  }
+
+  clear(): void {
+    this.memory.clear();
+    this.history = [];
+  }
+
+  entries(): IterableIterator<[string, any]> {
+    return this.memory.entries();
+  }
+
+  getHistory(key?: string): Array<{ timestamp: number; key: string; value: any }> {
+    if (key) {
+      return this.history.filter((h) => h.key === key);
+    }
+    return [...this.history];
+  }
+
+  merge(other: WorkingMemory): void {
+    for (const [key, value] of other.memory) {
+      this.set(key, value);
+    }
+  }
+
+  serialize(): Record<string, any> {
+    return Object.fromEntries(this.memory);
   }
 }
 
@@ -106,6 +174,7 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
+  private pendingServices = new Map<string, typeof Service>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -117,6 +186,12 @@ export class AgentRuntime implements IAgentRuntime {
       timestamp: number;
     }>;
   };
+
+  // Add working memory support
+  private workingMemories = new Map<UUID, WorkingMemory>();
+
+  // Configuration management
+  private configurationManager: ConfigurationManager;
 
   constructor(opts: {
     conversationLength?: number;
@@ -133,7 +208,7 @@ export class AgentRuntime implements IAgentRuntime {
       opts.character?.id ??
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
-    this.character = opts.character;
+    this.character = opts.character || ({} as Character);
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
@@ -162,6 +237,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
     this.currentRunId = undefined; // Initialize run ID tracker
+
+    // Initialize configuration manager
+    this.configurationManager = new ConfigurationManager();
   }
 
   /**
@@ -219,6 +297,22 @@ export class AgentRuntime implements IAgentRuntime {
       `Success: Plugin ${plugin.name} added to active plugins for ${this.character.name}(${this.agentId}).`
     );
 
+    // Initialize plugin configuration if it's a configurable plugin
+    const configurablePlugin = plugin as ConfigurablePlugin;
+    if (configurablePlugin.configurableActions || configurablePlugin.configurableProviders || configurablePlugin.configurableEvaluators) {
+      this.configurationManager.initializePluginConfiguration(configurablePlugin);
+    }
+
+    // Check for unified component system support
+    const hasUnifiedComponents = (plugin as any).components && Array.isArray((plugin as any).components);
+    if (hasUnifiedComponents) {
+      this.configurationManager.initializeUnifiedPluginConfiguration(
+        plugin.name,
+        (plugin as any).components,
+        configurablePlugin.config?.defaultEnabled ?? true
+      );
+    }
+
     if (plugin.init) {
       try {
         await plugin.init(plugin.config || {}, this);
@@ -245,21 +339,154 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
     }
+
+    // Register legacy actions (always enabled for backwards compatibility)
     if (plugin.actions) {
       for (const action of plugin.actions) {
         this.registerAction(action);
       }
     }
+
+    // Register configurable actions (check configuration)
+    if (configurablePlugin.configurableActions) {
+      for (const action of configurablePlugin.configurableActions) {
+        const isEnabled = this.configurationManager.isComponentEnabled(
+          plugin.name,
+          action.name,
+          'action'
+        );
+
+        if (isEnabled) {
+          this.registerAction(action);
+          this.logger.debug(`Configurable action ${action.name} is enabled and registered`);
+        } else {
+          this.logger.debug(`Configurable action ${action.name} is disabled by configuration`);
+        }
+      }
+    }
+
+    // Register legacy evaluators (always enabled for backwards compatibility)
     if (plugin.evaluators) {
       for (const evaluator of plugin.evaluators) {
         this.registerEvaluator(evaluator);
       }
     }
+
+    // Register configurable evaluators (check configuration)
+    if (configurablePlugin.configurableEvaluators) {
+      for (const evaluator of configurablePlugin.configurableEvaluators) {
+        const isEnabled = this.configurationManager.isComponentEnabled(
+          plugin.name,
+          evaluator.name,
+          'evaluator'
+        );
+
+        if (isEnabled) {
+          this.registerEvaluator(evaluator);
+          this.logger.debug(`Configurable evaluator ${evaluator.name} is enabled and registered`);
+        } else {
+          this.logger.debug(`Configurable evaluator ${evaluator.name} is disabled by configuration`);
+        }
+      }
+    }
+
+    // Register legacy providers (always enabled for backwards compatibility)
     if (plugin.providers) {
       for (const provider of plugin.providers) {
         this.registerProvider(provider);
       }
     }
+
+    // Register configurable providers (check configuration)
+    if (configurablePlugin.configurableProviders) {
+      for (const provider of configurablePlugin.configurableProviders) {
+        const isEnabled = this.configurationManager.isComponentEnabled(
+          plugin.name,
+          provider.name,
+          'provider'
+        );
+
+        if (isEnabled) {
+          this.registerProvider(provider);
+          this.logger.debug(`Configurable provider ${provider.name} is enabled and registered`);
+        } else {
+          this.logger.debug(`Configurable provider ${provider.name} is disabled by configuration`);
+        }
+      }
+    }
+
+    // Process unified component system (components array)
+    if (hasUnifiedComponents) {
+      const components = (plugin as any).components;
+      const enabledComponentsMap = this.configurationManager.getEnabledComponentsMap();
+
+      for (const componentDef of components) {
+        const componentName = componentDef.name || componentDef.component.name;
+        const componentType = componentDef.type;
+        
+        // Check if component is enabled
+        const isEnabled = this.configurationManager.isComponentEnabled(
+          plugin.name,
+          componentName,
+          componentType
+        );
+
+        if (isEnabled) {
+          // Validate dependencies if present
+          if (componentDef.dependencies && componentDef.dependencies.length > 0) {
+            const validationResult = this.configurationManager.validateComponentDependencies({
+              pluginName: plugin.name,
+              componentName,
+              componentType,
+              dependencies: componentDef.dependencies,
+              enabledComponents: enabledComponentsMap,
+            });
+
+            if (!validationResult.valid) {
+              this.logger.warn(
+                `Skipping ${componentType} "${componentName}" in plugin "${plugin.name}": ${validationResult.errors.join(', ')}`
+              );
+              continue;
+            }
+
+            if (validationResult.warnings.length > 0) {
+              this.logger.warn(
+                `${componentType} "${componentName}" in plugin "${plugin.name}" has warnings: ${validationResult.warnings.join(', ')}`
+              );
+            }
+          }
+
+          // Register the component based on its type
+          switch (componentType) {
+            case 'action':
+              this.registerAction(componentDef.component);
+              this.logger.debug(`Unified action ${componentName} is enabled and registered`);
+              break;
+            case 'provider':
+              this.registerProvider(componentDef.component);
+              this.logger.debug(`Unified provider ${componentName} is enabled and registered`);
+              break;
+            case 'evaluator':
+              this.registerEvaluator(componentDef.component);
+              this.logger.debug(`Unified evaluator ${componentName} is enabled and registered`);
+              break;
+            case 'service':
+              if (this.isInitialized) {
+                await this.registerService(componentDef.component);
+              } else {
+                this.servicesInitQueue.add(componentDef.component);
+              }
+              this.logger.debug(`Unified service ${componentName} is enabled and registered`);
+              break;
+            default:
+              this.logger.warn(`Unknown component type "${componentType}" for component "${componentName}"`);
+          }
+        } else {
+          this.logger.debug(`Unified ${componentType} ${componentName} is disabled by configuration`);
+        }
+      }
+    }
+
     if (plugin.models) {
       for (const [modelType, handler] of Object.entries(plugin.models)) {
         this.registerModel(
@@ -282,6 +509,7 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
     }
+    // Register legacy services (always enabled for backwards compatibility)
     if (plugin.services) {
       for (const service of plugin.services) {
         if (this.isInitialized) {
@@ -291,10 +519,40 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
     }
+
+    // Register configurable services (check configuration)
+    if (configurablePlugin.configurableServices) {
+      for (const service of configurablePlugin.configurableServices) {
+        const serviceName = service.service.serviceName || service.service.name;
+        const isEnabled = this.configurationManager.isComponentEnabled(
+          plugin.name,
+          serviceName,
+          'service'
+        );
+
+        if (isEnabled) {
+          if (this.isInitialized) {
+            await this.registerService(service.service);
+          } else {
+            this.servicesInitQueue.add(service.service);
+          }
+          this.logger.debug(`Configurable service ${serviceName} is enabled and registered`);
+        } else {
+          this.logger.debug(`Configurable service ${serviceName} is disabled by configuration`);
+        }
+      }
+    }
   }
 
   getAllServices(): Map<ServiceTypeName, Service> {
     return this.services;
+  }
+
+  /**
+   * Get the configuration manager for plugin component configuration
+   */
+  getConfigurationManager(): ConfigurationManager {
+    return this.configurationManager;
   }
 
   async stop() {
@@ -310,18 +568,27 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.warn('Agent already initialized');
       return;
     }
-    const pluginRegistrationPromises = [];
+
+    // Register character-based configuration source if character has plugin config
+    if (this.character.pluginConfig) {
+      const characterConfigSource = new CharacterConfigurationSource(this.character);
+      this.configurationManager.registerSource(characterConfigSource);
+      this.logger.info('Registered character-based plugin configuration source');
+    }
+
+    // Load all configuration sources
+    await this.configurationManager.reload();
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
     // The runtime now accepts a pre-resolved, ordered list of plugins.
     const pluginsToLoad = this.characterPlugins;
 
+    // Register plugins sequentially to maintain order, especially important for services
     for (const plugin of pluginsToLoad) {
       if (plugin) {
-        pluginRegistrationPromises.push(this.registerPlugin(plugin));
+        await this.registerPlugin(plugin);
       }
     }
-    await Promise.all(pluginRegistrationPromises);
 
     if (!this.adapter) {
       this.logger.error(
@@ -334,10 +601,9 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       await this.adapter.init();
 
-      // Run migrations for all loaded plugins
-      this.logger.info('Running plugin migrations...');
-      await this.runPluginMigrations();
-      this.logger.info('Plugin migrations completed.');
+      this.logger.info('Initializing plugin schemas...');
+      await this.initializePluginSchemas();
+      this.logger.info('Plugin schema initialization completed.');
 
       const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
       if (!existingAgent) {
@@ -353,7 +619,7 @@ export class AgentRuntime implements IAgentRuntime {
           id: this.agentId,
           names: [this.character.name],
           metadata: {},
-          agentId: existingAgent.id,
+          agentId: existingAgent.id as UUID,
         });
         if (!created) {
           const errorMsg = `Failed to create entity for agent ${this.agentId}`;
@@ -409,32 +675,44 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+    // Check if any services are still pending due to unmet dependencies
+    if (this.pendingServices.size > 0) {
+      const pendingNames = Array.from(this.pendingServices.keys());
+      this.logger.warn(
+        `${this.character.name}(${this.agentId}) - ${this.pendingServices.size} services could not be initialized due to unmet dependencies: ${pendingNames.join(', ')}`
+      );
+    }
     this.isInitialized = true;
   }
 
-  async runPluginMigrations(): Promise<void> {
+  async initializePluginSchemas(): Promise<void> {
     const drizzle = (this.adapter as any)?.db;
     if (!drizzle) {
-      this.logger.warn('Drizzle instance not found on adapter, skipping plugin migrations.');
+      this.logger.warn('Drizzle instance not found on adapter, skipping plugin schema initialization.');
       return;
     }
 
     const pluginsWithSchemas = this.plugins.filter((p) => p.schema);
-    this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to migrate.`);
+    this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to initialize.`);
 
     for (const p of pluginsWithSchemas) {
       if (p.schema) {
-        this.logger.info(`Running migrations for plugin: ${p.name}`);
+        this.logger.info(`Initializing schema for plugin: ${p.name}`);
         try {
-          // You might need a more generic way to run migrations if they are not all Drizzle-based
-          // For now, assuming a function on the adapter or a utility function
-          if (this.adapter && 'runMigrations' in this.adapter) {
-            await (this.adapter as any).runMigrations(p.schema, p.name);
-            this.logger.info(`Successfully migrated plugin: ${p.name}`);
+          // Find the SQL plugin in our loaded plugins
+          const sqlPlugin = this.plugins.find((plugin) => plugin.name === '@elizaos/plugin-sql');
+          if (sqlPlugin && 'initializePluginSchema' in sqlPlugin) {
+            // Use the new initializePluginSchema function from the SQL plugin
+            await (sqlPlugin as any).initializePluginSchema(drizzle, p.name, p.schema);
+            this.logger.info(`Successfully initialized schema for plugin: ${p.name}`);
+          } else {
+            this.logger.warn(
+              `SQL plugin not found or missing initializePluginSchema method, skipping schema initialization for plugin: ${p.name}`
+            );
           }
         } catch (error) {
-          this.logger.error(`Failed to migrate plugin ${p.name}:`, error);
-          // Decide if you want to throw or continue
+          this.logger.error(`Failed to initialize schema for plugin ${p.name}:`, error);
+          throw error;
         }
       }
     }
@@ -526,13 +804,20 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       const actions = response.content.actions;
+      let accumulatedState = state;
+      const actionResults: ActionResult[] = [];
+
       function normalizeAction(actionString: string) {
         return actionString.toLowerCase().replace('_', '');
       }
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
       for (const responseAction of actions) {
-        state = await this.composeState(message, ['RECENT_MESSAGES']);
+        // Compose state with previous action results
+        accumulatedState = await this.composeState(message, [
+          'RECENT_MESSAGES',
+          'ACTION_STATE', // New provider we'll implement
+        ]);
 
         this.logger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
@@ -590,11 +875,80 @@ export class AgentRuntime implements IAgentRuntime {
             prompts: [],
           };
 
-          await action.handler(this, message, state, {}, callback, responses);
-          this.logger.debug(`Success: Action ${action.name} executed successfully.`);
+          // Create action context
+          const actionContext: ActionContext = {
+            previousResults: actionResults,
+            workingMemory: this.getWorkingMemory(message.roomId),
+            updateMemory: (key: string, value: any) => {
+              this.getWorkingMemory(message.roomId).set(key, value);
+            },
+            getMemory: (key: string) => {
+              return this.getWorkingMemory(message.roomId).get(key);
+            },
+            getPreviousResult: (stepId: UUID) => {
+              return actionResults.find((r) => r.data?.stepId === stepId);
+            },
+          };
+
+          // Execute action with context
+          const result = await action.handler(
+            this,
+            message,
+            accumulatedState,
+            { context: actionContext },
+            callback,
+            responses
+          );
+
+          // Handle backward compatibility for void, null, true, false returns
+          const isLegacyReturn =
+            result === undefined || result === null || typeof result === 'boolean';
+
+          // Only create ActionResult if we have a proper result
+          let actionResult: ActionResult | null = null;
+
+          if (!isLegacyReturn) {
+            // Ensure we have an ActionResult
+            actionResult =
+              typeof result === 'object' &&
+              result !== null &&
+              ('values' in result || 'data' in result || 'text' in result)
+                ? (result as ActionResult)
+                : {
+                    data: {
+                      actionName: action.name,
+                      legacyResult: result,
+                    },
+                  };
+
+            actionResults.push(actionResult);
+
+            // Merge returned values into state
+            if (actionResult.values) {
+              accumulatedState = {
+                ...accumulatedState,
+                values: { ...accumulatedState.values, ...actionResult.values },
+                data: {
+                  ...accumulatedState.data,
+                  actionResults: [...(accumulatedState.data?.actionResults || []), actionResult],
+                },
+              };
+            }
+
+            // Store in working memory
+            this.updateWorkingMemory(message.roomId, responseAction, actionResult);
+          }
+
+          this.logger.debug(`Action ${action.name} completed`, {
+            isLegacyReturn,
+            result: isLegacyReturn ? result : undefined,
+            hasValues: actionResult ? !!actionResult.values : false,
+            hasData: actionResult ? !!actionResult.data : false,
+            hasText: actionResult ? !!actionResult.text : false,
+          });
 
           // log to database with collected prompts
-          this.adapter.log({
+          await this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: 'action',
@@ -603,8 +957,10 @@ export class AgentRuntime implements IAgentRuntime {
               actionId: actionId,
               message: message.content.text,
               messageId: message.id,
-              state,
+              state: accumulatedState,
               responses,
+              result: isLegacyReturn ? { legacy: result } : actionResult,
+              isLegacyReturn,
               prompts: this.currentActionContext?.prompts || [],
               promptCount: this.currentActionContext?.prompts.length || 0,
             },
@@ -619,6 +975,16 @@ export class AgentRuntime implements IAgentRuntime {
           // Clear action context on error
           this.currentActionContext = undefined;
 
+          // Create error result
+          const errorResult: ActionResult = {
+            data: {
+              actionName: action.name,
+              error: errorMessage,
+              errorObject: error,
+            },
+          };
+          actionResults.push(errorResult);
+
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
             content: {
@@ -630,10 +996,49 @@ export class AgentRuntime implements IAgentRuntime {
             worldId: message.worldId,
           };
           await this.createMemory(actionMemory, 'messages');
-          throw error;
+
+          // Decide whether to continue or abort
+          if (this.shouldAbortOnError(error)) {
+            throw error;
+          }
         }
       }
+
+      // Store accumulated results for evaluators and providers
+      if (message.id) {
+        this.stateCache.set(`${message.id}_action_results`, {
+          values: { actionResults },
+          data: { actionResults },
+          text: JSON.stringify(actionResults),
+        });
+      }
     }
+  }
+
+  // New helper methods for working memory
+  getWorkingMemory(roomId: UUID): WorkingMemory {
+    if (!this.workingMemories.has(roomId)) {
+      this.workingMemories.set(roomId, new WorkingMemory());
+    }
+    return this.workingMemories.get(roomId)!;
+  }
+
+  updateWorkingMemory(roomId: UUID, actionName: string, result: ActionResult): void {
+    const memory = this.getWorkingMemory(roomId);
+    memory.set(`action_${actionName}_${Date.now()}`, {
+      actionName,
+      result,
+      timestamp: Date.now(),
+    });
+  }
+
+  private shouldAbortOnError(error: any): boolean {
+    // TODO: Implement logic to determine if we should abort on this error
+    // For now, only abort on critical errors
+    if (error?.critical || error?.code === 'CRITICAL_ERROR') {
+      return true;
+    }
+    return false;
   }
 
   async evaluate(
@@ -683,7 +1088,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   // highly SQL optimized queries
-  async ensureConnections(entities, rooms, source, world): Promise<void> {
+  async ensureConnections(
+    entities: any[],
+    rooms: any[],
+    source: string,
+    world: any
+  ): Promise<void> {
     // guards
     if (!entities) {
       console.trace();
@@ -702,8 +1112,8 @@ export class AgentRuntime implements IAgentRuntime {
     const firstRoom = rooms[0];
 
     // Helper function for chunking arrays
-    const chunkArray = (arr, size) =>
-      arr.reduce((chunks, item, i) => {
+    const chunkArray = (arr: any[], size: number) =>
+      arr.reduce((chunks: any[][], item: any, i: number) => {
         if (i % size === 0) chunks.push([]);
         chunks[chunks.length - 1].push(item);
         return chunks;
@@ -712,7 +1122,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 1: Create all rooms FIRST (before adding any participants)
     const roomIds = rooms.map((r) => r.id);
     const roomExistsCheck = await this.getRoomsByIds(roomIds);
-    const roomsIdExists = roomExistsCheck.map((r) => r.id);
+    const roomsIdExists = roomExistsCheck ? roomExistsCheck.map((r) => r.id) : [];
     const roomsToCreate = roomIds.filter((id) => !roomsIdExists.includes(id));
 
     const rf = {
@@ -737,7 +1147,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 2: Create all entities
     const entityIds = entities.map((e) => e.id);
     const entityExistsCheck = await this.adapter.getEntityByIds(entityIds);
-    const entitiesToUpdate = entityExistsCheck.map((e) => e.id);
+    const entitiesToUpdate = entityExistsCheck ? entityExistsCheck.map((e) => e.id) : [];
     const entitiesToCreate = entities.filter((e) => !entitiesToUpdate.includes(e.id));
 
     const r = {
@@ -790,7 +1200,7 @@ export class AgentRuntime implements IAgentRuntime {
       await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
     }
 
-    this.logger.success(`Success: Successfully connected world`);
+    this.logger.info(`Success: Successfully connected world`);
   }
 
   async ensureConnection({
@@ -821,9 +1231,9 @@ export class AgentRuntime implements IAgentRuntime {
     metadata?: Record<string, any>;
   }) {
     if (!worldId && serverId) {
-      worldId = createUniqueUuid(this.agentId + serverId, serverId);
+      worldId = createUniqueUuid(this, serverId);
     }
-    const names = [name, userName].filter(Boolean);
+    const names = [name, userName].filter((n): n is string => Boolean(n));
     const entityMetadata = {
       [source!]: {
         id: userId,
@@ -862,7 +1272,9 @@ export class AgentRuntime implements IAgentRuntime {
       } else {
         await this.adapter.updateEntity({
           id: entityId,
-          names: [...new Set([...(entity.names || []), ...names])].filter(Boolean) as string[],
+          names: [
+            ...new Set([...(entity.names || []), ...names.filter((n): n is string => Boolean(n))]),
+          ],
           metadata: {
             ...entity.metadata,
             [source!]: {
@@ -884,12 +1296,13 @@ export class AgentRuntime implements IAgentRuntime {
       });
       await this.ensureRoomExists({
         id: roomId,
-        name: name,
-        source,
-        type,
+        name: name || 'Unnamed Room',
+        source: source || 'unknown',
+        type: type || ChannelType.DM,
         channelId,
         serverId,
         worldId,
+        metadata,
       });
       try {
         await this.ensureParticipantInRoom(entityId, roomId);
@@ -1020,7 +1433,12 @@ export class AgentRuntime implements IAgentRuntime {
       data: {},
       text: '',
     } as State;
-    const cachedState = skipCache ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
+    const cachedState =
+      skipCache || !message.id ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
+
+    const existingProviderNames = cachedState.data.providers
+      ? Object.keys(cachedState.data.providers)
+      : [];
     const providerNames = new Set<string>();
     if (filterList && filterList.length > 0) {
       filterList.forEach((name) => providerNames.add(name));
@@ -1091,7 +1509,12 @@ export class AgentRuntime implements IAgentRuntime {
       },
       text: providersText,
     } as State;
-    this.stateCache.set(message.id, newState);
+    if (message.id) {
+      this.stateCache.set(message.id, newState);
+    }
+    const finalProviderCount = Object.keys(currentProviderResults).length;
+    const finalProviderNames = Object.keys(currentProviderResults);
+    const finalValueKeys = Object.keys(newState.values);
     return newState;
   }
 
@@ -1103,6 +1526,23 @@ export class AgentRuntime implements IAgentRuntime {
       return null;
     }
     return serviceInstance as T;
+  }
+
+  /**
+   * Get all services of a specific type
+   * @param serviceType - The service type to filter by
+   * @returns Array of services matching the specified type
+   */
+  getServicesByType(serviceType: ServiceTypeName): Service[] {
+    const services: Service[] = [];
+    for (const [serviceName, service] of this.services.entries()) {
+      // Check if the service's constructor has the matching serviceType
+      const ServiceClass = this.serviceTypes.get(serviceName);
+      if (ServiceClass && ServiceClass.serviceType === serviceType) {
+        services.push(service);
+      }
+    }
+    return services;
   }
 
   /**
@@ -1132,38 +1572,79 @@ export class AgentRuntime implements IAgentRuntime {
     return this.services.has(serviceType as ServiceTypeName);
   }
 
+  /**
+   * Process any pending services that were waiting for dependencies
+   */
+  private async processPendingServices(): Promise<void> {
+    const pendingList = Array.from(this.pendingServices.entries());
+    for (const [serviceName, serviceDef] of pendingList) {
+      const dependencies = (serviceDef as any).dependencies || [];
+      const missingDeps = dependencies.filter(
+        (dep: string) => !this.services.has(dep as ServiceTypeName)
+      );
+
+      if (missingDeps.length === 0) {
+        // All dependencies are now satisfied, remove from pending and register
+        this.pendingServices.delete(serviceName);
+        await this.registerService(serviceDef);
+      }
+    }
+  }
+
   async registerService(serviceDef: typeof Service): Promise<void> {
-    const serviceType = serviceDef.serviceType as ServiceTypeName;
-    if (!serviceType) {
+    // Use serviceName as the unique key for registration
+    const serviceName = serviceDef.serviceName || serviceDef.name;
+    if (!serviceName) {
       this.logger.warn(
-        `Service ${serviceDef.name} is missing serviceType. Please define a static serviceType property.`
+        `Service ${serviceDef.name} is missing serviceName. Please define a static serviceName property.`
       );
       return;
     }
+    const serviceType = serviceDef.serviceType as ServiceTypeName;
     this.logger.debug(
       `${this.character.name}(${this.agentId}) - Registering service:`,
-      serviceType
+      serviceName
     );
-    if (this.services.has(serviceType)) {
+    if (this.services.has(serviceName as ServiceTypeName)) {
       this.logger.warn(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
+        `${this.character.name}(${this.agentId}) - Service ${serviceName} is already registered. Skipping registration.`
       );
       return;
     }
+
+    // Check if all dependencies are satisfied
+    const dependencies = (serviceDef as any).dependencies || [];
+    const missingDeps = dependencies.filter(
+      (dep: string) => !this.services.has(dep as ServiceTypeName)
+    );
+
+    if (missingDeps.length > 0) {
+      this.logger.debug(
+        `${this.character.name}(${this.agentId}) - Service ${serviceName} has unmet dependencies: ${missingDeps.join(', ')}. Deferring registration.`
+      );
+      this.pendingServices.set(serviceName, serviceDef);
+      return;
+    }
+
     try {
       const serviceInstance = await serviceDef.start(this);
-      this.services.set(serviceType, serviceInstance);
-      this.serviceTypes.set(serviceType, serviceDef);
+      this.services.set(serviceName as ServiceTypeName, serviceInstance);
+      if (serviceType) {
+        this.serviceTypes.set(serviceName as ServiceTypeName, serviceDef);
+      }
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }
       this.logger.debug(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
+        `${this.character.name}(${this.agentId}) - Service ${serviceName} registered successfully`
       );
+
+      // Check if any pending services can now be registered
+      await this.processPendingServices();
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
+        `${this.character.name}(${this.agentId}) - Failed to register service ${serviceName}: ${errorMessage}`
       );
       throw error;
     }
@@ -1187,11 +1668,18 @@ export class AgentRuntime implements IAgentRuntime {
       priority: priority || 0,
       registrationOrder,
     });
+    // Sort by priority (higher priority first)
+    // If priorities are equal, maintain insertion order
     this.models.get(modelKey)?.sort((a, b) => {
-      if ((b.priority || 0) !== (a.priority || 0)) {
-        return (b.priority || 0) - (a.priority || 0);
+      const aPriority = a.priority ?? 0;
+      const bPriority = b.priority ?? 0;
+      if (bPriority !== aPriority) {
+        return bPriority - aPriority;
       }
-      return a.registrationOrder - b.registrationOrder;
+      // If priorities are equal, sort by registration order
+      const aOrder = a.registrationOrder ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.registrationOrder ?? Number.MAX_SAFE_INTEGER;
+      return aOrder - bOrder;
     });
   }
 
@@ -1359,6 +1847,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
   }
+
 
   async ensureEmbeddingDimension() {
     this.logger.debug(`[AgentRuntime][${this.character.name}] Starting ensureEmbeddingDimension`);
@@ -1697,6 +2186,13 @@ export class AgentRuntime implements IAgentRuntime {
   async updateWorld(world: World): Promise<void> {
     await this.adapter.updateWorld(world);
   }
+
+  async getWorlds(options?: GetWorldsOptions): Promise<World[]> {
+    return await this.adapter.getWorlds({
+      agentId: this.agentId,
+      ...options,
+    });
+  }
   async getRoom(roomId: UUID): Promise<Room | null> {
     const rooms = await this.adapter.getRoomsByIds([roomId]);
     if (!rooms?.length) return null;
@@ -1707,20 +2203,30 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getRoomsByIds(roomIds);
   }
   async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
-    if (!worldId) throw new Error('worldId is required');
-    const res = await this.adapter.createRooms([
-      {
-        id,
-        name,
-        source,
-        type,
-        channelId,
-        serverId,
-        worldId,
-      },
-    ]);
-    if (!res.length) return null;
-    return res[0];
+    try {
+      const existingRoom = await this.getRoom(id);
+      if (existingRoom) {
+        return existingRoom.id;
+      }
+      const res = await this.adapter.createRooms([
+        {
+          id,
+          name,
+          source,
+          type,
+          channelId,
+          serverId,
+          worldId: worldId || this.agentId, // Use agent ID as fallback world ID
+          agentId: this.agentId,
+        },
+      ]);
+      if (!res.length) {
+        throw new Error('Failed to create room - empty result');
+      }
+      return res[0];
+    } catch (error: any) {
+      throw new Error(`Failed to create room: ${error.message}`);
+    }
   }
 
   async createRooms(rooms: Room[]): Promise<UUID[]> {
@@ -1903,5 +2409,603 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error('Database adapter not registered');
     }
     return await this.adapter.isReady();
+  }
+
+  /**
+   * Generate an action plan based on the given message and context
+   */
+  async generatePlan(message: Memory, context: PlanningContext): Promise<ActionPlan> {
+    try {
+      // Compose state for planning
+      const state = await this.composeState(message);
+
+      // Create planning prompt
+      const prompt = composePlanningPrompt(context, state);
+
+      // Use reasoning model to generate plan
+      const response = await this.useModel(ModelType.TEXT_REASONING_LARGE, {
+        prompt,
+        temperature: 0.7,
+        maxTokens: 2000,
+      });
+
+      // Parse the plan from the response
+      const plan = parsePlan(response);
+
+      // Validate the plan
+      const validation = await this.validatePlan(plan);
+      if (!validation.valid) {
+        throw new Error(`Invalid plan: ${validation.issues.join(', ')}`);
+      }
+
+      return plan;
+    } catch (error) {
+      this.logger.error('Failed to generate plan:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute an action plan
+   */
+  async executePlan(
+    plan: ActionPlan,
+    message: Memory,
+    callback?: HandlerCallback
+  ): Promise<PlanExecutionResult> {
+    const context = new PlanExecutionContext(plan);
+
+    try {
+      // Update plan state
+      plan.state.status = 'running';
+      plan.state.startTime = Date.now();
+
+      // Get execution order based on dependencies
+      const executionOrder = getExecutionOrder(plan);
+
+      // Execute steps in order
+      for (const stepGroup of executionOrder) {
+        if (context.shouldAbort()) {
+          break;
+        }
+
+        // Execute steps in parallel if multiple in group
+        if (stepGroup.length > 1 && plan.executionModel !== 'sequential') {
+          const promises = stepGroup.map((stepId) => {
+            const step = plan.steps.find((s) => s.id === stepId);
+            if (!step) return Promise.resolve();
+
+            return executeStep(step, context, this, message, callback).catch((error) => {
+              context.addError(error);
+              if (step.onError === 'abort') {
+                context.abort();
+              }
+            });
+          });
+
+          await Promise.all(promises);
+        } else {
+          // Execute steps sequentially
+          for (const stepId of stepGroup) {
+            if (context.shouldAbort()) {
+              break;
+            }
+
+            const step = plan.steps.find((s) => s.id === stepId);
+            if (!step) continue;
+
+            try {
+              await executeStep(step, context, this, message, callback);
+            } catch (error) {
+              context.addError(error as Error);
+              if (step.onError === 'abort') {
+                context.abort();
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Update plan state
+      plan.state.status = context.hasError() ? 'failed' : 'completed';
+      plan.state.endTime = Date.now();
+
+      return context.getResult();
+    } catch (error) {
+      this.logger.error('Failed to execute plan:', error);
+      plan.state.status = 'failed';
+      plan.state.endTime = Date.now();
+      plan.state.error = error as Error;
+
+      context.addError(error as Error);
+      return context.getResult();
+    }
+  }
+
+  /**
+   * Validate a plan
+   */
+  async validatePlan(plan: ActionPlan): Promise<{ valid: boolean; issues: string[] }> {
+    return validatePlanUtil(plan, this);
+  }
+
+
+
+  /**
+   * Configure plugin components dynamically
+   */
+  async configurePlugin(
+    pluginName: string,
+    config: {
+      enabled?: boolean;
+      actions?: Record<string, { 
+        enabled: boolean;
+        overrideLevel?: 'default' | 'plugin' | 'database' | 'gui' | 'runtime';
+        overrideReason?: string;
+        settings?: Record<string, any>;
+        lastModified?: Date;
+      }>;
+      providers?: Record<string, { 
+        enabled: boolean;
+        overrideLevel?: 'default' | 'plugin' | 'database' | 'gui' | 'runtime';
+        overrideReason?: string;
+        settings?: Record<string, any>;
+        lastModified?: Date;
+      }>;
+      evaluators?: Record<string, { 
+        enabled: boolean;
+        overrideLevel?: 'default' | 'plugin' | 'database' | 'gui' | 'runtime';
+        overrideReason?: string;
+        settings?: Record<string, any>;
+        lastModified?: Date;
+      }>;
+      services?: Record<string, { 
+        enabled: boolean;
+        overrideLevel?: 'default' | 'plugin' | 'database' | 'gui' | 'runtime';
+        overrideReason?: string;
+        settings?: Record<string, any>;
+        lastModified?: Date;
+      }>;
+    }
+  ): Promise<void> {
+    
+    // Convert simple config to ComponentConfigState format
+    const pluginConfig: Partial<PluginConfiguration> = {
+      enabled: config.enabled,
+      actions: config.actions
+        ? Object.fromEntries(
+            Object.entries(config.actions).map(([name, conf]) => [
+              name,
+              { 
+                enabled: conf.enabled, 
+                overrideLevel: conf.overrideLevel || 'runtime' as const,
+                overrideReason: conf.overrideReason,
+                settings: conf.settings || {},
+                lastModified: conf.lastModified || new Date() 
+              },
+            ])
+          )
+        : undefined,
+      providers: config.providers
+        ? Object.fromEntries(
+            Object.entries(config.providers).map(([name, conf]) => [
+              name,
+              { 
+                enabled: conf.enabled, 
+                overrideLevel: conf.overrideLevel || 'runtime' as const,
+                overrideReason: conf.overrideReason,
+                settings: conf.settings || {},
+                lastModified: conf.lastModified || new Date() 
+              },
+            ])
+          )
+        : undefined,
+      evaluators: config.evaluators
+        ? Object.fromEntries(
+            Object.entries(config.evaluators).map(([name, conf]) => [
+              name,
+              { 
+                enabled: conf.enabled, 
+                overrideLevel: conf.overrideLevel || 'runtime' as const,
+                overrideReason: conf.overrideReason,
+                settings: conf.settings || {},
+                lastModified: conf.lastModified || new Date() 
+              },
+            ])
+          )
+        : undefined,
+      services: config.services
+        ? Object.fromEntries(
+            Object.entries(config.services).map(([name, conf]) => [
+              name,
+              { 
+                enabled: conf.enabled, 
+                overrideLevel: conf.overrideLevel || 'runtime' as const,
+                overrideReason: conf.overrideReason,
+                settings: conf.settings || {},
+                lastModified: conf.lastModified || new Date() 
+              },
+            ])
+          )
+        : undefined,
+    };
+
+    // Determine the override level from the first component config if specified
+    let overrideLevel: 'gui' | 'database' | 'plugin-manager' | 'runtime' = 'runtime';
+    if (config.actions && Object.keys(config.actions).length > 0) {
+      const firstAction = Object.values(config.actions)[0];
+      if (firstAction.overrideLevel && ['gui', 'database', 'plugin-manager', 'runtime'].includes(firstAction.overrideLevel)) {
+        overrideLevel = firstAction.overrideLevel as any;
+      }
+    } else if (config.providers && Object.keys(config.providers).length > 0) {
+      const firstProvider = Object.values(config.providers)[0];
+      if (firstProvider.overrideLevel && ['gui', 'database', 'plugin-manager', 'runtime'].includes(firstProvider.overrideLevel)) {
+        overrideLevel = firstProvider.overrideLevel as any;
+      }
+    } else if (config.evaluators && Object.keys(config.evaluators).length > 0) {
+      const firstEvaluator = Object.values(config.evaluators)[0];
+      if (firstEvaluator.overrideLevel && ['gui', 'database', 'plugin-manager', 'runtime'].includes(firstEvaluator.overrideLevel)) {
+        overrideLevel = firstEvaluator.overrideLevel as any;
+      }
+    } else if (config.services && Object.keys(config.services).length > 0) {
+      const firstService = Object.values(config.services)[0];
+      if (firstService.overrideLevel && ['gui', 'database', 'plugin-manager', 'runtime'].includes(firstService.overrideLevel)) {
+        overrideLevel = firstService.overrideLevel as any;
+      }
+    }
+
+    await this.configurationManager.setOverride(overrideLevel, pluginName, pluginConfig);
+
+    // Re-register affected components
+    const plugin = this.plugins.find((p) => p.name === pluginName);
+    if (plugin) {
+      const configurablePlugin = plugin as ConfigurablePlugin;
+
+      // Handle legacy actions (standard Plugin interface)
+      if (plugin.actions && config.actions) {
+        for (const [actionName, actionConfig] of Object.entries(config.actions)) {
+          const action = plugin.actions.find((a) => a.name === actionName);
+          if (action) {
+            const currentlyRegistered = this.actions.some((a) => a.name === actionName);
+
+            if (actionConfig.enabled && !currentlyRegistered) {
+              // Enable action
+              this.registerAction(action);
+              this.logger.info(`Legacy action ${actionName} enabled for plugin ${pluginName}`);
+            } else if (!actionConfig.enabled && currentlyRegistered) {
+              // Disable action
+              const index = this.actions.findIndex((a) => a.name === actionName);
+              if (index !== -1) {
+                this.actions.splice(index, 1);
+                this.logger.info(`Legacy action ${actionName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle configurable actions
+      if (configurablePlugin.configurableActions && config.actions) {
+        for (const [actionName, actionConfig] of Object.entries(config.actions)) {
+          const action = configurablePlugin.configurableActions.find((a) => a.name === actionName);
+          if (action) {
+            const currentlyRegistered = this.actions.some((a) => a.name === actionName);
+
+            if (actionConfig.enabled && !currentlyRegistered) {
+              // Enable action
+              this.registerAction(action);
+              this.logger.info(`Action ${actionName} enabled for plugin ${pluginName}`);
+            } else if (!actionConfig.enabled && currentlyRegistered) {
+              // Disable action
+              const index = this.actions.findIndex((a) => a.name === actionName);
+              if (index !== -1) {
+                this.actions.splice(index, 1);
+                this.logger.info(`Action ${actionName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle legacy providers (standard Plugin interface)
+      if (plugin.providers && config.providers) {
+        for (const [providerName, providerConfig] of Object.entries(config.providers)) {
+          const provider = plugin.providers.find((p) => p.name === providerName);
+          if (provider) {
+            const currentlyRegistered = this.providers.some((p) => p.name === providerName);
+
+            if (providerConfig.enabled && !currentlyRegistered) {
+              // Enable provider
+              this.registerProvider(provider);
+              this.logger.info(`Legacy provider ${providerName} enabled for plugin ${pluginName}`);
+            } else if (!providerConfig.enabled && currentlyRegistered) {
+              // Disable provider
+              const index = this.providers.findIndex((p) => p.name === providerName);
+              if (index !== -1) {
+                this.providers.splice(index, 1);
+                this.logger.info(`Legacy provider ${providerName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle configurable providers
+      if (configurablePlugin.configurableProviders && config.providers) {
+        for (const [providerName, providerConfig] of Object.entries(config.providers)) {
+          const provider = configurablePlugin.configurableProviders.find(
+            (p) => p.name === providerName
+          );
+          if (provider) {
+            const currentlyRegistered = this.providers.some((p) => p.name === providerName);
+
+            if (providerConfig.enabled && !currentlyRegistered) {
+              // Enable provider
+              this.registerProvider(provider);
+              this.logger.info(`Provider ${providerName} enabled for plugin ${pluginName}`);
+            } else if (!providerConfig.enabled && currentlyRegistered) {
+              // Disable provider
+              const index = this.providers.findIndex((p) => p.name === providerName);
+              if (index !== -1) {
+                this.providers.splice(index, 1);
+                this.logger.info(`Provider ${providerName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle legacy evaluators (standard Plugin interface)
+      if (plugin.evaluators && config.evaluators) {
+        for (const [evaluatorName, evaluatorConfig] of Object.entries(config.evaluators)) {
+          const evaluator = plugin.evaluators.find((e) => e.name === evaluatorName);
+          if (evaluator) {
+            const currentlyRegistered = this.evaluators.some((e) => e.name === evaluatorName);
+
+            if (evaluatorConfig.enabled && !currentlyRegistered) {
+              // Enable evaluator
+              this.registerEvaluator(evaluator);
+              this.logger.info(`Legacy evaluator ${evaluatorName} enabled for plugin ${pluginName}`);
+            } else if (!evaluatorConfig.enabled && currentlyRegistered) {
+              // Disable evaluator
+              const index = this.evaluators.findIndex((e) => e.name === evaluatorName);
+              if (index !== -1) {
+                this.evaluators.splice(index, 1);
+                this.logger.info(`Legacy evaluator ${evaluatorName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle configurable evaluators
+      if (configurablePlugin.configurableEvaluators && config.evaluators) {
+        for (const [evaluatorName, evaluatorConfig] of Object.entries(config.evaluators)) {
+          const evaluator = configurablePlugin.configurableEvaluators.find(
+            (e) => e.name === evaluatorName
+          );
+          if (evaluator) {
+            const currentlyRegistered = this.evaluators.some((e) => e.name === evaluatorName);
+
+            if (evaluatorConfig.enabled && !currentlyRegistered) {
+              // Enable evaluator
+              this.registerEvaluator(evaluator);
+              this.logger.info(`Evaluator ${evaluatorName} enabled for plugin ${pluginName}`);
+            } else if (!evaluatorConfig.enabled && currentlyRegistered) {
+              // Disable evaluator
+              const index = this.evaluators.findIndex((e) => e.name === evaluatorName);
+              if (index !== -1) {
+                this.evaluators.splice(index, 1);
+                this.logger.info(`Evaluator ${evaluatorName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle legacy services (standard Plugin interface)
+      if (plugin.services && config.services) {
+        for (const [serviceName, serviceConfig] of Object.entries(config.services)) {
+          const service = plugin.services.find((s) => (s.serviceName || s.name) === serviceName);
+          if (service) {
+            const currentlyRegistered = this.services.has(serviceName as ServiceTypeName);
+
+            if (serviceConfig.enabled && !currentlyRegistered) {
+              // Enable service
+              await this.registerService(service);
+              this.logger.info(`Legacy service ${serviceName} enabled for plugin ${pluginName}`);
+            } else if (!serviceConfig.enabled && currentlyRegistered) {
+              // Disable service
+              const serviceInstance = this.services.get(serviceName as ServiceTypeName);
+              if (serviceInstance) {
+                await serviceInstance.stop();
+                this.services.delete(serviceName as ServiceTypeName);
+                this.logger.info(`Legacy service ${serviceName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle configurable services
+      if (configurablePlugin.configurableServices && config.services) {
+        for (const [serviceName, serviceConfig] of Object.entries(config.services)) {
+          const service = configurablePlugin.configurableServices.find(
+            (s) => (s.service.serviceName || s.service.name) === serviceName
+          );
+          if (service) {
+            const currentlyRegistered = this.services.has(serviceName as ServiceTypeName);
+
+            if (serviceConfig.enabled && !currentlyRegistered) {
+              // Enable service
+              await this.registerService(service.service);
+              this.logger.info(`Service ${serviceName} enabled for plugin ${pluginName}`);
+            } else if (!serviceConfig.enabled && currentlyRegistered) {
+              // Disable service
+              const serviceInstance = this.services.get(serviceName as ServiceTypeName);
+              if (serviceInstance) {
+                await serviceInstance.stop();
+                this.services.delete(serviceName as ServiceTypeName);
+                this.logger.info(`Service ${serviceName} disabled for plugin ${pluginName}`);
+              }
+            }
+          }
+        }
+      }
+
+      // Handle unified components system (NEW)
+      if ((plugin as any).components) {
+        const components = (plugin as any).components as Array<{
+          type: 'action' | 'provider' | 'evaluator' | 'service';
+          component: any;
+          config: any;
+        }>;
+
+        for (const componentDef of components) {
+          const componentName = componentDef.component.name || 
+                               componentDef.component.serviceName || 
+                               componentDef.component.constructor?.name;
+          
+          if (!componentName) continue;
+
+          const componentType = componentDef.type;
+          const targetConfigKey = `${componentType}s` as keyof typeof config;
+          const targetConfig = config[targetConfigKey] as Record<string, { enabled: boolean }> | undefined;
+          
+          if (targetConfig && targetConfig[componentName]) {
+            const componentConfig = targetConfig[componentName];
+
+            switch (componentType) {
+              case 'action':
+                {
+                  const currentlyRegistered = this.actions.some((a) => a.name === componentName);
+                  
+                  if (componentConfig.enabled && !currentlyRegistered) {
+                    // Enable action
+                    this.registerAction(componentDef.component);
+                    this.logger.info(`Unified action ${componentName} enabled for plugin ${pluginName}`);
+                  } else if (!componentConfig.enabled && currentlyRegistered) {
+                    // Disable action
+                    const index = this.actions.findIndex((a) => a.name === componentName);
+                    if (index !== -1) {
+                      this.actions.splice(index, 1);
+                      this.logger.info(`Unified action ${componentName} disabled for plugin ${pluginName}`);
+                    }
+                  }
+                }
+                break;
+
+              case 'provider':
+                {
+                  const currentlyRegistered = this.providers.some((p) => p.name === componentName);
+                  
+                  if (componentConfig.enabled && !currentlyRegistered) {
+                    // Enable provider
+                    this.registerProvider(componentDef.component);
+                    this.logger.info(`Unified provider ${componentName} enabled for plugin ${pluginName}`);
+                  } else if (!componentConfig.enabled && currentlyRegistered) {
+                    // Disable provider
+                    const index = this.providers.findIndex((p) => p.name === componentName);
+                    if (index !== -1) {
+                      this.providers.splice(index, 1);
+                      this.logger.info(`Unified provider ${componentName} disabled for plugin ${pluginName}`);
+                    }
+                  }
+                }
+                break;
+
+              case 'evaluator':
+                {
+                  const currentlyRegistered = this.evaluators.some((e) => e.name === componentName);
+                  
+                  if (componentConfig.enabled && !currentlyRegistered) {
+                    // Enable evaluator
+                    this.registerEvaluator(componentDef.component);
+                    this.logger.info(`Unified evaluator ${componentName} enabled for plugin ${pluginName}`);
+                  } else if (!componentConfig.enabled && currentlyRegistered) {
+                    // Disable evaluator
+                    const index = this.evaluators.findIndex((e) => e.name === componentName);
+                    if (index !== -1) {
+                      this.evaluators.splice(index, 1);
+                      this.logger.info(`Unified evaluator ${componentName} disabled for plugin ${pluginName}`);
+                    }
+                  }
+                }
+                break;
+
+              case 'service':
+                {
+                  const currentlyRegistered = this.services.has(componentName as ServiceTypeName);
+                  
+                  if (componentConfig.enabled && !currentlyRegistered) {
+                    // Enable service
+                    await this.registerService(componentDef.component);
+                    this.logger.info(`Unified service ${componentName} enabled for plugin ${pluginName}`);
+                  } else if (!componentConfig.enabled && currentlyRegistered) {
+                    // Disable service
+                    const serviceInstance = this.services.get(componentName as ServiceTypeName);
+                    if (serviceInstance) {
+                      await serviceInstance.stop();
+                      this.services.delete(componentName as ServiceTypeName);
+                      this.logger.info(`Unified service ${componentName} disabled for plugin ${pluginName}`);
+                    }
+                  }
+                }
+                break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Get plugin configuration state
+   */
+  getPluginConfiguration(pluginName: string) {
+    return this.configurationManager.getPluginConfiguration(pluginName);
+  }
+
+  /**
+   * List all plugin configurations
+   */
+  listPluginConfigurations() {
+    return this.configurationManager.listConfigurations();
+  }
+
+  /**
+   * Enable a specific component dynamically
+   */
+  async enableComponent(
+    pluginName: string, 
+    componentName: string, 
+    componentType: 'action' | 'provider' | 'evaluator' | 'service',
+    component: any
+  ): Promise<void> {
+    // Enable the component in configuration
+    const config = {
+      [`${componentType}s`]: {
+        [componentName]: { enabled: true }
+      }
+    };
+    await this.configurePlugin(pluginName, config);
+  }
+
+  /**
+   * Disable a specific component dynamically
+   */
+  async disableComponent(
+    pluginName: string,
+    componentName: string,
+    componentType: 'action' | 'provider' | 'evaluator' | 'service'
+  ): Promise<void> {
+    // Disable the component in configuration
+    const config = {
+      [`${componentType}s`]: {
+        [componentName]: { enabled: false }
+      }
+    };
+    await this.configurePlugin(pluginName, config);
   }
 }

@@ -707,6 +707,9 @@ export default function Chat({
       // Clear the local message list immediately for instant UI response
       clearMessages();
     },
+    onInputDisabledChange: (disabled: boolean) => {
+      inputDisabledRef.current = disabled;
+    },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
   });
 

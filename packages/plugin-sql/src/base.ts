@@ -49,7 +49,7 @@ import {
   relationshipTable,
   roomTable,
   serverAgentsTable,
-  taskTable,
+  tasksTable,
   worldTable,
 } from './schema/index';
 
@@ -79,6 +79,7 @@ import {
  * withDatabase method to execute operations against their specific database.
  */
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
+  public abstract db: any;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -94,6 +95,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   public async initialize(): Promise<void> {
     await this.init();
+  }
+
+  /**
+   * Run migrations for a plugin's schema
+   * @param schema The schema to migrate
+   * @param pluginName The name of the plugin
+   */
+  public async runPluginMigrations(schema: any, pluginName: string): Promise<void> {
+    return this.withDatabase(async () => {
+      // Use simple migrator to avoid circular dependencies
+      const { ensureCoreTablesExist } = await import('./simple-migrator');
+      await ensureCoreTablesExist(this.db);
+    });
   }
 
   /**
@@ -267,11 +281,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         }
 
         await this.db.transaction(async (tx) => {
-          await tx.insert(agentTable).values({
+          // Convert bio to string if it's an array and provide defaults for required fields
+          const agentData: any = {
             ...agent,
+            bio: Array.isArray(agent.bio) ? agent.bio.join('\n') : agent.bio,
+            system: agent.system || 'You are a helpful assistant.', // Provide default system message
+            modelProvider: agent.settings?.model || 'openai', // Extract from settings or use default
             createdAt: new Date(agent.createdAt || Date.now()),
             updatedAt: new Date(agent.updatedAt || Date.now()),
-          });
+          };
+
+          await tx.insert(agentTable).values(agentData);
         });
 
         logger.debug('Agent created successfully:', {
@@ -281,9 +301,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       } catch (error) {
         logger.error('Error creating agent:', {
           error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
           agentId: agent.id,
           agent,
         });
+        // Log the full error for debugging
+        console.error('Full error creating agent:', error);
         return false;
       }
     });
@@ -2531,7 +2554,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId: this.agentId as UUID,
         };
 
-        const result = await this.db.insert(taskTable).values(values).returning();
+        const result = await this.db.insert(tasksTable).values(values).returning();
 
         return result[0].id as UUID;
       });
@@ -2552,14 +2575,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return this.withDatabase(async () => {
         const result = await this.db
           .select()
-          .from(taskTable)
+          .from(tasksTable)
           .where(
             and(
-              eq(taskTable.agentId, this.agentId),
-              ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
+              eq(tasksTable.agentId, this.agentId),
+              ...(params.roomId ? [eq(tasksTable.roomId, params.roomId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
-                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
+                    sql`${tasksTable.tags} @> ARRAY[${sql.raw(
                       params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
                     )}]::text[]`,
                   ]
@@ -2590,8 +2613,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return this.withDatabase(async () => {
         const result = await this.db
           .select()
-          .from(taskTable)
-          .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
+          .from(tasksTable)
+          .where(and(eq(tasksTable.name, name), eq(tasksTable.agentId, this.agentId)));
 
         return result.map((row) => ({
           id: row.id as UUID,
@@ -2616,8 +2639,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return this.withDatabase(async () => {
         const result = await this.db
           .select()
-          .from(taskTable)
-          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)))
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, id), eq(tasksTable.agentId, this.agentId)))
           .limit(1);
 
         if (result.length === 0) {
@@ -2665,10 +2688,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         }
 
         await this.db
-          .update(taskTable)
+          .update(tasksTable)
           // createdAt is hella borked, number / Date
           .set(updateValues as any)
-          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
+          .where(and(eq(tasksTable.id, id), eq(tasksTable.agentId, this.agentId)));
       });
     });
   }
@@ -2680,7 +2703,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   async deleteTask(id: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.delete(taskTable).where(eq(taskTable.id, id));
+      await this.db.delete(tasksTable).where(eq(tasksTable.id, id));
     });
   }
 

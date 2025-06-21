@@ -6,6 +6,7 @@ import { createAgentLifecycleRouter } from './lifecycle';
 import { createAgentWorldsRouter } from './worlds';
 import { createAgentPanelsRouter } from './panels';
 import { createAgentLogsRouter } from './logs';
+import { createAgentConfigurationsRouter } from './configurations';
 import { createAgentMemoryRouter } from '../memory/agents';
 
 /**
@@ -28,6 +29,9 @@ export function agentsRouter(
 
   // Mount panels operations
   router.use('/', createAgentPanelsRouter(agents));
+
+  // Mount configurations operations
+  router.use('/', createAgentConfigurationsRouter(agents, serverInstance));
 
   // Mount logs operations
   router.use('/', createAgentLogsRouter(agents));

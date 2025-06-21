@@ -18,15 +18,23 @@ const stringToUuid = (id: string): UUID => id as UUID;
 
 // --- Mocks ---
 
-// Use hoisted for prompts mock
-const mockSplitChunks = mock();
-mock.module('../src/utils', () => ({
-  splitChunks: mockSplitChunks,
-}));
+// Mock utils module
+vi.mock('../utils', async (importOriginal) => {
+  const original = (await importOriginal()) as any;
+  return {
+    ...original,
+    splitChunks: vi.fn(),
+  };
+});
 
-// Use hoisted for ./index mock (safeReplacer)
-const mockSafeReplacer = mock((_key, value) => value); // Simple replacer mock
-// Don't mock the entire index module to avoid interfering with other tests
+// Mock index for safeReplacer
+vi.mock('../index', async (importOriginal) => {
+  const original = (await importOriginal()) as any;
+  return {
+    ...original,
+    safeReplacer: () => vi.fn((key, value) => value), // Simple replacer mock
+  };
+});
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
@@ -471,7 +479,15 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {}, // options
+        expect.objectContaining({
+          context: expect.objectContaining({
+            workingMemory: expect.any(Object),
+            previousResults: expect.any(Array),
+            getMemory: expect.any(Function),
+            getPreviousResult: expect.any(Function),
+            updateMemory: expect.any(Function),
+          }),
+        }),
         undefined, // callback
         [responseMemory] // responses array
       );

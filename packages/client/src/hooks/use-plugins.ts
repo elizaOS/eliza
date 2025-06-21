@@ -100,7 +100,7 @@ export function usePlugins() {
 
         // Return fallback plugins with basic info
         return [
-          '@elizaos/plugin-bootstrap',
+          '@elizaos/plugin-message-handling',
           '@elizaos/plugin-evm',
           '@elizaos/plugin-discord',
           '@elizaos/plugin-elevenlabs',

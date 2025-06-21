@@ -16,7 +16,8 @@ interface DummyAssetDetail {
 }
 
 export class DummyWalletService extends Service implements IWalletService {
-  public static override readonly serviceType = ServiceType.WALLET;
+  static readonly serviceName = 'WALLET';
+  static override readonly serviceType = ServiceType.WALLET;
   public readonly capabilityDescription =
     'Provides standardized access to wallet balances and portfolios.';
 

@@ -1,0 +1,7 @@
+{
+  "name": "Test Agent",
+  "bio": ["A simple test agent"],
+  "system": "You are a helpful assistant.",
+  "plugins": ["@elizaos/plugin-sql"],
+  "messageExamples": []
+}

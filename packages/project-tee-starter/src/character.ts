@@ -22,7 +22,7 @@ export const mrTeeCharacter: Character = {
     '@elizaos/plugin-sql',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-redpill',
-    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-message-handling',
     '@elizaos/plugin-elevenlabs',
     '@elizaos/plugin-tee',
     '@elizaos/plugin-discord',

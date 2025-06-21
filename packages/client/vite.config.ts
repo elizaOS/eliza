@@ -181,8 +181,6 @@ export default defineConfig(({ mode }): CustomUserConfig => {
         output: {
           manualChunks: {
             vendor: ['react', 'react-dom', 'react-router-dom'],
-            // Also chunk node_modules into vendor
-            ...(id: string) => (id.includes('node_modules') ? { vendor: [id] } : undefined),
           },
         },
         onwarn(warning, warn) {

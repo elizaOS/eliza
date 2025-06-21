@@ -1,41 +1,51 @@
-import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { getSchemaFactory } from './factory';
 import { agentTable } from './agent';
 
 /**
- * Defines a table schema for 'rooms' in the database.
- *
- * @typedef {object} RoomTable
- * @property {string} id - The unique identifier for the room.
- * @property {string} agentId - The UUID of the agent associated with the room.
- * @property {string} source - The source of the room.
- * @property {string} type - The type of the room.
- * @property {string} serverId - The server ID of the room.
- * @property {string} worldId - The UUID of the world associated with the room.
- * @property {string} name - The name of the room.
- * @property {object} metadata - Additional metadata for the room in JSON format.
- * @property {string} channelId - The channel ID of the room.
- * @property {number} createdAt - The timestamp of when the room was created.
+ * Lazy-loaded room table definition.
+ * This function returns the room table schema when called,
+ * ensuring the database type is set before schema creation.
  */
-export const roomTable = pgTable('rooms', {
-  id: uuid('id')
-    .notNull()
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  agentId: uuid('agentId').references(() => agentTable.id, {
-    onDelete: 'cascade',
-  }),
-  source: text('source').notNull(),
-  type: text('type').notNull(),
-  serverId: text('serverId'),
-  worldId: uuid('worldId'), // no guarantee that world exists, it is optional for now
-  // .references(() => worldTable.id, {
-  //   onDelete: 'cascade',
-  // }),
-  name: text('name'),
-  metadata: jsonb('metadata'),
-  channelId: text('channelId'),
-  createdAt: timestamp('createdAt')
-    .default(sql`now()`)
-    .notNull(),
+function createRoomTable() {
+  const factory = getSchemaFactory();
+  
+  return factory.table('rooms', {
+    id: (() => {
+      const defaultUuid = factory.defaultRandomUuid();
+      const column = factory.uuid('id').notNull().primaryKey();
+      return defaultUuid ? column.default(defaultUuid) : column;
+    })(),
+    agentId: factory.uuid('agentId').references(() => agentTable.id, {
+      onDelete: 'cascade',
+    }),
+    source: factory.text('source').notNull(),
+    type: factory.text('type').notNull(),
+    serverId: factory.text('serverId'),
+    worldId: factory.uuid('worldId'), // no guarantee that world exists, it is optional for now
+    // .references(() => worldTable.id, {
+    //   onDelete: 'cascade',
+    // }),
+    name: factory.text('name'),
+    metadata: factory.json('metadata'),
+    channelId: factory.text('channelId'),
+    createdAt: factory.timestamp('createdAt')
+      .default(factory.defaultTimestamp())
+      .notNull(),
+  });
+}
+
+// Cache the table once created
+let _roomTable: any = null;
+
+/**
+ * Represents the room table in the database.
+ * Uses lazy initialization to ensure proper database type configuration.
+ */
+export const roomTable = new Proxy({} as any, {
+  get(target, prop, receiver) {
+    if (!_roomTable) {
+      _roomTable = createRoomTable();
+    }
+    return Reflect.get(_roomTable, prop, receiver);
+  }
 });

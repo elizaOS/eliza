@@ -1,16 +1,3 @@
 [test]
-# Test timeout in milliseconds
-timeout = 60000
-
-# Test directory patterns
-root = "src"
-
-# Coverage options
-coverage = true
-
-# Test environment
-env = "node"
-
-# Path aliases (matches tsconfig.json paths)
-[test.alias]
-"@/src" = "./src"
+# Use vitest as the test runner
+runner = "vitest" 

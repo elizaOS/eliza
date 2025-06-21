@@ -5,25 +5,26 @@ import { logger } from '@elizaos/core';
 // Mock logger
 mock.module('@elizaos/core', () => ({
   logger: {
-    error: mock(),
+    error: vi.fn(),
   },
 }));
 
 // Mock process.exit
-const originalmockExit = process.exit;
-const mockExit = mock(() => {
-  throw new Error('process.exit called');
-});
+let mockExit: any;
 
 describe('TestTimeoutManager', () => {
   let manager: TestTimeoutManager;
 
   beforeEach(() => {
     manager = new TestTimeoutManager();
+    // Create the mock inside beforeEach
+    mockExit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   });
 
   afterEach(() => {
     manager.clearAll();
+    vi.useRealTimers();
+    mockExit.mockRestore();
   });
 
   describe('getInstance', () => {
@@ -39,29 +40,50 @@ describe('TestTimeoutManager', () => {
     it('should start timeout with default duration', () => {
       manager.startTimeout('test1');
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
-      // expect(logger.error).toHaveBeenCalledWith('Test "test1" exceeded timeout of 30000ms (elapsed: 30000ms)'); // TODO: Fix for bun test
-      expect(() => mockExit).toThrow('process.exit called');
+      // Fast forward just before timeout
+      vi.advanceTimersByTime(29999);
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // Fast forward to trigger timeout
+      vi.advanceTimersByTime(1);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Test "test1" exceeded timeout of 30000ms (elapsed: 30000ms)'
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it('should start timeout with custom duration', () => {
       manager.startTimeout('test2', 5000);
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
-      // expect(logger.error).toHaveBeenCalledWith('Test "test2" exceeded timeout of 5000ms (elapsed: 5000ms)'); // TODO: Fix for bun test
+      // Fast forward just before timeout
+      vi.advanceTimersByTime(4999);
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // Fast forward to trigger timeout
+      vi.advanceTimersByTime(1);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Test "test2" exceeded timeout of 5000ms (elapsed: 5000ms)'
+      );
     });
 
     it('should clear existing timeout when starting new one with same name', () => {
       manager.startTimeout('test3', 5000);
 
+      // Fast forward partway
+      vi.advanceTimersByTime(3000);
+
       // Start new timeout with same name
       manager.startTimeout('test3', 5000);
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
-      // expect(logger.error).toHaveBeenCalled(); // TODO: Fix for bun test
+      // Fast forward 3 more seconds (total 6 seconds from beginning)
+      vi.advanceTimersByTime(3000);
+
+      // Should not have timed out yet because it was reset
+      expect(logger.error).not.toHaveBeenCalled();
+
+      // Fast forward to trigger the new timeout
+      vi.advanceTimersByTime(2000);
+      expect(logger.error).toHaveBeenCalled();
     });
   });
 
@@ -69,11 +91,17 @@ describe('TestTimeoutManager', () => {
     it('should clear timeout and prevent it from firing', () => {
       manager.startTimeout('test4', 5000);
 
+      // Fast forward partway
+      vi.advanceTimersByTime(3000);
+
       // Clear the timeout
       manager.clearTimeout('test4');
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
+      // Fast forward past the original timeout
+      vi.advanceTimersByTime(5000);
+
+      // Should not have fired
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('should handle clearing non-existent timeout gracefully', () => {
@@ -89,19 +117,31 @@ describe('TestTimeoutManager', () => {
 
       manager.clearAll();
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
+      // Fast forward past all timeouts
+      vi.advanceTimersByTime(20000);
+
+      // None should have fired
+      expect(logger.error).not.toHaveBeenCalled();
     });
   });
 
   describe('elapsed time tracking', () => {
     it('should track elapsed time correctly', () => {
       const startTime = Date.now();
+      vi.setSystemTime(startTime);
 
       manager.startTimeout('test8', 10000);
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
+      // Fast forward 7 seconds
+      vi.advanceTimersByTime(7000);
+      vi.setSystemTime(startTime + 7000);
+
+      // Trigger timeout by advancing remaining time
+      vi.advanceTimersByTime(3000);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'Test "test8" exceeded timeout of 10000ms (elapsed: 10000ms)'
+      );
     });
   });
 
@@ -109,8 +149,9 @@ describe('TestTimeoutManager', () => {
     it('should call process.exit with code 1 on timeout', () => {
       manager.startTimeout('test9', 1000);
 
-      // Note: Timer testing simplified - bun:test timer mocking not yet available
-      expect(true).toBe(true); // Placeholder test
+      vi.advanceTimersByTime(1000);
+
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
 });

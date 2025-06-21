@@ -1,0 +1,191 @@
+{
+  "timestamp": "2025-06-19T14:00:06.940Z",
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "totalDuration": 36076
+  },
+  "results": [
+    {
+      "scenarioId": "6fbc1f01-8e44-42bf-afa0-57b619012067",
+      "name": "Academic Paper Research and Knowledge Storage",
+      "startTime": 1750341570862,
+      "endTime": 1750341606938,
+      "duration": 36076,
+      "passed": false,
+      "score": 0.5,
+      "metrics": {
+        "duration": 36062,
+        "messageCount": 5,
+        "stepCount": 9,
+        "tokenUsage": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        },
+        "memoryUsage": {
+          "peak": 0,
+          "average": 0,
+          "memoryOperations": 0
+        },
+        "actionCounts": {},
+        "responseLatency": {
+          "min": 0,
+          "max": 0,
+          "average": 0,
+          "p95": 0
+        },
+        "customMetrics": {}
+      },
+      "verificationResults": [
+        {
+          "ruleId": "c782dc44-3914-400a-96f5-790d808a6697",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "4863dbb4-9448-476d-a3d0-8dbd8c328be2",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "3f773c12-a35e-4f57-9519-7d3feb7ef424",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "ef6f5750-abc3-493c-97e0-59a817791e75",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "3ec69720-4be1-4474-8788-ba38930953c5",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "0151ff4a-469a-4192-b6bb-6440268400e7",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        },
+        {
+          "ruleId": "ce35bf49-b1ee-4dd9-b2d1-0a41040accdf",
+          "passed": false,
+          "score": 0.5,
+          "reasoning": "No reasoning provided",
+          "evidence": [],
+          "metadata": {
+            "originalResponse": "This is a mock response for testing purposes.",
+            "extractedResponse": "This is a mock response for testing purposes.",
+            "suggestions": ""
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "id": "4306b9a9-16cb-4447-bee4-223a603bc565",
+          "timestamp": 1750341571877,
+          "actorId": "cace0b5a-c9df-0db3-b802-c5281a0dff46",
+          "actorName": "Research Agent",
+          "content": {
+            "text": "I need you to research recent advances in quantum error correction for quantum computing, focusing on topological codes. Create a comprehensive research project and store all findings in your knowledge base for my thesis work.",
+            "source": "scenario-runner"
+          },
+          "roomId": "12335ca6-4a69-00d4-9cb9-d6c1d117edfb",
+          "messageType": "outgoing"
+        },
+        {
+          "id": "1d6f4f02-f16c-4938-bc4e-f0fd0660d06d",
+          "timestamp": 1750341578883,
+          "actorId": "cace0b5a-c9df-0db3-b802-c5281a0dff46",
+          "actorName": "Research Agent",
+          "content": {
+            "text": "Please check the status of the research and refine it to focus more on surface codes and their practical implementations",
+            "source": "scenario-runner"
+          },
+          "roomId": "12335ca6-4a69-00d4-9cb9-d6c1d117edfb",
+          "messageType": "outgoing"
+        },
+        {
+          "id": "9ec2a370-4b8d-408e-afb1-4d533fe3dcce",
+          "timestamp": 1750341590888,
+          "actorId": "cace0b5a-c9df-0db3-b802-c5281a0dff46",
+          "actorName": "Research Agent",
+          "content": {
+            "text": "Great! Now please process all the research findings and store them in your knowledge base as separate documents",
+            "source": "scenario-runner"
+          },
+          "roomId": "12335ca6-4a69-00d4-9cb9-d6c1d117edfb",
+          "messageType": "outgoing"
+        },
+        {
+          "id": "8235524b-bfeb-4e94-9b32-ed2bc5d9006e",
+          "timestamp": 1750341597896,
+          "actorId": "cace0b5a-c9df-0db3-b802-c5281a0dff46",
+          "actorName": "Research Agent",
+          "content": {
+            "text": "Search your knowledge base for information about \"surface code threshold rates\"",
+            "source": "scenario-runner"
+          },
+          "roomId": "12335ca6-4a69-00d4-9cb9-d6c1d117edfb",
+          "messageType": "outgoing"
+        },
+        {
+          "id": "dda296ad-c7a9-4a33-a6f6-3608a4bd1b09",
+          "timestamp": 1750341602905,
+          "actorId": "cace0b5a-c9df-0db3-b802-c5281a0dff46",
+          "actorName": "Research Agent",
+          "content": {
+            "text": "Export the research findings and create a bibliography",
+            "source": "scenario-runner"
+          },
+          "roomId": "12335ca6-4a69-00d4-9cb9-d6c1d117edfb",
+          "messageType": "outgoing"
+        }
+      ]
+    }
+  ]
+}

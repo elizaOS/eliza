@@ -1,28 +1,48 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { execSync } from 'child_process';
+import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { safeChangeDirectory } from './test-utils';
+import { existsSync } from 'fs';
 
 describe('ElizaOS Publish Commands', () => {
   let testTmpDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
   let originalPath: string;
+  let mockBinDir: string;
 
-  beforeEach(async () => {
-    // Store original working directory and PATH
+  beforeAll(async () => {
+    // Store original working directory
     originalCwd = process.cwd();
-    originalPath = process.env.PATH || '';
-
-    // Create temporary directory
-    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-publish-'));
-    process.chdir(testTmpDir);
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
+    const cliPath = join(scriptDir, '../dist/index.js');
+    
+    // Check if CLI is built, if not build it
+    if (!existsSync(cliPath)) {
+      console.log('CLI not built, building now...');
+      const cliPackageDir = join(scriptDir, '..');
+      execSync('bun run build', { 
+        cwd: cliPackageDir,
+        stdio: 'inherit'
+      });
+    }
+    
+    elizaosCmd = `bun "${cliPath}"`;
+
+    // Store original PATH
+    originalPath = process.env.PATH || '';
+  });
+
+  beforeEach(async () => {
+    // Create temporary directory for each test
+    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-publish-'));
+    
+    // Change to temp directory
+    process.chdir(testTmpDir);
 
     // === COMPREHENSIVE CREDENTIAL MOCKING ===
     // Set all possible environment variables to avoid any prompts
@@ -60,7 +80,7 @@ describe('ElizaOS Publish Commands', () => {
 
     // === COMPREHENSIVE COMMAND MOCKING ===
     // Mock npm and git commands to avoid actual operations
-    const mockBinDir = join(testTmpDir, 'mock-bin');
+    mockBinDir = join(testTmpDir, 'mock-bin');
     await mkdir(mockBinDir, { recursive: true });
     process.env.PATH = `${mockBinDir}:${originalPath}`;
 
@@ -337,8 +357,10 @@ esac`;
   });
 
   afterEach(async () => {
-    // Restore original working directory and PATH
+    // Restore original working directory
     safeChangeDirectory(originalCwd);
+    
+    // Restore original PATH
     process.env.PATH = originalPath;
 
     // Clean up environment variables
@@ -350,13 +372,19 @@ esac`;
     delete process.env.NODE_AUTH_TOKEN;
     delete process.env.ELIZAOS_DATA_DIR;
 
+    // Clean up temp directory
     if (testTmpDir && testTmpDir.includes('eliza-test-publish-')) {
       try {
-        await rm(testTmpDir, { recursive: true });
+        await rm(testTmpDir, { recursive: true, force: true });
       } catch (e) {
         // Ignore cleanup errors
       }
     }
+  });
+
+  afterAll(() => {
+    // Final cleanup - restore original working directory
+    safeChangeDirectory(originalCwd);
   });
 
   // publish --help (safe test that never prompts)

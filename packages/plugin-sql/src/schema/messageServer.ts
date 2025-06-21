@@ -1,16 +1,40 @@
-import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
+import { getSchemaFactory } from './factory';
 
-export const messageServerTable = pgTable('message_servers', {
-  id: text('id').primaryKey(), // UUID stored as text
-  name: text('name').notNull(),
-  sourceType: text('source_type').notNull(),
-  sourceId: text('source_id'),
-  metadata: jsonb('metadata'),
-  createdAt: timestamp('created_at', { mode: 'date' })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'date' })
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
+/**
+ * Lazy-loaded message server table definition.
+ * This function returns the message server table schema when called,
+ * ensuring the database type is set before schema creation.
+ */
+function createMessageServerTable() {
+  const factory = getSchemaFactory();
+  
+  return factory.table('message_servers', {
+    id: factory.text('id').primaryKey(), // UUID stored as text
+    name: factory.text('name').notNull(),
+    sourceType: factory.text('source_type').notNull(),
+    sourceId: factory.text('source_id'),
+    metadata: factory.json('metadata'),
+    createdAt: factory.timestamp('created_at', { mode: 'date' })
+      .default(factory.defaultTimestamp())
+      .notNull(),
+    updatedAt: factory.timestamp('updated_at', { mode: 'date' })
+      .default(factory.defaultTimestamp())
+      .notNull(),
+  });
+}
+
+// Cache the table once created
+let _messageServerTable: any = null;
+
+/**
+ * Represents the message server table in the database.
+ * Uses lazy initialization to ensure proper database type configuration.
+ */
+export const messageServerTable = new Proxy({} as any, {
+  get(target, prop, receiver) {
+    if (!_messageServerTable) {
+      _messageServerTable = createMessageServerTable();
+    }
+    return Reflect.get(_messageServerTable, prop, receiver);
+  }
 });

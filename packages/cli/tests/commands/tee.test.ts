@@ -1,12 +1,9 @@
-import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
 import { Command } from 'commander';
 import * as childProcess from 'node:child_process';
 import { teeCommand } from '../../src/commands/tee';
 import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
 import { execSync } from 'node:child_process';
-
-// Create spy on spawn function
-let mockSpawn: any;
 
 // Check if npx is available
 function isNpxAvailable(): boolean {
@@ -22,16 +19,29 @@ function isNpxAvailable(): boolean {
 const skipPhalaTests = process.env.CI === 'true' || !isNpxAvailable();
 
 describe('TEE Command', () => {
+  let mockSpawn: any;
+
+  beforeAll(() => {
+    // Use spyOn to mock childProcess.spawn
+    mockSpawn = spyOn(childProcess, 'spawn').mockImplementation(() => ({ 
+      on: mock(), 
+      kill: mock(),
+      stdout: { on: mock() },
+      stderr: { on: mock() },
+    }) as any);
+  });
+
+  afterAll(() => {
+    // Restore the original implementation
+    mockSpawn.mockRestore();
+  });
+
   beforeEach(() => {
-    // Create a fresh spy for each test
-    mockSpawn = spyOn(childProcess, 'spawn').mockImplementation(() => {
-      const mockProcess = {
-        on: mock(),
-        stdout: { on: mock() },
-        stderr: { on: mock() },
-      };
-      return mockProcess as any;
-    });
+    mockSpawn.mockClear();
+  });
+
+  afterEach(() => {
+    // No cleanup needed for bun:test
   });
 
   describe('teeCommand', () => {
@@ -76,7 +86,7 @@ describe('TEE Command', () => {
         on: mock((event, callback) => {
           if (event === 'exit') {
             // Simulate successful exit
-            callback(0);
+            callback?.(0);
           }
         }),
         stdout: { on: mock() },
@@ -85,9 +95,7 @@ describe('TEE Command', () => {
       mockSpawn.mockImplementation(() => mockProcess as any);
 
       // Mock process.exit to capture the call
-      const originalmockExit = process.exit;
-      const mockExit = mock(() => undefined as never);
-      process.exit = mockExit;
+      const mockExit = spyOn(process, 'exit').mockImplementation(() => undefined as never);
 
       // Simulate command execution
       phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
@@ -113,12 +121,8 @@ describe('TEE Command', () => {
         throw new Error('Spawn failed');
       });
 
-      const originalmockExit = process.exit;
-      const mockExit = mock(() => undefined as never);
-      process.exit = mockExit;
-      const originalmockError = console.error;
-      const mockError = mock(() => {});
-      console.error = mockError;
+      const mockExit = spyOn(process, 'exit').mockImplementation(() => undefined as never);
+      const mockError = spyOn(console, 'error').mockImplementation(() => {});
 
       try {
         phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });

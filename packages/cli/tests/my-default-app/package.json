@@ -1,0 +1,82 @@
+{
+  "name": "@elizaos/project-starter",
+  "description": "Project starter for elizaOS",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "project",
+    "elizaos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "latest",
+    "@elizaos/core": "latest",
+    "@elizaos/plugin-message-handling": "latest",
+    "@elizaos/plugin-discord": "latest",
+    "@elizaos/plugin-sql": "latest",
+    "@tanstack/react-query": "^5.29.0",
+    "clsx": "^2.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^4.1.10",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "@cypress/react": "^9.0.1",
+    "@cypress/vite-dev-server": "^6.0.3",
+    "@testing-library/cypress": "^10.0.3",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "3.1.4",
+    "cypress": "^14.4.1",
+    "prettier": "3.5.3",
+    "tsup": "8.5.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1",
+    "vitest": "3.1.4"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "tsc --noEmit && vite build && tsup",
+    "lint": "prettier --write ./src",
+    "type-check": "tsc --noEmit",
+    "type-check:watch": "tsc --noEmit --watch",
+    "test": "elizaos test",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "check-all": "npm run type-check && npm run format:check && npm run test",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run --component",
+    "cy:test": "cypress run --component --reporter spec",
+    "cypress:component": "cypress run --component",
+    "cypress:e2e": "cypress run --e2e",
+    "cypress:open": "cypress open"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+}

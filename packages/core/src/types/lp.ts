@@ -1,5 +1,5 @@
 import type { Metadata } from './primitives';
-import { Service } from './service';
+import { Service, ServiceType } from './service';
 import type { TokenBalance } from './token';
 
 /**
@@ -59,7 +59,7 @@ export type TransactionResult = {
  * to allow the LP Manager to interact with them in a standardized way.
  */
 export abstract class ILpService extends Service {
-  static override readonly serviceType = 'lp';
+  static override readonly serviceType = ServiceType.LP_POOL;
 
   public readonly capabilityDescription = 'Provides standardized access to DEX liquidity pools.';
 

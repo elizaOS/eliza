@@ -51,47 +51,42 @@ export class TestRunner {
       hasTests: false,
     };
 
-    // Check if this is a direct plugin test (the agent was created specifically for testing a plugin)
-    // We can identify this in a few ways:
-    // 1. If we have exactly one plugin and the character name refers to the plugin
-    // 2. If we're in a directory containing a plugin and this agent is being used to test it
-    // 3. If the agent has special naming indicating it's for testing a specific plugin
-    // 4. If ELIZA_TESTING_PLUGIN environment variable is set
+    const isTestingPlugin = process.env.ELIZA_TESTING_PLUGIN === 'true';
 
-    // When testing a plugin directly, the plugin being tested is passed in projectAgent.plugins
-    // but it might not be the first one due to dependency loading (e.g., sql plugin is always first)
-    const testingPlugin = process.env.ELIZA_TESTING_PLUGIN === 'true';
+    if (isTestingPlugin && projectAgent?.plugins) {
+      let foundPlugin: Plugin | undefined;
+      try {
+        const packageJsonPath = path.join(process.cwd(), 'package.json');
+        if (fs.existsSync(packageJsonPath)) {
+          const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+          const currentPackageName = pkg.name;
+          // Find the loaded plugin that matches the package name
+          foundPlugin = projectAgent.plugins.find((p) => p.name === currentPackageName);
+        }
+      } catch (error) {
+        logger.warn(`Could not read package.json to determine plugin under test: ${error}`);
+      }
 
-    if (testingPlugin && projectAgent?.plugins) {
-      // Find the plugin that's not a core plugin (like sql)
-      const corePlugins = ['@elizaos/plugin-sql'];
-      const nonCorePlugins = projectAgent.plugins.filter(
-        (plugin) => !corePlugins.includes(plugin.name)
-      );
+      // Fallback for safety, but the above should be primary
+      if (!foundPlugin) {
+        const corePlugins = ['@elizaos/plugin-sql', 'bootstrap', 'openai'];
+        const nonCorePlugins = projectAgent.plugins.filter(
+          (plugin) => !corePlugins.includes(plugin.name)
+        );
+        if (nonCorePlugins.length > 0) {
+          foundPlugin = nonCorePlugins[0];
+        }
+      }
 
-      if (nonCorePlugins.length > 0) {
-        // Store the actual plugin being tested
-        this.pluginUnderTest = nonCorePlugins[0];
+      if (foundPlugin) {
+        this.pluginUnderTest = foundPlugin;
         this.isDirectPluginTest = true;
-        safeLogger.debug(
-          `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
+        logger.debug(
+          `Direct plugin test detected - running tests for: ${this.pluginUnderTest.name}`
         );
       } else {
         this.isDirectPluginTest = false;
       }
-    } else if (
-      projectAgent?.plugins?.length === 1 &&
-      (projectAgent.character.name.includes(`Test Agent for ${projectAgent.plugins[0].name}`) ||
-        (projectAgent.character.name.toLowerCase().includes('test') &&
-          projectAgent.character.name
-            .toLowerCase()
-            .includes(projectAgent.plugins[0].name.toLowerCase())))
-    ) {
-      this.pluginUnderTest = projectAgent.plugins[0];
-      this.isDirectPluginTest = true;
-      safeLogger.debug(
-        `Direct plugin test detected - will only run tests for plugin: ${this.pluginUnderTest.name}`
-      );
     } else {
       this.isDirectPluginTest = false;
     }
@@ -195,9 +190,9 @@ export class TestRunner {
 
       // When directly testing a plugin, we test only that plugin
       const plugin = this.pluginUnderTest;
-      if (!plugin || !plugin.tests) {
-        safeLogger.info(`No tests found for this plugin (${plugin?.name || 'unknown plugin'})`);
-        safeLogger.info(
+      if (!plugin || !plugin.tests || (Array.isArray(plugin.tests) && plugin.tests.length === 0)) {
+        logger.error(`No tests found for plugin: ${plugin?.name || 'unknown plugin'}`);
+        logger.info(
           "To add tests to your plugin, include a 'tests' property with an array of test suites."
         );
         safeLogger.info('Example:');
@@ -223,6 +218,9 @@ export const myPlugin = {
   ]
 };
 `);
+        // Mark as having tests but failed so we exit with error
+        this.stats.hasTests = true;
+        this.stats.failed = 1;
         return;
       }
 
@@ -397,7 +395,10 @@ export const myPlugin = {
 
     // Log summary
     if (!this.stats.hasTests) {
-      safeLogger.info('\nNo test files found, exiting with code 0');
+      logger.info('\nNo test files found, exiting with code 0');
+    } else if (this.isDirectPluginTest && this.stats.failed === 1 && this.stats.total === 0) {
+      // Special case: plugin has no tests defined
+      logger.error('\nTest Summary: Plugin has no tests defined. Please add tests to your plugin.');
     } else {
       safeLogger.info(
         `\nTest Summary: ${this.stats.passed} passed, ${this.stats.failed} failed, ${this.stats.skipped} skipped`

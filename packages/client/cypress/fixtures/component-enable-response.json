@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "message": "Component GENERATE_IMAGE enabled successfully",
+    "componentConfig": {
+      "enabled": true,
+      "settings": {
+        "model": "dall-e-3"
+      },
+      "overrideLevel": "gui",
+      "overrideReason": "Enabled via UI",
+      "lastModified": "2024-01-15T10:30:00Z"
+    }
+  }
+}

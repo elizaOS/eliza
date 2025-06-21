@@ -160,7 +160,7 @@ describe('DummyTokenDataService', () => {
 
     it('should maintain service name', () => {
       const newService = new DummyTokenDataService(mockRuntime);
-      expect(newService.serviceName).toBe('dummy-token-data');
+      expect(newService.serviceName).toBe('TOKEN_DATA');
     });
   });
 

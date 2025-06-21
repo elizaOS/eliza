@@ -1,11 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { execFileSync, execSync, spawn as nodeSpawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { killProcessOnPort, waitForServerReady, getBunExecutable } from './test-utils';
-import { TEST_TIMEOUTS } from '../test-timeouts';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { waitForServerReady, killProcessOnPort } from './test-utils';
+import { existsSync } from 'fs';
+import { spawn, execSync } from 'child_process';
+import { mkdtemp, rm, mkdir } from 'fs/promises';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -13,42 +12,53 @@ describe('ElizaOS Agent Commands', () => {
   let testServerPort: string;
   let testServerUrl: string;
   let elizaosCmd: string;
+  let defaultCharacter: string;
 
   beforeAll(async () => {
+    // Create temporary directory for tests
+    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
+    const scriptDir = join(__dirname, '..');
+    const cliPath = join(scriptDir, '../dist/index.js');
+
+    // Check if CLI is built, if not build it
+    if (!existsSync(cliPath)) {
+      console.log('CLI not built, building now...');
+      const cliPackageDir = join(scriptDir, '..');
+      execSync('bun run build', {
+        cwd: cliPackageDir,
+        stdio: 'inherit',
+      });
+    }
+
+    elizaosCmd = `bun ${cliPath}`;
+    defaultCharacter = join(scriptDir, 'test-characters/ada.json');
+
+    // Convert to absolute path and verify it exists
+    const { resolve } = await import('path');
+    defaultCharacter = resolve(defaultCharacter);
+    console.log(`[DEBUG] Looking for character file at: ${defaultCharacter}`);
+
+    if (!existsSync(defaultCharacter)) {
+      throw new Error(`Character file not found at: ${defaultCharacter}`);
+    }
+
     // Setup test environment
     testServerPort = '3000';
     testServerUrl = `http://localhost:${testServerPort}`;
-    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
-
-    // Setup CLI command with robust bun path detection
-    const scriptDir = join(__dirname, '..');
-    const detectedBunPath = getBunPath();
-    elizaosCmd = `${detectedBunPath} ${join(scriptDir, '../dist/index.js')}`;
-    console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
-    console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
 
     // Kill any existing processes on port 3000 with extended cleanup for macOS CI
     console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
     await killProcessOnPort(3000);
-
-    // Give macOS CI more time for complete port cleanup
-    const cleanupTime =
-      process.platform === 'darwin' && process.env.CI === 'true'
-        ? TEST_TIMEOUTS.MEDIUM_WAIT
-        : TEST_TIMEOUTS.SHORT_WAIT;
-    console.log(`[DEBUG] Waiting ${cleanupTime}ms for port cleanup...`);
-    await new Promise((resolve) => setTimeout(resolve, cleanupTime));
+    await new Promise((resolve) => setTimeout(resolve));
 
     // Create database directory
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
     // Start the ElizaOS server with a default character
     console.log(`[DEBUG] Starting ElizaOS server on port ${testServerPort}`);
-    // Use resolved path for CLI
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] __dirname: ${__dirname}`);
-    console.log(`[DEBUG] CLI path: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
+
+    let actualServerPort: number | null = null;
+    let serverOutputBuffer = '';
 
     const defaultCharacter = join(__dirname, '../test-characters', 'ada.json');
     console.log(`[DEBUG] Character path: ${defaultCharacter}`);
@@ -121,8 +131,25 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     // Capture server output for debugging
-    let serverStarted = false;
-    let serverError: Error | null = null;
+    serverProcess.stdout?.on('data', (data: Buffer) => {
+      const output = data.toString();
+      console.log(`[SERVER STDOUT] ${output}`);
+      serverOutputBuffer += output;
+
+      // Check for port change message
+      const portChangeMatch = output.match(/Port \d+ is in use, using port (\d+) instead/);
+      if (portChangeMatch) {
+        actualServerPort = parseInt(portChangeMatch[1], 10);
+        console.log(`[DEBUG] Server switched to port ${actualServerPort}`);
+      }
+
+      // Check for successful startup message
+      const listeningMatch = output.match(/AgentServer is listening on port (\d+)/);
+      if (listeningMatch) {
+        actualServerPort = parseInt(listeningMatch[1], 10);
+        console.log(`[DEBUG] Server confirmed listening on port ${actualServerPort}`);
+      }
+    });
 
     // Handle Bun.spawn's ReadableStream for stdout/stderr
     const handleStream = async (
@@ -182,33 +209,16 @@ describe('ElizaOS Agent Commands', () => {
         serverError = error;
       });
 
-    // Wait for server to be ready
-    console.log('[DEBUG] Waiting for server to be ready...');
-    try {
-      // Give server a moment to fail fast if there are immediate errors
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    // Wait a bit for port detection
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Check if server already exited with error
-      if (serverError) {
-        throw serverError;
-      }
+    // Use actual port if different from requested
+    const portToCheck = actualServerPort || parseInt(testServerPort, 10);
+    testServerUrl = `http://localhost:${portToCheck}`;
 
-      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
-      console.log('[DEBUG] Server is ready!');
-    } catch (error) {
-      console.error('[ERROR] Server failed to start:', error);
-
-      // Log current working directory and file paths for debugging
-      console.error('[DEBUG] Current working directory:', process.cwd());
-      console.error('[DEBUG] CLI path exists:', existsSync(cliPath));
-      console.error(
-        '[DEBUG] Templates exist:',
-        existsSync(join(__dirname, '../../dist/templates'))
-      );
-      console.error('[DEBUG] Character exists:', existsSync(defaultCharacter));
-
-      throw error;
-    }
+    console.log(`[DEBUG] Waiting for server to be ready on port ${portToCheck}...`);
+    await waitForServerReady(portToCheck);
+    console.log('[DEBUG] Server is ready!');
 
     // Pre-load additional test characters (ada is already loaded by server)
     const charactersDir = join(scriptDir, 'test-characters');
@@ -235,7 +245,7 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     // Give characters time to register
-    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+    await new Promise((resolve) => setTimeout(resolve));
   });
 
   afterAll(async () => {
@@ -247,16 +257,16 @@ describe('ElizaOS Agent Commands', () => {
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
 
-        // Wait for graceful exit with timeout
-        await Promise.race([
-          exitPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-        ]);
-
-        // Force kill if still running
-        if (serverProcess.exitCode === null && !serverProcess.killed) {
+        // Wait briefly, then force kill if still running
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!serverProcess.killed && serverProcess.exitCode === null) {
           serverProcess.kill('SIGKILL');
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        await new Promise((resolve) => setTimeout(resolve));
+
+        // Wait for process to actually exit
+        if (!serverProcess.killed && serverProcess.exitCode === null) {
+          await new Promise((resolve) => setTimeout(resolve));
         }
       } catch (e) {
         // Ignore cleanup errors but try force kill

@@ -81,43 +81,46 @@ describe('Utils Comprehensive Tests', () => {
   });
 
   describe('formatTimestamp', () => {
+    const fixedTime = new Date('2024-01-15T12:00:00Z');
+
     beforeEach(() => {
-      // Mock Date.now() to ensure consistent tests
-      setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      // Mock the Date constructor to return our fixed time when called without arguments
+      vi.spyOn(global, 'Date').mockImplementation(((...args: any[]) => {
+        if (args.length === 0) {
+          return fixedTime;
+        }
+        return new (Date as any)(...args);
+      }) as any);
     });
 
     afterEach(() => {
-      setSystemTime(); // Reset to real time
+      vi.restoreAllMocks();
     });
 
     it("should return 'just now' for recent timestamps", () => {
-      const now = Date.now();
-      expect(formatTimestamp(now)).toBe('just now');
-      expect(formatTimestamp(now - 30000)).toBe('just now'); // 30 seconds ago
-      expect(formatTimestamp(now - 59999)).toBe('just now'); // Just under 1 minute
+      expect(formatTimestamp(fixedTime.getTime())).toBe('just now');
+      expect(formatTimestamp(fixedTime.getTime() - 30000)).toBe('just now'); // 30 seconds ago
+      expect(formatTimestamp(fixedTime.getTime() - 59999)).toBe('just now'); // Just under 1 minute
     });
 
     it('should return minutes ago for timestamps within an hour', () => {
-      const now = Date.now();
-      expect(formatTimestamp(now - 60000)).toBe('1 minute ago');
-      expect(formatTimestamp(now - 120000)).toBe('2 minutes ago');
-      expect(formatTimestamp(now - 1800000)).toBe('30 minutes ago');
-      expect(formatTimestamp(now - 3599000)).toBe('59 minutes ago');
+      expect(formatTimestamp(fixedTime.getTime() - 60000)).toBe('1 minute ago');
+      expect(formatTimestamp(fixedTime.getTime() - 120000)).toBe('2 minutes ago');
+      expect(formatTimestamp(fixedTime.getTime() - 1800000)).toBe('30 minutes ago');
+      expect(formatTimestamp(fixedTime.getTime() - 3599000)).toBe('59 minutes ago');
     });
 
     it('should return hours ago for timestamps within 24 hours', () => {
-      const now = Date.now();
-      expect(formatTimestamp(now - 3600000)).toBe('1 hour ago');
-      expect(formatTimestamp(now - 7200000)).toBe('2 hours ago');
-      expect(formatTimestamp(now - 43200000)).toBe('12 hours ago');
-      expect(formatTimestamp(now - 86399000)).toBe('23 hours ago');
+      expect(formatTimestamp(fixedTime.getTime() - 3600000)).toBe('1 hour ago');
+      expect(formatTimestamp(fixedTime.getTime() - 7200000)).toBe('2 hours ago');
+      expect(formatTimestamp(fixedTime.getTime() - 43200000)).toBe('12 hours ago');
+      expect(formatTimestamp(fixedTime.getTime() - 86399000)).toBe('23 hours ago');
     });
 
     it('should return days ago for older timestamps', () => {
-      const now = Date.now();
-      expect(formatTimestamp(now - 86400000)).toBe('1 day ago');
-      expect(formatTimestamp(now - 172800000)).toBe('2 days ago');
-      expect(formatTimestamp(now - 604800000)).toBe('7 days ago');
+      expect(formatTimestamp(fixedTime.getTime() - 86400000)).toBe('1 day ago');
+      expect(formatTimestamp(fixedTime.getTime() - 172800000)).toBe('2 days ago');
+      expect(formatTimestamp(fixedTime.getTime() - 604800000)).toBe('7 days ago');
     });
   });
 

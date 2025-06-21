@@ -5,7 +5,8 @@ import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
 import { resolvePgliteDir } from './utils';
-import * as schema from './schema';
+import { setDatabaseType } from './schema/factory';
+import { ensureCoreTablesExist, ensurePluginTablesExist } from './simple-migrator';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -53,6 +54,9 @@ export function createDatabaseAdapter(
   const dataDir = resolvePgliteDir(config.dataDir);
 
   if (config.postgresUrl) {
+    // Set database type for PostgreSQL
+    setDatabaseType('postgres');
+
     if (!globalSingletons.postgresConnectionManager) {
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
         config.postgresUrl
@@ -60,6 +64,9 @@ export function createDatabaseAdapter(
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
+
+  // Set database type for PGLite
+  setDatabaseType('pglite');
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
@@ -69,26 +76,17 @@ export function createDatabaseAdapter(
 }
 
 /**
- * SQL plugin for database adapter using Drizzle ORM with dynamic plugin schema migrations
- *
- * @typedef {Object} Plugin
- * @property {string} name - The name of the plugin
- * @property {string} description - The description of the plugin
- * @property {Function} init - The initialization function for the plugin
- * @param {any} _ - Input parameter
- * @param {IAgentRuntime} runtime - The runtime environment for the agent
+ * SQL plugin for database adapter using Drizzle ORM
  */
-export const plugin: Plugin = {
+export const plugin: Plugin & { runPluginMigrations?: Function; initializePluginSchema?: Function } = {
   name: '@elizaos/plugin-sql',
-  description: 'A plugin for SQL database access with dynamic schema migrations',
+  description: 'A plugin for SQL database access with Drizzle ORM',
   priority: 0,
-  schema,
   init: async (_, runtime: IAgentRuntime) => {
     logger.info('plugin-sql init starting...');
 
     // Check if a database adapter is already registered
     try {
-      // Try to access the database adapter to see if one exists
       const existingAdapter = (runtime as any).databaseAdapter;
       if (existingAdapter) {
         logger.info('Database adapter already registered, skipping creation');
@@ -113,16 +111,47 @@ export const plugin: Plugin = {
       runtime.agentId
     );
 
+    // Ensure core tables exist right after adapter creation
+    try {
+      logger.info('🔧 SQL PLUGIN INIT: Running core table setup...');
+      const db = (dbAdapter as any).db;
+      logger.info('🔧 SQL PLUGIN INIT: Database handle info:', {
+        hasDb: !!db,
+        dbType: typeof db,
+        dbConstructor: db?.constructor?.name,
+        adapterType: dbAdapter.constructor.name,
+      });
+      if (db) {
+        await ensureCoreTablesExist(db);
+        logger.info('🔧 SQL PLUGIN INIT: Core table setup completed');
+      } else {
+        logger.warn('🔧 SQL PLUGIN INIT: No database handle available for table setup');
+      }
+    } catch (error) {
+      logger.error('🔧 SQL PLUGIN INIT: Failed to ensure core tables exist:', error);
+      // Don't fail initialization - this is a fallback
+    }
+
     runtime.registerDatabaseAdapter(dbAdapter);
     logger.info('Database adapter created and registered');
+  },
 
-    // Note: DatabaseMigrationService is not registered as a runtime service
-    // because migrations are handled at the server level before agents are loaded
+  // Plugin-level schema initialization function that runtime expects
+  initializePluginSchema: async (drizzle: any, pluginName: string, schema: any) => {
+    logger.info(`🔧 SQL PLUGIN: Initializing schema for plugin: ${pluginName}`);
+    // Dynamic table loading - ensure tables exist based on schema
+    try {
+      await ensurePluginTablesExist(drizzle, pluginName, schema);
+      logger.info(`🔧 SQL PLUGIN: Schema initialized successfully for plugin: ${pluginName}`);
+    } catch (error) {
+      logger.error(`🔧 SQL PLUGIN: Failed to initialize schema for plugin ${pluginName}:`, error);
+      throw error;
+    }
   },
 };
 
 export default plugin;
 
-// Export additional utilities that may be needed by consumers
-export { DatabaseMigrationService } from './migration-service';
-export { schema };
+// Export utilities for direct use if needed
+export { setDatabaseType } from './schema/factory';
+export { resolvePgliteDir } from './utils';

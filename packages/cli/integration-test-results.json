@@ -1,0 +1,124 @@
+[
+  {
+    "suiteName": "Plugin Integration Test Suite",
+    "totalScenarios": 3,
+    "passedScenarios": 0,
+    "failedScenarios": 3,
+    "totalScore": 0,
+    "averageScore": 0,
+    "duration": 9,
+    "results": [
+      {
+        "scenarioId": "8c5d2a3f-9e1b-4c6d-8f7a-2b4c6e8d0f1a",
+        "name": "Complete Plugin Development Workflow",
+        "startTime": 1750436964477,
+        "endTime": 1750436964482,
+        "duration": 5,
+        "passed": false,
+        "metrics": {
+          "duration": 5,
+          "messageCount": 0,
+          "stepCount": 0,
+          "tokenUsage": {
+            "input": 0,
+            "output": 0,
+            "total": 0
+          },
+          "memoryUsage": {
+            "peak": 0,
+            "average": 0,
+            "memoryOperations": 0
+          },
+          "actionCounts": {},
+          "responseLatency": {
+            "min": 0,
+            "max": 0,
+            "average": 0,
+            "p95": 0
+          }
+        },
+        "verificationResults": [],
+        "transcript": [],
+        "errors": [
+          "Failed query: insert into \"worlds\" (\"id\", \"agentId\", \"name\", \"metadata\", \"serverId\", \"createdAt\") values ($1, $2, $3, default, $4, default)\nparams: 543bf95f-9d77-00b1-aa44-de7461c1aef0,b2737548-a6ec-0e93-baaa-08393833f068,Scenario: Complete Plugin Development Workflow,scenario-8c5d2a3f-9e1b-4c6d-8f7a-2b4c6e8d0f1a"
+        ]
+      },
+      {
+        "scenarioId": "9d6e3b2f-1c4a-5e8b-7f9c-3a5d7e9f1b3c",
+        "name": "Plugin Development Workflow Edge Cases",
+        "startTime": 1750436964482,
+        "endTime": 1750436964484,
+        "duration": 2,
+        "passed": false,
+        "metrics": {
+          "duration": 2,
+          "messageCount": 0,
+          "stepCount": 0,
+          "tokenUsage": {
+            "input": 0,
+            "output": 0,
+            "total": 0
+          },
+          "memoryUsage": {
+            "peak": 0,
+            "average": 0,
+            "memoryOperations": 0
+          },
+          "actionCounts": {},
+          "responseLatency": {
+            "min": 0,
+            "max": 0,
+            "average": 0,
+            "p95": 0
+          }
+        },
+        "verificationResults": [],
+        "transcript": [],
+        "errors": [
+          "Failed query: insert into \"worlds\" (\"id\", \"agentId\", \"name\", \"metadata\", \"serverId\", \"createdAt\") values ($1, $2, $3, default, $4, default)\nparams: 04e05c7f-68c3-0f6d-9c12-c83ece364325,b2737548-a6ec-0e93-baaa-08393833f068,Scenario: Plugin Development Workflow Edge Cases,scenario-9d6e3b2f-1c4a-5e8b-7f9c-3a5d7e9f1b3c"
+        ]
+      },
+      {
+        "scenarioId": "f3e7d9c1-8b2a-4f6e-9d1c-5a7b9e3f1d5c",
+        "name": "Secrets Manager Integration Workflow",
+        "startTime": 1750436964484,
+        "endTime": 1750436964486,
+        "duration": 2,
+        "passed": false,
+        "metrics": {
+          "duration": 2,
+          "messageCount": 0,
+          "stepCount": 0,
+          "tokenUsage": {
+            "input": 0,
+            "output": 0,
+            "total": 0
+          },
+          "memoryUsage": {
+            "peak": 0,
+            "average": 0,
+            "memoryOperations": 0
+          },
+          "actionCounts": {},
+          "responseLatency": {
+            "min": 0,
+            "max": 0,
+            "average": 0,
+            "p95": 0
+          }
+        },
+        "verificationResults": [],
+        "transcript": [],
+        "errors": [
+          "Failed query: insert into \"worlds\" (\"id\", \"agentId\", \"name\", \"metadata\", \"serverId\", \"createdAt\") values ($1, $2, $3, default, $4, default)\nparams: d121366a-debe-0ef9-b367-741418b1516d,b2737548-a6ec-0e93-baaa-08393833f068,Scenario: Secrets Manager Integration Workflow,scenario-f3e7d9c1-8b2a-4f6e-9d1c-5a7b9e3f1d5c"
+        ]
+      }
+    ],
+    "criticalIssues": [
+      "Complete Plugin Development Workflow: Failed with score undefined",
+      "Plugin Development Workflow Edge Cases: Failed with score undefined",
+      "Secrets Manager Integration Workflow: Failed with score undefined"
+    ],
+    "recommendations": []
+  }
+]

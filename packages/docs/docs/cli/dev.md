@@ -167,7 +167,7 @@ When running in a monorepo context, the dev command:
 
    - `packages/core`
    - `packages/client`
-   - `packages/plugin-bootstrap`
+   - `packages/plugin-message-handling`
 
 2. **Dependency Resolution**: Ensures proper build order for dependencies
 

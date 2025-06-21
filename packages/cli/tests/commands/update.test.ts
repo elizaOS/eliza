@@ -1,48 +1,91 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { execSync } from 'child_process';
+import { existsSync } from 'fs';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Update Commands', () => {
-  let testTmpDir: string;
+  let tempDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     // Store original working directory
     originalCwd = process.cwd();
 
     // Create temporary directory
-    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
-    process.chdir(testTmpDir);
+    tempDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    const cliPath = join(scriptDir, '../dist/index.js');
+
+    // Check if CLI is built, if not build it
+    if (!existsSync(cliPath)) {
+      console.log('CLI not built, building now...');
+      const cliPackageDir = join(scriptDir, '..');
+      execSync('bun run build', {
+        cwd: cliPackageDir,
+        stdio: 'inherit',
+      });
+    }
+
+    elizaosCmd = `bun ${cliPath}`;
+  });
+
+  beforeEach(async () => {
+    // Create a fresh temp directory for each test
+    tempDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
+    // Change to the temp directory
+    process.chdir(tempDir);
   });
 
   afterEach(async () => {
     // Restore original working directory (if it still exists)
     safeChangeDirectory(originalCwd);
 
-    if (testTmpDir && testTmpDir.includes('eliza-test-update-')) {
+    if (tempDir && tempDir.includes('eliza-test-update-')) {
       try {
-        await rm(testTmpDir, { recursive: true });
+        await rm(tempDir, { recursive: true, force: true });
       } catch (e) {
         // Ignore cleanup errors
       }
     }
   });
 
+  afterAll(async () => {
+    // Final cleanup - restore original working directory
+    safeChangeDirectory(originalCwd);
+  });
+
   // Helper function to create project
   const makeProj = async (name: string) => {
-    runCliCommandSilently(elizaosCmd, `create ${name} --yes`, {
-      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-    });
-    process.chdir(join(testTmpDir, name));
+    const projectPath = join(tempDir, name);
+    const fs = await import('fs/promises');
+    await fs.mkdir(projectPath, { recursive: true });
+
+    // Create a minimal package.json
+    await writeFile(
+      join(projectPath, 'package.json'),
+      JSON.stringify(
+        {
+          name: name,
+          version: '1.0.0',
+          type: 'module',
+          dependencies: {
+            '@elizaos/core': '1.0.9',
+            '@elizaos/cli': '1.0.9',
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    process.chdir(projectPath);
   };
 
   // --help
@@ -265,7 +308,9 @@ describe('ElizaOS Update Commands', () => {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
-      expect(result).toContain('No ElizaOS packages found');
+      // The update command detects this isn't a proper ElizaOS project
+      expect(result).toContain("This directory doesn't appear to be an ElizaOS project");
+      expect(result).toContain('test-project');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

@@ -397,7 +397,7 @@ General Code Fixes & Minor Enhancements
 - Spell/grammar errors in characters #2447
 - Correct STT plugin userId type #2704
 - Remove duplicated handlePendingTweet #2715
-- Delete plugin-bootstrap sex message #2748
+- Delete plugin-message-handling sex message #2748
 - TON plugin build issue #2757
 - Make template message footer more explicit #2774
 - Akash splash #2816
@@ -632,7 +632,7 @@ General Code Fixes & Minor Enhancements
 * Remove the log as it may potentially cause the app to crash by @tcm390 in https://github.com/elizaOS/eliza/pull/2716
 * feat: improve twitter parsing by @tcm390 in https://github.com/elizaOS/eliza/pull/2730
 * feat: move cleanJsonResponse to parsing by @tcm390 in https://github.com/elizaOS/eliza/pull/2732
-* fix: delete plugin-bootstrap sex message, because it will cause some apis sensitive alerts by @klren0312 in https://github.com/elizaOS/eliza/pull/2748
+* fix: delete plugin-message-handling sex message, because it will cause some apis sensitive alerts by @klren0312 in https://github.com/elizaOS/eliza/pull/2748
 * feat: add lit plugin by @dezcalimese in https://github.com/elizaOS/eliza/pull/2703
 * feat(plugin-holdstation): add plugin holdstation swap by @dev-holdstation in https://github.com/elizaOS/eliza/pull/2741
 * feat: Restrict discord bot to respond only in allowed channels (#2742) by @lincheoll in https://github.com/elizaOS/eliza/pull/2743
@@ -673,7 +673,7 @@ General Code Fixes & Minor Enhancements
 * feat(client-alexa): Basic Alexa skill notification by @brandon1525 in https://github.com/elizaOS/eliza/pull/2564
 * feat(new-plugin): quick intel plugin for token security analysis by @azep-ninja in https://github.com/elizaOS/eliza/pull/2391
 * feat: add Mind Network plugin by @zy-bc-ai in https://github.com/elizaOS/eliza/pull/2431
-* fix: goal updating bug in the goal evaluator's handler of plugin-bootstrap by @Alirun in https://github.com/elizaOS/eliza/pull/2725
+* fix: goal updating bug in the goal evaluator's handler of plugin-message-handling by @Alirun in https://github.com/elizaOS/eliza/pull/2725
 * fix: ethers/viem issue in mind network plugin by @wtfsayo in https://github.com/elizaOS/eliza/pull/2783
 * fix: client-twitter homeTimeline name parse bug by @JhChoy in https://github.com/elizaOS/eliza/pull/2789
 * fix: topics formatting bug at composeState by @JhChoy in https://github.com/elizaOS/eliza/pull/2788
@@ -876,7 +876,7 @@ General Code Fixes & Minor Enhancements
 * fix: plugin-apro by @AIFlowML in https://github.com/elizaOS/eliza/pull/3106
 * feat (chore): plugin-chainbase test config and coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3072
 * feat (chore): plugin bittensor test config and coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3064
-* feat (chore): plugin-bootstrap: test config and test coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3068
+* feat (chore): plugin-message-handling: test config and test coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3068
 * fix: docker build command by skipping eslint files by @jonathangus in https://github.com/elizaOS/eliza/pull/3110
 * fix: export dexScreenerPlugin by @shakkernerd in https://github.com/elizaOS/eliza/pull/3120
 * fix:chore(plugin-chainbase): add missing comma in package.json by @akugone in https://github.com/elizaOS/eliza/pull/3118
@@ -1532,7 +1532,7 @@ Complete changelog:
 * fix: corrected path for image upload by @ShreyGanatra in https://github.com/elizaOS/eliza/pull/1632
 * chore: update viem dependency version in plugin-evm and plugin-goat by @bertux in https://github.com/elizaOS/eliza/pull/1637
 * fix: lockfile wasn't updated after dependency + bring viem to root level package.json by @monilpat in https://github.com/elizaOS/eliza/pull/1642
-* fix: Fix bug in plugin-bootstrap/src/evaluators/facts.ts by @metakai1 in https://github.com/elizaOS/eliza/pull/1648
+* fix: Fix bug in plugin-message-handling/src/evaluators/facts.ts by @metakai1 in https://github.com/elizaOS/eliza/pull/1648
 * Add README_AR.md by @xMariem in https://github.com/elizaOS/eliza/pull/1634
 * Added Hungarian README by @mdominikd in https://github.com/elizaOS/eliza/pull/1645
 * fix: activate web-search plugin in agents/ by @cmadaanaya in https://github.com/elizaOS/eliza/pull/1577

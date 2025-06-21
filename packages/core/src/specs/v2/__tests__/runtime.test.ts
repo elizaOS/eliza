@@ -438,7 +438,15 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {}, // options
+        expect.objectContaining({
+          context: expect.objectContaining({
+            workingMemory: expect.any(Object),
+            previousResults: expect.any(Array),
+            getMemory: expect.any(Function),
+            getPreviousResult: expect.any(Function),
+            updateMemory: expect.any(Function),
+          }),
+        }),
         undefined, // callback
         [responseMemory] // responses array
       );

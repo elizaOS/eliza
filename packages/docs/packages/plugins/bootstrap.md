@@ -1,6 +1,6 @@
 # Unmaintained: this plugin is currently part of @elizaos/eliza
 
-# @elizaos/plugin-bootstrap
+# @elizaos/plugin-message-handling
 
 A plugin providing core functionality and basic actions for ElizaOS agents.
 
@@ -11,7 +11,7 @@ The Bootstrap plugin enables fundamental agent behaviors including conversation 
 ## Installation
 
 ```bash
-bun install @elizaos/plugin-bootstrap
+bun install @elizaos/plugin-message-handling
 ```
 
 ## Features

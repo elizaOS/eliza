@@ -9,6 +9,9 @@ import {
 } from '@elizaos/core';
 
 export class DummyLpService extends ILpService {
+  static readonly serviceName = 'LP_POOL';
+  static override readonly serviceType = ILpService.serviceType;
+  
   public getDexName(): string {
     return 'dummy';
   }

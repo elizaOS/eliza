@@ -292,6 +292,22 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract getAllWorlds(): Promise<World[]>;
 
   /**
+   * Retrieve worlds for an agent with optional filtering and pagination
+   * @param params Query parameters including agentId and filtering options
+   * @returns Promise resolving to an array of World objects
+   */
+  abstract getWorlds(params: {
+    agentId: UUID;
+    serverId?: string;
+    name?: string;
+    activeOnly?: boolean;
+    limit?: number;
+    offset?: number;
+    orderBy?: 'name' | 'createdAt' | 'lastActivityAt';
+    orderDirection?: 'asc' | 'desc';
+  }): Promise<World[]>;
+
+  /**
    * Creates a new world in the database.
    * @param world The world object to create.
    * @returns A Promise that resolves to the UUID of the created world.

@@ -1,0 +1,102 @@
+{
+  "success": true,
+  "data": {
+    "configurations": [
+      {
+        "pluginName": "@elizaos/plugin-sql",
+        "enabled": true,
+        "actions": {
+          "QUERY_DATABASE": {
+            "enabled": true,
+            "settings": {
+              "maxResults": 100
+            }
+          }
+        },
+        "providers": {
+          "DATABASE_INFO": {
+            "enabled": true,
+            "settings": {}
+          }
+        },
+        "evaluators": {
+          "SQL_VALIDATOR": {
+            "enabled": true,
+            "settings": {}
+          }
+        },
+        "services": {
+          "DATABASE_SERVICE": {
+            "enabled": true,
+            "settings": {
+              "connectionPool": 10
+            }
+          }
+        },
+        "settings": {
+          "autoMigrate": true
+        }
+      },
+      {
+        "pluginName": "@elizaos/plugin-openai",
+        "enabled": true,
+        "actions": {
+          "GENERATE_TEXT": {
+            "enabled": true,
+            "settings": {
+              "model": "gpt-4"
+            }
+          },
+          "GENERATE_IMAGE": {
+            "enabled": false,
+            "settings": {
+              "model": "dall-e-3"
+            }
+          }
+        },
+        "providers": {
+          "MODEL_INFO": {
+            "enabled": true,
+            "settings": {}
+          }
+        },
+        "evaluators": {},
+        "services": {
+          "OPENAI_SERVICE": {
+            "enabled": true,
+            "settings": {
+              "apiTimeout": 30000
+            }
+          }
+        },
+        "settings": {
+          "apiKey": "***"
+        }
+      },
+      {
+        "pluginName": "@elizaos/plugin-local-ai",
+        "enabled": false,
+        "actions": {
+          "LOCAL_GENERATE": {
+            "enabled": false,
+            "settings": {}
+          }
+        },
+        "providers": {
+          "LOCAL_MODEL_INFO": {
+            "enabled": false,
+            "settings": {}
+          }
+        },
+        "evaluators": {},
+        "services": {
+          "LOCAL_AI_SERVICE": {
+            "enabled": false,
+            "settings": {}
+          }
+        },
+        "settings": {}
+      }
+    ]
+  }
+}

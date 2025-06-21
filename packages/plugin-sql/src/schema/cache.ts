@@ -1,26 +1,42 @@
-import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, primaryKey, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { primaryKey } from 'drizzle-orm/pg-core';
+import { getSchemaFactory, createLazyTableProxy } from './factory';
 import { agentTable } from './agent';
 
 /**
- * Represents a PostgreSQL table for caching data.
- *
- * @type {pgTable}
+ * Lazy-loaded cache table definition.
+ * This function returns the cache table schema when called,
+ * ensuring the database type is set before schema creation.
  */
-export const cacheTable = pgTable(
-  'cache',
-  {
-    key: text('key').notNull(),
-    agentId: uuid('agent_id')
-      .notNull()
-      .references(() => agentTable.id, { onDelete: 'cascade' }),
-    value: jsonb('value').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true })
-      .default(sql`now()`)
-      .notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-  },
-  (table) => ({
-    pk: primaryKey({ columns: [table.key, table.agentId] }),
-  })
-);
+function createCacheTable() {
+  const factory = getSchemaFactory();
+
+  // Get the table function from the factory
+  const tableFn = factory.table;
+  return tableFn(
+    'cache',
+    {
+      key: factory.text('key').notNull(),
+      agentId: factory
+        .uuid('agent_id')
+        .notNull()
+        .references(() => agentTable.id, { onDelete: 'cascade' }),
+      value: factory.json('value').notNull(),
+      createdAt: factory
+        .timestamp('created_at', { withTimezone: true })
+        .default(factory.defaultTimestamp())
+        .notNull(),
+      expiresAt: factory.timestamp('expires_at', { withTimezone: true }),
+    },
+    (table) => {
+      return {
+        pk: primaryKey({ columns: [table.key, table.agentId] }),
+      };
+    }
+  );
+}
+
+/**
+ * Represents a table for caching data.
+ * Uses lazy initialization to ensure proper database type configuration.
+ */
+export const cacheTable = createLazyTableProxy(createCacheTable);

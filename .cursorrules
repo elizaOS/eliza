@@ -10,7 +10,7 @@ packages/app - The desktop and mobile application, built in Tauri, wrapping the 
 packages/cli - The CLI which contains the agent runtime and starts up the REST API, GUI, and loads agents and projects
 -> This is what runs in most 'bun run test' and 'bun run start' cases, etc
 -> 'elizaos' command is from here
-packages/plugin-bootstrap - Default event handlers, actions and providers
+packages/plugin-message-handling - Default event handlers, actions and providers
 packages/plugin-sql - DatabaseAdapter for Postgres and PGLite, soon others
 
 There are others but they are not as important
@@ -185,7 +185,7 @@ There are others but they are not as important
 ### Events
 
 Messages are passed by events, so that individual services are decoupled from generic agent event handlers
-By default, agent events are registered in packages/plugin-bootstrap
+By default, agent events are registered in packages/plugin-message-handling
 
 ## Database Architecture
 

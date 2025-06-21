@@ -4,8 +4,8 @@
   "version": "1.0.6",
   "type": "module",
   "private": true,
-  "main": "dist/src/index.js",
-  "module": "dist/src/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "keywords": [
     "project",
@@ -20,7 +20,7 @@
     ".": {
       "import": {
         "types": "./dist/index.d.ts",
-        "default": "./dist/src/index.js"
+        "default": "./dist/index.js"
       }
     }
   },
@@ -30,7 +30,7 @@
   "dependencies": {
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-message-handling": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@tanstack/react-query": "^5.29.0",
     "clsx": "^2.1.1",
@@ -56,12 +56,9 @@
     "lint": "prettier --write ./src",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
-    "test:component": "bun run test:install && bun test",
-    "test:e2e": "bun run test:install && bun test",
-    "test": "bun run test:install && bun run test:component && bun run test:e2e",
-    "test:coverage": "bun run test:install && bun test --coverage",
-    "test:watch": "bun run test:install && bun test --watch",
-    "test:install": "node scripts/install-test-deps.js",
+    "test": "elizaos test",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "check-all": "bun run type-check && bun run format:check && bun run test",

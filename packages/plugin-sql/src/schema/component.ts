@@ -1,38 +1,53 @@
-import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { getSchemaFactory, createLazyTableProxy } from './factory';
 import { agentTable } from './agent';
 import { entityTable } from './entity';
 import { roomTable } from './room';
 import { worldTable } from './world';
 
 /**
- * Represents a component table in the database.
+ * Lazy-loaded component table definition.
+ * This function returns the component table schema when called,
+ * ensuring the database type is set before schema creation.
  */
-export const componentTable = pgTable('components', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`)
-    .notNull(),
+function createComponentTable() {
+  const factory = getSchemaFactory();
 
-  // Foreign keys
-  entityId: uuid('entityId')
-    .references(() => entityTable.id, { onDelete: 'cascade' })
-    .notNull(),
-  agentId: uuid('agentId')
-    .references(() => agentTable.id, { onDelete: 'cascade' })
-    .notNull(),
-  roomId: uuid('roomId')
-    .references(() => roomTable.id, { onDelete: 'cascade' })
-    .notNull(),
-  worldId: uuid('worldId').references(() => worldTable.id, { onDelete: 'cascade' }),
-  sourceEntityId: uuid('sourceEntityId').references(() => entityTable.id, { onDelete: 'cascade' }),
+  return factory.table('components', {
+    id: (() => {
+      const defaultUuid = factory.defaultRandomUuid();
+      const column = factory.uuid('id').primaryKey().notNull();
+      return defaultUuid ? column.default(defaultUuid) : column;
+    })(),
 
-  // Data
-  type: text('type').notNull(),
-  data: jsonb('data').default(sql`'{}'::jsonb`),
+    // Foreign keys
+    entityId: factory
+      .uuid('entityId')
+      .references(() => entityTable.id, { onDelete: 'cascade' })
+      .notNull(),
+    agentId: factory
+      .uuid('agentId')
+      .references(() => agentTable.id, { onDelete: 'cascade' })
+      .notNull(),
+    roomId: factory
+      .uuid('roomId')
+      .references(() => roomTable.id, { onDelete: 'cascade' })
+      .notNull(),
+    worldId: factory.uuid('worldId').references(() => worldTable.id, { onDelete: 'cascade' }),
+    sourceEntityId: factory
+      .uuid('sourceEntityId')
+      .references(() => entityTable.id, { onDelete: 'cascade' }),
 
-  // Timestamps
-  createdAt: timestamp('createdAt')
-    .default(sql`now()`)
-    .notNull(),
-});
+    // Data
+    type: factory.text('type').notNull(),
+    data: factory.json('data').default(factory.defaultJsonObject()),
+
+    // Timestamps
+    createdAt: factory.timestamp('createdAt').default(factory.defaultTimestamp()).notNull(),
+  });
+}
+
+/**
+ * Represents a component table in the database.
+ * Uses lazy initialization to ensure proper database type configuration.
+ */
+export const componentTable = createLazyTableProxy(createComponentTable);

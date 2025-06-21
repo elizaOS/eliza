@@ -72,6 +72,37 @@ export interface Character {
   /** Available plugins */
   plugins?: string[];
 
+  /** Plugin component configurations */
+  pluginConfig?: {
+    [pluginName: string]: {
+      /** Whether entire plugin is enabled */
+      enabled?: boolean;
+      /** Action configurations */
+      actions?: {
+        [actionName: string]: {
+          enabled?: boolean;
+          settings?: Record<string, any>;
+        };
+      };
+      /** Provider configurations */
+      providers?: {
+        [providerName: string]: {
+          enabled?: boolean;
+          settings?: Record<string, any>;
+        };
+      };
+      /** Evaluator configurations */
+      evaluators?: {
+        [evaluatorName: string]: {
+          enabled?: boolean;
+          settings?: Record<string, any>;
+        };
+      };
+      /** Plugin-level settings */
+      settings?: Record<string, any>;
+    };
+  };
+
   /** Optional configuration */
   settings?: {
     [key: string]: string | boolean | number | Record<string, any>;

@@ -480,7 +480,7 @@ This plugin MUST work with both Pglite and PostgreSQL. The specification must in
 ### 2. Import Requirements (MANDATORY)
 - ALL imports must come from @elizaos/core ONLY
 - NO imports from @elizaos/plugin, @elizaos/types, @elizaos/logger (these don't exist)
-- Use: import { Plugin, Action, AgentRuntime, logger, Memory, State } from '@elizaos/core'
+- Use: import { Plugin, Action, AgentRuntime, logger, Memory } from '@elizaos/core'
 
 ## Task
 Generate a detailed technical specification that includes:
@@ -604,15 +604,13 @@ import {
   AgentRuntime,
   logger,
   Memory,
-  State,
-  Content,
   HandlerCallback,
   Service,
 } from '@elizaos/core';
 
 // ❌ WRONG - These packages don't exist
 import { logger } from '@elizaos/logger';
-import { Action } from '@elizaos/types';
+// import { Action } from '@elizaos/types'; // Unused import
 import { PgliteDatabaseAdapter } from '@elizaos/plugin-sql';
 \`\`\`
 

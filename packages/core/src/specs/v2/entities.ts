@@ -39,7 +39,7 @@ export async function findEntityByName(
  * @returns {UUID} - The unique UUID generated based on the runtime and base user ID.
  */
 export const createUniqueUuid = (runtime: IAgentRuntime, baseUserId: UUID | string): UUID => {
-  return coreCreateUniqueUuid(runtime, baseUserId);
+  return coreCreateUniqueUuid(runtime as any, baseUserId);
 };
 
 /**

@@ -1,10 +1,27 @@
 {
   "$schema": "https://turborepo.org/schema.json",
+  "globalDependencies": [
+    ".env",
+    ".env.*",
+    "tsconfig.json",
+    "package-lock.json",
+    "bun.lockb",
+    "pnpm-lock.yaml",
+    "yarn.lock"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
+      "env": ["LOG_LEVEL", "NODE_ENV", "CI", "ELIZA_*"],
+      "outputs": ["dist/**"],
+      "inputs": [
+        "src/**",
+        "tsconfig*.json",
+        "package.json",
+        "tsup.config.ts",
+        "*.config.js",
+        "*.config.ts"
+      ]
     },
     "lint": {
       "outputs": [".eslintcache"]

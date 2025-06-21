@@ -7,8 +7,10 @@ import {
   integer as pgInteger,
   jsonb as pgJsonb,
   pgTable,
+  primaryKey as pgPrimaryKey,
   text as pgText,
   timestamp as pgTimestamp,
+  unique as pgUnique,
   uuid as pgUuid,
   vector as pgVector,
   type PgTableFn,
@@ -91,20 +93,56 @@ export class SchemaFactory {
     return pgForeignKey(config);
   }
 
+  unique(name?: string) {
+    // Both postgres and pglite support UNIQUE constraints
+    return pgUnique(name);
+  }
+
+  primaryKey(config: any) {
+    return pgPrimaryKey(config);
+  }
+
   // Helper for timestamp defaults
   defaultTimestamp() {
-    // Both postgres and pglite support NOW()
+    if (this.dbType === 'pglite') {
+      return sql`CURRENT_TIMESTAMP`;
+    }
     return sql`NOW()`;
   }
 
   // Helper for random UUID generation
   defaultRandomUuid() {
-    // Pglite may not have gen_random_uuid() extension
     if (this.dbType === 'pglite') {
-      // Will use application-level UUID generation
-      return undefined;
+      return undefined; // Application generates UUIDs
     }
     return sql`gen_random_uuid()`;
+  }
+
+  // Helper for JSON array defaults
+  defaultJsonArray() {
+    if (this.dbType === 'pglite') {
+      // PGLite may handle JSON differently
+      return sql`'[]'`;
+    }
+    return sql`'[]'::jsonb`;
+  }
+
+  // Helper for JSON object defaults
+  defaultJsonObject() {
+    if (this.dbType === 'pglite') {
+      // PGLite may handle JSON differently
+      return sql`'{}'`;
+    }
+    return sql`'{}'::jsonb`;
+  }
+
+  // Helper for text array defaults
+  defaultTextArray() {
+    if (this.dbType === 'pglite') {
+      // PGLite may handle array defaults differently
+      return sql`'{}'`;
+    }
+    return sql`'{}'::text[]`;
   }
 }
 
@@ -117,8 +155,50 @@ export function setDatabaseType(dbType: DatabaseType) {
 
 export function getSchemaFactory(): SchemaFactory {
   if (!globalFactory) {
-    // Default to postgres for backward compatibility
     globalFactory = new SchemaFactory('postgres');
   }
   return globalFactory;
+}
+
+/**
+ * Helper function to create a lazy-loaded table proxy
+ * This ensures the table is only created when first accessed
+ * and properly forwards all property access
+ */
+export function createLazyTableProxy<T extends object>(createTableFn: () => T): T {
+  let cachedTable: T | null = null;
+
+  return new Proxy({} as any, {
+    get(_target, prop, receiver) {
+      if (!cachedTable) {
+        cachedTable = createTableFn();
+      }
+      return Reflect.get(cachedTable, prop, receiver);
+    },
+    has(_target, prop) {
+      if (!cachedTable) {
+        cachedTable = createTableFn();
+      }
+      return Reflect.has(cachedTable, prop);
+    },
+    ownKeys(_target) {
+      if (!cachedTable) {
+        cachedTable = createTableFn();
+      }
+      return Reflect.ownKeys(cachedTable);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (!cachedTable) {
+        cachedTable = createTableFn();
+      }
+      return Reflect.getOwnPropertyDescriptor(cachedTable, prop);
+    },
+
+    getPrototypeOf(_target) {
+      if (!cachedTable) {
+        cachedTable = createTableFn();
+      }
+      return Reflect.getPrototypeOf(cachedTable);
+    },
+  }) as T;
 }

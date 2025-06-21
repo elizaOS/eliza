@@ -1,0 +1,22 @@
+{
+  "name": "@elizaos/plugin-test-scenarios",
+  "version": "0.1.0",
+  "description": "Test plugin with scenarios for the new plugin scenario system",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "elizaos test"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module"
+}

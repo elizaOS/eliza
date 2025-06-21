@@ -1,4 +1,4 @@
-# @elizaos/plugin-bootstrap
+# @elizaos/plugin-message-handling
 
 ## Purpose
 
@@ -14,7 +14,7 @@ A plugin providing core functionality and basic actions for ElizaOS agents, enab
 ## Installation
 
 ```bash
-bun install @elizaos/plugin-bootstrap
+bun install @elizaos/plugin-message-handling
 ```
 
 ## Integration

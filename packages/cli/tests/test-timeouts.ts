@@ -61,25 +61,9 @@ export const TEST_TIMEOUTS = {
       ? 2 * 60 * 1000
       : 90 * 1000, // 2 minutes/90 seconds locally
 
-  // Server and process timeouts - macOS needs more time, especially in CI
-  SERVER_STARTUP: isCI
-    ? isMacOS
-      ? 60 * 1000
-      : 15 * 1000 // 60/15 seconds in CI - doubled for macOS CI
-    : isWindows
-      ? 45 * 1000
-      : isMacOS
-        ? 40 * 1000
-        : 30 * 1000, // Platform-specific locally
-  PROCESS_CLEANUP: isCI
-    ? isMacOS
-      ? 8 * 1000
-      : 5 * 1000 // 8/5 seconds in CI
-    : isWindows
-      ? 15 * 1000
-      : isMacOS
-        ? 12 * 1000
-        : 10 * 1000, // Platform-specific locally
+  // Server and process timeouts - Windows process management is slower
+  SERVER_STARTUP: process.platform === 'win32' ? 90 * 1000 : 60 * 1000, // 90/60 seconds for server startup (increased for PGLite)
+  PROCESS_CLEANUP: process.platform === 'win32' ? 15 * 1000 : 10 * 1000, // 15/10 seconds for process cleanup
 
   // Wait times (for setTimeout) - Simplified for CI stability
   SHORT_WAIT: isCI

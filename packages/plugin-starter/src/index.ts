@@ -134,15 +134,19 @@ const helloWorldProvider: Provider = {
 
 export class StarterService extends Service {
   static serviceType = 'starter';
+  serviceType = 'starter'; // Add instance property
   capabilityDescription =
     'This is a starter service which is attached to the agent through the starter plugin.';
-  constructor(protected runtime: IAgentRuntime) {
+  
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
+    logger.info(`StarterService constructor called with serviceType: ${this.serviceType}`);
   }
 
   static async start(runtime: IAgentRuntime) {
     logger.info(`*** Starting starter service - MODIFIED: ${new Date().toISOString()} ***`);
     const service = new StarterService(runtime);
+    logger.info(`StarterService instance created, serviceType: ${service.serviceType}`);
     return service;
   }
 

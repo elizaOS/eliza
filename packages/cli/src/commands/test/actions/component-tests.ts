@@ -6,7 +6,7 @@ import path from 'node:path';
 import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
-// Bun test doesn't need separate config creation
+// import { createVitestConfig } from '../utils/vitest-config'; // Available for custom vitest configurations
 import { existsSync } from 'node:fs';
 
 /**
@@ -49,8 +49,6 @@ export async function runComponentTests(
 
   logger.info('Running component tests...');
 
-  // Bun test uses built-in configuration
-
   return new Promise((resolve) => {
     // Build command arguments
     const args = ['test', '--passWithNoTests'];
@@ -64,11 +62,19 @@ export async function runComponentTests(
       }
     }
 
+    // Don't pass include/exclude patterns from config - vitest will use its own config file
     const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
 
-    // Bun test doesn't use separate config files
+    // Check if vitest config exists in the target directory
+    const hasVitestConfig =
+      existsSync(path.join(targetPath, 'vitest.config.ts')) ||
+      existsSync(path.join(targetPath, 'vitest.config.js')) ||
+      existsSync(path.join(targetPath, 'vitest.config.mjs'));
 
-    // Bun test automatically discovers test files
+    // Vitest will use its own config file if it exists
+    if (!hasVitestConfig) {
+      logger.info('No vitest config found, using default configuration');
+    }
 
     logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
 
@@ -79,8 +85,8 @@ export async function runComponentTests(
       cwd: targetPath,
       env: {
         ...process.env,
-        FORCE_COLOR: '1', // Force color output
-        CI: 'false', // Ensure we're not in CI mode which might buffer
+        FORCE_COLOR: '1',
+        CI: 'false',
       },
     });
 

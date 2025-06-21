@@ -566,7 +566,7 @@ image: /img/eliza_banner.jpg
 * fix: plugin-apro by @AIFlowML in https://github.com/elizaOS/eliza/pull/3106
 * feat (chore): plugin-chainbase test config and coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3072
 * feat (chore): plugin bittensor test config and coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3064
-* feat (chore): plugin-bootstrap: test config and test coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3068
+* feat (chore): plugin-message-handling: test config and test coverage by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/3068
 * fix: docker build command by skipping eslint files by @jonathangus in https://github.com/elizaOS/eliza/pull/3110
 * fix: export dexScreenerPlugin by @shakkernerd in https://github.com/elizaOS/eliza/pull/3120
 * fix:chore(plugin-chainbase): add missing comma in package.json by @akugone in https://github.com/elizaOS/eliza/pull/3118
@@ -1221,7 +1221,7 @@ Complete changelog:
 * fix: corrected path for image upload by @ShreyGanatra in https://github.com/elizaOS/eliza/pull/1632
 * chore: update viem dependency version in plugin-evm and plugin-goat by @bertux in https://github.com/elizaOS/eliza/pull/1637
 * fix: lockfile wasn't updated after dependency + bring viem to root level package.json by @monilpat in https://github.com/elizaOS/eliza/pull/1642
-* fix: Fix bug in plugin-bootstrap/src/evaluators/facts.ts by @metakai1 in https://github.com/elizaOS/eliza/pull/1648
+* fix: Fix bug in plugin-message-handling/src/evaluators/facts.ts by @metakai1 in https://github.com/elizaOS/eliza/pull/1648
 * Add README_AR.md by @xMariem in https://github.com/elizaOS/eliza/pull/1634
 * Added Hungarian README by @mdominikd in https://github.com/elizaOS/eliza/pull/1645
 * fix: activate web-search plugin in agents/ by @cmadaanaya in https://github.com/elizaOS/eliza/pull/1577

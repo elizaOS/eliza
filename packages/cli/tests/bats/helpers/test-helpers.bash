@@ -324,6 +324,22 @@ assert_file_contain() {
   fi
 }
 
+assert_file_exist() {
+  local file="$1"
+  
+  if [[ ! -f "$file" ]]; then
+    fail "File $file does not exist"
+  fi
+}
+
+assert_dir_exist() {
+  local dir="$1"
+  
+  if [[ ! -d "$dir" ]]; then
+    fail "Directory $dir does not exist"
+  fi
+}
+
 assert_dir_not_exist() {
   local dir="$1"
   

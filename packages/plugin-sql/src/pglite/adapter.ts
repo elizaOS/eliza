@@ -25,6 +25,7 @@ import type { PGliteClientManager } from './manager';
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  public db: PgliteDatabase<any>;
 
   /**
    * Constructor for creating an instance of a class.
@@ -77,7 +78,18 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    * @returns {Promise<boolean>} A Promise that resolves to true if the connection is healthy.
    */
   async isReady(): Promise<boolean> {
-    return !this.manager.isShuttingDown();
+    try {
+      if (this.manager.isShuttingDown()) {
+        return false;
+      }
+      // Try to execute a simple query to verify the connection is active
+      const connection = this.manager.getConnection();
+      await connection.query('SELECT 1');
+      return true;
+    } catch (error) {
+      // If any error occurs (including "PGlite is closed"), return false
+      return false;
+    }
   }
 
   /**
@@ -94,5 +106,13 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   async getConnection() {
     return this.manager.getConnection();
+  }
+
+  /**
+   * Get all worlds (implementation required by base class)
+   */
+  async getWorlds(): Promise<any[]> {
+    // PGLite adapter doesn't implement worlds yet
+    return [];
   }
 }

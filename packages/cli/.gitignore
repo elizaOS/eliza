@@ -4,3 +4,5 @@ dist
 cache
 models
 templates/
+:memory:
+.eliza

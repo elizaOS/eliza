@@ -34,7 +34,7 @@ bun add @elizaos/plugin-[name]
 2. Import and register the plugin in your character configuration:
 
 ```typescript
-import { bootstrapPlugin } from '@eliza/plugin-bootstrap';
+import { bootstrapPlugin } from '@eliza/plugin-message-handling';
 import { imageGenerationPlugin } from '@eliza/plugin-image-generation';
 import { buttplugPlugin } from '@eliza/plugin-buttplug';
 const character = {
@@ -47,7 +47,7 @@ const character = {
 
 ### Available Plugins
 
-#### 1. Bootstrap Plugin (`@eliza/plugin-bootstrap`)
+#### 1. Bootstrap Plugin (`@eliza/plugin-message-handling`)
 
 The bootstrap plugin provides essential baseline functionality:
 

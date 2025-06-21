@@ -82,7 +82,7 @@ export const character: Character = {
     '@elizaos/plugin-sql', // 1. Database (REQUIRED FIRST)
     '@elizaos/plugin-openai', // 2. Embeddings provider (REQUIRED SECOND)
     '@elizaos/plugin-knowledge', // 3. Knowledge plugin (MUST BE AFTER DEPENDENCIES)
-    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-message-handling',
 
     // Optional plugins can go after
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),

@@ -17,11 +17,11 @@ and call the primitive directly.
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { timeProvider } from '@elizaos/plugin-bootstrap';
+import { timeProvider } from '@elizaos/plugin-message-handling';
 import {
   createMockRuntime,
   createMockMemory,
-} from '@elizaos/plugin-bootstrap/__tests__/test-utils';
+} from '@elizaos/plugin-message-handling/__tests__/test-utils';
 
 describe('time provider', () => {
   it('returns a time string', async () => {
@@ -40,7 +40,7 @@ receives a running `IAgentRuntime` instance.
 
 ```ts
 import type { TestSuite } from '@elizaos/core';
-import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+import { bootstrapPlugin } from '@elizaos/plugin-message-handling';
 
 export class BootstrapSuite implements TestSuite {
   name = 'bootstrap_example';

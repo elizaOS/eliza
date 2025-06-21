@@ -216,6 +216,34 @@ export const apiClient = {
   getAgentPanels: (agentId: string): Promise<{ success: boolean; data: AgentPanel[] }> =>
     fetcher({ url: `/agents/${agentId}/panels`, method: 'GET' }),
 
+  // Plugin Configuration Management
+  getAgentConfigurations: (agentId: string): Promise<{ success: boolean; data: { configurations: any[] } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations` }),
+  getPluginConfiguration: (agentId: string, pluginName: string): Promise<{ success: boolean; data: { configuration: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}` }),
+  updatePluginConfiguration: (agentId: string, pluginName: string, configuration: any): Promise<{ success: boolean; data: { configuration: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}`, method: 'PATCH', body: { configuration } }),
+  updateComponentConfiguration: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator',
+    componentName: string,
+    config: any,
+    dependencies: string[] = []
+  ): Promise<{ success: boolean; data: { componentConfig: any; validationResult: any } }> =>
+    fetcher({
+      url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}`,
+      method: 'PATCH',
+      body: { config, dependencies }
+    }),
+  getComponentConfiguration: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator',
+    componentName: string
+  ): Promise<{ success: boolean; data: { componentConfig: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}` }),
+
   // Agent-perspective rooms and memories
   getAgentPerspectiveRooms: (agentId: string): Promise<{ data: { rooms: CoreRoom[] } }> =>
     fetcher({ url: `/agents/${agentId}/rooms` }),
@@ -606,4 +634,82 @@ export const apiClient = {
     channelId: UUID
   ): Promise<{ success: boolean; data: { channelId: UUID; participants: UUID[] } }> =>
     fetcher({ url: `/messaging/central-channels/${channelId}/agents` }),
+
+  // Plugin Configuration Management
+  getAgentConfigurations: (agentId: string): Promise<{ success: boolean; data: { configurations: any[] } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations` }),
+
+  getPluginConfiguration: (agentId: string, pluginName: string): Promise<{ success: boolean; data: { configuration: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}` }),
+
+  updatePluginConfiguration: (agentId: string, pluginName: string, configuration: any): Promise<{ success: boolean; data: { configuration: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}`, method: 'PATCH', body: { configuration } }),
+
+  updateComponentConfiguration: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator',
+    componentName: string,
+    config: any,
+    dependencies: string[] = []
+  ): Promise<{ success: boolean; data: { componentConfig: any; validationResult: any } }> =>
+    fetcher({
+      url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}`,
+      method: 'PATCH',
+      body: { config, dependencies }
+    }),
+
+  getComponentConfiguration: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator',
+    componentName: string
+  ): Promise<{ success: boolean; data: { componentConfig: any } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}` }),
+
+  // Hot-swap component management
+  enableComponent: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator' | 'service',
+    componentName: string,
+    options?: { overrideReason?: string; settings?: any }
+  ): Promise<{ success: boolean; data: { message: string; componentConfig: any } }> =>
+    fetcher({
+      url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}/enable`,
+      method: 'POST',
+      body: options || {}
+    }),
+
+  disableComponent: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator' | 'service',
+    componentName: string,
+    options?: { overrideReason?: string }
+  ): Promise<{ success: boolean; data: { message: string; componentConfig: any } }> =>
+    fetcher({
+      url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}/disable`,
+      method: 'POST',
+      body: options || {}
+    }),
+
+  toggleComponent: (
+    agentId: string,
+    pluginName: string,
+    componentType: 'action' | 'provider' | 'evaluator' | 'service',
+    componentName: string,
+    options?: { overrideReason?: string }
+  ): Promise<{ success: boolean; data: { message: string; componentConfig: any; previousState: boolean; newState: boolean } }> =>
+    fetcher({
+      url: `/agents/${agentId}/configurations/${pluginName}/components/${componentType}/${componentName}/toggle`,
+      method: 'POST',
+      body: options || {}
+    }),
+
+  getRuntimeStatus: (
+    agentId: string,
+    pluginName: string
+  ): Promise<{ success: boolean; data: { pluginName: string; configuration: any; runtime: any; comparison: any; inSync: boolean } }> =>
+    fetcher({ url: `/agents/${agentId}/configurations/${pluginName}/runtime-status` }),
 };

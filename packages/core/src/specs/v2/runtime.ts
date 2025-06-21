@@ -33,6 +33,7 @@ import type {
   TaskWorker,
   UUID,
   World,
+  ServiceType,
 } from './types';
 
 import { AgentRuntime as coreAgentRuntime, Semaphore as coreSemaphore } from '../../runtime';
@@ -378,6 +379,10 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.getService(service) as any;
   }
 
+  getServicesByType(serviceType: ServiceTypeName): Service[] {
+    return this._runtime.getServicesByType(serviceType) as any;
+  }
+
   async registerService(service: typeof Service): Promise<void> {
     return this._runtime.registerService(service as any);
   }
@@ -392,7 +397,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Pass the v2 runtime instance (this) instead of the core runtime
       return handler(this, params);
     };
-    return this._runtime.registerModel(modelType, wrappedHandler, provider);
+    return this._runtime.registerModel(modelType, wrappedHandler as any, provider);
   }
 
   getModel(
@@ -805,7 +810,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @param handler - The handler function to send messages
    */
   registerSendHandler(source: string, handler: SendHandlerFunction): void {
-    this._runtime.registerSendHandler(source, handler);
+    this._runtime.registerSendHandler(source, handler as any);
   }
 
   /**

@@ -99,9 +99,9 @@ Enable the TEE logging in the Eliza .env file:
 TEE_LOG_ENABLED=true
 ```
 
-The logging isn't integrated for actions by default, you need to integrate the logging for the actions you want to log. For example, if you want to log the `Continue` action of plugin-bootstrap, you can do the following:
+The logging isn't integrated for actions by default, you need to integrate the logging for the actions you want to log. For example, if you want to log the `Continue` action of plugin-message-handling, you can do the following:
 
-First, add plugin-tee-log to the dependencies of plugin-bootstrap:
+First, add plugin-tee-log to the dependencies of plugin-message-handling:
 
 ```json
 "@elizaos/plugin-tee-log": "workspace:*",

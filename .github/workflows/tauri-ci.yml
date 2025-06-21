@@ -18,6 +18,32 @@ on:
       - '.github/workflows/**'
 
 jobs:
+  # Setup job - builds packages once to share across platforms
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
+
+      - name: Build packages
+        run: bun run build
+
   # Platform-specific builds run in parallel
   test-build:
     strategy:

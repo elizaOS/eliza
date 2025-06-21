@@ -2,6 +2,7 @@ import { installPlugin } from '@/src/utils';
 import { fetchPluginRegistry } from '@/src/utils/plugin-discovery';
 import { normalizePluginName } from '@/src/utils/registry';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { isWorkspacePackage, getWorkspacePackagePath } from '@/src/utils/workspace-packages';
 import { logger } from '@elizaos/core';
 import { AddPluginOptions } from '../types';
 import { extractPackageName, findPluginPackageName } from '../utils/naming';
@@ -63,6 +64,25 @@ export async function installPluginFromRegistry(
   cwd: string,
   opts: AddPluginOptions
 ): Promise<void> {
+  // Check if it's a workspace package first
+  const isWorkspace = await isWorkspacePackage(plugin);
+  if (isWorkspace) {
+    const workspacePath = await getWorkspacePackagePath(plugin);
+    logger.info(`Found workspace package ${plugin} at ${workspacePath}`);
+    logger.info(`Using workspace version of ${plugin}`);
+
+    // For workspace packages, we don't need to install, just verify they're linked
+    const registryInstallResult = await installPlugin(plugin, cwd, opts.tag, opts.skipVerification);
+
+    if (registryInstallResult) {
+      console.log(`Successfully configured workspace package ${plugin}`);
+      process.exit(0);
+    } else {
+      console.error(`Failed to configure workspace package ${plugin}`);
+      process.exit(1);
+    }
+  }
+
   const cachedRegistry = await fetchPluginRegistry();
   if (!cachedRegistry || !cachedRegistry.registry) {
     logger.error('Plugin registry cache not found. Please run "elizaos plugins update" first.');

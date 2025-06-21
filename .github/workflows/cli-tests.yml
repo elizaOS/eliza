@@ -14,8 +14,7 @@ env:
 on:
   push:
     branches:
-      - 'main'
-      - 'develop'
+      - '*'
   pull_request:
     branches:
       - 'main'
@@ -23,8 +22,8 @@ on:
 
 jobs:
   test:
-    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    # Run on pull_request events or push events
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -48,39 +47,11 @@ jobs:
       - name: Mention Bun version
         run: bun --version
 
-      - name: Debug Bun Setup
-        shell: bash
-        run: |
-          echo "PATH: $PATH"
-          echo "which bun: $(which bun 2>/dev/null || echo 'which not found')"
-          echo "command -v bun: $(command -v bun 2>/dev/null || echo 'command not found')"
-          if command -v bun &> /dev/null; then
-            BUN_PATH=$(which bun 2>/dev/null || command -v bun)
-            echo "Bun found at: $BUN_PATH"
-            ls -la "$BUN_PATH" 2>/dev/null || echo "Failed to ls bun"
-            file "$BUN_PATH" 2>/dev/null || echo "Failed to get bun file info"
-          else
-            echo "Bun not found in PATH"
-          fi
-
       - name: Install dependencies
         run: bun install
 
       - name: Build all packages
         run: bun run build
-
-      - name: Verify CLI build artifacts
-        shell: bash
-        run: |
-          echo "Checking CLI build artifacts..."
-          echo "CLI dist contents:"
-          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
-          echo ""
-          echo "CLI templates in dist:"
-          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
-          echo ""
-          echo "CLI executable:"
-          test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
 
       - name: Clean eliza projects cache
         shell: bash

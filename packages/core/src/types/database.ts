@@ -1,5 +1,13 @@
-import type { Agent } from './agent';
-import type { Component, Entity, Participant, Relationship, Room, World } from './environment';
+import type { Agent, Character } from './agent';
+import type {
+  Component,
+  Entity,
+  Participant,
+  Relationship,
+  Room,
+  World,
+  GetWorldsOptions,
+} from './environment';
 import type { Memory, MemoryMetadata } from './memory';
 import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
@@ -176,6 +184,22 @@ export interface IDatabaseAdapter {
   removeWorld(id: UUID): Promise<void>;
 
   getAllWorlds(): Promise<World[]>;
+
+  /**
+   * Retrieve worlds for an agent with optional filtering and pagination
+   * @param params Query parameters including agentId and filtering options
+   * @returns Promise resolving to an array of World objects
+   */
+  getWorlds(params: {
+    agentId: UUID;
+    serverId?: string;
+    name?: string;
+    activeOnly?: boolean;
+    limit?: number;
+    offset?: number;
+    orderBy?: 'name' | 'createdAt' | 'lastActivityAt';
+    orderDirection?: 'asc' | 'desc';
+  }): Promise<World[]>;
 
   updateWorld(world: World): Promise<void>;
 

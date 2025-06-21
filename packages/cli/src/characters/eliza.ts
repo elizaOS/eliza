@@ -11,7 +11,7 @@ const baseCharacter: Character = {
     '@elizaos/plugin-openai',
     '@elizaos/plugin-anthropic',
     '@elizaos/plugin-local-ai',
-    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-message-handling',
   ],
   secrets: {},
   system:
@@ -202,7 +202,7 @@ export function getElizaCharacter(): Character {
     ...(!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY
       ? ['@elizaos/plugin-local-ai']
       : []),
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-message-handling'] : []),
   ];
 
   return {

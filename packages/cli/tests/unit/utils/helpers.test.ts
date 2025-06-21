@@ -6,39 +6,49 @@ import colors from 'yoctocolors';
 // Mock dependencies
 mock.module('@elizaos/core', () => ({
   logger: {
-    info: mock(),
-    error: mock(),
+    info: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
 mock.module('yoctocolors', () => ({
   default: {
-    green: mock((text) => `[green]${text}[/green]`),
-    cyan: mock((text) => `[cyan]${text}[/cyan]`),
+    green: vi.fn((text) => text),
+    cyan: vi.fn((text) => text),
   },
 }));
 
-// Mock console
-const originalConsoleLog = console.log;
-const consoleSpy = mock(() => {});
-console.log = consoleSpy;
-
 describe('helpers', () => {
+  let consoleSpy: any;
+
   beforeEach(() => {
-    // Reset console spy if needed
+    vi.clearAllMocks();
+    // Create console spy in beforeEach
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+    vi.restoreAllMocks();
   });
 
   describe('displayAgent', () => {
     it('should display basic agent info', () => {
-      const agent: Partial<Agent> = {
+      const agent = {
         name: 'Test Agent',
         username: 'test_agent',
       };
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith('Name: Test Agent'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalled();
+      // Check for the header
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('┌'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Agent Review'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('└'));
+      // Check for basic info
+      expect(consoleSpy).toHaveBeenCalledWith('Name: Test Agent');
+      expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent');
     });
 
     it('should generate username from name if not provided', () => {
@@ -48,7 +58,7 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent_name'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent_name');
     });
 
     it('should display bio array', () => {
@@ -59,9 +69,9 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Bio line 1'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Bio line 2'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  Bio line 1');
+      expect(consoleSpy).toHaveBeenCalledWith('  Bio line 2');
     });
 
     it('should display bio string as array', () => {
@@ -72,8 +82,8 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Single bio line'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  Single bio line');
     });
 
     it('should display all array sections', () => {
@@ -87,13 +97,13 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Adjectives:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  smart'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  funny'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Adjectives:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  smart');
+      expect(consoleSpy).toHaveBeenCalledWith('  funny');
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Topics:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  AI'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Tech'); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Topics:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  AI');
+      expect(consoleSpy).toHaveBeenCalledWith('  Tech');
     });
 
     it('should display style sections', () => {
@@ -108,10 +118,10 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('General Style:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  General style 1'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Chat Style:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Post Style:')); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('General Style:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  General style 1');
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Chat Style:'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Post Style:'));
     });
 
     it('should display message examples', () => {
@@ -127,9 +137,9 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Message Examples:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Anon: Hello')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Agent: Hi there')); // TODO: Fix for bun test
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Message Examples:'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Anon: Hello'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Agent: Hi there'));
     });
 
     it('should use custom title', () => {
@@ -158,17 +168,62 @@ describe('helpers', () => {
       // expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('Topics:')); // TODO: Fix for bun test
       // expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('Adjectives:')); // TODO: Fix for bun test
     });
+
+    it('should display all agent sections', () => {
+      const agent = {
+        name: 'Full Agent',
+        bio: ['Bio line 1', 'Bio line 2'],
+        adjectives: ['smart', 'helpful'],
+        topics: ['AI', 'coding'],
+        plugins: ['plugin1', 'plugin2'],
+        style: {
+          all: ['general style 1'],
+          chat: ['chat style 1'],
+          post: ['post style 1'],
+        },
+        postExamples: ['Example post 1'],
+        messageExamples: [
+          [
+            { name: '{{name1}}', content: { text: 'Hello' } },
+            { name: 'Agent', content: { text: 'Hi there!' } },
+          ],
+        ],
+      };
+
+      displayAgent(agent);
+
+      expect(consoleSpy).toHaveBeenCalled();
+      // Check sections are displayed
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  Bio line 1');
+      expect(consoleSpy).toHaveBeenCalledWith('  Bio line 2');
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Adjectives:'));
+      expect(consoleSpy).toHaveBeenCalledWith('  smart');
+      expect(consoleSpy).toHaveBeenCalledWith('  helpful');
+    });
+
+    it('should handle missing optional fields', () => {
+      const agent = {
+        name: 'Minimal Agent',
+      };
+
+      displayAgent(agent);
+
+      expect(consoleSpy).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith('Name: Minimal Agent');
+      expect(consoleSpy).toHaveBeenCalledWith('Username: minimal_agent');
+    });
   });
 
   describe('logHeader', () => {
     it('should log header with borders', () => {
       logHeader('Test Header');
 
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┌')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┐')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('└')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┘')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith('Test Header'); // TODO: Fix for bun test
+      expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┌'));
+      expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┐'));
+      expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('└'));
+      expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┘'));
+      expect(colors.green).toHaveBeenCalledWith('Test Header');
     });
 
     it('should add padding around title', () => {
@@ -183,7 +238,7 @@ describe('helpers', () => {
       logHeader('A Very Long Title That Should Have A Long Border');
 
       // Check that green was called with border characters
-      const greenCalls = colors.green.mock.calls;
+      const greenCalls = vi.mocked(colors.green).mock.calls;
       const borderCalls = greenCalls.filter((call) => call[0].includes('─'));
 
       expect(borderCalls.length).toBeGreaterThan(0);
@@ -193,7 +248,30 @@ describe('helpers', () => {
       logHeader('Test');
 
       const calls = consoleSpy.mock.calls;
-      expect(calls.some((call) => call[0].startsWith('\n'))).toBe(true);
+      expect(calls.some((call: any[]) => call[0].startsWith('\n'))).toBe(true);
+    });
+
+    it('should display header with frame', () => {
+      const title = 'Test Header';
+
+      logHeader(title);
+
+      expect(consoleSpy).toHaveBeenCalled();
+      // Check for frame elements
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('┌'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Test Header'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('└'));
+    });
+
+    it('should handle long headers', () => {
+      const title = 'This is a very long header that should still be framed properly';
+
+      logHeader(title);
+
+      expect(consoleSpy).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('┌'));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(title));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('└'));
     });
   });
 });

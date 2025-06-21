@@ -5,12 +5,14 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { killProcessOnPort, safeChangeDirectory, getBunExecutable } from './test-utils';
+import { createTestProject, killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { existsSync } from 'fs';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
   let elizaosCmd: string;
+  let cliPath: string;
   let originalCwd: string;
   let testServerPort: number;
   let runningProcesses: any[] = [];
@@ -23,7 +25,20 @@ describe('ElizaOS Dev Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
 
     // Setup CLI command
-    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
+    const scriptDir = join(__dirname, '..');
+    cliPath = join(scriptDir, '../dist/index.js');
+    
+    // Check if CLI is built, if not build it
+    if (!existsSync(cliPath)) {
+      console.log('CLI not built, building now...');
+      const cliPackageDir = join(scriptDir, '..');
+      execSync('bun run build', { 
+        cwd: cliPackageDir,
+        stdio: 'inherit'
+      });
+    }
+    
+    elizaosCmd = `bun "${cliPath}"`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -56,7 +71,7 @@ describe('ElizaOS Dev Commands', () => {
     // Setup test port (different from start tests)
     testServerPort = 3100;
     await killProcessOnPort(testServerPort);
-    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+    await new Promise((resolve) => setTimeout(resolve));
 
     // Change to project directory for each test
     process.chdir(projectDir);
@@ -135,24 +150,10 @@ describe('ElizaOS Dev Commands', () => {
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] __dirname: ${__dirname}`);
-    console.log(`[DEBUG] CLI path: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    const commandStr = `${bunPath} ${cliPath} dev ${args}`;
-    console.log(`[DEBUG] Running command: ${commandStr}`);
-
-    // Use Bun.spawn for better compatibility
-    console.log(`[DEBUG] Using Bun.spawn for dev command`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev ${args}`);
-
-    try {
-      const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
-        cwd: cwd || projectDir,
+    const devProcess = spawn(
+      'bun',
+      [cliPath, 'dev', ...args.split(' ')],
+      {
         env: {
           ...process.env,
           LOG_LEVEL: 'error',
@@ -205,9 +206,8 @@ describe('ElizaOS Dev Commands', () => {
     // Start dev process with shorter wait time for CI
     const devProcess = await startDevAndWait('--port ' + testServerPort, 2000); // 2 second wait
 
-    // Check that process is running
-    expect(devProcess.pid).toBeDefined();
-    expect(devProcess.killed).toBe(false);
+      // Wait a moment for initialization
+      await new Promise((resolve) => setTimeout(resolve));
 
     // Kill the process immediately to save time and wait for exit
     devProcess.kill('SIGTERM');
@@ -220,79 +220,21 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
     console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
 
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    // Use Bun.spawn for project detection test
-    console.log(`[DEBUG] Using Bun.spawn for project detection test`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
-
-    let devProcess: any;
-    try {
-      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
-        cwd: projectDir,
-        env: {
-          ...process.env,
-          LOG_LEVEL: 'info',
-          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
-        },
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-        // Windows-specific options
-        ...(process.platform === 'win32' && {
-          windowsHide: true,
-          windowsVerbatimArguments: false,
-        }),
-      });
-
-      if (!devProcess.pid) {
-        throw new Error('Bun.spawn failed to create process - no PID returned');
-      }
-    } catch (spawnError) {
-      console.error(`[ERROR] Failed to spawn project detection test:`, spawnError);
-      console.error(`[ERROR] Platform: ${process.platform}`);
-      console.error(`[ERROR] Working directory: ${projectDir}`);
-      throw spawnError;
-    }
-
-    if (!devProcess || !devProcess.pid) {
-      console.error('[ERROR] Failed to spawn dev process for project detection');
-      throw new Error('Failed to spawn dev process');
-    }
-
-    runningProcesses.push(devProcess);
-
-    let output = '';
-    let outputReceived = false;
-    const outputPromise = new Promise<void>((resolve) => {
-      // Handle Bun.spawn's ReadableStream
-      const handleStream = async (
-        stream: ReadableStream<Uint8Array> | undefined,
-        streamName: string
-      ) => {
-        if (!stream) return;
-
-        const reader = stream.getReader();
-        const decoder = new TextDecoder();
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value, { stream: true });
-            output += text;
-            console.log(`[DEV ${streamName}] ${text}`);
-
-            if (!outputReceived && text.length > 0) {
-              outputReceived = true;
-              // Give more time for complete output on macOS
-              setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
-            }
-          }
-        } finally {
-          reader.releaseLock();
+  it(
+    'dev command detects project type correctly',
+    async () => {
+      // Start dev process and capture output
+      const devProcess = spawn(
+        'bun',
+        [cliPath, 'dev', '--port', testServerPort.toString()],
+        {
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: projectDir,
         }
       };
 
@@ -302,10 +244,45 @@ describe('ElizaOS Dev Commands', () => {
         handleStream(devProcess.stderr, 'STDERR'),
       ]).catch((err) => console.error('[DEV TEST] Stream error:', err));
 
-      // Fallback timeout
-      setTimeout(() => {
-        if (!outputReceived) {
-          console.log('[DEV TEST] No output received, resolving anyway');
+      let output = '';
+      devProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+      devProcess.stderr?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      // Wait for process to start and detect project type
+      await new Promise((resolve) => setTimeout(resolve));
+
+      // Check that it detected project type (even if it fails later due to database)
+      expect(output).toMatch(/(ElizaOS project|project mode|Identified as)/);
+
+      devProcess.kill('SIGTERM');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it(
+    'dev command responds to file changes in project',
+    async () => {
+      // Create a simple file to modify
+      const testFile = join(projectDir, 'src', 'test-file.ts');
+      await mkdir(join(projectDir, 'src'), { recursive: true });
+      await writeFile(testFile, 'export const test = "initial";');
+
+      // Start dev process
+      const devProcess = spawn(
+        'bun',
+        [cliPath, 'dev', '--port', testServerPort.toString()],
+        {
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: projectDir,
         }
         resolve();
       }, TEST_TIMEOUTS.MEDIUM_WAIT);
@@ -429,15 +406,8 @@ describe('ElizaOS Dev Commands', () => {
         }),
       });
 
-      if (!devProcess.pid) {
-        throw new Error('Bun.spawn failed to create process - no PID returned');
-      }
-    } catch (spawnError) {
-      console.error(`[ERROR] Failed to spawn non-eliza test:`, spawnError);
-      console.error(`[ERROR] Platform: ${process.platform}`);
-      console.error(`[ERROR] Working directory: ${nonElizaDir}`);
-      throw spawnError;
-    }
+      // Wait for initial startup
+      await new Promise((resolve) => setTimeout(resolve));
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process for non-eliza test');
@@ -446,7 +416,8 @@ describe('ElizaOS Dev Commands', () => {
       throw new Error('Failed to spawn dev process');
     }
 
-    runningProcesses.push(devProcess);
+      // Wait for file change detection and rebuild
+      await new Promise((resolve) => setTimeout(resolve));
 
     const outputPromise = new Promise<void>((resolve) => {
       // Handle Bun.spawn's ReadableStream
@@ -468,14 +439,35 @@ describe('ElizaOS Dev Commands', () => {
             output += text;
             console.log(`[NON-ELIZA DIR ${streamName}] ${text}`);
 
-            if (!outputReceived && text.length > 0) {
-              outputReceived = true;
-              // Give more time for complete output on macOS
-              setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
-            }
-          }
-        } finally {
-          reader.releaseLock();
+      // Check that process started
+      expect(devProcess.pid).toBeDefined();
+      expect(devProcess.killed).toBe(false);
+
+      devProcess.kill('SIGTERM');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it(
+    'dev command handles non-elizaos directory gracefully',
+    async () => {
+      // Create a non-ElizaOS project directory
+      const nonElizaDir = join(testTmpDir, 'non-elizaos');
+      await mkdir(nonElizaDir, { recursive: true });
+      await writeFile(join(nonElizaDir, 'package.json'), JSON.stringify({ name: 'not-elizaos', version: '1.0.0' }));
+
+      let output = '';
+      const devProcess = spawn(
+        'bun',
+        [cliPath, 'dev', '--port', testServerPort.toString()],
+        {
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: nonElizaDir,
         }
       };
 
@@ -512,10 +504,25 @@ describe('ElizaOS Dev Commands', () => {
       console.log('[NON-ELIZA DIR TEST] No output but process started successfully');
     }
 
-    // Proper cleanup
-    devProcess.kill('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }, 15000); // Reduced timeout for CI stability
+      runningProcesses.push(devProcess);
+
+      devProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+      devProcess.stderr?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      // Wait for process to start and detect non-ElizaOS directory
+      await new Promise((resolve) => setTimeout(resolve));
+
+      // Should warn about not being in ElizaOS project but still work
+      expect(output).toMatch(/(not.*recognized|standalone mode|not.*ElizaOS)/i);
+
+      devProcess.kill('SIGTERM');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected

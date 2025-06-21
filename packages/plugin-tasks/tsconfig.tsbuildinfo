@@ -1,0 +1,1 @@
+{"root":["./src/index.ts","./src/__tests__/actions.test.ts","./src/__tests__/providers.test.ts","./src/__tests__/test-utils.ts","./src/actions/choice.ts","./src/actions/index.ts","./src/providers/choice.ts","./src/providers/index.ts","./src/services/index.ts","./src/services/task.ts"],"version":"5.8.2"}

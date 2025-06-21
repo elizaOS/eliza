@@ -2,6 +2,33 @@ import type { IAgentRuntime } from '@elizaos/core';
 import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { plugin, createDatabaseAdapter } from '../../index';
 
+// Mock the logger and other core exports to avoid console output during tests
+import { mock } from 'vitest';
+
+mock('@elizaos/core', async () => {
+  const actual = await vi.importActual('@elizaos/core');
+  return {
+    ...actual,
+    logger: {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+    VECTOR_DIMS: {
+      SMALL: 384,
+      MEDIUM: 512,
+      LARGE: 768,
+    },
+  };
+});
+
+// Mock the database adapters and managers
+mock('../../pglite/adapter');
+mock('../../pglite/manager');
+mock('../../pg/adapter');
+mock('../../pg/manager');
+
 describe('SQL Plugin', () => {
   let mockRuntime: IAgentRuntime;
 
@@ -25,17 +52,13 @@ describe('SQL Plugin', () => {
     it('should have correct plugin metadata', () => {
       expect(plugin.name).toBe('@elizaos/plugin-sql');
       expect(plugin.description).toBe(
-        'A plugin for SQL database access with dynamic schema migrations'
+        'A plugin for SQL database access with Drizzle ORM'
       );
       expect(plugin.priority).toBe(0);
     });
 
-    it('should have schema defined', () => {
-      expect(plugin.schema).toBeDefined();
-      // Schema exports individual table definitions
-      expect(plugin.schema).toHaveProperty('agentTable');
-      expect(plugin.schema).toHaveProperty('entityTable');
-      expect(plugin.schema).toHaveProperty('memoryTable');
+    it('should not have schema property to avoid circular dependencies', () => {
+      expect(plugin.schema).toBeUndefined();
     });
 
     it('should have init function', () => {
@@ -51,8 +74,8 @@ describe('SQL Plugin', () => {
 
       await plugin.init?.({}, mockRuntime);
 
-      // Logger calls aren't easily testable in bun:test without complex mocking
-      // Just verify that registerDatabaseAdapter wasn't called
+      // The init function logs via global logger, which we can't easily mock in Bun
+      // Just verify the runtime wasn't called to register
       expect(mockRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
     });
 
@@ -61,6 +84,8 @@ describe('SQL Plugin', () => {
 
       await plugin.init?.({}, mockRuntime);
 
+      // The init function logs via global logger, which we can't easily mock in Bun
+      // Just verify the runtime was called to register the adapter
       expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 

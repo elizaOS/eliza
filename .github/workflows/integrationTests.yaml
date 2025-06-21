@@ -1,0 +1,145 @@
+name: Integration Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: integration-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - '*'
+    paths:
+      - 'packages/**'
+      - '.github/workflows/integrationTests.yaml'
+  pull_request_target:
+    branches:
+      - '*'
+    paths:
+      - 'packages/**'
+      - '.github/workflows/integrationTests.yaml'
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  ELIZA_NONINTERACTIVE: true
+
+jobs:
+  # Setup job - builds once and caches artifacts
+  setup:
+    # Run on pull_request_target events or push events
+    if: github.event_name == 'pull_request_target' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Clear Turbo cache for CLI
+        run: bunx turbo run build --filter=@elizaos/cli --force
+
+      - name: Build packages
+        run: bun run build
+
+  # Validation job - runs in parallel
+  validate:
+    # Run on pull_request_target events or push events
+    if: github.event_name == 'pull_request_target' || github.event_name == 'push'
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Install global packages
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install cli now that it's built
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Check for API key
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+              echo "Error: OPENAI_API_KEY is not set."
+              exit 1
+          fi
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+              echo "Error: ANTHROPIC_API_KEY is not set."
+              exit 1
+          fi
+
+  # Integration tests job - runs in parallel
+  integration-tests:
+    # Run on pull_request_target events or push events
+    if: github.event_name == 'pull_request_target' || github.event_name == 'push'
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Install global packages
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Create .env file for tests
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Install cli now that it's built
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Run integration tests
+        run: bun run test

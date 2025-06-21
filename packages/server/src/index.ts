@@ -22,7 +22,6 @@ import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 
 import {
   createDatabaseAdapter,
-  DatabaseMigrationService,
   plugin as sqlPlugin,
 } from '@elizaos/plugin-sql';
 import internalMessageBus from './bus.js';
@@ -183,20 +182,25 @@ export class AgentServer {
       await this.database.init();
       logger.success('Consolidated database initialized successfully');
 
-      // Run migrations for the SQL plugin schema
+      // First, we need to create a minimal runtime with just the SQL plugin for migrations
       logger.info('[INIT] Running database migrations for messaging tables...');
       try {
-        const migrationService = new DatabaseMigrationService();
+        // Create a temporary runtime for migration purposes
+        const coreModule = await import('@elizaos/core');
+        const migrationRuntime = new coreModule.AgentRuntime({
+          adapter: this.database,
+          agentId: '00000000-0000-0000-0000-000000000000' as UUID,
+          character: {
+            name: 'MigrationAgent',
+            bio: ['Migration agent for database setup'],
+            system: 'You are a helpful assistant.',
+            plugins: [sqlPlugin.name],
+          } as Character,
+          plugins: [sqlPlugin],
+        });
 
-        // Get the underlying database instance
-        const db = (this.database as any).getDatabase();
-        await migrationService.initializeWithDatabase(db);
-
-        // Register the SQL plugin schema
-        migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
-
-        // Run the migrations
-        await migrationService.runAllPluginMigrations();
+        // Initialize the runtime - this should handle plugin migrations
+        await migrationRuntime.initialize();
 
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
@@ -832,14 +836,9 @@ export class AgentServer {
           logger.success(
             `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
           );
-          logger.debug(`Active agents: ${this.agents.size}`);
-          this.agents.forEach((agent, id) => {
-            logger.debug(`- Agent ${id}: ${agent.character.name}`);
-          });
+          console.log(`\x1b[36m📚 Learn more at \x1b[1mhttps://eliza.how\x1b[22m\x1b[0m`);
         })
         .on('error', (error: any) => {
-          logger.error(`Failed to bind server to ${host}:${port}:`, error);
-
           // Provide helpful error messages for common issues
           if (error.code === 'EADDRINUSE') {
             logger.error(
@@ -911,11 +910,66 @@ export class AgentServer {
    * stops the database connection, and logs a success message.
    */
   public async stop(): Promise<void> {
+    logger.info('Stopping AgentServer...');
+
+    // Stop all agents first
+    if (this.agents.size > 0) {
+      logger.debug('Stopping all agents...');
+      const stopPromises: Promise<void>[] = [];
+      for (const [id, agent] of this.agents.entries()) {
+        try {
+          logger.debug(`Stopping agent ${id}`);
+          stopPromises.push(agent.stop());
+        } catch (error) {
+          logger.error(`Error stopping agent ${id}:`, error);
+        }
+      }
+      await Promise.allSettled(stopPromises);
+      this.agents.clear();
+      logger.debug('All agents stopped');
+    }
+
+    // Disconnect Socket.IO clients
+    if (this.socketIO) {
+      try {
+        logger.debug('Disconnecting Socket.IO clients...');
+        this.socketIO.disconnectSockets();
+        await new Promise<void>((resolve) => {
+          this.socketIO.close(() => {
+            logger.debug('Socket.IO closed');
+            resolve();
+          });
+        });
+      } catch (error) {
+        logger.error('Error closing Socket.IO:', error);
+      }
+    }
+
+    // Close database connection
+    if (this.database) {
+      try {
+        logger.debug('Closing database connection...');
+        await this.database.close();
+        logger.debug('Database closed');
+      } catch (error) {
+        logger.error('Error closing database:', error);
+      }
+    }
+
+    // Close HTTP server
     if (this.server) {
-      this.server.close(() => {
-        logger.success('Server stopped');
+      await new Promise<void>((resolve) => {
+        this.server.close(() => {
+          logger.debug('HTTP server closed');
+          resolve();
+        });
       });
     }
+
+    // Reset initialization flag
+    this.isInitialized = false;
+
+    logger.success('AgentServer stopped successfully');
   }
 
   // Central DB Data Access Methods
@@ -1093,6 +1147,35 @@ export class AgentServer {
       }
     }
     return serverIds;
+  }
+
+  /**
+   * Emit a WebSocket event to all connected clients
+   * @param event - The event name to emit
+   * @param data - The data to send with the event
+   */
+  emitToAll(event: string, data: any): void {
+    if (this.socketIO) {
+      this.socketIO.emit(event, data);
+      logger.debug(`[AgentServer] Emitted '${event}' event to all connected clients`);
+    } else {
+      logger.warn(`[AgentServer] Cannot emit '${event}' - SocketIO not initialized`);
+    }
+  }
+
+  /**
+   * Emit a WebSocket event to clients in a specific room/channel
+   * @param room - The room/channel to emit to
+   * @param event - The event name to emit
+   * @param data - The data to send with the event
+   */
+  emitToRoom(room: string, event: string, data: any): void {
+    if (this.socketIO) {
+      this.socketIO.to(room).emit(event, data);
+      logger.debug(`[AgentServer] Emitted '${event}' event to room '${room}'`);
+    } else {
+      logger.warn(`[AgentServer] Cannot emit '${event}' to room '${room}' - SocketIO not initialized`);
+    }
   }
 }
 

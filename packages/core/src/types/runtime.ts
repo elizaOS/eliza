@@ -2,7 +2,7 @@ import type { Character } from './agent';
 import type { Action, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
-import type { Entity, Room, World } from './environment';
+import type { Entity, Room, World, GetWorldsOptions } from './environment';
 import { Memory } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
@@ -11,6 +11,7 @@ import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
 import type { TaskWorker } from './task';
+import type { ActionPlan, PlanningContext, PlanExecutionResult } from './planning';
 
 /**
  * Represents the core runtime environment for an agent.
@@ -43,6 +44,11 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getAllServices(): Map<ServiceTypeName, Service>;
 
   registerService(service: typeof Service): Promise<void>;
+
+  /**
+   * Get the configuration manager for plugin component configuration
+   */
+  getConfigurationManager(): any; // Using 'any' to avoid circular import issues
 
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
@@ -164,7 +170,58 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
 
+  /**
+   * Get all worlds associated with this agent
+   * @param options Optional filtering and pagination options
+   * @returns Promise resolving to an array of World objects
+   */
+  getWorlds(options?: GetWorldsOptions): Promise<World[]>;
+
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
 
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+
+  /**
+   * Generate an action plan based on the given message and context
+   */
+  generatePlan(message: Memory, context: PlanningContext): Promise<ActionPlan>;
+
+  /**
+   * Execute an action plan
+   */
+  executePlan(
+    plan: ActionPlan,
+    message: Memory,
+    callback?: HandlerCallback
+  ): Promise<PlanExecutionResult>;
+
+  /**
+   * Validate a plan
+   */
+  validatePlan(plan: ActionPlan): Promise<{ valid: boolean; issues: string[] }>;
+
+  /**
+   * Configure a plugin's components dynamically
+   * Supports hot-swap enable/disable of components
+   */
+  configurePlugin(pluginName: string, config: any): Promise<void>;
+
+  /**
+   * Enable a specific component dynamically
+   */
+  enableComponent(
+    pluginName: string, 
+    componentName: string, 
+    componentType: 'action' | 'provider' | 'evaluator' | 'service',
+    component: any
+  ): Promise<void>;
+
+  /**
+   * Disable a specific component dynamically
+   */
+  disableComponent(
+    pluginName: string,
+    componentName: string,
+    componentType: 'action' | 'provider' | 'evaluator' | 'service'
+  ): Promise<void>;
 }

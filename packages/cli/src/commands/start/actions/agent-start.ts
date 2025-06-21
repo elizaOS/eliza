@@ -7,7 +7,6 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 import { AgentServer } from '@elizaos/server';
 import { AgentStartOptions } from '../types';
 import { loadEnvConfig } from '../utils/config-utils';
@@ -29,7 +28,9 @@ export async function startAgent(
   character.id ??= stringToUuid(character.name);
 
   const loadedPlugins = new Map<string, Plugin>();
-  // Type-cast to ensure compatibility with local types
+  // Dynamically import SQL plugin to avoid early schema loading
+  const sqlModule = await import('@elizaos/plugin-sql');
+  const sqlPlugin = sqlModule.plugin;
   loadedPlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin); // Always include sqlPlugin
 
   const pluginsToLoad = new Set<string>(character.plugins || []);
@@ -78,25 +79,16 @@ export async function startAgent(
 
   await runtime.initialize();
 
-  // Discover and run plugin schema migrations
   try {
-    const migrationService = runtime.getService('database_migration');
-    if (migrationService) {
-      logger.info('Discovering plugin schemas for dynamic migration...');
-      (migrationService as any).discoverAndRegisterPluginSchemas(finalPlugins);
-
-      logger.info('Running all plugin migrations...');
-      await (migrationService as any).runAllPluginMigrations();
-      logger.info('All plugin migrations completed successfully');
-    } else {
-      logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
-    }
+    logger.info('Running plugin migrations...');
+    await runtime.runMigrations();
+    logger.info('Plugin migrations completed.');
   } catch (error) {
     logger.error('Failed to run plugin migrations:', error);
     throw error;
   }
 
-  server.registerAgent(runtime);
+  await server.registerAgent(runtime);
   logger.log(`Started ${runtime.character.name} as ${runtime.agentId}`);
   return runtime;
 }

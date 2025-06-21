@@ -1,7 +1,7 @@
-import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
 import { VECTOR_DIMS } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
 import { memoryTable } from './memory';
+import { getSchemaFactory } from './factory';
 
 export const DIMENSION_MAP = {
   [VECTOR_DIMS.SMALL]: 'dim384',
@@ -13,34 +13,59 @@ export const DIMENSION_MAP = {
 } as const;
 
 /**
- * Definition of the embeddings table in the database.
- * Contains columns for ID, Memory ID, Creation Timestamp, and multiple vector dimensions.
+ * Lazy-loaded embedding table definition.
+ * This function returns the embedding table schema when called,
+ * ensuring the database type is set before schema creation.
  */
-export const embeddingTable = pgTable(
-  'embeddings',
-  {
-    id: uuid('id').primaryKey().defaultRandom().notNull(),
-    memoryId: uuid('memory_id').references(() => memoryTable.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at')
-      .default(sql`now()`)
-      .notNull(),
-    dim384: vector('dim_384', { dimensions: VECTOR_DIMS.SMALL }),
-    dim512: vector('dim_512', { dimensions: VECTOR_DIMS.MEDIUM }),
-    dim768: vector('dim_768', { dimensions: VECTOR_DIMS.LARGE }),
-    dim1024: vector('dim_1024', { dimensions: VECTOR_DIMS.XL }),
-    dim1536: vector('dim_1536', { dimensions: VECTOR_DIMS.XXL }),
-    dim3072: vector('dim_3072', { dimensions: VECTOR_DIMS.XXXL }),
+function createEmbeddingTable() {
+  const factory = getSchemaFactory();
+
+  return factory.table(
+    'embeddings',
+    {
+      id: (() => {
+        const defaultUuid = factory.defaultRandomUuid();
+        const column = factory.uuid('id').primaryKey().notNull();
+        return defaultUuid ? column.default(defaultUuid) : column;
+      })(),
+      memoryId: factory.uuid('memory_id').references(() => memoryTable.id, { onDelete: 'cascade' }),
+      createdAt: factory.timestamp('created_at').default(factory.defaultTimestamp()).notNull(),
+      dim384: factory.vector('dim_384', VECTOR_DIMS.SMALL),
+      dim512: factory.vector('dim_512', VECTOR_DIMS.MEDIUM),
+      dim768: factory.vector('dim_768', VECTOR_DIMS.LARGE),
+      dim1024: factory.vector('dim_1024', VECTOR_DIMS.XL),
+      dim1536: factory.vector('dim_1536', VECTOR_DIMS.XXL),
+      dim3072: factory.vector('dim_3072', VECTOR_DIMS.XXXL),
+    },
+    (table) => [
+      factory.check('embedding_source_check', sql`"memory_id" IS NOT NULL`),
+      factory.index('idx_embedding_memory').on(table.memoryId),
+      factory
+        .foreignKey({
+          name: 'fk_embedding_memory',
+          columns: [table.memoryId],
+          foreignColumns: [memoryTable.id],
+        })
+        .onDelete('cascade'),
+    ]
+  );
+}
+
+// Cache the table once created
+let _embeddingTable: any = null;
+
+/**
+ * Represents the embedding table in the database.
+ * Uses lazy initialization to ensure proper database type configuration.
+ */
+export const embeddingTable = new Proxy({} as any, {
+  get(target, prop, receiver) {
+    if (!_embeddingTable) {
+      _embeddingTable = createEmbeddingTable();
+    }
+    return Reflect.get(_embeddingTable, prop, receiver);
   },
-  (table) => [
-    check('embedding_source_check', sql`"memory_id" IS NOT NULL`),
-    index('idx_embedding_memory').on(table.memoryId),
-    foreignKey({
-      name: 'fk_embedding_memory',
-      columns: [table.memoryId],
-      foreignColumns: [memoryTable.id],
-    }).onDelete('cascade'),
-  ]
-);
+});
 
 /**
  * Defines the possible values for the Embedding Dimension Column.

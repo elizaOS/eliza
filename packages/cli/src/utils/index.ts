@@ -6,6 +6,7 @@ export * from './config-manager';
 export * from './copy-template';
 export * from './display-banner';
 export * from './env-prompt';
+export * from './environment-normalization';
 export * from './get-config';
 export * from './get-package-info';
 export * from './github';

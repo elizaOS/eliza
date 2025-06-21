@@ -6,12 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { v4 } from 'uuid';
 import { plugin as sqlPlugin } from '../index';
-import { DatabaseMigrationService } from '../migration-service';
+import { ensureCoreTablesExist } from '../simple-migrator';
 import { PgDatabaseAdapter } from '../pg/adapter';
 import { PostgresConnectionManager } from '../pg/manager';
 import { PgliteDatabaseAdapter } from '../pglite/adapter';
 import { PGliteClientManager } from '../pglite/manager';
 import { mockCharacter } from './fixtures';
+import { setDatabaseType } from '../schema/factory';
 
 /**
  * Creates a fully initialized, in-memory PGlite database adapter and a corresponding
@@ -35,6 +36,7 @@ export async function createTestDatabase(
   if (process.env.POSTGRES_URL) {
     // PostgreSQL testing
     console.log('[TEST] Using PostgreSQL for test database');
+    setDatabaseType('postgres');
     const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
@@ -54,10 +56,14 @@ export async function createTestDatabase(
     await db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`));
     await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
 
-    const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(db);
-    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
-    await migrationService.runAllPluginMigrations();
+    // Initialize the runtime to register plugins
+    await runtime.initialize();
+
+    // Ensure core tables exist after initialization
+    console.log('[TEST] About to ensure core tables exist');
+    const adapterDb = adapter.getDatabase();
+    await ensureCoreTablesExist(adapterDb);
+    console.log('[TEST] Core tables creation completed');
 
     await adapter.createAgent({
       id: testAgentId,
@@ -72,6 +78,7 @@ export async function createTestDatabase(
     return { adapter, runtime, cleanup };
   } else {
     // PGlite testing
+    setDatabaseType('pglite');
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-test-'));
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
     await connectionManager.initialize();
@@ -85,10 +92,14 @@ export async function createTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(adapter.getDatabase());
-    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
-    await migrationService.runAllPluginMigrations();
+    // Initialize the runtime to register plugins
+    await runtime.initialize();
+
+    // Ensure core tables exist after initialization
+    console.log('[TEST] About to ensure core tables exist');
+    const adapterDb = adapter.getDatabase();
+    await ensureCoreTablesExist(adapterDb);
+    console.log('[TEST] Core tables creation completed');
 
     await adapter.createAgent({
       id: testAgentId,
@@ -130,6 +141,7 @@ export async function createIsolatedTestDatabase(
     const schemaName = `test_${testId}_${Date.now()}`;
     console.log(`[TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
 
+    setDatabaseType('postgres');
     const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
@@ -148,11 +160,8 @@ export async function createIsolatedTestDatabase(
     // Include public in search path so we can access the vector extension
     await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
 
-    // Run migrations in isolated schema
-    const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(db);
-    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
-    await migrationService.runAllPluginMigrations();
+    // Initialize the runtime to register plugins
+    await runtime.initialize();
 
     // Create test agent
     await adapter.createAgent({
@@ -175,6 +184,7 @@ export async function createIsolatedTestDatabase(
     const tempDir = path.join(os.tmpdir(), `eliza-test-${testId}-${Date.now()}`);
     console.log(`[TEST] Creating isolated PGLite database: ${tempDir}`);
 
+    setDatabaseType('pglite');
     const connectionManager = new PGliteClientManager({ dataDir: tempDir });
     await connectionManager.initialize();
     const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
@@ -187,11 +197,8 @@ export async function createIsolatedTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    // Run migrations
-    const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(adapter.getDatabase());
-    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
-    await migrationService.runAllPluginMigrations();
+    // Initialize the runtime to register plugins
+    await runtime.initialize();
 
     // Create test agent
     await adapter.createAgent({

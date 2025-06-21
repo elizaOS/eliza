@@ -201,8 +201,9 @@ describe('Character Loader', () => {
   });
 
   describe('loadCharactersFromUrl', () => {
-    const mockFetch = mock();
-    global.fetch = mockFetch;
+    const mockFetch = vi.fn();
+    (mockFetch as any).preconnect = vi.fn();
+    global.fetch = mockFetch as any;
 
     beforeEach(() => {
       mockFetch /* .mockClear() - TODO: bun equivalent */;
@@ -308,8 +309,9 @@ describe('Character Loader', () => {
         await loadCharacter('/path/to/no-name.json');
         expect.fail('Should have thrown an error');
       } catch (error) {
-        expect(error.message).toContain('Character validation failed');
-        expect(error.message).toContain('name');
+        const err = error as Error;
+        expect(err.message).toContain('Character validation failed');
+        expect(err.message).toContain('name');
       }
     });
   });

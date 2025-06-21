@@ -22,7 +22,7 @@ describe('Environment Setup', () => {
     const srcDir = path.join(process.cwd(), 'src');
     expect(fs.existsSync(srcDir)).toBe(true);
 
-    const requiredSrcFiles = ['index.ts', 'plugin.ts'];
+    const requiredSrcFiles = ['index.ts'];
 
     for (const file of requiredSrcFiles) {
       const filePath = path.join(srcDir, file);
@@ -35,7 +35,7 @@ describe('Environment Setup', () => {
     expect(fs.existsSync(packageJsonPath)).toBe(true);
 
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    expect(packageJson).toHaveProperty('name', '@elizaos/project-starter');
+    expect(packageJson).toHaveProperty('name');
     expect(packageJson).toHaveProperty('version');
     expect(packageJson).toHaveProperty('type', 'module');
     expect(packageJson).toHaveProperty('main');

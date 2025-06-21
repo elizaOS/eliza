@@ -9,7 +9,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 
 export class DummyTokenDataService extends Service implements ITokenDataService {
-  readonly serviceName = 'dummy-token-data';
+  static readonly serviceName = 'TOKEN_DATA';
   static readonly serviceType = ServiceType.TOKEN_DATA;
   readonly capabilityDescription =
     'Provides dummy token data for testing and development purposes.';
