@@ -1,9 +1,9 @@
 import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { TaskService } from '../src/services/task';
-import { EventType, IAgentRuntime, logger, Service } from '@elizaos/core';
-import { bootstrapPlugin } from '../src/index';
-import { UUID, ModelType, ServiceType } from '@elizaos/core';
-import { createMockRuntime, createMockService, MockRuntime, setupActionTest } from './test-utils';
+import { TaskService } from '../services/task';
+import { IAgentRuntime, logger, Service } from '@elizaos/core';
+import { bootstrapPlugin } from '../index';
+import { ServiceType } from '@elizaos/core';
+import { MockRuntime, setupActionTest } from './test-utils';
 
 // Define service interface for plugin services
 interface PluginService extends Service {
@@ -137,7 +137,6 @@ describe('TaskService', () => {
     mockRuntime.getTasks = mock().mockResolvedValue([pastTask]);
 
     // Expose and call the private methods for testing
-    const checkTasksMethod = (taskService as any).checkTasks.bind(taskService);
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
 
     // Mock getTaskWorker for 'Past scheduled task'

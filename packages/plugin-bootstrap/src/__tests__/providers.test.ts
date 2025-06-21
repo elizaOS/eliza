@@ -6,66 +6,27 @@ import {
   MockRuntime,
   setupActionTest,
 } from './test-utils';
-import {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  State,
-  UUID,
-  logger,
-  ChannelType,
-  createUniqueUuid as actualCreateUniqueUuid,
-  Media,
-} from '@elizaos/core';
+import { IAgentRuntime, Memory, State, UUID, ChannelType, Media } from '@elizaos/core';
 
 // Import providers from source modules
-import choiceProvider from '../src/providers/choice';
-import { factsProvider } from '../src/providers/facts';
-import { providersProvider } from '../src/providers/providers';
-import { recentMessagesProvider } from '../src/providers/recentMessages';
-import roleProvider from '../src/providers/roles';
-import { settingsProvider } from '../src/providers/settings';
-import { attachmentsProvider } from '../src/providers/attachments';
-
-// Mock external dependencies
-// Complex mocking disabled for bun:test compatibility
-/*
-vi.mock('@elizaos/core', async (importOriginal) => {
-  const actual = (await importOriginal()) as any;
-  return {
-    ...actual,
-    createUniqueUuid: mock(),
-    getWorldSettings: mock().mockResolvedValue({
-      setting1: { name: 'setting1', value: 'value1', description: 'Description 1' },
-      setting2: { name: 'setting2', value: 'value2', description: 'Description 2', secret: true },
-    }),
-    findWorldsForOwner: mock().mockResolvedValue([
-      {
-        id: 'world-1' as UUID,
-        name: 'Test World',
-        serverId: 'server-1',
-        metadata: { settings: true },
-      },
-    ]),
-    logger: {
-      ...(actual.logger || {}),
-      error: mock(),
-      warn: mock(),
-      debug: mock(),
-      info: mock(),
-    },
-  };
-});
-*/
+import choiceProvider from '../providers/choice';
+import { factsProvider } from '../providers/facts';
+import { providersProvider } from '../providers/providers';
+import { recentMessagesProvider } from '../providers/recentMessages';
+import roleProvider from '../providers/roles';
+import { settingsProvider } from '../providers/settings';
+import { attachmentsProvider } from '../providers/attachments';
 
 describe('Choice Provider', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
 
   beforeEach(() => {
     const setup = setupActionTest({}); // No specific state overrides needed for these tests
     mockRuntime = setup.mockRuntime;
     mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
 
     // Default mock for getTasks
     mockRuntime.getTasks = mock().mockResolvedValue([]);
@@ -102,12 +63,16 @@ describe('Choice Provider', () => {
     ];
     mockRuntime.getTasks = mock().mockResolvedValue(tasks);
 
-    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await choiceProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.tasks).toHaveLength(2);
-    expect(result.data.tasks[0].name).toBe('Approve Post');
+    expect(result.data?.tasks).toHaveLength(2);
+    expect(result.data?.tasks?.[0]?.name).toBe('Approve Post');
     expect(result.text).toContain('Pending Tasks');
     expect(result.text).toContain('1. **Approve Post**');
     expect(result.text).toContain('A blog post is awaiting approval.');
@@ -129,11 +94,15 @@ describe('Choice Provider', () => {
   it('should handle no pending tasks gracefully', async () => {
     mockRuntime.getTasks = mock().mockResolvedValue([]); // No tasks
 
-    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await choiceProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.tasks).toHaveLength(0);
+    expect(result.data?.tasks).toHaveLength(0);
     expect(result.text).toContain('No pending choices for the moment.');
   });
 
@@ -149,22 +118,30 @@ describe('Choice Provider', () => {
     ];
     mockRuntime.getTasks = mock().mockResolvedValue(tasks);
 
-    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await choiceProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.tasks).toHaveLength(0); // Tasks without options are filtered out
+    expect(result.data?.tasks).toHaveLength(0); // Tasks without options are filtered out
     expect(result.text).toContain('No pending choices for the moment.');
   });
 
   it('should handle errors from getTasks gracefully', async () => {
     mockRuntime.getTasks = mock().mockRejectedValue(new Error('Task service error'));
 
-    const result = await choiceProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await choiceProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.data).toBeDefined();
-    expect(result.data.tasks).toHaveLength(0);
+    expect(result.data?.tasks).toHaveLength(0);
     expect(result.text).toContain('There was an error retrieving pending tasks with options.');
     // Cannot check logger.error calls without mocking @elizaos/core
   });
@@ -287,6 +264,7 @@ describe('Facts Provider', () => {
 describe('Providers Provider', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
 
   beforeEach(() => {
     // Use standardized mock factories
@@ -303,6 +281,7 @@ describe('Providers Provider', () => {
       ],
     });
     mockMessage = createMockMemory();
+    mockState = createMockState();
   });
 
   afterEach(() => {
@@ -310,7 +289,11 @@ describe('Providers Provider', () => {
   });
 
   it('should list all dynamic providers', async () => {
-    const result = await providersProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await providersProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.text).toContain('TEST_PROVIDER_1');
@@ -321,16 +304,20 @@ describe('Providers Provider', () => {
 
     // Check data format
     expect(result.data).toBeDefined();
-    expect(result.data.dynamicProviders).toHaveLength(2);
-    expect(result.data.dynamicProviders[0].name).toBe('TEST_PROVIDER_1');
-    expect(result.data.dynamicProviders[1].name).toBe('TEST_PROVIDER_2');
+    expect(result?.data?.dynamicProviders).toHaveLength(2);
+    expect(result?.data?.dynamicProviders?.[0]?.name).toBe('TEST_PROVIDER_1');
+    expect(result?.data?.dynamicProviders?.[1]?.name).toBe('TEST_PROVIDER_2');
   });
 
   it('should handle empty provider list gracefully', async () => {
     // Mock empty providers
     mockRuntime.providers = [];
 
-    const result = await providersProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory);
+    const result = await providersProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
     expect(result).toBeDefined();
     expect(result.text).toContain('No dynamic providers are currently available');
@@ -483,12 +470,15 @@ describe('Role Provider', () => {
     const serverId = 'server-with-roles-simple' as UUID;
     const ownerId = 'owner-simple-test-id' as UUID;
 
-    mockState.data.room = {
-      id: 'room-for-roles-simple-test' as UUID,
-      serverId: serverId,
-      type: ChannelType.GROUP,
-      source: 'discord',
+    mockState.data = {
+      room: {
+        id: 'room-for-roles-simple-test' as UUID,
+        serverId: serverId,
+        type: ChannelType.GROUP,
+        source: 'discord',
+      },
     };
+
     mockMessage.roomId = 'room-for-roles-simple-test' as UUID;
 
     // Setup getWorld mock to return world data for any ID
@@ -558,7 +548,6 @@ describe('Role Provider', () => {
 
     const mockRoomId = 'room-with-server' as UUID;
     const mockServerId = 'server-for-roles' as UUID;
-    const expectedWorldIdForNoRoles = 'test-world-id-no-roles' as UUID;
 
     mockMessage.roomId = mockRoomId;
     (mockRuntime.getRoom as any).mockResolvedValue({
@@ -667,10 +656,12 @@ describe('Settings Provider', () => {
       ...mockMessage.content,
       channelType: ChannelType.DM,
     };
-    mockState.data.room = {
-      ...mockState.data.room,
-      id: 'onboarding-room-id' as UUID,
-      type: ChannelType.DM,
+
+    mockState.data = {
+      room: {
+        id: 'onboarding-room-id' as UUID,
+        type: ChannelType.DM,
+      },
     };
     mockMessage.roomId = 'onboarding-room-id' as UUID;
 
@@ -728,12 +719,13 @@ describe('Settings Provider', () => {
     // Note: We cannot directly mock getWorldSettings from @elizaos/core in bun:test
     // This test would need to be refactored to test error handling differently
     // For now, we'll test what we can without mocking core functions
-    
+
     mockMessage.content = { channelType: ChannelType.DM };
-    mockState.data.room = {
-      ...mockState.data.room,
-      type: ChannelType.DM,
-      id: 'dm-room-err' as UUID,
+    mockState.data = {
+      room: {
+        type: ChannelType.DM,
+        id: 'dm-room-err' as UUID,
+      },
     };
     mockMessage.roomId = 'dm-room-err' as UUID;
 
@@ -755,10 +747,12 @@ describe('Settings Provider', () => {
   it('should handle missing world gracefully', async () => {
     mockRuntime.getWorld = mock().mockResolvedValue(null);
     mockMessage.content = { channelType: ChannelType.GROUP };
-    mockState.data.room = {
-      ...mockState.data.room,
-      type: ChannelType.GROUP,
-      id: 'group-room-err' as UUID,
+    mockState.data = {
+      ...mockState.data,
+      room: {
+        type: ChannelType.GROUP,
+        id: 'group-room-err' as UUID,
+      },
     };
     mockMessage.roomId = 'group-room-err' as UUID;
 
@@ -772,20 +766,19 @@ describe('Settings Provider', () => {
     expect(result.text).toContain(
       'Error retrieving configuration information. Please try again later.'
     );
-    // vi.mocked not available in bun:test, simplifying
-    const coreMocks = await import('@elizaos/core');
-    // Cannot check logger.error calls without mocking @elizaos/core
   });
 });
 
 describe('Attachments Provider', () => {
   let mockRuntime: MockRuntime;
   let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
 
   beforeEach(() => {
     const setup = setupActionTest();
     mockRuntime = setup.mockRuntime;
     mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
 
     // Mock getConversationLength
     mockRuntime.getConversationLength = mock().mockReturnValue(10);
@@ -807,13 +800,14 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(0);
+    expect(result.data?.attachments).toHaveLength(0);
     expect(result.text).toBe('');
-    expect(result.values.attachments).toBe('');
+    expect(result.values?.attachments).toBe('');
   });
 
   it('should return current message attachments', async () => {
@@ -845,13 +839,14 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(2);
-    expect(result.data.attachments[0].id).toBe('attach-1');
-    expect(result.data.attachments[1].id).toBe('attach-2');
+    expect(result.data?.attachments).toHaveLength(2);
+    expect(result.data?.attachments?.[0]?.id).toBe('attach-1');
+    expect(result.data?.attachments?.[1]?.id).toBe('attach-2');
     expect(result.text).toContain('# Attachments');
     expect(result.text).toContain('Test Image 1');
     expect(result.text).toContain('Test Document');
@@ -917,15 +912,16 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(3);
-    expect(result.data.attachments[0].id).toBe('current-attach');
+    expect(result.data?.attachments).toHaveLength(3);
+    expect(result.data?.attachments?.[0]?.id).toBe('current-attach');
     // Messages are reversed, so prev-attach-2 comes before prev-attach-1
-    expect(result.data.attachments[1].id).toBe('prev-attach-2');
-    expect(result.data.attachments[2].id).toBe('prev-attach-1');
+    expect(result.data?.attachments?.[1]?.id).toBe('prev-attach-2');
+    expect(result.data?.attachments?.[2]?.id).toBe('prev-attach-1');
     expect(result.text).toContain('Current Image');
     expect(result.text).toContain('Previous Image 1');
     expect(result.text).toContain('Previous Image 2');
@@ -990,21 +986,22 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(3);
+    expect(result.data?.attachments).toHaveLength(3);
 
     // Check that old attachment has hidden text
-    const oldAttachment = result.data.attachments.find((a) => a.id === 'old-attach');
+    const oldAttachment = result.data?.attachments?.find((a) => a.id === 'old-attach');
     expect(oldAttachment?.text).toBe('[Hidden]');
 
     // Check that recent attachments have visible text
-    const recentAttachment = result.data.attachments.find((a) => a.id === 'recent-attach');
+    const recentAttachment = result.data?.attachments?.find((a) => a.id === 'recent-attach');
     expect(recentAttachment?.text).toBe('This should be visible');
 
-    const currentAtt = result.data.attachments.find((a) => a.id === 'current-attach');
+    const currentAtt = result.data?.attachments?.find((a) => a.id === 'current-attach');
     expect(currentAtt?.text).toBe('Current content');
   });
 
@@ -1049,15 +1046,16 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(1);
-    expect(result.data.attachments[0].id).toBe('shared-attach');
+    expect(result.data?.attachments).toHaveLength(1);
+    expect(result.data?.attachments?.[0]?.id).toBe('shared-attach');
     // Should keep the current message's richer data
-    expect(result.data.attachments[0].text).toBe('Shared content with more details');
-    expect(result.data.attachments[0].description).toBe('Shared attachment');
+    expect(result.data?.attachments?.[0]?.text).toBe('Shared content with more details');
+    expect(result.data?.attachments?.[0]?.description).toBe('Shared attachment');
   });
 
   it('should format attachment data correctly', async () => {
@@ -1078,7 +1076,8 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
@@ -1125,12 +1124,13 @@ describe('Attachments Provider', () => {
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
-      mockMessage as Memory
+      mockMessage as Memory,
+      mockState as State
     );
 
     expect(result).toBeDefined();
-    expect(result.data.attachments).toHaveLength(1);
-    expect(result.data.attachments[0].id).toBe('only-attach');
+    expect(result.data?.attachments).toHaveLength(1);
+    expect(result.data?.attachments?.[0]?.id).toBe('only-attach');
     expect(result.text).toContain('Only Attachment');
   });
 
@@ -1152,8 +1152,12 @@ describe('Attachments Provider', () => {
     mockRuntime.getMemories = mock().mockRejectedValue(new Error('Database error'));
 
     // The provider doesn't catch errors, so they propagate up
-    await expect(
-      attachmentsProvider.get(mockRuntime as IAgentRuntime, mockMessage as Memory)
+    expect(
+      attachmentsProvider.get(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State
+      )
     ).rejects.toThrow('Database error');
   });
 });

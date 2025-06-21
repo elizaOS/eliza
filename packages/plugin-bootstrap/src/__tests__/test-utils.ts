@@ -13,13 +13,8 @@ import {
   Provider,
   Route,
   Service,
-  ServiceType,
   State,
   UUID,
-  Room,
-  World,
-  Entity,
-  Component,
 } from '@elizaos/core';
 
 /**
@@ -124,7 +119,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     getMemoriesByIds: mock().mockResolvedValue([]),
 
     // Additional methods commonly used in tests
-    useModel: mock().mockImplementation((modelType, params) => {
+    useModel: mock().mockImplementation((modelType, _params) => {
       if (modelType === ModelType.OBJECT_LARGE) {
         return Promise.resolve({
           thought: 'I should respond in a friendly way',
@@ -445,4 +440,7 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
 
   // Added for recentMessages provider
   getMemoriesByRoomIds: ReturnType<typeof mock>;
+
+  // Add this line in the appropriate section with other database methods
+  ensureAgentExists: ReturnType<typeof mock>;
 };

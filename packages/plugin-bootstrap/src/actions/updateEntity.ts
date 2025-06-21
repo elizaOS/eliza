@@ -181,7 +181,6 @@ export const updateEntityAction: Action = {
       }
 
       const sourceEntityId = message.entityId;
-      const _roomId = message.roomId;
       const agentId = runtime.agentId;
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
       const worldId = room.worldId;

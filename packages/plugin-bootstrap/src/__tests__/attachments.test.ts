@@ -1,5 +1,5 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
-import { processAttachments } from '../src/index';
+import { processAttachments } from '../index';
 import { IAgentRuntime, Media, ModelType, ContentType, logger } from '@elizaos/core';
 import { createMockRuntime, MockRuntime } from './test-utils';
 

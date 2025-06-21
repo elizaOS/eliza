@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, Provider, ProviderResult } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 
 // Define an interface for option objects
@@ -28,7 +28,7 @@ interface OptionObject {
  */
 export const choiceProvider: Provider = {
   name: 'CHOICE',
-  get: async (runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       // Get all pending tasks for this room with options
       const pendingTasks = await runtime.getTasks({

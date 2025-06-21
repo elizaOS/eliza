@@ -19,7 +19,10 @@
     "checkJs": false,
     "noEmitOnError": false,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": true
   },
   "include": ["src/**/*.ts"]
 }
