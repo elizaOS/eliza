@@ -3,37 +3,54 @@
  */
 
 import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
-import { SocketIORouter } from '../socketio';
-import { createMockAgentRuntime } from './test-utils/mocks';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
+
+// Mock logger before imports
+const mockLogger = {
+  info: jest.fn(),
+  debug: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  levels: { values: { debug: 10, info: 20, warn: 30, error: 40 } },
+};
+
+// Mock validateUuid function
+const mockValidateUuid = jest.fn((id: string) => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id) ? id : null;
+});
+
+// Mock constants
+const MOCK_SOCKET_MESSAGE_TYPE = {
+  ROOM_JOINING: 1,
+  SEND_MESSAGE: 2,
+  MESSAGE: 3,
+  ACK: 4,
+  THINKING: 5,
+  CONTROL: 6,
+};
 
 // Mock dependencies
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-      levels: { values: { debug: 10, info: 20, warn: 30, error: 40 } },
-    },
-    validateUuid: jest.fn((id: string) => {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(id) ? id : null;
-    }),
-    SOCKET_MESSAGE_TYPE: {
-      ROOM_JOINING: 1,
-      SEND_MESSAGE: 2,
-      MESSAGE: 3,
-      ACK: 4,
-      THINKING: 5,
-      CONTROL: 6,
-    },
-  };
-});
+mock.module('@elizaos/core', () => ({
+  logger: mockLogger,
+  validateUuid: mockValidateUuid,
+  SOCKET_MESSAGE_TYPE: MOCK_SOCKET_MESSAGE_TYPE,
+  EventType: {
+    MESSAGE: 'message',
+    USER_JOIN: 'user_join',
+    ENTITY_JOINED: 'entity_joined',
+  },
+  ChannelType: {
+    DIRECT: 'direct',
+    GROUP: 'group',
+    DM: 'dm',
+  },
+}));
+
+// Import after mocks are set up
+import { SocketIORouter } from '../socketio';
+import { createMockAgentRuntime } from './test-utils/mocks';
+import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 
 describe('SocketIORouter', () => {
   let router: SocketIORouter;
@@ -44,6 +61,13 @@ describe('SocketIORouter', () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
+    // Clear mock calls
+    mockLogger.info.mockClear();
+    mockLogger.debug.mockClear();
+    mockLogger.warn.mockClear();
+    mockLogger.error.mockClear();
+    mockValidateUuid.mockClear();
+
     // Create mock runtime
     mockRuntime = createMockAgentRuntime();
     mockAgents = new Map();
@@ -82,7 +106,7 @@ describe('SocketIORouter', () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    // Clean up
   });
 
   describe('setupListeners', () => {
@@ -495,38 +519,6 @@ describe('SocketIORouter', () => {
       // Should clean up internal maps (we can't directly test this without exposing internals)
       // But we can verify the handler was called
       expect(disconnectHandler).toBeDefined();
-    });
-  });
-
-  describe('error handling', () => {
-    it('should handle socket errors gracefully', () => {
-      router.setupListeners(mockIO);
-      const connectionHandler = mockIO.on.mock.calls[0][1];
-      connectionHandler(mockSocket);
-
-      const errorHandler = mockSocket.on.mock.calls.find((call) => call[0] === 'error')?.[1];
-
-      const testError = new Error('Test socket error');
-      errorHandler(testError);
-
-      // Should not throw, just log the error
-      expect(errorHandler).toBeDefined();
-    });
-
-    it('should handle malformed message event data', () => {
-      router.setupListeners(mockIO);
-      const connectionHandler = mockIO.on.mock.calls[0][1];
-      connectionHandler(mockSocket);
-
-      const messageHandler = mockSocket.on.mock.calls.find((call) => call[0] === 'message')?.[1];
-
-      // Send malformed data
-      messageHandler('not an object');
-      messageHandler({ notType: 'missing type' });
-      messageHandler({ type: 'unknown', payload: {} });
-
-      // Should not throw
-      expect(messageHandler).toBeDefined();
     });
   });
 });

@@ -12,6 +12,8 @@
     "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx",
+    "**/*.cy.ts",
+    "**/*.cy.tsx",
     "src/__tests__/**/*",
     "src/test-utils/**/*",
     "src/setup.ts"

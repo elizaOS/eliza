@@ -246,6 +246,10 @@ Start the Eliza agent with configurable plugins and services.
   - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
   - `-p, --port <port>`: Port to listen on (default: 3000)
+  - `--log-level <level>`: Set log level (trace, debug, info, warn, error, fatal)
+  - `--log-transport <transport>`: Set log transport (console, file)
+  - `--log-file <path>`: Set log file path (for file transport)
+  - `--log-json`: Enable JSON format for both console and file output (consistent)
 
 **Character Handling:**
 
@@ -273,6 +277,27 @@ If any character files fail to load, ElizaOS will:
 - Log errors for the failed characters
 - Continue starting with any successfully loaded characters
 - Fall back to the default Eliza character if no characters loaded successfully
+
+**Logging Examples:**
+
+```bash
+# Debug logging to console only (pretty format)
+elizaos start --log-level debug
+
+# Hybrid logging: console pretty + file clean text
+elizaos start --log-transport file --log-file ./logs/agent.log
+
+# Consistent JSON format: both console and file get raw JSON
+elizaos start --log-transport file --log-file ./logs/agent.log --log-json
+
+# Production setup: warn level, hybrid format
+elizaos start --log-level warn --log-transport file --log-file ./logs/app.log
+
+# Production setup: warn level, consistent JSON format
+elizaos start --log-level warn --log-transport file --log-file ./logs/app.log --log-json
+```
+
+**Note**: File transport provides hybrid logging - logs appear on both console and file. Use `--log-json` for consistent raw JSON format across both outputs, or omit it for console pretty formatting + file clean text.
 
 ### Testing
 

@@ -35,9 +35,10 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test": "bun test src/**/*.test.ts",
-    "test:unit": "bun test src/**/*.test.ts --exclude **/integration/**",
-    "test:integration": "bun test src/__tests__/integration/**/*.test.ts",
+    "test": "bun run src/__tests__/test-runner.ts --unit",
+    "test:unit": "bun run src/__tests__/test-runner.ts --unit",
+    "test:integration": "bun run src/__tests__/test-runner.ts --integration",
+    "test:all": "bun run test:unit && bun run test:integration",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
     "test:cli": "bun test tests/commands/"

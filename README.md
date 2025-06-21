@@ -151,13 +151,25 @@ elizaos agent set --name "Agent" --file config.json  # Update agent configuratio
 ElizaOS uses comprehensive logging to help you understand what your agent is doing:
 
 ```bash
-# Different log levels
-LOG_LEVEL=error elizaos start    # Only errors
-LOG_LEVEL=info elizaos start     # General information (default)
-LOG_LEVEL=debug elizaos start    # Detailed debugging info
-LOG_LEVEL=verbose elizaos start  # Everything (very detailed)
+# Different log levels (CLI options)
+elizaos start --log-level error     # Only errors
+elizaos start --log-level info      # General information (default)
+elizaos start --log-level debug     # Detailed debugging info
+elizaos start --log-level trace     # Everything (very detailed)
 
-# Advanced debugging (combine with LOG_LEVEL=debug)
+# Or using environment variables
+LOG_LEVEL=debug elizaos start
+
+# Hybrid logging (console pretty + file clean text, uses default .eliza/logs/eliza.log)
+elizaos start --log-transport file
+
+# Hybrid logging with custom file path
+elizaos start --log-transport file --log-file ./logs/agent.log
+
+# Consistent JSON format (both console and file get raw JSON)
+elizaos start --log-transport file --log-file ./logs/agent.log --log-json
+
+# Advanced debugging
 ELIZA_DEBUG=true elizaos start          # Enable ElizaOS debug output
 NODE_ENV=development elizaos start      # Development mode with extra logging
 ```
@@ -166,7 +178,9 @@ NODE_ENV=development elizaos start      # Development mode with extra logging
 
 - Use `elizaos --help` to see all available commands and global options
 - Use `elizaos <command> --help` for detailed help on any specific command
-- Use `LOG_LEVEL=debug` during development to see detailed execution flow
+- Use `--log-level debug` during development to see detailed execution flow
+- Use `elizaos logger` for interactive logging configuration (simplified menu)
+- File transport provides hybrid logging (console + file) with logs stored in local `.eliza/logs/` directory
 - Check the web interface at http://localhost:3000 for real-time agent status
 - Use `elizaos test` frequently to catch issues early
 - Keep your `.env` file secure and never commit it to version control

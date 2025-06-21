@@ -2,24 +2,24 @@
  * Unit tests for authMiddleware.ts
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock, jest, spyOn } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
-import { apiKeyAuthMiddleware } from '../authMiddleware';
-import { logger } from '@elizaos/core';
 
-// Mock the logger
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: jest.fn(),
-      error: jest.fn(),
-      warn: jest.fn(),
-      debug: jest.fn(),
-    },
-  };
-});
+// Mock the logger before importing the middleware
+const mockLogger = {
+  info: jest.fn(),
+  error: jest.fn(),
+  warn: jest.fn(),
+  debug: jest.fn(),
+};
+
+// Mock the module before importing
+mock.module('@elizaos/core', () => ({
+  logger: mockLogger,
+}));
+
+// Now import the middleware after setting up the mock
+import { apiKeyAuthMiddleware } from '../authMiddleware';
 
 describe('API Key Auth Middleware', () => {
   let mockRequest: Partial<Request>;
@@ -45,7 +45,12 @@ describe('API Key Auth Middleware', () => {
     };
 
     mockNext = jest.fn();
-    mock.restore();
+    
+    // Clear mock calls
+    mockLogger.warn.mockClear();
+    mockLogger.info.mockClear();
+    mockLogger.error.mockClear();
+    mockLogger.debug.mockClear();
   });
 
   afterEach(() => {
@@ -89,7 +94,7 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
     it('should reject requests without API key', () => {
@@ -100,7 +105,7 @@ describe('API Key Auth Middleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('Unauthorized access attempt')
       );
     });
@@ -113,7 +118,7 @@ describe('API Key Auth Middleware', () => {
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('Unauthorized access attempt')
       );
     });
@@ -136,7 +141,7 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
     it('should allow OPTIONS requests even with incorrect API key', () => {
@@ -147,7 +152,7 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockResponse.status).not.toHaveBeenCalled();
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle case-insensitive header names', () => {
@@ -171,7 +176,7 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('192.168.1.100'));
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('192.168.1.100'));
     });
   });
 

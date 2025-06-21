@@ -4,10 +4,11 @@ import { getProjectType } from '../utils/project-utils';
 import { runComponentTests } from './component-tests';
 import { runE2eTests } from './e2e-tests';
 
+
 /**
- * Run both component and E2E tests
+ * Run all tests: component and E2E tests
  *
- * Executes a comprehensive test suite including both component tests (via bun test) and end-to-end tests (via TestRunner). Component tests run first, followed by e2e tests.
+ * Executes a comprehensive test suite including component tests (via bun test) and end-to-end tests (via TestRunner).
  */
 export async function runAllTests(
   testPath: string | undefined,
@@ -21,6 +22,8 @@ export async function runAllTests(
       logger.error('Component tests failed. Continuing to e2e tests...');
     }
   }
+
+
 
   // Run e2e tests
   const e2eResult = await runE2eTests(testPath, options, projectInfo);

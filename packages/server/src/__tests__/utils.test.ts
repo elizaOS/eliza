@@ -2,45 +2,51 @@
  * Unit tests for utility functions
  */
 
-import { describe, it, expect, mock, beforeEach, jest } from 'bun:test';
-import { expandTildePath, resolvePgliteDir } from '../index';
+import { describe, it, expect, mock, beforeEach, jest, afterEach } from 'bun:test';
 import path from 'node:path';
 
-// Mock fs with proper default export
-mock.module('node:fs', async () => {
-  const actual = await import('node:fs');
-  return {
-    ...actual,
-    default: {
-      ...actual,
-      existsSync: jest.fn(),
-    },
-    existsSync: jest.fn(),
-  };
-});
+// Set up mocks before imports
+const mockExistsSync = jest.fn();
+const mockDotenvConfig = jest.fn();
 
-// Mock dotenv with proper structure for default import
-mock.module('dotenv', async () => {
-  const actual = await import('dotenv');
-  const mockConfig = jest.fn();
-  return {
-    ...actual,
-    default: {
-      config: mockConfig,
-    },
-    config: mockConfig,
-  };
-});
+// Mock fs
+mock.module('node:fs', () => ({
+  existsSync: mockExistsSync,
+  default: {
+    existsSync: mockExistsSync,
+    mkdirSync: jest.fn(),
+    readFileSync: jest.fn(() => '{}'),
+    writeFileSync: jest.fn(),
+  },
+}));
+
+// Mock dotenv
+mock.module('dotenv', () => ({
+  config: mockDotenvConfig,
+  default: {
+    config: mockDotenvConfig,
+  },
+}));
 
 // Mock environment module
 mock.module('../api/system/environment', () => ({
   resolveEnvFile: jest.fn(() => '.env'),
 }));
 
+// Import after mocks are set up
+import { expandTildePath, resolvePgliteDir } from '../index';
+
 describe('Utility Functions', () => {
   beforeEach(() => {
-    mock.restore();
     // Reset environment variables
+    delete process.env.PGLITE_DATA_DIR;
+    // Clear mock calls
+    mockExistsSync.mockClear();
+    mockDotenvConfig.mockClear();
+  });
+
+  afterEach(() => {
+    // Clean up
     delete process.env.PGLITE_DATA_DIR;
   });
 
@@ -106,9 +112,8 @@ describe('Utility Functions', () => {
   });
 
   describe('resolvePgliteDir', () => {
-    beforeEach(async () => {
-      const fs = await import('node:fs');
-      (fs.existsSync as any).mockReturnValue(true);
+    beforeEach(() => {
+      mockExistsSync.mockReturnValue(true);
     });
 
     it('should use provided directory', () => {
@@ -172,26 +177,20 @@ describe('Utility Functions', () => {
       expect(process.env.PGLITE_DATA_DIR).toBeUndefined();
     });
 
-    it('should handle environment file loading when exists', async () => {
-      const fs = await import('node:fs');
-      const dotenv = await import('dotenv');
-
-      (fs.existsSync as any).mockReturnValue(true);
+    it('should handle environment file loading when exists', () => {
+      mockExistsSync.mockReturnValue(true);
 
       resolvePgliteDir();
 
-      expect(dotenv.default.config).toHaveBeenCalledWith({ path: '.env' });
+      expect(mockDotenvConfig).toHaveBeenCalledWith({ path: '.env' });
     });
 
-    it('should handle missing environment file gracefully', async () => {
-      const fs = await import('node:fs');
-      const dotenv = await import('dotenv');
-
-      (fs.existsSync as any).mockReturnValue(false);
+    it('should handle missing environment file gracefully', () => {
+      mockExistsSync.mockReturnValue(false);
 
       resolvePgliteDir();
 
-      expect(dotenv.default.config).not.toHaveBeenCalled();
+      expect(mockDotenvConfig).not.toHaveBeenCalled();
     });
 
     it('should prefer explicit dir over environment variable', () => {
