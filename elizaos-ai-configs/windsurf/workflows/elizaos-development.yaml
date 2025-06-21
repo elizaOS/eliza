@@ -1,0 +1,77 @@
+name: ElizaOS Development Workflow
+description: Comprehensive ElizaOS development workflow implementing "Flow - Always Plan First" principle
+
+parameters:
+  task_type:
+    type: string
+    description: Type of development task (feature, bugfix, enhancement, refactor)
+    default: feature
+  
+  component_type:
+    type: string
+    description: Component type if applicable (action, provider, evaluator, task, service, plugin)
+    default: ""
+
+steps:
+  - name: analyze_requirement
+    description: Analyze and understand the requirement completely
+    actions:
+      - Check for existing related files and dependencies
+      - Identify all affected packages (core, cli, client, app, plugins)
+      - Document requirement understanding
+      - Validate Bun runtime compatibility
+
+  - name: research_codebase
+    description: Research ALL related files and components
+    actions:
+      - Search for similar implementations in codebase
+      - Identify existing patterns to follow
+      - Check for circular dependency risks
+      - Review @elizaos/core dependencies
+      - Validate against existing architecture constraints
+
+  - name: create_implementation_plan
+    description: Create detailed implementation plan
+    actions:
+      - Document thorough PRD (Product Requirements Document)
+      - Create step-by-step implementation plan
+      - Identify potential risks and negative outcomes
+      - Outline multiple approaches and select best
+      - Plan test strategy (unit + e2e)
+
+  - name: validate_architecture
+    description: Validate against ElizaOS architecture
+    actions:
+      - Ensure no circular dependencies on @elizaos/core
+      - Validate abstraction layers (Channel→Room, Server→World)
+      - Check service architecture compatibility
+      - Verify deterministic UUID generation requirements
+      - Confirm agent perspective consistency
+
+  - name: implement_solution
+    description: Implement the planned solution
+    actions:
+      - Write comprehensive tests FIRST when possible
+      - Implement solution iteratively
+      - NO stubs or incomplete code allowed
+      - Use TypeScript with comprehensive error handling
+      - Follow existing codebase patterns
+      - Ensure descriptive variable and function names
+
+  - name: test_and_validate
+    description: Test and validate implementation
+    actions:
+      - Run component tests with "elizaos test component"
+      - Run e2e tests with "elizaos test e2e"
+      - Run full test suite with "elizaos test all"
+      - Fix all failing tests immediately
+      - Verify no stubs remain in code
+      - Review for edge cases
+
+quality_gates:
+  - All tests must pass (component + e2e)
+  - No stubs or incomplete implementations
+  - No circular dependencies
+  - TypeScript compilation successful
+  - Comprehensive error handling implemented
+  - Agent perspective maintained in abstractions
