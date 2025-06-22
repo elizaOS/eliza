@@ -1,5 +1,7 @@
 import { ApiResponse, ApiClientConfig, RequestConfig } from '../types/base';
 
+declare const window: any;
+
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -42,7 +44,16 @@ export abstract class BaseApiClient {
       config?: RequestConfig;
     }
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path}`);
+    // Handle empty baseUrl for relative URLs
+    let url: URL;
+    if (this.baseUrl) {
+      url = new URL(`${this.baseUrl}${path}`);
+    } else if (typeof window !== 'undefined' && window.location) {
+      url = new URL(path, window.location.origin);
+    } else {
+      // Fallback for non-browser environments
+      url = new URL(path, 'http://localhost:3000');
+    }
     
     // Add query parameters
     if (options?.params) {

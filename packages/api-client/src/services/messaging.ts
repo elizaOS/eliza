@@ -171,7 +171,7 @@ export class MessagingService extends BaseApiClient {
    * Get server channels
    */
   async getServerChannels(serverId: UUID): Promise<{ channels: MessageChannel[] }> {
-    return this.get<{ channels: MessageChannel[] }>(`/api/messaging/servers/${serverId}/channels`);
+    return this.get<{ channels: MessageChannel[] }>(`/api/messaging/central-servers/${serverId}/channels`);
   }
 
   /**
