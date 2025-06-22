@@ -15,6 +15,7 @@ info:
     - **Audio**: Audio processing and speech synthesis
     - **Media**: File upload and media management
     - **TEE**: Trusted Execution Environment operations
+    - **WebSocket**: Real-time communication via Socket.IO
   version: 1.0.10
   contact:
     name: Eliza OS Community
@@ -28,7 +29,9 @@ tags:
   - name: agents
     description: Operations for managing AI agents
   - name: memory
-    description: Operations for managing agent memories and rooms
+    description: Operations for managing agent memories
+  - name: rooms
+    description: Operations for managing rooms
   - name: messaging
     description: Operations for messages, channels, and servers
   - name: audio
@@ -39,6 +42,8 @@ tags:
     description: Operations for accessing system and agent logs
   - name: tee
     description: Trusted Execution Environment operations
+  - name: websocket
+    description: Real-time WebSocket communication
 
 paths:
   # System endpoints
@@ -313,6 +318,39 @@ paths:
                   message:
                     type: string
                     example: 'Server stopping...'
+
+  /api/server/debug/servers:
+    get:
+      tags:
+        - system
+      summary: Get server debug info
+      description: Get debug information about active servers (debug endpoint)
+      operationId: getDebugServers
+      responses:
+        '200':
+          description: Server debug information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  servers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        status:
+                          type: string
+                        agents:
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
 
   /api/server/servers:
     get:
@@ -1398,7 +1436,7 @@ paths:
   /api/agents/{agentId}/rooms/{roomId}/memories:
     get:
       tags:
-        - memories
+        - memory
         - rooms
         - agents
       summary: Get room memories
@@ -1563,7 +1601,7 @@ paths:
   /api/agents/{agentId}/audio-messages:
     post:
       tags:
-        - speech
+        - audio
         - agents
       summary: Send an audio message
       description: Sends an audio message to an agent for processing
@@ -1625,7 +1663,7 @@ paths:
   /api/agents/{agentId}/audio-messages/synthesize:
     post:
       tags:
-        - speech
+        - audio
         - agents
       summary: Convert text to speech
       description: Converts text to speech using the agent's voice
@@ -1678,7 +1716,7 @@ paths:
   /api/agents/{agentId}/speech/generate:
     post:
       tags:
-        - speech
+        - audio
         - agents
       summary: Generate speech from text
       description: Generates speech from text using the agent's voice
@@ -1731,7 +1769,7 @@ paths:
   /api/agents/{agentId}/speech/conversation:
     post:
       tags:
-        - speech
+        - audio
         - agents
       summary: Process conversation and return speech
       description: Processes a conversational message and returns synthesized speech
@@ -1832,6 +1870,299 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Error deleting memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/memory/{agentId}/memories:
+    get:
+      tags:
+        - memory
+      summary: Get agent memories
+      description: Retrieve all memories for a specific agent
+      operationId: getAgentMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: tableName
+          in: query
+          schema:
+            type: string
+            default: messages
+          description: Table name to query
+        - name: includeEmbedding
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include embedding vectors in response
+        - name: channelId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by channel ID
+        - name: roomId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by room ID
+      responses:
+        '200':
+          description: Agent memories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      memories:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Memory'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error retrieving memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - memory
+      summary: Delete all agent memories
+      description: Delete all memories for a specific agent
+      operationId: deleteAllAgentMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      responses:
+        '200':
+          description: Memories deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      deletedCount:
+                        type: integer
+                      message:
+                        type: string
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error deleting memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/memory/{agentId}/memories/{memoryId}:
+    patch:
+      tags:
+        - memory
+      summary: Update a memory
+      description: Update a specific memory for an agent
+      operationId: updateAgentMemory
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the memory to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Memory update data
+      responses:
+        '200':
+          description: Memory updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      message:
+                        type: string
+        '400':
+          description: Invalid agent ID or memory ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or memory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error updating memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/memory/{agentId}/rooms:
+    post:
+      tags:
+        - memory
+      summary: Create a room
+      description: Create a new room for an agent
+      operationId: createMemoryRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the room
+                type:
+                  type: string
+                  enum: [DM, GROUP, CHANNEL]
+                  default: DM
+                  description: Type of room
+                source:
+                  type: string
+                  default: client
+                  description: Source of the room
+                worldId:
+                  type: string
+                  format: uuid
+                  description: ID of the world
+                serverId:
+                  type: string
+                  description: Server ID
+                metadata:
+                  type: object
+                  description: Additional room metadata
+      responses:
+        '201':
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      agentId:
+                        type: string
+                        format: uuid
+                      createdAt:
+                        type: integer
+                      source:
+                        type: string
+                      type:
+                        type: string
+                      worldId:
+                        type: string
+                        format: uuid
+                      serverId:
+                        type: string
+                      metadata:
+                        type: object
+        '400':
+          description: Invalid agent ID or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error creating room
           content:
             application/json:
               schema:
@@ -2476,7 +2807,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/messaging/central-channels/{channelId}:
+  /api/messaging/central-channels/{channelId}/details:
     get:
       tags:
         - messaging
@@ -2493,6 +2824,39 @@ paths:
       responses:
         '200':
           description: Channel details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Channel'
+        '404':
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/messaging/central-channels/{channelId}:
+    get:
+      tags:
+        - messaging
+      summary: Get channel info
+      description: Get basic information for a specific channel (alias for details)
+      operationId: getChannelInfo
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Channel info retrieved
           content:
             application/json:
               schema:
@@ -2619,6 +2983,64 @@ paths:
                       $ref: '#/components/schemas/Participant'
         '404':
           description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/messaging/central-channels/{channelId}/agents:
+    post:
+      tags:
+        - messaging
+      summary: Add agent to channel
+      description: Add an agent to a specific channel
+      operationId: addAgentToChannel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agentId
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+                  description: ID of the agent to add
+      responses:
+        '200':
+          description: Agent added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Channel or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error adding agent to channel
           content:
             application/json:
               schema:
@@ -3459,7 +3881,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-# ... existing code ...
+  # WebSocket Events Documentation
+  /websocket:
+    get:
+      tags:
+        - websocket
+      summary: WebSocket Connection
+      description: |
+        WebSocket connection for real-time communication. 
+        
+        **Connection URL**: `ws://localhost:3000/socket.io/`
+        
+        **Events**:
+        
+        ### Client to Server Events:
+        - `join` - Join a room/channel
+          ```json
+          {
+            "roomId": "uuid",
+            "agentId": "uuid"
+          }
+          ```
+        
+        - `leave` - Leave a room/channel
+          ```json
+          {
+            "roomId": "uuid",
+            "agentId": "uuid"
+          }
+          ```
+        
+        - `message` - Send a message
+          ```json
+          {
+            "text": "string",
+            "roomId": "uuid",
+            "userId": "uuid",
+            "name": "string"
+          }
+          ```
+        
+        - `request-world-state` - Request current state
+          ```json
+          {
+            "roomId": "uuid"
+          }
+          ```
+        
+        ### Server to Client Events:
+        - `messageBroadcast` - New message broadcast
+          ```json
+          {
+            "senderId": "uuid",
+            "senderName": "string",
+            "text": "string",
+            "roomId": "uuid",
+            "serverId": "uuid",
+            "createdAt": "timestamp",
+            "source": "string",
+            "id": "uuid",
+            "thought": "string",
+            "actions": ["string"],
+            "attachments": []
+          }
+          ```
+        
+        - `messageComplete` - Message processing complete
+          ```json
+          {
+            "channelId": "uuid",
+            "serverId": "uuid"
+          }
+          ```
+        
+        - `world-state` - World state update
+          ```json
+          {
+            "agents": {},
+            "users": {},
+            "channels": {},
+            "messages": {}
+          }
+          ```
+        
+        - `logEntry` - Real-time log entry
+          ```json
+          {
+            "level": "number",
+            "time": "timestamp",
+            "msg": "string",
+            "agentId": "uuid",
+            "agentName": "string"
+          }
+          ```
+        
+        - `error` - Error event
+          ```json
+          {
+            "error": "string",
+            "details": {}
+          }
+          ```
+      responses:
+        '101':
+          description: Switching Protocols - WebSocket connection established
 
 components:
   schemas:

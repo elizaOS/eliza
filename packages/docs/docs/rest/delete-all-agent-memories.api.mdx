@@ -1,0 +1,71 @@
+---
+id: delete-all-agent-memories
+title: "Delete all agent memories"
+description: "Delete all memories for a specific agent"
+sidebar_label: "Delete all agent memories"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVktz2zYQ/iuYPbUeWlTa9MKbJlZnNJNMMrY7Pdg6rIAliRgEGACUrWj03zsLUI9YbtJefIouIondb79d7GsLEZsA1R101Dm/gWUBioL0uo/aWajgigxFEmiMSCKagqidFyhCT1LXWgpsyEYowPXkkdUWCipQSXFmzIyPP4y6UECPHjuK5NnuFix2BBUkkIWCAjSb7TG2UICnL4P2pKCKfqACgmypQ6i2EDc9q4XotW2ggNr5DiNUMAxawe65G4sr4WoRWxrZ7pYMHnpnAwXG+2065b9vtfasRXZGiTBISSHUgzEbKEA6Gxmt2gL2vdEyuV9+Dqy9PWfrVp9Jcqh6z8GKOtseUU8EV84ZQgsF0BN2vaEcAHYL439AHPm+c0NmN0prG6khz+HpKARs6DyUu/FXwNuXQrKwazRa5TCKxdUrR6FGEzgM5L3zP8aUTr3g4vPkmDOYSLLfi8zLanvxlHIRtQk/1rxKgqREckNom7OXD3Poo47sbTYB++t4e34dqbiEdVHUbrDq52281m388VJxZA6p+LRtDg3z5628zq0kYrF1x/GTxk1soYISe13mIVdux2GzK09uKJBf72fS4A1U0MbYV2VpnETTuhCr36fT6RnP93wsFK3JuL7jasxIacQw6+TqnqvRX1F8vBGzT4szpNmnhVBODgySHE2D9qCyfjOZTt5MxaWYidrQk14ZEmiVCBIN8stsMbblmifso/MPk3t7b29bHdig0DzIgm4sKRGdWJEYAinxqGMrUCQ/zUb4wVrO3mxY2xDRSpqIuVW90zYGXgbcYyInPSGnenFvO7TY8GPixJPGo0xlkPD33IKIrXdDwxav5ze3WbJGSSNX2lN1vkGrv1ICc2l2144tM6ZyHWobqnt7KS4ubjYhUndxUYn8dPmoFYnDPhISJbJr7Z1NV5TIEj9mgNRGAwPkhmp0TXIjxwAfpU8ws2LaEDZHxZxhScs7150Z+pAqQduGVfILiRatMil0skVryYQcxDElR4qD0i4Z4gfRe8edgGORRHsi2YqwsbGloA/slEbW+VMbEkNvHKrsER+ckbudz1n41g+Bl535E8kh5eH8JHTPI/A3rW6cfKDIqteE5jLqjoR0XTfYsc+JtUaRpSaLj1AAu5WTPif12CFRpg45roSHzH+XsSKvXMfSDFVZNjq2w2oiXVcSS7uQ/4F7Qe9C7NCeIJ4ss3i8rlz/39Ti9tiw/88GPHa0SE+x7A1qyx0vMd6OfegOsNdQ7NftAqrj4nsgsyyA+w1Lb7crDPSXN7sdf/4ykN9AdbcsYI1ec9WnhqV04Gc1Nv/vePPL9bhS/yqe78T/wn/8iJbprtEM/AYFPNDmZG/fLXcFtISKfGKUT2dSUh9P9M6GH3fJQ9O+mr+f385ht/sH7LNgKg==
+sidebar_class_name: "delete api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete all agent memories"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/memory/{agentId}/memories"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete all memories for a specific agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Memories deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"deletedCount":{"type":"integer"},"message":{"type":"string"}}}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting memories","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

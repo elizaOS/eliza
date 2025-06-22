@@ -42,6 +42,12 @@ const sidebar: SidebarsConfig = {
         },
         {
           type: "doc",
+          id: "rest/get-debug-servers",
+          label: "Get server debug info",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
           id: "rest/get-servers",
           label: "Get server debug info",
           className: "api-method get",
@@ -204,9 +210,81 @@ const sidebar: SidebarsConfig = {
       items: [
         {
           type: "doc",
+          id: "rest/get-room-memories",
+          label: "Get room memories",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
           id: "rest/delete-room-memories",
           label: "Delete all memories for a room",
           className: "api-method delete",
+        },
+        {
+          type: "doc",
+          id: "rest/get-agent-memories",
+          label: "Get agent memories",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
+          id: "rest/delete-all-agent-memories",
+          label: "Delete all agent memories",
+          className: "api-method delete",
+        },
+        {
+          type: "doc",
+          id: "rest/update-agent-memory",
+          label: "Update a memory",
+          className: "api-method patch",
+        },
+        {
+          type: "doc",
+          id: "rest/create-memory-room",
+          label: "Create a room",
+          className: "api-method post",
+        },
+      ],
+    },
+    {
+      type: "category",
+      label: "rooms",
+      items: [
+        {
+          type: "doc",
+          id: "rest/get-agent-rooms",
+          label: "Get agent rooms",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
+          id: "rest/create-room",
+          label: "Create a room",
+          className: "api-method post",
+        },
+        {
+          type: "doc",
+          id: "rest/get-room",
+          label: "Get room details",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
+          id: "rest/update-room",
+          label: "Update a room",
+          className: "api-method patch",
+        },
+        {
+          type: "doc",
+          id: "rest/delete-room",
+          label: "Delete a room",
+          className: "api-method delete",
+        },
+        {
+          type: "doc",
+          id: "rest/get-room-memories",
+          label: "Get room memories",
+          className: "api-method get",
         },
       ],
     },
@@ -300,6 +378,12 @@ const sidebar: SidebarsConfig = {
         },
         {
           type: "doc",
+          id: "rest/get-channel-info",
+          label: "Get channel info",
+          className: "api-method get",
+        },
+        {
+          type: "doc",
           id: "rest/update-channel",
           label: "Update channel",
           className: "api-method patch",
@@ -315,6 +399,12 @@ const sidebar: SidebarsConfig = {
           id: "rest/get-channel-participants",
           label: "Get channel participants",
           className: "api-method get",
+        },
+        {
+          type: "doc",
+          id: "rest/add-agent-to-channel",
+          label: "Add agent to channel",
+          className: "api-method post",
         },
         {
           type: "doc",
@@ -364,6 +454,30 @@ const sidebar: SidebarsConfig = {
       type: "category",
       label: "audio",
       items: [
+        {
+          type: "doc",
+          id: "rest/send-audio-message",
+          label: "Send an audio message",
+          className: "api-method post",
+        },
+        {
+          type: "doc",
+          id: "rest/synthesize-speech",
+          label: "Convert text to speech",
+          className: "api-method post",
+        },
+        {
+          type: "doc",
+          id: "rest/generate-speech",
+          label: "Generate speech from text",
+          className: "api-method post",
+        },
+        {
+          type: "doc",
+          id: "rest/conversation-to-speech",
+          label: "Process conversation and return speech",
+          className: "api-method post",
+        },
         {
           type: "doc",
           id: "rest/transcribe-audio",
@@ -452,54 +566,12 @@ const sidebar: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "rooms",
+      label: "websocket",
       items: [
         {
           type: "doc",
-          id: "rest/get-agent-rooms",
-          label: "Get agent rooms",
-          className: "api-method get",
-        },
-        {
-          type: "doc",
-          id: "rest/create-room",
-          label: "Create a room",
-          className: "api-method post",
-        },
-        {
-          type: "doc",
-          id: "rest/get-room",
-          label: "Get room details",
-          className: "api-method get",
-        },
-        {
-          type: "doc",
-          id: "rest/update-room",
-          label: "Update a room",
-          className: "api-method patch",
-        },
-        {
-          type: "doc",
-          id: "rest/delete-room",
-          label: "Delete a room",
-          className: "api-method delete",
-        },
-        {
-          type: "doc",
-          id: "rest/get-room-memories",
-          label: "Get room memories",
-          className: "api-method get",
-        },
-      ],
-    },
-    {
-      type: "category",
-      label: "memories",
-      items: [
-        {
-          type: "doc",
-          id: "rest/get-room-memories",
-          label: "Get room memories",
+          id: "rest/web-socket-connection",
+          label: "WebSocket Connection",
           className: "api-method get",
         },
       ],
@@ -512,36 +584,6 @@ const sidebar: SidebarsConfig = {
           type: "doc",
           id: "rest/send-message",
           label: "Send a message to an agent",
-          className: "api-method post",
-        },
-      ],
-    },
-    {
-      type: "category",
-      label: "speech",
-      items: [
-        {
-          type: "doc",
-          id: "rest/send-audio-message",
-          label: "Send an audio message",
-          className: "api-method post",
-        },
-        {
-          type: "doc",
-          id: "rest/synthesize-speech",
-          label: "Convert text to speech",
-          className: "api-method post",
-        },
-        {
-          type: "doc",
-          id: "rest/generate-speech",
-          label: "Generate speech from text",
-          className: "api-method post",
-        },
-        {
-          type: "doc",
-          id: "rest/conversation-to-speech",
-          label: "Process conversation and return speech",
           className: "api-method post",
         },
       ],
