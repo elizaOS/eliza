@@ -13,7 +13,7 @@ export const update = new Command()
   .name('update')
   .description('Update ElizaOS CLI and project dependencies')
   .option('-c, --check', 'Check for available updates without applying them')
-  .option('-sb, --skip-build', 'Skip building after updating')
+  .option('--skip-build', 'Skip building after updating')
   .option('--cli', 'Update only the CLI')
   .option('--packages', 'Update only packages')
   .hook('preAction', async () => {

@@ -68,16 +68,6 @@ export const test = new Command()
     }
   });
 
-// Add duplicate options for backward compatibility (the original had duplicated options)
-test
-  .addOption(
-    new Option('-p, --port <port>', 'Server port for e2e tests (default: 3000)').argParser(
-      validatePort
-    )
-  )
-  .option('-n, --name <n>', 'Filter tests by name (matches file names or test suite names)')
-  .option('--skip-build', 'Skip building before running tests');
-
 // This is the function that registers the command with the CLI
 export default function registerCommand(cli: Command) {
   return cli.addCommand(test);
