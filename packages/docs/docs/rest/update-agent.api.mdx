@@ -1,160 +1,71 @@
 ---
 id: update-agent
-title: 'Update agent'
-description: 'Update an existing agent'
-sidebar_label: 'Update agent'
+title: "Update agent"
+description: "Update an existing agent"
+sidebar_label: "Update agent"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVktv4zYQ/ivEnFpAsb3t9qKbmwSogUUbZLOnxIexOJK4S5EKSTlxBf33YkhpbcdJNkCBnNYXS+I8Ps43rx4CVh7yW8CKTPCwzkCSL5xqg7IGcvjSSgwk0Ah6VD4oU4koChnYlhyy2EpCDl0UXI5nLTpsKJBj4z0YbAjy5GQlIQPFtlsMNWTg6L5TjiTkwXWUgS9qahDyHsKuZTUfnDIVZFBa12BgZ52SMDzFuroQthShpgRRBCsSKhjWyQ358KeVO7b91GthTWDseQ/YtloV8Wrzr55N96eg7OYrFXzVYwwxAKNbD8MwDOzZt9Z48qz+22LBfy9rSeG7oiDvy07rHfwPZK1jioJKjkerB4IbazWhgQzoEZtWU4oFxxXDGywq+WOSTvLJqPuOhJJkgioVOVFat+eMSU3Jcmr42NDf2NAR3azqA4bOP6dMpmtinhdBbSlm4Ph4kvLnnXNMRzL2xMeQQVCBQ5VIW5nSRpr55ONz3K7MFrWSY06uLt6Z0RK1Z0rJOet+bLOw8g3Bv2RjIsoOGTTkPVZvVpvEY/0GVPpZwo41L6IgSRGvIZRJWcaHKfQTKdEFTHR8fKnUjA2itJ2RP9l4Lzb+eK44EobY+A5Hy09K3oGSCCzUVqZRXNRxbocacphjq+ZpJZj349QeIANPbjvN9M5pyKEOoc3nc20L1LX1If99sVicoPvEx0LSlrRtm9hco6U4mJnV6/1wvpyI6Qfu0qWNl5/Qa/Uvin8+i+XV6nT2Xq2EtEXHDuLV42z5rrL9MFvMFmeo2xrFmViKUtOj2mjebqTwBWrkl+VqbNUlrzAP1n2b3Zk7c1Mrz16F8kKSV5UhyRvGhkTnSYoHFWqBIgZC74TrjOGMTt6V8QFNQTNxaWRrlQleoNb2ISIsHMX0z+5MgwYrfoyYlAnkeEyZKtmfsHkRame7ij1eX36+SZIlFjSDDJiiFJGDG49VhUWsqnEh+x6bc9s0nVGB9409sT6fzysV6m4zK2wzJ5a2Pv3HUdhaHxo0BxanfXEs5COC+n1dv7ZXjoke6DHMW43KcCFEUP2Yn7eArYJsWlozyKfNcp0BZyGL9P0GPX1xehj4831Hbgf57TqDLTrFVMc0lsrzsxwbwSuQf7keV8Zfxcub5gvwx49oOMBb1B2/QQbfaHewFw/rIYOaUJKL2NLpeUJwdsM29tonjXHIJo1lUVAbXpVdHxT/1fLm/C/IYDOuxk1sceDwgbdzfEhQbQxJbEXxWw8aTdXFvgbJKP/+AxE1RFg=
-sidebar_class_name: 'patch api-method'
+api: eJztV1FvGzcM/isCn7bgErtb93JvWeJhBtY1SFLsockDLfHu1Oiki6Rz4hr33wtK59iJkzbAgDzVL5ZO5MdPJEVKa4hYByg/A9ZkY4DrAhQF6XUXtbNQwqdOYSSBVtC9DlHbWiRRKMB15JHF5gpK6JPg8bjWoceWInkGX4PFlqDMRuYKCtCM3WFsoABPt732pKCMvqcCgmyoRSjXEFcdq4Xota2hgMr5FiMb67WC4SnX+alwlYgNZYoiOpFZwXCdzVCIfzq1YuynVqWzkbmXa8CuM1qmrU2+BIZe75Nyiy8keauPOSQHjGYDDMMwsOXQORsosPpv0yn/vaylROilpBCq3pgV/A9mnecQRZ0Nj6g7ggvnDKGFAuge285Q9gX7FeMrELX6cZD28snq256EVmSjrjR5UTm/jRkHNSfLPvBjoH+xpUfhZtUQMfbhOWWyfZvyXEa9pJSB43Av5U967zkcGeyJjaGAqCO7KgdtbiuXwswr75+L7dwu0Wg15uT89I0jWqEJHFLy3vkfY0qnXuH8GYOJJDsU0FIIWL9abSOezm9EbZ4N2GPN0yRISqRtCG1zlvFidv0mKMkEbMLx/qWjZl0Uleut+hmNt4rGH88djswhFb7d1vIzJG8QkkQsNk7lViyb1LdjAyVMsNOTfCWYrMeuPUABgfxy09N7b6CEJsaunEyMk2gaF2L5+3Q63WP3Dy8LRUsyrmtTcU1IqTFzVM+3zXm2Ccx64CpdubT5DXujv6L4eCGOz+b7vfdsLpSTPRtIW0+95UFl+e5oevRuKg7FsagM3euF4YuNEkGiQZ4cz8cqXfHt5c75m6Mre2UvGx3YoNBBKAq6tqT4crEg0QdS4k7HRqBIPjAr4XtrOZmzYW1DRCvpSMys6py2MQg0xt0lctJTyvziyrZoseZh4qRtJM8dytYZf8MtiNh419ds8Xx2cZklK5Q0cqUNVedrtPorJTCXmljl2DJjKteitqG8sofi4OBiFSK1BwelyKPDO61IPFzwQqJEdqm9syl8iSzxMAOkqhoYINdXoyuSKzk6eCu9g5kVP1Dr/Gqr2KZ50vLOtXuGPqSzoW3NKnlCokGrTHKdbNBaMiE7cUzXkWKvtEuGeCA677g2pKrDoh2RbERY2dhQ0A/slEbW+UsbEn1nHKq8I17YI3c5m7Hwpe8D3+Nm9yT7lIezHdc99cB/tLhw8oYiq54TmsOoWxLStW1vx8onlhpFljqaf4QCeFs56XNSjzUTZaqZ43X7IfNPMlbk2+T22IZyMql1bPrFkXTthFjahfyfLjqdC7FFu4O4eQ2MZfrR8Vtvq/b3Xg1jGYt0HyedQW25zCVS67H6fAbsNBSbJ0kB5ebdcF0A1xgWWa8XGOiTN8PAn2978isoP18XsESv+TSnIqV04LEay/x3KP9yPj4IfhUvvyNeoD9+RMsOXqLpeQYF3NBq59UzXA8FNISKfOKWV08yg8NLxthq77W9odhoHEtJXfyu7PVOaT87vjz5GwpYjA+fNjUw8HjHby+8y1RdcklqNOnbGgzauk9dCzIo/74BLFTsPQ==
+sidebar_class_name: "patch api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Update agent'}></Heading>
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Update agent"}
+>
+</Heading>
 
 <MethodEndpoint
-  method={'patch'}
-  path={'/api/agents/{agentId}'}
-  context={'endpoint'}
-></MethodEndpoint>
+  method={"patch"}
+  path={"/api/agents/{agentId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Update an existing agent
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to update',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent to update"}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: { 'application/json': { schema: { type: 'object', description: 'Agent updates' } } },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"Agent updates"}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent updated successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  id: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'Unique identifier for the agent',
-                  },
-                  name: { type: 'string', description: 'Name of the agent' },
-                  status: {
-                    type: 'string',
-                    enum: ['active', 'inactive'],
-                    description: 'Current status of the agent',
-                  },
-                },
-                title: 'AgentInfo',
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error updating agent',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the agent"},"name":{"type":"string","description":"Name of the agent"},"status":{"type":"string","enum":["active","inactive"],"description":"Current status of the agent"}},"title":"AgentInfo"}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

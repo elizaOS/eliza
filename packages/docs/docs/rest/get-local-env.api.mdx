@@ -1,0 +1,63 @@
+---
+id: get-local-env
+title: "Get local environment variables"
+description: "Retrieve local environment variables from .env file"
+sidebar_label: "Get local environment variables"
+hide_title: true
+hide_table_of_contents: true
+api: eJzNVU1vIzcM/SsEj8HE9rboZW5G6y4M7GKDxEUPSQ60RM9oo5GmksaJ1/B/LyiNEydOP7Cn9WU4HvLxkSKf9pioiVjfYtzFxB3eV6g5qmD6ZLzDGq85BcNbBusVWWC3NcG7jl2CLQVDa8sRNsF3MGG3hY2xjBX6ngMJwlJjjQ2nTxK9cFusMHDsvYscsd7jT7OZPF7n/PTPqbBC5V1ilySM+t4alRNNv0aJ3WNULXckVtr1jDX69VdWCSvsg9BKpmSOg1Ic44nj2nvL5LBCfqKut4x1CgMfKtSU3kUkrY0kJ3v1Cnv0iykY1+Ch/Cr85b1iFyH4AKG02bjmh6h7QzZK4Szk/htTec3ndb8dpVJp9j1U2HGM1PzvsKO7nAYnMvadRr+N/C07soZcBhi38aHLXcNyIMkkqbakwPGUOk6tH8dWKqXUYo1T6s20LMn05ISmeS2wwshhy0FWaY9DsFhjm1JfT4tD62Oqf57NZmccy6xr3rL1fT7zgoSH+wqFcS7zyNOabwRfbmB+tTxDml8tQXs1CEguEjY+wHPI9sNkNvkwg0uYw8byk1lbBnIaoiIrMwbzJVAjDDaBOn704WFy5+7cqjVREoKJoDmaxrGG5GHNMETW8GhSC1T0we4gDM7JGJfExsVETvEEFk733rgUgaz1j5mcCkzJuKa6cx05asTMnIxLHEjJt4J/5BYhtcEPjWS8XtysiueGFI9c+UjVh4ac+cYZzENqGTZeMgum9h0ZF+s7dwkXFzf5WC8uaijW5aPRDM8aFjOl07XMZFnMAjDP1AQgW2DNhtVOjQ1+8T7BLIGfufNh9xLY5fccFbzvzhJ9zltgXCMh5YWhJadtbp1qyTm2sTRxHMmR4qCNz4nEgD54UQHpRXbtmVULcedSy9E8s9OGJOZ3YxmG3nrSpSL5cEZutViI8yoMMbGGxROrIc/h4qR1bzvwJ69vvHrgJKHXTPYymY5B+a4b3KhxsDUExWuy/IIVSlll6MtQj+pIKqujo+7VsvxasNIOq5PVjPV02pjUDuuJ8t2UxdvH8kTRgd7H1JE7QfzI6d+uwbcbuX+R7O+8Rkd5S/yUpr0l40T+cgn7UZdukXoj8lOu7wpPkLHCok73FYoAifd+v6bIfwR7OMjffw0cdljf3ld4pCFvhwpbJs0hy9kD70RelOJeMLdkB2F1dgmJYj2L58fFCg+HvwHEq+5u
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get local environment variables"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/system/environment/local"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieve local environment variables from .env file
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Local environment variables","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","additionalProperties":{"type":"string"}}}}}}},"500":{"description":"Error retrieving environment variables","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -1,110 +1,71 @@
 ---
 id: delete-agent-log
-title: 'Delete an agent log'
-description: 'Deletes a specific log entry for an agent'
-sidebar_label: 'Delete an agent log'
+title: "Delete a specific log entry"
+description: "Delete a specific log entry for an agent"
+sidebar_label: "Delete a specific log entry"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVU2P2zYQ/SvEnFqAsdx2T7oZsQ8GFmiQbE+7PozJkcSEIhWS8q4r6L8XQ8le7zptkhbIqSd9kDPvzdebARLWEcp7sL6OIAFrcinCToKmqILpkvEOSliTpURRoIgdKVMZJayvBbkUjqLyQaAT2RYk+I4Cst1WQwk6W6747NbXIKHDgC0lCow7gMOWoJyAtxokGMbrMDUgIdDn3gTSUKbQk4SoGmoRygHSsWOzmIJx7LXyocUEJfS90TC+5r9dC1+J1NDMcpRnZOvrH4HL6UpeTOmAcccgsfMuUmS/vy5v+PHS+tbXs4EWsVeKYqx6a4+Mc7NcXhts3QGt0VOQgsFDBt6uQYLyLnHs5QDYddaoXKTiY2TT4TpGv/9IigvaBS5pMhPTmcjFxb33ltCBBHrCtrMEZYU20iiBQvDh6z6V1/Sl7L6MbsPORL47SmgpRqy/2ex0PZcoobHx65brfJG0yGEI46Zq8+E4jqOEZBJHO0HM/26+VMnc/6dqOJ9E5Xun/y/KjylKJpYa/6xHWYdSAyUU2Jlikr1imFVoLFgOiyFLwwgSIoXDSbD6YKGEJqWuLArrFdrGx1T+tlwur7je8rHQdCDru5ZbYPKU55+Z53BPfK35E8XvH8Tq3fbK0+rdVmivenaSg82qezY5/LJYLpZv0HYNijdiJSpLT2ZvSaDTIiq0yB+r7SwNFWvwow+fFg/uwd01JjKqMFFoiqZ2pFms9iT6SFo8mtQIFDlYexShd864ekY3LiZ0ihZi43TnjUtRoLX+MTNUgTAZV8sH16LDml8zJ+MSBVR8Nvk/cYsiNcH3NSO+33y4m25WqGgBErgMU0YuIp7nCFWeo1nXz7l569u2dyYdQV4UL5ZFUZvU9PuF8m1BfNvH6QncMZ2PqUV34XFagudVx7P8uk7D80B/186cWz7RUyo6i8bxSGSyw9yo94Cded7QEsrnlTkv73JaZTsJ3JFsMgx7jPRHsOPIvz/3FI5Q3u8kHDAYbonc0tpEftezRPxDTD+9nzfjz+L1Sv2bIOaf6Dj9B7Q9f4GET3S8WPu8j/8ji5cL9l+xmfI37kYJDaGmkLMzna2Uoi5dWF3JNc/0WWbWm9vN3QbG8S+LOjbU
-sidebar_class_name: 'delete api-method'
+api: eJztVktv3DgM/isCT7uBMzPd7V58GzSzwAApWiRZ7CHJgSPRthpZciV5kunA/31ByfNoJtvuA8ipJ0sWP/IjKZHcQsQ6QHkLxtUB7gtQFKTXXdTOQgkXZCiSQBE6krrSUhhXC7LRb0TlvEArsCYboQDXkUeGLRWUoBJwzmeXroYCOvTYUiTP1rZgsSUoIYGXCgrQbK7D2EABnj732pOCMvqeCgiyoRah3ELcdAwL0WvLWivnW4xQQt9rBcNz+ssL4SoRGxpZDsXesnH1a9g9hCs6kYMCwz2bCp2zgQJr/2X2lj9f67jcIzNMidBLSSFUvTEbtvl2NjuFLe0ajVbZYcFEfCKxvIACpLOR41BuAbvOaJkSNv0UGLo99detPpHk5Hae0xt15jsSORJcOWcILRRAT9h2hqCs0AQaCiDvnf++TukUvRTpr71bsDKRZIcCWgoB638M24mndEXUJnwfeZEESYnkhtA2Z54Ph2EYCog6srfZxPjv7Uv5TG9hlw3roqhcb9WPpLxWUn576bVkDumBaVtzan4k5HUSkojFxh2aRWoSsYESptjpaSpgYbodW8Qw5Q413aa6PUABgfx61016b6CEJsaunE6Nk2gaF2L562w2O+F6ycdC0ZqM61p+k1lTKsvMPLm742v0FxQfrsX84/JE0/zjUigne1aSnE0tcQ9Zv5nMJm9m4lzMRWXoSa8MCbRKBIkGeTNfjmW64t746PzD5M7e2ZtGBzYodBCKgq4tKW4fKxJ9ICUedWwEiuSn2QjfW8uXNxvWNkS0kiZiYVXntI1BoDHuMZGTnpBvenFnW7RY8zJx0jaSR5leQdK/4xZEbLzra7Z4tbi+yZIVShq50o6q8zVa/YWSMpe6X+XYMutUrkVtQ3lnz8XZ2fUmRGrPzkqRV+ePWpHYTxAhUSK71t7ZlKJElniZFaRiGlhBLqtGVyQ3cgzwQfpIZwa+p9b5zQHYpn1CeefaE0Pv02vQtmZI3pBo0CqTQicbtJZMyEEcr+RIsVfaJUO8EJ13XA04Fkm0I5KNCBsbGwp6z05pZMzv2pDoO+NQZY/44ITczWLBwje+DzwfLJ5I9ukeLo5C9zwCf9Lq2skHigy9IjTnUbckpGvb3o61Tqw1iiw1WX6AAtitfOnzpR6rJMpUJceRan/z32VdcQPF0dMM5XRa69j0q4l07ZRY2oX8Ba4HnQuxRXuk8Rvj5/PXuD2U7X8ztY51LdJTnHYGteW6lzhvx2p0C9hpKPKoGqCA8jC0pqG5gDIPk/cFcNlhyHa7wkB/eDMM/PtzT34D5e19AWv0mh9/qltKB16rsQ98w6WfrsbZ9GfxfKj9GyfGn2g5VGs0Pe+ggAfaHA3ePBH/TxYvjbj/iVOO4nA/FNAQKvIpRvlsLiV18Qh10pm5fO87ysXicnGzgGH4Czl7cUI=
+sidebar_class_name: "delete api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Delete an agent log'}></Heading>
-
-<MethodEndpoint
-  method={'delete'}
-  path={'/api/agents/{agentId}/logs/{logId}'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Deletes a specific log entry for an agent
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete a specific log entry"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/agents/{agentId}/logs/{logId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete a specific log entry for an agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-    {
-      name: 'logId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the log to delete',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"logId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the log entry to delete"}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '204': { description: 'Log deleted successfully' },
-    '400': {
-      description: 'Invalid agent ID or log ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent or log not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"204":{"description":"Log entry deleted successfully"},"400":{"description":"Invalid agent ID or log ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or log not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting log","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

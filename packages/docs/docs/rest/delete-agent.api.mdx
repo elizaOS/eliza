@@ -1,103 +1,71 @@
 ---
 id: delete-agent
-title: 'Delete an agent'
-description: 'Deletes an agent from the system'
-sidebar_label: 'Delete an agent'
+title: "Delete an agent"
+description: "Permanently deletes an agent"
+sidebar_label: "Delete an agent"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVTuP2zgQ/ivEVBeAsZxLrlFnxC4MBLgg2VS7LsbkWGJCkQxJedcn6L8fhpIdJ86ruuoqUeTMfN+8B8jYJKjvARtyOcFOgqakognZeAc1rMlSpiTQiSIiDtF3Irck0ill6kCCDxSRxbcaatBFYcWyICFgxI4yRQYZwGFHUE9gWw0SDGMEzC1IiPS5N5E01Dn2JCGpljqEeoB8CqyWcjSuAQkHHzvMUEPfGw3jt5y3a+EPheNEOXsxsYJxxzApeJcoseU/l6/487V+IT+raJF6pSilQ2/tibFeLZe3Klt3RGv0DLhdgwTlXeYg1ANgCNaoEqPqY2KF4dY7v/9IqsQsckSzmRjO8FeCe+8toQMJ9IRdsAT1AW2iUQLF6OOvbSqv6Xtx/dqnDRsTRXaU0FFK2Py22lm8JCejsenXmusiSFoUN4RxU575cRzHUUI2mb2dIOa7v76XjolDyaBxzZSV/1Py36SkEMut/zIMyhzILdRQYTDVNGqqYZ4CI0hIFI/nGdFHCzW0OYe6qqxXaFufcv1yuVze0HvDz0LTkawPHbfeZKk0OpMtHp4pWvMPir/fi9Xb7Y2l1dut0F71bKT4Jw4+iovK8cViuVg+RxtaFM/FShwsPZm9JYFOi6TQIv+stpcpiR09+vhp8eAe3F1rEqMKk4SmZBpHmqfSnkSfSItHk1uBojhrTyL2znHZTujGpYxO0UJsnA7euJwEWusfC0MVCbnG5YPr0GHDx8LJuEwRVan/Yv/MLYncRt83jPhu8/5ukjygogVI4DRMEbnyeG4dVKV15iF+ic1r33W9M/kE8ip5qa6qxuS23y+U7ypiaZ+mL3CRBJ9yh+7K4rRrLqvm2xwNX/r3d9bSXNiZnnIVLBrHhV/4DXM53gMGA/K8+yTU58W0k8BFxyLDsMdEH6IdR77+3FM8QX2/k3DEaDjrpWq1SXzWc+P/hPof7+Y990z8eFH9gP58iY5jfUTb8x9I+ESnq7U67kYJLaGmWLhNryulKOQrvZsRyE1zad315s3mbgPj+C/TW84O
-sidebar_class_name: 'delete api-method'
+api: eJztV0tvGzcQ/ivEnFpjLSluCrR7E2IVEJAgRuyiB9uHETm7y5hLbkiubEXQfw+GXFmK5celcA+1LtpdzuObBz8O1xCxDlBeAtZkY4DrAhQF6XUXtbNQwhn5Fi3ZaFZCkaFIQaAVSRwKcB15ZNG5ghKywHRY69BjS5E8O1iDxZagzI7mCgrQbL/D2EABnr712pOCMvqeCgiyoRahXENcdawWote2hgIq51uMUELfawWbh3jnp8JVIjaUIYroBtiwuWY3oXM2UGDLJ5MJ//2sn8APKkqEXkoKoeqNWUEB0tnIsZVrwK4zWqbQx18Dq64PQbvFV5IpFZ4TFXV2PFjdE1w4ZwgtFEB32HaGch42BbQUAtZ0mIlN+hVwMjl5NgrtrNBWR42R1H8TQ4c+ajT/TrzvH6va3C7RaDXUfH4qhi553XArNIFjIO+df9mmdOqROB829IyNiST7XHoeV9uKp20SUZvwsuZpEiQlUhhC25xLXswViDpytNkFbKvy/qkutC6KyvX2tZvvf12NP17khHvmFlG3pITr37bLKxboz8MCfUDLeyWfPQOVqZ74CEMZ9ZKEp4o8WUnhrVSvVarfHztvMoa8l2x9Pw29leQVSpKAxcbtBs40a8YGShhjp8d5lB2vh0lzAwUE8svtHNp7AyU0MXbleGycRNO4EMvfJpPJAbyPvCwULcm4ruUNmS2lYZLBpgi3EI3+juLzuZiezQ8sTc/mQjnZs5FMu5Xz4l5l+W40Gb2biGMxFZWhO70wJNAqESQa5JfpfKCEiqfqW+dvRlf2yl40OrBDoYNQFHRtSTFjLEj0gZS41bERKFKcZiV8by13bHasbYhoJY3EzKrOaRuDQGPcbQInPSG3d3FlW7RY82PCpG0kz5Rk62x/iy2I2HjX1+zxy+z8IktWKGnASluoztdo9XdKxlya1yvHntmmci1qG8oreyyOjs5XIVJ7dFSK/HR8qxXtjq+QIJFdau9sKlECS/yYDaSDL7CBfAQaXZFcySHBO+k9m1nxE7XOr3aKbXpPWt659sDRp7QBtK1ZJb+QaNAqk1InG7SWTMhJHFpygNgr7ZIjfhCdd0wAiVpYtCOSjQgrGxsK+h6d0sg6f2lDou+MQ5Uj4oUDcBezGQtf+D7wzWZ2R7JPfTjbS93DDPxDi3Mnbyiy6hdCc8zDgpCubXs70JtYahRZajT/DAVwWLnpc1MPxIgyEeNwDbzv/A/ZVuT71W5rhnI8rnVs+sVIunZMLO1C/gemgM6F2KLds3g6nJu7y+lPO3C9Y+eXLrUDZUW6i+POoLZMaQnbeiCaS8BOQ7G9NRdQbq+11wUwnbDIer3AQH97s9nw5289+RWUl9cFLNFr3tSJj5QO/KwGSn8G9i9fhlvyr+Lpa+4T8IePaDnPSzQ9v0EBN7Tau5RvrjcFNISKfMKWV6dSUhf39A4ON6bDe1I+nX2cXcxgs/kBWDiyNg==
+sidebar_class_name: "delete api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Delete an agent'}></Heading>
-
-<MethodEndpoint
-  method={'delete'}
-  path={'/api/agents/{agentId}'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Deletes an agent from the system
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete an agent"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/agents/{agentId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Permanently deletes an agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to delete',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent to delete"}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '204': { description: 'Agent deleted successfully' },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error deleting agent',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"message":{"type":"string"}}}}}},"202":{"description":"Agent deletion initiated","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"partial":{"type":"boolean","example":true},"message":{"type":"string"}}}}}},"400":{"description":"Invalid agent ID format","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"408":{"description":"Agent deletion operation timed out","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"409":{"description":"Cannot delete agent due to active references","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

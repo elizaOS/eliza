@@ -1,184 +1,71 @@
 ---
 id: create-group-channel
-title: 'Create group channel'
-description: 'Creates a new group channel with participants'
-sidebar_label: 'Create group channel'
+title: "Create group channel"
+description: "Create a group channel with multiple participants"
+sidebar_label: "Create group channel"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'post api-method'
+api: eJztV0tz2zYQ/iuYPXooS7Zjp+XNTdSMZpomEzvTg+3DCliKSECAAUDZikb/vbMA9U4TTw45VReB5O63H/YJLCHiLEB5Bw2FgDNtZ/BQgKIgvW6jdhZKeOUJIwkUM++6VsgarSUjHnWsRdOZqFtDokUftdQt2higANeSR9afKChBJoQ3rP4qa0MBnr50FOIfTi2gXKZH7UlBGX1HBUhnI9nIn7BtjZYJbvgpMKclBFlTg7yKi5agBDf9RDL2uBnoDiw2BAXskXsooPXML2oKDJCEtkAhenbD6kBtK4De4wIK0JGacKxYQOV8gxFK6DqtGKjRdpKFz1cH3j0ym368i9A6GzLD89EZ/+2H5c1eNLKLlQidlBRC1RnDHH/ai/su6lF3BKfOGULLu1MYnwHRE/2xoFY/9ulhin60+ktHQiuyUVeavKicF7GmtX+Y57fjfAj1NzYkXHWoHMjPyU9+gtvk9RouY4hY67CJ25SMs7MgomMrGfnYAtmu4XyO9MQOmzstOa9VAwWkqjyu2ttFm/axs4fvJt5R1fcEd99yKlPE/wr4PsC1UpqXaDab3ShzhkcdDW0N9ZnPX16MRsfpPrFzNFqJvm38itwugJ6waZllhSbQqgDy3vlnJLtTz0i1MYOJJJs8yx342Wpr8RTXiNp8sxXta75OgqRE2obQNmduCu1qNybJRP/u8lvR6Klz09F2tkmy/4PyS4KS67B2PFtbl4qhxVhDCUNs9XAzy4epNwz66PBczi2IJ/4SOm+ghDrGthwOjZNoahdieTEajY5I/sWfhaI5Gdc2ZGPfzGD1UAAH98N2mo/X8VmP1u3O9yfqHVxU+NtldfVicPny7OXgxeXV+WB6UcnBufz96qK6usIKr45b23ZCs7OSh9cuMvorinc34vr95LghvZ8I5WTH9JN/05DYqMzPTkenZyMxENeiMvSkp4YEWiWCRIP8cD0ROOO9Vx4benT+8+m9vbe33M8ZXAfulnpmSYnoxJREF0jlgxKK5GGzEL6zlmsmG9Y2RLSSTsXYqtZpG4NAY9xjIrcusOLeNmhTTIvESdtIHmUqvoS/5hZErL3rZmzxw/jmNktWKKnnSmuqzs/Q6q+UwFwaUJVjy4ypXIPahvLeDsTJyc0iRGpOTkqRV4NHrUhsznghUSI7197ZlByJLPEyA1wnagyQVsLoiuRC9g7eSu9gZsW31Di/2Co26TlpeeeaI0Nv16nPKvmBRI1WmeS6dSVkJ/bF0FPslHbJEC9E6x03IPZFEm2JZC3Cwsaagt6wUxpZ509tSHStcajyjvjDEbnb8ZiFb30X+Kg2fiLZpTwc77ju0AP/0PTGyc8UWfUDoRlE3ZCQrmk627dXMdcostTp5B0fEMiHnPQ5qfvGjDLuVOUm819lrMgHxm1TCOVwONOx7qan0jVDYmkX8n8a4Nx5GrQ7iP1NYe+ecFiGy+2I+KmbRd9M+SQ0bA3qdCpJrJd9E7wDbDUUO1ea/pC0bYQPBXCvY9nlcoqBPnqzWvHrLx35BZR3DwXM0Wuue35aFVATKvKpc36mBbPP+xjwSYt9jqZL14PDsbcq1hrXUlIbvyv7sNPa37+7uYUCpv0NqUnzCzw+8i0HH6GEdNNKyZKuUPxuCQbtrEtDCzIm//4FCQnXPg==
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Create group channel'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/messaging/central-channels'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Creates a new group channel with specified participants
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Create group channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/group-channels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Create a group channel with multiple participants
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'application/json': {
-        schema: {
-          type: 'object',
-          properties: {
-            name: {
-              type: 'string',
-              description: 'Name of the channel',
-            },
-            participantCentralUserIds: {
-              type: 'array',
-              items: {
-                type: 'string',
-                format: 'uuid',
-              },
-              description: 'Array of user IDs to add as participants to the channel',
-            },
-            type: {
-              type: 'string',
-              description: 'Type of the channel (defaults to GROUP)',
-              enum: ['DM', 'GROUP', 'FEED'],
-            },
-            server_id: {
-              type: 'string',
-              description: 'ID of the server (UUID or "0" for default server)',
-            },
-            metadata: {
-              type: 'object',
-              description: 'Additional metadata for the channel (optional)',
-            },
-          },
-          required: ['name', 'participantCentralUserIds', 'server_id'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name","participants"],"properties":{"name":{"type":"string"},"participants":{"type":"array","items":{"type":"string","format":"uuid"},"minItems":2},"description":{"type":"string"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '201': {
-      description: 'Group channel created successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  id: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the created channel',
-                  },
-                  messageServerId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the server this channel belongs to',
-                  },
-                  name: {
-                    type: 'string',
-                    description: 'Name of the channel',
-                  },
-                  type: {
-                    type: 'string',
-                    description: 'Type of the channel (GROUP)',
-                  },
-                  createdAt: {
-                    type: 'string',
-                    format: 'date-time',
-                    description: 'Timestamp when the channel was created',
-                  },
-                  updatedAt: {
-                    type: 'string',
-                    format: 'date-time',
-                    description: 'Timestamp when the channel was last updated',
-                  },
-                  metadata: {
-                    type: 'object',
-                    description: 'Additional metadata about the channel',
-                  },
-                  participants: {
-                    type: 'array',
-                    items: {
-                      type: 'string',
-                      format: 'uuid',
-                    },
-                    description: 'Array of participant user IDs',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request parameters',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is missing or invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error creating group channel',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-              details: {
-                type: 'string',
-                description: 'Detailed error information',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"201":{"description":"Group channel created successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"channel":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error creating channel","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

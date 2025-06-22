@@ -1,166 +1,71 @@
 ---
 id: get-dm-channel
-title: 'Get DM channel'
-description: 'Finds or creates a direct message channel between two users'
-sidebar_label: 'Get DM channel'
+title: "Get or create DM channel"
+description: "Get or create a direct message channel between users"
+sidebar_label: "Get or create DM channel"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'get api-method'
+api: eJztV0tz4zYM/isYntqMYjtpe9Ets3F3PNN0d5Ls9JDkQJOwhA1FKiTlxOvRf++AVPyId5u00+6puZiSgA8fHgSQtYiyCqK8EQ2GICuylbgrhMagPLWRnBWleI8RnAflUUYECZo8qghZA0HV0lo0MMf4iGihC+iDKIRr0UuGmGlRigrjefMui4pCtNLLBiNLljdrYWWDohSsOtMnohDEhh869CtRCI8PHXnUooy+w0IEVWMjRbkWcdWyXoiemRdi4XwjIyN1pEXfFy+gT/896DtWDq2zAQPLn04m/LMfuvOLTXg8Rk+4RL2NpRaFUM5GtJFVZdsaUilk48+B9deHfNz8M6rIEfQc4EjZeuiUwhB2BOfOGZRW9IXQMr4BYiD6uiDp1+PzsoY+WXroEEijjbQg9LBwHmK9KR/mmVN1CL0P9btsENzipXJAv+QU/31us/NnuIwBsaawU9bG2SpAdGwlIx9aQNs1fI0iPnHAlo4UsqFGFKLyrmsPr9X1qk1+7PiwJ/BaHIbLBLtv+0I0GOW3Er4PcKY18VGajbMb5Z59pWhwa0j0w18hfv5arc/sUhrS6f7D7Dx8j+IuBD7JpmWaC2kC9oVA751/Q7U7/YZamzIYJNkU2tTx3qr2LJ4SGyWZ8LrmeRJEDckNIJtLN+W2301KMjG8++Vr6cgchq5DttrU2f9p+S5pyVexdsPwSzMv1qIUY9nSeDNux7o53mYmN6A8EztvRCnqGNtyPDZOSVO7EMufJpPJAb/f+DNoXKJxbYM2Dq1M8JhitsnFZ46Gvkj4cAVnH2eHTeHjDLRTHYMkB1Oj3qgsT0aT0ckEjuEMFgafaG4QpNUQlDSSH85mICtmsOAJ/+j8/ejW3tpr7qkMToE7FlUWNUQHc+SGoeGRYg0Skp9mBb6zlos2GyYborQKRzC1unVkYwBpjHtM5NIwJVsVt7aRNkW1SJzIRvRS8beM/8wtQKy96yq2eDm9us6SC6lw4IrPVJ2vpKUvmMBcGhILx5YZU7tGkg3lrT2Go6OrVYjYHB2VkE/Hj6QRNltQSJTQLsk7m1KUyCIfM8BZosYA6QSGFqhWagjwVnoHMyteYOP8aqvYpOek5Z1rDgxdPBcfq1wMa1wtrTYpdEM5hhzEoSQHip0mlwzxAVrvuANwLJJoi6hqCCsbawy0YadJss6vZBC61jips0f84YDc9XTKwte+CxE1TJ9QdakOpzuhexmBP3B+5dQ9Rla9RGmOIzUIyjVNZ4f+BkuSkKVGsw88pNGHXPS5qIfOKFXqjMPeuKn8dxkr8ta4vZqhHI8rinU3HynXjJGlXci/aYi2LsRG2h3E/XV6uyG+vIrrbZ/+pyv40NR4KRm3RlJaEBL59dCNboRsSRQ76z8vLZuOdFcIbjost17PZcBP3vQ9v84LNPcpTYEvvh56/V948cPlsG3/CN8id4+rvf8DltJ0LCV4lf/PLJ3uWbrjB09sSpQ3d30hapQaffI2q50phW3c0TqYo4yy6f/vp9ei7/8Epmek4Q==
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Get DM channel'}></Heading>
-
-<MethodEndpoint
-  method={'get'}
-  path={'/api/messagingdm-channel'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Finds an existing direct message channel between two users or creates a new one if it doesn't exist
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get or create DM channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/messaging/dm-channel"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get or create a direct message channel between users
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'targetUserId',
-      in: 'query',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the target user for the DM',
-    },
-    {
-      name: 'currentUserId',
-      in: 'query',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the current user initiating the DM',
-    },
-    {
-      name: 'dmServerId',
-      in: 'query',
-      required: false,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the server to create the DM in (optional, defaults to "0")',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"userId1","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"userId2","in":"query","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'DM channel found or created successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  id: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the DM channel',
-                  },
-                  messageServerId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the server this channel belongs to',
-                  },
-                  name: {
-                    type: 'string',
-                    description: 'Name of the DM channel',
-                  },
-                  type: {
-                    type: 'string',
-                    description: 'Type of the channel (DM)',
-                  },
-                  createdAt: {
-                    type: 'string',
-                    format: 'date-time',
-                    description: 'Timestamp when the channel was created',
-                  },
-                  updatedAt: {
-                    type: 'string',
-                    format: 'date-time',
-                    description: 'Timestamp when the channel was last updated',
-                  },
-                  metadata: {
-                    type: 'object',
-                    description: 'Additional metadata about the channel',
-                    properties: {
-                      participants: {
-                        type: 'array',
-                        items: {
-                          type: 'string',
-                          format: 'uuid',
-                        },
-                        description: 'IDs of the participants in this DM',
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request parameters',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is missing or invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error finding or creating DM channel',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"DM channel retrieved or created","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"channel":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}}},"400":{"description":"Invalid user IDs","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving channel","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

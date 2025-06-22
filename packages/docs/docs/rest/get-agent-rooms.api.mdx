@@ -1,175 +1,71 @@
 ---
 id: get-agent-rooms
-title: 'Get agent rooms'
-description: 'Retrieves all rooms for a specific agent'
-sidebar_label: 'Get agent rooms'
+title: "Get agent rooms"
+description: "Retrieves all rooms for a specific agent"
+sidebar_label: "Get agent rooms"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVk1v4zYQ/SvEnFpAa7nt9qKbsUkXBop2kWRPmxzG5FjiLkUqJOXENfTfiyGl2InXTYKi20Obi2NrPt68eaTeDiLWAapP4J1rAxSANdkY4KYARUF63UXtLFRwQdFr2lAQaIxI0WLtvEAROpJ6raVIqVCA68gjpy0VVFBTXPCDi7FBhx5biuS57Q4stgRVbrtUUIDmbh3GBgrwdNtrTwqq6HsqIMiGWoRqB3HbcVqIXtsaClg732KECvpeKxieol+eCbcWsaER5FA8dL5z3qh959ue/Bb+RqtftInkR4ZWW5Hqi+UZDDc8UOicDRS48I/zOX88Tk9ciWkb0tnIeKsdYNcZLROv5efAsbtjkG71mSTvoPO8hahzp9BLSSEcBK6cM4QWCqB7bDtDmWKeBuNhRfQemQ8dqQ3Pd9LqecqeMvbR6tuehFZko15r8klYvCymgRnOqzqu+7jOb9jStOYpM7jeyxfkXqa4p9mTNl490l5vef2x0SFVFSsyztZBRMcNeOKJun+O8JMMDsORfM9HRELbPWrguKgjywQu8g/pr4C3XxPx0m7QaJUPG2v/2yp5jSawlMl755+vKZ16gULOuZhIsUMBLYWA9YvTpvBEd0RtwvOZZymQlEhjCG3zUvlhpn5aSGoB0zrenrpTrIti7Xqr/t/Gt9rGz187HBmDz+9Tbet/5bL/zy4lAYuNG61JMiSxgQpK7HSZ3U+5G+3IUE67CeQ3k2XpvYEKmhi7qiyNk2gaF2L103w+P0L4Kz8WijZkXNfyMcyVkhtgvGnICaXRf6D4/VIsPiyPKi0+LIVysuciacT0lnxI2fwwm8/mb9B0DYo3YiHWhu71ypBAq0SQaJC/LJbjpbxmF3bn/JfZtb22V3zTcwcdhKKga0tKRCdWJPpAStzp2AgUaVizFb63lpWbu2sbIlpJM3FuVee0jckkuruEUHrCqG1dXNsWLdb8b8KkbSSPkp/l+hO2IGLjXV9zx4vzy6scuUZJMyiA15AZOZh4PD0o0+kZnd0DN+9c2/ZWR36t7pcXqrKsdWz61Uy6tiSOdiF/phde50Js0R5UfE9xpG/SxaMd7fZH+DV+edR4pPtYdga15TOQcO5GcX4C7PTenBdQ7f1yRnJTAIuQQ3e7FQb66M0w8M/Z0LJulQ6sATWe/r8Af9LDngD7hbaPnPQGTc9RSeUb9Jr7vhLDdxej+f9ePHXvJ1BMBspuDyFM6CbGhpuhgIZQkU+I8tOFlNTFg7yjG5hHebg53p9fwTD8Cd4lkVs=
-sidebar_class_name: 'get api-method'
+api: eJztV01z2zYQ/SsYnFoPLSlteuHNUysZzTRNxnamh9iHFbAiNwYBBgBlKxr+984CpCVbcW1Pp+mh1UUksR9v3y4Wi62MUAVZfpLeuSbIQkKFNgZ5VUiNQXlqIzkrS3mG0ROuMQgwRiRpsXJegAgtKlqREklVFtK16IHVFlqWssJ4wgtng4MWPDQY0bPbrbTQoCyz24WWhST21kKsZSE9funIo5Zl9B0WMqgaG5DlVsZNy2oherKVLOTK+QaiLGXXkZb9Q/SLU+FWItY4gOyLO883zhu98/ylQ7+Rf8PVGzIR/cDQciOSfbE4lf0VBxRaZwMGNvzTbMZ/99UTV2LMhnI2Mt5yK6FtDanE6/RzYNntIUi3/IyKc9B6zkKk7Cl0SmEIe4JL5wyClYXEW2hag5lijgbivkXwHpgPitiEpz2Rfpqyh4x9tPSlQ0EabaQVoU+FxcliGpjhnKpDu/ft/A4NjmkeNYPrvHqG7nmSe6g91saLQ9rVW05/rCkkq2KJxtkqiOjYAUc8UvfPEf4og31/UL7zAZEgu0MtWS5S5DKRZ/lD+hXy9beKeGHXYEjnzca1/30reQUmcCmj984/bVM5/YwKmbMxkWT7QjYYAlTPVhvFE90RyISnNU+TIGqRwhBkc1J5MVM/JiS5kGM6Xj/WU6yLYuU6q//PxvfKxi/f2hwZg8/nKdnqX2n2/9mkJGCxdsNokgaSWMtSTqGlaZ5+ptthHOmnY24C+vU4snTeyFLWMbbldGqcAlO7EMufZ7PZAcLfeFloXKNxbcPbMFtK0wDjTUGOKA19BfH+XJx8WBxYOvmwENqpjo2kENMpeaeyfjWZTV7NxLE4ESuDt7Q0KMBqERQY4JeTxdCPVzyA3Th/Pbm0l/aCmzwbpyA0BqosahGdWKLoAmpxQ7EWIFKcZiN8Zy0XbXZMNkSwCidibnXryMY0H7qbBE55hEi2Ki5tAxYqfkyYyEb0oHgt2x+xBRFr77qKPZ7Nzy+y5AoUDlhxhOp8BZa+YjLm0lG7cuyZbWrXANlQXtpjcXR0vgkRm6OjUuSn4xvSKO6m1JAgoV2TdzalKIFFfswGUv8MbCB3UkMrVBs1ELyT3rOZFd9h4/xmp9ik96SVhoGHjt6lPUC2YpX8gqIGq02iTtVgLZqQSRxKcoDYaXLJET+I1jvuAcxFEm0RVS3CxsYaA92h0wSs84YMiq41DnSOiBcOwF3M5yx84bsQUYv5Laou1eF8j7qHDPyBy3OnrjGy6hmCOY7UoFCuaTo7dDixJhBZarJ4LwvJYeWiz0U99EZQqTcOc/td5f+abUUemnZbM5TTaUWx7pYT5ZopsrQL+T+NM60LsQG7Z/EtxmGHjLv+3g7c7hr0S25DQweLeBunrQGy3OESzu3Qej5JaGl39SpkubsNZSRXheQWw6Lb7RICfvSm7/lzvq5wV9IUeJvrobf/BfhHbyiPgL3Gzb170hpMx1Kph63BE/t9IYYfzoar3Y/i4d3sERTjeGw3+xBGdCNj/VVfyBpBo0+I8uqJUtjGPb2D85VDuTsX3s4vZN//CVeLOU8=
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Get agent rooms'}></Heading>
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get agent rooms"}
+>
+</Heading>
 
 <MethodEndpoint
-  method={'get'}
-  path={'/api/agents/{agentId}/rooms'}
-  context={'endpoint'}
-></MethodEndpoint>
+  method={"get"}
+  path={"/api/agents/{agentId}/rooms"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Retrieves all rooms for a specific agent
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-    {
-      name: 'worldId',
-      in: 'query',
-      schema: { type: 'string', format: 'uuid' },
-      description: 'Filter rooms by world ID',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"worldId","in":"query","schema":{"type":"string","format":"uuid"},"description":"Filter rooms by world ID"}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent rooms',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    id: {
-                      type: 'string',
-                      format: 'uuid',
-                      description: 'Unique identifier for the room',
-                    },
-                    name: { type: 'string', description: 'Name of the room' },
-                    source: { type: 'string', description: 'Source of the room' },
-                    worldId: {
-                      type: 'string',
-                      format: 'uuid',
-                      description: 'ID of the world this room belongs to',
-                    },
-                    entities: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          id: { type: 'string', format: 'uuid' },
-                          name: { type: 'string' },
-                        },
-                      },
-                      description: 'Entities in this room',
-                    },
-                  },
-                  title: 'Room',
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error retrieving rooms',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent rooms","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the room"},"name":{"type":"string","description":"Name of the room"},"source":{"type":"string","description":"Source of the room"},"worldId":{"type":"string","format":"uuid","description":"ID of the world this room belongs to"},"entities":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"}}},"description":"Entities in this room"}},"title":"Room"}}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving rooms","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -1,0 +1,71 @@
+---
+id: delete-channel
+title: "Delete channel"
+description: "Delete a channel"
+sidebar_label: "Delete channel"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9VU1z2zgM/SsYnHYziuXu9qSbp/HOeKaddpLs7CHxASZhiw1FqiTlxPXov++Akj9S92NP64spAQ94gMCHPSbaRKwesOEYaWPcBpcFao4qmDYZ77DCG7acGAhUTc6xxQJ9y4HEvNBYoc4O747WlgI1nDhI5D06ahgrHNELjQUaidtSqrHAwF86E1hjlULHBUZVc0NY7THtWgHGFIRXgWsfGkpYYdcZjX2/FHBsvYscxf+P6VT+XrMfacFAUkPslOIY1521OyxQeZfYJcFR21qjclnl5yjg/SUZv/rMKkmRQZqQzJB6jHrmuPLeMjns86/At9O3PybnfIK175z+PxgVyC/UtJaxWpON3BfIIfjw65jKa/7eh3ld1FyCQfbti3Gw/jPs4N6LOZGx8dfIm+zIGnIZYNwwKGIcep9MkmqHFDh+kIZT7U/jm+c21VhhSa0pj/ehVOxSIHs9zm8s98dJ7rHAyGF7mPQuWKywTqmtytJ6Rbb2MVV/TqfTC9LvxQyat2x927BLMERCGWspIdd9IG7NV4KPdzD7tLiINPu0AO1VJ0Fy1bD2AY6Q7ZvJdPJmCtcwg7XlF7OyDOQ0REWW5GG2ANoIg7Xc22cfniaP7tHd1yZKQjARNEezcawheVgxdJE1PJtUA0Gu0+4gdM4ZtxkTGxcTOcUTmDvdeuNSBLLWP2dyKjAl4zbFo2vI5T4XmZNxiQMpsQ3xD9wipDr4biMZb+d394PnmhSPXPlA1YcNOfOVczAPqWZYe8ksMbVvyLhYPbpruLq628XEzdVVBcPp+tlohqO4xUyJ3dYE7/InymRZjkOAWaYmAfIJrFmz2qmxwSfvs5gD8AM3PuxOwCY/Z1TwvrlI9OEwjgIZHhhqctrm1h1mc2jiOJIjxU4bnxPJAdrgRRakF9m1ZVY1xJ1LNUdzZKcNCeYvYxm61nrSQ0ViuCB3P5+L833ooijs/IVVl+dwfta6bzvwD6/uvHriJNBbJnudTMOgfNN0bhQ92BqCwWuy+IgFSlnD0A9DPcolqSyX46I5Tv67IVYSnT9dzViV5cakultNlG9KFm8fh38UYWh9TA25s4jjBjztv1cXcH+S7O/tylG7Er+ksrVknGhbprMfFecBqTVYnO3gAr9VHSywOm3QZYGiLALd71cU+e9g+15ef+k47LB6WBa4pWDkfmdp0ibKWY+a/5MSfrsdF/Lv8CP240ty0tkt2U6esMAn3r1a9P2yL7Bm0hwyicE+U4rbdIa8WHMigUd5vpm/n9/Pse//BXqDAZU=
+sidebar_class_name: "delete api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/messaging/central-channels/{channelId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete a channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Channel deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -1,148 +1,71 @@
 ---
 id: add-agent-to-server
-title: 'Add agent to server'
-description: 'Adds an agent to a messaging server'
-sidebar_label: 'Add agent to server'
+title: "Add agent to server"
+description: "Add an agent to a server"
+sidebar_label: "Add agent to server"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'post api-method'
+api: eJztV0tvGzcQ/ivEnFpjZSl+pd2bmqqAgAYJbBU92D6MyFktYy65IbmyFUH/PRhy9bCVJgEK5JS97IPz+GaGnG92DREXAcpbaCgEXGi7gPsCFAXpdRu1s1DCWCmBVuCCbBTRCRSB/JI8FOBa8shiUwUloFJjFpq5m61Aix4biuTZyRosNgQlZP2pggI0e2gx1lCAp4+d9qSgjL6jAoKsqUEo1xBXbdKLnhEWUDnfYIQSuk4r2GzuszKF+IdTK9Z4aUs6G8lGXsK2NVom2MMPgUNcH7ty8w8k4zNQt5BSMFWcotZz7FFTSCb7he+AyhdbDa2zIWufjUZ8e5H1lG5UipQInZQUQtUZs4L/Ectz0L3VA8G5c4bQ7lBefAnY1C7RaCX6hP8IPAXQEzatISgrNIE2BZD3zn/bpnSKvlSV5yFN2JhIspuiPwrfrbYV3/ByRG3CtzX/TIKkRApDaJt3CS/mzEcdOdrsArbVuDiuRj5pwrooKtdZ9bMcP6ocl186HBkDKqXtInfMnwX5MQVJwGLtmIhal/pSopUShtjq4Y7fhpl8wnC9ZaHNMBUqQNETU+aqzhsooY6xLYdD4ySa2oVYno9GoyO8f/OyULQk49qGG3dPkcxMXOfrPTtNtqU6oA04r/C3y+rqYnD5+tXrwcXl1dlgfl7JwZn8/eq8urrCCq84g5yJlL5t/EZ/QvHuRozfT49Qjd9PhXKyY0ApeaJyXuxUlq9OR6evRmIgxqIy9KTnhgRaJYJEg/wynvasXzGLPzr/cHpn7+ys1oEdCh2EoqAXlhQPBnMSXSAlHnWsBYqUM7MSvrOWj0N2rG2IaCWdiolVrdM2BoHGuMcETnrCqO2iuLMN2lSwImHSNpJHyWvZ/hZbELH2rluwx+vJzSxLViipx0pbqM4v0OpPlIw5EWsSlWPPbFO5BrUN5Z0diJOTm1WI1JyclCI/DR61IrGbdkKCRHapvbOp3Aks8WM2kNg7sIHM40ZXJFeyT/Be+sBmVnxLjfOrvWKT3pOWd645cvR2u69ZJb+QqNEqk1Ina7SWTMhJ7Ld3D7FT2iVH/CBa77i7pL7Foi2RrEVY2VhT0Dt0SiPr/KUNia41DlWOiBeOwM0mExae+S5EUmLyRLJL+3BykLqXGfiX5jdOPlBk1WtCM4i6ISFd03S2751iqVFkqdPpOyiAw8qbPm/qvuuiTF23Hzt3O/9NthV5mNof81AOhwsd625+Kl0zJJZ2Id+B+wu3lQbtgcU0Gm/n4t1U/OwUrvft/2uTdN8PIz3FYWtQWz7tCdu672O3gK2G4mBS3/erAsqDmbpvZ/cFcMdizfV6joH+8Waz4c8fO/IrKG/vC1ii13zWU8tTOvCz6mnkK5H8ct2Pxb+K/wLff0TLWV6i6fgNCnig1eEvwOZ+U0BNqMgnDHn5TfY0mLGRvfoRfW6KrcZYSmrjV2XvDyji/bubGRQw738XmsSD4PGRR358zFBdijzxVfq2BoN20SXyg2yTr8+lFpis
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Add agent to server'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/messaging/servers/{serverId}/agents'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Adds an agent to a specific server, allowing the agent to receive and process messages from that server
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Add agent to server"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/servers/{serverId}/agents"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Add an agent to a server
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'serverId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description:
-        'ID of the server (or "00000000-0000-0000-0000-000000000000" for default server)',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"serverId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'application/json': {
-        schema: {
-          type: 'object',
-          properties: {
-            agentId: {
-              type: 'string',
-              format: 'uuid',
-              description: 'ID of the agent to add to the server',
-            },
-          },
-          required: ['agentId'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["agentId"],"properties":{"agentId":{"type":"string","format":"uuid"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '201': {
-      description: 'Agent added to server successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  serverId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the server',
-                  },
-                  agentId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the agent that was added',
-                  },
-                  message: {
-                    type: 'string',
-                    description: 'Success message',
-                    example: 'Agent added to server successfully',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid server ID or agent ID format',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error adding agent to server',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent added successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Server not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error adding agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -1,0 +1,71 @@
+---
+id: update-agent-memory
+title: "Update a memory"
+description: "Update a specific memory for an agent"
+sidebar_label: "Update a memory"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tvGzcQ/ivEnFpjbSltetmbGquogAYJbAc92D6MyFktYy65IbmylcX+92DI1SOW6wQp4FN0EZecxzffkDNkDxFXAcpraKhxfgO3BSgK0us2amehhA+twkgCRWhJ6kpLkSVF5bxAK3BFNkIBriWPrLNQUEKXtGa89jYbLqBFjw1F8uyvB4sNQQlJf6GgAM3uWow1FODpU6c9KSij76iAIGtqEMoe4qZltRC9tisooHK+wcguO61geAx/cS5cJWJNI9Ch2HnOcbyE65Gx6ETmBYbb7IdC/NOpDRt/7FY6Gxlw2QO2rdEykTv5GNh2f4zKLT+S5ER8DSKzP/oVCiPCMAwDuw+ts4EC2/htOuW/Z1SVCJ2UFELVGcPZ/GF8reetEnX2PFo9EFw6ZwgtFEAP2LSGMiNML6P/pkWtvitXDYWAKzqWHcZfAa+fYmVh12i0yttJcI79Nr+L8xfmpUITmBjy3vlv25ROPRHv4x0zZ2MiyT5H09NqW/F0GCJqE76teZ4ESYkUhtA254oXcx6ijhxtdgHb3Lw+zk2qNwcJsS6KynVW/czLS+Xlj6fOTMaQCom2qzE7P3PyMjlJwGLtVG5xsk6tONZQwgRbPcnZmPRjIx7yhKYw6bcdcoACAvn1tnV33kAJdYxtOZkYJ9HULsTy9+l0eoT4H14WitZkXNvw+cyWUg/kTF/s++B8m6x+4J5cuUTINiKjP6N4dylm7xdHXmbvF0I52bGDREe6nuxU1q/OpmevpuJUzERl6EEvDQm0SgSJBvljthgresWXlHvn785u7I29qnVgh0IHoSjolSXFfXxJogukxL2OtUCRODAb4TtreYdnx9qGiFbSmZhb1TptYxBojLtP4KSndByKG9ugxRUPEyZtI3mU6agk+1tsQcTau27FHi/ml1dZskJJI1baQnV+hVZ/pmTMpTtI5dgz21SuQW1DeWNPxcnJ5SZEak5OSpFHp/dakdjd5kKCRHatvbMpfQks8TAbSEU3sIFcfo2uSG7kSPBe+sBmVsz3i73iWLRZyzvXHDl6m86LtitWyR8karTKJOpkjdaSCZnEcbuOEDulXXLEA9F6x/WCuUiiLZGsRdjYWFPQO3RKI+v8pQ2JrjUOVY6IF47AXc3nLHzlu8CXpfkDyS7tw/kBdY8Z+JeWl07eUWTVC0JzGnVDQrqm6exYDcVao8hSZ4t3UACHlTd93tRjHUWZ6uh4t93t/DfZVuRyuz+2oZxMVjrW3fJMumZCLO1C/geuGK0LsUF7YHH3DthV769OYL8v5t/9ZBhLXaSHOGkNasulMIHsxwp1DdhqKGDns9w/F7Zlimd3V/nbArgUsWbfLzHQB2+Ggac/deQ3UF7fFrBGr/nQp1qmdOCxGjvEM2H9cjFe0X8Vj18V/xHLOImWoa/RdPwFBdzR5uDlw0+S/4ni6IHxQ4B2LA63QwE1oSKfOMrLbzKG0ys2slc/6twcT9aYSUltfFb29qA7vZ9dvfkbCliOT6Im9WDweM/PMrzPWF0iJfXKNNeDQbvqUuOFbJR/XwAhIyX4
+sidebar_class_name: "patch api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Update a memory"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"patch"}
+  path={"/api/memory/{agentId}/memories/{memoryId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Update a specific memory for an agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"memoryId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the memory to update"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","description":"Memory update data"}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Memory updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"message":{"type":"string"}}}}}}}},"400":{"description":"Invalid agent ID or memory ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or memory not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating memory","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      
