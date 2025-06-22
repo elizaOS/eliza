@@ -155,7 +155,7 @@ ps aux | grep elizaos
 pkill -f elizaos
 
 # Clear any conflicting processes
-elizaos stop
+# Press Ctrl+C in the terminal where elizaos start is running
 elizaos start
 ```
 
