@@ -1,8 +1,8 @@
 {
   "info": {
     "name": "Eliza AI Framework API Collection",
-    "description": "Complete Postman collection for the Eliza AI Framework REST API endpoints",
-    "version": "1.0.0",
+    "description": "Complete Postman collection for the Eliza AI Framework REST API endpoints. Updated to match actual API implementation.",
+    "version": "1.1.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -227,67 +227,18 @@
           }
         },
         {
-          "name": "Debug Server List",
+          "name": "Get Server List",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/server/debug/servers",
+              "raw": "{{baseUrl}}/api/server/servers",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "debug", "servers"]
+              "path": ["api", "server", "servers"]
             },
-            "description": "Get debug information about servers"
-          }
-        },
-        {
-          "name": "Get Server Configuration",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/server/config",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "config"]
-            },
-            "description": "Get server configuration settings"
-          }
-        },
-        {
-          "name": "Update Server Configuration",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"setting\": \"value\",\n  \"logLevel\": \"info\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/server/config",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "config"]
-            },
-            "description": "Update server configuration settings"
-          }
-        },
-        {
-          "name": "Get Server Metrics",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/server/metrics",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "metrics"]
-            },
-            "description": "Get server performance metrics and statistics"
+            "description": "Get server debug information"
           }
         }
-      ]
     },
     {
       "name": "Agents Management",
@@ -421,19 +372,6 @@
               "path": ["api", "agents", "{{agentId}}", "stop"]
             },
             "description": "Stop a running agent"
-          }
-        },
-        {
-          "name": "Restart Agent",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/agents/{{agentId}}/restart",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "restart"]
-            },
-            "description": "Restart an agent (stop and start)"
           }
         },
         {
@@ -597,6 +535,28 @@
               "path": ["api", "messaging", "submit"]
             },
             "description": "Submit a message to the central messaging bus"
+          }
+        },
+        {
+          "name": "Complete Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"completed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/messaging/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "messaging", "complete"]
+            },
+            "description": "Notify message completion"
           }
         },
         {
@@ -1485,11 +1445,39 @@
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/audio/{{agentId}}/transcriptions",
+              "raw": "{{baseUrl}}/api/audio/{{agentId}}/transcribe",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "transcriptions"]
+              "path": ["api", "audio", "{{agentId}}", "transcribe"]
             },
             "description": "Transcribe audio to text"
+          }
+        },
+        {
+          "name": "Process Audio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "audio",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/audio/{{agentId}}/process",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "audio", "{{agentId}}", "process"]
+            },
+            "description": "Process audio file"
           }
         }
       ]
@@ -1546,64 +1534,11 @@
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/media/channels/{{channelId}}/upload-media",
+              "raw": "{{baseUrl}}/api/media/channels/{{channelId}}/upload",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "media", "channels", "{{channelId}}", "upload-media"]
+              "path": ["api", "media", "channels", "{{channelId}}", "upload"]
             },
             "description": "Upload media file for a channel"
-          }
-        }
-      ]
-    },
-    {
-      "name": "TEE (Trusted Execution Environment)",
-      "item": [
-        {
-          "name": "List TEE Agents",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tee/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tee", "agents"]
-            },
-            "description": "List all TEE agents"
-          }
-        },
-        {
-          "name": "Get TEE Agent Details",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/tee/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tee", "agents", "{{agentId}}"]
-            },
-            "description": "Get details of a specific TEE agent"
-          }
-        },
-        {
-          "name": "Query TEE Logs",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"query\": {\n    \"agentId\": \"{{agentId}}\",\n    \"roomId\": \"{{roomId}}\",\n    \"entityId\": \"\",\n    \"type\": \"\",\n    \"containsContent\": \"\",\n    \"startTimestamp\": null,\n    \"endTimestamp\": null\n  },\n  \"page\": 1,\n  \"pageSize\": 10\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/tee/logs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tee", "logs"]
-            },
-            "description": "Query TEE logs with filtering and pagination"
           }
         }
       ]
