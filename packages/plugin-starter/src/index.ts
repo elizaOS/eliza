@@ -268,7 +268,7 @@ export const starterPlugin: Plugin = {
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
   tests: [StarterPluginTestSuite],
-  // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependecies go here (if requires another plugin)
+  // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependencies go here (if requires another plugin)
 };
 
 export default starterPlugin;
