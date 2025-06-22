@@ -1,0 +1,71 @@
+---
+id: send-channel-message
+title: "Send message to channel"
+description: "Send a message to a channel"
+sidebar_label: "Send message to channel"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tv2zgQ/ivEnNpAjp0mdXd187ZewMAWLZr0lOQwJkcWW4pUSSqOa/i/F0NJfm6bYgv0tL5YNme++TRvriHiIkB+CxWFgAttF3CfgaIgva6jdhZyuCarBIpWgkR0AoUs0VoykIGrySNLzhTkEMiq1+3Z21YeMqjRY0WRPFtag8WKIIcOYqYgA812aowlZODpS6M9KcijbyiDIEuqEPI1xFXNiiF65plB4XyFEXJoGq1gs7lvlSnEv5xascYxlnQ2ko18hHVttEzMh58Cv+j61JSbfyIZD0jdQhPIJ9aRHiO7q/bshKgpsGp3/DTfDuBEcJMBxoiyrMjGsHeO3uOKvRWpCqcsN+2HyYba2dDSeTG64K/DkHaxEYFsFKGRkkIoGmMY/T/76NANHeqe4Nw5Q2j5/RTGn4DoMu5pQf0T7j7O6o9Wf2lIaEU26kKTF4XzIpbUJ/r3A3QM1XuTpUXvvk3205lwjDd7I1yRqDCCWJauDdQROVyQjb+GnyDEM120Buar9p/nDO+dq34NnRH2SYs5GWcXQUTHBqQnjKQm+x7WNtKC/L4RbeP46t/C9yiirihErGqxLMkemFpiEJ0BtlVRxO8l3SHwRCnNj2i2WFtlLq6oo6Fd0Puq22RwNRqdVtrMPqDRSnSN6XfUVwb0iFXNLAs0gTYZkPfOP40pnaKn033KYCLJJs8eF+kP1fbyV1FEbcLTmm+SICmRXkNo2+YGH7ae72OSTEAfjavTaHSjSVgXReEaq/6Px++JR1uCpeMdoXapDtK4z2GItR5ut4+hJBs9mkG3HYThersnbDoxCpBBIP/QLxSNN5BDGWOdD4fGSTSlCzG/HI1GJ9z/4WOh6IGMq6s0/hIS8PbAMf+w2yCmfdh2Qx0uC/zjZTG+Grx8dfFqcPVy/GIwvyzk4IX8c3xZjMdY4LhfDfYceDDQb9eb+w0vPYVLzu69ZfRXFO+uxeT97LQtvZ8J5WTDEMnVaVxtVR4uzkfnFyMxEBNRGHrUc0MCrRJBokH+MZl13b7gZWzp/OfzO3tnb0od2KDQQSgKemFJ8Yo3T8NHiaWOpUCRvGpWwjfWarvoDGsbIlpJ52JqVe20jUGgMW6ZyKX2q+0iu7MV2hTeLHHiJu9R8lmL33MLIpbeNQu2+GF6fdNKFiip40o9VecXaPVXSmAudf7CsWXGVK5CbUN+Zwfi7Ox6FSJVZ2e5aJ8GS61IbNfWkCiRfdDe2ZQQiSzxYwswSdQYID0JowuSK9k5eCe9h9kqvqXK+dVOsUq/k1YajceG3vZVwCr9UlGiVSa5ri+J1oldAXQUG6VdMsQPovaOexH7IonWRLIUYWVjSUFv2SmNrPO3NiSa2jhU7RvxwQm5m+mUhW98EyIpMX0k2aQ8nO65bucByIDptcnbJmfXa1GmXtvdArYZ/NpVVWN15BV0V9AhHw4XOpbN/Fy6akgs7UL7ncYxN5MK7R5iuq7sXVZ2V5WDilrvGv8TN5yuGXJJD2uDOm2wieK6a2K3gLWGbO8SlcFxI4MM8v0rz7aX3WfA7YpR1us5BvrozWbDf39pyK8gv73P4AG95jJO/U7pwM+qmyc/eLFnH7p7y3PxvRfp7xaWHf+ApuFfkMFnWh1c0lLLKgkV+USiPX/dmhrcMMpO/2SQbrJeYyIl1fGHsvd7w+L9u+sbyGDeXeiqNBHB45IvZbhsubq6zTm+8fF/azBoF00ag9Bi8ucbNZwqHw==
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Send message to channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/central-channels/{channelId}/messages"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Send a message to a channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["userId","text"],"properties":{"userId":{"type":"string","format":"uuid"},"text":{"type":"string"},"attachments":{"type":"array","items":{"type":"object"}}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"201":{"description":"Message sent successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"message":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the message"},"text":{"type":"string","description":"Message text content"},"userId":{"type":"string","format":"uuid","description":"ID of the user who sent the message"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent (if sent by agent)"},"roomId":{"type":"string","format":"uuid","description":"ID of the room the message belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the message was created"},"metadata":{"type":"object","description":"Additional message metadata"}},"title":"Message"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

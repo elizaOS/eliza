@@ -1,0 +1,71 @@
+---
+id: delete-channel
+title: "Delete channel"
+description: "Delete a channel"
+sidebar_label: "Delete channel"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9VU2T2zYM/SsYnNod7sppc9LNk3VndiaZZrLb064PMAlbTChSISnvOh799w4o+WPrpOmpvpgS8IAHCHzYY6ZNwvoRW06JNtZvcKnQcNLRdtkGjzXesuPMQKAb8p4dKgwdRxLzncEaTXF4d7R2FKnlzFEi79FTy1jjhL4zqNBK3I5ygwojf+1tZIN1jj0rTLrhlrDeY951Akw5Ci+F6xBbylhj31uDw7AUcOqCT5zE/7fZTP5es59owUjSQOq15pTWvXM7VKiDz+yz4KjrnNWlrOpzEvD+kkxYfWadpcgoTch2TD1FPXNcheCYPA7lp/Dt7O2PyfmQYR16b/4PRgr5hdrOMdZrcokHhRxjiD+PqYPh732Y10UtJBgU30FNg/WfYQf3QcyZrEs/R94WRzZQygDrx0ER49j7bLNUO6bA6YO0nJtwGt8yt7nBGivqbHW8D5VmnyO562l+U7U/TvKAChPH7WHS++iwxibnrq4qFzS5JqRc/z6bzS5IvxczGN6yC13LPsMYCWWspYRS94G4s98I/ryH+ce7i0jzj3dggu4lSKka1iHCEbJ9czO7eTODa5jD2vGLXTkG8gaSJkfyML8D2giDtdzb5xC/3Dz5J//Q2CQJwSYwnOzGs4EcYMXQJzbwbHMDBKVOt4PYe2/9ZkpsfcrkNd/AwpsuWJ8TkHPhuZDTkSlbv1FPviVf+qwKJ+szR9JiG+MfuCXITQz9RjJ+Wtw/jJ5r0jxx5QPVEDfk7TcuwQLkhmEdJLPENKEl61P95K/h6up+lzK3V1c1jKfrZ2sYjuKWCiX2WxuDL5+okGU5jgHmhZoEKCdwds16p6cGn7zPYo7AD9yGuDsB2/JcUDGE9iLRh8M4CmR8YGjIG1dad5jNsYnTSE4Ue2NDSSQH6GIQWZBeFNeOWTeQdj43nOyRnbEkmD+sY+g7F8iMFYnhgtzDYiHOD7FPorCLF9Z9mcPFWetOHUCFQm8c3nE4J9kjXWRvWhjHCX4X2rb3Noten65YqqtqY3PTr250aCsW75DGf5QL3oWUW/JnEadNdtpjry7S/iS939t5kwZlfslV58h60ahCZz8pxyNSZ1Gd7VKF/1QPVFifNuFSoSiEQPf7FSX+K7phkNdfe447rB+XCrcUrdzTIjHGJjmbSbv/pYRfPk2L9Vf4EfvpJXnp7JZcL0+o8AvvXi3sYTkobJgMx0JitM+15i6fIS/WlUjZUWZvF+8XDwschr8BRc/uQQ==
+sidebar_class_name: "delete api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/messaging/central-channels/{channelId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete a channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Channel deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

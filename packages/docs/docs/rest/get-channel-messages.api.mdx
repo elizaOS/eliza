@@ -1,192 +1,71 @@
 ---
 id: get-channel-messages
-title: 'Get channel messages'
-description: 'Retrieves messages from a specific channel'
-sidebar_label: 'Get channel messages'
+title: "Get channel messages"
+description: "Get messages for a channel"
+sidebar_label: "Get channel messages"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'get api-method'
+api: eJy9VkuP2zYQ/iuDOSUL7dpp0x50MxI3MNCgQbI5ZfdAiyOLCUUq5Gi9jqH/Xgz1sPbVLRqgvlgSZ775ZjivI7LaRcy/YE0xqp1xO7zOUFMsgmnYeIc5viOG/pgilD6AgqJSzpHFDH1DQYngRmOOO+I3/dH7QQEzbFRQNTEFMXREp2rCHAeIjcYMjZhpFFeYYaDvrQmkMefQUoaxqKhWmB+RD40oRg5CM8PSh1ox5ti2RmPXZRO2NbXhEfd7S+GAjwAZx7SjgOJvqVrLmP+2nMNsqfSBnsV5ktC1eBMb7yJFkf9luZS/u9EdAwWBOBi6IQ2xLQqKsWytFYOFd0yORVU1jTVFivfiaxT940M+fvuVCnG/CXI7bHrrA+pMcOu9JeWwy1ArnkOoEJSYNkx1fB7a6OfDcT+rPjvzvSUwmhyb0lBIqcUVjbkmtJhu+THoR0MIIg1jtLoM20hh8x+obd6CLxMVQYB95SGS4/vk1I4c/xx+goAXpuwNbA/9l5cCH7yvfw5dEOakYUvWu10E9mKgCKSY9IofrYnJiHH8++vHru8W2NQUWdUN7Ctyd0ztVYTBgNiqidW9HJty6S7wSmsjj8pOWJNyJylh2NLp0rHrfxm+Xr5+WF1DNwLnGUrfOv1/1FOGdKvqRmiWykbqMqQQfHges/Cans/3tYBBkk2h7QPxL9VmCayJlbHxec23SZA0JDfAuD455LCP/XgpyQQOF1ITV36YCmkMcIU5LlRjFtO0WRTkOCh7PoyDuDhOg6Fb1KchEincjBOkDRZzrJibfLGwvlC28pHzX5fL5QPqf8oxaLoh65taiqxHQunO4kjyfqRvzQ8Ff32C1YfNw8T8sAHti1ZAku+pYU0qN68ulhevlnAOKygt3ZqtJVBOQyyUVfKy2gz1Xso83Pvw7eLKXbnLykQxCCaCpmh2jjSwh21qPxr2hitQkPy0Bwitc8btBsPGRVauoAtYO9144ziCstbvE7lUgMbtsitXK5cCniVOUuZBFXLW44/cInAVfLsTix/Xny57yVIVNHClkaoPO+XMD0pgPtV+6cWyYGpfK+NifuXO4ezs0yEy1WdnOfRP53ujCabNISZK5G5M8C5dUSJL8tgDrBI1AUhPYE1JxaEYAnySnmH2iu+p9uFwUqzTe9JKzfG+ofdjXorKOFYq5bRNoRuTtA/ikJIDxVYbnwzJAzTBS3OQWCTRhqioIB4cVxTNxE4bJTp/GEvQNtYr3XskBw/IXa7XInwZ2sikYX1LRZvycD0L3SkCmKHQ65O3T86h+akiNb9hy5ky+I2v69YZlsF/KrGYLxY7w1W7vSh8vSCR9rH/Tw258ZFr5WaIsjAOoYJZCd8pp+OpDf/zgjl0Jpnti8Yqk9aVRO84tJQvqBqD2WyFzfB+W8EM8/nGOdG6zlCah6Acj1sV6XOwXSef+31P+o02UQpYD+08w290mG2ZN8q2QhFldXxCdlolT8LX8hKMSD9u5cl4vfg47Mgv4akAjXucO8xtjmxOkeiuuwwrUppCItGfr4qCmrlrD+aksJ/6+7v1JXbd39LKPh4=
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Get channel messages'}></Heading>
-
-<MethodEndpoint
-  method={'get'}
-  path={'/api/messaging/central-channels/{channelId}/messages'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Retrieves messages from a specific channel with optional pagination
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get channel messages"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/messaging/central-channels/{channelId}/messages"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get messages for a channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'channelId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the central channel',
-    },
-    {
-      name: 'limit',
-      in: 'query',
-      required: false,
-      schema: { type: 'integer', default: 50 },
-      description: 'Maximum number of messages to return',
-    },
-    {
-      name: 'before',
-      in: 'query',
-      required: false,
-      schema: { type: 'integer' },
-      description: 'Timestamp (in milliseconds) to get messages before',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"limit","in":"query","schema":{"type":"integer","default":50}},{"name":"before","in":"query","schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Messages retrieved successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  messages: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        id: {
-                          type: 'string',
-                          format: 'uuid',
-                          description: 'ID of the message',
-                        },
-                        channelId: {
-                          type: 'string',
-                          format: 'uuid',
-                          description: 'ID of the channel',
-                        },
-                        authorId: {
-                          type: 'string',
-                          format: 'uuid',
-                          description: 'ID of the message author',
-                        },
-                        content: {
-                          type: 'string',
-                          description: 'Message content',
-                        },
-                        created_at: {
-                          type: 'number',
-                          description: 'Timestamp when the message was created',
-                        },
-                        updated_at: {
-                          type: 'number',
-                          description: 'Timestamp when the message was last updated',
-                        },
-                        sourceType: {
-                          type: 'string',
-                          description: 'Source type of the message',
-                        },
-                        sourceId: {
-                          type: 'string',
-                          description: 'Original message ID from source platform',
-                        },
-                        rawMessage: {
-                          type: 'object',
-                          description: 'Raw message data',
-                        },
-                        inReplyToRootMessageId: {
-                          type: 'string',
-                          format: 'uuid',
-                          description: 'ID of the message being replied to',
-                        },
-                        metadata: {
-                          type: 'object',
-                          properties: {
-                            thought: {
-                              type: 'string',
-                              description: 'Thought process for agent messages',
-                            },
-                            actions: {
-                              type: 'array',
-                              items: { type: 'string' },
-                              description: 'Actions taken by the agent',
-                            },
-                          },
-                          description: 'Additional metadata',
-                        },
-                      },
-                    },
-                    description: 'Array of messages',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request parameters',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is missing or invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error retrieving messages',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Messages retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the message"},"text":{"type":"string","description":"Message text content"},"userId":{"type":"string","format":"uuid","description":"ID of the user who sent the message"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent (if sent by agent)"},"roomId":{"type":"string","format":"uuid","description":"ID of the room the message belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the message was created"},"metadata":{"type":"object","description":"Additional message metadata"}},"title":"Message"}}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

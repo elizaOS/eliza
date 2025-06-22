@@ -1,189 +1,71 @@
 ---
 id: upload-agent-media
-title: 'Upload media for agent'
-description: 'Upload images or videos for a specific agent'
-sidebar_label: 'Upload media for agent'
+title: "Upload media for agent"
+description: "Upload image or video media for an agent"
+sidebar_label: "Upload media for agent"
 hide_title: true
 hide_table_of_contents: true
-api: eJytVk1v2zAM/SsCz26cbTffsiFYAwxYsXbYoe2BkRlbrSxpEp00M/zfB9ppl7WX6aKvp8dH8mlAoSZjdYv5mIU7vC+w5mySjWKDxwqvbRcdQ8vOBTiE5GoQzgLs6xisFywwRE6k8E2NFTYslwrGAhPnGHzmjNWAH5ZLnf5lvzyjfUZjgSZ4YS+KpxidNRN9+ZD10YDZtNyRruQYGSsM2wc2KiUmFSN2DtlxztTwGTBLsr7BAvmJNK8XCT9Vwjsc51Fgx9KGUzrKS9JihSVFW7an7DKnPSct3oB9clhhKxKrsnTBkGtDlurjcrnE1xX9qtdQ855diB17gZkJx/sCrd+FSa+VSd3a2d8E365hdbV5w7S62kAdTK8kU4VgFxK8PNm/XywXywtysSW4gBXsHD/ZrWMgX0M25Eg3qw1QozJ2iTo+hPS4uPN3/qa1WaOCzVBzto3nGiTAlqHPXMPBSgsEU7LuCKn33vrmFN36LOQNL2B98kkGci4cJoUmMYn1TXHnO/LU6HLSZL1wIqN3M/+ztgzSptA3GvH7+vpmRu7I8AIL1DbMFTnL+GQjMpONPHX/lPNz6LreWzlicda8XJVlY6XttwsTupIVHfI8o9oihiwd+TPGT5StgZbJSQumZfP4uk3DXzv/z286OVX4ScroyHocTxKHkw1vkaLFAmcj3heoXtPjYdhS5h/JjaMe/+o5HbG6vS9wT8lqs3U36kuqOU3OfeSjOskYjhp9T67X8G++nZrz5VN8Wd/gOP4Bu7h17Q==
-sidebar_class_name: 'post api-method'
+api: eJztV0tv2zgQ/ivEnHYDJXa27UU3t/UCBho0SNxT4sNYHEtsKVIlKSeOof++GFJ+xPa2WWCRU3wxKc7jmweHM2sIWHrI76AmqRBmGUjyhVNNUNZADt8abVEKVWNJwjqxVJKsiMRiYZ1AI7AkEyAD25BDZptIyKGNjCM+u4qiM2jQYU2BHCtcg8GaIIfIPpGQgWKFDYYKMnD0s1WOJOTBtZSBLyqqEfI1hFXDbD44ZUrIYGFdjYE1tkpCd2jA5LOwCxEq6nF2syScfPho5YolHuoqrAlMmq+hbnVQDbowYDXnEkPEcITGzr9TwU5oHLshKPJ8ulCafol5rgy6FRyCvkr+VZpEsCK5Err4Y/S+scYnDX8Nh/x3ij2xkRS+LQryftFqzar2zMOm0aqIQRt898z7ctuUfFE0WqdP0R1k2c2XTZS2qFNCdlnPeiyCTFtz5sbchAxiasKsy6BWNU1PcnUZePW0f6BMoJLc1rvvTzl0YpaolRR94vBFSMFhGf+bR/s47RHOrdWEho19xLrhZFqg9tRlQM5Z93uZhZUnnffcvjELE5GW3Ufes0tfyLYhj1cvoNL+95yfIyFJEc0QyqS84cMUhqACW5tUwCY0749DEyuMMDaIhW2NfIvGq0Xj8t1xNP5OJcsKja58uxqvGIwPx8H4ZnzbNNaFTTV9q1evGpQPp56ShCG9csqU/TP3FpNXiUkEFirLDWpjfTSV+80cBtioQYzFYN13pN0gRel8EyJPbrlpXmNbA1UITT4YaFugrqwP+bvhcHgE9AsfC0lL0rap+blKkmIvyrCjrRuwWj2h+HorRteTI0mj64mQtmhZSLQ09uBbluXlxfDicijOxUgsND2quSaBRgpfoEbejCapDRYLbsUfrPtxcW/uzbRSnhUK5YUkr0pDkjvPOYnWkxQPKlQCRbRTr4RrjeHcTYqV8QFNQRdibGRjlQleoNb2IYIrHGFQpszuTY0GS15GTNx4OSz4LMnfYPMiVM62JWu8Gd9OE+UCC+qx0gaqdSUa9URRmI3t48KyZpYpbY3K+PzenIuzs9uVD1SfneUirc4flCSxHVl8hERmqZw1MUQRLPEyCYh9hmcBqePQakHFqugdvKPek5kYr6i2brVjrOM+cjlr6yNFV/EqKFMyS9qQqNBIHV1XVGgMaZ+c2KdkD7GVykZFvBCNs1wK2BeRtCEqKuFXJlTk1RadVMg88eVOCZ8sig/GIbjpeMzEU9d6flXGj1S0MQ/He67beYC7cnI+JW9Kzr7UYRFLXT8DbjP4k63r1qjAc8ruivl8MChVqNr5RWHrATG19ekf+FLzXa7R7Ens59a9QbWfUp9dqPWu7P6XSbevS4Eew6DRqMzeoJPqyR1goyCDTenId1Pus6Iyy4DrBjOs13P09M3pruPPP1tyK8jvZhks0Sm+vbHwSOV5Lfsq/guD/rjp59o/xeEQ/C8m9B/RsPuXqFveQQY/aLU3qHc8YlWEklxElE4/Jb3n09RibLhPDdBdtmEaFQU1YY/86OnjErkt2ddfb6eQwbyf2+v4LsWRM8rNdsv8btZ13T9gC9s2
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Upload media for agent'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/media/agents/{agentId}/upload-media'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Upload images or videos for a specific agent
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Upload media for agent"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/media/{agentId}/upload-media"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Upload image or video media for an agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'multipart/form-data': {
-        schema: {
-          type: 'object',
-          properties: {
-            file: {
-              type: 'string',
-              format: 'binary',
-              description: 'Media file to upload (image or video)',
-            },
-          },
-          required: ['file'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Media file to upload"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Media uploaded successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  url: {
-                    type: 'string',
-                    description: 'URL path to access the uploaded media',
-                    example: '/media/uploads/agents/12345678-1234-1234-1234-123456789abc/image.jpg',
-                  },
-                  type: {
-                    type: 'string',
-                    enum: ['image', 'video'],
-                    description: 'Type of media uploaded',
-                  },
-                  filename: {
-                    type: 'string',
-                    description: 'Generated filename on server',
-                  },
-                  originalName: {
-                    type: 'string',
-                    description: 'Original filename from upload',
-                  },
-                  size: {
-                    type: 'integer',
-                    description: 'File size in bytes',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request - bad agent ID or unsupported file type',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Server error during upload processing',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Media uploaded successfully","content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"url":{"type":"string","description":"URL of the uploaded media"},"type":{"type":"string","enum":["image","video"]},"mimeType":{"type":"string"},"size":{"type":"integer"}}}}}},"400":{"description":"Invalid request or file type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"413":{"description":"File too large","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"415":{"description":"Unsupported media type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error uploading media","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
 
-## Supported File Types
 
-### Images
-
-- JPEG (`image/jpeg`)
-- PNG (`image/png`)
-- GIF (`image/gif`)
-- WebP (`image/webp`)
-- SVG (`image/svg+xml`)
-- BMP (`image/bmp`)
-
-### Videos
-
-- MP4 (`video/mp4`)
-- WebM (`video/webm`)
-- MOV (`video/mov`)
-- AVI (`video/avi`)
-- MKV (`video/mkv`)
-- QuickTime (`video/quicktime`)
-
-## Notes
-
-- Uploaded files are stored in agent-specific directories
-- The returned URL is relative and should be combined with the server base URL
-- Files are automatically cleaned up if upload fails
-- Maximum file size limits may apply based on server configuration
+      

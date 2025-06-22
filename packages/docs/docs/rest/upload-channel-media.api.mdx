@@ -1,209 +1,71 @@
 ---
 id: upload-channel-media
-title: 'Upload media to channel'
-description: 'Upload media files to a specific channel'
-sidebar_label: 'Upload media to channel'
+title: "Upload media to channel"
+description: "Upload media file to a specific channel"
+sidebar_label: "Upload media to channel"
 hide_title: true
 hide_table_of_contents: true
-api: eJytVcFu2zAM/RWBZzfOtt5+SFcEwwwMaLF2OGw9MDJjq5UlTaLTZob/faDspm3adoe4kmXx8T3ykUcwNgmqe8hmJNzgfQk1JZ1MYOMdVPCdcw5NjdpCy84FOIRSN8o6BfvatdYJGxmSIYV/NlbY0FrJGCtMXGDwmTPWBL5dLfX1N/h3vq9wLFAFL+xF8xSjs2aid2+yPhqwmpY70pWcEmOLYfvARqXEpGLEziFfnDM1fAYsk6xvsEB+Is3rReK/W+M9jvMosGNpwykd5SVpscKSoi3bU3aZs56TFq/BPjmssBWJVVm6YMi1IUv1eblc4vcKf9VrqHnPLsSOvcDMhON9gdYfhklvlUnd2tnfBN+uYXW1ecO0utpAHUyvJFOFYBcSvDzZr18sF8sLcrEluIAV7Bw/2a1jIF9DNuRIN6sNUKMydo46PoT0uLjzd/6mtVmjgs1Qc7aN5xokwJahz1zDwUoLBFOy7gip9976Jojek2PY3aI9KkjdQfWVTzKQc+EwKTSJSaxvizvfkadGl5Mm64UTGb2b+Z+1ZZA2hb7RiN/X1zczckeFN1igtuGuyFnGJxuRmWzk9QLo4+tb1bZd58071nrfIi4A0WGm0AAAAABJRUErkJggg==
-sidebar_class_name: 'post api-method'
+api: eJztV0tv2zgQ/isET7uBErnb9qJbtvUCBhq0aNxTksOYHEvTUqRKUk5cQ/99MaT8SOy2WWDRU30xKc7jmwdnhhsZoQ6yupEtagJ5V0iNQXnqIjkrK/mpMw60SKdiSQZFdAJE6FDRkpRQDViLRhbSdeiBuWZaVrJPfG/y6VWSXcgOPLQY0bPGjbTQoqzkKGKmZSGJdXYQG1lIj1978qhlFX2PhQyqwRZktZFx3TFjiJ5sLQu5dL6FyFp70nJ4asPsrXBLERvcoR3usngM8W+n1yzzqTblbEQb+ajtTaQOfCxZ0bmGmFAc4XGLz6gi2+nZGZEw8Cl77YeoF2TBr+VT2FePfJ4dysZBjTayk3/miO/7IYkYRZKt07ecAEP6sXdC52zIFvw1mfDfKXhZBmoReqUwhGVvDJty4D7oOkMqpUb5OTDv831HzzBzKGTvzSm6J6n88d3W/h3q0ejiIAmfo+/ZIRiKkeCYEG3f8sWjFmqUhVyRRifvhkK21OL8JNdQyEDfDg/IRqzR7+L26lSoZnYFhrQYU/7/C88Y9APChXMGwbJ9D9B2nPlLMAGHQqL3zv9cpnL6pL8emzRlYSLRsscwBPbiM9m25KlSRCATfs75NhGiFskMQTYHmg+z5yNFtjarGL+9evHyOBr/5BvthAGfIv87GL8oGK+Pg/HJhr7rnI/bYiCS5t9B+UVBeX2qXmUM+/bUjvPD75j8gpgkYLFxPMV1LnWLNJBVsoSOyhSLcmyXodzsGudQjiNKIQP61XbIS61ZNjF2VVkap8A0LsTq5WQyOUL7jo+FxhUa17U8omRJaV5j7MngLWJD30C8vxaXH2ZHki4/zIR2qmchyVyxdF7sWFYvLiYXLybiXFyKpcEHWhgUYLUICgzw5nI2DklLHlnvnf9ycWtv7byhwAoFBaExUG1R83S2QNEH1OKeYiNAJDvNWvjeWk7grJhsiGAVXoip1Z0jG4MAY9x9Aqc8QiRbF7e2BQs1LxMmbvEeFJ9l+VtsQcTGu75mjR+n1/NMuQSFI1bcQnW+BkvfMAlzaQRaOtbMMrVrgWyobu25ODu7XoeI7dlZJfLq/J40it1wHxIktCvyzqYQJbDIyyzgMkFjAWklDC1RrdXo4D31gczMeIWt8+s9Y5v2ics71x4pukr3gWzNLHmDogGrTXLdNkWzE8eUHCH2mlxSxAvRecf1gH2RSDtE1YiwtrHBQDt0moB5UvvOqZ4tSl3jKbj5dMrEc98Hbi3TB1R9ysPpgev2HuD5D33IyZuTc6x3oFK9G99Kuwx+49q2txR51t5fsVCVZU2x6RcXyrUlMrUL+V/yzeYL3YI9kPjogRfdwYPu0Y3a7Ivvf3gTjsUp4kMsOwNkD4b1XFRuJHQkC7kr8WPUZCGrw4fhWFvuCsnlg/k2mwUE/OTNMPDnrz36taxu7gq5Ak98iVP90RR4rceK/gOz/vg4PgH/FMcvxu/YMn4Ey3FYgel5Jwv5BdePXrYDz/UNgkafUOXzN1n3+TyPHFv+U+/NodgyXSqFXTwgP2qFXC13JfzD++u5LORifOa2qU+lV0qSW+yX1c3dMAz/AmCLkqE=
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Upload media to channel'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/media/channels/{channelId}/upload-media'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Upload media files to a specific channel for sharing and communication
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Upload media to channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/media/channels/{channelId}/upload"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Upload media file to a specific channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'channelId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the channel',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the channel"}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'multipart/form-data': {
-        schema: {
-          type: 'object',
-          properties: {
-            file: {
-              type: 'string',
-              format: 'binary',
-              description: 'Media file to upload',
-            },
-          },
-          required: ['file'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Media file to upload"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent uploading the media"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Media uploaded successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  url: {
-                    type: 'string',
-                    description: 'URL path to access the uploaded media',
-                    example:
-                      '/media/uploads/channels/12345678-1234-1234-1234-123456789abc/document.pdf',
-                  },
-                  type: {
-                    type: 'string',
-                    description: 'MIME type of the uploaded file',
-                    example: 'image/jpeg',
-                  },
-                  filename: {
-                    type: 'string',
-                    description: 'Generated filename on server',
-                  },
-                  originalName: {
-                    type: 'string',
-                    description: 'Original filename from upload',
-                  },
-                  size: {
-                    type: 'integer',
-                    description: 'File size in bytes',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request - bad channel ID or unsupported file type',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing the issue',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '429': {
-      description: 'Rate limit exceeded',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                example: 'Too many requests, please try again later.',
-              },
-            },
-            title: 'Rate Limit Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Server error during upload processing',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                example: 'Failed to process media upload',
-              },
-            },
-            title: 'Server Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Media uploaded successfully","content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"url":{"type":"string","description":"URL of the uploaded media"},"channelId":{"type":"string","format":"uuid"},"agentId":{"type":"string","format":"uuid"},"type":{"type":"string","enum":["image","video"]},"mimeType":{"type":"string"},"size":{"type":"integer"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"413":{"description":"File too large","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"415":{"description":"Unsupported media type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error uploading media","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
 
-## Supported File Types
 
-### Images
-
-- JPEG (`image/jpeg`)
-- PNG (`image/png`)
-- GIF (`image/gif`)
-- WebP (`image/webp`)
-
-### Videos
-
-- MP4 (`video/mp4`)
-- WebM (`video/webm`)
-
-### Audio
-
-- MP3 (`audio/mpeg`)
-- WAV (`audio/wav`)
-- OGG (`audio/ogg`)
-
-### Documents
-
-- PDF (`application/pdf`)
-- Plain Text (`text/plain`)
-
-## Rate Limiting
-
-This endpoint is rate limited to **100 requests per 15 minutes** per IP address to prevent abuse.
-
-## Notes
-
-- Uploaded files are stored in channel-specific directories
-- The returned URL is relative and should be combined with the server base URL
-- Files are automatically cleaned up if upload fails or file type validation fails
-- Maximum file size limits may apply based on server configuration
+      

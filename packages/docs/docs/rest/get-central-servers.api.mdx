@@ -1,0 +1,63 @@
+---
+id: get-central-servers
+title: "Get central servers"
+description: "Get all servers from central database"
+sidebar_label: "Get central servers"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9Vk1v2zgQ/SuDOQZK7O7XQTej9RYBtrvFJj0lOUzIkcSWHypJ2XEN//fFUPJHnADNaXMxGc28eRw+PnKLmdqE9R06Tola41t8qFBzUtH02QSPNX7kDGQtJI4rjgmaGBwo9jmSBU2ZHikxVhh6jiQ51xprbDm/H2NuxjysMHLqg0+csN7iL/O5/DyvNcVC5BwNr1hDGpTilJrB2g1WqILP7LNkUt9bo0rF2dck6VtMqmNHMsqbnrHG8PiVVcYK+yj8shmLT6gngY8hWCaPuwplTSdfKEaS0iazSz+HNvokJuUoPa2wCdFRxhqHwWg8b/EXb74PDEazz6YxHKEJEXLHU9OFlSfHryE/R/qbHENoznKfxfwM4sNx9hLJcaaz/hz68BxmobWRIe2VA4fcXYUqMmXWi3wCZHzmluNpt4zPf/z2WrueIBvHKZPrYd2xP6EJa0ow4eNuV2E22fJBXLgb/yr8/TUFLmMMca8/49u97P8P7VXIT+R6IduQTbyrkIXOzzFV0G8Qx7i2Elu2Uo78m9P24UVOmYxNb5GSBLKGsgwwftxY+ThuwX5rSgmc9sVx7sLkIbJSyh3WOKPezA42NZsM6PK4PftRfbfFIVqsscu5r2czGxTZLqRc/zqfz1+Q/Es+g+YV29A79vkg94cKhXJZ556oNT8I/rmBxefrl5L/fA06qEFAyirLMT6krN5dza/ezeESFtBYfjKPloG8hqTIkkwW10CtMGgiOV6H+O3q3t/7284kKQgmgeZkWs8acoBHhiGxhrXJHRCUddoNxMF7Ue5Y2PiUySu+gqXXfTA+J7HzsC7kyjkxvq3uvSNfWlsVTnIYIyn5NuLvuSXIXQxDKxX/Xd7cjpENKZ648p5qiC1584MLWCgntAlSWTB1cGR8qu/9JVxc3GxSZndxUcM4ulwbzXC4UVKhxH5lYvBliwpZluEIsCjUBKCMwJqG1UZNDT5Gn2COiZ/Yhbg5JroyL1kxBPei0Ke9AiVlnDB05LUtrVMdec82jU2cJDlRHLQJpZAMoI9BbEB6UUJ7ZtVB2vjccTIHdtqQ5PxpLMPQ20B6XJF8eEHudrmU4Ns4pMwalk+shqLD5Unrjh3ACoXeKN5RnJPNkSo2N945R9G/D84N3mS5Do9HLNWzWWtyNzxeqeBmLNEhjb/FgPuQsiN/gihviv0T4niCz66pg9+++QkyuVHmpzzrLZlynRei28lG7pB6g9XJe6fCcyt5qFDcQoK3W0H+Eu1uJ//+PnDcYH33UOGKopEzK7NdhR2T5li85xtvxAuU4l7sa0V2KM+I8ytD7OVgdR+Xt7jb/QfDUVdR
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get central servers"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/messaging/central-servers"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get all servers from central database
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Servers retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the server"},"name":{"type":"string","description":"Name of the server"},"description":{"type":"string","description":"Description of the server"},"metadata":{"type":"object","description":"Additional server metadata"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the server was created"}},"title":"Server"}}}}}}},"500":{"description":"Error retrieving servers","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

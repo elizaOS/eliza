@@ -1,0 +1,71 @@
+---
+id: create-central-channel
+title: "Create central channel"
+description: "Create a channel in the central database"
+sidebar_label: "Create central channel"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tv2zgQ/ivEHAM5dpom3dUtm3oBA9tt0KSnJIcxObLYUqRCUk5cQ/+9GEqyHbuPLAr0tL6YpGY+fpwnuYaIiwD5LVQUAi60XcB9BoqC9LqO2lnI4dITRhIoZInWkhHailiSkGSjRyMURpxjIMjA1eSR1WYKcpBJ8bITu+yUIQNPDw2F+JdTK8jXaao9KcijbygD6WwkG/kT1rXRMgGOPwUms4YgS6qQR3FVE+Tg5p9Ixh63A7oFixXzCeSX5GeKD1V7Zhc1BVZOAluQED2fvd1ROfiYQeF8hRFyaBqtWPiZob4B1i0cApFtKqYZ6YmZL52WTFdVkMHCu6aG+zb9+FShdjZ0rF9NTvhvzz+9Hwb3dGZXIjRSUghFY8wKfsGuzw3Xo+4Izp0zhDbZA+MLIHqiPxfUL/DCfrR+tPqhIaEV2agLTV4Uznfx2m/bZt/x/j7Uv1iRcMW+8ssjZB9w9naA6zBELHXY+G1OxtlFENH9Yujsb3uzqtM5ds7ww8A9KAA9wd3VNoOKIn7P4c8BLpTSPNwJ0o0yx3jU0dB2I2jbIfpfTyaHAT+zSzRaib6Q/I7YzoCesKqZZYEmUJsBee/8C4LdqReE2pTBRJJNluVi/GK1QTz5NaI24eeab5MgKZGOIbTtIje5tt31SdqiXzv7ljd66lx0tF1sgux/p/wWp3R5WDrut7VLyVBjLCGHMdZ6vGnr475bj3r/hE135Pa/hsYbyKGMsc7HY+MkmtKFmJ9OJpMDmv/wZ6FoScbVFdnYlzNo7zNg937Ydvjp4KGh5W7Pvq2jcFrgH2fF+evR2ZuTN6PXZ+evRvPTQo5eyT/PT4vzcyzw/IDGBqg3aqqIbQZstmTrwVhGf0Hx/lpcXM0OS9PVTCgnGz5GsnRqFxuV5cnx5PhkIkbiQhSGnvTckECrRJBokCcXM4ELtkHhsaJH5z8f39k7e8OVncF14LqpF5aUiE7MSTSBlHjUsRQokqXNSvjGWs6ebmNtQ0Qr6VhMraqdtjEINMY9JnJDqmV3tkKbvJslTtpG8ihTGib8gVsQsfSuWfCOH6bXN51kgZJ6rjRQdX6BVn+hBOZSqyoc78yYylWobcjv7EgcHV2vQqTq6CgX3Wj0qBWJzQ0wJEpkl9o7m4IkkSUedgAXiRoDpJEwuiC5kr2Bt9I7mJ3iO6qcX20VqzRPWt656mCjd0MSsEo3IVGiVSaZbsiIzoh9UvQUG6Vd2ogHovaOSxHbIonWRLIUYWVjSUFv2CmNrPO3NiSa2jhU3Yn4wwG5m+mUhW98E/jSNn0i2aQ4nO6YbmsBbvnkQxe8XXD2pRZl3MmyTQRfuqpqrI58BdwmecjH44WOZTM/lq4aE0u70P2nlsy1pEK7g9g/A+Tz2+Z+Qq23Zf+/PBx2UnhcG9TpgpHorvt6dgtYa8h2HioZHNS0+wy4bLH0es3QH71pW15+aMivIL+9z2CJXnPq8qzNoCRU5FMR/Ewrpt0dYMTXJjY3moa5HfSwNhs0LqSkOv5Q9n6nTl+9v76BDOb9A6hKzQg8PvIjBh8hh/SU6vzNLyReW4NBu2hSB4IOk39fAVm4xRA=
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Create central channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/central-channels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Create a channel in the central database
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name","serverId"],"properties":{"name":{"type":"string"},"serverId":{"type":"string","format":"uuid"},"description":{"type":"string"},"type":{"type":"string","enum":["text","voice","dm","group"]}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"201":{"description":"Central channel created successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"channel":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error creating channel","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

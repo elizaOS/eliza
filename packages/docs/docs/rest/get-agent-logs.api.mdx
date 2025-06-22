@@ -1,159 +1,71 @@
 ---
 id: get-agent-logs
-title: 'Get agent logs'
-description: 'Retrieves logs for a specific agent'
-sidebar_label: 'Get agent logs'
+title: "Get agent logs"
+description: "Retrieve logs for a specific agent"
+sidebar_label: "Get agent logs"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV8FuGzcQ/RViTgmw0aqt0cPehNoNBKRt4Lin2IcRd3aXCZdkSK5sVdh/L4a7ktaRZbkJkFN9MWwN33ucecMZbSFiHaD4CNrWATLAmkwMcJdBSUF65aKyBgq4pugVrSkIDhSV9QJFcCRVpaRIpyAD68gjn1iWUEBNccEfvBugHXpsKZJnvi0YbAmKgXBZQgaKeRzGBjLw9KVTnkooou8ogyAbahGKLcSN42MhemVqyKCyvsUIBXSdKqH/WvfyUthKxIZGjX22Z/bWtgfiLx35DXwH0+9KR/JDelYbwehieTklTIAvpDsHn6In2NJ2qQLPgysTqSZ/jP4HPqi2a4Xp2hV5TlkiilZ4ip03UypbVYG+g+udrcWAkWzksFYmmQb6O658cNYECgz183zOvx6fT54So1+lNZHrWmwBndNKJqT8U+DQ7bEqu/pEksU7z2aNaiAKnZQUwiRwZa0mNJABPWDrNA1W5NtgnCKi98gJUJHacJ5J05r0JGzIODyVpCG0zyAqTvzxkb0jlYm/Xhxh3KiWQsTW7VpA21qQiX7DoG2on3L5sYyWQsCa3bZv1rPdcboNPWmMVA7tKF6pSox1W2l6vef4Ex/d+IQ6jnohbspi5Cryna6GJAw/GVw8ZbOlWaNWO8Dl5Q82W4U6sNvIe+vPY0pbviBhVwwmUiw7YCzsC49NfFBSRKXD+ZOXKZBKka4hlBlskpq9nxYlUcCuHBenut5YfjQ6U/5fjR9TjSQsNnac52mMxwYKyNGpfNgW8u34LvT5+CoH8uvdnO+8hgKaGF2R59pK1I0NsfhlPp8/8dxI1KLkd8+6lgs+IKXJwHLTHXcitfoHxV8fxOL98ghp8X4pSis7Bkk3TLNmf2T902w+m79B7RoUb8RCVJoe1EqTQFOKIFHzuyEWy7H9K15d7q3/PLs1t+amUYFZhQqipKBqQyXPyhWJLlAp7lVsBIp0Wb0RvjNGmXpkVyZENJJm4sqUzioTg0Ct7X1SKD1hVKbObk2LhkdjnSVNPE49Sv5swN9pCyI23nY1M15ffbgZIiuUNIMMuAxDRiY3HpsHZWqecazvc/ObbdvOqMhD7VC8UOR5rWLTrWbStjlxtA3D7/S8Ohtii2aC+JbimL7RFo9KtD008Au3y9HckR5i7jQq3koGhdvRlR8BnTpssRkUh/UyabjLgN3HkdvtCgP97XXf87+HPYYNW6rAxS/Hrn9G9omV74TSz7SZbp1r1B0HpdXqmznHnfIZwjHiG+nOLobPcu+20m8kP70pPsu6X1APtHf8h1fM+x9r/Op6/CryWnz9XeKEiN1eaDZTCTtxO0P2d30GDWFJPikaPl1ISW4q/Wiy8VX2L/Lbqxvo+38BjTa5bw==
-sidebar_class_name: 'get api-method'
+api: eJztV0tz2zYQ/isYnBIPY8lt2gNvnkbNaCZpM4l7in1YAUsSCR4MANpWNfzvnQVASbbkWj00p/gi0tzHh91vF7sbHqENvP7MtWsDv6m4xCC86qNyltf8I0av8BYZfWaN8wxY6FGoRgkGLdrIK+569EAKS8lr3mK8pA/vyGDFe/BgMKInLxtuwSCveVJdSl5xRW56iB2vuMdvg/IoeR39gBUPokMDvN7wuO5JLUSvbMsr3jhvIPKaD4OSfHwMe/mGuYbFDgvGsdp6DsoKnPx+G9Cv+RFHykZs0fPHhq+UwRDB9OyFCS9ZdKzFWILjneHjnqfBRqX/D0/Z8L4rjbf4vKtt9NAOhnIePaRYSFwNbVJvHK/4HXhLUt47wtVABJ2p0cCgYwLduIcAlFHxP521mLqYzytu4F4ZgnQxn8/H8YaYEHpnAwbS/mk+p5+H8Ukcy/HwhaSShUEIDKEZtCYAwtlI6a83HPpeK5FYOvsSyMLmEJ9bfUFBx+g9cTqq7L9Y3RNcOacRUpDuwfQaM2OJhxBPsJiKbScF3gPhVRFNOEE7ZXsnZgezOsKgd65lWXSseFSUp0OVbSEpG399/S8sLPWkXcvQRr8moya0x+h1CMNgCNAi6UyV/2xRP13THjVElLm22QvVsJLdlcaXWx9/wIMTP4GOpE60m6IYKdd0pkUOwkgsGzLHHrF8LH8Vf32MwEt7C1pN3pZvvjNfG9CBCJur/FmbwskTorkgYyzJEj1K1k9U2yOJxAhKh+c13yRBlCwdg1FfIg7Rxxz6KWPJBZ/S8fqpfmJdZI0brPyRje+VjV+OFUfGUBq7sm1q9D9y8n1ykoDFzpVpLg1xseM1n0GvZqlfhdmmNPJxVlIT0N9OU97gNa95F2Nfz2baCdCdC7H+eT6fH7kfBGgm6aJyvaEizJY4zQFp0KAzTiC1+hvYn5/Y5YflgaXLD0smnRjISDphGli3KrcX5/Pzizl7xS5Zo/FerTQysJIFAZp6PLtclm7c0Mx65/zX82t7ba86FcghU4FJDKq1KGkgWyEbAkp2p2LHgKVz6jXzg7VE2exY2RDBCjxnCyt7p2wMDLR2dwmc8AhR2ba6tgYstPSYMNEl4kHQt2x/whZY7LwbWvL4cfHpKks2ILBgxQmq8y1Y9TcmYy7dcI0jz2RTOgPKhvravmJnZ5/WIaI5O6tZfnp1pySy7VwfEiS0t8o7m1KUwCI9ZgOpewYyUOYy1aBYixLgnfSezaz4Ho3z652iSe9JyztnDhy9TyWgbEsq+QVZB1bqFDrRgbWoQw5ioWSBOEjlkiN6YL131AIoFkm0RxQdC2sbOwxqi04qIJ3flUY29NqBzCeiDwfgrhYLEr7yQ6A5YnGPYkg8XOyFbhcBXnGCl8mbyVlaHIjU4spwvWXwb86YwapIs+KuxEI9m7UqdsPqXDgzQ5J2If+mAaV3IRqwexbfYixML8X7oJA2uzZ72gJYOlDE+zjrNShLHSoB3JTW8ZlDr3iZzMhhvdsAp82TWgRJbjYrCPiX1+NI/87bBHUVqQKVqSytueJfcb230d2CHghG2vaekJ12slNkp6XqJNmy/+xkb+jFKxI+Dv7JkL/4WNbgl+zxHvtEqKc1wq73IUzYpkiPN2PFOwSJPiHKXy+FwH4f+sG9SkfZ3gdvF1d8HP8BFn+Rxg==
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Get agent logs'}></Heading>
-
-<MethodEndpoint
-  method={'get'}
-  path={'/api/agents/{agentId}/logs'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Retrieves logs for a specific agent
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get agent logs"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/agents/{agentId}/logs"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieve logs for a specific agent
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-    {
-      name: 'roomId',
-      in: 'query',
-      schema: { type: 'string', format: 'uuid' },
-      description: 'Filter logs by room ID',
-    },
-    { name: 'type', in: 'query', schema: { type: 'string' }, description: 'Filter logs by type' },
-    {
-      name: 'count',
-      in: 'query',
-      schema: { type: 'integer' },
-      description: 'Maximum number of logs to return',
-    },
-    {
-      name: 'offset',
-      in: 'query',
-      schema: { type: 'integer' },
-      description: 'Log offset for pagination',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"since","in":"query","schema":{"type":"integer","description":"Timestamp (ms) to get logs from"}},{"name":"until","in":"query","schema":{"type":"integer","description":"Timestamp (ms) to get logs until"}},{"name":"level","in":"query","schema":{"type":"string","enum":["trace","debug","info","warn","error","fatal"],"default":"info"}},{"name":"limit","in":"query","schema":{"type":"integer","default":100,"maximum":1000}}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent logs',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    level: { type: 'number', description: 'Log level' },
-                    time: {
-                      type: 'number',
-                      format: 'int64',
-                      description: 'Timestamp of the log entry',
-                    },
-                    msg: { type: 'string', description: 'Log message' },
-                    agentId: {
-                      type: 'string',
-                      format: 'uuid',
-                      description: 'ID of the related agent (if applicable)',
-                    },
-                    agentName: {
-                      type: 'string',
-                      description: 'Name of the related agent (if applicable)',
-                    },
-                  },
-                  title: 'LogEntry',
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent logs retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"logs":{"type":"array","items":{"type":"object","properties":{"level":{"type":"number","description":"Log level"},"time":{"type":"number","format":"int64","description":"Timestamp of the log entry"},"msg":{"type":"string","description":"Log message"},"agentId":{"type":"string","format":"uuid","description":"ID of the related agent (if applicable)"},"agentName":{"type":"string","description":"Name of the related agent (if applicable)"}},"title":"LogEntry"}},"count":{"type":"integer"}}}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving logs","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

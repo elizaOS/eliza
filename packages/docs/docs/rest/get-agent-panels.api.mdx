@@ -1,0 +1,71 @@
+---
+id: get-agent-panels
+title: "Get agent panels"
+description: "Get public UI panels available for this agent from its plugins"
+sidebar_label: "Get agent panels"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVk1vGzkM/SsCT7vBNHZ3u5e5GY23MNBig3yckhxoiZ5Rq5FUSePENfzfF5RmYjduNwEWyKm5WBORT4+PEsktJGwi1DeADdkU4a4CRVEG7ZN2Fmr4QEn4fmm0FNcL4dGSiQLXqA0uDYmVCyK1OorsL1bBdUKnKLzpG20jVOA8BWSwhYIaGkoztjzPQFCBx4AdJQrMYgsWO4K6sFkoqEAzCY+phQoCfe11IAV1Cj1VEGVLHUK9hbTx7BZT0LaBClYudJighr7XCnZPg1qcCbcSqaVCG3Z3DB69s5Ei4/0xnfLP916Z+ChBoBQ0rUmJ2EtJMa56YzZQgXQ2MWa9BfTeaJmDn3yOjLE95uyWn0kmViKwVEkXBgPqgeHSOUNooQJ6wM4bKjJwcJgOETEEZCY6URefP6lIfqzh98Gf6egNbgRbj+JlKVjdnJ9nIa4vPgq2FMkJzNEdoox/Fbz7kfgLu0aj1XDPFmevrPQKTWSpKQQXnseUTr1A0zmDiWy7q6CjGLF5sdtoni93Qm3iC5KYDUmJHIbQtrwT3izSJ5042nIEjOl497O3YF0SK9db9Ssbr5WNv370OAqHoSRp2wxF6ldWXicrmVhq3dDgYCyIMEGvJ6WzTrZDT9tNHpMTKazHxtcHAzW0Kfl6MjFOomldTPWf0+n0iOJH3haK1mSc7/ghFqTcx5hwjnKkafQ3FP9citn54ghpdr4QysmeQXKMuaE/uqzfnk5P307FGzETK0MPmls+WiWixNL/Z4vHzo8d3bvw5fTW3torHgkYXEehKOrGkuKyvyTRR1LiXqdWoMhxmo0IvbV8bcvB2saEVtKpmFvlnbYpCjTG3WdyMhAmbZvq1nZoseFl5qRtooCS9wr+yI3bTHB9wydezC+viuUKJQ1caaTqQoNWf6MM5nJ3Wjk+mTGV61DbWN/aN+Lk5HITE3UnJ7Uoqzf3WpF4HHZipkR2rYOzOUWZLPGyAOQKGhmg1FKjVyQ3chB4b32AWRw/UefCZu/Y5e/sFZzrjg76lB+Btg27lA8SLVplsnSyRcv3sYg4XMmBYq+0ywfxQvjguAiwFtnUE8lWxI1NLUX9yE5pZJ+/tSHRe+NQlYh444jc1XzOxlehj4mUmD+Q7PM9nB9It1cAKmB65fKWyzkUOZRpP8zsL/1713W91Ynnof0Ti/Vk0ujU9stT6boJsbWL5Rf4OXsXU4f2AJHnYDwYAJ8+pe2+1P7/mXmoUIke0sQb1JYrWKa/HUrLDaDXUI1jewX1fmQeCN5VwCWEbbfbJUa6Dma3439/7SlsoL65q2CNQTOpXIOUjrxWQyn/jwh/uxhG8d/F01n6J+zH2dRyJtZoev6CCr7Q5mDe393tKmgJFYXMqOzOpCSfDvyOWhkXvscS/GF+BbvdvwRjdnk=
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get agent panels"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/agents/{agentId}/panels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get public UI panels available for this agent from its plugins
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Agent panels retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string","description":"Display name of the panel"},"path":{"type":"string","description":"URL path to access the panel"}}}}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving panels","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

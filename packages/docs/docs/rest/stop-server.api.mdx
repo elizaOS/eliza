@@ -1,48 +1,63 @@
 ---
 id: stop-server
-title: 'Stop the server'
-description: 'Initiates server shutdown'
-sidebar_label: 'Stop the server'
+title: "Stop the server"
+description: "Initiates server shutdown"
+sidebar_label: "Stop the server"
 hide_title: true
 hide_table_of_contents: true
-api: eJx9U8tu2zAQ/BViz4qktjfdjMIoDBRoUKenxIc1tZaYUCRLruy4gv69WMpJnQSoLnxoOTucGU7A2CVo7iGdE9MAuwJaSjqawMY7aGDjDBtkSipRPFJUqR+59ScHBfhAEaVu00IDiX3Y5hooIFIK3iVK0Ezwua5leAu8lCqTMiIb16kLrPaOybEcwRCs0blH9Zjk3ARJ9zSgzPgcCBrw+0fSDAWEKIzYLF0HSgk7uipMHI3roAB6xiFY+sdCuAfjurIsYV6+Agbi3svNOsroyD00UGEwldRDAYskot8EY7TQQM8cmqqyXqPtfeLmS13X8F7U7/JbtXQk68NAji/iwrwrwLiDz6QNZ4pra/6g+rFVq9vNB6TV7Ua1Xo8CkmVSBx/V65Hjp7Iu6xu0oUd1o1bqYOnZ7C0pdK1KGi3KYrVR2AmNQ8SBTj4+lQ/uwd31JklXMamlZDpHrWKv9qTGRK06Ge4VqnxZe1ZxdE5sXLoblxidplKtXRu8cZwUWutPmaGOhOJ58eAGdNjJNHMyjimiznnI+C/ckuI++rGTjj/X27ul8oCaSihAbFgUubrxJUuoc5YcDm/k/OqHYXSGz1BcmZeaquoM9+O+1H6oSKp9WkaQVASfeEB3hbhlHxT39GLiO4+mf4H+72u6hJTpmatg0TiYL8SmS/buAYOR2En6dgVIwGR3mvaY6Fe08yzbv0eKZ2judwUcMRpxWFZzAT1hSzHH9YnOEh+tKUi4j2hH6f7hwUkiXx/Ct/UdzPNfZu10XA==
-sidebar_class_name: 'get api-method'
+api: eJx9VMGO4zYM/RWBx4EnybY334IiBQJ0sYMmPc3MgZEZW7sypYpyMtkg/15Q9iSZHaC5mIzIxyeKfGfI2ArUzyAnydTDawUNiU0uZhcYalizyw4ziRFKB0pGuiE34chQQYiUUOPWDdQgOcRNiYEKEkkMLCRQn+G3xUI/H4HHUOOkIGbHrZlgbeBMnDUFY/TOlhrz76J5ZxDbUY9q5VMkqCHsvpPNUEFMyii7sWpPItjSXaDk5LiFCugN++jpxkK5R8ftbDaDy/iroKfcBb1ZDFLgMXdQwxyjm4/NmGseVDB62sczDMlDDV3OsZ7PfbDouyC5/n2xWMCvzf1Lj01DB/Ih9sR5ajJcXitwvA+FvMuF6sq7n2i+bczyaf0Jafm0Nk2wg4KUdpl9SOaacvgyW8y+LMyjWZq9pze382SQGyMWPaqzXBtslcE+YU/HkH7MXviFt50TLajv1JC4lqkxOZgdmUGoMUeXO4Om3NOfTBqY9SXHwo4lI1uamRU3MTjOYtD7cCzkbCLUZ69euEfGVs3CyXGmhLaMRMF/5yYmdykMrVb8e7XZjpF7tDRxpXeqIbXI7icVsGByR2YftPI4Zj06lvqFH83Dw6YM/sNDbUbr8egaMtfRlkKJ+OBS4PJEhSypOQIsCzUFKJbxbk/2ZKcG36LvMMfEr9SHdLol9sUvWSmE/lOhr2WgHbeaMjpkOuTGl9bZDpnJy9jEaSQnikPjQimkhokpWBLRXpTQSGQ7IyfOHYm7smscas6fzpMZog/YjDfSg0/ktquVBm/TIJkas3ojO5Q5XN217tYBqEDpjcM7Due0+WjL5jP2H4b+j9D3A7t8gupuxaSez1uXu2E3s6Gfk0YHGb+gO6yr2yPfIW5yiGUg5F2rPmzS+SY//6t9k6Rkesvz6NExXCZi50kongGju4qDGioWrxWoHujx+bxDoX+Sv1z0738HSieon18rOGByupXqXSroCBtKRV1+0Em33VqKKkkH9IPS+KSTKiBX/Xr6ttnC5fIfYg0PxA==
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Stop the server'}></Heading>
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Stop the server"}
+>
+</Heading>
 
-<MethodEndpoint method={'get'} path={'/api/stop'} context={'endpoint'}></MethodEndpoint>
+<MethodEndpoint
+  method={"post"}
+  path={"/api/server/stop"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Initiates server shutdown
 
-<ParamsDetails parameters={undefined}></ParamsDetails>
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Server is shutting down',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: { message: { type: 'string', example: 'Server stopping...' } },
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Server is shutting down","content":{"application/json":{"schema":{"type":"object","properties":{"message":{"type":"string","example":"Server stopping..."}}}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

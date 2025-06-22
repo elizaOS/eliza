@@ -1,132 +1,71 @@
 ---
 id: remove-agent-from-server
-title: 'Remove agent from server'
-description: 'Removes an agent from a server'
-sidebar_label: 'Remove agent from server'
+title: "Remove agent from server"
+description: "Remove an agent from a server"
+sidebar_label: "Remove agent from server"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'delete api-method'
+api: eJztVktvGzcQ/iuDObXGxqu06WVvQqMABhI0sN2T7cOYHGmZcMkNyZWtCPvfiyFXD0NO3UPhU3QRuZzHN+/ZYqJVxOYGO46RVsat8K5CzVEF0yfjHTZ4yZ1fM5ADWrFLsAy+A4LIYc0BK/Q9BxLaC40Nhkw9F8oPwXdXO6qeAnWcOIi6LTrqGBssQi40VmhEV0+pxQoDfxtMYI1NCgNXGFXLHWGzxbTpM18KgrXCpQ8dJWxwGIzGcaz2ojPY/1HynTDH3rvIUeh/m83k76mvst1QfKAhDkpxjMvB2g1WqLxL7JJwUd9bo7LX6i9RWLenUPz9F1ZJfBfEx8kUxZPUI8J77y2TwzH/Knz3HLQLtyZrNIgHOKbXwFMhP1LXW8ZmSTbyWCGH4MPLMpXX/FxQnpq0EGGQacdqSuH/zLYjH+U5kbHxZc73mZA1ZDPAuJIk8lg8n0wSa4sK3EXj3Wk0Sl2AD1NROZ9g6Qenf8blteLyx3NVUjDkAjZuVYLzMySvE5IMLLVexohmy4nz3EgtNlhTb+r9kKrL3Ij1djdAxjqHKtbbqe+PWE3TpQycIVhssE2pb+raekW29TE1v89msxPsH+UZNK/Z+r6T8pyGnQwBsSSbv8NvzXeCv65g/vniRNL88wVorwYRko2HpQ+wZ1m/PZ+dv53BG5jD0vKjubcyaDVERZbkMr/YT13q+MGHr+e37tZdtyaKQjARNEezcqwhebhnGCJreDCpBYJsp91AGJyTdC6KjYuJnOJzWDjde+NSBLLWP2RwKjAl41bVrevIZXdXGZNxiQMpeSvyd9gipDb4YSUaLxdX14VySYonrLyD6sOKnPnOWZiH1DIsvWgWmdp3ZFxsbt0bODu72sTE3dlZA+X05sFohv2uETMkdmsTvMshymBZjkVAHsVRBJShbM2S1UZNDj5QH8ksjJ+482FzYOzyPXMF77sTRZ92WSks5cLQktM2u0615BzbWJw4peQEcdDGZ0VygD546Q657whpz6xaiBuXWo5mj04bEp4PxjIMvfWki0XycALuerEQ4uswxMQaFo+shpyHiyPXHTyAFQq8krwlOafuRyp3v2m52mfwn77rBmeS7DeHEotNXa9Maof7c+W7moXax/IvSxr2PqaO3JHE3ZZ5WDH3C+aTktoeevGLm+nUoRI/prq3ZJx0sIxyO/WVG6TeYHW0/h66RoXN0XpaMl0+7hbLuwqlhYiQ7faeIv8d7DjK528Dhw02N3cVrikYKeTcg7SJctZTj/8Xy365nPbUX+FHdkwfyYnr12QHuWGFX3lzvFjLRvyKenfOGe/GClsmzSGbXl7nSnGfjvhOhql02P0QeL/4uLhe4Dj+A9daZEU=
+sidebar_class_name: "delete api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Remove agent from server'}></Heading>
-
-<MethodEndpoint
-  method={'delete'}
-  path={'/api/messaging/servers/{serverId}/agents/{agentId}'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Removes an agent from a specific server, stopping the agent from receiving messages from that server
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Remove agent from server"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/messaging/servers/{serverId}/agents/{agentId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Remove an agent from a server
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'serverId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description:
-        'ID of the server (or "00000000-0000-0000-0000-000000000000" for default server)',
-    },
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to remove from the server',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"serverId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent removed from server successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  serverId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the server',
-                  },
-                  agentId: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'ID of the agent that was removed',
-                  },
-                  message: {
-                    type: 'string',
-                    description: 'Success message',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid server ID or agent ID format',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error removing agent from server',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent removed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Server or agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error removing agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

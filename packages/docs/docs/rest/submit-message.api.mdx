@@ -1,0 +1,71 @@
+---
+id: submit-message
+title: "Submit a message"
+description: "Submit a message for agent processing"
+sidebar_label: "Submit a message"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV01v2zgQ/SvEnHYDOXabxN3Vzdt6AQNbtGjSU5LDWBxZbClSJak4ruH/vhhSthUnaVws0NP6YkqaefM4n+QaAi485NdQk/e4UGYBtxlI8oVTTVDWQA6X7bxWQaBIMiRK6wQuyATROFuQ96yWgW3IIevMJOTgo9b7pAIZOPrWkg9/WbmCfB0flSMJeXAtZVBYE8gE/oRNo1URkYZfPFNYgy8qqpFXYdUQ5GDnX6gIHW4CuoZIaib5rbV1XLSeXFwEug+8t8Yxz6DIR1udxh7YB5e2U1pXY4Ac2lZJ2OwwjxHtrB4jGnk9EtxkUFNAieGJTW/ij7fuG2t82snr0Yj/Hoauc79IwQgkhW8LjljZar2C/+D2h27sUHuCc2s1oeGNPL2JQ4guufoY6BwySRWo9i8jqCMcfpjbn4361pJQkkxQpSIXkztUtE3250N0CLX1NUuLrV9/IhcO8WbvhC0jFUYQy8oKzzV3QO7oDH4eP9Xyb6pMBuar9Ob3n0n659EZoU9azElbs/AiWDZQOMJActL3sDKBFuT6RpQJ4/OnwncvgqrJB6wbsazIPDC1RC86Az8uqUPgiZSKl6h3WDtlLr2ggqZ90LuSjFV5/lQhzswdaiVF1wV/ReVlQPdYN0yzRO1pkwE5Z93LmIWV9HK+TxlMRNno2uSII9V6CSwpoNL+Zc13UZCkiNsQyqTk4I/J89ugRBPdu4unopE47IfXjs7/YfklYUmlWFk+JzQ2lkODoYIchtio4e4sMkxzCzLw5O7I8UllDa3TkEMVQpMPh9oWqCvrQ342Go0ekfuHPwtJd6RtU3N3S0iwuc2Ag/ppfyyZbuPSOxbAWYl/XJTj88HFm1dvBucX49eD+VlZDF4Xf47PyvEYSxzvzxtHy2+HwrHyaQTtQ9DrZOxNdnqM1NbVWn1H8eFSTD7OHve2jzMhbdGyO2Kc4szbqdy9Oh2dvhqJgZiIUtO9mmsSaKTwBWrkh8msGxmlw5qW1n09vTE35qpSng0K5YUkrxaGpAhWzOMEk2KpQiVQxIjplXCtMVx7ybAyPqAp6FRMjWysMsEL1NouI7nYw5VZZDemRhNzI4uceFI4LPhbwt9y8yJUzrYLtvhpenmVJEssqONKW6rWLdCo7xTBbBwfpWXLjCltjcr4/MYMxMnJ5coHqk9OcpFWg6WSJHbnXh8pkblTzpqYbJEs8TIBTCI1BogroVVJxaroHLyX7mEmxfdUW7faK9bxOWrF+Xpo6P22hFhlezKp0EgdXVdUaAxpn5zYFVdHsZXKRkO86DfJKNoQFZXwKxMq8mrHTipknb+VJtE22qJMO+IPj8hdTacsfOVaz0fS6T0VbczDac91ew9ABkwvJW9Kzq5RYxEbtcH6QdK/tXXdGhX47LhvFj4fDhcqVO38tLD1kFja+vQfZzp3ohpND/Hw5nNYSuv9uDj6ltQ1Uy7oYaNRxSNyZLnumuA1YKMg613Jsu42xfcX7nUss17P0dNnpzcbfv2tJbeC/Po2gzt0iuuUnzYZVISSXOycX2kFObxNnAdXzITFdRtP24fjbpNtNSZFQU34oextr6V//HB5BRnMu6teHecWOFxyo8Ql5BBviym4fBfkd2vQaBZtHFaQMPn3L22OCY0=
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Submit a message"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/submit"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Submit a message for agent processing
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["agentId","roomId","userId","text"],"properties":{"agentId":{"type":"string","format":"uuid"},"roomId":{"type":"string","format":"uuid"},"userId":{"type":"string","format":"uuid"},"text":{"type":"string"},"metadata":{"type":"object"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Message submitted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"messages":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the message"},"text":{"type":"string","description":"Message text content"},"userId":{"type":"string","format":"uuid","description":"ID of the user who sent the message"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent (if sent by agent)"},"roomId":{"type":"string","format":"uuid","description":"ID of the room the message belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the message was created"},"metadata":{"type":"object","description":"Additional message metadata"}},"title":"Message"}}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing message","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

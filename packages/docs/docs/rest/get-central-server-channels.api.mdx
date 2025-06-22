@@ -1,0 +1,71 @@
+---
+id: get-central-server-channels
+title: "Get central server channels"
+description: "Get all channels for a server from central database"
+sidebar_label: "Get central server channels"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9Vk1v3DYQ/SuDObWG7N20OelmJNvAQNMGsXOKfZglRxITilRIau3NQv+9GEpay160TnuoL6aWM2/efPCRB0xURyw/Y8sxUm1cjXcFao4qmC4Z77DEd5yArAXVkHNsI1Q+AEHksOMAVfAtKHYpkAVNibYUGQv0HQcShCuNJdac3ow219ntzYSFBXYUqOXEQXgc0FHLWOKIfqWxQCMkOkoNFhj4W28CayxT6LnAqBpuCcsDpn2X/VKQJAqsfGgpYYl9bzQOw504x867yFHsf1mv5d/TVGdaEDgFwzvWEHulOMaqt3aPBSrvErskrtR11qic4+pLFP/DKR+//cIqSZpBKpLMGH1CXRhuvbdMDocCpYqLHQqBJLRJ3MaXoY1+uRzPW/zJmW89g9HskqmMtNUHSA3PTRdaY2dOoZ9C/UEtg6+eOx/7+a+5Xb2d4aaJS42JMzRs2XpXR0heoozIpxHY9a1MeeIHKdjOGyUzqlsssA6+706n/mbf5TwWOTwxeKkO0yjB8tehwJYTPevvsY9PAS61NrKk48mDo/MguZpk+TEQDuNfga/Xr08nezx24HyCyvdO/x+jXCA/UNsJy4ps5KFADsGHlzGV1z8wahsBg2ybKysK9sNus3nuayJj48ueb7Mha8hpgHHj5ObWDsue5BA49aPl1PhJBLPepQZLXFFnVkfVXU0Kej7OeFwd5gMzrNSjVk67WSj7YLHEJqWuXK2sV2QbH1P563q9PiH+u2yD5h1b37Xs0nSWUGRR0si5z+St+U7w5zVcfrg6ncoPV6C96gUkZ56V4uiye3Wxvni1hnO4hMryg9laBnIaoiJL8nF5BVQLg0pk/96Hrxe37tbdyKEWcBPlyJjasYbkYcvQR9Zwb1IDBDlPu4fQO2dcPQU2LiZyii9g43TnjUtRbix/n8mpwJSMq4tb15LL5S4yJ+MSB1KyN+LP3CKkJvi+logfN9c3o2VFiieuPFP1oSZnvnMG81mlKi+RBVP7loyL5a07h7Oz631M3J6dlTCuzu+NZjhekzFTYrczwbvcokyWZTkCXGZqApBXYE3Faq+mAj9aLzBHx/fc+rB/dGzzd/YK3rcngd7PUyku4wdDQ07bXLp5HsciTiM5Uey18TmQLKALXqRBapFNO2bVQNy71HA0R3bakPj8ZixD31lPesxINk7I3Ww2YnwT+phYw+aBVZ/ncLMo3WMFRO05xHF4x+GcpI9Ulr7pvXGc4De+bXtnkty4j0cslqtVbVLTby+Ub1cs1j6O/7Madz6mltwCUZ5N87tourkWJ/nZXXLU4v/42pp0S+63VWfJ5Lsm0z9MgvMZqTNYLB56BT4THSywXLy7jmzvChRpEYzDQQJ+CnYY5OdvPYc9lp/vCtxRMHLAszZpE2WtJ+H/h3R/+ji96H6Gv0tjfgY5acmObC9fWOBX3i8fisPdUGDDpDlkDuP2pVLcpYXjyVUnEniU6HebGxyGvwCNV9qr
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get central server channels"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/messaging/central-servers/{serverId}/channels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get all channels for a server from central database
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"serverId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Channels retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}},"404":{"description":"Server not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -1,151 +1,71 @@
 ---
 id: conversation-to-speech
-title: 'Process conversation and return speech'
-description: 'Processes a conversational message and returns synthesized speech'
-sidebar_label: 'Process conversation and return speech'
+title: "Process conversation and return speech"
+description: "Processes a conversational message and returns synthesized speech"
+sidebar_label: "Process conversation and return speech"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVktz2zYQ/iuYPbUztKi26YU3NfZBM53GYysnx4cVsSKRgAADgLIVDv97ZwFKpG219iGTU3ghCez721cPASsPxR34lqisIQOsyAQP9xlI8qVTbVDWQAHXzpbkPXmBorRmT84jX6EWDXmPFQk0UjgKnTNe+IMJNXn1jaQ4ybYtuci0llDAXMrG3h6JWnTYUCDHdvVgsCEokllrCRkotqbFwLSOvnbKkYQiuI4y8GVNDULRQzi0zOaDU6aCDHbWNRiggK5TEobn3q0vhd2JUJOIimC4T8LJh7+sPLDE57pKawKTFj1g22pVRkfyz54F9i9NsdvPVAZ20HEcgiIfb+kxnDP4qX0begzHOLP1ztqGg/ga3421jVhfMguZoMLhLUxXkXJk6zy5fyIGr7F99OREhGvIRtjeqCkxxYfD7ltrfIrO78slv55yrTqprPDBETbiQYX6fLbNAWKOvGmpOgvNyyzZKoPuAMmid+eMWJs9aiVTvgjOHyca5b0ylYiYfrcM8V3JlTcj3FqrCQ1kQI/YtJqg2KH2xCg7Z93rMksr3wIPCxORdsjgmH5vZJtlq6SASvvXOS8jIUkR3RDKJED4MkERVGBvk4oTPO/O5EiExdggdrYz8icaPwqNP88VS7KhTSOEK2Te+39i82OwiYaF2vLsba2PrvIYLSDHVuVp8Of9OGmHPDXS/BlUntz+OJs7p6GAOoS2yHNtS9S19aH4Y7lcvjD4b74WkvakbdtwcSZJcdQy0DfTuL06YnUcj1MUjoNvOpnm2nQ2Da3pzDz5H3iR2Nmo4hgprb6h+HArVtfrF+avrtdC2rJjy2MoxM46cWLZ/7ZYLpYXqNsaxYVYiZ2mR7XVaSnyJWrkn9V6nBc73nEerPuy+GQ+mU2tPGsVygtJXlWGpAhWbEl0nmSacShihPVBuM4YLqKkXRkf0JS0EFdGtlaZ4AVqbR+ihaUjDMpU2SfToMGKP6NNygRyWPJdkn+0zYtQO9tVrPHm6naTKHdY0gIyYOxTRGYejxWMZazgMdCn2Ly3TdMZFQ4MzCljfJHnlQp1t12UtsmJqa1Pb+Bc5RRt0Mwkjivok+YxWzqnyf8Eun7qLt9liR3rkhMzbzUqE7ck9qsf6+kOsFXTKp1BMW2v8+1kKqv7DLhymLXvt+jpo9PDwMdfO3IHKO7uM9ijU5xFsfSk8vwtx372Pz7/cjMurr+K51vufzgzHqJhxPaoO/6DDL7QYbaJD/dDBjWhJBctSrfvk96LDcuYuF909SE7cqzKktowp52WNe4Np551/eF2Axlsx328iY0ZHD5wW8CHZKONEYgNNJ71oNFUXezGkDTz8y/mYoMe
-sidebar_class_name: 'post api-method'
+api: eJztV0tz2zYQ/iuYPbUe2lTa9MKbm6gzmmkaj62cbB9WwIpEAgIMAMpWNPrvnQUokX609iGTU3ghCezjw76xg4h1gOoaQkckGygAa7IxwG0BioL0uovaWajgwjtJIVAQKKSzG/IBeQuNaCkErEmgVcJT7L0NImxtbCjob6TEUbbryCemhYIKplKW7upA1KHHliJ5xrUDiy1BlWEtFBSgGU2HkWk9fe21JwVV9D0VEGRDLUK1g7jtmC1Er20NBaydbzFCBX2vFewfn27xXri1iA2JpAj2t1k4hfinU1uW+FiXdDYyabUD7DqjZTpI+TmwwN1TKG71mWTkA3q2Q9QU0i7dx+cAP8S3pPt4sDOj9861bMSX+C6da8XiPbOQjTpuX8M0T5QDWx/I/5N88BLbp0BeJHfti8Ftr9SUmdLDZg+dsyFb57fZjF8Puc57pZ0I0RO24k7H5vlomzqIOcq2o/pZ1zyNkpW26LeQEb19DsTCbtBoleNFcPx40eoQtK1F8ul3i5DQS868CeHKOUNooQC6x7YzBNUaTSD2svfOvyxTOvUa97AwkWj3BRzC75Vsk2hVFFGb8DLn+0RISqRjCG2zQ3gzuyLqyKfNKo7ueftMjCS3WBfF2vVW/fTGj/LGH88lS8bQ5RbCGTKt/T9982N8k4DFxnHv7VxIR+U2WkGJnS5z4y93Q6fdl7mQlo9cFchvDr259wYqaGLsqrI0TqJpXIjV77PZ7Angv3lbKNqQcV3LyZklpVbLjr4c2+384KtDexytcGh848rY18a1sWmNa/bB/54HibVLKg6WMvobio9X4vxi8QT++cVCKCd7Rp5MIdbOiyPL5s3Z7OzNTJyKc7E2dK9XJs9DQaJB/jlfDK1izePNnfNfzm7sjV02OrBCoYNQFHRtSYnoxIpEH0jl9oYiGddshe+t5fzJirUNEa2kMzG3qnPaxiDQGHeXwElPGLWtixvbosWaPxMmbSN5lLyX5R+wBREb7/qaNV7Or5aZco2SBqx0gOp8jTa1W22jS4PT2rFmlqlci9qG6saeipOTq22I1J6cVCJ/nd5pReI4CoYEiexGe2dTXCSwxJ9ZQCrlgQXkom70muRWDgYeqScyM+MHap3fjoxt+s9jKs9FjxV9SHmobc0sH4ahtkGrTDKdbNBaMiEbcciDASLPF0lRGk0mhS6RpkQ6DilHdEoj8/ylDYm+Mw5VPhFvPAG3nM+ZeOn7EEmJ+T3JPsXhfGK60QJQAMPLwZuDc6izKFOdHdLhGMHvXNv2Vsctp88xr0NVlrWOTb86k64tialdyG/gisKFpEU7kThcFB6U+MnVYJzPHiTYbuwB3+WqMVRPLh9lZ1DbNMvyuXZD1bsG7PR44SmgGu8Y0xlyLH63BXB9Y9bdboWBPnmz3/Py1578Fqrr2wI26DUnfCqQSgf+VkPX+Z8z/3I5XC9+FY/vIv9xmGERLXtsg6bnPyjgC20n96X97b6AhlCRT4jy7rus93TJMkbuJ713Xxw4zqWkLk5px5GaK/ixs1x8vFpCAavh1tSm9gke77h4413G6LocpHyt4rUdGLR1n3omZM38/AvBIhfN
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  as={'h1'}
-  className={'openapi__heading'}
-  children={'Process conversation and return speech'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Process conversation and return speech"}
+>
+</Heading>
 
 <MethodEndpoint
-  method={'post'}
-  path={'/api/agents/{agentId}/speech/conversation'}
-  context={'endpoint'}
-></MethodEndpoint>
+  method={"post"}
+  path={"/api/agents/{agentId}/speech/conversation"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Processes a conversational message and returns synthesized speech
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'application/json': {
-        schema: {
-          type: 'object',
-          properties: {
-            text: { type: 'string', description: 'Text message' },
-            roomId: { type: 'string', description: 'Room ID' },
-            entityId: { type: 'string', description: 'Entity ID' },
-            userName: { type: 'string', description: 'User name' },
-            name: { type: 'string', description: 'Entity name' },
-          },
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"text":{"type":"string","description":"Text message"},"roomId":{"type":"string","description":"Room ID"},"entityId":{"type":"string","description":"Entity ID"},"userName":{"type":"string","description":"User name"},"name":{"type":"string","description":"Entity name"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Audio stream with synthesized speech',
-      content: { 'audio/mpeg': { schema: { type: 'string', format: 'binary' } } },
-    },
-    '400': {
-      description: 'Invalid agent ID or missing text',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error processing conversation',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Audio stream with synthesized speech","content":{"audio/mpeg":{"schema":{"type":"string","format":"binary"}}}},"400":{"description":"Invalid agent ID or missing text","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing conversation","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

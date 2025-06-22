@@ -1,0 +1,63 @@
+---
+id: get-local-env
+title: "Get local environment variables"
+description: "Retrieve local environment variables from .env file"
+sidebar_label: "Get local environment variables"
+hide_title: true
+hide_table_of_contents: true
+api: eJzNVU1z4zYM/SsYHDOK5W2nF90yrbuTmd1pZuOekhxgEpK4S5EqSTnxevzfOyDlxInTj+mpvgiygIcHEHjcY6IuYnOHcRcTD/hQoeaoghmT8Q4b/MIpGN4yWK/IArutCd4N7BJsKRjaWI7QBj/Agt0WWmMZK/QjBxKEa40Ndpw+SfTKbbHCwHH0LnLEZo8/LJfyeJ3z01+nwgqVd4ldkjAaR2tUTlR/jRK7x6h6HkistBsZG/Sbr6wSVjgGoZVMyRwnpTjGE8eN95bJYYX8RMNoGZsUJj5UqCm9i0haG0lO9uYV9uwXUzCuw0P5VfjTe8WuQvABQmmzcd3/ou6WbJTCWcj9M6byms/rfjtKpdLse6hw4Bip+9dhR3c5DU5k7DuNfhv5S3ZkDbkMMK71Ychdw3IgySSptqTA+ZQGTr2fx1YqpdRjgzWNpi5LUp+cUJ3XAiuMHLYcZJX2OAWLDfYpjU1dHHofU/Pjcrk841hmXfOWrR/zmRckPDxUKIxzmUee1nwn+O0Wrm6uz5Cubq5BezUJSC4SWh/gOWT7YbFcfFjCJVxBa/nJbCwDOQ1RkZUZg6troE4YtIEGfvTh2+Le3bt1b6IkBBNBczSdYw3Jw4Zhiqzh0aQeqOiD3UGYnJMxLomNi4mc4gWsnB69cSkCWesfMzkVmJJxXXXvBnLUiZk5GZc4kJJvBf/ILULqg586yfhldbsuni0pnrnykaoPHTnznTOYh9QztF4yC6b2AxkXm3t3CRcXt/lYLy4aKNblo9EMzxoWM6XTtcxkWcwCcJWpCUC2wJqW1U7NDX7xPsEsgZ958GH3Ejjk9xwVvB/OEn3OW2BcJyHlhaEnp21unerJObaxNHEeyZnipI3PicSAMXhRAelFdh2ZVQ9x51LP0Tyz04Yk5ldjGabRetKlIvlwRm69WonzOkwxsYbVE6spz+HqpHUvHcAKhV4Z3jKcs8qRyirnaHg19D/7YZicSTusTlYsNnXdmdRPm4XyQ83i7WN5ouzz6GMayJ0gfuT0d9fZ283av0jvf7wOZ5lK/JTq0ZJxImO5hP2sL3dIoxEZKddwhSfIWGFRmYcKRUjEe7/fUOTfgz0c5O8/Jg47bO4eKjzSkLdDhT2T5pBl6RvvRCaU4lEwt2QnYXV2mYjyPIvgx9UaD4c/AZX22yk=
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get local environment variables"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/system/environment/local"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieve local environment variables from .env file
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Local environment variables","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","additionalProperties":{"type":"string"}}}}}}},"500":{"description":"Error retrieving environment variables","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

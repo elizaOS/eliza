@@ -1,0 +1,71 @@
+---
+id: delete-room-memories
+title: "Delete all memories for a room"
+description: "Delete all memories for a specific room"
+sidebar_label: "Delete all memories for a room"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVktv3DYQ/ivEnFpDtjate9FtEW+BBRI0sN2TvYdZcrRiQpEKSa29Wei/F0NqH/Y6TosCPuUkSprHNzOcb2YLEVcBqjtoqXV+A4sCFAXpdRe1s1DBFRmKJNAYkUQ0BVE7L1CEjqSutRTeuRYKcB15ZK25ggpU0rt2rv04qkEBHXpsKZJnl1uw2BJUgCuyca6gAM0eO4wNFODpa689Kaii76mAIBtqEaotxE3HaiF6bVdQQO18ixEq6HutYHgewfxKuFrEhkRyBEOx98zI38JxytCwYNuhczZQYHO/TS758VRply2RE6hE6KWkEOremA37uJxMTrXmdo1GqxyhYMc+ORXzKyhAOhs58moL2HVGy1Sm8nNg3e1pgG75mWTkenkuatQZ74jkSHDpnCG0UAA9YtsZgqpGE2gogLx3/sc2pVP0UmqfhjdjYyLJDgW0FAKu/rXaTjzVJ6I24ceaV0mQlEhhCG1zqfnnMAxDAVFHjja7GL9dvlTPaaqIdVHUrrfqZzXeqhp/vNQnGUNqLW1Xe0b7WZW3qUoCFht3GBBpKMQGKiix02WeQuV2HAlDuatQicaU28zXAxQQyK93Y6T3BipoYuyqsjROomlciNXvk8nkBPQH/i0Urcm4ruXWzJYSO3MIKe4dcKO/ofjrRkw/zU8sTT/NhXKyZyMp6jQW9yrrdxeTi3cTcS6mojb0qJeGBFolgkSD/DKdj3Rd81B8cP7Lxb29t7eNDuxQaJ4BQa8sKRGdWJLoAynxoGMjUKQ4zUb43lq+ytmxtiGilXQhZlZ1TtsYeHS7hwROekK+98W9bdHiio8Jk7aRPMrUE8n+DlsQsfGuX7HH69nNbZasUdKIlXZQnV+h1d8oGXNp6tWOPbNN5VrUNlT39lycnd1sQqT27KwS+XT+oBWJ/foQEiSya+2dTSVKYImP2UDi1MAGMrsaXZPcyDHBB+kjm1kxDdfNQTFft6SVpuVzRx9TW2i7YpX8QqJBq0xKnWzQWjIhJ3G8kiPEXmmXHPFBdN4xLXAukmhHJBsRNjY2FPQendLIOn9qQ6LvjEOVI+IfJ+BuZzMWvvV94D1h9kiyT/dwdpS6QwagAIaXL2++nCPtoUy0N+5E+xv83rVtb3XcQHHUYqEqy5WOTb+8kK4tiaVdyE/gBu9ciC3aI4vfXyHHzfFJY20PVPwfls+RqiI9xrIzqC1TWUK9HQnmDrDTUOwW3QKqw955NAfQGP43boaLAphLWHu7XWKgv70ZBv78tSe/gepuUcAaveaOTmSkdOCzGln+leB+uR4XzV/F8xX1O/GMH9Ey/DWant+ggC+0OVqjeb/9nyheS+rrIMa8DYuhgIZQkU9ZyT+nUlIXj9ROJi2z8H5CXM0+zG5nMAz/AOoQXyk=
+sidebar_class_name: "delete api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete all memories for a room"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/memory/{agentId}/memories/all/{roomId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete all memories for a specific room
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"204":{"description":"Memories deleted successfully"},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting memories","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

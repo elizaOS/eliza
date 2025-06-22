@@ -1,193 +1,71 @@
 ---
 id: create-channel
-title: 'Create channel'
-description: 'Creates a new channel in a server'
-sidebar_label: 'Create channel'
+title: "Create channel"
+description: "Create a new channel"
+sidebar_label: "Create channel"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'post api-method'
+api: eJztV0tvGzcQ/ivEHI2VJcex0+7NTVRAQNMEsXOyfRiRs1omXHJDciUrgv57MdyH1lYeLgrkVF1ELmc+fpwnuYOIqwD5LVQUAq60XcF9BoqC9LqO2lnI4bUnjCRQWNoIWaK1ZCADV5NHFlkoyEEmodfDqqcvDYX4h1NbyHdpqj0pyKNvKAPpbCQbeQnr2miZkKafAu+4gyBLqpBHcVsT5OCWn0jGDrcFugWLFUEGgfya/EIx89ozragpsHISOICE6PmA+5HK0WIGhfMVRsihabRi4UfW+AZY++EYiGxTMc1ID8x87bSk1roFNoZ3SCv79OOThdrZ0DJ/MTvjvyeOaK0rWlsrERopKYSiMWYL/8Gmj43WoY4El84ZQptsgfEZEH2Q/FRQP8MDT8Pxo9VfGhJakY260ORF4byIJQ2xuc++4/mnUH9jRcIVT5WfHx1PARdvergWQ8RShx5aLMk4uwoiun8dNhmoCjJYedfUxxl6s63TOUZn+GHQHmV4R3D8dZ9BRRG/5/DHAFdKaR6iGQ47KHNsRx0NHTbqYp5XXs5mx4G+sGs0WomuiPyK2M6AHrCqmWWBJtA+A/Le+WcEu1PPCLU5g4kkmyzL1fbZar148mtEbcLPNd8kQVIiHUNo20Zucu1+7JO0Rfft4lve6Khz0dF2NeoA/zvlFzilzcPScZOtXUqGGmMJOUyx1tOhb087v4ShI3Jf30HjDeRQxljn06lxEk3pQszPZ7PZEb2/eFkoWpNxdUU2dmUM9vcZsFs/HLr6vPdM32YPZz7UTzgv8LeL4vLl5OLV2avJy4vLF5PleSEnL+Tvl+fF5SUWeHlEYwDqjNm2yQzYXMnGvZGM/ori3bW4er84LknvF0I52fAxkoVTmxhU1mens9OzmZiIK1EYetBLQwKtEkGiQZ5cLQSu2AaFx4o2zn8+vbN39oYrOoPrwPVSrywpEZ1YkmgCKbHRsRQokqXNVvjGWs6admNtQ0Qr6VTMraqdtjEINMZtErk+xbI7W6FNXs0SJ20jeZQp/RJ+zy2IWHrXrHjHD/Prm1ayQEkdV+qpOr9Cq79SAnOpRRWOd2ZM5SrUNuR3diJOTq63IVJ1cpKLdjTZaEViuO6FRInsWntnU5AkssTDFuAqUWOANBJGFyS3sjPwQXqE2Sq+pcr57UGxSvOk5Z2rjjZ62wc/q7QTEiVaZZLp+oxojdglRUexUdqljXggau+4BLEtkmhNJEsRtjaWFPTATmlknT+1IdHUxqFqT8QLR+Ru5nMWvvFN4Mva/IFkk+JwPjLdwQLc6smHNnjb4OxKLMo4yrIhgl+7qmqsjnz1OyR5yKfTlY5lszyVrpoSS7vQ/qdWzDWkQjtC7O73h7r+5O4wlPnvvQRGaTqtDep0eUiUdl2tugWsNWSjV0YGQ726z4BLEkvtdksM9NGb/Z4/f2nIbyG/vc9gjV5zWvJsn0FJqMinAveZtkytJTnhqxCbEk3DnI760j7rNa6kpDr+UPZ+VHvfv7u+gQyW3YOmSg0GPG74UYIbyCG9iVpf8ouHv+3AoF01qatAi8m/fwBbMKkr
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Create channel'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/messagingchannels'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Creates a new channel in a messaging server
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Create channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/channels"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Create a new channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'application/json': {
-        schema: {
-          type: 'object',
-          properties: {
-            messageServerId: {
-              type: 'string',
-              format: 'uuid',
-              description: 'ID of the server where the channel will be created',
-            },
-            name: {
-              type: 'string',
-              description: 'Name of the channel',
-            },
-            type: {
-              type: 'string',
-              description: 'Type of the channel (e.g., DM, GROUP)',
-            },
-            sourceType: {
-              type: 'string',
-              description: 'Source type of the channel (optional)',
-            },
-            sourceId: {
-              type: 'string',
-              description: 'Original channel ID from source platform (optional)',
-            },
-            topic: {
-              type: 'string',
-              description: 'Topic/description for the channel (optional)',
-            },
-            metadata: {
-              type: 'object',
-              description: 'Additional metadata for the channel (optional)',
-            },
-          },
-          required: ['messageServerId', 'name', 'type'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name","serverId"],"properties":{"name":{"type":"string"},"serverId":{"type":"string","format":"uuid"},"description":{"type":"string"},"type":{"type":"string","enum":["text","voice"],"default":"text"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '201': {
-      description: 'Channel created successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  channel: {
-                    type: 'object',
-                    properties: {
-                      id: {
-                        type: 'string',
-                        format: 'uuid',
-                        description: 'ID of the created channel',
-                      },
-                      messageServerId: {
-                        type: 'string',
-                        format: 'uuid',
-                        description: 'ID of the server this channel belongs to',
-                      },
-                      name: {
-                        type: 'string',
-                        description: 'Name of the channel',
-                      },
-                      type: {
-                        type: 'string',
-                        description: 'Type of the channel',
-                      },
-                      sourceType: {
-                        type: 'string',
-                        description: 'Source type of the channel',
-                      },
-                      sourceId: {
-                        type: 'string',
-                        description: 'Original channel ID from source platform',
-                      },
-                      topic: {
-                        type: 'string',
-                        description: 'Topic/description of the channel',
-                      },
-                      createdAt: {
-                        type: 'string',
-                        format: 'date-time',
-                        description: 'Timestamp when the channel was created',
-                      },
-                      updatedAt: {
-                        type: 'string',
-                        format: 'date-time',
-                        description: 'Timestamp when the channel was last updated',
-                      },
-                      metadata: {
-                        type: 'object',
-                        description: 'Additional metadata about the channel',
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request parameters',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message describing what is missing or invalid',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error creating channel',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"201":{"description":"Channel created successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"channel":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error creating channel","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

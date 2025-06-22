@@ -1,0 +1,71 @@
+---
+id: update-channel
+title: "Update channel"
+description: "Update channel details"
+sidebar_label: "Update channel"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVktz2zYQ/iuYPbUe2lTanHhTXXWqmWbqsZWTrcMKWIlIQIABQMmKhv+9swD1sGQnPXRyKi8EiX18+8CH3UHEVYDqERoKAVfarmBegKIgvW6jdhYq+NgqjCRkjdaSEYoiahOgANeSRxaaKqigS2K3WQoKaNFjQ5E829+BxYaggsHKVEEBmq23GGsowNOXTntSUEXfUQFB1tQgVDuI25YVQ/SMroCl8w1GdthpBX0/z8oU4m9ObVnj3JZ0NpKNvIVta7RMoMtPgcPbXbpyi08kI4fgOcSoKfBujuAcUH+Wrlf2G4qoML7iok8PBxBaZ0P288toxK+XRRjyKnKWlQidlBTCsjNmC/9ZiIPVE8GFc4bQHpC+fw3c1K7RaCWGOvwIPAXQMzatIaiWaAL1BZD3zn/fpnTqlTKeN/2EjYkkmyrIp+Nfq+3FU2/k0/Jdzd+TICmRwhDa5j7nzZz5qCNHm13Avhrv324V66JYus6q/+vxY+qRj3rtVKY1WScWjDVUUGKrywPHlpJs9GiuBzYM5e7Aiz0UEMiv97zZeQMV1DG2VVkaJ9HULsTq19FodIH5L94WitZkXNuQjSJbAiZJrvX9kSgn+3IdqPmNRBx+n9AYh8oZSWnc58Horyj+fhDju+mFkfHdVCgnOwaVkiiWzouDyvrdzejm3Uhci7FYGnrWC0MCrRJBokH+GE8FrjiiJd8qG+c/3zzZJzurdWCHQgehKOiVJSWiEwsSXSAlNjrWAkXKm9kK31mr7WpwrG2IaCXdiIlVrdM2BoHGuE0CJz1h1HZVPNkGbapbkTBpG8mj5L1sf48tiFh7163Y4/3kYZYllyhpwEp7qM6v0OqvlIw5EWsSS8ee2aZyDWobqid7La6uHrYhUnN1VYm8ut5oReJw9YYEiexae2dTyRNY4mU2ME7Q2EBaCaOXJLdySPBR+sRmVvxAjfPbo2KTvpOWd665cPRh396skj9I1GiVSanb93pO4tDiA8ROaZcc8UK03jHLcC6SaEskaxG2NtYU9AGd0sg6f2hDomuNQ5Uj4o0LcLPJhIVnvgt8fU6eSXapDycnqTtmAApgeLl5c3MOLIoynpyZQwffuqbprI58GR+PbKjKcqVj3S1upGtKYmkX8hv4ELUuxAbticWX09b5QdodmfztuWwgtkjPsWwNasvEl0DtBj56BGw1FCdTXwHnnAQFVMdpbV4A8w6r7nYLDPTRm77n31868luoHucFrNFrPq2JuJQOvFbDhfCNQH66Hwa2n8Vb6IefaDm/azQdf0EBn2n7Yqjs530BNaEin0Dk/dvs6nrGVo76FzdhX+w1xlJSG78pOz9h+7vx7PZPKGAxTKBNutPA44ZHW9xksK7NvcUjKv/bgUG76tJFBtkoP/8AM8IHgg==
+sidebar_class_name: "patch api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Update channel"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"patch"}
+  path={"/api/messaging/central-channels/{channelId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Update channel details
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"metadata":{"type":"object"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Channel updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

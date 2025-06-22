@@ -1,0 +1,71 @@
+---
+id: complete-message
+title: "Complete a message"
+description: "Get agent completion for a message"
+sidebar_label: "Complete a message"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVkuP2zYQ/ivEHBfy2vtyWt3c1C0MdJEg65529zAmRxYTilRIyl7H8H8vhpJsb71tDBTIqb6YIufxzQzn42wh4jJA/ggVhYBLbZfwnIGiIL2uo3YWcvidosAl2Sikq2pDvC0K5wWKVosgA1eTRz6ZKcihE6T7/bmnrw2F+ItTG8i36VN7UpBH31AG0tlINvIR1rXRMtkafg6MYAtBllQhr+KmJsjBLT6TjJ3d1tAjJJAzxbvOVWnRBPJpUXtX1ZGDqz1jjZpC8tbpHEyH6DkNGRTOVxghh6bRCnZ7q+eIdn7PEe2QnYju0o8jDLWzoYV7PRrx3+sCvT+UJTRSUghFY+A/JPV1ijqbR4IL5wyhZfQK4xkm+hj+KUqO8/at0GZ2hUYr0V2fHxFUBvSCnFDICzSBdhmQ985/36Z06o0I/95OUzYmkuwug76DzlTrxTnzFFGb8H3NX5MgKZHCENq2V5AP28xHHTna1kW3d/dWNVoMS7Kp1+3yiBD+r8yPqUwCFkvHLFu71BE1xhJyGGKth3saH/YUDBkE8ivyTPNbaLyBHMoY63w4NE6iKV2I+c1oNDqB9wcfC0UrMq6u+AFoLcHuOQMu66cDqU/7yhxRKtwU+NNdMb4d3L27eje4vRtfDxY3hRxcy5/HN8V4jAWOD2x9tnxPrufK9wy755wMONWpPn2Cjf6G4sODmHycneRh8nEmlJMNpwD3r99eZXV1Obq8GomBmIjC0IteGBJolQgSDfLHZNY9oIXHitbOf7l8sk92XurADoUOQlHQS0tKRCcWJJpASqx1LAWKVCWzEb6xlpuudaxtiGglXYqpVbXTNgaBxrh1Aic9pQ7NnmyFNt2ILGHSNpJHmbo32e+xBRFL75ole/w0fZi3kgVK6rBSD9X5JVr9jZIxJ2JJonDsmW0qV6G2IX+yA3Fx8bAJkaqLi1y0q8FaKxL7WSEkSGRX2jubLlgCS7xsDUwSNDaQVsLoguRGdgk+SB/ZbBXvqXJ+c1Cs0nfS4ut24ui+bxxW6cYWUaJVJqVOlmgtmdAmsWuoDmKjtEuOeCFq75i+OBdJtCaSpQgbG0sKeo9OaWSd37Qh0dTGoWoj4oMTcPPplIXnvgmRlJi+kGzSPZwepe6QAciA4bWXt72cHT2jTPRssXp16d+7qmqsjhturj1BhHw4XOpYNotL6aohsbQL7T8wETH/VGiPLHaTCL0aDV810/bwTJw3WHYMGuklDmuDOk0dCeS2Y75HwFpDdjTCZvsBlAc+JjiW2m4XGOhPb3Y73v7akN9A/vicwQq95kblr10GJaEin+jyC21SWAnyYM5YWNw0jOnkldtlvcZESqrjv8o+HzH5xw8Pc8hg0U3HVXquwOOa2RHXkEMasdvq8jzFe1swaJdNeqOgtcm/vwALsBKg
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Complete a message"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/complete"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get agent completion for a message
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["agentId","roomId","userId","prompt"],"properties":{"agentId":{"type":"string","format":"uuid"},"roomId":{"type":"string","format":"uuid"},"userId":{"type":"string","format":"uuid"},"prompt":{"type":"string"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Completion successful","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"response":{"type":"string"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error generating completion","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

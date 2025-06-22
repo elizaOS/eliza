@@ -1,115 +1,71 @@
 ---
 id: stop-agent
-title: 'Stop an agent'
-description: 'Stops a running agent'
-sidebar_label: 'Stop an agent'
+title: "Stop an agent"
+description: "Stops a running agent"
+sidebar_label: "Stop an agent"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVk1z2zYQ/SuYPbUziKi2OfGmiX3QTGfqiZ2TrcMKWJJIQAABQNkqh/+9syClyLWd9JRTdRFF7D68t58aIWOboL4HbMnlBDsJmpKKJmTjHdRwm31IAkUcnDOuFcUOJPhAEdlmq6GGlH3YLCcBI/aUKTLuCA57gnrG32qQYBg2YO5AQqSvg4mkoc5xIAlJddQj1CPkY6ACHI1rQULjY48ZahgGo2H6N83tlfCNyB3NBEX2gjnBtONLUvAuUWLc39dr/nruXagXh0BapEEpSqkZrD2CBOVdZmX1CBiCNarIrj4ndh1fUvb7z6RKICIHKZv54gX1wnDvvSV0IIGesA+W5iiwNsz/AbGnlLCl16J1BnwuDablI+H9a3HYugNao5cYbq9+svoGbWL5FKOPP8ZUXr8q/rmmawYTxXaS34vZa24n81JvGY1NP/a8KoakRZEhjJtLlw/n0GeTS2rKFXBKx/u3ytL5LBo/OP1/Nn5ONgqx3HkebGGYR1ruoIYKg6nmQVmNy0CbQEKieDiNuyFaqKHLOdRVZb1C2/mU6z/W6/ULbn/ysdB0IOtDX/q0IJWpxUyLvBM/a/5G8det2NxsXyBtbrZCezUwSBEnGh/F2eXw22q9Wr9DGzoU78RGNJaezN6SQKdFUmiRf2y2S+c3PMEfffyyenAP7q4ziW8VJglNybSONA/YPYkhkRaPJncCRRFrj+dNMd9uXMroFK3EtdPBG5eTQGv9Y2GoImE2rpUPrkeHLT8WTsZliqj4bMY/cUsid9EPLd/48fr2brZsUNEKJHAa5ohcKF76BlXpm2UfnWPzwff94EzmUf8teamuqtbkbtivlO8rYmuf5m/gCgk+5R7dBSJvSoHuvCGfZWj81rpvrtSlkDM95SpYNI4LvVAalwq8BwwG5GlZS6hPa3UngeuMTcZxj4k+RTtN/PrrQPEI9f1OwgGj4USXQtUm8bNeGv07fH/5uGzpX8Vba/YN8stLdBzcA9qBf4GEL3S8+Esw7SYJHaGmWJjNpxulKOQLvxcDj7vk3Kg3n+5gmv4B4TQK2Q==
-sidebar_class_name: 'put api-method'
+api: eJztVk1vGzcQ/SvEnBpj7VXanPYm1AogoEGM2D3ZPozI0S4TLsmQXNmKsP+9GHL1kchuesqpuohczrx5M+Q8cgcJ2wjNPWBLNkV4rEBRlEH7pJ2FBm6T81GgCIO12rYi20EFzlNAtlkqaCAm5+fTiseAPSUKjLsDiz1BU/CXCirQDOsxdVBBoK+DDqSgSWGgCqLsqEdodpC2njJw0LaFCtYu9JiggWHQCsYfaS6vhVuL1FEhKJITzAnGRw4SvbORIuP+Ppvx3/femXp28KREHKSkGNeDMVuoQDqbOLNmB+i90TKnXX+O7Lo7p+xWn0nmQgQuUtIl8IR6YrhyzhBaqICesfeGShU4N0z/AbGnGLGl82qN06+Cdy9lu7QbNFpNlVpei6m2vzbVNZrIuVIILvwcUzr1QqY/HoMFg4lsO1avF+hlt715PlwJtYk/97zOhqRETkNoW2rJi2UHkk6cbQkB+11599oZtC6JtRus+n83fs1uZGKpc6xi3sUiYKmDBmr0ui6yWO8m+RrrrCoVRAqbvcINwUADXUq+qWvjJJrOxdT8MZvNzhj+xctC0YaM831WnYyUhYr55iT3LI3+huLjrZjfLM+Q5jdLoZwcGCSnyG0sDi6bt1ezq7czcSnmYm3oWa8MCbRKRIkGeTJfTgqwZr1+cuHL1YN9sHedjhxQ6CgURd1aUiynKxJDJCWedOoEipyn2R7uhRJY25jQSroSC6u80zZFgca4p0xOBsKkbVs92B4ttjzMnLRNFFDyWsHfc4sidcENLUf8tLi9K5ZrlDRxpT1VF1q0+htlMJdvgrXjyIypXI/axubBXoqLi9ttTNRfXDSijC6ftCJxuNBipkR2o4OzeYsyWeJhAcitGhmgNK3Ra5JbORX4aH2CWRw/UO/C9ujY53n2Cs71Z4E+5B7QtmWXMiHRoVUml052aC2ZWIo4HcmJ4qC0y4F4IHxwrAH5AmdTTyQ7Ebc2dRT1gZ3SyD7vtSExeONQlYx44Yzc3WLBxndhiImUWDyTHPI5XJyU7lgBqIDplcNbDuekcSizxk0PhcMJ/tP1/WB14jv42GKxqetWp25YXUnX18TWLpZ/4G7mJu7RniDyE0agPTxdvuuj3VFmX33rTKKT6DnV3qC2LEqZ0m4Si3tAr6Hav6IqaI7vnawYjxWwKLDlbrfCSH8HM478+etAYQvN/WMFGwyaWzOritKRx2rS5n+h/dun6RX1Rrz2DHolh+kjWq7xBs3AM6jgC21Pnmzj41hBR6goZGZldS4l+XTid3ZHsaQdtPXm4+0djOM/Lh+eHw==
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Stop an agent'}></Heading>
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Stop an agent"}
+>
+</Heading>
 
-<MethodEndpoint method={'put'} path={'/api/agents/{agentId}'} context={'endpoint'}></MethodEndpoint>
+<MethodEndpoint
+  method={"post"}
+  path={"/api/agents/{agentId}/stop"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Stops a running agent
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to stop',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent to stop"}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent stopped successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: { message: { type: 'string', example: 'Agent stopped' } },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent stopped successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"message":{"type":"string"}}}}}}}},"400":{"description":"Invalid agent ID format","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

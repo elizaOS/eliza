@@ -1,120 +1,63 @@
 ---
 id: get-servers
-title: 'Get messaging servers'
-description: 'Retrieves all messaging servers'
-sidebar_label: 'Get messaging servers'
+title: "Get server debug info"
+description: "Get debug information about active servers (debug endpoint)"
+sidebar_label: "Get server debug info"
 hide_title: true
 hide_table_of_contents: true
-api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb
-sidebar_class_name: 'get api-method'
+api: eJylVFFv4zYM/isEn7bCjXPbm9+CITsU2GGHNXtq+8BIjK07WfJEOW0uyH8fKLtJ1h6wAfOLKekj+YkivyNmagWbB5SDZO7xqULLYpIbsosBG/zIGSxvxxZc2MXUk+4DbeOYgUx2ewbhtOck8MOE42CH6EL+ESuMA6ficWexwZbz/YTFChPLEIOwYHPEn5ZL/f0z9YR9nx0rNDFkDll9aBi8M+Wg/iLqeEQxHfekVj4MjA3G7Rc2GSscklLKbko7M78CUkp0wApd5l7+PYCzVxjJyYUWTxUG6vm7B5Ipj/LdI2o55P9C5dXl8lXYc+7iXGIlSbnDBmsaXD3dsZZz4c+XfjjimDw22OU8NHXtoyHfRcnNz8vlEt92wm96DJb37OPQc8jzw+PpqUJ9nsLRZa8k1959I/j9Hlaf795FWn2+AxvNqEGmftrFBGeX/YfFcvFhCbewgp3nF7f1DBQsiCFPuljdQSkX7BL1/BzT18VjeAybzokmBCdgWVwb2EKOsGUYhS08u9wBQbmnP0AaQ3ChnRO7IJmC4QWs5wYWIO/jcyFnElN2oa0eQ0+BWjULJxcyJx2E0E7xX7kJ5C7FsdWMf6zvNxNyR4ZnrvxKNaaWgvvGJViE3DHsombWmDb25II0j+EWbm7uy5Te3DQwWbfPzjKcp0wKJQ57l2IoT1TIsppTgFWhpgGKBd7t2BzMXOAL+irm5PiJ+5gOF8e+rItXirF/l+gTi5Qyqcu0YOgoWF9KZzoKgb1MRZxbcqY4WhdLIjVgSNGwiNaiQAdm04EcQu5Y3JmddaQ+vzrPMA4+kp1upAfvyG3WawVv0iiZLaxf2IylD9dXpbtUACtUelPzTs05axCZokHTvF+a/pfY92NwWcf3MmLS1HXrcjduFyb2NSs6yvRHneIhSu4pXEVU9ZW3Mvh2no4XOfyfcj0rTOaXXA+eXFBhKhc4zprygDS4s4hcqclThSodijgetyT8Z/Knk27/NXI6YPPwVOGektMB1tWpwo7JcipC9JUPKgzG8KACtic/Fg18K+6qNWex+7je4On0NyTvWp8=
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Get messaging servers'}></Heading>
-
-<MethodEndpoint
-  method={'get'}
-  path={'/api/messaging/central-servers'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Retrieves all messaging servers in the system
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get server debug info"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/server/servers"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get debug information about active servers (debug endpoint)
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Servers retrieved successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  servers: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        id: {
-                          type: 'string',
-                          format: 'uuid',
-                          description: 'ID of the server',
-                        },
-                        name: {
-                          type: 'string',
-                          description: 'Name of the server',
-                        },
-                        sourceType: {
-                          type: 'string',
-                          description: 'Source type of the server (e.g., discord, gui)',
-                        },
-                        sourceId: {
-                          type: 'string',
-                          description: 'Original server ID from source platform',
-                        },
-                        createdAt: {
-                          type: 'string',
-                          format: 'date-time',
-                          description: 'Timestamp when the server was created',
-                        },
-                        updatedAt: {
-                          type: 'string',
-                          format: 'date-time',
-                          description: 'Timestamp when the server was last updated',
-                        },
-                        metadata: {
-                          type: 'object',
-                          description: 'Additional metadata about the server',
-                        },
-                      },
-                    },
-                    description: 'Array of server objects',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error retrieving servers',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'string',
-                description: 'Error message',
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Server debug information","content":{"application/json":{"schema":{"type":"object","properties":{"servers":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"status":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}}}}}}}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

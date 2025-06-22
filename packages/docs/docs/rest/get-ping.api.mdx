@@ -1,0 +1,63 @@
+---
+id: get-ping
+title: "Ping health check"
+description: "Simple ping endpoint to check if server is responsive"
+sidebar_label: "Ping health check"
+hide_title: true
+hide_table_of_contents: true
+api: eJydVMFu4zYQ/ZXBHAPF8rY33YyFWwTookHjnpIcxtRYmg1FsiTlxGv434uhFMcb91RfRJozbx4fZ94RM3UJm0dMh5R5wOcKW04mSsjiHTb4IEOwDEFcB+za4MVlyB5Mz+YFZAeJ454jSILIKXiXZM9YoQ8cSTHuWmyw43wvrsMK5yBO2Bzxl+VSP58q/jeg8S6zyxpPIVgxBb3+njTpiMn0PJCu8iEwNui339lkrDBE5ZJlKhm86y6itt5bJocV8hvpTbHJceRThVkGTpmGcBEtLnPHET+L9HWMkVWX9xwQB4NYK4mNd23C0/SrcODc+1kSJUe5xwZrClJPStZhEmra6dsccYwWG+xzDk1dW2/I9j7l5tflcnnF5Q89hpb3bH0YlNWEhKfnCsXtfLmPZL0qrq38IPjzAVb3d1dIq/s7aL0ZFaSIDTsf4Zyy/7JYLr4s4RZWsLP8JlvLQK6FZMiSblZ3QJ0y2EUa+NXHl8WTe3KbXpIW1CduOUnnuNWW2jKMiVt4ldwDQbmnPUAcndPumwqLS5mc4QWs525MQNb610LORKYsrque3ECOOl0WTvpykYyeTfjv3BLkPvqx04p/rR82U+SODM9c+Z2qjx05+cEFzEPuGXZeKytm6wcSl5ondws3Nw9lmG5uGphWt6/SMpxHIhVK7PYSvStPVMiyLieAVaGmAGUFVnZsDmYW+CP6AnNK/MaDj4ePxKHsS1b0frgq9I1TKjJpyrRh6Mm1tkhnenKObZpEnFtypji24kshXUCI3nBKqkUJDcymh3RwueckZ3atkOb8JpZhDNZTO91ID67IbdZrDd7EMWVuYf3GZix9uL6Q7kMBrFDpTc07NefsG2SKbzgafmr6r34YRif5gNXFiKWmrjvJ/bhdGD/UrNE+TV/UEQ4+5YHcBaJ6G/RMNveTMX6epeOHff1vR509KPNbroMlcXiaaR9nG3lECnK2DnUXtZLnCtUt9Ph43FLiv6M9nfTvf0aOB2wenyvcUxSdWd2dKuyZWo7Fe174oF5gDAc1rD3ZUWlcebDay9ncfl9v8HT6F/HEOAQ=
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Ping health check"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/server/ping"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Simple ping endpoint to check if server is responsive
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Server is responsive","content":{"application/json":{"schema":{"type":"object","properties":{"pong":{"type":"boolean","example":true},"timestamp":{"type":"integer","description":"Current timestamp in milliseconds"}}}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

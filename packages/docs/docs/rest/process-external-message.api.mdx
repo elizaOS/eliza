@@ -1,0 +1,71 @@
+---
+id: process-external-message
+title: "Process external message"
+description: "Process a message from an external platform"
+sidebar_label: "Process external message"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tvGzcQ/ivEHI21pfRx2ZuaqoCAGjFi9WTrMCJHu0y45IbkSlYE/fdiyF1pbQlJiwI51RdxyXl8nBl+Mz5AxCpA+QQNhYCVthWsClAUpNdt1M5CCQ/eSQpBoMhCJDbeNQKtoJdI3qIRrcG4cb6BAlxLHllzoaCENuvOe8H7bAAK8PSloxB/c2oP5SF9ak8Kyug7KkA6G8lGPsK2NVomk5NPgREdIMiaGuRV3LcEJbj1J5Kxt5sNPcEIVY98oaAAWaO1ZNK6C+TzZu9wVTDmlnzUFNjBycjZWYieA1UA2a5hR0oH6TybiWSo8sgu407HSB5Wx7H7CyvHMaBrpz3Eq4rnKF2cYYwo64ZsDKNz9B73UICO1ITL+B0T1ogK45XoHtMfxzi0zoYcn5+mU/55XTJ9nkWfflIidJJXm86YPfyH/L5OTm91JLh2zhBajsD1S7w18e3UDFe9cngcwvHLtQgs7BaNVqKv8x9x5QLoBZvWEJQbNIGOBZD3zn/fpnTqyg3f8sCcjYkkey7pf6o2iHNeKKI24fuavydBUiJdQ2jL7zBFDXLko4582+yi3/v1WjYyhr4ata1OcP5Pyw9JS6aV2qWW4NJzaDHWUMIEWz05NZ/J0FFue2ABCgjkt+S5Sx2g8wZKqGNsy8nEOImmdiGWP0+n0wucf/KxULQl41omQpEtwXFVAOf347kHzYcUjQl/xOsjljiHZcTb582BrkdiQ4Wdt16R89OBAY1ol8PFUU2pGGJp9FcUHx7F7GFxcdPZw0IoJzs2mBIhNs6Lk8r23d307t1U3IqZ2Bh60WtDAq0SQaJB/pgtBFYcoY3HhnbOf757ts92WevADoUOQlHQlSUlohNrEh2T+k7HWqBIeTB74Ttr+XFlx9qGiFbSnZhb1TptYxBojNslcNITRm2r4tk2aFPyi4RJ20geJZ9l+wO2IGLtXVexx4/zx2WW3KCkHisNUJ2v0OqvlIw5EWsSG8ee2aZyDWobymd7K25uHvchUnNzU4q8ut1pReI0w4QEiexWe2dTCSWwxMtsYJagsYG0EkZvSO5lH+Cz9MhmVrynxvn9WbFJ30nLO9dcOLof3girDP21RqtMCl1fiyEHsX8yPcROaZcc8WLMgkm0JZK1CHsbawr6hE5pZJ0/tCHRtcahyjfigwtwy/mchZe+C5GUmL+Q7FIdzkehO0cACmB4uXhzcfbvBGViYovNq6J/75qmszry6HCmgFBOJpWOdbe+k66ZEEu7kH/TKMNU06AdWRxm2dPkem4Er57UYfRq/93823NnpJc4aQ3qNIokzIee854AW33ilH6SvOC9VQFMbSx+OKwx0F/eHI+8/aUjv4fyaVXAFr3mB8xfxwJqQkU+EeVn2kMJ7/MlbpcMisVNl6bAt43uWAwaMympjd+UXY3I/OHD4xIKWPdjfJM6Fnjc8SiOOygh/UuQs85zPu8dwKCtutSmINvkv78BFsdiOw==
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Process external message"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/messaging/external-messages"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Process a message from an external platform
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["platform","messageId","channelId","userId","content"],"properties":{"platform":{"type":"string","enum":["discord","telegram","twitter"]},"messageId":{"type":"string"},"channelId":{"type":"string"},"userId":{"type":"string"},"content":{"type":"string"},"attachments":{"type":"array","items":{"type":"object"}},"metadata":{"type":"object"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Message processed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"messageId":{"type":"string"},"response":{"type":"string"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing message","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      
