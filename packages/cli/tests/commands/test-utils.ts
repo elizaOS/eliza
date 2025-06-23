@@ -535,15 +535,23 @@ export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
   
   if (process.platform === 'win32') {
-    platformOptions.timeout = (platformOptions.timeout || 30000) * 1.5;
+    // Only scale the timeout if one was explicitly provided
+    if (platformOptions.timeout !== undefined) {
+      platformOptions.timeout = platformOptions.timeout * 1.5;
+    }
     platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
     platformOptions.windowsHide = true;
   } else if (process.platform === 'darwin') {
     // macOS specific options
-    platformOptions.timeout = (platformOptions.timeout || 30000) * 1.25;
+    // Only scale the timeout if one was explicitly provided
+    if (platformOptions.timeout !== undefined) {
+      platformOptions.timeout = platformOptions.timeout * 1.25;
+    }
     platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    // Merge environment variables instead of overwriting
     platformOptions.env = {
       ...process.env,
+      ...baseOptions.env, // Preserve any custom env vars from baseOptions
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
       LC_ALL: 'en_US.UTF-8',
