@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/api-client",
-  "version": "0.1.0",
+  "version": "1.0.11",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.js",
@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^20.11.0",
+    "@types/node": "^23.3.0",
     "typescript": "^5.7.2",
     "eslint": "^8.57.0",
     "tsup": "^8.5.0"
