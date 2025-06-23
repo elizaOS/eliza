@@ -1,671 +1,264 @@
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { MemoryService } from '../../services/memory';
-import { ApiClient } from '../../api-client';
-import {
-  Memory,
-  CreateMemoryRequest,
-  UpdateMemoryRequest,
-  MemoryResponse
-} from '../../types/memory';
+import { ApiClientConfig } from '../../types/base';
+import { UUID } from '@elizaos/core';
 
-// Mock the API client
-jest.mock('../../api-client');
-const mockApiClient = jest.mocked(ApiClient);
+// Test UUIDs in proper format
+const TEST_AGENT_ID = '550e8400-e29b-41d4-a716-446655440001' as UUID;
+const TEST_ROOM_ID = '550e8400-e29b-41d4-a716-446655440002' as UUID;
+const TEST_MEMORY_ID = '550e8400-e29b-41d4-a716-446655440003' as UUID;
+const TEST_SERVER_ID = '550e8400-e29b-41d4-a716-446655440004' as UUID;
 
 describe('MemoryService', () => {
   let memoryService: MemoryService;
-  let mockApiClientInstance: jest.Mocked<ApiClient>;
+  const mockConfig: ApiClientConfig = {
+    baseUrl: 'http://localhost:3000',
+    apiKey: 'test-key',
+  };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockApiClientInstance = {
-      get: jest.fn(),
-      post: jest.fn(),
-      put: jest.fn(),
-      delete: jest.fn(),
-      patch: jest.fn(),
-    } as any;
-    mockApiClient.mockImplementation(() => mockApiClientInstance);
-    memoryService = new MemoryService(mockApiClientInstance);
+    memoryService = new MemoryService(mockConfig);
+    // Mock the HTTP methods
+    (memoryService as any).get = mock(() => Promise.resolve({}));
+    (memoryService as any).post = mock(() => Promise.resolve({}));
+    (memoryService as any).patch = mock(() => Promise.resolve({}));
+    (memoryService as any).delete = mock(() => Promise.resolve({}));
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    const getMock = (memoryService as any).get;
+    const postMock = (memoryService as any).post;
+    const patchMock = (memoryService as any).patch;
+    const deleteMock = (memoryService as any).delete;
+
+    if (getMock?.mockClear) getMock.mockClear();
+    if (postMock?.mockClear) postMock.mockClear();
+    if (patchMock?.mockClear) patchMock.mockClear();
+    if (deleteMock?.mockClear) deleteMock.mockClear();
   });
 
-  // Test data factories
-  const createValidMemory = (): Memory => ({
-    id: 'mem_123',
-    userId: 'user_456',
-    content: 'This is a test memory',
-    tags: ['test', 'example'],
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    importance: 5,
-    context: 'Test context',
-  });
-
-  const createValidCreateRequest = (): CreateMemoryRequest => ({
-    userId: 'user_456',
-    content: 'New memory content',
-    tags: ['new', 'test'],
-    importance: 3,
-    context: 'New memory context',
-  });
-
-  const createValidUpdateRequest = (): UpdateMemoryRequest => ({
-    content: 'Updated memory content',
-    tags: ['updated', 'test'],
-    importance: 4,
-    context: 'Updated context',
-  });
-
-  const createApiResponse = <T>(data: T): MemoryResponse<T> => ({
-    data,
-    success: true,
-    message: 'Success',
-  });
-
-  describe('createMemory', () => {
-    it('should create a new memory successfully', async () => {
-      const createRequest = createValidCreateRequest();
-      const expectedMemory = createValidMemory();
-      const apiResponse = createApiResponse(expectedMemory);
-
-      mockApiClientInstance.post.mockResolvedValue(apiResponse);
-
-      const result = await memoryService.createMemory(createRequest);
-
-      expect(mockApiClientInstance.post).toHaveBeenCalledWith('/memories', createRequest);
-      expect(result).toEqual(expectedMemory);
-      expect(result.id).toBeDefined();
-      expect(result.createdAt).toBeDefined();
-      expect(result.updatedAt).toBeDefined();
+  describe('constructor', () => {
+    it('should create an instance with valid configuration', () => {
+      expect(memoryService).toBeInstanceOf(MemoryService);
     });
 
-    it('should handle validation errors when creating memory', async () => {
-      const invalidRequest = { ...createValidCreateRequest(), userId: '' };
-
-      mockApiClientInstance.post.mockRejectedValue(new Error('Validation failed: userId is required'));
-
-      await expect(memoryService.createMemory(invalidRequest)).rejects.toThrow(
-        'Validation failed: userId is required'
-      );
-      expect(mockApiClientInstance.post).toHaveBeenCalledWith('/memories', invalidRequest);
+    it('should throw error when initialized with invalid configuration', () => {
+      expect(() => new MemoryService(null as any)).toThrow();
     });
+  });
 
-    it('should handle network errors during memory creation', async () => {
-      const createRequest = createValidCreateRequest();
-
-      mockApiClientInstance.post.mockRejectedValue(new Error('Network error'));
-
-      await expect(memoryService.createMemory(createRequest)).rejects.toThrow('Network error');
-    });
-
-    it('should create memory with minimal required fields', async () => {
-      const minimalRequest: CreateMemoryRequest = {
-        userId: 'user_456',
-        content: 'Minimal content',
+  describe('getAgentMemories', () => {
+    it('should retrieve agent memories successfully', async () => {
+      const mockMemories = {
+        memories: [
+          { id: 'mem-1', content: 'Memory 1', timestamp: '2024-01-01T00:00:00Z' },
+          { id: 'mem-2', content: 'Memory 2', timestamp: '2024-01-02T00:00:00Z' },
+        ]
       };
-      const expectedMemory = {
-        ...createValidMemory(),
-        content: 'Minimal content',
-        tags: [],
-        importance: 1,
-      };
+      (memoryService as any).get.mockResolvedValue(mockMemories);
 
-      mockApiClientInstance.post.mockResolvedValue(createApiResponse(expectedMemory));
+      const result = await memoryService.getAgentMemories(TEST_AGENT_ID);
 
-      const result = await memoryService.createMemory(minimalRequest);
-
-      expect(result.content).toBe('Minimal content');
-      expect(result.tags).toEqual([]);
-    });
-
-    it('should handle empty content gracefully', async () => {
-      const emptyContentRequest = { ...createValidCreateRequest(), content: '' };
-
-      mockApiClientInstance.post.mockRejectedValue(new Error('Content cannot be empty'));
-
-      await expect(memoryService.createMemory(emptyContentRequest)).rejects.toThrow(
-        'Content cannot be empty'
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/memories`,
+        { params: undefined }
       );
-    });
-
-    it('should handle very large content', async () => {
-      const largeContent = 'a'.repeat(10000);
-      const largeContentRequest = { ...createValidCreateRequest(), content: largeContent };
-      const expectedMemory = { ...createValidMemory(), content: largeContent };
-
-      mockApiClientInstance.post.mockResolvedValue(createApiResponse(expectedMemory));
-
-      const result = await memoryService.createMemory(largeContentRequest);
-
-      expect(result.content).toBe(largeContent);
-      expect(result.content.length).toBe(10000);
-    });
-  });
-
-  describe('getMemory', () => {
-    it('should retrieve memory by ID successfully', async () => {
-      const memoryId = 'mem_123';
-      const expectedMemory = createValidMemory();
-
-      mockApiClientInstance.get.mockResolvedValue(createApiResponse(expectedMemory));
-
-      const result = await memoryService.getMemory(memoryId);
-
-      expect(mockApiClientInstance.get).toHaveBeenCalledWith(`/memories/${memoryId}`);
-      expect(result).toEqual(expectedMemory);
-    });
-
-    it('should return null for non-existent memory', async () => {
-      const memoryId = 'non_existent';
-
-      mockApiClientInstance.get.mockRejectedValue(new Error('Memory not found'));
-
-      await expect(memoryService.getMemory(memoryId)).rejects.toThrow('Memory not found');
-    });
-
-    it('should handle invalid memory ID format', async () => {
-      const invalidId = '';
-
-      await expect(memoryService.getMemory(invalidId)).rejects.toThrow(
-        'Invalid memory ID'
-      );
-    });
-
-    it('should handle special characters in memory ID', async () => {
-      const specialId = 'mem_!@#$%^&*()';
-
-      mockApiClientInstance.get.mockRejectedValue(new Error('Invalid memory ID format'));
-
-      await expect(memoryService.getMemory(specialId)).rejects.toThrow(
-        'Invalid memory ID format'
-      );
-    });
-  });
-
-  describe('getMemories', () => {
-    it('should retrieve all memories for a user', async () => {
-      const userId = 'user_456';
-      const memories = [createValidMemory(), { ...createValidMemory(), id: 'mem_124' }];
-
-      mockApiClientInstance.get.mockResolvedValue(createApiResponse(memories));
-
-      const result = await memoryService.getMemories(userId);
-
-      expect(mockApiClientInstance.get).toHaveBeenCalledWith('/memories', {
-        params: { userId },
-      });
-      expect(result).toEqual(memories);
-      expect(result).toHaveLength(2);
-    });
-
-    it('should handle empty memory list', async () => {
-      const userId = 'user_456';
-
-      mockApiClientInstance.get.mockResolvedValue(createApiResponse([]));
-
-      const result = await memoryService.getMemories(userId);
-
-      expect(result).toEqual([]);
-      expect(result).toHaveLength(0);
+      expect(result).toEqual(mockMemories);
     });
 
     it('should handle pagination parameters', async () => {
-      const userId = 'user_456';
-      const options = { page: 2, limit: 10 };
-      const memories = [createValidMemory()];
+      const params = { limit: 10, offset: 20 };
+      (memoryService as any).get.mockResolvedValue({ memories: [] });
 
-      mockApiClientInstance.get.mockResolvedValue(createApiResponse(memories));
+      await memoryService.getAgentMemories(TEST_AGENT_ID, params);
 
-      const result = await memoryService.getMemories(userId, options);
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/memories`,
+        { params }
+      );
+    });
+  });
 
-      expect(mockApiClientInstance.get).toHaveBeenCalledWith('/memories', {
-        params: { userId, page: 2, limit: 10 },
-      });
-      expect(result).toEqual(memories);
+  describe('getRoomMemories', () => {
+    it('should retrieve room memories successfully', async () => {
+      const mockMemories = { memories: [{ id: 'mem-1', content: 'Room memory' }] };
+      (memoryService as any).get.mockResolvedValue(mockMemories);
+
+      const result = await memoryService.getRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID);
+
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}/memories`,
+        { params: undefined }
+      );
+      expect(result).toEqual(mockMemories);
     });
 
-    it('should handle search filters', async () => {
-      const userId = 'user_456';
-      const options = { tags: ['important'], importance: 5 };
-      const memories = [createValidMemory()];
+    it('should handle memory parameters', async () => {
+      const params = { limit: 5 };
+      (memoryService as any).get.mockResolvedValue({ memories: [] });
 
-      mockApiClientInstance.get.mockResolvedValue(createApiResponse(memories));
+      await memoryService.getRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID, params);
 
-      const result = await memoryService.getMemories(userId, options);
-
-      expect(mockApiClientInstance.get).toHaveBeenCalledWith('/memories', {
-        params: { userId, tags: ['important'], importance: 5 },
-      });
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}/memories`,
+        { params }
+      );
     });
   });
 
   describe('updateMemory', () => {
+    const updateParams = { content: 'Updated memory content' };
+
     it('should update memory successfully', async () => {
-      const memoryId = 'mem_123';
-      const updateRequest = createValidUpdateRequest();
-      const updatedMemory = {
-        ...createValidMemory(),
-        ...updateRequest,
-        updatedAt: '2024-01-02T00:00:00Z',
-      };
+      const mockUpdatedMemory = { id: TEST_MEMORY_ID, content: 'Updated memory content' };
+      (memoryService as any).patch.mockResolvedValue(mockUpdatedMemory);
 
-      mockApiClientInstance.put.mockResolvedValue(createApiResponse(updatedMemory));
+      const result = await memoryService.updateMemory(TEST_AGENT_ID, TEST_MEMORY_ID, updateParams);
 
-      const result = await memoryService.updateMemory(memoryId, updateRequest);
-
-      expect(mockApiClientInstance.put).toHaveBeenCalledWith(
-        `/memories/${memoryId}`,
-        updateRequest
+      expect((memoryService as any).patch).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/memories/${TEST_MEMORY_ID}`,
+        updateParams
       );
-      expect(result).toEqual(updatedMemory);
-      expect(result.updatedAt).not.toBe(createValidMemory().updatedAt);
-    });
-
-    it('should handle partial updates', async () => {
-      const memoryId = 'mem_123';
-      const partialUpdate = { content: 'Only content updated' };
-      const updatedMemory = { ...createValidMemory(), content: 'Only content updated' };
-
-      mockApiClientInstance.patch.mockResolvedValue(createApiResponse(updatedMemory));
-
-      const result = await memoryService.updateMemory(memoryId, partialUpdate, {
-        partial: true,
-      });
-
-      expect(mockApiClientInstance.patch).toHaveBeenCalledWith(
-        `/memories/${memoryId}`,
-        partialUpdate
-      );
-      expect(result.content).toBe('Only content updated');
-    });
-
-    it('should reject updates to non-existent memory', async () => {
-      const memoryId = 'non_existent';
-      const updateRequest = createValidUpdateRequest();
-
-      mockApiClientInstance.put.mockRejectedValue(new Error('Memory not found'));
-
-      await expect(
-        memoryService.updateMemory(memoryId, updateRequest)
-      ).rejects.toThrow('Memory not found');
-    });
-
-    it('should handle validation errors in updates', async () => {
-      const memoryId = 'mem_123';
-      const invalidUpdate = { ...createValidUpdateRequest(), importance: 11 };
-
-      mockApiClientInstance.put.mockRejectedValue(
-        new Error('Validation failed: importance must be between 1-10')
-      );
-
-      await expect(
-        memoryService.updateMemory(memoryId, invalidUpdate)
-      ).rejects.toThrow('Validation failed: importance must be between 1-10');
-    });
-
-    it('should handle updating tags array', async () => {
-      const memoryId = 'mem_123';
-      const updateRequest = { tags: ['new-tag', 'another-tag'] };
-      const updatedMemory = { ...createValidMemory(), tags: ['new-tag', 'another-tag'] };
-
-      mockApiClientInstance.patch.mockResolvedValue(createApiResponse(updatedMemory));
-
-      const result = await memoryService.updateMemory(memoryId, updateRequest, {
-        partial: true,
-      });
-
-      expect(result.tags).toEqual(['new-tag', 'another-tag']);
-    });
-
-    it('should handle empty tags array', async () => {
-      const memoryId = 'mem_123';
-      const updateRequest = { tags: [] };
-      const updatedMemory = { ...createValidMemory(), tags: [] };
-
-      mockApiClientInstance.patch.mockResolvedValue(createApiResponse(updatedMemory));
-
-      const result = await memoryService.updateMemory(memoryId, updateRequest, {
-        partial: true,
-      });
-
-      expect(result.tags).toEqual([]);
+      expect(result).toEqual(mockUpdatedMemory);
     });
   });
 
-  describe('deleteMemory', () => {
-    it('should delete memory successfully', async () => {
-      const memoryId = 'mem_123';
+  describe('clearAgentMemories', () => {
+    it('should clear agent memories successfully', async () => {
+      const mockResponse = { deleted: 10 };
+      (memoryService as any).delete.mockResolvedValue(mockResponse);
 
-      mockApiClientInstance.delete.mockResolvedValue(
-        createApiResponse({ deleted: true })
+      const result = await memoryService.clearAgentMemories(TEST_AGENT_ID);
+
+      expect((memoryService as any).delete).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/memories`
       );
-
-      const result = await memoryService.deleteMemory(memoryId);
-
-      expect(mockApiClientInstance.delete).toHaveBeenCalledWith(
-        `/memories/${memoryId}`
-      );
-      expect(result).toBe(true);
-    });
-
-    it('should handle deletion of non-existent memory', async () => {
-      const memoryId = 'non_existent';
-
-      mockApiClientInstance.delete.mockRejectedValue(new Error('Memory not found'));
-
-      await expect(
-        memoryService.deleteMemory(memoryId)
-      ).rejects.toThrow('Memory not found');
-    });
-
-    it('should handle invalid memory ID for deletion', async () => {
-      const invalidId = '';
-
-      await expect(
-        memoryService.deleteMemory(invalidId)
-      ).rejects.toThrow('Invalid memory ID');
-    });
-
-    it('should handle server errors during deletion', async () => {
-      const memoryId = 'mem_123';
-
-      mockApiClientInstance.delete.mockRejectedValue(
-        new Error('Internal server error')
-      );
-
-      await expect(
-        memoryService.deleteMemory(memoryId)
-      ).rejects.toThrow('Internal server error');
+      expect(result).toEqual(mockResponse);
     });
   });
 
-  describe('bulkDeleteMemories', () => {
-    it('should delete multiple memories successfully', async () => {
-      const memoryIds = ['mem_123', 'mem_124', 'mem_125'];
+  describe('clearRoomMemories', () => {
+    it('should clear room memories successfully', async () => {
+      const mockResponse = { deleted: 5 };
+      (memoryService as any).delete.mockResolvedValue(mockResponse);
 
-      mockApiClientInstance.delete.mockResolvedValue(
-        createApiResponse({ deleted: 3 })
+      const result = await memoryService.clearRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID);
+
+      expect((memoryService as any).delete).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/memories/all/${TEST_ROOM_ID}`
       );
-
-      const result = await memoryService.bulkDeleteMemories(memoryIds);
-
-      expect(mockApiClientInstance.delete).toHaveBeenCalledWith(
-        '/memories/bulk',
-        { data: { ids: memoryIds } }
-      );
-      expect(result).toBe(3);
-    });
-
-    it('should handle empty array for bulk deletion', async () => {
-      const memoryIds: string[] = [];
-
-      await expect(
-        memoryService.bulkDeleteMemories(memoryIds)
-      ).rejects.toThrow('No memory IDs provided');
-    });
-
-    it('should handle partial failures in bulk deletion', async () => {
-      const memoryIds = ['mem_123', 'non_existent', 'mem_125'];
-
-      mockApiClientInstance.delete.mockResolvedValue(
-        createApiResponse({ deleted: 2, failed: 1 })
-      );
-
-      const result = await memoryService.bulkDeleteMemories(memoryIds);
-
-      expect(result).toBe(2);
+      expect(result).toEqual(mockResponse);
     });
   });
 
-  describe('Error Handling', () => {
-    it('should handle network timeouts', async () => {
-      const createRequest = createValidCreateRequest();
+  describe('listAgentRooms', () => {
+    it('should list agent rooms successfully', async () => {
+      const mockRooms = {
+        rooms: [
+          { id: 'room-1', name: 'Room 1' },
+          { id: 'room-2', name: 'Room 2' },
+        ]
+      };
+      (memoryService as any).get.mockResolvedValue(mockRooms);
 
-      mockApiClientInstance.post.mockRejectedValue(
-        new Error('Request timeout')
+      const result = await memoryService.listAgentRooms(TEST_AGENT_ID);
+
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/rooms`
       );
-
-      await expect(
-        memoryService.createMemory(createRequest)
-      ).rejects.toThrow('Request timeout');
-    });
-
-    it('should handle rate limiting', async () => {
-      const memoryId = 'mem_123';
-
-      mockApiClientInstance.get.mockRejectedValue(
-        new Error('Rate limit exceeded')
-      );
-
-      await expect(
-        memoryService.getMemory(memoryId)
-      ).rejects.toThrow('Rate limit exceeded');
-    });
-
-    it('should handle malformed API responses', async () => {
-      const memoryId = 'mem_123';
-
-      mockApiClientInstance.get.mockResolvedValue({ invalid: 'response' } as any);
-
-      await expect(
-        memoryService.getMemory(memoryId)
-      ).rejects.toThrow('Invalid response format');
-    });
-
-    it('should handle unauthorized access', async () => {
-      const userId = 'user_456';
-
-      mockApiClientInstance.get.mockRejectedValue(new Error('Unauthorized'));
-
-      await expect(
-        memoryService.getMemories(userId)
-      ).rejects.toThrow('Unauthorized');
-    });
-
-    it('should handle server unavailable', async () => {
-      const createRequest = createValidCreateRequest();
-
-      mockApiClientInstance.post.mockRejectedValue(
-        new Error('Service unavailable')
-      );
-
-      await expect(
-        memoryService.createMemory(createRequest)
-      ).rejects.toThrow('Service unavailable');
+      expect(result).toEqual(mockRooms);
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle memory with special characters in content', async () => {
-      const specialContent = 'Memory with émojis 🧠 and spéciàl chars: <>&"\''; 
-      const createRequest = {
-        ...createValidCreateRequest(),
-        content: specialContent,
-      };
-      const expectedMemory = { ...createValidMemory(), content: specialContent };
+  describe('getRoom', () => {
+    it('should get room details successfully', async () => {
+      const mockRoom = { id: TEST_ROOM_ID, name: 'Test Room', description: 'A test room' };
+      (memoryService as any).get.mockResolvedValue(mockRoom);
 
-      mockApiClientInstance.post.mockResolvedValue(
-        createApiResponse(expectedMemory)
+      const result = await memoryService.getRoom(TEST_AGENT_ID, TEST_ROOM_ID);
+
+      expect((memoryService as any).get).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}`
       );
-
-      const result = await memoryService.createMemory(createRequest);
-
-      expect(result.content).toBe(specialContent);
-    });
-
-    it('should handle memory with unicode characters', async () => {
-      const unicodeContent = '记忆测试 🌟 テスト मेमोरी';
-      const createRequest = {
-        ...createValidCreateRequest(),
-        content: unicodeContent,
-      };
-      const expectedMemory = { ...createValidMemory(), content: unicodeContent };
-
-      mockApiClientInstance.post.mockResolvedValue(
-        createApiResponse(expectedMemory)
-      );
-
-      const result = await memoryService.createMemory(createRequest);
-
-      expect(result.content).toBe(unicodeContent);
-    });
-
-    it('should handle null and undefined values gracefully', async () => {
-      const invalidRequest = {
-        ...createValidCreateRequest(),
-        context: null,
-        tags: undefined,
-      };
-
-      mockApiClientInstance.post.mockRejectedValue(
-        new Error('Invalid field values')
-      );
-
-      await expect(
-        memoryService.createMemory(invalidRequest as any)
-      ).rejects.toThrow('Invalid field values');
-    });
-
-    it('should handle very long tag names', async () => {
-      const longTag = 'a'.repeat(100);
-      const createRequest = {
-        ...createValidCreateRequest(),
-        tags: [longTag],
-      };
-
-      mockApiClientInstance.post.mockRejectedValue(
-        new Error('Tag name too long')
-      );
-
-      await expect(
-        memoryService.createMemory(createRequest)
-      ).rejects.toThrow('Tag name too long');
-    });
-
-    it('should handle maximum number of tags', async () => {
-      const manyTags = Array.from({ length: 50 }, (_, i) => `tag${i}`);
-      const createRequest = {
-        ...createValidCreateRequest(),
-        tags: manyTags,
-      };
-
-      mockApiClientInstance.post.mockRejectedValue(
-        new Error('Too many tags')
-      );
-
-      await expect(
-        memoryService.createMemory(createRequest)
-      ).rejects.toThrow('Too many tags');
+      expect(result).toEqual(mockRoom);
     });
   });
 
-  describe('Integration Tests', () => {
-    it('should create, retrieve, update, and delete memory in sequence', async () => {
-      const createRequest = createValidCreateRequest();
-      const createdMemory = createValidMemory();
-      const updateRequest = createValidUpdateRequest();
-      const updatedMemory = { ...createdMemory, ...updateRequest };
+  describe('createRoom', () => {
+    const roomParams = { name: 'New Room', description: 'A new room' };
 
-      // Create
-      mockApiClientInstance.post.mockResolvedValueOnce(
-        createApiResponse(createdMemory)
+    it('should create room successfully', async () => {
+      const mockCreatedRoom = { id: 'room-new', ...roomParams };
+      (memoryService as any).post.mockResolvedValue(mockCreatedRoom);
+
+      const result = await memoryService.createRoom(TEST_AGENT_ID, roomParams);
+
+      expect((memoryService as any).post).toHaveBeenCalledWith(
+        `/api/memory/${TEST_AGENT_ID}/rooms`,
+        roomParams
       );
-      const created = await memoryService.createMemory(createRequest);
-
-      // Retrieve
-      mockApiClientInstance.get.mockResolvedValueOnce(
-        createApiResponse(createdMemory)
-      );
-      const retrieved = await memoryService.getMemory(created.id);
-
-      // Update
-      mockApiClientInstance.put.mockResolvedValueOnce(
-        createApiResponse(updatedMemory)
-      );
-      const updated = await memoryService.updateMemory(
-        created.id,
-        updateRequest
-      );
-
-      // Delete
-      mockApiClientInstance.delete.mockResolvedValueOnce(
-        createApiResponse({ deleted: true })
-      );
-      const deleted = await memoryService.deleteMemory(created.id);
-
-      expect(created.id).toBe(createdMemory.id);
-      expect(retrieved).toEqual(createdMemory);
-      expect(updated.content).toBe(updateRequest.content);
-      expect(deleted).toBe(true);
-    });
-
-    it('should handle concurrent operations gracefully', async () => {
-      const createRequests = Array.from(
-        { length: 5 },
-        () => createValidCreateRequest()
-      );
-      const expectedMemories = createRequests.map((_, i) => ({
-        ...createValidMemory(),
-        id: `mem_${i}`,
-      }));
-
-      expectedMemories.forEach((memory, i) => {
-        mockApiClientInstance.post.mockResolvedValueOnce(
-          createApiResponse(memory)
-        );
-      });
-
-      const promises = createRequests.map((request) =>
-        memoryService.createMemory(request)
-      );
-      const results = await Promise.all(promises);
-
-      expect(results).toHaveLength(5);
-      results.forEach((result, i) => {
-        expect(result.id).toBe(`mem_${i}`);
-      });
+      expect(result).toEqual(mockCreatedRoom);
     });
   });
 
-  describe('Performance Tests', () => {
-    it('should handle large batch operations efficiently', async () => {
-      const userId = 'user_456';
-      const largeBatch = Array.from({ length: 1000 }, (_, i) => ({
-        ...createValidMemory(),
-        id: `mem_${i}`,
-      }));
+  describe('createWorldFromServer', () => {
+    const worldParams = { name: 'New World', description: 'A new world' };
 
-      mockApiClientInstance.get.mockResolvedValue(
-        createApiResponse(largeBatch)
+    it('should create world from server successfully', async () => {
+      const mockResponse = { worldId: 'world-new' as UUID };
+      (memoryService as any).post.mockResolvedValue(mockResponse);
+
+      const result = await memoryService.createWorldFromServer(TEST_SERVER_ID, worldParams);
+
+      expect((memoryService as any).post).toHaveBeenCalledWith(
+        `/api/memory/groups/${TEST_SERVER_ID}`,
+        worldParams
       );
+      expect(result).toEqual(mockResponse);
+    });
+  });
 
-      const start = Date.now();
-      const result = await memoryService.getMemories(userId);
-      const duration = Date.now() - start;
+  describe('deleteWorld', () => {
+    it('should delete world successfully', async () => {
+      const mockResponse = { success: true };
+      (memoryService as any).delete.mockResolvedValue(mockResponse);
 
-      expect(result).toHaveLength(1000);
-      expect(duration).toBeLessThan(5000);
+      const result = await memoryService.deleteWorld(TEST_SERVER_ID);
+
+      expect((memoryService as any).delete).toHaveBeenCalledWith(
+        `/api/memory/groups/${TEST_SERVER_ID}`
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('clearWorldMemories', () => {
+    it('should clear world memories successfully', async () => {
+      const mockResponse = { deleted: 15 };
+      (memoryService as any).delete.mockResolvedValue(mockResponse);
+
+      const result = await memoryService.clearWorldMemories(TEST_SERVER_ID);
+
+      expect((memoryService as any).delete).toHaveBeenCalledWith(
+        `/api/memory/groups/${TEST_SERVER_ID}/memories`
+      );
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle network errors', async () => {
+      (memoryService as any).get.mockRejectedValue(new Error('Network error'));
+
+      await expect(memoryService.getAgentMemories(TEST_AGENT_ID))
+        .rejects.toThrow('Network error');
     });
 
-    it('should not leak memory with repeated operations', async () => {
-      const createRequest = createValidCreateRequest();
-      const expectedMemory = createValidMemory();
+    it('should handle API errors', async () => {
+      (memoryService as any).post.mockRejectedValue(new Error('API error'));
 
-      for (let i = 0; i < 100; i++) {
-        mockApiClientInstance.post.mockResolvedValueOnce(
-          createApiResponse(expectedMemory)
-        );
-      }
-
-      const promises = Array.from({ length: 100 }, () =>
-        memoryService.createMemory(createRequest)
-      );
-      const results = await Promise.all(promises);
-
-      expect(results).toHaveLength(100);
+      await expect(memoryService.createRoom(TEST_AGENT_ID, { name: 'test' }))
+        .rejects.toThrow('API error');
     });
   });
 });
