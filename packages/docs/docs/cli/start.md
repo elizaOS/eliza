@@ -27,7 +27,7 @@ elizaos start [options]
 | Option                          | Description                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------ |
 | `-c, --configure`               | Force reconfiguration of services and AI models (bypasses saved configuration) |
-| `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                               |
+| `--character [paths...]`        | Character file(s) to use - accepts paths or URLs                               |
 | `--build`                       | Build the project before starting                                              |
 | `--no-build`                    | Skip the build step before starting                                            |
 | `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
@@ -155,7 +155,7 @@ ps aux | grep elizaos
 pkill -f elizaos
 
 # Clear any conflicting processes
-elizaos stop
+# Press Ctrl+C in the terminal where elizaos start is running
 elizaos start
 ```
 
