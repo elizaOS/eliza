@@ -1,4 +1,4 @@
-import { character } from '../dist/index.js';
+import { character } from '../src/index';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define a minimal TestSuite interface that matches what's needed
@@ -77,7 +77,7 @@ export class StarterTestSuite implements TestSuite {
           await runtime.registerPlugin({
             name: 'starter',
             description: 'A starter plugin for Eliza',
-            init: async () => {},
+            init: async () => { },
             config: {},
           });
         } catch (error) {
