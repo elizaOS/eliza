@@ -5,6 +5,9 @@ timeout = 60000
 # Test directory patterns
 root = "src"
 
+# Preload test setup
+preload = ["./src/__tests__/setup.ts"]
+
 # Coverage options
 coverage = true
 

@@ -3,11 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach, mock, afterEach, jest } from 'bun:test';
-import { MessageBusService } from '../services/message';
-import { createMockAgentRuntime } from './test-utils/mocks';
-import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import internalMessageBus from '../bus';
+import type { IAgentRuntime, UUID } from '@elizaos/core';
+
+// Mock logger before imports
+const mockLogger = {
+  info: jest.fn(),
+  debug: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+};
 
 // Mock the internal message bus
 mock.module('../bus', () => ({
@@ -18,29 +22,41 @@ mock.module('../bus', () => ({
   },
 }));
 
-// Mock logger
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-    },
-  };
-});
+// Mock logger and constants
+mock.module('@elizaos/core', () => ({
+  logger: mockLogger,
+  EventType: {
+    MESSAGE_RECEIVED: 'message_received',
+    MESSAGE_DELETED: 'message_deleted',
+    CHANNEL_CLEARED: 'channel_cleared',
+  },
+}));
 
 // Mock fetch
 const mockFetch = jest.fn() as any;
 global.fetch = mockFetch;
+
+// Import after mocks are set up
+import { MessageBusService } from '../services/message';
+import { createMockAgentRuntime } from './test-utils/mocks';
+import { EventType } from '@elizaos/core';
+import internalMessageBus from '../bus';
 
 describe('MessageBusService', () => {
   let service: MessageBusService;
   let mockRuntime: IAgentRuntime;
 
   beforeEach(async () => {
+    // Clear mock calls
+    mockLogger.info.mockClear();
+    mockLogger.debug.mockClear();
+    mockLogger.warn.mockClear();
+    mockLogger.error.mockClear();
+    (internalMessageBus.on as any).mockClear();
+    (internalMessageBus.off as any).mockClear();
+    (internalMessageBus.emit as any).mockClear();
+    mockFetch.mockClear();
+
     mockRuntime = createMockAgentRuntime();
 
     // Mock runtime database methods
@@ -130,13 +146,13 @@ describe('MessageBusService', () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    // Clean up
   });
 
   describe('initialization', () => {
     it('should start the service correctly', async () => {
       expect(service).toBeInstanceOf(MessageBusService);
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('MessageBusService: Subscribing to internal message bus')
       );
     });
@@ -188,7 +204,7 @@ describe('MessageBusService', () => {
       // Simulate a message from the bus
       await handler(testMessage);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('MessageBusService: Received message from central bus'),
         expect.any(Object)
       );
@@ -221,7 +237,7 @@ describe('MessageBusService', () => {
 
       await handler(testMessage);
 
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           'MessageBusService: Agent is the author of the message, ignoring message'
         )
@@ -280,7 +296,7 @@ describe('MessageBusService', () => {
 
       await handler(testMessage);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Agent not a participant in channel')
       );
 
@@ -319,7 +335,7 @@ describe('MessageBusService', () => {
 
       await handler(testMessage);
 
-      expect(logger.error).toHaveBeenCalledWith(
+      expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('MessageBusService: Error fetching participants for channel'),
         expect.any(Error)
       );
@@ -344,7 +360,7 @@ describe('MessageBusService', () => {
 
       await handler(deleteData);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Received message_deleted event')
       );
 
@@ -370,7 +386,7 @@ describe('MessageBusService', () => {
 
       await handler(deleteData);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('No memory found for deleted message')
       );
     });
@@ -394,7 +410,7 @@ describe('MessageBusService', () => {
 
       await handler(clearData);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Received channel_cleared event')
       );
 
@@ -422,7 +438,7 @@ describe('MessageBusService', () => {
 
       await handler(updateData);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Agent added to server 890e1234-e89b-12d3-a456-426614174000')
       );
     });
@@ -440,7 +456,7 @@ describe('MessageBusService', () => {
 
       await handler(updateData);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Agent removed from server 890e1234-e89b-12d3-a456-426614174000')
       );
     });
@@ -458,7 +474,7 @@ describe('MessageBusService', () => {
 
       await handler(updateData);
 
-      expect(logger.info).not.toHaveBeenCalledWith(
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
         expect.stringContaining('Agent added to server')
       );
     });
@@ -468,7 +484,7 @@ describe('MessageBusService', () => {
     it('should cleanup resources on stop', async () => {
       await MessageBusService.stop(mockRuntime);
 
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('MessageBusService stopping...')
       );
     });

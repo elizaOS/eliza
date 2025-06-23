@@ -5,41 +5,39 @@
 import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
 import http from 'node:http';
-import { AgentServer } from '../index';
+
+// Mock logger before imports
+const mockLogger = {
+  warn: jest.fn(),
+  info: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  success: jest.fn(),
+};
 
 // Mock dependencies
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      warn: jest.fn(),
-      info: jest.fn(),
-      error: jest.fn(),
-      debug: jest.fn(),
-      success: jest.fn(),
-    },
-    Service: class MockService {
-      constructor() {}
-      async initialize() {}
-      async cleanup() {}
-    },
-    createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
-    ChannelType: {
-      DIRECT: 'direct',
-      GROUP: 'group',
-    },
-    EventType: {
-      MESSAGE: 'message',
-      USER_JOIN: 'user_join',
-    },
-    SOCKET_MESSAGE_TYPE: {
-      MESSAGE: 'message',
-      AGENT_UPDATE: 'agent_update',
-      CONNECTION: 'connection',
-    },
-  };
-});
+mock.module('@elizaos/core', () => ({
+  logger: mockLogger,
+  Service: class MockService {
+    constructor() {}
+    async initialize() {}
+    async cleanup() {}
+  },
+  createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
+  ChannelType: {
+    DIRECT: 'direct',
+    GROUP: 'group',
+  },
+  EventType: {
+    MESSAGE: 'message',
+    USER_JOIN: 'user_join',
+  },
+  SOCKET_MESSAGE_TYPE: {
+    MESSAGE: 'message',
+    AGENT_UPDATE: 'agent_update',
+    CONNECTION: 'connection',
+  },
+}));
 
 mock.module('@elizaos/plugin-sql', () => ({
   createDatabaseAdapter: jest.fn(() => ({
@@ -112,13 +110,21 @@ mock.module('../src/socketio/index', () => ({
   })),
 }));
 
+// Import after mocks are set up
+import { AgentServer } from '../index';
+
 describe('API Server Functionality', () => {
   let server: AgentServer;
   let app: express.Application;
   let mockServer: any;
 
   beforeEach(async () => {
-    mock.restore();
+    // Clear mock calls
+    mockLogger.warn.mockClear();
+    mockLogger.info.mockClear();
+    mockLogger.error.mockClear();
+    mockLogger.debug.mockClear();
+    mockLogger.success.mockClear();
 
     // Mock HTTP server with all methods Socket.IO expects
     mockServer = {

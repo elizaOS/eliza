@@ -3,13 +3,6 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
-import {
-  createSecureUploadDir,
-  sanitizeFilename,
-  cleanupFile,
-  cleanupFiles,
-  cleanupUploadedFile,
-} from '../api/shared/file-utils';
 import path from 'node:path';
 
 // Mock dependencies
@@ -29,29 +22,34 @@ mock.module('fs', () => ({
   default: fsMock,
 }));
 
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: loggerMock,
-  };
-});
+mock.module('@elizaos/core', () => ({
+  logger: loggerMock,
+}));
+
+// Import after mocks are set up
+import {
+  createSecureUploadDir,
+  sanitizeFilename,
+  cleanupFile,
+  cleanupFiles,
+  cleanupUploadedFile,
+} from '../api/shared/file-utils';
 
 describe('File Utilities', () => {
   beforeEach(() => {
     // Reset mocks before each test
-    fsMock.existsSync.mockReturnValue(false);
+    fsMock.existsSync.mockReset();
     fsMock.unlinkSync.mockReset();
+    loggerMock.info.mockReset();
     loggerMock.debug.mockReset();
-    loggerMock.error.mockReset();
     loggerMock.warn.mockReset();
+    loggerMock.error.mockReset();
 
     // Mock process.cwd() to return a consistent value
-    process.cwd = () => '/test/app';
-  });
-
-  afterEach(() => {
-    // Clean up mocks after each test
+    (global as any).process = {
+      ...process,
+      cwd: () => '/test/app',
+    };
   });
 
   describe('createSecureUploadDir', () => {
@@ -182,9 +180,14 @@ describe('File Utilities', () => {
     });
 
     it('should handle empty file path', () => {
+      // Count calls before our test
+      const callsBefore = fsMock.existsSync.mock.calls.length;
+      
       cleanupFile('');
 
-      expect(fsMock.existsSync).not.toHaveBeenCalled();
+      // Should not have made any new calls - early return on empty path
+      const callsAfter = fsMock.existsSync.mock.calls.length;
+      expect(callsAfter).toBe(callsBefore);
       expect(fsMock.unlinkSync).not.toHaveBeenCalled();
     });
 

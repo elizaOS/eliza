@@ -2,7 +2,23 @@
  * Unit tests for validation functions
  */
 
-import { describe, it, expect, mock, jest } from 'bun:test';
+import { describe, it, expect, mock, jest, beforeEach } from 'bun:test';
+import type { IAgentRuntime, UUID } from '@elizaos/core';
+
+// Mock logger before imports
+const mockLogger = {
+  warn: jest.fn(),
+  info: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+};
+
+// Mock the logger to capture security logs
+mock.module('@elizaos/core', () => ({
+  logger: mockLogger,
+}));
+
+// Import after mocks are set up
 import {
   validateChannelId,
   validateAgentId,
@@ -11,26 +27,14 @@ import {
   validateWorldId,
   getRuntime,
 } from '../api/shared/validation';
-import { logger } from '@elizaos/core';
-import type { IAgentRuntime, UUID } from '@elizaos/core';
-
-// Mock the logger to capture security logs
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      warn: jest.fn(),
-      info: jest.fn(),
-      error: jest.fn(),
-      debug: jest.fn(),
-    },
-  };
-});
 
 describe('Validation Functions', () => {
   beforeEach(() => {
-    mock.restore();
+    // Clear mock calls
+    mockLogger.warn.mockClear();
+    mockLogger.info.mockClear();
+    mockLogger.error.mockClear();
+    mockLogger.debug.mockClear();
   });
 
   describe('validateChannelId', () => {
@@ -52,7 +56,7 @@ describe('Validation Functions', () => {
 
       validateChannelId(invalidUuid, clientIp);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         `[SECURITY] Invalid channel ID attempted from ${clientIp}: ${invalidUuid}`
       );
     });
@@ -72,7 +76,7 @@ describe('Validation Functions', () => {
         const result = validateChannelId(input, '192.168.1.100');
         expect(result).toBeNull();
         // These inputs are not valid UUIDs, so they get the "Invalid" message, not "Suspicious"
-        expect(logger.warn).toHaveBeenCalledWith(
+        expect(mockLogger.warn).toHaveBeenCalledWith(
           `[SECURITY] Invalid channel ID attempted from 192.168.1.100: ${input}`
         );
       });
@@ -83,7 +87,7 @@ describe('Validation Functions', () => {
 
       validateChannelId(invalidUuid);
 
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
     it('should handle empty string', () => {

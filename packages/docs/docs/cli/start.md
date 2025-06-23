@@ -32,6 +32,10 @@ elizaos start [options]
 | `--no-build`                    | Skip the build step before starting                                            |
 | `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
 | `--quiet`                       | Suppress all non-error output to the console                                   |
+| `--log-level <level>`           | Set log level (trace, debug, info, warn, error, fatal)                        |
+| `--log-transport <transport>`   | Set log transport (console, file)                  |
+| `--log-file <path>`             | Set log file path (for file transport, defaults to .eliza/logs/eliza.log)     |
+| `--log-json`                    | Enable JSON format for both console and file output (consistent)              |
 
 </TabItem>
 <TabItem value="examples" label="Examples">
@@ -89,6 +93,28 @@ elizaos start --character ./my-bot.json --port 4000
 
 # Complete setup for production deployment
 elizaos start --character ./production-bot.json --port 3000 --build
+```
+
+### Logging Configuration
+
+```bash
+# Debug logging to console only (pretty format)
+elizaos start --log-level debug
+
+# Hybrid logging: console pretty + file clean text (uses default .eliza/logs/eliza.log)
+elizaos start --log-transport file
+
+# Hybrid logging with custom file path
+elizaos start --log-transport file --log-file ./logs/agent.log
+
+# Consistent JSON format: both console and file get raw JSON
+elizaos start --log-transport file --log-file ./logs/agent.log --log-json
+
+# Production logging: warn level, hybrid format (uses default path)
+elizaos start --log-level warn --log-transport file
+
+# Production logging: warn level, consistent JSON format with custom path
+elizaos start --log-level warn --log-transport file --log-file ./logs/app.log --log-json
 ```
 
 ### Production Deployment

@@ -6,6 +6,7 @@ import { agent } from '@/src/commands/agent';
 import { create } from '@/src/commands/create';
 import { dev } from '@/src/commands/dev';
 import { env } from '@/src/commands/env';
+import { loggerCommand } from '@/src/commands/logger';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
 import { monorepo } from '@/src/commands/monorepo';
@@ -88,6 +89,7 @@ async function main() {
     .addCommand(update)
     .addCommand(test)
     .addCommand(env)
+    .addCommand(loggerCommand)
     .addCommand(dev)
     .addCommand(publish);
 

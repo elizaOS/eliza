@@ -154,8 +154,8 @@ const customLevels: Record<string, number> = {
 const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 
 // Set default log level to info to allow regular logs, but still filter service logs
-const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
-const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
+const logLevel = (process?.env?.LOG_LEVEL || '').toLowerCase();
+const effectiveLogLevel = logLevel || process?.env?.DEFAULT_LOG_LEVEL || 'info';
 
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
@@ -316,8 +316,10 @@ if (typeof process !== 'undefined') {
     // If we're in a Node.js environment where require is available, use require for pino-pretty
     // This will ensure synchronous loading
     try {
-      const pretty = require('pino-pretty');
-      stream = pretty.default ? pretty.default(createPrettyConfig()) : null;
+      if (typeof require !== 'undefined' && process.versions?.node) {
+        const pretty = require('pino-pretty');
+        stream = pretty.default ? pretty.default(createPrettyConfig()) : null;
+      }
     } catch (e) {
       // Fall back to async loading if synchronous loading fails
       createStream().then((prettyStream) => {
@@ -352,7 +354,41 @@ if (typeof process !== 'undefined') {
   }
 }
 
-export { createLogger, logger };
+// Function to load logger configuration from file
+function loadLoggerConfigFromFile(): any {
+  try {
+    if (typeof process !== 'undefined' && typeof require !== 'undefined' && process.versions?.node) {
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      
+      const configPath = path.join(os.homedir(), '.elizaos', 'logger.config.json');
+      
+      if (fs.existsSync(configPath)) {
+        const configData = fs.readFileSync(configPath, 'utf-8');
+        return JSON.parse(configData);
+      }
+    }
+  } catch (error) {
+    // Ignore config file errors, fall back to env vars
+  }
+  return null;
+}
+
+// Function to reconfigure the logger with new level and transport
+function reconfigureLogger(): void {
+  // Load config from file
+  const fileConfig = loadLoggerConfigFromFile();
+  
+  // Priority order: ENV > Config file > Defaults
+  const logLevel = (process?.env?.LOG_LEVEL || '').toLowerCase();
+  const newEffectiveLogLevel = logLevel || fileConfig?.level || process?.env?.DEFAULT_LOG_LEVEL || 'info';
+  
+  // Update the logger level
+  logger.level = newEffectiveLogLevel;
+}
+
+export { createLogger, logger, reconfigureLogger };
 
 // for backward compatibility
 export const elizaLogger = logger;

@@ -1,154 +1,187 @@
-# Server Package Tests
+# Server Package Test Guide
 
-This directory contains comprehensive tests for the `@elizaos/server` package.
+This directory contains all tests for the `@elizaos/server` package.
 
 ## Test Structure
 
-### 1. **Basic Functionality Tests** (`basic-functionality.test.ts`)
-
-- ✅ **Working** - Core logic tests without external dependencies
-- Tests path utilities, UUID validation, security patterns
-- Tests rate limiting concepts and middleware patterns
-- Tests server configuration logic
-
-### 2. **Validation Tests** (`validation.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Tests validation functions with mocking
-- Tests `validateChannelId`, `validateAgentId`, etc.
-- Tests security logging and pattern detection
-- Tests error handling for various input types
-
-### 3. **Middleware Tests** (`middleware.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Tests middleware functions
-- Tests `agentExistsMiddleware`, `validateUuidMiddleware`
-- Tests security middleware and rate limiting
-- Tests content type validation
-
-### 4. **AgentServer Integration Tests** (`agent-server.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Full AgentServer class tests
-- Tests server initialization and lifecycle
-- Tests agent registration and management
-- Tests database operations and error handling
-
-### 5. **API Endpoint Tests** (`api.test.ts`)
-
-- ⚠️ **Needs supertest dependency** - HTTP endpoint integration tests
-- Tests health check, agent, and channel endpoints
-- Tests security headers and CORS
-- Tests authentication and error handling
-
-### 6. **Utility Tests** (`utils.test.ts`)
-
-- ⚠️ **Needs mocking fixes** - Tests utility functions
-- Tests `expandTildePath` and `resolvePgliteDir`
-- Tests path security and environment handling
+```
+__tests__/
+├── setup.ts              # Global test setup (preloaded by Bun)
+├── test-runner.ts        # Custom test runner for proper isolation
+├── integration/          # Integration tests (require real server/DB)
+│   ├── agent-server-interaction.test.ts
+│   ├── database-operations.test.ts
+│   └── socketio-message-flow.test.ts
+├── test-utils/           # Shared test utilities
+└── *.test.ts            # Unit tests (use mocks)
+```
 
 ## Running Tests
 
-### Run All Working Tests
+The server package uses a custom test runner to ensure proper test isolation:
 
 ```bash
-bun test test/basic-functionality.test.ts
+# Run unit tests only (default)
+bun run test
+
+# Run unit tests explicitly
+bun run test:unit
+
+# Run integration tests only
+bun run test:integration
+
+# Run all tests
+bun run test:all
+
+# Run tests with coverage
+bun run test:coverage
+
+# Watch mode for development
+bun run test:watch
 ```
 
-### Run All Tests (some may fail due to dependencies)
+## Test Types
 
-```bash
-npm test
+### Unit Tests
+- Located in `src/__tests__/*.test.ts` (excluding integration/)
+- Use mocks for all external dependencies
+- Do not require a running server or database
+- Fast execution
+- Test individual components in isolation
+
+### Integration Tests
+- Located in `src/__tests__/integration/*.test.ts`
+- Use real database connections (PGLite)
+- Create actual server instances
+- Test end-to-end workflows
+- Slower execution but more comprehensive
+
+## Test Setup
+
+The `setup.ts` file is automatically loaded before all tests and:
+- Configures test environment variables
+- Suppresses console output (unless debugging)
+- Creates test database directories
+- Provides utilities for test database management
+- Cleans up resources after tests complete
+
+## Test Database Management
+
+Integration tests use temporary PGLite databases:
+- Each test suite gets its own database instance
+- Databases are created in `.eliza/test-db/`
+- Automatic cleanup after tests complete
+- No interference between test runs
+
+## Writing Tests
+
+### Unit Test Example
+```typescript
+import { describe, it, expect, mock, jest } from 'bun:test';
+import { myFunction } from '../myModule';
+
+// Mock external dependencies
+mock.module('@elizaos/core', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+  }
+}));
+
+describe('myFunction', () => {
+  it('should work correctly', () => {
+    const result = myFunction('test');
+    expect(result).toBe('expected');
+  });
+});
 ```
 
-### Run with Coverage
+### Integration Test Example
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { AgentServer } from '../../index';
+import { getTestDbPath } from '../setup';
 
-```bash
-bun test --coverage
+describe('Integration: Server Operations', () => {
+  let server: AgentServer;
+  let testDbPath: string;
+
+  beforeAll(async () => {
+    testDbPath = getTestDbPath();
+    server = new AgentServer();
+    await server.initialize({ dataDir: testDbPath });
+  });
+
+  afterAll(async () => {
+    await server.stop();
+    // Cleanup handled by setup.ts
+  });
+
+  it('should perform real operations', async () => {
+    // Test with real server instance
+  });
+});
 ```
 
-### Watch Mode
+## Debugging Tests
 
-```bash
-bun test --watch test/basic-functionality.test.ts
-```
+To debug hanging tests:
 
-## Test Categories
+1. **Check if it's a unit or integration test**
+   - Unit tests should not depend on external services
+   - Integration tests may need more time/resources
 
-### ✅ **Unit Tests**
+2. **Enable console output**
+   ```typescript
+   // Temporarily comment out console suppression in setup.ts
+   // console.log = () => {};
+   ```
 
-- Individual function testing
-- Logic validation without dependencies
-- Security pattern detection
-- Configuration handling
+3. **Run specific test file**
+   ```bash
+   bun test src/__tests__/specific-test.test.ts
+   ```
 
-### ⚠️ **Integration Tests**
+4. **Check for async issues**
+   - Ensure all promises are awaited
+   - Check for proper cleanup in afterEach/afterAll
 
-- Full server functionality
-- Database integration
-- HTTP endpoint testing
-- Middleware chain testing
+5. **Increase timeout for slow operations**
+   ```typescript
+   it('slow test', async () => {
+     // test code
+   }, 30000); // 30 second timeout
+   ```
 
-### 🔧 **Mocking Strategy**
+## Common Issues
 
-- Mock external dependencies (`@elizaos/core`, `@elizaos/plugin-sql`)
-- Mock file system operations
-- Mock HTTP requests/responses
-- Mock database operations
+### Tests Hanging
+- Usually caused by unclosed database connections
+- Missing `await` on async operations
+- Server not properly stopped in cleanup
 
-## Dependencies Needed for Full Test Suite
+### Port Conflicts
+- Integration tests use ephemeral ports
+- Ensure no hardcoded ports in tests
 
-```bash
-npm install --save-dev supertest @types/supertest
-```
+### Database Errors
+- Check if test database directory has proper permissions
+- Ensure cleanup runs between test suites
 
-## Test Coverage Goals
+## Best Practices
 
-- **Target**: 80%+ code coverage
-- **Focus Areas**:
-  - Validation functions (100%)
-  - Security middleware (90%+)
-  - Core server functionality (85%+)
-  - Error handling (90%+)
+1. **Keep unit tests fast** - Mock all external dependencies
+2. **Integration tests should be self-contained** - Create and destroy all resources
+3. **Use descriptive test names** - Should explain what is being tested
+4. **Clean up resources** - Always clean up in afterEach/afterAll
+5. **Avoid hardcoded values** - Use constants or generate unique values
+6. **Test error cases** - Don't just test happy paths
 
-## Security Testing
+## Continuous Integration
 
-The tests include comprehensive security validation:
+The CI pipeline runs tests in this order:
+1. Unit tests first (fail fast on basic issues)
+2. Integration tests if unit tests pass
+3. Coverage report generation
 
-1. **Input Validation**
-
-   - UUID format checking
-   - Suspicious pattern detection
-   - Path traversal prevention
-
-2. **Injection Prevention**
-
-   - Script injection detection
-   - SQL injection pattern recognition
-   - XSS attempt identification
-
-3. **Rate Limiting**
-   - Brute force protection
-   - API abuse prevention
-   - Channel validation limiting
-
-## Known Issues
-
-1. **Workspace Dependencies**: Some tests fail due to workspace dependency resolution
-2. **Mock Complexity**: Complex mocking required for database operations
-3. **Integration Challenges**: Full server initialization requires extensive mocking
-
-## Improvements Needed
-
-1. Fix workspace dependency issues
-2. Simplify mocking strategy
-3. Add more edge case tests
-4. Implement performance tests
-5. Add end-to-end testing scenarios
-
-## Test Philosophy
-
-The testing approach prioritizes:
-
-1. **Security First**: Comprehensive security validation
-2. **Independent Testing**: Tests that can run without complex setup
-3. **Real-world Scenarios**: Tests that reflect actual usage patterns
-4. **Error Coverage**: Thorough error condition testing
+This ensures quick feedback while maintaining comprehensive testing.

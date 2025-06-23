@@ -11,6 +11,11 @@ import { type AgentServer } from '@elizaos/server';
 export interface StartOptions {
   port?: number;
   configDir?: string;
+  logLevel?: string;
+  logTransport?: string;
+  logFile?: string;
+  logJson?: boolean;
+  logPretty?: boolean;
 }
 
 /**
