@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
+  getPlatformOptions,
   killProcessOnPort,
   safeChangeDirectory,
   TestProcessManager,
@@ -126,12 +127,14 @@ describe('ElizaOS Start Commands', () => {
 
         for (let i = 0; i < maxRetries; i++) {
           try {
+            const platformOptions = getPlatformOptions({
+              encoding: 'utf8',
+              timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+            });
+            
             result = execSync(
               `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-              {
-                encoding: 'utf8',
-                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-              }
+              platformOptions
             );
 
             // If we get a result, check if it contains Ada

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { killProcessOnPort, waitForServerReady, getBunExecutable } from './test-utils';
+import { killProcessOnPort, waitForServerReady, getBunExecutable, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
@@ -22,7 +22,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Setup CLI command with robust bun path detection
     const scriptDir = join(__dirname, '..');
-    const detectedBunPath = getBunPath();
+    const detectedBunPath = getBunExecutable();
     elizaosCmd = `${detectedBunPath} ${join(scriptDir, '../dist/index.js')}`;
     console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
     console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
@@ -217,12 +217,14 @@ describe('ElizaOS Agent Commands', () => {
       console.log(`[DEBUG] Loading character: ${character}`);
 
       try {
+        const platformOptions = getPlatformOptions({
+          stdio: 'pipe',
+          timeout: 30000, // 30 second timeout for loading each character
+        });
+        
         execSync(
           `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
-          {
-            stdio: 'pipe',
-            timeout: 30000, // 30 second timeout for loading each character
-          }
+          platformOptions
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
 
