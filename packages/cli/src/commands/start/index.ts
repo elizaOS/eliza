@@ -60,12 +60,11 @@ export const start = new Command()
           const cwd = process.cwd();
           const dirInfo = detectDirectoryType(cwd);
 
-          // Check if we're in a project directory (replaces manual package.json check)
+          // Check if we're in a directory that might contain agents - allow any directory with package.json
+          // except those explicitly detected as non-ElizaOS (covers projects, plugins, monorepos, etc.)
           if (
             dirInfo.hasPackageJson &&
-            (dirInfo.type === 'elizaos-project' ||
-              dirInfo.type === 'elizaos-monorepo' ||
-              dirInfo.type === 'elizaos-subdir')
+            dirInfo.type !== 'non-elizaos-dir'
           ) {
             logger.info('No character files specified, attempting to load project agents...');
             const project = await loadProject(cwd);
