@@ -79,7 +79,7 @@ Start the project or plugin in development mode with auto-rebuild, detailed logg
 
 - **Options:**
   - `-c, --configure`: Reconfigure services and AI models (skips using saved configuration)
-  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
+  - `--character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
   - `-p, --port <port>`: Port to listen on
 
@@ -211,7 +211,7 @@ Publish a plugin to the registry.
 - **Options:**
   - `-t, --test`: Test publish process without making changes
   - `--npm`: Publish to npm instead of GitHub
-  - `-sr, --skip-registry`: Skip publishing to the registry
+  - `--skip-registry`: Skip publishing to the registry
   - `-d, --dry-run`: Generate registry files locally without publishing
 
 **Default behavior:**
@@ -243,7 +243,7 @@ Start the Eliza agent with configurable plugins and services.
 
 - **Options:**
   - `-c, --configure`: Force reconfiguration of services and AI models (bypasses saved configuration)
-  - `-char, --character [paths...]`: Character file(s) to use - accepts paths or URLs
+  - `--character [paths...]`: Character file(s) to use - accepts paths or URLs
   - `-b, --build`: Build the project before starting
   - `-p, --port <port>`: Port to listen on (default: 3000)
 
@@ -505,7 +505,7 @@ Update ElizaOS CLI and project dependencies to the latest versions.
 
 - **Options:**
   - `-c, --check`: Check for available updates without applying them - shows what packages would be updated
-  - `-sb, --skip-build`: Skip building after updating
+  - `--skip-build`: Skip building after updating
   - `--cli`: Update only the global CLI installation (without updating packages)
   - `--packages`: Update only packages (without updating the CLI)
 

@@ -13,7 +13,7 @@ export const dev = new Command()
     'Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection'
   )
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option('-char, --character [paths...]', 'Character file(s) to use - accepts paths or URLs')
+  .option('--character [paths...]', 'Character file(s) to use - accepts paths or URLs')
   .option('-b, --build', 'Build the project before starting')
   .addOption(
     new Option('-p, --port <port>', 'Port to listen on (default: 3000)').argParser(validatePort)

@@ -29,7 +29,7 @@ elizaos publish [options]
 | `--npm`                | Publish to npm instead of GitHub                   |
 | `-t, --test`           | Test publish process without making changes        |
 | `-d, --dry-run`        | Generate registry files locally without publishing |
-| `-sr, --skip-registry` | Skip publishing to the registry                    |
+| `--skip-registry`      | Skip publishing to the registry                    |
 
 </TabItem>
 <TabItem value="examples" label="Examples">
