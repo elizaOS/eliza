@@ -474,16 +474,34 @@ export default function CharacterForm({
     try {
       const updatedCharacter = await ensureAvatarSize(characterValue);
 
-      // Validate required secrets if we have a secret panel ref
+      // Validate required secrets
+      let missingSecrets: string[] = [];
+
+      // If secret panel is mounted, use it for validation (has most up-to-date data)
       if (secretPanelRef?.current) {
         const secretValidation = secretPanelRef.current.validateSecrets();
-        if (!secretValidation.isValid) {
-          // Show the warning dialog instead of blocking
-          setIsSubmitting(false);
-          setPendingSubmit(updatedCharacter);
-          setShowMissingSecretsDialog(true);
-          return;
-        }
+        missingSecrets = secretValidation.missingSecrets;
+      } else {
+        // Secret panel not mounted - validate based on current character settings
+        const secretsObj = updatedCharacter.settings?.secrets;
+        const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
+          ? secretsObj as Record<string, any>
+          : {};
+
+        missingSecrets = requiredSecrets
+          .filter((secret) => {
+            const value = currentSecrets[secret.name];
+            return !value || (typeof value === 'string' && value.trim() === '');
+          })
+          .map((secret) => secret.name);
+      }
+
+      if (missingSecrets.length > 0) {
+        // Show the warning dialog
+        setIsSubmitting(false);
+        setPendingSubmit(updatedCharacter);
+        setShowMissingSecretsDialog(true);
+        return;
       }
 
       await onSubmit(updatedCharacter);
@@ -539,7 +557,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -614,7 +632,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -997,9 +1015,29 @@ export default function CharacterForm({
         open={showMissingSecretsDialog}
         onOpenChange={setShowMissingSecretsDialog}
         missingSecrets={(() => {
-          if (!secretPanelRef?.current) return [];
-          const validation = secretPanelRef.current.validateSecrets();
-          return validation.missingSecrets.map((secretName) => {
+          let missingSecretNames: string[] = [];
+
+          // If secret panel is mounted, use it (has most up-to-date data)
+          if (secretPanelRef?.current) {
+            const validation = secretPanelRef.current.validateSecrets();
+            missingSecretNames = validation.missingSecrets;
+          } else {
+            // Secret panel not mounted - calculate based on character value
+            const secretsObj = characterValue.settings?.secrets;
+            const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
+              ? secretsObj as Record<string, any>
+              : {};
+
+            missingSecretNames = requiredSecrets
+              .filter((secret) => {
+                const value = currentSecrets[secret.name];
+                return !value || (typeof value === 'string' && value.trim() === '');
+              })
+              .map((secret) => secret.name);
+          }
+
+          // Map secret names to full details
+          return missingSecretNames.map((secretName) => {
             const reqSecret = requiredSecrets.find((s) => s.name === secretName);
             return {
               name: secretName,
