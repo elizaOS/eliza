@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^23.3.0",
+    "@types/node": "latest",
     "typescript": "^5.7.2",
     "eslint": "^8.57.0",
     "tsup": "^8.5.0"
