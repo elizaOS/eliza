@@ -148,10 +148,6 @@ describe('directory-detection', () => {
     mocks.findMonorepoRoot.mockReturnValue(null);
   });
 
-  afterEach(() => {
-    // Additional cleanup for file system state if needed
-    // This ensures no test state leaks between tests
-  });
 
   describe('detectDirectoryType', () => {
     it('should detect elizaos project', () => {

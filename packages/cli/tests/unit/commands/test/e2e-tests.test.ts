@@ -145,15 +145,15 @@ const TestFixtures = {
 };
 
 describe('E2E Tests Plugin Isolation', () => {
-  let originalEnv: Record<string, string | undefined>;
+  let originalElizaTestingPlugin: string | undefined;
   let runE2eTests: any;
   let loadProject: any;
   let startAgentMock: any;
   let TestRunnerMock: any;
 
   beforeEach(async () => {
-    // Save original environment state
-    originalEnv = { ...process.env };
+    // Save original ELIZA_TESTING_PLUGIN value specifically
+    originalElizaTestingPlugin = process.env.ELIZA_TESTING_PLUGIN;
     
     // Clean environment
     delete process.env.ELIZA_TESTING_PLUGIN;
@@ -193,8 +193,12 @@ describe('E2E Tests Plugin Isolation', () => {
   });
 
   afterEach(() => {
-    // Restore original environment completely
-    process.env = originalEnv;
+    // Restore only the specific environment variable we care about
+    if (originalElizaTestingPlugin !== undefined) {
+      process.env.ELIZA_TESTING_PLUGIN = originalElizaTestingPlugin;
+    } else {
+      delete process.env.ELIZA_TESTING_PLUGIN;
+    }
   });
 
   describe('Plugin Test Environment Variable', () => {
@@ -208,9 +212,9 @@ describe('E2E Tests Plugin Isolation', () => {
       loadProject.mockResolvedValue(TestFixtures.mockPluginProject);
       startAgentMock.mockResolvedValue(mockRuntime);
 
-      // Track environment changes with a simple approach
+      // Track environment changes with proper cleanup
       let envWasSet = false;
-      const originalEnvSetter = Object.getOwnPropertyDescriptor(process.env, 'ELIZA_TESTING_PLUGIN')?.set;
+      const originalDescriptor = Object.getOwnPropertyDescriptor(process.env, 'ELIZA_TESTING_PLUGIN');
       
       // Simple spy on environment variable
       Object.defineProperty(process.env, 'ELIZA_TESTING_PLUGIN', {
@@ -220,10 +224,19 @@ describe('E2E Tests Plugin Isolation', () => {
         enumerable: true,
       });
 
-      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
+      try {
+        await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
 
-      // Verify the environment variable was set
-      expect(envWasSet).toBe(true);
+        // Verify the environment variable was set
+        expect(envWasSet).toBe(true);
+      } finally {
+        // Restore original descriptor or delete property
+        if (originalDescriptor) {
+          Object.defineProperty(process.env, 'ELIZA_TESTING_PLUGIN', originalDescriptor);
+        } else {
+          delete process.env.ELIZA_TESTING_PLUGIN;
+        }
+      }
     });
 
     it('should not set ELIZA_TESTING_PLUGIN when testing a project', async () => {
