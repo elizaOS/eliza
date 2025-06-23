@@ -108,8 +108,7 @@ jobs:
       - name: Run E2E tests with server
         working-directory: packages/client
         run: |
-          chmod +x scripts/test-e2e-with-server.sh
-          ./scripts/test-e2e-with-server.sh
+          bun run test:e2e
         env:
           SERVER_PORT: 3000
           CLIENT_PORT: 5173
