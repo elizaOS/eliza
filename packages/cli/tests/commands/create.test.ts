@@ -9,6 +9,7 @@ import {
   runCliCommandSilently,
   expectCliCommandToFail,
   crossPlatform,
+  getPlatformOptions,
 } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
@@ -67,7 +68,7 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', async () => {
-    const result = execSync(`${elizaosCmd} create --help`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} create --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -160,11 +161,11 @@ describe('ElizaOS Create Commands', () => {
     // Use cross-platform commands
     try {
       crossPlatform.removeDir('existing-app');
-      execSync(`mkdir existing-app`, { stdio: 'ignore' });
+      execSync(`mkdir existing-app`, getPlatformOptions({ stdio: 'ignore' }));
       if (process.platform === 'win32') {
-        execSync(`echo test > existing-app\\file.txt`, { stdio: 'ignore' });
+        execSync(`echo test > existing-app\\file.txt`, getPlatformOptions({ stdio: 'ignore' }));
       } else {
-        execSync(`echo "test" > existing-app/file.txt`, { stdio: 'ignore' });
+        execSync(`echo "test" > existing-app/file.txt`, getPlatformOptions({ stdio: 'ignore' }));
       }
     } catch (e) {
       // Ignore setup errors
@@ -182,7 +183,7 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform commands
       try {
         crossPlatform.removeDir('create-in-place');
-        execSync(`mkdir create-in-place`, { stdio: 'ignore' });
+        execSync(`mkdir create-in-place`, getPlatformOptions({ stdio: 'ignore' }));
       } catch (e) {
         // Ignore setup errors
       }

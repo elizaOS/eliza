@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { safeChangeDirectory } from './test-utils';
+import { safeChangeDirectory, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Plugin Commands', () => {
@@ -28,10 +28,10 @@ describe('ElizaOS Plugin Commands', () => {
     process.chdir(testTmpDir);
 
     console.log('Creating shared test project...');
-    execSync(`${elizaosCmd} create shared-test-project --yes`, {
+    execSync(`${elizaosCmd} create shared-test-project --yes`, getPlatformOptions({
       stdio: 'pipe',
       timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-    });
+    }));
 
     // Change to project directory for all tests
     process.chdir(projectDir);
@@ -59,7 +59,7 @@ describe('ElizaOS Plugin Commands', () => {
 
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
-    const result = execSync(`${elizaosCmd} plugins`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} plugins`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Manage ElizaOS plugins');
     expect(result).toContain('Commands:');
     expect(result).toContain('list');
@@ -69,12 +69,12 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   it('plugins --help shows usage information', () => {
-    const result = execSync(`${elizaosCmd} plugins --help`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} plugins --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Manage ElizaOS plugins');
   });
 
   it('plugins list shows available plugins', () => {
-    const result = execSync(`${elizaosCmd} plugins list`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} plugins list`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);
@@ -84,7 +84,7 @@ describe('ElizaOS Plugin Commands', () => {
     const aliases = ['l', 'ls'];
 
     for (const alias of aliases) {
-      const result = execSync(`${elizaosCmd} plugins ${alias}`, { encoding: 'utf8' });
+      const result = execSync(`${elizaosCmd} plugins ${alias}`, getPlatformOptions({ encoding: 'utf8' }));
       expect(result).toContain('Available v1.x plugins');
       expect(result).toContain('plugins');
     }

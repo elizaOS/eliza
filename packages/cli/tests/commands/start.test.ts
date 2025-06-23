@@ -100,7 +100,7 @@ describe('ElizaOS Start Commands', () => {
 
   // Basic agent check
   it('start command shows help', () => {
-    const result = execSync(`${elizaosCmd} start --help`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} start --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
@@ -228,7 +228,7 @@ describe('ElizaOS Start Commands', () => {
     for (const fmt of formats) {
       const result = execSync(
         `${elizaosCmd} start --character "${adaPath}${fmt}${adaPath}" --help`,
-        { encoding: 'utf8' }
+        getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toContain('start');
     }
@@ -241,14 +241,14 @@ describe('ElizaOS Start Commands', () => {
 
     const result = execSync(
       `${elizaosCmd} start --character "${adaPath},does-not-exist.json" --help`,
-      { encoding: 'utf8' }
+      getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toContain('start');
   });
 
   // --build flag accepted
   it('build option flag accepted', () => {
-    const result = execSync(`${elizaosCmd} start --build --help`, { encoding: 'utf8' });
+    const result = execSync(`${elizaosCmd} start --build --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('start');
   });
 
