@@ -19,6 +19,17 @@ mock.module('@elizaos/server', () => ({
   jsonToCharacter: mock(),
 }));
 
+// Create explicit mocks for UserEnvironment
+const mockFindMonorepoRoot = mock().mockReturnValue('/test/monorepo');
+const mockGetInstance = mock().mockReturnValue({
+  findMonorepoRoot: mockFindMonorepoRoot,
+});
+const mockGetInstanceInfo = mock().mockResolvedValue({
+  paths: {
+    envFilePath: '/test/.env',
+  },
+});
+
 mock.module('../../../../src/utils', () => ({
   buildProject: mock().mockResolvedValue(undefined),
   findNextAvailablePort: mock().mockResolvedValue(3000),
@@ -33,11 +44,8 @@ mock.module('../../../../src/utils', () => ({
     }),
   })),
   UserEnvironment: {
-    getInstanceInfo: mock().mockResolvedValue({
-      paths: {
-        envFilePath: '/test/.env',
-      },
-    }),
+    getInstanceInfo: mockGetInstanceInfo,
+    getInstance: mockGetInstance,
   },
 }));
 
@@ -67,30 +75,117 @@ mock.module('@elizaos/core', () => ({
 }));
 
 mock.module('node:fs', () => ({
-  default: {
-    existsSync: mock().mockImplementation(() => false),
-    mkdirSync: mock(),
-    rmSync: mock(),
-    readdirSync: mock().mockImplementation(() => []),
-  },
+  existsSync: mock(() => false),
+  mkdirSync: mock(),
+  rmSync: mock(),
+  readdirSync: mock(() => []),
+  createWriteStream: mock(),
+  createReadStream: mock(),
+  readFileSync: mock(() => '{}'),
+  writeFileSync: mock(),
+  statSync: mock(() => ({ isDirectory: () => true })),
 }));
 
 mock.module('dotenv', () => ({
+  default: {
+    config: mock(),
+  },
   config: mock(),
 }));
 
+// Test fixtures for consistent data
+const TestFixtures = {
+  mockPlugin: {
+    name: 'test-plugin',
+    description: 'Test plugin',
+  },
+  
+  mockProject: {
+    isPlugin: false,
+    agents: [
+      {
+        character: { name: 'Test Agent', bio: 'Test bio' },
+        plugins: [],
+      },
+    ],
+  },
+  
+  mockPluginProject: {
+    isPlugin: true,
+    pluginModule: {
+      name: 'test-plugin',
+      description: 'Test plugin',
+    },
+    agents: [
+      {
+        character: { name: 'Test Agent', bio: 'Test bio' },
+        plugins: [],
+      },
+    ],
+  },
+  
+  mockDirectoryInfo: {
+    plugin: {
+      type: 'elizaos-plugin' as const,
+      hasPackageJson: true,
+      hasElizaOSDependencies: true,
+      elizaPackageCount: 1,
+    },
+    project: {
+      type: 'elizaos-project' as const,
+      hasPackageJson: true,
+      hasElizaOSDependencies: true,
+      elizaPackageCount: 2,
+    },
+  },
+  
+  mockOptions: {
+    skipBuild: true,
+  },
+};
+
 describe('E2E Tests Plugin Isolation', () => {
-  const originalEnv = process.env.ELIZA_TESTING_PLUGIN;
+  let originalEnv: Record<string, string | undefined>;
   let runE2eTests: any;
   let loadProject: any;
+  let startAgentMock: any;
+  let TestRunnerMock: any;
 
   beforeEach(async () => {
-    // Reset environment
+    // Save original environment state
+    originalEnv = { ...process.env };
+    
+    // Clean environment
     delete process.env.ELIZA_TESTING_PLUGIN;
 
-    // Import mocked modules
+    // Reset all mocks systematically
+    mockFindMonorepoRoot.mockClear();
+    mockGetInstance.mockClear();
+    mockGetInstanceInfo.mockClear();
+    
+    // Reconfigure mocks with known state
+    mockFindMonorepoRoot.mockReturnValue('/test/monorepo');
+    mockGetInstance.mockReturnValue({
+      findMonorepoRoot: mockFindMonorepoRoot,
+    });
+    mockGetInstanceInfo.mockResolvedValue({
+      paths: {
+        envFilePath: '/test/.env',
+      },
+    });
+
+    // Import and setup mocked modules
     const projectModule = await import('../../../../src/project');
     loadProject = projectModule.loadProject;
+    loadProject.mockClear();
+
+    const startModule = await import('../../../../src/commands/start');
+    startAgentMock = startModule.startAgent;
+    startAgentMock.mockClear();
+
+    const utilsModule = await import('../../../../src/utils');
+    TestRunnerMock = utilsModule.TestRunner;
+    TestRunnerMock.mockClear();
 
     // Import the function we're testing
     const module = await import('../../../../src/commands/test/actions/e2e-tests');
@@ -98,115 +193,58 @@ describe('E2E Tests Plugin Isolation', () => {
   });
 
   afterEach(() => {
-    // Restore original environment
-    if (originalEnv) {
-      process.env.ELIZA_TESTING_PLUGIN = originalEnv;
-    } else {
-      delete process.env.ELIZA_TESTING_PLUGIN;
-    }
+    // Restore original environment completely
+    process.env = originalEnv;
   });
 
   describe('Plugin Test Environment Variable', () => {
     it('should set ELIZA_TESTING_PLUGIN=true when testing a plugin', async () => {
-      // Setup mock to return a plugin
-      const mockPlugin = {
-        name: 'test-plugin',
-        description: 'Test plugin',
+      // Setup mock to return a plugin using test fixtures
+      const mockRuntime = {
+        character: { name: 'Eliza' },
+        plugins: [TestFixtures.mockPlugin],
       };
 
-      loadProject.mockResolvedValue({
-        isPlugin: true,
-        pluginModule: mockPlugin,
-        agents: [],
-      });
+      loadProject.mockResolvedValue(TestFixtures.mockPluginProject);
+      startAgentMock.mockResolvedValue(mockRuntime);
 
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-plugin',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 1,
-      };
-
-      const options = { skipBuild: true };
-
-      // Track environment variable changes
-      const envChanges: string[] = [];
-      const originalDefineProperty = Object.defineProperty;
-
+      // Track environment changes with a simple approach
+      let envWasSet = false;
+      const originalEnvSetter = Object.getOwnPropertyDescriptor(process.env, 'ELIZA_TESTING_PLUGIN')?.set;
+      
+      // Simple spy on environment variable
       Object.defineProperty(process.env, 'ELIZA_TESTING_PLUGIN', {
-        get() {
-          return envChanges[envChanges.length - 1];
-        },
-        set(value) {
-          envChanges.push(value);
-        },
+        get: () => envWasSet ? 'true' : undefined,
+        set: (value) => { envWasSet = (value === 'true'); },
         configurable: true,
+        enumerable: true,
       });
 
-      await runE2eTests(undefined, options, projectInfo);
+      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
 
       // Verify the environment variable was set
-      expect(envChanges).toContain('true');
-
-      // Restore original defineProperty
-      Object.defineProperty = originalDefineProperty;
+      expect(envWasSet).toBe(true);
     });
 
     it('should not set ELIZA_TESTING_PLUGIN when testing a project', async () => {
-      // Setup mock to return a project
-      loadProject.mockResolvedValue({
-        isPlugin: false,
-        agents: [
-          {
-            character: { name: 'Test Agent', bio: 'Test bio' },
-            plugins: [],
-          },
-        ],
-      });
-
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-project',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 2,
-      };
-
-      const options = { skipBuild: true };
+      // Setup mock to return a project using test fixtures
+      loadProject.mockResolvedValue(TestFixtures.mockProject);
 
       // Ensure env var is not set initially
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();
 
-      await runE2eTests(undefined, options, projectInfo);
+      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.project);
 
       // Verify the environment variable was not set
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();
     });
 
     it('should clean up ELIZA_TESTING_PLUGIN after tests complete', async () => {
-      // Setup mock to return a plugin
-      const mockPlugin = {
-        name: 'test-plugin',
-        description: 'Test plugin',
-      };
+      // Setup mock to return a plugin using test fixtures
+      loadProject.mockResolvedValue(TestFixtures.mockPluginProject);
 
-      loadProject.mockResolvedValue({
-        isPlugin: true,
-        pluginModule: mockPlugin,
-        agents: [],
-      });
-
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-plugin',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 1,
-      };
-
-      const options = { skipBuild: true };
-
-      // Track environment variable state
+      // Track environment variable state during test execution
       let envDuringTest: string | undefined;
-      const TestRunnerMock = (await import('../../../../src/utils')).TestRunner as any;
       TestRunnerMock.mockImplementation(() => ({
         runTests: mock().mockImplementation(() => {
           // Capture env var state during test execution
@@ -221,7 +259,7 @@ describe('E2E Tests Plugin Isolation', () => {
         }),
       }));
 
-      await runE2eTests(undefined, options, projectInfo);
+      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
 
       // Verify the environment variable was set during test execution
       expect(envDuringTest).toBe('true');
@@ -231,34 +269,15 @@ describe('E2E Tests Plugin Isolation', () => {
     });
 
     it('should clean up ELIZA_TESTING_PLUGIN even if tests fail', async () => {
-      // Setup mock to return a plugin that will fail
-      const mockPlugin = {
-        name: 'test-plugin',
-        description: 'Test plugin',
-      };
-
-      loadProject.mockResolvedValue({
-        isPlugin: true,
-        pluginModule: mockPlugin,
-        agents: [],
-      });
-
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-plugin',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 1,
-      };
-
-      const options = { skipBuild: true };
+      // Setup mock to return a plugin that will fail using test fixtures
+      loadProject.mockResolvedValue(TestFixtures.mockPluginProject);
 
       // Make TestRunner throw an error
-      const TestRunnerMock = (await import('../../../../src/utils')).TestRunner as any;
       TestRunnerMock.mockImplementation(() => ({
         runTests: mock().mockRejectedValue(new Error('Test failure')),
       }));
 
-      await runE2eTests(undefined, options, projectInfo);
+      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
 
       // Verify the environment variable was cleaned up even after failure
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();
@@ -267,34 +286,24 @@ describe('E2E Tests Plugin Isolation', () => {
 
   describe('Plugin vs Project Detection', () => {
     it('should correctly identify and test plugins', async () => {
-      const mockPlugin = {
-        name: 'awesome-plugin',
-        description: 'Awesome plugin',
-        tests: [
-          {
-            name: 'Plugin Tests',
-            tests: [],
-          },
-        ],
+      // Setup plugin with test fixtures
+      const pluginWithTests = {
+        ...TestFixtures.mockPluginProject,
+        pluginModule: {
+          ...TestFixtures.mockPlugin,
+          name: 'awesome-plugin',
+          tests: [
+            {
+              name: 'Plugin Tests',
+              tests: [],
+            },
+          ],
+        },
       };
 
-      loadProject.mockResolvedValue({
-        isPlugin: true,
-        pluginModule: mockPlugin,
-        agents: [],
-      });
-
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-plugin',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 1,
-      };
-
-      const options = { skipBuild: true };
+      loadProject.mockResolvedValue(pluginWithTests);
 
       let testRunnerInstance: any;
-      const TestRunnerMock = (await import('../../../../src/utils')).TestRunner as any;
       TestRunnerMock.mockImplementation((runtime: any, projectAgent: any) => {
         testRunnerInstance = {
           runtime,
@@ -310,21 +319,16 @@ describe('E2E Tests Plugin Isolation', () => {
         return testRunnerInstance;
       });
 
-      await runE2eTests(undefined, options, projectInfo);
+      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
 
-      // Verify the TestRunner was called with proper plugin configuration
-      // expect(TestRunnerMock).toHaveBeenCalled(); // TODO: Fix for bun test
-      // expect(testRunnerInstance.runTests).toHaveBeenCalledWith({
-      //   filter: undefined,
-      //   skipPlugins: false, // Should not skip plugins for plugin directory
-      //   skipProjectTests: true, // Should skip project tests for plugin
-      //   skipE2eTests: false
-      // }); // TODO: Fix for bun test
+      // Verify the TestRunner was instantiated (basic verification)
+      expect(TestRunnerMock).toHaveBeenCalled();
     });
 
     it('should correctly identify and test projects', async () => {
-      loadProject.mockResolvedValue({
-        isPlugin: false,
+      // Setup project with test fixtures
+      const projectWithTests = {
+        ...TestFixtures.mockProject,
         agents: [
           {
             character: { name: 'Project Agent', bio: 'Test bio' },
@@ -337,19 +341,11 @@ describe('E2E Tests Plugin Isolation', () => {
             ],
           },
         ],
-      });
-
-      const projectInfo: DirectoryInfo = {
-        type: 'elizaos-project',
-        hasPackageJson: true,
-        hasElizaOSDependencies: true,
-        elizaPackageCount: 3,
       };
 
-      const options = { skipBuild: true };
+      loadProject.mockResolvedValue(projectWithTests);
 
       let testRunnerInstance: any;
-      const TestRunnerMock = (await import('../../../../src/utils')).TestRunner as any;
       TestRunnerMock.mockImplementation((runtime: any, projectAgent: any) => {
         testRunnerInstance = {
           runtime,
@@ -365,16 +361,15 @@ describe('E2E Tests Plugin Isolation', () => {
         return testRunnerInstance;
       });
 
-      await runE2eTests(undefined, options, projectInfo);
+      const projectInfo = {
+        ...TestFixtures.mockDirectoryInfo.project,
+        elizaPackageCount: 3, // Override for this test
+      };
 
-      // Verify the TestRunner was called with proper project configuration
-      // expect(TestRunnerMock).toHaveBeenCalled(); // TODO: Fix for bun test
-      // expect(testRunnerInstance.runTests).toHaveBeenCalledWith({
-      //   filter: undefined,
-      //   skipPlugins: true, // Should skip plugins for project directory
-      //   skipProjectTests: false, // Should not skip project tests
-      //   skipE2eTests: false
-      // }); // TODO: Fix for bun test
+      await runE2eTests(undefined, TestFixtures.mockOptions, projectInfo);
+
+      // Verify the TestRunner was instantiated (basic verification)
+      expect(TestRunnerMock).toHaveBeenCalled();
     });
   });
 });
