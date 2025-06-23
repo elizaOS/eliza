@@ -11,23 +11,6 @@ import {
 
 export class AudioService extends BaseApiClient {
   /**
-   * Helper to append audio data to FormData.
-   */
-  private appendAudioToFormData(
-    formData: FormData,
-    audio: Blob | Buffer | string,
-    fieldName = 'audio'
-  ): void {
-    if (audio instanceof Blob) {
-      formData.append(fieldName, audio);
-    } else if (typeof audio === 'string') {
-      formData.append(fieldName, audio);
-    } else {
-      formData.append(fieldName, new Blob([audio as Buffer]));
-    }
-  }
-
-  /**
    * Handle speech conversation
    */
   async speechConversation(
@@ -35,8 +18,17 @@ export class AudioService extends BaseApiClient {
     params: SpeechConversationParams
   ): Promise<SpeechResponse> {
     const formData = new FormData();
-    this.appendAudioToFormData(formData, params.audio);
-
+    
+    if (params.audio instanceof Blob) {
+      formData.append('audio', params.audio);
+    } else if (typeof params.audio === 'string') {
+      // Assume it's a base64 string or file path
+      formData.append('audio', params.audio);
+    } else {
+      // Buffer or other types
+      formData.append('audio', new Blob([params.audio as Buffer]));
+    }
+    
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
     if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
@@ -80,8 +72,17 @@ export class AudioService extends BaseApiClient {
     params: TranscribeParams
   ): Promise<TranscriptionResponse> {
     const formData = new FormData();
-    this.appendAudioToFormData(formData, params.audio);
-
+    
+    if (params.audio instanceof Blob) {
+      formData.append('audio', params.audio);
+    } else if (typeof params.audio === 'string') {
+      // Assume it's a base64 string or file path
+      formData.append('audio', params.audio);
+    } else {
+      // Buffer or other types
+      formData.append('audio', new Blob([params.audio as Buffer]));
+    }
+    
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
 
@@ -99,8 +100,15 @@ export class AudioService extends BaseApiClient {
     metadata?: Record<string, any>
   ): Promise<SpeechResponse> {
     const formData = new FormData();
-    this.appendAudioToFormData(formData, audio);
-
+    
+    if (audio instanceof Blob) {
+      formData.append('audio', audio);
+    } else if (typeof audio === 'string') {
+      formData.append('audio', audio);
+    } else {
+      formData.append('audio', new Blob([audio as Buffer]));
+    }
+    
     if (metadata) formData.append('metadata', JSON.stringify(metadata));
 
     return this.request<SpeechResponse>('POST', `/api/audio/${agentId}/speech`, {

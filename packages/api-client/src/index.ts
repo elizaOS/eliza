@@ -23,8 +23,4 @@ export { ServerService } from './services/server';
 export { SystemService } from './services/system';
 
 // Base client and error
-export {
-  BaseApiClient,
-  ApiError,
-} from './lib/base-client';
-
+export { BaseApiClient, ApiError } from './lib/base-client';
