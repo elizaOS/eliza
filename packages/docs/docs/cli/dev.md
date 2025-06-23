@@ -27,7 +27,7 @@ elizaos dev [options]
 | Option                          | Description                                                          |
 | ------------------------------- | -------------------------------------------------------------------- |
 | `-c, --configure`               | Reconfigure services and AI models (skips using saved configuration) |
-| `-char, --character [paths...]` | Character file(s) to use - accepts paths or URLs                     |
+| `--character [paths...]`        | Character file(s) to use - accepts paths or URLs                     |
 | `-b, --build`                   | Build the project before starting                                    |
 | `-p, --port <port>`             | Port to listen on                                                    |
 

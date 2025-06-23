@@ -27,7 +27,7 @@ elizaos update [options]
 | Option              | Description                                                         |
 | ------------------- | ------------------------------------------------------------------- |
 | `-c, --check`       | Check for available updates without applying them                   |
-| `-sb, --skip-build` | Skip building after updating                                        |
+| `--skip-build`      | Skip building after updating                                        |
 | `--cli`             | Update only the global CLI installation (without updating packages) |
 | `--packages`        | Update only packages (without updating the CLI)                     |
 

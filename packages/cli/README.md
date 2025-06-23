@@ -505,7 +505,7 @@ Update ElizaOS CLI and project dependencies to the latest versions.
 
 - **Options:**
   - `-c, --check`: Check for available updates without applying them - shows what packages would be updated
-  - `-sb, --skip-build`: Skip building after updating
+  - `--skip-build`: Skip building after updating
   - `--cli`: Update only the global CLI installation (without updating packages)
   - `--packages`: Update only packages (without updating the CLI)
 
