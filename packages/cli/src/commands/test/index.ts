@@ -19,8 +19,8 @@ export const test = new Command()
       .default('all')
   )
   .option('-p, --port <port>', 'the port to run e2e tests on', validatePort)
-  .option('--name <name>', 'filter tests by name')
-  .option('--skip-build', 'skip the build step before running tests')
+  .option('--name <name>', 'Filter tests by name')
+  .option('--skip-build', 'Skip building before running tests')
   .option('--skip-type-check', 'skip TypeScript validation before running tests')
   .hook('preAction', async (thisCommand) => {
     // Install plugin dependencies before running tests
