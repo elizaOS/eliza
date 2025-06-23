@@ -14,3 +14,15 @@ auto = "fallback"
 [run]
 # Bun runtime optimizations
 shell = "system"
+
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]

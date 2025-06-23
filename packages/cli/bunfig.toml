@@ -12,3 +12,7 @@ coverage = true
 # Test file patterns
 root = "."
 testNamePattern = ""
+
+coverage-exclude = [
+  "**/dist/**",
+]
