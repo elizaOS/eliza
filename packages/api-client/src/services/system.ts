@@ -9,15 +9,7 @@ export class SystemService extends BaseApiClient {
    *   GET /api/system/env/local  ->  { success: true, data: Record<string,string> }
    */
   async getEnvironment(): Promise<Record<string, string>> {
-    type ResponseShape = { success: boolean; data: Record<string, string> };
-    const res = await this.get<ResponseShape>('/api/system/env/local');
-    // In case the server returns the raw Record without the wrapper for backwards-compatibility
-    // we normalise here.
-    if (res && 'success' in res && 'data' in res) {
-      return res.data;
-    }
-    // @ts-expect-error – If the server returned the raw env object we just forward it.
-    return res as Record<string, string>;
+    return this.get<Record<string, string>>('/api/system/env/local');
   }
 
   /**
