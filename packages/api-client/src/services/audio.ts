@@ -11,6 +11,98 @@ import {
 
 export class AudioService extends BaseApiClient {
   /**
+ * Convert audio input to appropriate FormData value
+ */
+  private processAudioInput(audio: Blob | Buffer | string): Blob | string {
+    if (audio instanceof Blob) {
+      return audio;
+    }
+
+    if (typeof audio === 'string') {
+      // Handle base64 data URLs (e.g., "data:audio/mp3;base64,...")
+      if (audio.startsWith('data:')) {
+        try {
+          const [header, base64Data] = audio.split(',');
+          const mimeMatch = header.match(/data:([^;]+)/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'audio/wav';
+
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          return new Blob([bytes], { type: mimeType });
+        } catch (error) {
+          throw new Error(`Invalid base64 data URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      // Handle plain base64 strings (try to decode)
+      if (this.isBase64String(audio)) {
+        try {
+          const binaryString = atob(audio);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          return new Blob([bytes], { type: 'audio/wav' });
+        } catch (error) {
+          // If base64 decoding fails, treat as file path or other string
+          return audio;
+        }
+      }
+
+      // For file paths or other strings, return as-is (server will handle file reading)
+      return audio;
+    }
+
+    // Handle Buffer and ArrayBuffer types
+    if (this.isBuffer(audio)) {
+      return new Blob([audio], { type: 'audio/wav' });
+    }
+
+    // Cast to any for runtime type checking since TypeScript can't narrow the union type properly
+    const audioAsAny = audio as any;
+
+    if (audioAsAny instanceof ArrayBuffer) {
+      return new Blob([audioAsAny], { type: 'audio/wav' });
+    }
+
+    if (audioAsAny && typeof audioAsAny === 'object' && 'buffer' in audioAsAny && audioAsAny.buffer instanceof ArrayBuffer) {
+      // Handle typed arrays like Uint8Array
+      return new Blob([audioAsAny.buffer], { type: 'audio/wav' });
+    }
+
+    throw new Error(`Unsupported audio input type: ${typeof audio}. Expected Blob, Buffer, ArrayBuffer, or string.`);
+  }
+
+  /**
+   * Check if a string appears to be base64 encoded
+   */
+  private isBase64String(str: string): boolean {
+    // Basic base64 pattern check (allows padding)
+    const base64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
+
+    // Must be at least 4 characters and divisible by 4 (with padding)
+    if (str.length < 4 || str.length % 4 !== 0) {
+      return false;
+    }
+
+    return base64Pattern.test(str);
+  }
+
+  /**
+   * Safe check for Buffer type (works in both Node.js and browser environments)
+   */
+  private isBuffer(obj: any): obj is Buffer {
+    return obj != null &&
+      typeof obj === 'object' &&
+      typeof obj.constructor === 'function' &&
+      obj.constructor.name === 'Buffer' &&
+      typeof obj.readUInt8 === 'function';
+  }
+
+  /**
    * Handle speech conversation
    */
   async speechConversation(
@@ -18,17 +110,15 @@ export class AudioService extends BaseApiClient {
     params: SpeechConversationParams
   ): Promise<SpeechResponse> {
     const formData = new FormData();
-    
-    if (params.audio instanceof Blob) {
-      formData.append('audio', params.audio);
-    } else if (typeof params.audio === 'string') {
-      // Assume it's a base64 string or file path
-      formData.append('audio', params.audio);
+
+    const processedAudio = this.processAudioInput(params.audio);
+    if (processedAudio instanceof Blob) {
+      formData.append('audio', processedAudio);
     } else {
-      // Buffer or other types
-      formData.append('audio', new Blob([params.audio as Buffer]));
+      // String (file path or other string identifier)
+      formData.append('audio', processedAudio);
     }
-    
+
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
     if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
@@ -72,17 +162,15 @@ export class AudioService extends BaseApiClient {
     params: TranscribeParams
   ): Promise<TranscriptionResponse> {
     const formData = new FormData();
-    
-    if (params.audio instanceof Blob) {
-      formData.append('audio', params.audio);
-    } else if (typeof params.audio === 'string') {
-      // Assume it's a base64 string or file path
-      formData.append('audio', params.audio);
+
+    const processedAudio = this.processAudioInput(params.audio);
+    if (processedAudio instanceof Blob) {
+      formData.append('audio', processedAudio);
     } else {
-      // Buffer or other types
-      formData.append('audio', new Blob([params.audio as Buffer]));
+      // String (file path or other string identifier)
+      formData.append('audio', processedAudio);
     }
-    
+
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
 
@@ -100,15 +188,15 @@ export class AudioService extends BaseApiClient {
     metadata?: Record<string, any>
   ): Promise<SpeechResponse> {
     const formData = new FormData();
-    
-    if (audio instanceof Blob) {
-      formData.append('audio', audio);
-    } else if (typeof audio === 'string') {
-      formData.append('audio', audio);
+
+    const processedAudio = this.processAudioInput(audio);
+    if (processedAudio instanceof Blob) {
+      formData.append('audio', processedAudio);
     } else {
-      formData.append('audio', new Blob([audio as Buffer]));
+      // String (file path or other string identifier)
+      formData.append('audio', processedAudio);
     }
-    
+
     if (metadata) formData.append('metadata', JSON.stringify(metadata));
 
     return this.request<SpeechResponse>('POST', `/api/audio/${agentId}/speech`, {

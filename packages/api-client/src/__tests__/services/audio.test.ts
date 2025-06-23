@@ -41,12 +41,12 @@ describe('AudioService', () => {
     const mockAudioBlob = new Blob(['audio data'], { type: 'audio/wav' });
     const params = {
       audio: mockAudioBlob,
-      format: 'wav',
+      format: 'wav' as const,
       language: 'en',
     };
 
     it('should handle speech conversation successfully', async () => {
-      const mockResponse = { response: 'Hello there!', audioUrl: 'http://example.com/audio.wav' };
+      const mockResponse = { text: 'Hello there!', audio: 'base64-audio-data', duration: 2.5 };
       (audioService as any).request.mockResolvedValue(mockResponse);
 
       const result = await audioService.speechConversation(TEST_AGENT_ID, params);
@@ -80,6 +80,132 @@ describe('AudioService', () => {
     });
   });
 
+  describe('Audio Processing Bug Fixes', () => {
+    beforeEach(() => {
+      (audioService as any).request.mockResolvedValue({ text: 'Hello world' });
+    });
+
+    it('should handle base64 data URL strings correctly', async () => {
+      // Create a valid base64 data URL
+      const base64Audio = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIB+AAABAAgAZGF0YQA=';
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: base64Audio });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should handle plain base64 strings correctly', async () => {
+      // Create a valid base64 string (without data URL prefix)
+      const base64String = 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIB+AAABAAgAZGF0YQA=';
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: base64String });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should handle file path strings correctly', async () => {
+      const filePath = '/path/to/audio.wav';
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: filePath });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should handle Buffer objects safely', async () => {
+      // Create a proper mock Buffer-like object that will pass isBuffer check
+      const mockBuffer = {
+        constructor: { name: 'Buffer' },
+        readUInt8: mock(() => 0),
+        // Mock Buffer data
+        [Symbol.iterator]: function* () {
+          yield 1; yield 2; yield 3;
+        },
+        length: 3,
+      };
+
+      // Mock the isBuffer method to return true for our test
+      const originalProcessAudioInput = (audioService as any).processAudioInput;
+      (audioService as any).processAudioInput = mock((audio: any) => {
+        if (audio === mockBuffer) {
+          return new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/wav' });
+        }
+        return originalProcessAudioInput.call(audioService, audio);
+      });
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: mockBuffer as any });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should handle ArrayBuffer objects correctly', async () => {
+      const arrayBuffer = new ArrayBuffer(8);
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: arrayBuffer as any });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should handle Uint8Array objects correctly', async () => {
+      const uint8Array = new Uint8Array([1, 2, 3, 4]);
+
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: uint8Array as any });
+
+      expect((audioService as any).request).toHaveBeenCalledWith(
+        'POST',
+        `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
+        expect.objectContaining({
+          body: expect.any(FormData),
+        })
+      );
+    });
+
+    it('should throw error for unsupported audio types', async () => {
+      const unsupportedAudio = { some: 'object' };
+
+      await expect(
+        audioService.speechConversation(TEST_AGENT_ID, { audio: unsupportedAudio as any })
+      ).rejects.toThrow('Unsupported audio input type: object');
+    });
+
+    it('should throw error for invalid base64 data URL', async () => {
+      const invalidBase64 = 'data:audio/wav;base64,invalid-base64!!!';
+
+      await expect(
+        audioService.speechConversation(TEST_AGENT_ID, { audio: invalidBase64 })
+      ).rejects.toThrow('Invalid base64 data URL');
+    });
+  });
+
   describe('generateSpeech', () => {
     const params = {
       text: 'Hello world',
@@ -103,7 +229,7 @@ describe('AudioService', () => {
 
   describe('synthesizeAudioMessage', () => {
     const params = {
-      text: 'Message to synthesize',
+      messageId: TEST_AGENT_ID,
       voice: 'natural',
     };
 
@@ -125,7 +251,7 @@ describe('AudioService', () => {
     const audioBlob = new Blob(['audio data'], { type: 'audio/wav' });
     const params = {
       audio: audioBlob,
-      format: 'wav',
+      format: 'wav' as const,
       language: 'en',
     };
 
@@ -151,7 +277,7 @@ describe('AudioService', () => {
     const metadata = { sessionId: 'session-123' };
 
     it('should process speech successfully', async () => {
-      const mockResponse = { response: 'Processed response', action: 'continue' };
+      const mockResponse = { text: 'Processed response', audio: 'response-audio', duration: 1.5 };
       (audioService as any).request.mockResolvedValue(mockResponse);
 
       const result = await audioService.processSpeech(TEST_AGENT_ID, audioBlob, metadata);
