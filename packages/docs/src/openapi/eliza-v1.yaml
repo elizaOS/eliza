@@ -3110,18 +3110,36 @@ paths:
             schema:
               type: object
               required:
-                - userId
-                - text
+                - author_id
+                - content
+                - server_id
               properties:
-                userId:
+                author_id:
                   type: string
                   format: uuid
-                text:
+                  description: Central ID of the author sending the message
+                content:
                   type: string
-                attachments:
-                  type: array
-                  items:
-                    type: object
+                  description: Message content
+                in_reply_to_message_id:
+                  type: string
+                  format: uuid
+                  description: ID of the root message being replied to (optional)
+                server_id:
+                  type: string
+                  format: uuid
+                  description: Central server ID this channel belongs to
+                raw_message:
+                  description: Raw message payload (string or JSON object)
+                  oneOf:
+                    - type: object
+                    - type: string
+                metadata:
+                  type: object
+                  description: Additional metadata such as user_display_name
+                source_type:
+                  type: string
+                  description: Source identifier (e.g. 'eliza_gui')
       responses:
         '201':
           description: Message sent successfully
