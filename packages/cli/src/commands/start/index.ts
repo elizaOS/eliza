@@ -9,6 +9,7 @@ import { StartOptions } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadEnvConfig } from './utils/config-utils';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 
 export const start = new Command()
   .name('start')
@@ -57,10 +58,15 @@ export const start = new Command()
         // Try to load project agents if no character files specified
         try {
           const cwd = process.cwd();
-          const packageJsonPath = path.join(cwd, 'package.json');
+          const dirInfo = detectDirectoryType(cwd);
 
-          // Check if we're in a project directory
-          if (fs.existsSync(packageJsonPath)) {
+          // Check if we're in a project directory (replaces manual package.json check)
+          if (
+            dirInfo.hasPackageJson &&
+            (dirInfo.type === 'elizaos-project' ||
+              dirInfo.type === 'elizaos-monorepo' ||
+              dirInfo.type === 'elizaos-subdir')
+          ) {
             logger.info('No character files specified, attempting to load project agents...');
             const project = await loadProject(cwd);
 
