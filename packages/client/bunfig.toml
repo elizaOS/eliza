@@ -9,7 +9,15 @@ preload = ["./src/test/setup.ts"]
 coverage = true
 coverage-reporter = ["text", "json", "html"]
 coverage-exclude = [
-  "node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
   "src/test/**", 
   "*.config.ts",
   "*.config.js",
@@ -18,3 +26,6 @@ coverage-exclude = [
   "**/*.cy.tsx",
   "cypress/**",
 ]
+
+[test.env]
+NODE_ENV = "test"

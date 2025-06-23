@@ -1,59 +1,44 @@
-import { renderHook, act } from '@testing-library/react';
-import { mock, describe, it, expect, beforeEach } from 'bun:test';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import { useSidebarState } from '../use-sidebar-state';
-
-// Mock localStorage
-const localStorageMock = {
-  getItem: mock(),
-  setItem: mock(),
-  removeItem: mock(),
-  clear: mock(),
-};
-
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
-});
-
-// Mock clientLogger
-mock.module('../../lib/logger', () => ({
-  default: {
-    error: mock(),
-  },
-}));
 
 describe('useSidebarState', () => {
   beforeEach(() => {
-    mock.restore();
-    localStorageMock.getItem.mockReturnValue(null);
+    // Clear localStorage before each test
+    localStorage.clear();
   });
 
   it('should initialize with false when no stored state exists', () => {
     const { result } = renderHook(() => useSidebarState());
 
     expect(result.current.isVisible).toBe(false);
-    expect(localStorageMock.getItem).toHaveBeenCalledWith('eliza-agent-sidebar-visible');
   });
 
-  it('should load stored state when it exists', () => {
-    localStorageMock.getItem.mockReturnValue('true');
+  it('should load stored state when it exists', async () => {
+    localStorage.setItem('eliza-agent-sidebar-visible', 'true');
 
     const { result } = renderHook(() => useSidebarState());
 
-    expect(result.current.isVisible).toBe(true);
+    await waitFor(() => {
+      expect(result.current.isVisible).toBe(true);
+    });
   });
 
-  it('should save state when setSidebarVisible is called', () => {
+  it('should save state when setSidebarVisible is called', async () => {
     const { result } = renderHook(() => useSidebarState());
 
     act(() => {
       result.current.setSidebarVisible(true);
     });
 
-    expect(result.current.isVisible).toBe(true);
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('eliza-agent-sidebar-visible', 'true');
+    await waitFor(() => {
+      expect(result.current.isVisible).toBe(true);
+    });
+
+    expect(localStorage.getItem('eliza-agent-sidebar-visible')).toBe('true');
   });
 
-  it('should toggle state when toggleSidebar is called', () => {
+  it('should toggle state when toggleSidebar is called', async () => {
     const { result } = renderHook(() => useSidebarState());
 
     // Initially false
@@ -64,33 +49,40 @@ describe('useSidebarState', () => {
       result.current.toggleSidebar();
     });
 
-    expect(result.current.isVisible).toBe(true);
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('eliza-agent-sidebar-visible', 'true');
+    await waitFor(() => {
+      expect(result.current.isVisible).toBe(true);
+    });
+
+    expect(localStorage.getItem('eliza-agent-sidebar-visible')).toBe('true');
 
     // Toggle back to false
     act(() => {
       result.current.toggleSidebar();
     });
 
-    expect(result.current.isVisible).toBe(false);
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('eliza-agent-sidebar-visible', 'false');
+    await waitFor(() => {
+      expect(result.current.isVisible).toBe(false);
+    });
+
+    expect(localStorage.getItem('eliza-agent-sidebar-visible')).toBe('false');
   });
 
   it('should handle localStorage errors gracefully', () => {
-    localStorageMock.getItem.mockImplementation(() => {
-      throw new Error('localStorage error');
-    });
+    // Set up invalid JSON
+    localStorage.setItem('eliza-agent-sidebar-visible', 'invalid-json');
 
     const { result } = renderHook(() => useSidebarState());
 
-    // Should default to false when localStorage fails
+    // Should default to false when JSON parsing fails
     expect(result.current.isVisible).toBe(false);
   });
 
-  it('should handle localStorage save errors gracefully', () => {
-    localStorageMock.setItem.mockImplementation(() => {
+  it('should handle localStorage save errors gracefully', async () => {
+    // Mock localStorage to throw an error on setItem
+    const originalSetItem = localStorage.setItem;
+    localStorage.setItem = () => {
       throw new Error('localStorage save error');
-    });
+    };
 
     const { result } = renderHook(() => useSidebarState());
 
@@ -99,11 +91,16 @@ describe('useSidebarState', () => {
       result.current.setSidebarVisible(true);
     });
 
-    expect(result.current.isVisible).toBe(true);
+    await waitFor(() => {
+      expect(result.current.isVisible).toBe(true);
+    });
+
+    // Restore original setItem
+    localStorage.setItem = originalSetItem;
   });
 
   it('should handle invalid JSON in localStorage', () => {
-    localStorageMock.getItem.mockReturnValue('invalid-json');
+    localStorage.setItem('eliza-agent-sidebar-visible', 'invalid-json');
 
     const { result } = renderHook(() => useSidebarState());
 

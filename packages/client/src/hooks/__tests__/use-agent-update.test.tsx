@@ -1,13 +1,8 @@
 import { useAgentUpdate } from '../use-agent-update';
-import { describe, test, expect, mock } from 'bun:test';
+import { describe, test, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { renderHook } from '@testing-library/react';
 
-// Mock the necessary hooks
-mock.module('react', () => ({
-  useCallback: (fn: Function) => fn,
-  useRef: (value: any) => ({ current: value }),
-  useState: (initialValue: any) => [initialValue, mock()],
-}));
-
+// Mock the usePartialUpdate hook instead of React core hooks
 mock.module('../use-partial-update', () => ({
   usePartialUpdate: (initialValue: any) => {
     let currentValue = { ...initialValue };
@@ -88,6 +83,16 @@ type MockAgent = {
 };
 
 describe('useAgentUpdate hook', () => {
+  beforeEach(() => {
+    // Clear all mocks before each test
+    mock.restore();
+  });
+
+  afterEach(() => {
+    // Clean up after each test
+    mock.restore();
+  });
+
   test('importAgent should call the appropriate update functions for all template fields', () => {
     // Create initial and template agents
     const initialAgent: MockAgent = {
@@ -140,14 +145,14 @@ describe('useAgentUpdate hook', () => {
       extraField: 'extra-field-value',
     };
 
-    // Initialize the hook
-    const hookResult = useAgentUpdate(initialAgent as any);
+    // Use renderHook to properly test the React hook
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
 
     // Get the necessary functions
-    const { updateField, updateSettings } = hookResult;
+    const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    hookResult.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as any);
 
     // Verify that updateField or updateSettings was called for each field in the template
 
@@ -222,14 +227,14 @@ describe('useAgentUpdate hook', () => {
       customField: 'custom value',
     };
 
-    // Initialize the hook
-    const hookResult = useAgentUpdate(initialAgent as any);
+    // Use renderHook to properly test the React hook
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
 
     // Get the necessary functions
-    const { updateField, updateSettings } = hookResult;
+    const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    hookResult.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as any);
 
     // Verify updateSettings was called with the complex nested object
     expect(updateSettings).toHaveBeenCalledWith(
