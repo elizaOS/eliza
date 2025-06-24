@@ -173,7 +173,8 @@ export async function processAttachments(
         if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
 
         const buffer = await res.buffer();
-        imageUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+        const contentType = res.headers.get('content-type') || 'application/octet-stream';
+        imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
       }
       
       // Only process images that don't already have descriptions
