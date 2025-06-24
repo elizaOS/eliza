@@ -67,7 +67,7 @@ export function createHybridClient() {
           }
           const result = await newClient.messaging.listServers();
           // Adapt from { servers: MessageServer[] } to { data: { servers: MessageServer[] } }
-          return { data: result };
+          return { data: { servers: result.servers } };
         })
       : legacyClient.getServers,
     getChannelsForServer: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
@@ -77,9 +77,19 @@ export function createHybridClient() {
           }
           const result = await newClient.messaging.getServerChannels(serverId);
           // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
-          return { data: result };
+          return { data: { channels: result.channels } };
         })
       : legacyClient.getChannelsForServer,
+    getChannels: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (serverId: string) => {
+          if (!newClient.messaging?.getServerChannels) {
+            throw new Error('Messaging service not available');
+          }
+          const result = await newClient.messaging.getServerChannels(serverId);
+          // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
+          return { data: { channels: result.channels } };
+        })
+      : legacyClient.getChannels,
     getOrCreateDmChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
           if (!newClient.messaging?.getOrCreateDmChannel) {
@@ -118,7 +128,7 @@ export function createHybridClient() {
           
           const result = await newClient.messaging.getChannelMessages(channelId, params);
           // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
-          return { data: result };
+          return { data: { messages: result.messages } };
         })
       : legacyClient.getChannelMessages,
     postMessageToChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
