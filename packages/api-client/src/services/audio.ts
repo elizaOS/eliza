@@ -182,7 +182,7 @@ export class AudioService extends BaseApiClient {
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
 
-    return this.request<TranscriptionResponse>('POST', `/api/audio/${agentId}/transcribe`, {
+    return this.request<TranscriptionResponse>('POST', `/api/audio/${agentId}/transcriptions`, {
       body: formData,
     });
   }
