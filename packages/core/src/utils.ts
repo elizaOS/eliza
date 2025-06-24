@@ -680,7 +680,7 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
   return undefined;
 };
 
-export function getLocalServerUrl(url: string): string {
+export function getLocalServerUrl(path: string): string {
   const port = process.env.SERVER_PORT || '3000';
-  return `http://localhost:${port}${url}`;
+  return `http://localhost:${port}${path}`;
 }
