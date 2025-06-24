@@ -61,11 +61,12 @@ export function useAgentManagement() {
         // Use centralized error handling
         handleApiError(error);
       } catch (handledError) {
-        // If the error handler doesn't show a toast (e.g., for auth errors), 
+        // If the error handler doesn't show a toast (e.g., for auth errors),
         // we show a fallback toast
         toast({
           title: 'Error Starting Agent',
-          description: handledError instanceof Error ? handledError.message : 'Failed to start agent',
+          description:
+            handledError instanceof Error ? handledError.message : 'Failed to start agent',
           variant: 'destructive',
         });
       }
@@ -113,11 +114,12 @@ export function useAgentManagement() {
         // Use centralized error handling
         handleApiError(error);
       } catch (handledError) {
-        // If the error handler doesn't show a toast (e.g., for auth errors), 
+        // If the error handler doesn't show a toast (e.g., for auth errors),
         // we show a fallback toast
         toast({
           title: 'Error Stopping Agent',
-          description: handledError instanceof Error ? handledError.message : 'Failed to stop agent',
+          description:
+            handledError instanceof Error ? handledError.message : 'Failed to stop agent',
           variant: 'destructive',
         });
       }

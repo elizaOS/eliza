@@ -78,24 +78,21 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
     [status, error, toast]
   );
 
-  const refreshApiClient = useCallback(
-    (newApiKey?: string | null) => {
-      try {
-        // Update localStorage if a new API key is provided
-        if (newApiKey !== undefined) {
-          updateApiClientApiKey(newApiKey);
-        }
-        
-        // Refresh the ElizaClient instance with new configuration
-        refreshElizaClient();
-        
-        console.log('API client refreshed with new configuration');
-      } catch (error) {
-        console.error('Failed to refresh API client:', error);
+  const refreshApiClient = useCallback((newApiKey?: string | null) => {
+    try {
+      // Update localStorage if a new API key is provided
+      if (newApiKey !== undefined) {
+        updateApiClientApiKey(newApiKey);
       }
-    },
-    []
-  );
+
+      // Refresh the ElizaClient instance with new configuration
+      refreshElizaClient();
+
+      console.log('API client refreshed with new configuration');
+    } catch (error) {
+      console.error('Failed to refresh API client:', error);
+    }
+  }, []);
 
   useEffect(() => {
     connectionStatusActions.setUnauthorized = setUnauthorizedFromApi;
@@ -175,7 +172,13 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ConnectionContext.Provider
-      value={{ status, error, setUnauthorizedFromApi, setOfflineStatusFromProvider, refreshApiClient }}
+      value={{
+        status,
+        error,
+        setUnauthorizedFromApi,
+        setOfflineStatusFromProvider,
+        refreshApiClient,
+      }}
     >
       {children}
     </ConnectionContext.Provider>

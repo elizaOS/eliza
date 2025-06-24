@@ -145,19 +145,19 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
           }
         } catch (uploadError) {
           clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
-          
+
           // Use centralized error handling for API errors, but still show file-specific toast
           try {
             handleApiError(uploadError);
           } catch (handledError) {
             // For file uploads, we still want to show the specific file name in the error
-            toast({ 
-              title: `Upload Failed: ${fileData.file.name}`, 
+            toast({
+              title: `Upload Failed: ${fileData.file.name}`,
               description: handledError instanceof Error ? handledError.message : 'Upload failed',
-              variant: 'destructive' 
+              variant: 'destructive',
             });
           }
-          
+
           return {
             success: false,
             file: fileData,
