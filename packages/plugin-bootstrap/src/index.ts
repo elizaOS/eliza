@@ -400,7 +400,12 @@ const messageReceivedHandler = async ({
             message.content.attachments,
             runtime
           );
-          await runtime.updateMemory(message as any)
+          if (message.id) {
+            await runtime.updateMemory({
+              id: message.id,
+              content: message.content,
+            });
+          }          
         }
 
         let shouldRespond = true;
