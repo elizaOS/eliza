@@ -107,7 +107,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
       // If we're still loading required secrets, check against current envs marked as required
       const secretsToCheck = isLoadingSecrets
-        ? envs.filter(env => env.isRequired)
+        ? envs.filter((env) => env.isRequired)
         : requiredSecrets;
 
       const missingSecrets = secretsToCheck
@@ -116,7 +116,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           const value = currentSecrets[secretName];
           return !value || value.trim() === '';
         })
-        .map((secret) => typeof secret === 'object' && 'name' in secret ? secret.name : secret);
+        .map((secret) => (typeof secret === 'object' && 'name' in secret ? secret.name : secret));
 
       return {
         isValid: missingSecrets.length === 0,
@@ -282,34 +282,39 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
 
       // Only reset if we're switching to a different agent or this is the first load
       // or if envs is empty (meaning we haven't initialized yet)
-      if (characterValue.id !== lastAgentIdRef.current || !lastAgentIdRef.current || envs.length === 0) {
+      if (
+        characterValue.id !== lastAgentIdRef.current ||
+        !lastAgentIdRef.current ||
+        envs.length === 0
+      ) {
         // Decrypt secrets from the server using the core decryption function
         const salt = getSalt();
         const decryptedSecretsRaw = characterValue?.settings?.secrets || {};
         // Ensure we're working with a plain object
-        const decryptedSecrets = typeof decryptedSecretsRaw === 'object' && !Array.isArray(decryptedSecretsRaw) && decryptedSecretsRaw !== null
-          ? decryptObjectValues(decryptedSecretsRaw, salt)
-          : {};
+        const decryptedSecrets =
+          typeof decryptedSecretsRaw === 'object' &&
+          !Array.isArray(decryptedSecretsRaw) &&
+          decryptedSecretsRaw !== null
+            ? decryptObjectValues(decryptedSecretsRaw, salt)
+            : {};
 
-        const existingSecrets = Object.entries(decryptedSecrets).map(
-          ([name, value]) => {
-            // Filter out process.env values - these should not be stored as actual values
-            const stringValue = String(value);
-            const cleanValue = stringValue.startsWith('process.env.') ? '' : stringValue;
+        const existingSecrets = Object.entries(decryptedSecrets).map(([name, value]) => {
+          // Filter out process.env values - these should not be stored as actual values
+          const stringValue = String(value);
+          const cleanValue = stringValue.startsWith('process.env.') ? '' : stringValue;
 
-            return {
-              name,
-              value: cleanValue,
-              isNew: false,
-              isModified: false,
-              isDeleted: false,
-              isRequired: false,
-              description: undefined,
-              example: undefined,
-              plugin: undefined,
-            };
-          }
-        );
+          return {
+            name,
+            value: cleanValue,
+            isNew: false,
+            isModified: false,
+            isDeleted: false,
+            isRequired: false,
+            description: undefined,
+            example: undefined,
+            plugin: undefined,
+          };
+        });
 
         // Create a map for quick lookup
         const existingSecretsMap = new Map(existingSecrets.map((s) => [s.name, s]));
@@ -964,10 +969,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                     {envs.map((env, index) => (
                       <div
                         key={`${env.name}-${index}`}
-                        className={`grid grid-cols-[1fr_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${env.isRequired && (!env.value || env.value.trim() === '')
-                          ? 'bg-red-500/5'
-                          : ''
-                          }`}
+                        className={`grid grid-cols-[1fr_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${
+                          env.isRequired && (!env.value || env.value.trim() === '')
+                            ? 'bg-red-500/5'
+                            : ''
+                        }`}
                       >
                         {/* Name Column */}
                         <div className="min-w-0 pr-2">
@@ -1132,10 +1138,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                   {envs.map((env, index) => (
                     <div
                       key={`${env.name}-${index}-mobile`}
-                      className={`border rounded-lg p-4 space-y-3 ${env.isRequired && (!env.value || env.value.trim() === '')
-                        ? 'border-red-500/50 bg-red-500/5'
-                        : ''
-                        }`}
+                      className={`border rounded-lg p-4 space-y-3 ${
+                        env.isRequired && (!env.value || env.value.trim() === '')
+                          ? 'border-red-500/50 bg-red-500/5'
+                          : ''
+                      }`}
                     >
                       {/* Header with name and required badge */}
                       <div className="space-y-1">
@@ -1300,10 +1307,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
             {/* File Upload Area */}
             <div
               ref={dropRef}
-              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${isDragging
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/25 hover:border-muted-foreground/50'
-                }`}
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                isDragging
+                  ? 'border-primary bg-primary/5'
+                  : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+              }`}
               onClick={() => document.getElementById('env-upload')?.click()}
             >
               <CloudUpload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />

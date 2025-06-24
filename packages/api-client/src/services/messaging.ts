@@ -144,10 +144,10 @@ export class MessagingService extends BaseApiClient {
   }
 
   /**
-   * Delete a message
+   * Delete a message from a channel
    */
-  async deleteMessage(messageId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/messages/${messageId}`);
+  async deleteMessage(channelId: UUID, messageId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/messaging/central-channels/${channelId}/messages/${messageId}`);
   }
 
   /**

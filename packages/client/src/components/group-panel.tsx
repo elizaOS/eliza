@@ -122,6 +122,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     },
     onError: (error) => {
       clientLogger.error('Failed to update group', error);
+      console.error('Group update error details:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to update group.';
       toast({ title: 'Error', description: errorMsg, variant: 'destructive' });
     },

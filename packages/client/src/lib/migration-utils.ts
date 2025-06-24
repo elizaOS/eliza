@@ -65,16 +65,18 @@ export function createHybridClient() {
     }),
 
     // Agent Management services - using NEW API client only
-    createAgent: wrapWithErrorHandling(async (params: { characterPath?: string; characterJson?: any }) => {
-      if (!newClient.agents?.createAgent) {
-        throw new Error('Agents service not available');
+    createAgent: wrapWithErrorHandling(
+      async (params: { characterPath?: string; characterJson?: any }) => {
+        if (!newClient.agents?.createAgent) {
+          throw new Error('Agents service not available');
+        }
+        // Convert legacy params to new format
+        const createParams = params.characterJson ? { agent: params.characterJson } : params;
+        const result = await newClient.agents.createAgent(createParams);
+        // Adapt from Agent to { success: boolean; data: Agent }
+        return { success: true, data: result };
       }
-      // Convert legacy params to new format
-      const createParams = params.characterJson ? { agent: params.characterJson } : params;
-      const result = await newClient.agents.createAgent(createParams);
-      // Adapt from Agent to { success: boolean; data: Agent }
-      return { success: true, data: result };
-    }),
+    ),
     updateAgent: wrapWithErrorHandling(async (agentId: string, agentData: any) => {
       if (!newClient.agents?.updateAgent) {
         throw new Error('Agents service not available');
@@ -141,16 +143,18 @@ export function createHybridClient() {
       // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
       return { data: { channels: result.channels } };
     }),
-    getOrCreateDmChannel: wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
-      if (!newClient.messaging?.getOrCreateDmChannel) {
-        throw new Error('Messaging service not available');
+    getOrCreateDmChannel: wrapWithErrorHandling(
+      async (targetUserId: string, currentUserId: string) => {
+        if (!newClient.messaging?.getOrCreateDmChannel) {
+          throw new Error('Messaging service not available');
+        }
+        const result = await newClient.messaging.getOrCreateDmChannel({
+          participantIds: [currentUserId, targetUserId],
+        });
+        // Adapt from MessageChannel to { data: MessageChannel }
+        return { data: result };
       }
-      const result = await newClient.messaging.getOrCreateDmChannel({ 
-        participantIds: [currentUserId, targetUserId] 
-      });
-      // Adapt from MessageChannel to { data: MessageChannel }
-      return { data: result };
-    }),
+    ),
     createCentralGroupChat: wrapWithErrorHandling(async (params: any) => {
       if (!newClient.messaging?.createGroupChannel) {
         throw new Error('Messaging service not available');
@@ -159,28 +163,34 @@ export function createHybridClient() {
       // Adapt from MessageChannel to { data: MessageChannel }
       return { data: result };
     }),
-    getChannelMessages: wrapWithErrorHandling(async (channelId: string, options?: { limit?: number; before?: number }) => {
-      if (!newClient.messaging?.getChannelMessages) {
-        throw new Error('Messaging service not available');
+    getChannelMessages: wrapWithErrorHandling(
+      async (channelId: string, options?: { limit?: number; before?: number }) => {
+        if (!newClient.messaging?.getChannelMessages) {
+          throw new Error('Messaging service not available');
+        }
+
+        // Convert parameters from legacy format to new format
+        const params: any = {};
+        if (options?.limit) params.limit = options.limit;
+        if (options?.before) {
+          // Convert timestamp number to Date
+          params.before = new Date(options.before).toISOString();
+        }
+
+        const result = await newClient.messaging.getChannelMessages(channelId, params);
+        // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
+        return { data: { messages: result.messages } };
       }
-      
-      // Convert parameters from legacy format to new format
-      const params: any = {};
-      if (options?.limit) params.limit = options.limit;
-      if (options?.before) {
-        // Convert timestamp number to Date
-        params.before = new Date(options.before).toISOString();
-      }
-      
-      const result = await newClient.messaging.getChannelMessages(channelId, params);
-      // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
-      return { data: { messages: result.messages } };
-    }),
+    ),
     postMessageToChannel: wrapWithErrorHandling(async (channelId: string, payload: any) => {
       if (!newClient.messaging?.postMessage) {
         throw new Error('Messaging service not available');
       }
-      const result = await newClient.messaging.postMessage(channelId, payload.text || payload.content, payload.metadata);
+      const result = await newClient.messaging.postMessage(
+        channelId,
+        payload.text || payload.content,
+        payload.metadata
+      );
       // Adapt from Message to { data: Message }
       return { data: result };
     }),
@@ -204,7 +214,7 @@ export function createHybridClient() {
       if (!newClient.messaging?.deleteMessage) {
         throw new Error('Messaging service not available');
       }
-      const result = await newClient.messaging.deleteMessage(messageId);
+      const result = await newClient.messaging.deleteMessage(channelId, messageId);
       // Adapt from { success: boolean } to expected format
       return { data: { success: result.success } };
     }),
@@ -226,28 +236,39 @@ export function createHybridClient() {
     }),
     updateChannel: wrapWithErrorHandling(async (channelId: string, params: any) => {
       if (!newClient.messaging?.updateChannel) {
-        throw new Error('Messaging service not available');
+        console.warn('New messaging service not available, falling back to legacy API');
+        // Fallback to legacy API
+        return await legacyClient.updateChannel(channelId, params);
       }
-      const result = await newClient.messaging.updateChannel(channelId, params);
-      return result; // Already in correct format
+      try {
+        const result = await newClient.messaging.updateChannel(channelId, params);
+        // Ensure consistent format with expected return type
+        return { success: result.success, data: result.data };
+      } catch (error) {
+        console.error('New API updateChannel failed, falling back to legacy:', error);
+        // Fallback to legacy API if new API fails
+        return await legacyClient.updateChannel(channelId, params);
+      }
     }),
 
     // Memory services - using NEW API client only
-    getAgentMemories: wrapWithErrorHandling(async (agentId: string, channelId?: string, tableName?: string, includeEmbedding = false) => {
-      if (!newClient.memory?.getAgentMemories) {
-        throw new Error('Memory service not available');
+    getAgentMemories: wrapWithErrorHandling(
+      async (agentId: string, channelId?: string, tableName?: string, includeEmbedding = false) => {
+        if (!newClient.memory?.getAgentMemories) {
+          throw new Error('Memory service not available');
+        }
+
+        // Convert legacy parameters to new format
+        const params: any = {};
+        if (tableName) params.tableName = tableName;
+        if (channelId) params.roomId = channelId; // Map channelId to roomId
+        if (includeEmbedding) params.includeEmbedding = includeEmbedding;
+
+        const result = await newClient.memory.getAgentMemories(agentId, params);
+        // Adapt from { memories: Memory[] } to { data: { memories: ClientMemory[] } }
+        return { data: { memories: result.memories } };
       }
-      
-      // Convert legacy parameters to new format
-      const params: any = {};
-      if (tableName) params.tableName = tableName;
-      if (channelId) params.roomId = channelId; // Map channelId to roomId
-      if (includeEmbedding) params.includeEmbedding = includeEmbedding;
-      
-      const result = await newClient.memory.getAgentMemories(agentId, params);
-      // Adapt from { memories: Memory[] } to { data: { memories: ClientMemory[] } }
-      return { data: { memories: result.memories } };
-    }),
+    ),
     deleteAgentMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
       if (!newClient.memory?.deleteMemory) {
         throw new Error('Memory service not available');
@@ -263,14 +284,16 @@ export function createHybridClient() {
       // Adapt from { deleted: number } to expected format
       return { data: { deleted: result.deleted } };
     }),
-    updateAgentMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
-      if (!newClient.memory?.updateMemory) {
-        throw new Error('Memory service not available');
+    updateAgentMemory: wrapWithErrorHandling(
+      async (agentId: string, memoryId: string, memoryData: any) => {
+        if (!newClient.memory?.updateMemory) {
+          throw new Error('Memory service not available');
+        }
+        const result = await newClient.memory.updateMemory(agentId, memoryId, memoryData);
+        // Adapt from Memory to { data: Memory }
+        return { data: result };
       }
-      const result = await newClient.memory.updateMemory(agentId, memoryId, memoryData);
-      // Adapt from Memory to { data: Memory }
-      return { data: result };
-    }),
+    ),
 
     // Media services - using NEW API client only
     uploadAgentMedia: wrapWithErrorHandling(async (agentId: string, file: File) => {
@@ -279,15 +302,15 @@ export function createHybridClient() {
       }
       const result = await newClient.media.uploadAgentMedia(agentId, {
         file: file,
-        filename: file.name
+        filename: file.name,
       });
       // Adapt from MediaUploadResponse to { success: boolean; data: { url: string; type: string } }
-      return { 
-        success: true, 
-        data: { 
-          url: result.url, 
-          type: result.contentType || file.type 
-        } 
+      return {
+        success: true,
+        data: {
+          url: result.url,
+          type: result.contentType || file.type,
+        },
       };
     }),
     uploadChannelMedia: wrapWithErrorHandling(async (channelId: string, file: File) => {
@@ -296,12 +319,12 @@ export function createHybridClient() {
       }
       const result = await newClient.media.uploadChannelMedia(channelId, file);
       // Adapt from ChannelUploadResponse to expected format
-      return { 
-        success: true, 
-        data: { 
-          url: result.url, 
-          type: result.contentType || file.type 
-        } 
+      return {
+        success: true,
+        data: {
+          url: result.url,
+          type: result.contentType || file.type,
+        },
       };
     }),
 
@@ -326,18 +349,20 @@ export function createHybridClient() {
       }
       const result = await newClient.audio.transcribe(agentId, { audio: audioBlob });
       // Adapt from TranscriptionResponse to { success: boolean; data: { text: string } }
-      return { 
-        success: true, 
-        data: { 
-          text: result.text || result.transcription || '' 
-        } 
+      return {
+        success: true,
+        data: {
+          text: result.text || result.transcription || '',
+        },
       };
     }),
 
     // System services - using NEW API client only
     ping: wrapWithErrorHandling(async () => {
       // Remove this fake implementation - either implement real ping endpoint or remove ping functionality
-      throw new Error('Ping functionality not implemented in new API - this should be removed or implemented properly');
+      throw new Error(
+        'Ping functionality not implemented in new API - this should be removed or implemented properly'
+      );
     }),
 
     // Environment services - using NEW API client only
@@ -404,12 +429,12 @@ export function createHybridClient() {
       }
       const result = await newClient.messaging.generateChannelTitle(channelId);
       // Adapt from { title: string } to expected format
-      return { 
-        success: true, 
-        data: { 
-          title: result.title, 
-          channelId: channelId 
-        } 
+      return {
+        success: true,
+        data: {
+          title: result.title,
+          channelId: channelId,
+        },
       };
     }),
 
@@ -437,13 +462,19 @@ export function createHybridClient() {
       const result = await newClient.messaging.clearChannelHistory(serverId);
       return { success: true, deleted: result.deleted };
     }),
-    getAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string, includeEmbedding?: boolean) => {
-      if (!newClient.memory?.getAgentInternalMemories) {
-        throw new Error('Memory service not available');
+    getAgentInternalMemories: wrapWithErrorHandling(
+      async (agentId: string, agentPerspectiveRoomId: string, includeEmbedding?: boolean) => {
+        if (!newClient.memory?.getAgentInternalMemories) {
+          throw new Error('Memory service not available');
+        }
+        const result = await newClient.memory.getAgentInternalMemories(
+          agentId,
+          agentPerspectiveRoomId,
+          includeEmbedding
+        );
+        return result; // Already in correct format
       }
-      const result = await newClient.memory.getAgentInternalMemories(agentId, agentPerspectiveRoomId, includeEmbedding);
-      return result; // Already in correct format
-    }),
+    ),
     deleteAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
       if (!newClient.memory?.deleteAgentInternalMemory) {
         throw new Error('Memory service not available');
@@ -451,20 +482,31 @@ export function createHybridClient() {
       const result = await newClient.memory.deleteAgentInternalMemory(agentId, memoryId);
       return { success: result.success };
     }),
-    deleteAllAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string) => {
-      if (!newClient.memory?.deleteAllAgentInternalMemories) {
-        throw new Error('Memory service not available');
+    deleteAllAgentInternalMemories: wrapWithErrorHandling(
+      async (agentId: string, agentPerspectiveRoomId: string) => {
+        if (!newClient.memory?.deleteAllAgentInternalMemories) {
+          throw new Error('Memory service not available');
+        }
+        const result = await newClient.memory.deleteAllAgentInternalMemories(
+          agentId,
+          agentPerspectiveRoomId
+        );
+        return { success: result.success };
       }
-      const result = await newClient.memory.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
-      return { success: result.success };
-    }),
-    updateAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
-      if (!newClient.memory?.updateAgentInternalMemory) {
-        throw new Error('Memory service not available');
+    ),
+    updateAgentInternalMemory: wrapWithErrorHandling(
+      async (agentId: string, memoryId: string, memoryData: any) => {
+        if (!newClient.memory?.updateAgentInternalMemory) {
+          throw new Error('Memory service not available');
+        }
+        const result = await newClient.memory.updateAgentInternalMemory(
+          agentId,
+          memoryId,
+          memoryData
+        );
+        return { data: result };
       }
-      const result = await newClient.memory.updateAgentInternalMemory(agentId, memoryId, memoryData);
-      return { data: result };
-    }),
+    ),
 
     // All methods now use the new @elizaos/api-client - no legacy fallbacks!
   };

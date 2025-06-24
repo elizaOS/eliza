@@ -1055,7 +1055,11 @@ export function useUpdateAgentInternalMemory() {
     { agentId: UUID; memoryId: string; memoryData: Partial<CoreMemory> }
   >({
     mutationFn: async ({ agentId, memoryId, memoryData }) => {
-      const response = await hybridApiClient.updateAgentInternalMemory(agentId, memoryId, memoryData); // Uses updateAgentInternalMemory
+      const response = await hybridApiClient.updateAgentInternalMemory(
+        agentId,
+        memoryId,
+        memoryData
+      ); // Uses updateAgentInternalMemory
       return { agentId, memoryId, response };
     },
     onSuccess: (_data, variables) => {

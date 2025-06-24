@@ -69,9 +69,10 @@ export default function AgentSettings({
       try {
         const hybridApiClient = createHybridClient();
         // Get secrets from state (or ref as fallback)
-        const secrets = Object.keys(currentSecrets).length > 0
-          ? currentSecrets
-          : secretPanelRef.current?.getSecrets() || {};
+        const secrets =
+          Object.keys(currentSecrets).length > 0
+            ? currentSecrets
+            : secretPanelRef.current?.getSecrets() || {};
 
         // Get only the fields that have changed
         const changedFields = agentState.getChangedFields();
