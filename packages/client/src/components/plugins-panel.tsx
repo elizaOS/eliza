@@ -93,8 +93,14 @@ export default function PluginsPanel({
 
   // Check if the selected voice model requires specific plugins
   const voiceModelPluginInfo = useMemo(() => {
-    const voiceModelValue = characterValue?.settings?.voice?.model;
-    if (!voiceModelValue) return null;
+    const settings = characterValue?.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+
+    const voice = settings.voice;
+    if (!voice || typeof voice !== 'object' || Array.isArray(voice)) return null;
+
+    const voiceModelValue = voice.model;
+    if (!voiceModelValue || typeof voiceModelValue !== 'string') return null;
 
     const voiceModel = getVoiceModelByValue(voiceModelValue);
     if (!voiceModel) return null;
@@ -108,7 +114,7 @@ export default function PluginsPanel({
       requiredPlugin,
       isPluginEnabled,
     };
-  }, [characterValue?.settings?.voice?.model, safeCharacterPlugins]);
+  }, [characterValue?.settings, safeCharacterPlugins]);
 
   // Get all voice-related plugins that are currently enabled
   // const enabledVoicePlugins = useMemo(() => {
@@ -268,11 +274,10 @@ export default function PluginsPanel({
                             variant="ghost"
                             size="sm"
                             key={plugin}
-                            className={`inline-flex items-center rounded-full ${
-                              isEssential
-                                ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
-                                : 'bg-primary/10 text-primary hover:bg-primary/20'
-                            } px-2.5 py-0.5 text-xs font-medium h-auto`}
+                            className={`inline-flex items-center rounded-full ${isEssential
+                              ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
+                              : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              } px-2.5 py-0.5 text-xs font-medium h-auto`}
                             onClick={() => {
                               // Don't allow removing if it's required by the voice model
                               if (isRequiredByVoice) {

@@ -35,6 +35,9 @@ import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { SplitButton } from '@/components/ui/split-button';
+import type { SecretPanelRef } from './secret-panel';
+import { MissingSecretsDialog } from './missing-secrets-dialog';
+import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 
 export type InputField = {
   name: string;
@@ -84,31 +87,68 @@ export type CharacterFormProps = {
     importAgent?: (value: Agent) => void;
     [key: string]: any;
   };
+  onTemplateChange?: () => void;
+  secretPanelRef?: React.RefObject<SecretPanelRef | null>;
 };
 
 // Custom hook to detect container width and determine if labels should be shown
 const useContainerWidth = (threshold: number = 768) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentWidthRef = useRef<number>(0);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Debounced resize handler
+    const handleResize = (width: number) => {
+      // Clear existing timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      // Set new timer
+      debounceTimerRef.current = setTimeout(() => {
+        const shouldShowLabels = width >= threshold;
+        // Only update if the value actually changes
+        setShowLabels((prev) => {
+          if (prev !== shouldShowLabels) {
+            return shouldShowLabels;
+          }
+          return prev;
+        });
+        currentWidthRef.current = width;
+      }, 150); // 150ms debounce
+    };
+
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width } = entry.contentRect;
-        setShowLabels(width >= threshold);
+        // Only trigger if width actually changed significantly (more than 5px)
+        if (Math.abs(width - currentWidthRef.current) > 5) {
+          handleResize(width);
+        }
       }
     });
 
     resizeObserver.observe(container);
 
-    // Initial check
-    const { width } = container.getBoundingClientRect();
-    setShowLabels(width >= threshold);
+    // Initial check with delay to avoid race conditions
+    setTimeout(() => {
+      const { width } = container.getBoundingClientRect();
+      currentWidthRef.current = width;
+      setShowLabels(width >= threshold);
+    }, 0);
 
-    return () => resizeObserver.disconnect();
+    // Cleanup
+    return () => {
+      resizeObserver.disconnect();
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [threshold]);
 
   return { containerRef, showLabels };
@@ -126,6 +166,8 @@ export default function CharacterForm({
   isDeleting = false,
   isStopping = false,
   customComponents = [],
+  onTemplateChange,
+  secretPanelRef,
 }: CharacterFormProps) {
   const { toast } = useToast();
   const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
@@ -135,6 +177,12 @@ export default function CharacterForm({
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
+  const [showMissingSecretsDialog, setShowMissingSecretsDialog] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState<Agent | null>(null);
+
+  // Get required secrets based on enabled plugins
+  const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
+  const { requiredSecrets } = useRequiredSecrets(enabledPlugins);
 
   // Use the custom hook to detect container width
   const { containerRef, showLabels } = useContainerWidth(640); // Adjust threshold as needed
@@ -229,7 +277,7 @@ export default function CharacterForm({
             name: 'settings.voice.model',
             description: 'Voice model for audio synthesis',
             fieldType: 'select',
-            getValue: (char) => char.settings?.voice?.model || '',
+            getValue: (char) => (char.settings as Record<string, any>)?.voice?.model || '',
             options: allVoiceModels.map((model) => ({
               value: model.value,
               label: model.label,
@@ -335,7 +383,9 @@ export default function CharacterForm({
             const currentPlugins = Array.isArray(characterValue.plugins)
               ? [...characterValue.plugins]
               : [];
-            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
+            const previousVoiceModel = getVoiceModelByValue(
+              (characterValue.settings as Record<string, any>)?.voice?.model
+            );
 
             // Get the required plugin for the new voice model
             const requiredPlugin = providerPluginMap[voiceModel.provider];
@@ -397,11 +447,11 @@ export default function CharacterForm({
   const ensureAvatarSize = async (char: Agent): Promise<Agent> => {
     if (char.settings?.avatar) {
       const img = new Image();
-      img.src = char.settings.avatar;
+      img.src = char.settings.avatar as string;
       await new Promise((resolve) => (img.onload = resolve));
 
       if (img.width > AVATAR_IMAGE_MAX_SIZE || img.height > AVATAR_IMAGE_MAX_SIZE) {
-        const response = await fetch(char.settings.avatar);
+        const response = await fetch(char.settings.avatar as string);
         const blob = await response.blob();
         const file = new File([blob], 'avatar.jpg', { type: blob.type });
         const compressedImage = await compressImage(file);
@@ -423,6 +473,37 @@ export default function CharacterForm({
 
     try {
       const updatedCharacter = await ensureAvatarSize(characterValue);
+
+      // Validate required secrets
+      let missingSecrets: string[] = [];
+
+      // If secret panel is mounted, use it for validation (has most up-to-date data)
+      if (secretPanelRef?.current) {
+        const secretValidation = secretPanelRef.current.validateSecrets();
+        missingSecrets = secretValidation.missingSecrets;
+      } else {
+        // Secret panel not mounted - validate based on current character settings
+        const secretsObj = updatedCharacter.settings?.secrets;
+        const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
+          ? secretsObj as Record<string, any>
+          : {};
+
+        missingSecrets = requiredSecrets
+          .filter((secret) => {
+            const value = currentSecrets[secret.name];
+            return !value || (typeof value === 'string' && value.trim() === '');
+          })
+          .map((secret) => secret.name);
+      }
+
+      if (missingSecrets.length > 0) {
+        // Show the warning dialog
+        setIsSubmitting(false);
+        setPendingSubmit(updatedCharacter);
+        setShowMissingSecretsDialog(true);
+        return;
+      }
+
       await onSubmit(updatedCharacter);
     } catch (error) {
       toast({
@@ -433,6 +514,34 @@ export default function CharacterForm({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Handle confirmation from missing secrets dialog
+  const handleConfirmSaveWithMissingSecrets = async () => {
+    setShowMissingSecretsDialog(false);
+    if (pendingSubmit) {
+      setIsSubmitting(true);
+      try {
+        await onSubmit(pendingSubmit);
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update agent',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsSubmitting(false);
+        setPendingSubmit(null);
+      }
+    }
+  };
+
+  // Handle cancellation from missing secrets dialog
+  const handleCancelSaveWithMissingSecrets = () => {
+    setShowMissingSecretsDialog(false);
+    setPendingSubmit(null);
+    // Switch to the Secret tab to show the user what's missing
+    setActiveTab('custom-Secret');
   };
 
   const renderInputField = (field: InputField) => (
@@ -448,7 +557,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -523,7 +632,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -650,9 +759,11 @@ export default function CharacterForm({
       if (template && setCharacterValue.importAgent) {
         // Use the importAgent function to set all template values at once
         setCharacterValue.importAgent(template.template as Agent);
+        // Notify parent of template change
+        onTemplateChange?.();
       }
     },
-    [onReset, setCharacterValue]
+    [onReset, setCharacterValue, onTemplateChange]
   );
 
   // Create all tabs data with better short labels
@@ -670,7 +781,7 @@ export default function CharacterForm({
   ];
 
   return (
-    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6">
+    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6 h-full overflow-y-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
@@ -757,12 +868,12 @@ export default function CharacterForm({
           </div>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-6 max-h-[60vh] overflow-y-auto">
               {AGENT_FORM_SCHEMA.map((section) => (
                 <TabsContent
                   key={section.sectionValue}
                   value={section.sectionValue}
-                  className="space-y-6"
+                  className="space-y-6 mt-0 focus:outline-none"
                 >
                   {section.sectionType === SECTION_TYPE.INPUT
                     ? (section.fields as InputField[]).map(renderInputField)
@@ -770,8 +881,12 @@ export default function CharacterForm({
                 </TabsContent>
               ))}
               {customComponents.map((component) => (
-                <TabsContent key={`custom-${component.name}`} value={`custom-${component.name}`}>
-                  {component.component}
+                <TabsContent
+                  key={`custom-${component.name}`}
+                  value={`custom-${component.name}`}
+                  className="mt-0 focus:outline-none"
+                >
+                  <div className="h-full">{component.component}</div>
                 </TabsContent>
               ))}
             </CardContent>
@@ -894,6 +1009,46 @@ export default function CharacterForm({
           />
         </div>
       </form>
+
+      {/* Missing Secrets Warning Dialog */}
+      <MissingSecretsDialog
+        open={showMissingSecretsDialog}
+        onOpenChange={setShowMissingSecretsDialog}
+        missingSecrets={(() => {
+          let missingSecretNames: string[] = [];
+
+          // If secret panel is mounted, use it (has most up-to-date data)
+          if (secretPanelRef?.current) {
+            const validation = secretPanelRef.current.validateSecrets();
+            missingSecretNames = validation.missingSecrets;
+          } else {
+            // Secret panel not mounted - calculate based on character value
+            const secretsObj = characterValue.settings?.secrets;
+            const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
+              ? secretsObj as Record<string, any>
+              : {};
+
+            missingSecretNames = requiredSecrets
+              .filter((secret) => {
+                const value = currentSecrets[secret.name];
+                return !value || (typeof value === 'string' && value.trim() === '');
+              })
+              .map((secret) => secret.name);
+          }
+
+          // Map secret names to full details
+          return missingSecretNames.map((secretName) => {
+            const reqSecret = requiredSecrets.find((s) => s.name === secretName);
+            return {
+              name: secretName,
+              plugin: reqSecret?.plugin,
+              description: reqSecret?.description,
+            };
+          });
+        })()}
+        onConfirm={handleConfirmSaveWithMissingSecrets}
+        onCancel={handleCancelSaveWithMissingSecrets}
+      />
     </div>
   );
 }
