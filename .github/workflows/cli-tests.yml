@@ -43,7 +43,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.2.15
 
       - name: Mention Bun version
         run: bun --version
@@ -123,7 +123,32 @@ jobs:
             fi
           done
 
-      - name: Run CLI TypeScript tests
+      - name: Install cross-env globally
+        run: npm install -g cross-env
+
+      - name: Install BATS on macOS
+        if: matrix.os == 'macos-latest'
+        run: npm install -g bats
+
+      - name: Run CLI TypeScript tests (macOS optimized)
+        if: matrix.os == 'macos-latest'
+        timeout-minutes: 15
+        run: cross-env NODE_OPTIONS="--max-old-space-size=8192" bun test tests/commands/ --timeout 240000
+        working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true
+
+      - name: Run CLI TypeScript tests (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        timeout-minutes: 15
+        run: bun run test:cli
+        working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run CLI TypeScript tests (Windows)
+        if: matrix.os == 'windows-latest'
         timeout-minutes: 15
         run: bun run test:cli
         working-directory: packages/cli
