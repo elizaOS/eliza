@@ -1,0 +1,71 @@
+---
+id: update-agent-world
+title: "Update a world"
+description: "Update world properties"
+sidebar_label: "Update a world"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV1Fz2zYM/is8PLU5JXa37kVvXuvdfLeuuSS9PjR5gElYYkuRKknZcX3+7zuQku3EadNuuzzVL6Yk4AP4AQSBDUSsApQfACuyMcBNAYqC9LqN2lko4V2rMJJYOW+UaL1ryUdNAQrgJbLUTEEJXZKbMMp7loUCWvTYUCTPBjZgsSEos6EZf9eM32KsoQBPnzvtSUEZfUcFBFlTg1BuIK5bVgvRa1tBAQvnG4xssdMKtvf9nb0WbiFiTSIZgm2xs5z28BSWM1nRiUwKbG+yGQrxd6fWjH3fqnQ2srvlBrBtjZaJ2dHHwNCbY6fc/CPJyCTvQ1IOOz12/aGYKsHSYuH83mneVUMRFcYHrT2MM2iIZw35ipRY6VgLutUhals9h236MQehdTZkV38Zj/nvLmJKnZ42JUInJYWw6IxZw//GUY96IDh3zhBaKIBusWkN5ahwhL/Cw13ETN2jYlo9nlVHFFv9uSOhFdmoF5r8cby+L+Z/c6wP85NVh7P4w27dO2Ui1hiFW9kgYq3D3kBwnZd0lbAf85ClGDXriGdKB+m8KkQkQ5XHphAU5fM97MOO3wU9Nxh5K6ehJakXWh5Q+WPJPlFK8xJNf753qpzaUUdOm5zAfcLz+5cPZfnMLtFo1XPHXPoec/b6ifN8gSZwopP3zj+OKZ36jkhOGUwk2URxCFh9t9ognuprRG3C45qvkyApkbYhtM3Zyx9zGIbwJBMwhOblcWjSBbaPh3VRLFxn1c+wPFVYfnvoxGQf0r2gbdXXl58heZKQ5CpZO5V7Jlmn1i7WUMIIWz3KneNo018m21GKThht+n5rCwUE8suhD+y8gRLqGNtyNDJOoqldiOWv4/H4yN2/+LNQtCTj2oaPZkZKLRWH+WLfVk2HSO0avh0HB1Wet8O7TlQNezX6C4q3l2JyPjuu++czoZzs2HoiKt3AO5Xli7Px2YuxOBUTsTB0q+eGBFolgkSD/DCZ9YV+we3wyvlPZ9f22l7xRcngOghFQVeWUs84J9GFoYdCkQgya+E7azn1s2FtQ0Qr6UxMrWqdtjEINMatknPSUzonxbVt0GLFy+STtpE8ynyGGH/wje9t77qKLV5ML6+y5AIl9b7S4KrzFVr9hRKYSy3AwrFlxlSuQW1DeW1PxcnJ5TpEak5OSpFXpyutSOzGhpBcIrvU3tkU2+Qs8TIDpGIcGCCXZaMXJNeyJ3gvfYCZFd9Q4/x6r9ik56TlnWuODL1JJ0nbilXyA4karTKJOlmjtWRCJrHP5d7FTmmXDPGCBySuJMxFEm2JZC3C2saagt55pzSyzh/akOha41DlHfGHI+euplMWvvJd4KZ4ekuyS3k4PaDuPgPvaX7p5CeKrHpBaE6jbkhI1zSd7eukWGoUWeps9hYK4G3lpM9J3VdYlPHgUO0y/1XGitya7890KEejSse6m59J14yIpV3I/6lTal2IDdoDxH7ExF1Zv3MAN/sq/41htK96kW7jqDWoLVfF5NWmL1YfAFsNxTDoFlDuJ9FcsfjdMCPeFMBVidU2mzkGeufNdsuvP3fk11B+uClgiV7zEU9lTenAa9XfFN/YxbOLfvh7Lu5Pq1/ZSP8SLXO9RNPxExTwidYHEzWPuv/Ri/uT67/yZ+Bwe7MtoCZU5BND+eur7MFpGgr22kf3N+8ma0ykpDZ+U/bm4I46n1y9+hMKmPejdpNuYvC44mkfV9lVlyhJN2Z6twGDturS9QsZlH//AErh8Q0=
+sidebar_class_name: "patch api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Update a world"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"patch"}
+  path={"/api/agents/{agentId}/worlds/{worldId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Update world properties
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"worldId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the world to update"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string","description":"Updated name for the world"},"metadata":{"type":"object","description":"Updated metadata (merged with existing)"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"World updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"world":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the world"},"name":{"type":"string","description":"Name of the world"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent that owns this world"},"sourceType":{"type":"string","description":"Type of source (discord, telegram, etc)"},"sourceId":{"type":"string","description":"Platform-specific identifier"},"metadata":{"type":"object","description":"Additional world metadata"}},"title":"World"}}}}}}}},"400":{"description":"Invalid agent ID or world ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or world not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating world","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

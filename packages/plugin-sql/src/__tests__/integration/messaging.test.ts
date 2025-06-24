@@ -1,32 +1,19 @@
-import { AgentRuntime, ChannelType, type UUID } from '@elizaos/core';
+import { ChannelType, type UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { createIsolatedTestDatabase } from '../test-helpers';
 
 describe('Messaging Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let serverId: UUID;
-  let channelId: UUID;
 
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase('messaging-tests');
     adapter = setup.adapter;
-    runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
@@ -36,7 +23,7 @@ describe('Messaging Integration Tests', () => {
       sourceType: 'test',
     });
     serverId = server.id;
-  }, 30000);
+  });
 
   afterAll(async () => {
     if (cleanup) {
@@ -111,13 +98,15 @@ describe('Messaging Integration Tests', () => {
         id: agent1,
         name: 'Test Agent 1',
         bio: 'Test agent bio',
-        configurationId: uuidv4() as UUID,
+        createdAt: new Date().getTime(),
+        updatedAt: new Date().getTime(),
       });
       await adapter.createAgent({
         id: agent2,
         name: 'Test Agent 2',
         bio: 'Test agent bio',
-        configurationId: uuidv4() as UUID,
+        createdAt: new Date().getTime(),
+        updatedAt: new Date().getTime(),
       });
 
       await adapter.addAgentToServer(serverId, agent1);

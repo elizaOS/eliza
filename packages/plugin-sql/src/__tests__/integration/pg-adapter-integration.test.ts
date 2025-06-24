@@ -1,14 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { type UUID } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
@@ -181,7 +171,15 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
       it('should handle query errors gracefully', async () => {
         const db = adapter.getDatabase();
 
-        await expect(db.execute(sql`SELECT * FROM non_existent_table`)).rejects.toThrow();
+        let errorThrown = false;
+        try {
+          await db.execute(sql`SELECT * FROM non_existent_table`);
+        } catch (error) {
+          errorThrown = true;
+          expect(error).toBeDefined();
+        }
+
+        expect(errorThrown).toBe(true);
       });
 
       it('should maintain connection after error', async () => {

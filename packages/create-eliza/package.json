@@ -1,6 +1,6 @@
 {
   "name": "create-eliza",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "description": "Initialize an Eliza project",
   "type": "module",
   "private": true,
@@ -11,7 +11,8 @@
     "create-eliza": "index.mjs"
   },
   "scripts": {
-    "create-eliza": "bun run index.mjs"
+    "create-eliza": "bun run index.mjs",
+    "test": "echo \"No tests configured for create-eliza\""
   },
   "license": "MIT",
   "author": {

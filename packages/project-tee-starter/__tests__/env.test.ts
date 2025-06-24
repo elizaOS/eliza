@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'bun:test';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '..');
 
 describe('Environment Setup', () => {
   it('should verify configuration files exist', () => {
@@ -13,13 +17,13 @@ describe('Environment Setup', () => {
     ];
 
     for (const file of requiredFiles) {
-      const filePath = path.join(process.cwd(), file);
+      const filePath = path.join(projectRoot, file);
       expect(fs.existsSync(filePath)).toBe(true);
     }
   });
 
   it('should have proper src directory structure', () => {
-    const srcDir = path.join(process.cwd(), 'src');
+    const srcDir = path.join(projectRoot, 'src');
     expect(fs.existsSync(srcDir)).toBe(true);
 
     const requiredSrcFiles = ['index.ts', 'plugin.ts'];
@@ -31,7 +35,7 @@ describe('Environment Setup', () => {
   });
 
   it('should have a valid package.json with required fields', () => {
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    const packageJsonPath = path.join(projectRoot, 'package.json');
     expect(fs.existsSync(packageJsonPath)).toBe(true);
 
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
@@ -54,7 +58,7 @@ describe('Environment Setup', () => {
   });
 
   it('should have a valid tsconfig.json with required configuration', () => {
-    const tsconfigPath = path.join(process.cwd(), 'tsconfig.json');
+    const tsconfigPath = path.join(projectRoot, 'tsconfig.json');
     expect(fs.existsSync(tsconfigPath)).toBe(true);
 
     const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'));
@@ -68,7 +72,7 @@ describe('Environment Setup', () => {
   });
 
   it('should have a valid tsup.config.ts for building', () => {
-    const tsupConfigPath = path.join(process.cwd(), 'tsup.config.ts');
+    const tsupConfigPath = path.join(projectRoot, 'tsup.config.ts');
     expect(fs.existsSync(tsupConfigPath)).toBe(true);
 
     const tsupConfig = fs.readFileSync(tsupConfigPath, 'utf8');
@@ -78,7 +82,7 @@ describe('Environment Setup', () => {
   });
 
   it('should have a valid README.md file', () => {
-    const readmePath = path.join(process.cwd(), 'README.md');
+    const readmePath = path.join(projectRoot, 'README.md');
     expect(fs.existsSync(readmePath)).toBe(true);
 
     const readme = fs.readFileSync(readmePath, 'utf8');

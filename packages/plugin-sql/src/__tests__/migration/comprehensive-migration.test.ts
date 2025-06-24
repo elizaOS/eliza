@@ -17,17 +17,7 @@ import {
   vector,
 } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/pglite';
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { DrizzleSchemaIntrospector, runPluginMigrations } from '../../custom-migrator';
 
 // Test schema with all possible scenarios
@@ -135,7 +125,7 @@ describe('Comprehensive Dynamic Migration Tests', () => {
     // Install required extensions
     await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "vector"`);
     await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "fuzzystrmatch"`);
-  }, 30000);
+  });
 
   afterAll(async () => {
     await pgLite.close();

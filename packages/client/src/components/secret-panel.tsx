@@ -289,7 +289,13 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
             </div>
           </div>
         </div>
-        <Button className="shrink-0" onClick={addEnv}>
+        <Button
+          className="shrink-0"
+          onClick={(e) => {
+            e.preventDefault();
+            addEnv();
+          }}
+        >
           Add
         </Button>
       </div>
@@ -332,7 +338,10 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
               <Button
                 variant="ghost"
                 className="p-2 text-gray-500"
-                onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setOpenIndex(openIndex === index ? null : index);
+                }}
               >
                 <MoreVertical className="w-5 h-5" />
               </Button>

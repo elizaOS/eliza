@@ -13,7 +13,7 @@ describe('roles utilities', () => {
 
     // Set up scoped mocks for this test
     spyOn(entities, 'createUniqueUuid').mockImplementation(
-      (runtime, serverId) => `unique-${serverId}` as UUID
+      (_runtime, serverId) => `unique-${serverId}` as UUID
     );
 
     // Mock logger if it doesn't have the methods
@@ -203,8 +203,8 @@ describe('roles utilities', () => {
 
       expect(ownerWorlds).toBeDefined();
       expect(ownerWorlds?.length).toBe(2);
-      expect(ownerWorlds?.[0].id).toBe('world-1');
-      expect(ownerWorlds?.[1].id).toBe('world-3');
+      expect(ownerWorlds?.[0].id).toBe('world-1' as UUID);
+      expect(ownerWorlds?.[1].id).toBe('world-3' as UUID);
     });
 
     it('should return null when entityId is empty', async () => {

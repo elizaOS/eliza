@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, Provider } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
 import { addHeader } from '@elizaos/core';
 
 /**
@@ -19,7 +19,7 @@ import { addHeader } from '@elizaos/core';
 export const providersProvider: Provider = {
   name: 'PROVIDERS',
   description: 'List of all data providers the agent can use to get additional information',
-  get: async (runtime: IAgentRuntime, _message: Memory) => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     // Filter providers with dynamic: true
     const dynamicProviders = runtime.providers.filter((provider) => provider.dynamic === true);
 

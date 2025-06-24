@@ -35,17 +35,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # ── Restore Turborepo local cache ───────────────────────────────
-      - name: Restore Turbo cache
-        id: cache-turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: |
-            ${{ runner.os }}-turbo-${{ hashFiles('turbo.json', '**/bun.lock', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
@@ -81,6 +70,7 @@ jobs:
         run: bun run build
 
       - name: Verify CLI build artifacts
+        shell: bash
         run: |
           echo "Checking CLI build artifacts..."
           echo "CLI dist contents:"
@@ -91,14 +81,6 @@ jobs:
           echo ""
           echo "CLI executable:"
           test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
-
-      # ── Save Turborepo local cache (only if no hit above) ───────────
-      - name: Save Turbo cache
-        if: steps.cache-turbo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .turbo
-          key: ${{ steps.cache-turbo.outputs.cache-primary-key }}
 
       - name: Clean eliza projects cache
         shell: bash

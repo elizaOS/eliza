@@ -1,0 +1,71 @@
+---
+id: delete-all-channel-messages
+title: "Delete all channel messages"
+description: "Delete all messages in a channel"
+sidebar_label: "Delete all channel messages"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9Vk1zGzcM/SsYnFrPWlLanPamsdUZz8STjO1OD7EPEAlpGXPJDcmVrWj2v3fApT4ctU1O1UVcEQ94wAIP2mGidcT6M7YcI62NW+NThZqjCqZLxjus8ZotJwayFkYrjmAcEKiGnGOLFfqOA4n5jcYadQbMrb0aDW4LCivsKFDLiYME3aGjlrHG4uhGY4VGQnaUGqww8NfeBNZYp9BzhVE13BLWO0zbToAxBaFc4cqHlhLW2PdG4zA8CTh23kWOYv/bbCZfbxPb84KRsIbYK8Uxrnprt1ih8i6xSwKkrrNG5RSnX6Kgd+ds/PILqyRZBilIMmPs4vXEcOm9ZXI4VKVW+sr3Y6BiYVziNQcc8qfC97P35/xLecH5BCvfO/1/cK6QX6ntLGO9Iht5qJBD8OHHPpXX/E/v7m1SC3EG2XaoSlv+NGxvngubyNj4Y+R1NmQNOQ0wbuwluRxrn0ySbMcQWF5Iy6nxx2bPrZ0arHFKnZkepmmq2KVA9rK0eJzuDs0+TNvjYEQOm/1U9MFijU1KXT2dWq/INj6m+vfZbHbG/oNcg+YNW9+17BKMnlBGQHLJBdhnYM03go/3MP90c+Zp/ukGtFe9OMnpw8oHOEA27yazybsZXMIcVpZfzdIykNMQFVmSh/kN0FoYrGTGX3x4njy6R/fQmCgBwcigRbN2rCF5WDL0kTW8mNQAQc7TbiH0zhm3LoGNi4mc4gksnO68cSmKEPmXTE4FpmTcunp0Lblc8CpzkvEJpORu9L/nFiE1wfdriXi3uH8YLVekuHDlPVUf1uTMN87OPKSGYeUlsvjUviXjYv3oLuHi4n4bE7cXFzWMp8sXoxkOmhgzJXYbE7zLryiTZTmODuaZmjjIJ7BmxWqrSoGP1ic+R+Attz5sj8A2P2dU8L49C3S770uBFPmDhpy2uXT7Jh2LWFqyUOy18TmQHKALXvRBapFNO2bVQNy61HA0B3bakGD+MJah76wnPWYkF2fkHhYLMX4IfRQxXryy6nMfLk5K930F/uLlvVfPnAR6x2Qvk2kZlG/b3hX1g40hGK0mNx+xQklrbPqxqYtuksq6WZbSofOvRl9JVsJxNGM9na5NavrlRPl2ymLt4/iNohCdj6kld+LxZJGWSsOJAryZxt1RyH9m/xaFS/yapp0lk1dL5roruvQZqTNYnez5Cr/XJqywPl3FB3JPFYoCiZfdbkmR/wx2GOTnrz2HLdafnyrcUDCiA1nCtIly1mVJ/Ed2v9yVJf8r/Fsi5Udy8gY2ZHt5wgqfefvmz8PwNFTYMGkOmcR4P1eKu3SCPNuLIpUHPb9efFg8LHAY/gZzmioJ
+sidebar_class_name: "delete api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Delete all channel messages"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"delete"}
+  path={"/api/messaging/central-channels/{channelId}/messages"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Delete all messages in a channel
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Messages deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"deletedCount":{"type":"integer"}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

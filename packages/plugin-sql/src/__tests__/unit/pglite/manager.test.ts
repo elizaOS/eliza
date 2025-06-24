@@ -1,14 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-  mock,
-  spyOn,
-} from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { PGliteClientManager } from '../../../pglite/manager';
 
 describe('PGliteClientManager', () => {
@@ -18,11 +8,6 @@ describe('PGliteClientManager', () => {
 
       expect(manager).toBeDefined();
       expect(manager.getConnection()).toBeDefined();
-    });
-
-    it('should initialize shutdownTimeout to 500ms', () => {
-      const manager = new PGliteClientManager({ dataDir: 'memory://' });
-      expect(manager).toHaveProperty('shutdownTimeout', 500);
     });
 
     it('should initialize shuttingDown to false', () => {

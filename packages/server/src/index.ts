@@ -613,7 +613,7 @@ export class AgentServer {
           next();
         },
         apiRouter,
-        (err: any, req: Request, res: Response) => {
+        (err: any, req: Request, res: Response, _next: express.NextFunction) => {
           logger.error(`API error: ${req.method} ${req.path}`, err);
           res.status(500).json({
             success: false,

@@ -1,0 +1,63 @@
+---
+id: get-all-worlds
+title: "Get all worlds"
+description: "Get all worlds across all agents"
+sidebar_label: "Get all worlds"
+hide_title: true
+hide_table_of_contents: true
+api: eJy9Vk1vGzcQ/SvEnFpjbSktetmb0aiBgKYxYgc52D6MyNEuYy65IWdlK4L+ezDk6sMfhY0eqovI3Zk3bzgzj7sBxiZBfQ3YkOcEtxUYSjranm3wUMMHYoXOqfsQnUkKdQwp5SejRwWhp4hiPjdQQ0N87tzXbA4VREp98IkS1Bv4bTqVv8cRiqmKxNHSioxKg9aU0nJwbg0V6OCZPIsj9r2zOseafEvivYGkW+pQVrzuCWoIi2+kGSroozBjW2KPqEeGixAcoYcK6AG73hHUHAfaVmCQ34BYjuTIDmNEYWyZuvS6vzVHNomj9Q1UsAyxQ4YahsEaeFqOL95+H0hZQ57t0lJUyxAVt1QKBNsKPHb0EvBjoH+wIxWWj11zSef/gdb8/Q4rQyhukVW490lxa9MhQApD1HSVsV9jKFaCWnzUL8YmHaKpFJOjJmJXKWL96wH2ZeKPQS8csqRymnrSdmn10VEKUkeM/1b9x0jnxlhZ4jgbau+63VbAlqWfSnPDdver4I+XRmAWY4i7CbC+Gaftf27+Jbok3U/C5nVMHcwbqlhSy7b5eFPC5s1uO3MZSWK0Lr3u+T4bklE5DWV96Vx5WSqwK00OAWNZOuI2jPIlmSK3UMMEezspOjfZlyRRXFEU0dzAEB3U0DL39WTigkbXhsT179Pp9Bmxv+W1MrQiF/pOpqQgwfa2AqGZc9uRc/YHqk+X6vxi/rz1LubKBD0ISM4si8DeZfXubHr2bqpO1blaOnqwC0cKvVFJo0PZnM/HOV1G7Og+xLuzG3/jr2RWBdwmZSjZxpNRHNSC1JDIqHvLrUKV83RrFQfvpVlLYOsTo9d0pmbe9MF6ztdEuM/kdCRk65vqxnfosZFl5mQ9U0TNuesFf8dNpCOGoZGIn2eXV8VyiZpGrrSjGmKD3v6gDBayCi2DRBZMEzq0PtU3/lSdnFyuE1N3clKrsjq9t4bU/gJLmRL5lY3B5xJlsiTLAnCeqQlAXilnl6TXejzgg/URZnH8SF2I64Njl/fZK4bQPQv0Mbe+9Y24lA2pFr1x+eh0i96TS+UQx5YcKQ7GhhxIFqqPQUZfziKb9kS6VWntuaVk9+yMRfH5yzpSQ+8CmpKRvHhG7mo2E+OrOCQmo2YPpIfch7Ojo3t6Al9pcRn0HbG4fiZ0p2w7Ujp03eBHYVMri6pYnc0/QQWSVmn60tSjJKLOkliuusOw/FmwWC7hw2imejJpLLfD4kyHbkJiHVL5z2Ldh8Qd+iPEx189Twdwc5Dlt3wfjXrF9MCT3qH1omeZ3mYUmmvA3kIFe5cx7m0FoidisNksMNGX6LZbefx9oLiG+vq2ghVGK1Mtu20FLaGhmNXpjtaiFlpTL6K2Qjfkz5SnF4kI0F4AP8yuYLv9CWFXg4Y=
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get all worlds"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/agents/worlds"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Get all worlds across all agents
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Worlds retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"worlds":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the world"},"name":{"type":"string","description":"Name of the world"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent that owns this world"},"sourceType":{"type":"string","description":"Type of source (discord, telegram, etc)"},"sourceId":{"type":"string","description":"Platform-specific identifier"},"metadata":{"type":"object","description":"Additional world metadata"}},"title":"World"}}}}}}}}},"500":{"description":"Error retrieving worlds","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

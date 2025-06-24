@@ -1,5 +1,5 @@
 import { type UUID, logger } from '@elizaos/core';
-import { type PgliteDatabase, drizzle } from 'drizzle-orm/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PGliteClientManager } from './manager';

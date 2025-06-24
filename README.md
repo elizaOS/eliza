@@ -183,7 +183,7 @@ elizaos test       # Run tests (component, e2e, or all)
 elizaos env        # Manage environment variables and configuration
 elizaos dev        # Start in development mode with auto-rebuild
 elizaos update     # Update CLI and project dependencies
-elizaos stop       # Stop all running ElizaOS agents
+# To stop agents, use Ctrl+C in the terminal where elizaos start is running
 elizaos publish    # Publish plugins to registry
 elizaos plugins    # Manage and discover plugins
 elizaos monorepo   # Monorepo development utilities

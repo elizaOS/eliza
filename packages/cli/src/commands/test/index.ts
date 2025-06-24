@@ -18,10 +18,10 @@ export const test = new Command()
       .choices(['component', 'e2e', 'all'])
       .default('all')
   )
-  .option('-p, --port <port>', 'the port to run e2e tests on', validatePort)
-  .option('--name <name>', 'filter tests by name')
-  .option('--skip-build', 'skip the build step before running tests')
-  .option('--skip-type-check', 'skip TypeScript validation before running tests')
+  .option('--port <port>', 'The port to run e2e tests on', validatePort)
+  .option('--name <name>', 'Filter tests by name')
+  .option('--skip-build', 'Skip building before running tests')
+  .option('--skip-type-check', 'Skip TypeScript validation before running tests')
   .hook('preAction', async (thisCommand) => {
     // Install plugin dependencies before running tests
     const testPath = thisCommand.args[0];
@@ -67,16 +67,6 @@ export const test = new Command()
       handleError(error);
     }
   });
-
-// Add duplicate options for backward compatibility (the original had duplicated options)
-test
-  .addOption(
-    new Option('-p, --port <port>', 'Server port for e2e tests (default: 3000)').argParser(
-      validatePort
-    )
-  )
-  .option('-n, --name <n>', 'Filter tests by name (matches file names or test suite names)')
-  .option('--skip-build', 'Skip building before running tests');
 
 // This is the function that registers the command with the CLI
 export default function registerCommand(cli: Command) {

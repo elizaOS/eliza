@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@elizaos/autodoc",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "private": true,
   "description": "",
   "main": "dist/index.js",
@@ -13,6 +13,7 @@
     "autodoc": "node dist/index.js",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "lint": "prettier --write ./src",
+    "test": "echo \"No tests configured for @elizaos/autodoc\"",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },

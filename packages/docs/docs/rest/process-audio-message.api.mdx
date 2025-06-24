@@ -1,239 +1,71 @@
 ---
 id: process-audio-message
-title: 'Process audio message'
-description: 'Upload and process an audio file as a message through an agent'
-sidebar_label: 'Process audio message'
+title: "Process audio message"
+description: "Process an audio message - transcribe and get agent response"
+sidebar_label: "Process audio message"
 hide_title: true
 hide_table_of_contents: true
-api: eJytVk1v2zAM/SsCz26cbTffsiFYAwxYsXbYoe2BkRlbrSxpEp00M/zfB9ppl7WX6aKvp8dH8mlAoSZjdYv5mIU7vC+w5mySjWKDxwqvbRcdQ8vOBTiE5GoQzgLs6xisFywwRE6k8E2NFTYslwrGAhPnGHzmjNWAH5ZLnf5lvzyjfUZjgSZ4YS+KpxidNRN9+ZD10YDZtNyRruQYGSsM2wc2KiUmFSN2DtlxztTwGTBLsr7BAvmJNK8XCT9Vwjsc51Fgx9KGUzrKS9JihSVFW7an7DKnPSct3oB9clhhKxKrsnTBkGtDlurjcrnE1xX9qtdQ855diB17gZkJx/sCrd+FSa+VSd3a2d8E365hdbV5w7S62kAdTK8kU4VgFxK8PNm/XywXywtysSW4gBXsHD/ZrWMgX0M25Eg3qw1QozJ2iTo+hPS4uPN3/qa1WaOCzVBzto3nGiTAlqHPXMPBSgsEU7LuCKn33vrmFN36LOQNL2B98kkGci4cJoUmMYn1TXHnO/LU6HLSZL1wIqN3M/+ztgzSptA3GvH7+vpmRu7I8AIL1DbMFTnL+GQjMpONPHX/lPNz6LreWzlicda8XJVlY6XttwsTupIVHfI8o9oihiwd+TPGT5StgZbJSQumZfP4uk3DXzv/z286OVX4ScroyHocTxKHkw1vkaLFAmcj3heoXtPjYdhS5h/JjaMe/+o5HbG6vS9wT8lqs3U36kuqOU3OfeSjOskYjhp9T67X8G++nZrz5VN8Wd/gOP4Bu7h17Q==
-sidebar_class_name: 'post api-method'
+api: eJztV0tv2zgQ/iuDuWwbyLG72150y7ZewMAWDRIXe0hyoMWxxJYiVZJy4hr674sh6UedNAlQIKf6Ytma+fjNg/PYYBC1x/IKRS+VxZsCJfnKqS4oa7DEc2cr8h6EgSgBLXkvaoIRBCcMiy4IhJFQUwBRkwngyHfWeMICbUdOMNRMYoldAjtjoI8JBwvshBMtBXLMY4NGtIQlRqiZxAIV8+hEaLBAR9965UhiGVxPBfqqoVZgucGw7ljNB6dMjQUurWtFwBL7Xkkcju2afQC7hNBQ4ozDTQInH/62cs2Ix2dV1gQWLTfY9jqoTrgw5mNGUoTI4R4bu/hCVWAbHXsiKPL8dqk0Pcp5oYxwazwmHR0HrA3BQvYm29Z7cuzhp9zwcy8wAiM5a9tfQ2IEHOKHXZpSIZr952TCXw/ZlG0hCb6v+GnZa80OOHC66DqtqphN4y+elZ/v8Yx6ILiwVpMwWCDdibbjgHCYOVFyNB9HDHQXHnLTj9bNd3dEQtQ48MnT2mecmn/4/YUainRPLx6BeDKJMmi6zltoeKWW4DuiqgEyYqFJvs5R5Di+fSh0M7MSWknI9+aFo7UU2nO4yDnrnsasrHyGx6cMBlF2KDDXuueqbcVjsQlCaf+05ocoSBKiGaBMCh+/TJ4PKrC16QjcRuPtAxcp1l5jAyxtb+TvaLxYNN68ux+Nz8b3XWddIAktSSUgnvw7KC8UlHcPFazEIfcaZepUA38H5WWCEomFxsZJ0MZ+Eae6EseiU+MYi/Emz33DOIdptI2RJ7fazoi901hiE0JXjsfaVkI31ofyr8lkco/pv/waJK1I267lGpmQ4sjHvKOxW7ZafRfw6RLOzmf3O+f5DKStegaJpsLSOtiprN6cTk7fTGAEZ7DUdKcWOk3GvhKaOyqczfKEvOSJ99a6r6fX5trMG+X5QFAeJHlVG54WLCziWCbhVoUGBEQ79RpcbwwnbzpYGR+EqegUpkZ2VpngQWhtbyO5ypEIytTFtWmFETU/Rk7KBHKi4ncJf8vNQ2ic7Ws+8WJ6OU+SS1FR5kpbqtbVwqjvFMFsnP2Wlk9mTGlboYwvr80ITk4u1z5Qe3JSQnoa3SpJsFsOfKREZqWcNTFEkSzxYwKIzc0zQGpzWi2pWlfZwXvpA8yk+JFa69Z7xTb+jlo8qN47KK0lytSskncUaISROrquaoQxpH1yYk7JTJHzNB50ONHGKsOiabTyaxMa8mrHTirBOv/wTN932gqZLIot45jcfDpl4bnrPfeV6R1VfczD6YHrjj3wHy0ubfWVAqtekNCjoFqCyrZtb3Klg5USkKROZ5+wQDYrJX1K6lwjRRVrZF7Rdpn/PmEFHjb3V9OX43GtQtMvTivbjomlrU/fyNWAi0ArzAHibts8XDWP7+FmX65/dT3NNY4n83GnhTJxmWILNrk2XaHoFOaxGwss93vpjwXqpkCuQayx2SyEp89ODwP//a0nt8by6qbAlXCKK0EsYlL5OGfnlvCIla8u8ir6Go731p/YkP8UhkOyErrnX1jgV1of7NbDzVBgQ0KSi4zS2/fp3NE8DSxb7Yd23qHYKp1VFXXhQPxeH+Vyu6v/558u51jgIq/abWxycXWJuMX+sby6GYbhfx/xzCM=
+sidebar_class_name: "post api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
-
-<Heading as={'h1'} className={'openapi__heading'} children={'Process audio message'}></Heading>
-
-<MethodEndpoint
-  method={'post'}
-  path={'/api/audio/{agentId}/audio-messages'}
-  context={'endpoint'}
-></MethodEndpoint>
-
-Upload and process an audio file as a message through a specific agent
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Process audio message"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/audio/{agentId}/process-audio"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Process an audio message - transcribe and get agent response
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to process the audio message',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
 
 <RequestSchema
-  title={'Body'}
-  body={{
-    required: true,
-    content: {
-      'multipart/form-data': {
-        schema: {
-          type: 'object',
-          properties: {
-            file: {
-              type: 'string',
-              format: 'binary',
-              description: 'Audio file to process as a message',
-            },
-          },
-          required: ['file'],
-        },
-      },
-    },
-  }}
-></RequestSchema>
+  title={"Body"}
+  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Audio file to process"},"userId":{"type":"string","format":"uuid","description":"ID of the user"},"roomId":{"type":"string","format":"uuid","description":"ID of the room"}}}}}}}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Audio message processed successfully',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  transcription: {
-                    type: 'string',
-                    description: 'Transcribed text from the audio file',
-                  },
-                  message: {
-                    type: 'string',
-                    example: 'Audio transcribed, further processing TBD.',
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid request - bad agent ID or missing audio file',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '403': {
-      description: 'Invalid file path detected',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', example: 'INVALID_PATH' },
-                  message: { type: 'string', description: 'File path security validation failed' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Security Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', example: 'NOT_FOUND' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '413': {
-      description: 'File too large',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', example: 'FILE_TOO_LARGE' },
-                  message: { type: 'string', example: 'Audio file too large (max 50MB)' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'File Size Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Error processing audio message',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', example: 'PROCESSING_ERROR' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Processing Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Audio processed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"text":{"type":"string","description":"Transcribed text"},"response":{"type":"string","description":"Agent's response"},"audioResponse":{"type":"string","format":"binary","description":"Agent's audio response (if speech enabled)"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"415":{"description":"Unsupported media type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing audio","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
 
-## File Requirements
 
-- **Maximum file size**: 50MB
-- **File format**: Audio files (specific formats depend on agent's transcription model capabilities)
-- **Security**: Files are validated for path traversal attacks and must be regular files
-
-## Rate Limiting
-
-This endpoint is subject to upload rate limiting and file system rate limiting to prevent abuse.
-
-## Processing Flow
-
-1. Audio file is uploaded and validated
-2. File path security checks are performed
-3. Audio file is read and processed by the agent's transcription model
-4. Transcribed text is returned
-5. File is automatically cleaned up after processing
-
-## Notes
-
-- This endpoint handles the complete flow from audio upload to transcription
-- Files are automatically deleted after processing for security
-- The agent must have transcription capabilities enabled
-- Further message processing may be implemented in future versions
+      

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -30,6 +30,7 @@
     "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
+    "@types/bun": "^1.2.16",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "tsup": "8.5.0",

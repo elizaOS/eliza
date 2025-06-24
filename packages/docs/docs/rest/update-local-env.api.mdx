@@ -1,0 +1,71 @@
+---
+id: update-local-env
+title: "Update local environment variables"
+description: "Update local environment variables in .env file"
+sidebar_label: "Update local environment variables"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVktv4zYQ/iuDOQaK7e3jolu6dQGju0iQZNFDksOYHFvcUKSWpJx4Df/3Ykg7UWx3WxTFnqqLSGke37w+coOJlhHrO4zrmLjFhwo1RxVMl4x3WOOnTlNisF6RBXYrE7xr2SVYUTA0txzBOBixW8HCWMYKfceBRHumscY+638Q9albYYWBv/Qc0y9er7He5K0JrLFOoecKlXeJXZJf1HXWqGxq/DkKmg1G1XBLskrrjrFGP//MKmGFXRDHyXCUvwMzh4KktRGbZK/eqOzkYgrGLXF7mIjfeX2+ItszdGRCBL84nQ7c5kcCjZ13sRj/YTKR11uT05PpLBnT+J/lIvZKcRzGOPfeMjmskJ+p7SyX7G8rbDlGWvJxPgai+GHfDC9Y9zH/dCrMmVuRNRp2lf/OgS3IRomMQ/DhnzSOPhn9QeXEGGTZbyftlNpePLdYImNPtN+h5q9ZkDXkMMC4hQ9tzhqWzCeTcm2yi923n082XTaQC2fc8i96+P8SfZcSZWCp8UKUnc+j0VFqsMYxdWZcOHk8KNE48zBWGDmsOAhzb7APFmtsUurqcRFofEz1j5PJ5AhkGV3NK7a+y0UvlnD7UKEU9/qVnqf7+gzpVDBLaDkf+4Cs+UpweQMXV7MjjxdXM9Be9eIsZwMWPsCLyurdaDJ6N4FzuICF5WcztwzkNERFVpoRLmZAS0G6CNTykw+Po3t3724bE8UhmAiao1k61pA8zBn6yBqeTGqAysFl1xB656Tfi2PjYiKneARTpztvXIpA1vqnDE4FzsNR3buWHC1lmTEZlziQyoOT7e+xRUhN8P1SPF5Pb26L5IIU77DyHqoPS3LmK2djHlLDsPDiWWxq35Jxsb5353B2dpPLf3ZWQ1mdPxnN8HK8xgxpOL8ZLMuyGLjI0MRAXoE1C1ZrtUvwq/TAZlH8yK0P61fFNu+zVvC+PXL0MY+LcUtRKRuGhpy2OXWqIefYxpLEXevuIPba+OxIFtAFL3QhuciiHbNqIK5dajiaF3TakOj8ZixD31lPukQkP47A3U6nInwb+phYw/SZVZ/7cHj8HmbgD57fePXISVSvmex5Mi2D8m3bux0ZwsoQFKnR7BIrlLBK05em3tEoqUyjjto3w/K+2EprrAYjHOvxeGlS089HyrdjFmkfyxtl+IQnWnIDi39/RTscysFA/4sL3o4GEz+ncWfJOKHJHMFmR193SJ0RliqXygoHdrHCQmIPFQpPifRmM6fIn4LdbuXzl57DGuu7hwr3IGS3rbBh0hwy6z3yGmt8X+I4vxVMIm57wXZ0ZG2rvcaFUtylb8o+DGj56vLmFiuc766rbT57MNCTXGXpCWvMV97cOvk+K982aMkt+3zgYLEpz5+yzwHT
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Update local environment variables"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/system/environment/local"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Update local environment variables in .env file
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"content":{"type":"object","additionalProperties":{"type":"string"},"description":"Key-value pairs of environment variables"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Environment variables updated","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"message":{"type":"string","example":"Local env updated"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating environment variables","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

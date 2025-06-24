@@ -1,17 +1,17 @@
-import { describe, expect, it, spyOn, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import plugin from '../plugin';
 import { z } from 'zod';
 import { createMockRuntime } from './utils/core-test-utils';
 
 // Mock logger
-spyOnmock('@elizaos/core', async () => {
-  const actual = await spyOnimportActual('@elizaos/core');
+mock.module('@elizaos/core', () => {
+  const actual = require('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: spyOnfn(),
-      error: spyOnfn(),
-      warn: spyOnfn(),
+      info: mock(),
+      error: mock(),
+      warn: mock(),
     },
   };
 });
@@ -24,7 +24,7 @@ describe('Plugin Configuration Schema', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    spyOnclearAllMocks();
+    mock.restore();
     // Reset environment variables before each test
     process.env = { ...originalEnv };
   });
@@ -150,7 +150,7 @@ describe('Plugin Configuration Schema', () => {
 
     // Mock the parseAsync function
     const originalParseAsync = schema.parseAsync;
-    schema.parseAsync = spyOnfn().mockRejectedValue(mockZodError);
+    schema.parseAsync = mock().mockRejectedValue(mockZodError);
 
     try {
       // Use the mocked schema directly to avoid TypeScript errors
@@ -176,7 +176,7 @@ describe('Plugin Configuration Schema', () => {
 
     // Mock the parseAsync function
     const originalParseAsync = schema.parseAsync;
-    schema.parseAsync = spyOnfn().mockRejectedValue(genericError);
+    schema.parseAsync = mock().mockRejectedValue(genericError);
 
     try {
       // Use the mocked schema directly to avoid TypeScript errors

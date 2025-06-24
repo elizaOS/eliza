@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,24 +26,21 @@
     "drizzle"
   ],
   "dependencies": {
-    "@electric-sql/pglite": "^0.2.17",
+    "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
-    "@types/pg": "8.11.10",
-    "drizzle-kit": "^0.30.4",
+    "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
-    "@types/node": "^22.15.3",
-    "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0",
-    "dockerode": "^4.0.4",
+    "@types/pg": "8.15.4",
+    "@types/node": "^24.0.3",
     "eslint": "^9.28.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
-    "typescript-eslint": "^8.26.0",
-    "zod": "^3.22.4"
+    "typescript": "5.8.3",
+    "typescript-eslint": "^8.26.0"
   },
   "scripts": {
     "build": "tsup",
@@ -61,10 +58,6 @@
     "test:postgres": "POSTGRES_URL=postgresql://postgres:cT5nfCeebBS8R0q3@db.mwyntrazuakaieibjuvo.supabase.co:5432/postgres bun test",
     "build:clean": "rm -rf dist",
     "lint:fix": "eslint . --fix"
-  },
-  "peerDependencies": {
-    "typescript": "5.8.2",
-    "whatwg-url": "7.1.0"
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
 }

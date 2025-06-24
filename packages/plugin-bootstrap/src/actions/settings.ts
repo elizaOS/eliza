@@ -203,34 +203,6 @@ Include the actions array ["ONBOARDING_COMPLETE"] in your response.
 ${messageCompletionFooter}`;
 
 /**
- * Generates an extraction template with formatting details.
- *
- * @param {WorldSettings} worldSettings - The settings to generate a template for.
- * @returns {string} The formatted extraction template.
- */
-const extractionTemplate = `# Task: Extract Setting Changes from User Input
-
-I need to extract settings that the user wants to change based on their message.
-
-Available Settings:
-{{settingsContext}}
-
-User message: {{content}}
-
-For each setting mentioned in the user's input, extract the key and its new value.
-Format your response as a JSON array of objects, each with 'key' and 'value' properties.
-
-Example response:
-\`\`\`json
-[
-  { "key": "SETTING_NAME", "value": "extracted value" },
-  { "key": "ANOTHER_SETTING", "value": "another value" }
-]
-\`\`\`
-
-IMPORTANT: Only include settings from the Available Settings list above. Ignore any other potential settings.`;
-
-/**
  * Gets settings state from world metadata
  */
 /**
@@ -514,7 +486,7 @@ async function processSettingUpdates(
 async function handleOnboardingComplete(
   runtime: IAgentRuntime,
   worldSettings: WorldSettings,
-  state: State,
+  _state: State,
   callback: HandlerCallback
 ): Promise<void> {
   try {

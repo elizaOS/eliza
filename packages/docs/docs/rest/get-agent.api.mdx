@@ -1,150 +1,71 @@
 ---
 id: get-agent
-title: 'Get agent details'
-description: 'Returns detailed information about a specific agent'
-sidebar_label: 'Get agent details'
+title: "Get agent details"
+description: "Returns detailed information about a specific agent"
+sidebar_label: "Get agent details"
 hide_title: true
 hide_table_of_contents: true
-api: eJztVk1v2zgQ/SvEnHYB1nZ3uxfdjCYoDBS7RZKeEh/G5EhiS5EKOXSSNfTfF6TkxInTJthDTvXFkjjz5uPNcGYHjE2E6hKwIccR1hI0RRVMz8Y7qOCMOAUXhSZGY0kL42ofOszHAjc+sUARe1KmNkoUFJDgewpFZKWhgoZ4OR30GLAjppCN7sBhR1CNxlcaJJhss0duQUKg62QCaag4JJIQVUsdQrUDvuuzWuRgXAMSRo+ggpSMhuFpDKsT4WvBLY3+CfYiEAdDW4JhnQ3F3rtIMWP/sVjkv8cIxf0pBxEkKO84B1TtAPveGlWCnX+LWXp37KnffCNV4g85NWxGWzEpRTEeCG68t4QOJNAtdr2lMfgcEvIrEI1+OT9P0/PVmetEwmhybGpDQdQ+PKQr53Pk6Rj4MdDf2NGjTGfVyMgpPqdMLnWl9BSbLRXyp8ejKvyYQsgMjGBPbAwS2HBO1cjTytUehvKT8OE5Oldui9boqRxWJ2/MaI02ZkopBB9exlRevyL5pxlMFNlBQkcxYvNqtb14aZ2xyF/UPNnfCCWMw3sBxtTvSSkmYE/Hhx91l/Msap+c/sXGW7Hx13PNcU5hS2HE+UXF21BRHOPWT9OyDEpuoYI59mY+zub5bhqTA0iIhaRxiKZgoYKWua/mc+sV2tZHrv5cLBZHvn3Ox0LTlqzvu3KlFqQyB7OnJby9f9b8i+Kfc7H8sjpCWn5ZCe1VyiDjNpCnxr3K9v1sMVu8Q9u3KN6Jpagt3ZqNJYFOi6jQYn5ZrqZLuM57wY0P32dX7spdtCZmq8LkzSOaxpHOY3tDIkXS4sZwK1CUYO2dCMk545rJunGR0SmaiVOne28cR4HW+pvioQqEbFwjr1yHDpv8WHwyjinkAeSaEX/vWxTcBp+abPHs9PxilKxR0QwkZBrGjBxEPPUNqtI305Zzn5uPvuuSM3wH8oC8WM3njeE2bWbKd3PK0j6O/2XI9T5yh+4A8RPxlL6H1eQRS7uH9v2fm9xU6ky3PO8tGpdboTi9m2r0ErA3IPcbpIRqv86tJeRKzCK73QYjfQ12GPLn60ThDqrLtYQtBpNLoZSyNjE/6+kq+Ek0v51N2+Hv4mfr3Q8CmD6iyxRs0ab8BhK+093BOjqsBwktoaZQvBtPl0pRzwd6R9di7qX7dv50egHD8B/KI/Nh
-sidebar_class_name: 'get api-method'
+api: eJztV0tzGzcM/iscnFrP2lLa9LI3T6JmNNM0GduZHmIfIBK7i4RLbkiubFWj/94BubJlK6/pIafoIq4W+PDhQQDaQsI2Qv0esCWXItxUYCjqwENi76CGC0pjcFEZSsiWjGLX+NCjvFa48mNSqOJAmhvWKqNABX6gkEWWBmpoKZ1PLwYM2FOiIEa34LAnqIvxpYEKWGwOmDqoINCnkQMZqFMYqYKoO+oR6i2kzSBqMQV2LVRQGEEN48gGdk99WL5UvlGpo8JPJa8CpcC0JtjdiKE4eBcpCvZv87l8PUbI9KcYRKhAe5fEoXoLOAyWdXZ29iGK9PaYqV99IJ39DxKaxMVWHLWmGA8EV95bQgcV0B32g6XivLiE6TsQ2Xw7Pk/D887xp5EUG3KJG6agGh8ewiXxLHk6Bn4M9Df29CjSohoTpjF+Tpnc2OfS04nXlJM/HY+q8MUYgmSggD2xsasgcZJQlTwtXeNhlz8VPP9cOpdujZbNVA7Llz84ow3aKCmlEHz4Nqb25juCvxAwlWV3FfQUI7bfrbYXz1enFPk3NV/uO0J247AvQAn9PinZBOzT8fxLt8v5pBo/OvMzGz8qG3987nJcUlhTKDg/U/FjUpGJpc5P0zIPytRBDTMceFZm82w7jckdVBBzksoQHYOFGrqUhno2s16j7XxM9e/z+fyI21/yWhlak/VDn1tqRspzUJhm9/b8LP+L6s2lOn+7PEI6f7tUxutRQMo2IFPjXmX97Gx+9myuTtW5aizd8cqSQmdU1GhRHs6XU/9tZCW49eHj2bW7dlcdRzGoWJaOyK0jIxN7RWqMZNQtp06hyn7ajQqjc+zayTC7mNBpOlMLZwbPLkWF1vrbTE4HwsSura5djw5bOWZO7BIFmT2uLfh7blGlLvixFYsXi8urItmgpokr7an60KLjf/OClHweT40Xy4JpfI/sYn3tTtXJyeUmJupPTmpVTqe3bEjdr0wxUyK35uBdTlEmS3IsALlfRgEondNyQ3qjpwA/SB9gFsXX1PuweVDs83PWCt73R4Ze5+pn14pKeSDVoTM2h0536BzZWII4leREcTTssyE5qCF4uf0Siyw6EOlOxY1LHUW+Z2cYRedPtqTGwXo0xSN5cUTuarEQ4aswxkRGLe5Ij7kOFwehexqBf2h16fVHSqJ6QWhPE/ektO/70U29Ta0ZVZE6W76BCsStUvSlqKeuiDp3xWmHva/8FwUrbaA6uJqxns1aTt24OtO+n5FI+1i+8woz+Jh6dAeIryhNN+Rh8Xx0B7cPzfl/7ulTI0t0l2aDRXbS6DLp7dSB3gMODNX+/0EF9X5Zv6lA+oyIbLcrjPQu2N1Ofv40UthA/f6mgjUGltueG5XhKGczNfqvePPLxbT7/6q+trx/wYHpR3SSgjXaUZ6ggo+0OfizsbvZVdARGgqZXXl7rjUN6UDvaOhJp7xv1q8WV7Db/QfKXJtV
+sidebar_class_name: "get api-method"
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import ParamsDetails from '@theme/ParamsDetails';
-import RequestSchema from '@theme/RequestSchema';
-import StatusCodes from '@theme/StatusCodes';
-import OperationTabs from '@theme/OperationTabs';
-import TabItem from '@theme/TabItem';
-import Heading from '@theme/Heading';
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
 
-<Heading as={'h1'} className={'openapi__heading'} children={'Get agent details'}></Heading>
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get agent details"}
+>
+</Heading>
 
-<MethodEndpoint method={'get'} path={'/api/agents/{agentId}'} context={'endpoint'}></MethodEndpoint>
+<MethodEndpoint
+  method={"get"}
+  path={"/api/agents/{agentId}"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
 
 Returns detailed information about a specific agent
 
 <Heading
-  id={'request'}
-  as={'h2'}
-  className={'openapi-tabs__heading'}
-  children={'Request'}
-></Heading>
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
 
 <ParamsDetails
-  parameters={[
-    {
-      name: 'agentId',
-      in: 'path',
-      required: true,
-      schema: { type: 'string', format: 'uuid' },
-      description: 'ID of the agent to retrieve',
-    },
-  ]}
-></ParamsDetails>
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent to retrieve"}]}
+>
+  
+</ParamsDetails>
 
-<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{
-    '200': {
-      description: 'Agent details',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: true },
-              data: {
-                type: 'object',
-                properties: {
-                  id: {
-                    type: 'string',
-                    format: 'uuid',
-                    description: 'Unique identifier for the agent',
-                  },
-                  name: { type: 'string', description: 'Name of the agent' },
-                  status: {
-                    type: 'string',
-                    enum: ['active', 'inactive'],
-                    description: 'Current status of the agent',
-                  },
-                },
-                title: 'AgentInfo',
-              },
-            },
-          },
-        },
-      },
-    },
-    '400': {
-      description: 'Invalid agent ID',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '404': {
-      description: 'Agent not found',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-    '500': {
-      description: 'Server error',
-      content: {
-        'application/json': {
-          schema: {
-            type: 'object',
-            properties: {
-              success: { type: 'boolean', example: false },
-              error: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', description: 'Error code' },
-                  message: { type: 'string', description: 'Error message' },
-                  details: { type: 'string', description: 'Detailed error information' },
-                },
-              },
-            },
-            title: 'Error',
-          },
-        },
-      },
-    },
-  }}
-></StatusCodes>
+  responses={{"200":{"description":"Agent details","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the agent"},"name":{"type":"string","description":"Name of the agent"},"status":{"type":"string","enum":["active","inactive"],"description":"Current status of the agent"}},"title":"AgentInfo"}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Server error","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

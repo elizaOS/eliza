@@ -8,15 +8,12 @@ import {
   pgTable,
   text,
   timestamp,
-  unique,
   uuid,
-  vector,
 } from 'drizzle-orm/pg-core';
 import { agentTable } from './agent';
 import { embeddingTable } from './embedding';
 import { entityTable } from './entity';
 import { roomTable } from './room';
-import { worldTable } from './world';
 
 /**
  * Definition of the memory table in the database.

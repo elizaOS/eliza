@@ -44,7 +44,7 @@ export const publish = new Command()
   .option('--npm', 'publish to npm only (skip GitHub and registry)', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option('-d, --dry-run', 'generate registry files locally without publishing', false)
-  .option('-sr, --skip-registry', 'skip publishing to the registry', false)
+  .option('--skip-registry', 'skip publishing to the registry', false)
   .hook('preAction', async () => {
     await displayBanner();
   })

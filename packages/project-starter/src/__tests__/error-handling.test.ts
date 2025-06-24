@@ -1,4 +1,4 @@
-import { describe, expect, it, spyOn, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import plugin from '../plugin';
 import { StarterService } from '../plugin';
 import { logger } from '@elizaos/core';
@@ -6,21 +6,21 @@ import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 // Mock logger
-spyOnmock('@elizaos/core', async () => {
-  const actual = await spyOnimportActual('@elizaos/core');
+mock.module('@elizaos/core', () => {
+  const actual = require('@elizaos/core');
   return {
     ...actual,
     logger: {
-      info: spyOnfn(),
-      error: spyOnfn(),
-      warn: spyOnfn(),
+      info: mock(),
+      error: mock(),
+      warn: mock(),
     },
   };
 });
 
 describe('Error Handling', () => {
   beforeEach(() => {
-    spyOnclearAllMocks();
+    mock.restore();
   });
 
   afterEach(() => {
@@ -57,7 +57,7 @@ describe('Error Handling', () => {
           text: '',
         } as State;
 
-        const mockCallback = spyOnfn();
+        const mockCallback = mock();
 
         // Mock the logger.error to verify it's called
         spyOn(logger, 'error');
@@ -80,7 +80,7 @@ describe('Error Handling', () => {
   describe('Service Error Handling', () => {
     it('should throw an error when stopping non-existent service', async () => {
       const mockRuntime = {
-        getService: spyOnfn().mockReturnValue(null),
+        getService: mock().mockReturnValue(null),
       } as unknown as IAgentRuntime;
 
       let caughtError = null;
@@ -97,13 +97,13 @@ describe('Error Handling', () => {
 
     it('should handle service stop errors gracefully', async () => {
       const mockServiceWithError = {
-        stop: spyOnfn().mockImplementation(() => {
+        stop: mock().mockImplementation(() => {
           throw new Error('Error stopping service');
         }),
       };
 
       const mockRuntime = {
-        getService: spyOnfn().mockReturnValue(mockServiceWithError),
+        getService: mock().mockReturnValue(mockServiceWithError),
       } as unknown as IAgentRuntime;
 
       // The error should be propagated

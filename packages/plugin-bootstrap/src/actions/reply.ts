@@ -1,4 +1,3 @@
-import { Content } from '@elizaos/core';
 import {
   type Action,
   type ActionExample,

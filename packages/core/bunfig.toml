@@ -7,3 +7,15 @@ timeout = 60000
 
 # Coverage configuration
 coverage = true
+
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]

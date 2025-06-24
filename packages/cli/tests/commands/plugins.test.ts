@@ -95,14 +95,14 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add installs a plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add @elizaos/plugin-telegram --skip-env-prompt`, {
+        execSync(`${elizaosCmd} plugins add @elizaos/plugin-google-genai --skip-env-prompt --skip-verification`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
         });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@elizaos/plugin-telegram');
+        expect(packageJson).toContain('@elizaos/plugin-google-genai');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');

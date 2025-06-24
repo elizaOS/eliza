@@ -1,9 +1,43 @@
-import { sql, type SQL } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import { logger } from '@elizaos/core';
 
 type DrizzleDB = NodePgDatabase | PgliteDatabase;
+
+/**
+ * Extract clean error message from Drizzle wrapped errors
+ * Drizzle wraps PostgreSQL errors and only shows the SQL query in the error message,
+ * hiding the actual error in the cause property.
+ */
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error && 'cause' in error && error.cause) {
+    return (error.cause as Error).message;
+  } else if (error instanceof Error) {
+    return error.message;
+  }
+  return 'Unknown error';
+}
+
+/**
+ * Extract detailed error information including stack trace for logging
+ * Returns both the clean message and stack trace for comprehensive debugging
+ */
+function extractErrorDetails(error: unknown): { message: string; stack?: string } {
+  if (error instanceof Error && 'cause' in error && error.cause) {
+    const cause = error.cause as Error;
+    return {
+      message: cause.message,
+      stack: cause.stack || error.stack,
+    };
+  } else if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+  return { message: 'Unknown error' };
+}
 
 interface ColumnDefinition {
   name: string;
@@ -688,7 +722,7 @@ export class DrizzleSchemaIntrospector {
           }
         } else if (extraConfig && typeof extraConfig === 'object') {
           // Handle object form of extraConfig (e.g., { pk: primaryKey(...) })
-          for (const [key, value] of Object.entries(extraConfig)) {
+          for (const [_key, value] of Object.entries(extraConfig)) {
             // Check if this is a primary key definition
             if (value && typeof value === 'object' && (value as any)._) {
               const config = (value as any)._;
@@ -1082,11 +1116,12 @@ export class PluginNamespaceManager {
           logger.debug(`[CUSTOM MIGRATOR] Successfully added foreign key constraint: ${fk.name}`);
         } catch (error: any) {
           // Log the error but continue processing other constraints
-          if (error.message?.includes('already exists')) {
+          const errorMessage = extractErrorMessage(error);
+          if (errorMessage.includes('already exists')) {
             logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint already exists: ${fk.name}`);
           } else {
             logger.warn(
-              `[CUSTOM MIGRATOR] Could not add foreign key constraint (may already exist): ${error.message}`
+              `[CUSTOM MIGRATOR] Could not add foreign key constraint (may already exist): ${errorMessage}`
             );
           }
         }
@@ -1116,13 +1151,14 @@ export class PluginNamespaceManager {
             `[CUSTOM MIGRATOR] Successfully added check constraint: ${checkConstraint.name}`
           );
         } catch (error: any) {
-          if (error.message?.includes('already exists')) {
+          const errorMessage = extractErrorMessage(error);
+          if (errorMessage.includes('already exists')) {
             logger.debug(
               `[CUSTOM MIGRATOR] Check constraint already exists: ${checkConstraint.name}`
             );
           } else {
             logger.warn(
-              `[CUSTOM MIGRATOR] Could not add check constraint ${checkConstraint.name} (may already exist): ${error.message}`
+              `[CUSTOM MIGRATOR] Could not add check constraint ${checkConstraint.name} (may already exist): ${errorMessage}`
             );
           }
         }
@@ -1139,10 +1175,13 @@ export class ExtensionManager {
       try {
         await this.db.execute(sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extension}"`));
       } catch (error) {
-        logger.warn(`Could not install extension ${extension}:`, {
-          message: (error as Error).message,
-          stack: (error as Error).stack,
-        });
+        const errorDetails = extractErrorDetails(error);
+        logger.warn(`Could not install extension ${extension}: ${errorDetails.message}`);
+        if (errorDetails.stack) {
+          logger.debug(
+            `[CUSTOM MIGRATOR] Extension installation stack trace: ${errorDetails.stack}`
+          );
+        }
       }
     }
   }
@@ -1196,6 +1235,19 @@ export async function runPluginMigrations(
 ): Promise<void> {
   logger.debug(`[CUSTOM MIGRATOR] Starting migration for plugin: ${pluginName}`);
 
+  // Test database connection first
+  try {
+    await db.execute(sql.raw('SELECT 1'));
+    logger.debug('[CUSTOM MIGRATOR] Database connection verified');
+  } catch (error) {
+    const errorDetails = extractErrorDetails(error);
+    logger.error(`[CUSTOM MIGRATOR] Database connection failed: ${errorDetails.message}`);
+    if (errorDetails.stack) {
+      logger.error(`[CUSTOM MIGRATOR] Stack trace: ${errorDetails.stack}`);
+    }
+    throw new Error(`Database connection failed: ${errorDetails.message}`);
+  }
+
   const namespaceManager = new PluginNamespaceManager(db);
   const introspector = new DrizzleSchemaIntrospector();
   const extensionManager = new ExtensionManager(db);
@@ -1239,38 +1291,60 @@ export async function runPluginMigrations(
   //   `Migrating ${tableDefinitions.size} tables for ${pluginName} to schema ${schemaName}`
   // );
 
-  // Phase 1: Create all tables without foreign key constraints
-  logger.debug(`[CUSTOM MIGRATOR] Phase 1: Creating tables...`);
-  for (const tableName of sortedTableNames) {
-    const tableDef = tableDefinitions.get(tableName);
-    if (!tableDef) continue;
+  try {
+    // Phase 1: Create all tables without foreign key constraints
+    logger.debug(`[CUSTOM MIGRATOR] Phase 1: Creating tables...`);
+    for (const tableName of sortedTableNames) {
+      const tableDef = tableDefinitions.get(tableName);
+      if (!tableDef) continue;
 
-    const tableExists = existingTables.includes(tableDef.name);
-    logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} exists: ${tableExists}`);
+      const tableExists = existingTables.includes(tableDef.name);
+      logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} exists: ${tableExists}`);
 
-    if (!tableExists) {
-      logger.debug(`[CUSTOM MIGRATOR] Creating table: ${tableDef.name}`);
-      await namespaceManager.createTable(tableDef, schemaName);
-    } else {
-      logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} already exists, skipping creation`);
+      if (!tableExists) {
+        logger.debug(`[CUSTOM MIGRATOR] Creating table: ${tableDef.name}`);
+        try {
+          await namespaceManager.createTable(tableDef, schemaName);
+        } catch (error) {
+          const errorDetails = extractErrorDetails(error);
+          logger.error(
+            `[CUSTOM MIGRATOR] Failed to create table ${tableDef.name}: ${errorDetails.message}`
+          );
+          if (errorDetails.stack) {
+            logger.error(`[CUSTOM MIGRATOR] Table creation stack trace: ${errorDetails.stack}`);
+          }
+          throw new Error(`Failed to create table ${tableDef.name}: ${errorDetails.message}`);
+        }
+      } else {
+        logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} already exists, skipping creation`);
+      }
     }
-  }
 
-  // Phase 2: Add constraints (foreign keys, check constraints, etc.)
-  logger.debug(`[CUSTOM MIGRATOR] Phase 2: Adding constraints...`);
-  for (const tableName of sortedTableNames) {
-    const tableDef = tableDefinitions.get(tableName);
-    if (!tableDef) continue;
+    // Phase 2: Add constraints (foreign keys, check constraints, etc.)
+    logger.debug(`[CUSTOM MIGRATOR] Phase 2: Adding constraints...`);
+    for (const tableName of sortedTableNames) {
+      const tableDef = tableDefinitions.get(tableName);
+      if (!tableDef) continue;
 
-    // Add constraints if table has foreign keys OR check constraints
-    if (tableDef.foreignKeys.length > 0 || tableDef.checkConstraints.length > 0) {
-      logger.debug(`[CUSTOM MIGRATOR] Adding constraints for table: ${tableDef.name}`, {
-        foreignKeys: tableDef.foreignKeys.length,
-        checkConstraints: tableDef.checkConstraints.length,
-      });
-      await namespaceManager.addConstraints(tableDef, schemaName);
+      // Add constraints if table has foreign keys OR check constraints
+      if (tableDef.foreignKeys.length > 0 || tableDef.checkConstraints.length > 0) {
+        logger.debug(`[CUSTOM MIGRATOR] Adding constraints for table: ${tableDef.name}`, {
+          foreignKeys: tableDef.foreignKeys.length,
+          checkConstraints: tableDef.checkConstraints.length,
+        });
+        await namespaceManager.addConstraints(tableDef, schemaName);
+      }
     }
-  }
 
-  logger.debug(`[CUSTOM MIGRATOR] Completed migration for plugin: ${pluginName}`);
+    logger.debug(`[CUSTOM MIGRATOR] Completed migration for plugin: ${pluginName}`);
+  } catch (error) {
+    const errorDetails = extractErrorDetails(error);
+    logger.error(
+      `[CUSTOM MIGRATOR] Migration failed for plugin ${pluginName}: ${errorDetails.message}`
+    );
+    if (errorDetails.stack) {
+      logger.error(`[CUSTOM MIGRATOR] Migration stack trace: ${errorDetails.stack}`);
+    }
+    throw new Error(`Migration failed for plugin ${pluginName}: ${errorDetails.message}`);
+  }
 }

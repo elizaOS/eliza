@@ -1,14 +1,16 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bun": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "bun": "./src/index.ts",
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -43,38 +45,22 @@
     "format:check": "prettier --check ./src",
     "lint": "prettier --write ./src"
   },
-  "author": "",
+  "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "9.16.0",
-    "@rollup/plugin-commonjs": "25.0.8",
-    "@rollup/plugin-json": "6.1.0",
-    "@rollup/plugin-replace": "5.0.7",
-    "@rollup/plugin-terser": "0.1.0",
-    "@rollup/plugin-typescript": "11.1.6",
-    "@types/mocha": "10.0.10",
-    "@types/node": "^22.15.3",
+    "@types/node": "^24.0.3",
     "@types/uuid": "10.0.0",
-    "@typescript-eslint/eslint-plugin": "8.26.0",
-    "@typescript-eslint/parser": "8.26.0",
-    "lint-staged": "15.2.10",
-    "nodemon": "3.1.7",
-    "pm2": "5.4.3",
     "prettier": "3.5.3",
-    "rimraf": "6.0.1",
-    "rollup": "2.79.2",
-    "ts-node": "10.9.2",
-    "tslib": "2.8.1",
     "tsup": "8.5.0",
-    "typescript": "5.8.2"
+    "typescript": "5.8.3"
   },
   "dependencies": {
     "@sentry/browser": "^9.22.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
-    "dotenv": "16.4.5",
+    "dotenv": "16.5.0",
     "events": "^3.3.0",
-    "glob": "11.0.0",
+    "glob": "11.0.3",
     "handlebars": "^4.7.8",
     "js-sha1": "0.7.0",
     "langchain": "^0.3.15",
@@ -83,7 +69,7 @@
     "pino-pretty": "^13.0.0",
     "stream-browserify": "^3.0.0",
     "unique-names-generator": "4.7.1",
-    "uuid": "11.0.3",
+    "uuid": "11.1.0",
     "zod": "^3.24.4"
   },
   "publishConfig": {

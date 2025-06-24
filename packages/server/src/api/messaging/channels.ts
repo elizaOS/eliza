@@ -303,25 +303,41 @@ export function createChannelsRouter(
 
   // POST /channels - Create a new central channel
   (router as any).post('/channels', async (req: express.Request, res: express.Response) => {
-    const { messageServerId, name, type, sourceType, sourceId, topic, metadata } = req.body;
+    const serverId = req.body.serverId as UUID;
+    const { name, type, sourceType, sourceId, metadata } = req.body;
+    const topic = req.body.topic ?? req.body.description;
 
-    if (!messageServerId || !name || !type) {
+    if (!serverId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: messageServerId, name, type',
+        error: 'Missing required fields: serverId.',
       });
     }
 
-    if (!validateUuid(messageServerId)) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid messageServerId format',
+        error: 'Missing required fields: name.',
+      });
+    }
+
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: type.',
+      });
+    }
+
+    if (!validateUuid(serverId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid serverId format',
       });
     }
 
     try {
       const channel = await serverInstance.createChannel({
-        messageServerId: messageServerId as UUID,
+        messageServerId: serverId,
         name,
         type,
         sourceType,

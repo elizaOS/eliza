@@ -2,7 +2,7 @@ import { IAgentRuntime, logger, Plugin } from '@elizaos/core';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import { character } from '../index';
 import plugin from '../plugin';
 
@@ -92,27 +92,27 @@ describe('Integration: Runtime Initialization', () => {
     const customMockRuntime = {
       character: { ...character },
       plugins: [],
-      registerPlugin: spyOnfn().mockImplementation((plugin: Plugin) => {
+      registerPlugin: mock().mockImplementation((plugin: Plugin) => {
         // In a real runtime, registering the plugin would call its init method,
         // but since we're testing init itself, we just need to record the call
         return Promise.resolve();
       }),
-      initialize: spyOnfn(),
-      getService: spyOnfn(),
-      getSetting: spyOnfn().mockReturnValue(null),
-      useModel: spyOnfn().mockResolvedValue('Test model response'),
-      getProviderResults: spyOnfn().mockResolvedValue([]),
-      evaluateProviders: spyOnfn().mockResolvedValue([]),
-      evaluate: spyOnfn().mockResolvedValue([]),
+      initialize: mock(),
+      getService: mock(),
+      getSetting: mock().mockReturnValue(null),
+      useModel: mock().mockResolvedValue('Test model response'),
+      getProviderResults: mock().mockResolvedValue([]),
+      evaluateProviders: mock().mockResolvedValue([]),
+      evaluate: mock().mockResolvedValue([]),
     } as unknown as IAgentRuntime;
 
     // Ensure we're testing safely - to avoid parallel test race conditions
     const originalInit = plugin.init;
     let initCalled = false;
 
-    // Mock the plugin.init method using spyOnfn instead of direct assignment
+    // Mock the plugin.init method using mock instead of direct assignment
     if (plugin.init) {
-      plugin.init = spyOnfn(async (config, runtime) => {
+      plugin.init = mock(async (config, runtime) => {
         // Set flag to indicate our wrapper was called
         initCalled = true;
 

@@ -73,12 +73,6 @@ jobs:
           rustup target add x86_64-apple-darwin
         shell: bash
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './packages/app/src-tauri -> target'
-          key: apple-apple-darwin
-
       - name: Create .npmrc to skip postinstall scripts
         run: |
           echo "ignore-scripts=true" > .npmrc
@@ -109,13 +103,6 @@ jobs:
           cd packages/app
           bun run tauri build --target universal-apple-darwin
         shell: bash
-
-      - name: Upload Desktop build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-artifacts-macos
-          path: packages/app/src-tauri/target/universal-apple-darwin/release/bundle/dmg
-          if-no-files-found: error
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
@@ -154,12 +141,6 @@ jobs:
           rustup target add x86_64-pc-windows-msvc
         shell: bash
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './packages/app/src-tauri -> target'
-          key: x86_64-pc-windows-msvc
-
       - name: Install Windows dependencies (WebView2)
         run: |
           Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile ./MicrosoftEdgeWebview2Setup.exe
@@ -188,13 +169,6 @@ jobs:
         run: |
           cd packages/app
           bun run tauri build
-
-      - name: Upload Desktop build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-artifacts-windows
-          path: packages/app/src-tauri/target/release/bundle/nsis
-          if-no-files-found: error
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
@@ -233,12 +207,6 @@ jobs:
           rustup target add x86_64-unknown-linux-gnu
         shell: bash
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './packages/app/src-tauri -> target'
-          key: x86_64-unknown-linux-gnu
-
       - name: Install dependencies (ubuntu only)
         run: |
           sudo apt-get update
@@ -272,13 +240,6 @@ jobs:
           mkdir -p ./release-artifacts
           cp packages/app/src-tauri/target/release/bundle/appimage/*.AppImage ./release-artifacts/ || echo "No AppImage found"
           cp packages/app/src-tauri/target/release/bundle/deb/*.deb ./release-artifacts/ || echo "No deb file found"
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-specific-artifacts
-          path: ./release-artifacts
-          if-no-files-found: warn
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
@@ -329,12 +290,6 @@ jobs:
           rustup target add x86_64-linux-android
         shell: bash
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './packages/app/src-tauri -> target'
-          key: aarch64-linux-android
-
       - name: Install dependencies (ubuntu only)
         run: |
           sudo apt-get update
@@ -380,13 +335,6 @@ jobs:
           cp packages/app/src-tauri/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk ./release-artifacts/app-aarch64-release.apk
         shell: bash
 
-      - name: Upload Android build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-artifacts-android
-          path: ./release-artifacts/app-aarch64-release.apk
-          if-no-files-found: error
-
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -423,12 +371,6 @@ jobs:
           rustup default stable
           rustup target add aarch64-apple-ios
         shell: bash
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './packages/app/src-tauri -> target'
-          key: aarch64-apple-ios
 
       - name: Setup Apple Development Environment
         run: |
@@ -481,13 +423,6 @@ jobs:
           mkdir -p ./release-artifacts
           cp packages/app/src-tauri/gen/apple/DerivedData/App/Build/Products/Release-iphoneos/app.ipa ./release-artifacts/App-ios-aarch64-release.ipa
         shell: bash
-
-      - name: Upload iOS build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tauri-artifacts-ios
-          path: ./release-artifacts/App-ios-aarch64-release.ipa
-          if-no-files-found: error
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1

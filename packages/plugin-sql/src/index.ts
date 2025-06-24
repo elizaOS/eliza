@@ -6,10 +6,6 @@ import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
 import { resolvePgliteDir } from './utils';
 import * as schema from './schema';
-import { sql } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { runPluginMigrations } from './custom-migrator';
-import { DatabaseMigrationService } from './migration-service';
 
 /**
  * Global Singleton Instances (Package-scoped)
@@ -54,8 +50,6 @@ export function createDatabaseAdapter(
   },
   agentId: UUID
 ): IDatabaseAdapter {
-  const dataDir = resolvePgliteDir(config.dataDir);
-
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -64,6 +58,9 @@ export function createDatabaseAdapter(
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
   }
+
+  // Only resolve PGLite directory when we're actually using PGLite
+  const dataDir = resolvePgliteDir(config.dataDir);
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });

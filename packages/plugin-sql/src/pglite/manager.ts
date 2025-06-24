@@ -10,7 +10,6 @@ import type { IDatabaseClientManager } from '../types';
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private client: PGlite;
   private shuttingDown = false;
-  private readonly shutdownTimeout = 500;
 
   /**
    * Constructor for creating a new instance of PGlite with the provided options.
