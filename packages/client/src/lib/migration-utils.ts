@@ -336,8 +336,8 @@ export function createHybridClient() {
 
     // System services - using NEW API client only
     ping: wrapWithErrorHandling(async () => {
-      // New API doesn't have ping endpoint, return mock response
-      return { pong: true, timestamp: Date.now() };
+      // Remove this fake implementation - either implement real ping endpoint or remove ping functionality
+      throw new Error('Ping functionality not implemented in new API - this should be removed or implemented properly');
     }),
 
     // Environment services - using NEW API client only

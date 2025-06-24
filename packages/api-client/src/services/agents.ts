@@ -108,27 +108,21 @@ export class AgentsService extends BaseApiClient {
   }
 
   /**
-   * Get server agents associations (these methods may need custom implementation
-   * as the server doesn't have direct endpoints for this)
+   * Get agents associated with a server
    */
   async getAgentsForServer(serverId: UUID): Promise<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }> {
-    // This endpoint doesn't exist in the real server - need to implement or use alternative approach
-    // For now, return empty result to avoid breaking the app
-    return { success: true, data: { serverId, agents: [] } };
+    return this.get<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }>(`/api/messaging/servers/${serverId}/agents`);
   }
 
   async addAgentToServer(serverId: UUID, agentId: UUID): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> {
-    // This would need to be implemented server-side or use existing channel association
-    return { success: true, data: { serverId, agentId, message: "Agent associated with server" } };
+    return this.post<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }>(`/api/messaging/servers/${serverId}/agents`, { agentId });
   }
 
   async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> {
-    // This would need to be implemented server-side
-    return { success: true, data: { serverId, agentId, message: "Agent removed from server" } };
+    return this.delete<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }>(`/api/messaging/servers/${serverId}/agents/${agentId}`);
   }
 
   async getServersForAgent(agentId: UUID): Promise<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }> {
-    // This endpoint doesn't exist - return empty for now
-    return { success: true, data: { agentId, servers: [] } };
+    return this.get<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }>(`/api/messaging/agents/${agentId}/servers`);
   }
 }

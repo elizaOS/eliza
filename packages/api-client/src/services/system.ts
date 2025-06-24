@@ -64,37 +64,14 @@ export class SystemService extends BaseApiClient {
     level: string;
     levels: string[];
   }> {
-    // Use server logs endpoint if available, otherwise create mock response
-    try {
-      // Try to use actual server endpoint if it exists
-      return this.get<any>('/api/server/logs', { params });
-    } catch (error) {
-      // Return empty logs structure if endpoint doesn't exist
-      return {
-        logs: [],
-        count: 0,
-        total: 0,
-        level: params?.level || 'all',
-        levels: ['trace', 'debug', 'info', 'warn', 'error', 'fatal']
-      };
-    }
+    return this.get<any>('/api/server/logs', { params });
   }
 
   async deleteGlobalLogs(): Promise<{ status: string; message: string }> {
-    try {
-      // Try to use actual server endpoint
-      return this.delete<{ status: string; message: string }>('/api/server/logs');
-    } catch (error) {
-      // Return success even if endpoint doesn't exist
-      return { status: 'success', message: 'Global logs cleared' };
-    }
+    return this.delete<{ status: string; message: string }>('/api/server/logs');
   }
 
   async deleteLog(logId: string): Promise<void> {
-    try {
-      await this.delete(`/api/server/logs/${logId}`);
-    } catch (error) {
-      // Ignore error if endpoint doesn't exist
-    }
+    await this.delete(`/api/server/logs/${logId}`);
   }
 }
