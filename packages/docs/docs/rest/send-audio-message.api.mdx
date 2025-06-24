@@ -1,71 +1,175 @@
 ---
 id: send-audio-message
-title: "Send an audio message"
-description: "Sends an audio message to an agent for processing"
-sidebar_label: "Send an audio message"
+title: 'Send an audio message'
+description: 'Sends an audio message to an agent for processing'
+sidebar_label: 'Send an audio message'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV01vGzcQ/SvEXNoaK0tp08ve1EQFBDRIYKvowfZhtBxpGXPJDcmVrQj734shuZYqKbbRQ04xDGilnXnz5oMzwx0EXHsobwA7qSwUgGsywcNdAZJ85VQblDVQwjUZ6QUaEQVFQ97jmkSw8TdWEivrROtsRd4rs4YCbEsOWX8uoQRPRk5Z+UPShQJadNhQIMcUdmCwISgThbmEAhRbbjHUUICjL51yJKEMrqMCfFVTg1DuIGxbVvPBJbMr6xoMUELXKQn9sSfz98KuRKgp0Yb+LoGTD39YuWXEY1uVNYFFyx00nQ6qRRfGbGYkMUQOJ2zs8jNVgX10HIagyPPbldL0LOelMui2cEw6Bk5E7T7+MWffWuMT7q+TN/xxTmlIVU4NSeG7ip9WndZs6cA7bFutqpiz8WfPIK93LaMeCC6t1YQGCqBHbFr2nOPJGclhex4xM39ZMNBjOBfV/4ZjQY9BZGeHEhhM9AWE2nbr+hU4Uy6bn7xQJpAzqEXWHCLMYK1G83oklhbWCUforWHJvgCsWOownugccsJUoMafop9U+jQh7GtdPKAJng9twPvotLedq85W5NHxj3JnoqbMFbV6u7Avn8RvH8SnblIrL/jfCMeoIljgUg8qcPHAu1ypfT8cgreTyWndz80GtZLZZzbjRKNiV8rtKx6k71v5K9SeS5+cs+5lzMrKV6RlxmAiyvbFmfPyrNpBFiUFVPpMTR1rvo+CJEV0QyiTUswvU0KGVEUTMCTp7ZnmFJNjLM+Nzsgf2fhe2fj93JFJHPbTWwz7wI+kfIekRGKhtrwmtdZHV3nrKWGMrRqnnWy8y4tRP47JGWVyHgrw5DbDFtU5DSXUIbTleKxthbq2PpS/TSaTE65/8WshaUPatg0fyIQUlyJmHt0d+Gr1FcXHazH9ND8dZZ/mQtqqY5DobFwHn1Q2by4nl28mYiSmYqXpUS01CTRS+Ao18pfpfFgjeSd8sO7+8tbcmgWPBAZXXkjyam1I8gBbkuh4l3lQoRYoop96K1xneH5mw8r4gKaiSzEzsrWKhx9qbR8iucoRBmXWxa1p0OCaHyOnONh5/Jp1wh+48Sh1POsFiqvZ9SJJrrCizJUGqtat0aivFMFsHHIry5YZU9oGlfHlrRmJi4vrrQ/UXFyUIj2NHpQk8bQ7+0iJzEY5a2KKIlnixwQQO6lngNRTtVpRta1ygPfSB5hJ8QM11m33ik38HrWctc2JobS4K7NmlbzFixqN1DF0VY3GkPYpiLkkM0Uu2Ggojt/DPsOiLVFVC781oSavnthJhazzp9IkulZblMkjfnFCbjGbsfDCdT6QFLNHqrpYh7OD0B1H4B9aXtvqngKrXhHqUVANico2TWdyrxMbhSJJXc4/QgHsVir6VNS5S2IVu2S+xDxV/ruEFXhx2x9NX47HaxXqbnlZ2WZMLG19+owrD7eBJu2QGZFvYCcXsONzuNs37P91ZcutjRfqcatRGW59kfYut6QbwFbtL4oFlPv72lFfuiuAWw/r7HZL9PS3033PP3/pyG2hvLkrYINOcQOIvUsqz88yz4JnnPv5Kt/RfhHHF7pveDEs0YYzsUHd8Tco4J62B5fO/q4voCaU5CKj9DYvnqMFY+y1z10G+2JQmlYVteFA/GSAcpd9avyfPl4voIBlvoM2cbrFFTriFvvH8uau7/t/AabOeTg=
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Send an audio message"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Send an audio message'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/agents/{agentId}/audio-messages"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/agents/{agentId}/audio-messages'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Sends an audio message to an agent for processing
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Audio file"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: { file: { type: 'string', format: 'binary', description: 'Audio file' } },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"201":{"description":"Audio message processed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"message":{"type":"object","properties":{"text":{"type":"string","description":"Text content of the message"},"thought":{"type":"string","description":"Agent's internal thought process"},"plan":{"type":"string","description":"Agent's plan or reasoning"},"actions":{"type":"array","items":{"type":"string"},"description":"Actions the agent wants to take"},"source":{"type":"string","description":"Source of the message"},"inReplyTo":{"type":"string","format":"uuid","description":"ID of the message this is in reply to"}},"title":"Content"}}}}}}}},"400":{"description":"Invalid agent ID or missing audio file","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing audio","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '201': {
+      description: 'Audio message processed successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  message: {
+                    type: 'object',
+                    properties: {
+                      text: { type: 'string', description: 'Text content of the message' },
+                      thought: { type: 'string', description: "Agent's internal thought process" },
+                      plan: { type: 'string', description: "Agent's plan or reasoning" },
+                      actions: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Actions the agent wants to take',
+                      },
+                      source: { type: 'string', description: 'Source of the message' },
+                      inReplyTo: {
+                        type: 'string',
+                        format: 'uuid',
+                        description: 'ID of the message this is in reply to',
+                      },
+                    },
+                    title: 'Content',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing audio file',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error processing audio',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

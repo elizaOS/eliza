@@ -35,7 +35,7 @@ describe('Error Handling', () => {
       if (action && action.handler) {
         // Force the handler to throw an error
         const mockError = new Error('Test error in action');
-        spyOn(console, 'error').mockImplementation(() => { });
+        spyOn(console, 'error').mockImplementation(() => {});
 
         // Create a custom mock runtime
         const mockRuntime = {

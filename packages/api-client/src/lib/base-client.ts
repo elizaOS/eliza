@@ -54,7 +54,7 @@ export abstract class BaseApiClient {
       // Fallback for non-browser environments
       url = new URL(path, 'http://localhost:3000');
     }
-    
+
     // Add query parameters
     if (options?.params) {
       Object.entries(options.params).forEach(([key, value]) => {
@@ -82,67 +82,84 @@ export abstract class BaseApiClient {
       const response = await fetch(url.toString(), {
         method,
         headers,
-        body: options?.body instanceof FormData 
-          ? options.body 
-          : options?.body 
-            ? JSON.stringify(options.body) 
-            : undefined,
+        body:
+          options?.body instanceof FormData
+            ? options.body
+            : options?.body
+              ? JSON.stringify(options.body)
+              : undefined,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      const data = await response.json() as ApiResponse<T>;
+      const data = (await response.json()) as ApiResponse<T>;
 
       if (!response.ok || !data.success) {
-        const error = 'error' in data ? data.error : {
-          code: 'UNKNOWN_ERROR',
-          message: 'An unknown error occurred',
-        };
-        throw new ApiError(
-          error.code,
-          error.message,
-          error.details,
-          response.status
-        );
+        const error =
+          'error' in data
+            ? data.error
+            : {
+                code: 'UNKNOWN_ERROR',
+                message: 'An unknown error occurred',
+              };
+        throw new ApiError(error.code, error.message, error.details, response.status);
       }
 
       return data.data;
     } catch (error) {
       clearTimeout(timeoutId);
-      
+
       if (error instanceof ApiError) {
         throw error;
       }
-      
+
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           throw new ApiError('TIMEOUT', 'Request timed out');
         }
         throw new ApiError('NETWORK_ERROR', error.message);
       }
-      
+
       throw new ApiError('UNKNOWN_ERROR', 'An unknown error occurred');
     }
   }
 
-  protected async get<T>(path: string, options?: Omit<Parameters<typeof this.request>[2], 'body'>): Promise<T> {
+  protected async get<T>(
+    path: string,
+    options?: Omit<Parameters<typeof this.request>[2], 'body'>
+  ): Promise<T> {
     return this.request<T>('GET', path, options);
   }
 
-  protected async post<T>(path: string, body?: any, options?: Parameters<typeof this.request>[2]): Promise<T> {
+  protected async post<T>(
+    path: string,
+    body?: any,
+    options?: Parameters<typeof this.request>[2]
+  ): Promise<T> {
     return this.request<T>('POST', path, { ...options, body });
   }
 
-  protected async put<T>(path: string, body?: any, options?: Parameters<typeof this.request>[2]): Promise<T> {
+  protected async put<T>(
+    path: string,
+    body?: any,
+    options?: Parameters<typeof this.request>[2]
+  ): Promise<T> {
     return this.request<T>('PUT', path, { ...options, body });
   }
 
-  protected async patch<T>(path: string, body?: any, options?: Parameters<typeof this.request>[2]): Promise<T> {
+  protected async patch<T>(
+    path: string,
+    body?: any,
+    options?: Parameters<typeof this.request>[2]
+  ): Promise<T> {
     return this.request<T>('PATCH', path, { ...options, body });
   }
 
-  protected async delete<T>(path: string, options?: Omit<Parameters<typeof this.request>[2], 'body'>): Promise<T> {
+  protected async delete<T>(
+    path: string,
+    options?: Omit<Parameters<typeof this.request>[2], 'body'>
+  ): Promise<T> {
     return this.request<T>('DELETE', path, options);
   }
 }

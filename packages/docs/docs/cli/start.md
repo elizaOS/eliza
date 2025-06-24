@@ -24,14 +24,14 @@ elizaos start [options]
 
 ## Options
 
-| Option                          | Description                                                                    |
-| ------------------------------- | ------------------------------------------------------------------------------ |
-| `-c, --configure`               | Force reconfiguration of services and AI models (bypasses saved configuration) |
-| `--character [paths...]`        | Character file(s) to use - accepts paths or URLs                               |
-| `--build`                       | Build the project before starting                                              |
-| `--no-build`                    | Skip the build step before starting                                            |
-| `-p, --port <port>`             | Port to listen on (default: 3000)                                              |
-| `--quiet`                       | Suppress all non-error output to the console                                   |
+| Option                   | Description                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------ |
+| `-c, --configure`        | Force reconfiguration of services and AI models (bypasses saved configuration) |
+| `--character [paths...]` | Character file(s) to use - accepts paths or URLs                               |
+| `--build`                | Build the project before starting                                              |
+| `--no-build`             | Skip the build step before starting                                            |
+| `-p, --port <port>`      | Port to listen on (default: 3000)                                              |
+| `--quiet`                | Suppress all non-error output to the console                                   |
 
 </TabItem>
 <TabItem value="examples" label="Examples">

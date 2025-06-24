@@ -53,7 +53,7 @@ describe('MemoryService', () => {
         memories: [
           { id: 'mem-1', content: 'Memory 1', timestamp: '2024-01-01T00:00:00Z' },
           { id: 'mem-2', content: 'Memory 2', timestamp: '2024-01-02T00:00:00Z' },
-        ]
+        ],
       };
       (memoryService as any).get.mockResolvedValue(mockMemories);
 
@@ -157,15 +157,13 @@ describe('MemoryService', () => {
         rooms: [
           { id: 'room-1', name: 'Room 1' },
           { id: 'room-2', name: 'Room 2' },
-        ]
+        ],
       };
       (memoryService as any).get.mockResolvedValue(mockRooms);
 
       const result = await memoryService.listAgentRooms(TEST_AGENT_ID);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
-        `/api/memory/${TEST_AGENT_ID}/rooms`
-      );
+      expect((memoryService as any).get).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/rooms`);
       expect(result).toEqual(mockRooms);
     });
   });
@@ -250,15 +248,15 @@ describe('MemoryService', () => {
     it('should handle network errors', async () => {
       (memoryService as any).get.mockRejectedValue(new Error('Network error'));
 
-      await expect(memoryService.getAgentMemories(TEST_AGENT_ID))
-        .rejects.toThrow('Network error');
+      await expect(memoryService.getAgentMemories(TEST_AGENT_ID)).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {
       (memoryService as any).post.mockRejectedValue(new Error('API error'));
 
-      await expect(memoryService.createRoom(TEST_AGENT_ID, { name: 'test' }))
-        .rejects.toThrow('API error');
+      await expect(memoryService.createRoom(TEST_AGENT_ID, { name: 'test' })).rejects.toThrow(
+        'API error'
+      );
     });
   });
 });

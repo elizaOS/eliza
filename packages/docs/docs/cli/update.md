@@ -24,12 +24,12 @@ elizaos update [options]
 
 ## Options
 
-| Option              | Description                                                         |
-| ------------------- | ------------------------------------------------------------------- |
-| `-c, --check`       | Check for available updates without applying them                   |
-| `--skip-build`      | Skip building after updating                                        |
-| `--cli`             | Update only the global CLI installation (without updating packages) |
-| `--packages`        | Update only packages (without updating the CLI)                     |
+| Option         | Description                                                         |
+| -------------- | ------------------------------------------------------------------- |
+| `-c, --check`  | Check for available updates without applying them                   |
+| `--skip-build` | Skip building after updating                                        |
+| `--cli`        | Update only the global CLI installation (without updating packages) |
+| `--packages`   | Update only packages (without updating the CLI)                     |
 
 </TabItem>
 <TabItem value="examples" label="Examples">

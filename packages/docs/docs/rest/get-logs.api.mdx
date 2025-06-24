@@ -1,71 +1,127 @@
 ---
 id: get-logs
-title: "Get system logs"
-description: "Retrieve system logs with optional filtering"
-sidebar_label: "Get system logs"
+title: 'Get system logs'
+description: 'Retrieve system logs with optional filtering'
+sidebar_label: 'Get system logs'
 hide_title: true
 hide_table_of_contents: true
 api: eJytVktvGzcQ/isET4mxltZ9HfYmNGogIGmCWEUPtg8jcnaXMR9bkitbEfTfgyFXD0tqrQD1xVzxm5lvht8MueYRmsCrO65dE/hDwSUG4VUXlbO84l8weoVLZGEVIhpGKPakYstcgoBmtdIRvbINL7jr0AP9PpO84g3GD+S14B14MBjRU6g1t2CQVzwoK5AXXFGkf3r0K17wIFo0wKs1j6uOUMpGbNDzY2pzZTBEMB17Y8JbFh1rMGaCtXeGbzbFLpLGJepXI4U4pIG2N1QT0GQUPSSaEhd9k5zUjhf8CbwlrPeOyNUQQecC1tDrmJjX7gUNaNDGP2l9IZUT45m8PIvaeQPEo++VfFkOZVT8ocIPKd2UZcENPCtDBbopy3KzeSi4x9A5GzCQ9U9lSf9eHtbtXj684MLZiDYSDLpOK5E0M/4aCLs+ZeIWX1EQ4c6TwqLKkZK3PQq8B0pERTThAuukiT3M9mZxRmYfXMMydFPwqKh+pya7Uisbf/vlP6TqahZbpDowtNGvyKkJzbnjO6VhMARokGy2Ynj12I/9zN5tOXjUEFGy5Iq9UTUbzmKh8e0uRlLrq+wIdaHfVMWoMec0zUXYkCb6rIgj9RHeUWud3To+xG3fDDuXyGPXaumv4L+e0++Uupz5PA2Vbf5nJYdeCAyHrBbOaYQ0YJ7BdFSvGnTAzXbivOpTOHnByeXEEpakOCjsQrMDQUqMoPSZuh5bvktAlCylwWhGkl5pM9d/q44Ugg+HYjC2brhT0n0SW17xMXRqHNAv0Y+HA8lf+ZrpveYVb2PsqvFYOwG6dSFWP5dleaa/BGgmSTSuM6Tc7InTfEuDnDLbUtPqG7BPt2zyeXbiafJ5xqQTPTlJebHaebYzWd6MytFNya7ZhNUan9VCIwMrWRCgqUfYZDb0Tk2X5pPzj6N7e2/nrQoUkKnAJAbVWJR06y2Q9QFlvpWBpTz1ivneWhJqDqxsiGAFjtjUys4pGwMDrd1TIic8QlS2Ke6tAQsNLRMn6jQPgvay/y23wGLrXd9QxC/T23lG1iBw4Ipbqs43YNU3TM5cmhC1o8jkUzoDyobq3l6zq6t8SVxdVSyvrp+URLZ7U4RECe1SeWfTESWySMvsYJKokYO0YlrVKFZiKPAefeAzG35E4/xqb2jSd7LyzpmTQB+T8JVtyCR/IGvBSp1KJ1qwFnXIRRwkOVDspXIpEC1Y5x01PtUiQTtE0bKwsrHFoHbspAKy+UNpZH2nHcicEW2ckJtPpwSe+z7QHJ4+o+iTDqcHpTuuwN+4uHXiESOZfkHQ13TXMeGM6e0w1thSAcuo0ewTLzillUWfRT0MRBBpIA6PjZ3yf8++Ig3hfWuGajxuVGz7xUg4M0ZCu5D/p4uhcyEasAce32M8fI8ed+B6P5V/9P06jK6Iz3HcaVCWRlviuh5mzh2HTu3mDC9272YaLbS9Xi8g4F9ebzb0c35d0TSSKlB7y2GQF/wRVweP4CXonmJzeqf9C3b7jL0Ee/jWvBifnpcXMRlekHvsA314RWBe3T1sCt4iSPQp92w0EQK7Q6uTK5O87Eb9++mcbzbfASmHUy8=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get system logs"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get system logs'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/api/server/logs"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/api/server/logs'} context={'endpoint'}></MethodEndpoint>
 
 Retrieve system logs with optional filtering
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"since","in":"query","schema":{"type":"integer","description":"Timestamp (ms) to get logs from"}},{"name":"level","in":"query","schema":{"type":"string","enum":["all","trace","debug","info","warn","error","fatal"],"default":"info"}},{"name":"agentName","in":"query","schema":{"type":"string"}},{"name":"agentId","in":"query","schema":{"type":"string","format":"uuid"}},{"name":"limit","in":"query","schema":{"type":"integer","default":100,"maximum":1000}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'since',
+      in: 'query',
+      schema: { type: 'integer', description: 'Timestamp (ms) to get logs from' },
+    },
+    {
+      name: 'level',
+      in: 'query',
+      schema: {
+        type: 'string',
+        enum: ['all', 'trace', 'debug', 'info', 'warn', 'error', 'fatal'],
+        default: 'info',
+      },
+    },
+    { name: 'agentName', in: 'query', schema: { type: 'string' } },
+    { name: 'agentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+    { name: 'limit', in: 'query', schema: { type: 'integer', default: 100, maximum: 1000 } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"System logs","content":{"application/json":{"schema":{"type":"object","properties":{"logs":{"type":"array","items":{"type":"object","properties":{"level":{"type":"number","description":"Log level"},"time":{"type":"number","format":"int64","description":"Timestamp of the log entry"},"msg":{"type":"string","description":"Log message"},"agentId":{"type":"string","format":"uuid","description":"ID of the related agent (if applicable)"},"agentName":{"type":"string","description":"Name of the related agent (if applicable)"}},"title":"LogEntry"}},"count":{"type":"integer"},"total":{"type":"integer"},"level":{"type":"string"},"levels":{"type":"array","items":{"type":"string"}}}}}}},"500":{"description":"Error retrieving logs","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'System logs',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              logs: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    level: { type: 'number', description: 'Log level' },
+                    time: {
+                      type: 'number',
+                      format: 'int64',
+                      description: 'Timestamp of the log entry',
+                    },
+                    msg: { type: 'string', description: 'Log message' },
+                    agentId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'ID of the related agent (if applicable)',
+                    },
+                    agentName: {
+                      type: 'string',
+                      description: 'Name of the related agent (if applicable)',
+                    },
+                  },
+                  title: 'LogEntry',
+                },
+              },
+              count: { type: 'integer' },
+              total: { type: 'integer' },
+              level: { type: 'string' },
+              levels: { type: 'array', items: { type: 'string' } },
+            },
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error retrieving logs',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

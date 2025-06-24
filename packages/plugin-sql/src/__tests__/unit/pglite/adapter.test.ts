@@ -8,7 +8,7 @@ mock.module('@elizaos/core', () => ({
     info: mock(),
     warn: mock(),
     error: mock(),
-  }
+  },
 }));
 
 // Import after mocking

@@ -1,63 +1,61 @@
 ---
 id: get-servers
-title: "Get server debug info"
-description: "Get debug information about active servers (debug endpoint)"
-sidebar_label: "Get server debug info"
+title: 'Get server debug info'
+description: 'Get debug information about active servers (debug endpoint)'
+sidebar_label: 'Get server debug info'
 hide_title: true
 hide_table_of_contents: true
 api: eJylVcGO20YM/RWCp3ahtZz2ptsicAIDDRLELnrY3QM9oqXJjmbUGcq7juF/LzjS2q43QAvEF3E0j+QjRT4fUKhJWN1j2ifhDh8LrDmZaHuxwWOFH1mg5s3QgPXbEDvS90CbMAiQEbtjSBx3HBP8MuLY132wXn7FAkPPMXssa6ywYVmNWCwwcuqDT5ywOuBv87k+/p16xL7NjgWa4IW9qA/1vbMmX5TfkjoeMJmWO1JL9j1jhWHzjY1ggX1USmLHtBPzCyDFSHss0Ap36b8D2PoCkyRa3+CxQE8d//AiCcmQfnhFDXv5P1ReXc6/AjuWNkwtVpIkLVZYUm/LscYynRp/Kvr+gEN0WGEr0ldl6YIh14Yk1e/z+RyvJ+EPvYaad+xC37GX6cPj8bFA/TyZoxWnJBfOfif4vIK7L8s3ke6+LKEOZtAg4zxtQ4STy+7dbD57N4dbuIOt4xe7cQzka0iGHOnhbgm5XbCN1PFziE+zB//g161NmhBsgpqTbTzXIAE2DEPiGp6ttECQ63R7iIP31jdTYuuTkDc8g8U0wAnIufCcyZnIJNY3xYPvyFOjZuZkvXDURfDNGP+VWwJpYxgazfh1sVqPyC0ZnrjyK9UQG/L2O+dgAaRl2AbNrDHr0JH1qXrwt3Bzs8pbenNTwWjdPtua4bRlKVNiv7Mx+PyJMllWcwxwl6lpgGyBs1s2ezM1+Iy+iDk6fuIuxP3Zscvn7BVD6N4k+sQp5Tapy3hgaMnXLrfOtOQ9uzQ2cRrJieJQ25ATqQF9DIZT0l5kaM9sWkh7Ly0ne2JXW1KfD9YxDL0LVI8V6cUbcuvFQsHrOCThGhYvbIY8h4uL1l134C/erIJ5YlHXr0zuVmzHYELXDX5SINhZghE1W37GArWscejHoZ60i0zWrlEnzsvyfowluvbn1UxVWTZW2mEzM6ErWdEhjU/U7e9Dko78RURV7XQtn9d7eDjL6E/K/KRMwi9S9o6sV0HLBRwmLbpH6u1JfC5U6LFAlRxFHA4bSvxndMejvv574LjH6v6xwB1Fq4uvp2OBLVPNMQvYE+9VUIzhXoVvR27I2nn9p6AadRLJj4s1Ho//AGJabeQ=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get server debug info"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get server debug info'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/api/server/servers"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/api/server/servers'} context={'endpoint'}></MethodEndpoint>
 
 Get debug information about active servers (debug endpoint)
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Server debug information","content":{"application/json":{"schema":{"type":"object","properties":{"servers":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"status":{"type":"string"},"agents":{"type":"array","items":{"type":"string"}}}}}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Server debug information',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              servers: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    status: { type: 'string' },
+                    agents: { type: 'array', items: { type: 'string' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

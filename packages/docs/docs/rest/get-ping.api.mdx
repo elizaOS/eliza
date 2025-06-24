@@ -1,63 +1,51 @@
 ---
 id: get-ping
-title: "Ping health check"
-description: "Simple ping endpoint to check if server is responsive"
-sidebar_label: "Ping health check"
+title: 'Ping health check'
+description: 'Simple ping endpoint to check if server is responsive'
+sidebar_label: 'Ping health check'
 hide_title: true
 hide_table_of_contents: true
 api: eJydVMFuIzcM/RWCx2Bie9vb3IKFWwTYxQabFD0kOdAaeoYbjaRKGidew/9eUJokbtzT+jKSRT4+PZHvgJn6hO09pn3KPOJjgx0nEyVk8Q5bvJUxWIYgrgd2XfDiMmQPZmDzBLKFxHHHESRB5BS8S7JjbNAHjqQY1x222HO+Eddjg3MQJ2wP+NtqpZ8PFf8f0HiX2WWNpxCsmIK+/JE06YDJDDySrvI+MLboNz/YZGwwROWSpZYM3vUnURvvLZPDBvmF9KbY5jjxscEsI6dMYziJFpe554gfRfo8xciqy2sOiINRrJXExrsu4bH+Ghw5D36WRMlRHrDFJQVZViWXoQpVd/o2B5yixRaHnEO7XFpvyA4+5fb31Wp1xuWLHkPHO7Y+jMqqIuHxsUFxW1/uI1mvimsrPwm+3cLVzfUZ0tXNNXTeTApSxIatj/CWsvu0WC0+reASrmBr+UU2loFcB8mQJd1cXQP1ymAbaeRnH58WD+7B3Q2StKA+ccdJesedttSGYUrcwbPkAQjKPe0e4uScdl8tLC5lcoYXsJ67MQFZ658LOROZsri+eXAjOep1WTjpy0UyelbxX7klyEP0U68Vv69v72rklgzPXPmVqo89OfnJBcxDHhi2XisrZudHEpfaB3cJFxe3ZZguLlqoq8tn6RjeRiIVSux2Er0rT1TIsi4rwFWhpgBlBVa2bPZmFvg9+gSzJn7l0cf9e+JY9iUrej+eFfrKKRWZNKVuGAZynS3SmYGcY5uqiHNLzhSnTnwppAsI0RtOSbUooYHZDJD2Lg+c5I1dJ6Q5f4hlmIL11NUb6cEZubv1WoPv4pQyd7B+YTOVPlyfSPdRgb95c+vNE2dN/c5kL3UqwfhxnNzsGrATghq1uP6GDeq1atPXpp79hkzxG0fjf4blc8XKe2xORjO1y2UveZg2C+PHJWu0T/WLOvrBpzySO0FUT4SByeahGurHGTy8294vO/HsXZlf8jJYEofHmfZhtp97pCBvlqOupBb02KC6jB4fDhtK/Fe0x6P+/c/EcY/t/WODO4qis667Y4MDU8exeNYT79VDjOGgRrcjOymNM+9WW3ozxT/Xd3g8/gu6lUtJ
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Ping health check"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Ping health check'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/api/server/ping"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/api/server/ping'} context={'endpoint'}></MethodEndpoint>
 
 Simple ping endpoint to check if server is responsive
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Server is responsive","content":{"application/json":{"schema":{"type":"object","properties":{"pong":{"type":"boolean","example":true},"timestamp":{"type":"integer","description":"Current timestamp in milliseconds"}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Server is responsive',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              pong: { type: 'boolean', example: true },
+              timestamp: { type: 'integer', description: 'Current timestamp in milliseconds' },
+            },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

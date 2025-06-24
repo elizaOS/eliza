@@ -1,71 +1,116 @@
 ---
 id: get-channel-info
-title: "Get channel info"
-description: "Get basic information for a specific channel (alias for details)"
-sidebar_label: "Get channel info"
+title: 'Get channel info'
+description: 'Get basic information for a specific channel (alias for details)'
+sidebar_label: 'Get channel info'
 hide_title: true
 hide_table_of_contents: true
 api: eJy9Vk1v2zgQ/SvEnNpAid3dnnQLWm9hYLstmhR7aHIYkyNpGopUSMqJa+i/F0PJjhOjm2CxWF9MSTNv3nzwkVtIWEcov0FLMWLNrobrAgxFHbhL7B2U8IGSWmFkrdhVPrQo71Xlg0IVO9JcsVa6QefIqldoGWP+aigh2/gaCvAdhey2NFBCTendaL50lYcCOgzYUqIgVLbgsCUoYYJcGiiAhUiHqYECAt32HMhAmUJPBUTdUItQbiFtOnGMKUgiBYxsoYS+ZwPDcC3OsfMuUhT73+Zz+Xuc7kQtJ6sCpcC0JuGgvUvkknhg11nWOaPZ9yhu22MafvWddJL0guSfeAwae60pxgPDlfeW0MFQgMH0AoipMs8bsnm+LE/b/dXxbU+KDbnEFVPIzUwN7XosPMcWHUM/hvoLW1K+euocKawpLP8Ft+X7HdyIoVLDcT97K7Le1VElL1FG5OMI5PpWJj7RvRRs7VmTBGqhgDr4vjveAZebLudxkMMjg+fqsBupw7dDAS0l/FXDHwOcG8OyRLtPdu88SK6cLD0EgmH6FfB2/vbXI+58UpXv3f8y3QXQPbad8KzQRhoKoBB8eMG4e/OCYVsImMq2ubaiZy9225nnzmbZet7zfTYko3Iah+IIY+13XckhYGpIS6nxkwpm6UsNlDDDjmd7DZ5pcimgPZ2aHWfbvRgOsNtAo1j2wUIJTUpdOZtZr9E2Pqby9/l8fsT4T/msDK3J+q4ll6ZtBKKMwj8nvWNt+QeqTxfq/PPyeCA/L5XxuheQh/Ng77J+czY/ezNXp+pcVZbueWVJoTMqarQoD+dLhbUwqET673y4ObtyV+5S9rOAc5TdwrUjo5JXK1J9JKPuODUKVc7TblTonWNXT4HZxYRO05laONN5dikqtNbfZXI6ECZ2dXHlWnS5zkXmxC5RQC3fRvwdt6hSE3xfS8Qvi4vL0bJCTRNX2lH1oUbHPyiD+SxQlZfIgml8i+xieeVO1cnJxSYmak9OSjWuTu/YkNofkDFTIrfm4F1uUSZLshwBzjM1AcgrZbkivdFTgR+sDzBHx4/U+rB5cGzzc/YK3rdHgT7uxlFcxgdSDTpjc+l2szkWcRrJiWJv2OdAslBd8KIJUots2hHpRsWNSw1F3rMzjOLzB1tSfWc9mjEj+XBE7nKxEOPL0MdERi3uSfd5DhcHpXtagb9pdeH1DSVx/UJoTxO3pLRv295NiqfWjGq0Olt+kgOCQhyHfhzqSStRZ62c7ir7yX83YqUNFAdbM5azWc2p6Vdn2rczEmsfx/8s4J2PqUV3gCi3Ln1wFXm6BbcPiv1f3NAmqZNDcdZZ5HxA5QS2k0Z9A+wYioObYgFPdQoKKB+ubdcFiBaJ63a7wkhfgx0GeX3bU9hA+e26gDUGFkXIYmY4ytpMR8Q/pPzqy3QLfK1+xX56iU56sUbbyxMUcEObR7fL4XoooCE0FDKJ8fu51tSlA8+jU1FEc6/mHxaXMAw/AeNS6+E=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get channel info"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get channel info'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/messaging/central-channels/{channelId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/messaging/central-channels/{channelId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get basic information for a specific channel (alias for details)
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Channel info retrieved","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"channel":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Channel info retrieved',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: {
+                  channel: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'string',
+                        format: 'uuid',
+                        description: 'Unique identifier for the channel',
+                      },
+                      name: { type: 'string', description: 'Name of the channel' },
+                      serverId: {
+                        type: 'string',
+                        format: 'uuid',
+                        description: 'ID of the server this channel belongs to',
+                      },
+                      type: {
+                        type: 'string',
+                        enum: ['text', 'voice', 'dm', 'group'],
+                        description: 'Type of channel',
+                      },
+                      description: { type: 'string', description: 'Channel description' },
+                      metadata: { type: 'object', description: 'Additional channel metadata' },
+                    },
+                    title: 'Channel',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

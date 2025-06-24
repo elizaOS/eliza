@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/docs",
-  "version": "1.0.6",
+  "version": "1.0.12",
   "private": true,
   "packageManager": "bun@1.2.13",
   "scripts": {

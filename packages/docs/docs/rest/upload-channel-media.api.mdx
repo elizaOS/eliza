@@ -1,71 +1,185 @@
 ---
 id: upload-channel-media
-title: "Upload media to channel"
-description: "Upload media file to a specific channel"
-sidebar_label: "Upload media to channel"
+title: 'Upload media to channel'
+description: 'Upload media file to a specific channel'
+sidebar_label: 'Upload media to channel'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tv2zgQ/isET7uBErnb9qJbtvUCBhq0SFzsIclhTI6laSlSJSknrqH/XgwpO07stllg0VN9MSXO45uH5rGREeogq2vZoiaQt4XUGJSnLpKzspIfO+NAi3QrlmRQRCdAhA4VLUkJ1YC1aGQhXYcemGumZSX7xPcm314k2YXswEOLET1r3EgLLcpKjiJmWhaSWGcHsZGF9PilJ49aVtH3WMigGmxBVhsZ1x0zhujJ1rKQS+dbiKy1Jy2HpzbM3gq3FLHBHdrhNovHEP92es0yn2pTzka0ka/a3kTqwMeSFZ1qiAnFAR63+IQqsp2enREJA9+y136IekEW/Fo+hX3xyOfZoWwc1GgjO/lnjvi+H5KIUSTZOr3LCTCkH3sndM6GbMFfkwn/HYOXZaAWoVcKQ1j2xrApe+6DrjOkUmqUnwLzPt939Awzh0L23hyje5LKl++29u9Qj0YXe0n4HH3PDsFQjASHhGj7lj88aqFGWcgVaXTydihkSy3Oj3INhQz0df+CbMQa/S5ur46FamZXYEiLMeX/v/CMQd8jXDhnECzbdw9tx5m/BBNwKCR67/zPZSqnj/rrsUlTFiYSLXsMQ2AvPpNtS54qRQQy4eecbxMhapHMEGRzoPkyez5SZGuzivHdqxcvD6PxT/6inTDgU+R/B+MXBeP1YTA+2tB3nfNxWwxE0vw7KL8oKK+P1auM4aE9teP88DsmvyAmCVhsHE9xnUvdIg1klSyhozLFohzbZSg3u8Y5lOOIUsiAfrUd8lJrlk2MXVWWxikwjQuxejmZTA7QvuNroXGFxnUtjyhZUprXGHsyeIvY0FcQ76/E+YfZgaTzDzOhnepZSDJXLJ0XO5bVi7PJ2YuJOBXnYmnwnhYGBVgtggID/HA+G4ekJY+sd85/PruxN3beUGCFgoLQGKi2qHk6W6DoA2pxR7ERIJKdZi18by0ncFZMNkSwCs/E1OrOkY1BgDHuLoFTHiGSrYsb24KFmo8JE7d4D4rvsvwttiBi411fs8bL6dU8Uy5B4YgVt1Cdr8HSV0zCXBqBlo41s0ztWiAbqht7Kk5OrtYhYntyUol8Or0jjWI33IcECe2KvLMpRAks8jELOE/QWEA6CUNLVGs1OviBek9mZrzA1vn1A2ObnhOXd649UHSRvgeyNbPkBxQNWG2S67Ypmp04puQIsdfkkiI+iM47rgfsi0TaIapGhLWNDQbaodMEzJPad071bFHqGk/BzadTJp77PnBrmd6j6lMeTvdc99QD/+LiyqnPGJn1EsGcRmpRKNe2vR2rnVgRiEx1NnvPcyP6kJM+J/VYJ0GlOjnuWLvMf5NlRZ7RHz7NUJVlTbHpF2fKtSUytQv5X3JF4ELQgt2T+GgxjG5vEXz0JW4eivZ/2CXHohbxPpadAbJ7Q34uRtcSOpKF3LWGMdqykNX+QjnWpNtCctlhvs1mAQE/ejMM/PpLj34tq+vbQq7AE3/8qW5pCnzWYyf4gVl/XI6r45/icNP8ji3jS7AchxWYnp9kIT/j+tFGPPA+0CBo9AlVvn+TdZ/O86iy5T+2pw7FlulcKeziHvlBC+Uquyv9H95fzWUhF+N63Kb+lrabJLd4OFbXt8MwfAOVLaXm
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Upload media to channel"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Upload media to channel'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/media/channels/{channelId}/upload"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/media/channels/{channelId}/upload'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Upload media file to a specific channel
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the channel"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'channelId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the channel',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Media file to upload"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent uploading the media"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', format: 'binary', description: 'Media file to upload' },
+            agentId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the agent uploading the media',
+            },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Media uploaded successfully","content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"url":{"type":"string","description":"URL of the uploaded media"},"channelId":{"type":"string","format":"uuid"},"agentId":{"type":"string","format":"uuid"},"type":{"type":"string","enum":["image","video"]},"mimeType":{"type":"string"},"size":{"type":"integer"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"413":{"description":"File too large","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"415":{"description":"Unsupported media type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error uploading media","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Media uploaded successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              url: { type: 'string', description: 'URL of the uploaded media' },
+              channelId: { type: 'string', format: 'uuid' },
+              agentId: { type: 'string', format: 'uuid' },
+              type: { type: 'string', enum: ['image', 'video'] },
+              mimeType: { type: 'string' },
+              size: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '413': {
+      description: 'File too large',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '415': {
+      description: 'Unsupported media type',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error uploading media',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

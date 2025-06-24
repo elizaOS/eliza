@@ -5,10 +5,13 @@ export interface ServerHealth {
   uptime: number;
   timestamp: Date;
   version?: string;
-  checks?: Record<string, {
-    status: 'pass' | 'fail';
-    message?: string;
-  }>;
+  checks?: Record<
+    string,
+    {
+      status: 'pass' | 'fail';
+      message?: string;
+    }
+  >;
 }
 
 export interface ServerStatus {

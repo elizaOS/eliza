@@ -11,14 +11,11 @@ export class MediaService extends BaseApiClient {
   /**
    * Upload media for an agent
    */
-  async uploadAgentMedia(
-    agentId: UUID,
-    params: MediaUploadParams
-  ): Promise<MediaUploadResponse> {
+  async uploadAgentMedia(agentId: UUID, params: MediaUploadParams): Promise<MediaUploadResponse> {
     const formData = new FormData();
-    
+
     formData.append('file', params.file, params.filename);
-    
+
     if (params.contentType) formData.append('contentType', params.contentType);
     if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
 
@@ -35,11 +32,11 @@ export class MediaService extends BaseApiClient {
     params: ChannelUploadParams
   ): Promise<ChannelUploadResponse> {
     const formData = new FormData();
-    
+
     params.files.forEach((file, index) => {
       formData.append(`files[${index}]`, file);
     });
-    
+
     if (params.messageId) formData.append('messageId', params.messageId);
     if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
 

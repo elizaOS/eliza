@@ -1,71 +1,125 @@
 ---
 id: complete-message
-title: "Complete a message"
-description: "Get agent completion for a message"
-sidebar_label: "Complete a message"
+title: 'Complete a message'
+description: 'Get agent completion for a message'
+sidebar_label: 'Complete a message'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVktv4zYQ/ivEHAP5kZe31c3duoWBBgk2LnpIchiTI4sbitSSlBOv4f9eDCU/sk67Bgrsqb6YIr8ZfjPkfJw1RFwEyB+gohBwoe0CnjJQFKTXddTOQg6/UxS4IBuFdFVtiKdF4bxA0VoRZOBq8sgrUwU5dEC62a17+tJQiL84tYJ8nT61JwV59A1lIJ2NZCMvYV0bLZOvwefADNYQZEkV8iiuaoIc3Pwzydj5bR09QCI5VTzrXJUGTSCfBrV3VR05uNoz16gppN06m73rED2nIYPC+Qoj5NA0WsFm5/UUaLfvKdCO2RF0k34cYaidDS3di+GQ/94e0Mf9sYRGSgqhaAz8h6S+TVHn8wA4d84QWmavMJ7gYhvDP0XJcV69F9rULtFoJbrr8yOCyoBekRMKeYEm0CYD8t757/uUTr0T4bflNGFnImE3GWwr6ESzLZwzTxG1Cd+3/DUBSYkUhtC2vYK82GY+6sjRtlt0c9fvnUbLYUE21bpdHAjC/yfzY04mEYulY5WtXaqIGmMJOQyw1oOdjA+2EgwZBPJL8izza2i8gRzKGOt8MDBOoildiPnlcDg8ovcHLwtFSzKurvgBaD3B5ikDPtZPe1GfbE/mQFLhssCfrovRVe/6w/mH3tX16KI3vyxk70L+PLosRiMscLRX65PxW3E9Fb9V2J3mZMCpTuezTbDRX1Hc3ovx3fQoD+O7qVBONpwC3L1+O5PleX/YPx+KnhiLwtCrnhsSaJUIEg3yx3jaPaCFx4penH/uP9pHOyt14A2FDkJR0AtLSkQn5iSaQEq86FgKFOmUzEr4xlouunZjbUNEK6kvJlbVTtsYBBrjXhI56SlVaPZoK7TpRmSJk7aRPMpUvcn/llsQsfSuWfCOnyb3sxZZoKSOK22pOr9Aq79ScuZELEkUjndmn8pVqG3IH21PnJ3dr0Kk6uwsF+2o96IViV2vEBIlskvtnU0XLJElHrYOxokaO0gjYXRBciW7BO/RBz5bwxuqnF/tDav0naz4uh1tdLMtHDbp2hZRolUmpU6WaC2Z0CaxK6iOYqO0SxvxQNTesXxxLhK0JpKlCCsbSwp6x05pZJvftCHR1MahaiPihSNys8mEwTPfhEhKTF5JNukeTg5S920G/qL5vZPPFNn0E6HpRV0RS3bV2E6cxVKjaFH96S1kwGG1l7691J2so0yybrF6UywfW19xxUW5E5aQDwYLHctm3peuGhCjXWj/gQWMdatCe+Cx62DoTUv5pgjX++fltIa0U95Ir3FQG9SpW0kk151iPgDWGrKD1jfbNa7cKLIwMmq9nmOgP73ZbHj6S0N+BfnDUwZL9JoLnL82GZSEinyS2WdapbAS5d6MuTDcNMzp6HXcZFuLsZRUx3/FPh28AHe39zPIYN511VV65sDjC6sqvkAOqTVPtyL1YTy3BoN20aS3DVqf/Psb8YMl5Q==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Complete a message"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Complete a message'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/messaging/complete"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/messaging/complete'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get agent completion for a message
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["agentId","roomId","userId","prompt"],"properties":{"agentId":{"type":"string","format":"uuid"},"roomId":{"type":"string","format":"uuid"},"userId":{"type":"string","format":"uuid"},"prompt":{"type":"string"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          required: ['agentId', 'roomId', 'userId', 'prompt'],
+          properties: {
+            agentId: { type: 'string', format: 'uuid' },
+            roomId: { type: 'string', format: 'uuid' },
+            userId: { type: 'string', format: 'uuid' },
+            prompt: { type: 'string' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Completion successful","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"response":{"type":"string"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error generating completion","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Completion successful',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: { type: 'object', properties: { response: { type: 'string' } } },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error generating completion',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -170,7 +170,7 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
     describe('Error Handling', () => {
       it('should handle query errors gracefully', async () => {
         const db = adapter.getDatabase();
-        
+
         let errorThrown = false;
         try {
           await db.execute(sql`SELECT * FROM non_existent_table`);
@@ -178,7 +178,7 @@ describe('PostgreSQL Adapter Direct Integration Tests', () => {
           errorThrown = true;
           expect(error).toBeDefined();
         }
-        
+
         expect(errorThrown).toBe(true);
       });
 

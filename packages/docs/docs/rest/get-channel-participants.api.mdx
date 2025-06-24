@@ -1,71 +1,117 @@
 ---
 id: get-channel-participants
-title: "Get channel participants"
-description: "Get all participants in a channel"
-sidebar_label: "Get channel participants"
+title: 'Get channel participants'
+description: 'Get all participants in a channel'
+sidebar_label: 'Get channel participants'
 hide_title: true
 hide_table_of_contents: true
 api: eJy9VsFuGzcQ/ZXBnFqDtpQ26GFvQqIGApomsB30EPswIkdaJlxyQ3JlK8L+ezDclSxbSR30UF2WK868eTMcvp0dZlonrD5iwynR2vo13io0nHS0bbbBY4VvOAM5By3FbLVtyecE1gOBrsl7dqgwtBxJ7BcGK1xzfjVsvT/yQYUtRWo4c5SYO/TUMFY4wiwMKrQSsaVco8LIXzob2WCVY8cKk665Iax2mLetOKYchbHCVYgNZayw66zBvr8V59QGnziJ/W/TqTwe53XMDSLnaHnDBlKnNae06pzbokIdfGafxZ3a1lld0px8SoKxO+UUlp9YZ8k1SlGyHRiMqEeGyxAck8deoaF8DEExkoS2mZv0PLQ1z5fk6Zl+8PZLx2AN+2xXliOsQoRc8/EpC7UucVz8lwCJIyxeQ1h9D3U4+FPMxxh/U8M/AIjBfReAfddIO5NprEeFDTdLjqhw3XHKp719GRxLL0uIfTf3Cj8F69nM8lEI6zOvC9QhcevzHy+/V9p7yLbhlKlp4a5m/zQDGPCx7xVmmyWV427EfvgpfDl9edq349UCHzKsQufN/9GlCvmemlaorsgl7hVyjCE+j6mD+YmzngsYFNtejWr00257c7lKnMm69Lzn62LIBkoaYP1wrLI51H5/MCUEjgfScK7DKHFFz3KNFU6otZODgk40+xzJnY8NlSa7g8L1k/axIiaOm70cdtFhhXXObTWZuKDJ1SHl6vfpdHpC/y/ZBsMbdqFt2GcYkFC0T5IpFdin4OxXgndXMHu/OEGavV+ACboTkJJ/kYKDy+bFxfTixRTOYQYrx/d26RjIG0iaHMnLbAG0FgYrEfe7ED9f3Pgbf13bJAHBJjCc7NqzgRxgydAlNnBncw0EJU+3hdh5b/16DGx9yuQ1X8DcmzZYkWhyLtwVcjoyZevX6sY35EvRVeEklzSSlr0Bf88tQa5j6NYS8XJ+dT1YrkjzyJX3VENck7dfuYCFcnNXQSILpgkNWZ+qG38OZ2dX25S5OTurYFid31nDcPgUpkKJ/cbG4MsRFbIsywFgVqgJQFmBsyvWWz0W+MH6CHNwfMtNiNsHx6a8F68YQnMS6O2+N8VleGGoyRtXSrdv1KGIY0uOFDtjQwkkC2hjEIGQWhTTllnXkLY+15zsgZ2xJD5/WsfQtS6QGTKSjRNy1/O5GF/HLmU2ML9n3ZU+nB+V7mkF/uHlVdCfOYvrJZM7F8kFHZqm86P8wcYSDFYXi3eoUNIamn5o6lE4SRfhHKeRQ+e/GrCyfIofrmaqJpO1zXW3vNChmbBYhzQ8i6C3IeWG/BGiDFBjieHJ9X90FXcPMv5TQ9cocJnv86R1ZMssUZjuRmX6iNRaVEfTncKn6oQKq+MJ7BHDW4WiQYK02y0p8Yfo+l7+/tJx3GL18VbhhqIVJSgiZmyStRm/E/+S4i+X43z3K/womf1A5OUMNuQ6eUOFn3n7aG7sb3uFNZPhWEgM+zOtuc1HniefRhHLg6S/mV9j338D34HZEA==
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get channel participants"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get channel participants'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/messaging/central-channels/{channelId}/participants"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/messaging/central-channels/{channelId}/participants'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get all participants in a channel
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Participants retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the participant"},"userId":{"type":"string","format":"uuid","description":"User ID of the participant"},"name":{"type":"string","description":"Name of the participant"},"role":{"type":"string","enum":["admin","member","guest"],"description":"Role in the channel"},"joinedAt":{"type":"integer","format":"int64","description":"Unix timestamp when the participant joined"}},"title":"Participant"}}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Participants retrieved successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'Unique identifier for the participant',
+                    },
+                    userId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'User ID of the participant',
+                    },
+                    name: { type: 'string', description: 'Name of the participant' },
+                    role: {
+                      type: 'string',
+                      enum: ['admin', 'member', 'guest'],
+                      description: 'Role in the channel',
+                    },
+                    joinedAt: {
+                      type: 'integer',
+                      format: 'int64',
+                      description: 'Unix timestamp when the participant joined',
+                    },
+                  },
+                  title: 'Participant',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

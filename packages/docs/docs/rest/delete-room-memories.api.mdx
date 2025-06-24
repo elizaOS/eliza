@@ -1,71 +1,136 @@
 ---
 id: delete-room-memories
-title: "Delete all memories for a room"
-description: "Delete all memories for a specific room"
-sidebar_label: "Delete all memories for a room"
+title: 'Delete all memories for a room'
+description: 'Delete all memories for a specific room'
+sidebar_label: 'Delete all memories for a room'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVk1vGzcQ/SvEnFpjrVVa97I3IVYBAQkS2C56sH0YkbNaxlxyQ3JlK8L+92LIlSxbjtOigE85LZecjzcz5JvZQsRVgOoaWmqd38BtAYqC9LqL2lmo4JwMRRJojEgimoKonRcoQkdS11oK71wLBbiOPLLWQkEFKuldONd+HNWggA49thTJs8stWGwJKsAV2bhQUIBmjx3GBgrw9LXXnhRU0fdUQJANtQjVFuKmY7UQvbYrKKB2vsUIFfS9VjA8j2BxLlwtYkMiOYKh2Htm5G/hOGVouGXboXM2UGBzv03P+PNUaZctkROoROilpBDq3pgN+zibTo+1FnaNRqscoWDHPjkVi3MoQDobOfJqC9h1RstUpvJLYN3tcYBu+YVk5Hp5LmrUGe+I5EBw6ZwhtFAAPWDbGYKqRhNoKIC8d/7HNqVT9FJqn4Y3Z2MiyQ4FtBQCrv612k481SeiNuHHmudJkJRIYQhtc6n5cBiGoYCoI0ebXYx7Zy/Vc5YqYl0Uteut+lmNt6rGHy+9k4whPS1tV3tG+1mVt6lKAhYb99ggUlOIDVRQYqfL3IXK7dgShnJXoRKNKbeZrwcoIJBf79pI7w1U0MTYVWVpnETTuBCr36fT6RHoD3wsFK3JuK7lp5ktJXbmEFLcO+BGf0Px6VLMPi+OLM0+L4RysmcjKerUFvcq63eT6eTdVJyKmagNPeilIYFWiSDRIP/MFiNd19wU752/m9zYG3vV6MAOheYeEPTKkhLRiSWJPpAS9zo2AkWK02yE763lq5wdaxsiWkkTMbeqc9rGwK3b3Sdw0hPyvS9ubIsWV7xMmLSN5FGmN5Hs77AFERvv+hV7vJhfXmXJGiWNWGkH1fkVWv2NkjGXul7t2DPbVK5FbUN1Y0/FycnlJkRqT04qkVen91qR2I8PIUEiu9be2VSiBJZ4mQ0kTg1sILOr0TXJjRwT/Ch9YDMrpua6eVTM1y1ppW753NHH9Cy0XbFK/iHRoFUmpU42aC2ZkJM4XskRYq+0S454ITrvmBY4F0m0I5KNCBsbGwp6j05pZJ0/tSHRd8ahyhHxwRG4q/mcha98H3hOmD+Q7NM9nB+k7nkG/qblpZN3FFn1gtCcRt2SkK5tezuSnlhrFFlqsvgEBXBY+dLnSz3SJcpEl+Mstb/577OtuIHi4GmGqixXOjb9ciJdWxJLu5C/wMTQuRBbtAcWvz96jhPnkwe5faTw/zC0jhQX6SGWnUFtmQIT6u1ITNeAnYZiNyAXUD3Oqwf9A43hs3GivC2AOYi1t9slBvrLm2Hg7a89+Q1U17cFrNFrZoJEYkoHXquxO7wS3C8X44D6q3g+2n4nnnETLcNfo+n5Dwq4o83B+M1z8f9E8VpSXwcx5m24HQpoCBX5lJV8OJOSunigdtShmb33neV8/mF+NYdh+AdUCXJu
-sidebar_class_name: "delete api-method"
+sidebar_class_name: 'delete api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
 <Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Delete all memories for a room"}
->
-</Heading>
+  as={'h1'}
+  className={'openapi__heading'}
+  children={'Delete all memories for a room'}
+></Heading>
 
 <MethodEndpoint
-  method={"delete"}
-  path={"/api/memory/{agentId}/memories/all/{roomId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'delete'}
+  path={'/api/memory/{agentId}/memories/all/{roomId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Delete all memories for a specific room
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'roomId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the room',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"204":{"description":"Memories deleted successfully"},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting memories","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '204': { description: 'Memories deleted successfully' },
+    '400': {
+      description: 'Invalid agent ID or room ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error deleting memories',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -1,71 +1,141 @@
 ---
 id: synthesize-speech
-title: "Convert text to speech"
+title: 'Convert text to speech'
 description: "Converts text to speech using the agent's voice"
-sidebar_label: "Convert text to speech"
+sidebar_label: 'Convert text to speech'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tv4zYQ/ivEXNoGcuRttxfd0qwLGOgiQeKihySHMTmWuKFILUk58Rr+74sh5ciJ06Yo2p7WF+sxj28e/Ga0hYh1gOoGsFfaQQFYk40B7gpQFKTXXdTOQgXnzq7JxyAiPUYRnQgdkWxEH7StRWxIJM3vglg7LQkKcB15ZO25ggrCxsaGgv5C10kRCujQY0uRPAPYgsWWoMoA5goK0Oy3w8iynj732pOCKvqeCgiyoRah2kLcdKwWote2hgJWzrcYoYK+1wp2L+OYfxBuNeKF3V02TiH+4tSGLb70JZ2NLFptAbvOaJmiKj8FNrg9huKWn0hGDtBzDqKmkN7SY3wN8HN8iyG9Mud7zDTs0o/Rhs7ZkI3+OJ3y33MbZ1xLEaInbMWDjo0Ys6/25p7HxRpl21H9akTHyV1qi34DGdH710DM7RqNVjnNgtPuRatDbhdOxb+W2NBLSSEcCC6dM4QWCqBHbDtDUK3QBNoVQN47/7ZN6RS9XawZGxNJdldASyFg/bfV9uKpRSNqE97W/JAESYkUhtA2F4Rf5lJEHTna7OKpPO9f6ZFUFuuiWLneqm/V+L+q8fNrhyVjqMkmyrT164f0W1X+o6okYLFxPKg6F1KoPHcqKLHTZZ6J5XYYTbsy0eVkABfKkV2hgEB+vR9pvTdQQRNjV5WlcRJN40KsfppOp0ewf+PXQtGajOtaPpzZUppQXO6rcUrN9hXbT5V9LnY8NVcuvdhHafQXFBfX4uxyfuT07HIulJM9+0spEivnxZPK+t3p9PTdVEzEmVgZetRLQwKtEkGiQb45mw8Ev+JZ/uD8/emtvbWLRgd2KHQQioKuLSkeZUsSfSCVhxKKlBKzEb63lrs+O9Y2RLSSTsXMqs5pG4NAY9xDAic9pSNS3NoWLdZ8mTBpG8mjTMcn2d9jCyI23vU1e7yaXS+y5AolDVhpD9X5Gm0aktpGl7aElWPPbFO5FrUN1a2diJOT602I1J6cVCJfTR60IvG084QEiexae2dTNRNY4stsIBFwYAOZio1ekdzIIcGj9IHNrPiRWuc3o2Kb7pOWd649cvQxtam2NavkGxINWmVS6mSD1pIJOYlD9w4Quc2To7RQdN4xh3AukmheAPfN/4ROaWSdX7Uh0XfGocoR8YsjcIvZjIUXvg+RlJg9kuxTH84OUvcyA3/Q8trJe4qsekVoJlG3JKRr294ODCnWGkWWOp1fQAEcVm763NQDt6JM3Dosn0+df55txQ0UB6c4VGVZ69j0y1Pp2pJY2oX8D8wiTB4t2gOL5/s97tna/PIgbkee/web9sCHLF92BrVlHkiotwOP3QB2etzuC6jGNfs5mTGDjXR2VwAzFhvYbpcY6Hdvdjt+/Lknv4Hq5q6ANXrNZJAoT+nA12qYJn8R5/dXw579g3i5lP9JSMNDtFyVNZqe76CAe9ocfDjs7nYFNISKfEKU355nv5MF2xi1j2bqrthrnElJXTyUHZdk5uSniXF5cb2AApbD50ObxiJ4fODvFnzIGF3KQBpf6dkWDNq6T7MQsmf+fQVwBbhR
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Convert text to speech"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Convert text to speech'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/agents/{agentId}/audio-messages/synthesize"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/agents/{agentId}/audio-messages/synthesize'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Converts text to speech using the agent's voice
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"text":{"type":"string","description":"Text to convert to speech"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: { text: { type: 'string', description: 'Text to convert to speech' } },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Audio stream with synthesized speech","content":{"audio/mpeg":{"schema":{"type":"string","format":"binary"}}}},"400":{"description":"Invalid agent ID or missing text","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error generating speech","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Audio stream with synthesized speech',
+      content: { 'audio/mpeg': { schema: { type: 'string', format: 'binary' } } },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing text',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error generating speech',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

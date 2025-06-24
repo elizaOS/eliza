@@ -135,7 +135,7 @@ describe('PostgresConnectionManager', () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       mockPoolInstance.end.mockResolvedValue(undefined);
-      
+
       await manager.close();
       expect(mockPoolInstance.end).toHaveBeenCalled();
     });

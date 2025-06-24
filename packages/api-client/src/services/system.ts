@@ -25,7 +25,10 @@ export class SystemService extends BaseApiClient {
    *   3. Record<string,string>                      (shorthand)
    */
   async updateLocalEnvironment(
-    params: LocalEnvironmentUpdateParams | { content: Record<string, string> } | Record<string, string>
+    params:
+      | LocalEnvironmentUpdateParams
+      | { content: Record<string, string> }
+      | Record<string, string>
   ): Promise<{ success: boolean; message: string }> {
     if (!params || typeof params !== 'object') {
       throw new Error('updateLocalEnvironment requires a configuration object');
