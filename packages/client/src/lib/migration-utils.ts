@@ -216,23 +216,23 @@ export function createHybridClient() {
       }
       const result = await newClient.messaging.deleteMessage(channelId, messageId);
       // Adapt from { success: boolean } to expected format
-      return { data: { success: result.success } };
+      return result;
     }),
     clearChannelMessages: wrapWithErrorHandling(async (channelId: string) => {
       if (!newClient.messaging?.clearChannelHistory) {
         throw new Error('Messaging service not available');
       }
       const result = await newClient.messaging.clearChannelHistory(channelId);
-      // Adapt from { deleted: number } to expected format
-      return { data: { deleted: result.deleted } };
+      // Return result as-is - no need to adapt
+      return result;
     }),
     deleteChannel: wrapWithErrorHandling(async (channelId: string) => {
       if (!newClient.messaging?.deleteChannel) {
         throw new Error('Messaging service not available');
       }
       const result = await newClient.messaging.deleteChannel(channelId);
-      // Adapt from { success: boolean } to expected format
-      return { data: { success: result.success } };
+      // Return result as-is - no need to adapt
+      return result;
     }),
     updateChannel: wrapWithErrorHandling(async (channelId: string, params: any) => {
       if (!newClient.messaging?.updateChannel) {
@@ -451,7 +451,8 @@ export function createHybridClient() {
         throw new Error('Messaging service not available');
       }
       // Group memory deletion is actually a message deletion in the messaging system
-      const result = await newClient.messaging.deleteMessage(memoryId);
+      // Note: serverId is actually the channelId in this context
+      const result = await newClient.messaging.deleteMessage(serverId, memoryId);
       return { success: result.success };
     }),
     clearGroupChat: wrapWithErrorHandling(async (serverId: string) => {
