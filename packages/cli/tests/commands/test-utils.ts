@@ -68,30 +68,10 @@ export function safeChangeDirectory(targetDir: string): void {
  * Helper to create a basic ElizaOS project for testing
  */
 export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
-  const timeout = TEST_TIMEOUTS.PROJECT_CREATION;
-
-  // Platform-specific options
-  const platformOptions: any = {
+  const platformOptions = getPlatformOptions({
     stdio: 'pipe',
-  };
-
-  if (process.platform === 'win32') {
-    platformOptions.timeout = timeout * 1.5;
-    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
-    platformOptions.windowsHide = true;
-  } else if (process.platform === 'darwin') {
-    // macOS specific options for project creation
-    platformOptions.timeout = timeout * 1.25;
-    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    platformOptions.env = {
-      ...process.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
-      LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8',
-    };
-  } else {
-    platformOptions.timeout = timeout;
-  }
+    timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+  });
 
   try {
     execSync(`${elizaosCmd} create ${projectName} --yes`, platformOptions);
@@ -116,36 +96,14 @@ export function runCliCommand(
   args: string,
   options: { timeout?: number } = {}
 ): string {
-  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
-
-  // Platform-specific options
-  const platformOptions: any = {};
-
-  if (process.platform === 'win32') {
-    platformOptions.timeout = timeout * 1.5; // 50% longer timeout for Windows
-    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
-    platformOptions.windowsHide = true;
-  } else if (process.platform === 'darwin') {
-    // macOS specific options
-    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
-    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    // Add environment variables for better macOS compatibility
-    platformOptions.env = {
-      ...process.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
-      LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8',
-    };
-  } else {
-    platformOptions.timeout = timeout;
-  }
+  const platformOptions = getPlatformOptions({
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+  });
 
   try {
-    return execSync(`${elizaosCmd} ${args}`, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-      ...platformOptions,
-    });
+    return execSync(`${elizaosCmd} ${args}`, platformOptions);
   } catch (error: any) {
     // Enhanced error reporting for debugging
     const errorDetails = {
@@ -171,35 +129,14 @@ export function runCliCommandSilently(
   args: string,
   options: { timeout?: number } = {}
 ): string {
-  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
-
-  // Platform-specific options
-  const platformOptions: any = {};
-
-  if (process.platform === 'win32') {
-    platformOptions.timeout = timeout * 1.5;
-    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
-    platformOptions.windowsHide = true;
-  } else if (process.platform === 'darwin') {
-    // macOS specific options
-    platformOptions.timeout = timeout * 1.25; // 25% longer timeout for macOS
-    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    platformOptions.env = {
-      ...process.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
-      LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8',
-    };
-  } else {
-    platformOptions.timeout = timeout;
-  }
+  const platformOptions = getPlatformOptions({
+    encoding: 'utf8',
+    stdio: 'pipe',
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+  });
 
   try {
-    return execSync(`${elizaosCmd} ${args}`, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      ...platformOptions,
-    });
+    return execSync(`${elizaosCmd} ${args}`, platformOptions);
   } catch (error: any) {
     // Enhanced error reporting for debugging silent commands
     console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
@@ -220,35 +157,14 @@ export function expectCliCommandToFail(
   args: string,
   options: { timeout?: number } = {}
 ): { status: number; output: string } {
-  const timeout = options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND;
-
-  // Platform-specific options
-  const platformOptions: any = {};
-
-  if (process.platform === 'win32') {
-    platformOptions.timeout = timeout * 1.5;
-    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
-    platformOptions.windowsHide = true;
-  } else if (process.platform === 'darwin') {
-    // macOS specific options
-    platformOptions.timeout = timeout * 1.25;
-    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    platformOptions.env = {
-      ...process.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
-      LANG: 'en_US.UTF-8',
-      LC_ALL: 'en_US.UTF-8',
-    };
-  } else {
-    platformOptions.timeout = timeout;
-  }
+  const platformOptions = getPlatformOptions({
+    encoding: 'utf8',
+    stdio: 'pipe',
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+  });
 
   try {
-    const result = execSync(`${elizaosCmd} ${args}`, {
-      encoding: 'utf8',
-      stdio: 'pipe',
-      ...platformOptions,
-    });
+    const result = execSync(`${elizaosCmd} ${args}`, platformOptions);
     throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {
     return {
@@ -611,6 +527,39 @@ export const crossPlatform = {
 
   killProcessOnPort: killProcessOnPort,
 };
+
+/**
+ * Get platform-specific options for execSync calls
+ */
+export function getPlatformOptions(baseOptions: any = {}): any {
+  const platformOptions = { ...baseOptions };
+  
+  if (process.platform === 'win32') {
+    // Only scale the timeout if one was explicitly provided
+    if (platformOptions.timeout !== undefined) {
+      platformOptions.timeout = platformOptions.timeout * 1.5;
+    }
+    platformOptions.killSignal = 'SIGKILL' as NodeJS.Signals;
+    platformOptions.windowsHide = true;
+  } else if (process.platform === 'darwin') {
+    // macOS specific options
+    // Only scale the timeout if one was explicitly provided
+    if (platformOptions.timeout !== undefined) {
+      platformOptions.timeout = platformOptions.timeout * 1.25;
+    }
+    platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
+    // Merge environment variables instead of overwriting
+    platformOptions.env = {
+      ...process.env,
+      ...baseOptions.env, // Preserve any custom env vars from baseOptions
+      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      LANG: 'en_US.UTF-8',
+      LC_ALL: 'en_US.UTF-8',
+    };
+  }
+  
+  return platformOptions;
+}
 
 /**
  * Cross-platform test process manager
