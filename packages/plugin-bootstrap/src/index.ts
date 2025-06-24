@@ -164,22 +164,22 @@ export async function processAttachments(
 
       const isRemote = /^(http|https):\/\//.test(attachment.url);
       const url = isRemote ? attachment.url : getLocalMediaUrl(attachment.url);
-
-      let imageUrl = url;
-
-      if (!isRemote) {
-        // Only convert local/internal media to base64
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
-
-        const buffer = await res.buffer();
-        const contentType = res.headers.get('content-type') || 'application/octet-stream';
-        imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
-      }
       
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
+
+        let imageUrl = url;
+
+        if (!isRemote) {
+          // Only convert local/internal media to base64
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+
+          const buffer = await res.buffer();
+          const contentType = res.headers.get('content-type') || 'application/octet-stream';
+          imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+        }
 
         try {
           const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
@@ -218,7 +218,29 @@ export async function processAttachments(
           logger.error(`[Bootstrap] Error generating image description:`, error);
           // Continue processing without description
         }
+      } else if (
+        attachment.contentType === ContentType.DOCUMENT &&
+        !attachment.text
+      ) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+      
+        const contentType = res.headers.get('content-type') || '';
+        const isPlainText = contentType.startsWith('text/plain');
+      
+        if (isPlainText) {
+          logger.debug(`[Bootstrap] Processing plain text document: ${attachment.url}`);
+      
+          const textContent = await res.text();
+          processedAttachment.text = textContent;
+          processedAttachment.title = processedAttachment.title || 'Text File';
+
+          logger.debug(`[Bootstrap] Extracted text content (first 100 chars): ${processedAttachment.text?.substring(0, 100)}...`);
+        } else {
+          logger.warn(`[Bootstrap] Skipping non-plain-text document: ${contentType}`);
+        }
       }
+      
 
       processedAttachments.push(processedAttachment);
     } catch (error) {
