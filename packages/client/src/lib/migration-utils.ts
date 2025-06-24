@@ -207,8 +207,11 @@ export function createHybridClient() {
         throw new Error('Messaging service not available');
       }
       const result = await newClient.messaging.getChannelParticipants(channelId);
-      // Adapt from { participants: ChannelParticipant[] } to { data: ChannelParticipant[] }
-      return { data: result.participants };
+      // The API client already handles the response transformation
+      // Server returns { success: true, data: UUID[] }
+      // API client returns { participants: UUID[] }
+      // We need to return { success: boolean, data: UUID[] }
+      return { success: true, data: result.participants };
     }),
     deleteChannelMessage: wrapWithErrorHandling(async (channelId: string, messageId: string) => {
       if (!newClient.messaging?.deleteMessage) {
