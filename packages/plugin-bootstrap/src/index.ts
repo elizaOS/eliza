@@ -399,6 +399,7 @@ const messageReceivedHandler = async ({
             message.content.attachments,
             runtime
           );
+          await runtime.updateMemory(message as any)
         }
 
         let shouldRespond = true;
