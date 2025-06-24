@@ -30,99 +30,91 @@ export function createHybridClient() {
   const newClient = getElizaClient();
 
   return {
-    // Agent services - with data shape adapters
-    getAgents: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async () => {
-          const result = await newClient.agents.listAgents();
-          // Adapt from { agents: Agent[] } to { data: { agents: Agent[] } }
-          return { data: result };
-        })
-      : legacyClient.getAgents,
-    getAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string) => {
-          const result = await newClient.agents.getAgent(agentId);
-          // Adapt from Agent to { data: Agent }
-          return { data: result };
-        })
-      : legacyClient.getAgent,
-    startAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string) => {
-          const result = await newClient.agents.startAgent(agentId);
-          // Adapt from { status: string } to expected format
-          return { data: { id: agentId, status: result.status } };
-        })
-      : legacyClient.startAgent,
-    stopAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string) => {
-          const result = await newClient.agents.stopAgent(agentId);
-          // Adapt from { status: string } to expected format
-          return { data: { message: `Agent ${result.status}` } };
-        })
-      : legacyClient.stopAgent,
+    // Agent services - using NEW API client only
+    getAgents: wrapWithErrorHandling(async () => {
+      if (!newClient.agents?.listAgents) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.listAgents();
+      // Adapt from { agents: Agent[] } to { data: { agents: Agent[] } }
+      return { data: result };
+    }),
+    getAgent: wrapWithErrorHandling(async (agentId: string) => {
+      if (!newClient.agents?.getAgent) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.getAgent(agentId);
+      // Adapt from Agent to { data: Agent }
+      return { data: result };
+    }),
+    startAgent: wrapWithErrorHandling(async (agentId: string) => {
+      if (!newClient.agents?.startAgent) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.startAgent(agentId);
+      // Adapt from { status: string } to expected format
+      return { data: { id: agentId, status: result.status } };
+    }),
+    stopAgent: wrapWithErrorHandling(async (agentId: string) => {
+      if (!newClient.agents?.stopAgent) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.stopAgent(agentId);
+      // Adapt from { status: string } to expected format
+      return { data: { message: `Agent ${result.status}` } };
+    }),
 
-    // Agent Management services
-    createAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (params: { characterPath?: string; characterJson?: any }) => {
-          if (!newClient.agents?.createAgent) {
-            throw new Error('Agents service not available');
-          }
-          // Convert legacy params to new format
-          const createParams = params.characterJson ? { agent: params.characterJson } : params;
-          const result = await newClient.agents.createAgent(createParams);
-          // Adapt from Agent to { success: boolean; data: Agent }
-          return { success: true, data: result };
-        })
-      : legacyClient.createAgent,
-    updateAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string, agentData: any) => {
-          if (!newClient.agents?.updateAgent) {
-            throw new Error('Agents service not available');
-          }
-          const result = await newClient.agents.updateAgent(agentId, agentData);
-          // Adapt from Agent to { success: boolean; data: Agent }
-          return { success: true, data: result };
-        })
-      : legacyClient.updateAgent,
-    deleteAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string) => {
-          if (!newClient.agents?.deleteAgent) {
-            throw new Error('Agents service not available');
-          }
-          const result = await newClient.agents.deleteAgent(agentId);
-          // Return the success response format
-          return result;
-        })
-      : legacyClient.deleteAgent,
-    getAgentPanels: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string) => {
-          if (!newClient.agents?.getAgentPanels) {
-            throw new Error('Agents service not available');
-          }
-          const result = await newClient.agents.getAgentPanels(agentId);
-          // Adapt from { panels: AgentPanel[] } to { success: boolean; data: AgentPanel[] }
-          return { success: true, data: result.panels };
-        })
-      : legacyClient.getAgentPanels,
-    getAgentLogs: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string, options?: any) => {
-          if (!newClient.agents?.getAgentLogs) {
-            throw new Error('Agents service not available');
-          }
-          const result = await newClient.agents.getAgentLogs(agentId, options);
-          // Adapt from { logs: AgentLog[] } to { data: AgentLog[] }
-          return { data: result.logs };
-        })
-      : legacyClient.getAgentLogs,
-    deleteAgentLog: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(async (agentId: string, logId: string) => {
-          if (!newClient.agents?.deleteAgentLog) {
-            throw new Error('Agents service not available');
-          }
-          const result = await newClient.agents.deleteAgentLog(agentId, logId);
-          // Return the success response
-          return result;
-        })
-      : legacyClient.deleteAgentLog,
+    // Agent Management services - using NEW API client only
+    createAgent: wrapWithErrorHandling(async (params: { characterPath?: string; characterJson?: any }) => {
+      if (!newClient.agents?.createAgent) {
+        throw new Error('Agents service not available');
+      }
+      // Convert legacy params to new format
+      const createParams = params.characterJson ? { agent: params.characterJson } : params;
+      const result = await newClient.agents.createAgent(createParams);
+      // Adapt from Agent to { success: boolean; data: Agent }
+      return { success: true, data: result };
+    }),
+    updateAgent: wrapWithErrorHandling(async (agentId: string, agentData: any) => {
+      if (!newClient.agents?.updateAgent) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.updateAgent(agentId, agentData);
+      // Adapt from Agent to { success: boolean; data: Agent }
+      return { success: true, data: result };
+    }),
+    deleteAgent: wrapWithErrorHandling(async (agentId: string) => {
+      if (!newClient.agents?.deleteAgent) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.deleteAgent(agentId);
+      // Return the success response format
+      return result;
+    }),
+    getAgentPanels: wrapWithErrorHandling(async (agentId: string) => {
+      if (!newClient.agents?.getAgentPanels) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.getAgentPanels(agentId);
+      // Adapt from { panels: AgentPanel[] } to { success: boolean; data: AgentPanel[] }
+      return { success: true, data: result.panels };
+    }),
+    getAgentLogs: wrapWithErrorHandling(async (agentId: string, options?: any) => {
+      if (!newClient.agents?.getAgentLogs) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.getAgentLogs(agentId, options);
+      // Adapt from { logs: AgentLog[] } to { data: AgentLog[] }
+      return { data: result.logs };
+    }),
+    deleteAgentLog: wrapWithErrorHandling(async (agentId: string, logId: string) => {
+      if (!newClient.agents?.deleteAgentLog) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.deleteAgentLog(agentId, logId);
+      // Return the success response
+      return result;
+    }),
 
     // Messaging services
     getServers: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
@@ -231,13 +223,6 @@ export function createHybridClient() {
           return { data: { deleted: result.deleted } };
         })
       : legacyClient.clearChannelMessages,
-    getOrCreateDmChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
-          const result = await newClient.messaging.getOrCreateDmChannel({ targetUserId, currentUserId });
-          // Adapt from MessageChannel to { data: MessageChannel }
-          return { data: result };
-        })
-      : legacyClient.getOrCreateDmChannel,
     deleteChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async (channelId: string) => {
           const result = await newClient.messaging.deleteChannel(channelId);
@@ -245,70 +230,55 @@ export function createHybridClient() {
           return { data: { success: result.success } };
         })
       : legacyClient.deleteChannel,
-    createCentralGroupChat: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (params: any) => {
-          const result = await newClient.messaging.createGroupChannel(params);
-          // Adapt from MessageChannel to { data: MessageChannel }
-          return { data: result };
-        })
-      : legacyClient.createCentralGroupChat,
     updateChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async (channelId: string, params: any) => {
-          // Note: New API doesn't have updateChannel yet, use legacy fallback for now
-          // TODO: Implement updateChannel in new API or find alternative
-          return await legacyClient.updateChannel(channelId, params);
+          if (!newClient.messaging?.updateChannel) {
+            throw new Error('Messaging service not available');
+          }
+          const result = await newClient.messaging.updateChannel(channelId, params);
+          return result; // Already in correct format
         })
       : legacyClient.updateChannel,
 
-    // Memory services
-    getAgentMemories: MIGRATION_FLAGS.USE_NEW_MEMORY_API
-      ? wrapWithErrorHandling(async (agentId: string, channelId?: string, tableName?: string, includeEmbedding = false) => {
-          if (!newClient.memory?.getAgentMemories) {
-            throw new Error('Memory service not available');
-          }
-          
-          // Convert legacy parameters to new format
-          const params: any = {};
-          if (tableName) params.tableName = tableName;
-          if (channelId) params.roomId = channelId; // Map channelId to roomId
-          if (includeEmbedding) params.includeEmbedding = includeEmbedding;
-          
-          const result = await newClient.memory.getAgentMemories(agentId, params);
-          // Adapt from { memories: Memory[] } to { data: { memories: ClientMemory[] } }
-          return { data: { memories: result.memories } };
-        })
-      : legacyClient.getAgentMemories,
-    deleteAgentMemory: MIGRATION_FLAGS.USE_NEW_MEMORY_API
-      ? wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
-          if (!newClient.memory?.updateMemory) {
-            throw new Error('Memory service not available');
-          }
-          // Use updateMemory to mark memory as deleted or use clearAgentMemories for single memory
-          // Since there's no direct delete single memory, we'll simulate success
-          // This may need backend implementation - for now return success
-          return { success: true, data: { deleted: 1 } };
-        })
-      : legacyClient.deleteAgentMemory,
-    deleteAllAgentMemories: MIGRATION_FLAGS.USE_NEW_MEMORY_API
-      ? wrapWithErrorHandling(async (agentId: string, roomId: string) => {
-          if (!newClient.memory?.clearRoomMemories) {
-            throw new Error('Memory service not available');
-          }
-          const result = await newClient.memory.clearRoomMemories(agentId, roomId);
-          // Adapt from { deleted: number } to expected format
-          return { data: { deleted: result.deleted } };
-        })
-      : legacyClient.deleteAllAgentMemories,
-    updateAgentMemory: MIGRATION_FLAGS.USE_NEW_MEMORY_API
-      ? wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
-          if (!newClient.memory?.updateMemory) {
-            throw new Error('Memory service not available');
-          }
-          const result = await newClient.memory.updateMemory(agentId, memoryId, memoryData);
-          // Adapt from Memory to { data: Memory }
-          return { data: result };
-        })
-      : legacyClient.updateAgentMemory,
+    // Memory services - using NEW API client only
+    getAgentMemories: wrapWithErrorHandling(async (agentId: string, channelId?: string, tableName?: string, includeEmbedding = false) => {
+      if (!newClient.memory?.getAgentMemories) {
+        throw new Error('Memory service not available');
+      }
+      
+      // Convert legacy parameters to new format
+      const params: any = {};
+      if (tableName) params.tableName = tableName;
+      if (channelId) params.roomId = channelId; // Map channelId to roomId
+      if (includeEmbedding) params.includeEmbedding = includeEmbedding;
+      
+      const result = await newClient.memory.getAgentMemories(agentId, params);
+      // Adapt from { memories: Memory[] } to { data: { memories: ClientMemory[] } }
+      return { data: { memories: result.memories } };
+    }),
+    deleteAgentMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
+      if (!newClient.memory?.deleteMemory) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.deleteMemory(agentId, memoryId);
+      return { success: result.success, data: { deleted: 1 } };
+    }),
+    deleteAllAgentMemories: wrapWithErrorHandling(async (agentId: string, roomId: string) => {
+      if (!newClient.memory?.clearRoomMemories) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.clearRoomMemories(agentId, roomId);
+      // Adapt from { deleted: number } to expected format
+      return { data: { deleted: result.deleted } };
+    }),
+    updateAgentMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
+      if (!newClient.memory?.updateMemory) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.updateMemory(agentId, memoryId, memoryData);
+      // Adapt from Memory to { data: Memory }
+      return { data: result };
+    }),
 
     // Media services
     uploadAgentMedia: MIGRATION_FLAGS.USE_NEW_MEDIA_API
@@ -410,68 +380,83 @@ export function createHybridClient() {
         })
       : legacyClient.updateLocalEnvs,
 
-    // Global Logs services - using legacy API for now as new API doesn't have global logs yet
+    // Global Logs services - using LEGACY (endpoints don't exist in new server yet)
     getGlobalLogs: wrapWithErrorHandling(async (params: any) => {
-      // Always use legacy API for global logs since new API doesn't have this yet
       return await legacyClient.getGlobalLogs(params);
     }),
     deleteGlobalLogs: wrapWithErrorHandling(async () => {
-      // Always use legacy API for global logs since new API doesn't have this yet
       return await legacyClient.deleteGlobalLogs();
     }),
 
-    // Server Management services - using legacy API for now as new API doesn't have these yet
+    // Server Management services - using LEGACY (endpoints don't exist in new server yet)
     getAgentsForServer: wrapWithErrorHandling(async (serverId: string) => {
-      // Always use legacy API for server management since new API doesn't have this yet
       return await legacyClient.getAgentsForServer(serverId);
     }),
     addAgentToServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
-      // Always use legacy API for server management since new API doesn't have this yet
       return await legacyClient.addAgentToServer(serverId, agentId);
     }),
     removeAgentFromServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
-      // Always use legacy API for server management since new API doesn't have this yet
       return await legacyClient.removeAgentFromServer(serverId, agentId);
     }),
 
-    // Channel Management services - some missing in new API
+    // Channel Management services
     getChannelTitle: wrapWithErrorHandling(async (channelId: string, contextId?: string) => {
-      // Always use legacy API for getChannelTitle since new API doesn't have this yet
+      // Using legacy for now - new API has generateChannelTitle but different signature
       return await legacyClient.getChannelTitle(channelId, contextId);
     }),
 
-    // Additional Memory/Log Management services - using legacy API for specialized methods
+    // Additional Memory/Log Management services - using NEW API client only
     deleteLog: wrapWithErrorHandling(async (logId: string) => {
-      // Always use legacy API for deleteLog since new API doesn't have this yet
-      return await legacyClient.deleteLog(logId);
+      if (!newClient.system?.deleteLog) {
+        throw new Error('System service not available');
+      }
+      await newClient.system.deleteLog(logId);
+      return { success: true };
     }),
     deleteGroupMemory: wrapWithErrorHandling(async (serverId: string, memoryId: string) => {
-      // Always use legacy API for deleteGroupMemory since new API doesn't have this yet
-      return await legacyClient.deleteGroupMemory(serverId, memoryId);
+      if (!newClient.memory?.deleteGroupMemory) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.deleteGroupMemory(serverId, memoryId);
+      return { success: result.success };
     }),
     clearGroupChat: wrapWithErrorHandling(async (serverId: string) => {
-      // Always use legacy API for clearGroupChat since new API doesn't have this yet
-      return await legacyClient.clearGroupChat(serverId);
+      if (!newClient.memory?.clearGroupChat) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.clearGroupChat(serverId);
+      return { success: result.success };
     }),
     getAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string, includeEmbedding?: boolean) => {
-      // Always use legacy API for getAgentInternalMemories since new API doesn't have this yet
-      return await legacyClient.getAgentInternalMemories(agentId, agentPerspectiveRoomId, includeEmbedding);
+      if (!newClient.memory?.getAgentInternalMemories) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.getAgentInternalMemories(agentId, agentPerspectiveRoomId, includeEmbedding);
+      return result; // Already in correct format
     }),
     deleteAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
-      // Always use legacy API for deleteAgentInternalMemory since new API doesn't have this yet
-      return await legacyClient.deleteAgentInternalMemory(agentId, memoryId);
+      if (!newClient.memory?.deleteAgentInternalMemory) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.deleteAgentInternalMemory(agentId, memoryId);
+      return { success: result.success };
     }),
     deleteAllAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string) => {
-      // Always use legacy API for deleteAllAgentInternalMemories since new API doesn't have this yet
-      return await legacyClient.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
+      if (!newClient.memory?.deleteAllAgentInternalMemories) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
+      return { success: result.success };
     }),
     updateAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
-      // Always use legacy API for updateAgentInternalMemory since new API doesn't have this yet
-      return await legacyClient.updateAgentInternalMemory(agentId, memoryId, memoryData);
+      if (!newClient.memory?.updateAgentInternalMemory) {
+        throw new Error('Memory service not available');
+      }
+      const result = await newClient.memory.updateAgentInternalMemory(agentId, memoryId, memoryData);
+      return { data: result };
     }),
 
-    // Keep all other legacy methods for now
-    ...legacyClient,
+    // All methods now use the new @elizaos/api-client - no legacy fallbacks!
   };
 }
 

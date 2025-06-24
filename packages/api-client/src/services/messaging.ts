@@ -14,6 +14,7 @@ import {
   MessageSearchParams,
   ServerCreateParams,
   ServerSyncParams,
+  ChannelUpdateParams,
 } from '../types/messaging';
 import { PaginationParams } from '../types/base';
 
@@ -201,5 +202,19 @@ export class MessagingService extends BaseApiClient {
    */
   async deleteServer(serverId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(`/api/messaging/servers/${serverId}`);
+  }
+
+  /**
+   * Update a channel
+   */
+  async updateChannel(channelId: UUID, params: ChannelUpdateParams): Promise<{ success: boolean; data: MessageChannel }> {
+    return this.patch<{ success: boolean; data: MessageChannel }>(`/api/messaging/central-channels/${channelId}`, params);
+  }
+
+  /**
+   * Generate channel title
+   */
+  async generateChannelTitle(channelId: UUID): Promise<{ title: string }> {
+    return this.post<{ title: string }>(`/api/messaging/central-channels/${channelId}/generate-title`);
   }
 }

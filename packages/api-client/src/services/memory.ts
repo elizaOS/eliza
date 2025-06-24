@@ -95,4 +95,60 @@ export class MemoryService extends BaseApiClient {
   async clearWorldMemories(serverId: UUID): Promise<{ deleted: number }> {
     return this.delete<{ deleted: number }>(`/api/memory/groups/${serverId}/memories`);
   }
+
+  /**
+   * Delete a specific memory
+   */
+  async deleteMemory(agentId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/memories/${memoryId}`);
+  }
+
+  /**
+   * Get agent internal memories
+   */
+  async getAgentInternalMemories(
+    agentId: UUID, 
+    agentPerspectiveRoomId: UUID, 
+    includeEmbedding?: boolean
+  ): Promise<{ success: boolean; data: any[] }> {
+    return this.get<{ success: boolean; data: any[] }>(
+      `/api/memory/${agentId}/internal/${agentPerspectiveRoomId}`, 
+      { params: { includeEmbedding } }
+    );
+  }
+
+  /**
+   * Delete agent internal memory
+   */
+  async deleteAgentInternalMemory(agentId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/internal/memories/${memoryId}`);
+  }
+
+  /**
+   * Delete all agent internal memories
+   */
+  async deleteAllAgentInternalMemories(agentId: UUID, agentPerspectiveRoomId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/internal/${agentPerspectiveRoomId}/all`);
+  }
+
+  /**
+   * Update agent internal memory
+   */
+  async updateAgentInternalMemory(agentId: UUID, memoryId: UUID, memoryData: any): Promise<any> {
+    return this.patch<any>(`/api/memory/${agentId}/internal/memories/${memoryId}`, memoryData);
+  }
+
+  /**
+   * Delete group memory
+   */
+  async deleteGroupMemory(serverId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/groups/${serverId}/memories/${memoryId}`);
+  }
+
+  /**
+   * Clear group chat
+   */
+  async clearGroupChat(serverId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/groups/${serverId}/chat`);
+  }
 }
