@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAgents } from '../hooks/use-query-hooks';
-import { apiClient } from '../lib/api';
+import { createHybridClient } from '../lib/migration-utils';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 
 // Types
@@ -246,11 +246,13 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     refetch,
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
-    queryFn: () =>
-      apiClient.getGlobalLogs({
+    queryFn: () => {
+      const hybridApiClient = createHybridClient();
+      return hybridApiClient.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
-      }),
+      });
+    },
     refetchInterval: isLive && !useWebSocket ? 2000 : false,
     staleTime: 1000,
   });
@@ -379,7 +381,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     ) {
       try {
         setIsClearing(true);
-        await apiClient.deleteGlobalLogs();
+        const hybridApiClient = createHybridClient();
+        await hybridApiClient.deleteGlobalLogs();
         queryClient.invalidateQueries({ queryKey: ['logs'] });
 
         // Also clear WebSocket logs if in WebSocket mode
