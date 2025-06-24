@@ -30,6 +30,7 @@ import {
   truncateToCompleteSentence,
   type UUID,
   type WorldPayload,
+  getLocalMediaUrl
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -42,6 +43,8 @@ import { TaskService } from './services/task.ts';
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
 export * from './providers/index.ts';
+
+import fetch from 'node-fetch'; 
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -159,6 +162,17 @@ export async function processAttachments(
       // Start with the original attachment
       const processedAttachment: Media = { ...attachment };
 
+      const url = /^(http|https):\/\//.test(attachment.url)
+        ? attachment.url
+        : getLocalMediaUrl(attachment.url);
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+
+      const buffer = await res.buffer();
+      const base64Image = `data:image/png;base64,${buffer.toString('base64')}`;
+
+
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
@@ -166,7 +180,7 @@ export async function processAttachments(
         try {
           const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
             prompt: imageDescriptionTemplate,
-            imageUrl: attachment.url,
+            imageUrl: base64Image,
           });
 
           if (typeof response === 'string') {

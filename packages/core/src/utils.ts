@@ -673,3 +673,8 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
   }
   return undefined;
 };
+
+export function getLocalMediaUrl(url: string): string {
+  const port = process.env.SERVER_PORT || '3000';
+  return `http://localhost:${port}${url}`;
+}
