@@ -152,25 +152,24 @@ describe('Mock Factory Functions', () => {
   });
 
   describe('createMockUploadedFile', () => {
-    it('should create a mock express-fileupload file', () => {
+    it('should create a mock multer file', () => {
       const file = createMockUploadedFile();
 
-      expect(file.name).toBe('test.jpg');
+      expect(file.originalname).toBe('test.jpg');
       expect(file.mimetype).toBe('image/jpeg');
       expect(file.size).toBe(12345);
-      expect(file.data).toBeInstanceOf(Buffer);
-      expect(file.tempFilePath).toBe('/tmp/upload_123456');
-      expect(typeof file.mv).toBe('function');
+      expect(file.buffer).toBeInstanceOf(Buffer);
+      expect(file.fieldname).toBe('file');
     });
 
     it('should allow overriding file properties', () => {
       const file = createMockUploadedFile({
-        name: 'custom.png',
+        originalname: 'custom.png',
         mimetype: 'image/png',
         size: 54321,
       });
 
-      expect(file.name).toBe('custom.png');
+      expect(file.originalname).toBe('custom.png');
       expect(file.mimetype).toBe('image/png');
       expect(file.size).toBe(54321);
     });

@@ -5,10 +5,8 @@ import {
   logger,
   type UUID,
 } from '@elizaos/core';
-import bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
-import fileUpload from 'express-fileupload';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
@@ -402,7 +400,7 @@ export class AgentServer {
         })
       ); // Enable CORS
       this.app.use(
-        bodyParser.json({
+        express.json({
           limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
         })
       ); // Parse JSON bodies
