@@ -4,6 +4,7 @@ import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { handleApiError } from '@/lib/api-error-bridge';
 import clientLogger from '@/lib/logger';
 
 export type UploadingFile = {
@@ -144,7 +145,19 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
           }
         } catch (uploadError) {
           clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
-          toast({ title: `Upload Failed: ${fileData.file.name}`, variant: 'destructive' });
+          
+          // Use centralized error handling for API errors, but still show file-specific toast
+          try {
+            handleApiError(uploadError);
+          } catch (handledError) {
+            // For file uploads, we still want to show the specific file name in the error
+            toast({ 
+              title: `Upload Failed: ${fileData.file.name}`, 
+              description: handledError instanceof Error ? handledError.message : 'Upload failed',
+              variant: 'destructive' 
+            });
+          }
+          
           return {
             success: false,
             file: fileData,

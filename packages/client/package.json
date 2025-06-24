@@ -25,6 +25,7 @@
     "type-check": "cd cypress && npx tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
+    "@elizaos/api-client": "^1.0.12",
     "@elizaos/core": "workspace:*",
     "@hookform/resolvers": "^5.1.1",
     "@radix-ui/react-alert-dialog": "^1.0.5",

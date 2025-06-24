@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStartAgent, useStopAgent } from './use-query-hooks';
 import { useToast } from './use-toast';
+import { handleApiError } from '@/lib/api-error-bridge';
 
 /**
  * Custom hook for managing agents (starting, stopping, and tracking status)
@@ -56,11 +57,18 @@ export function useAgentManagement() {
     } catch (error) {
       console.error('Failed to start agent:', error);
 
-      toast({
-        title: 'Error Starting Agent',
-        description: error instanceof Error ? error.message : 'Failed to start agent',
-        variant: 'destructive',
-      });
+      try {
+        // Use centralized error handling
+        handleApiError(error);
+      } catch (handledError) {
+        // If the error handler doesn't show a toast (e.g., for auth errors), 
+        // we show a fallback toast
+        toast({
+          title: 'Error Starting Agent',
+          description: handledError instanceof Error ? handledError.message : 'Failed to start agent',
+          variant: 'destructive',
+        });
+      }
     } finally {
       // Remove agent from starting list regardless of success/failure
       setStartingAgents((prev) => prev.filter((id) => id !== agentId));
@@ -101,11 +109,18 @@ export function useAgentManagement() {
     } catch (error) {
       console.error('Failed to stop agent:', error);
 
-      toast({
-        title: 'Error Stopping Agent',
-        description: error instanceof Error ? error.message : 'Failed to stop agent',
-        variant: 'destructive',
-      });
+      try {
+        // Use centralized error handling
+        handleApiError(error);
+      } catch (handledError) {
+        // If the error handler doesn't show a toast (e.g., for auth errors), 
+        // we show a fallback toast
+        toast({
+          title: 'Error Stopping Agent',
+          description: handledError instanceof Error ? handledError.message : 'Failed to stop agent',
+          variant: 'destructive',
+        });
+      }
     } finally {
       // Remove agent from stopping list regardless of success/failure
       setStoppingAgents((prev) => prev.filter((id) => id !== agentId));

@@ -1,5 +1,6 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
+import { handleApiError } from '@/lib/api-error-bridge';
 import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
@@ -185,16 +186,13 @@ export function useStartAgent() {
       try {
         return await apiClient.startAgent(agentId);
       } catch (error) {
-        // Capture specific error types
+        // Use the centralized error handler, but preserve specific agent logic
         if (error instanceof Error) {
-          if (error.message.includes('network')) {
-            throw new Error('Network error: Please check your connection and try again.');
-          }
           if (error.message.includes('already running')) {
             throw new Error('Agent is already running.');
           }
         }
-        throw error; // Re-throw if not a specific case we handle
+        return handleApiError(error);
       }
     },
     onMutate: async (_agentId) => {
