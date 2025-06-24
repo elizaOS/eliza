@@ -1,6 +1,7 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { handleApiError } from '@/lib/api-error-bridge';
+import { createHybridClient } from '@/lib/migration-utils';
 import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
@@ -23,6 +24,9 @@ import type {
 } from '@/types';
 import clientLogger from '@/lib/logger';
 import { useNavigate } from 'react-router-dom';
+
+// Create hybrid client that can switch between old and new APIs
+const hybridApiClient = createHybridClient();
 
 /**
  * Represents content with additional user information.
@@ -126,7 +130,7 @@ export function useAgents(options = {}) {
 
   return useQuery<{ data: { agents: Partial<AgentWithStatus>[] } }>({
     queryKey: ['agents'],
-    queryFn: () => apiClient.getAgents(),
+    queryFn: () => hybridApiClient.getAgents(),
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     // Use more frequent polling for real-time updates
     refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,
@@ -154,7 +158,7 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
 
   return useQuery<{ data: AgentWithStatus }>({
     queryKey: ['agent', agentId],
-    queryFn: () => apiClient.getAgent(agentId || ''),
+    queryFn: () => hybridApiClient.getAgent(agentId || ''),
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     enabled: Boolean(agentId),
     // Use more frequent polling for real-time updates
@@ -184,7 +188,7 @@ export function useStartAgent() {
   return useMutation<{ data: { id: UUID; name: string; status: string } }, Error, UUID>({
     mutationFn: async (agentId: UUID) => {
       try {
-        return await apiClient.startAgent(agentId);
+        return await hybridApiClient.startAgent(agentId);
       } catch (error) {
         // Use the centralized error handler, but preserve specific agent logic
         if (error instanceof Error) {
@@ -238,7 +242,7 @@ export function useStopAgent() {
   const { toast } = useToast();
 
   return useMutation<{ data: { message: string } }, Error, string>({
-    mutationFn: (agentId: string) => apiClient.stopAgent(agentId),
+    mutationFn: (agentId: string) => hybridApiClient.stopAgent(agentId),
     onMutate: async (agentId) => {
       // Optimistically update the UI
       // Get the agent data from the cache
@@ -868,7 +872,7 @@ export function useAgentsWithDetails(): AgentsWithDetailsResult {
   const agentQueries = useQueries<UseQueryResult<{ data: Agent }, Error>[]>({
     queries: agentIds.map((id) => ({
       queryKey: ['agent', id] as const,
-      queryFn: () => apiClient.getAgent(id),
+      queryFn: () => hybridApiClient.getAgent(id),
       staleTime: STALE_TIMES.FREQUENT,
       enabled: Boolean(id),
       refetchInterval: !network.isOffline && Boolean(id) ? STALE_TIMES.FREQUENT : false,

@@ -4,7 +4,7 @@ import { wrapWithErrorHandling } from './api-error-bridge';
 
 // Flag to control gradual migration
 const MIGRATION_FLAGS = {
-  USE_NEW_AGENTS_API: false,
+  USE_NEW_AGENTS_API: true, // ENABLED: Phase 3.1 - Agent Services Migration
   USE_NEW_MESSAGING_API: false,
   USE_NEW_MEMORY_API: false,
   USE_NEW_MEDIA_API: false,
@@ -29,18 +29,34 @@ export function createHybridClient() {
   const newClient = getElizaClient();
 
   return {
-    // Agent services
+    // Agent services - with data shape adapters
     getAgents: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(newClient.agents.listAgents.bind(newClient.agents))
+      ? wrapWithErrorHandling(async () => {
+          const result = await newClient.agents.listAgents();
+          // Adapt from { agents: Agent[] } to { data: { agents: Agent[] } }
+          return { data: result };
+        })
       : legacyClient.getAgents,
     getAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(newClient.agents.getAgent.bind(newClient.agents))
+      ? wrapWithErrorHandling(async (agentId: string) => {
+          const result = await newClient.agents.getAgent(agentId);
+          // Adapt from Agent to { data: Agent }
+          return { data: result };
+        })
       : legacyClient.getAgent,
     startAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(newClient.agents.startAgent.bind(newClient.agents))
+      ? wrapWithErrorHandling(async (agentId: string) => {
+          const result = await newClient.agents.startAgent(agentId);
+          // Adapt from { status: string } to expected format
+          return { data: { id: agentId, status: result.status } };
+        })
       : legacyClient.startAgent,
     stopAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
-      ? wrapWithErrorHandling(newClient.agents.stopAgent.bind(newClient.agents))
+      ? wrapWithErrorHandling(async (agentId: string) => {
+          const result = await newClient.agents.stopAgent(agentId);
+          // Adapt from { status: string } to expected format
+          return { data: { message: `Agent ${result.status}` } };
+        })
       : legacyClient.stopAgent,
 
     // Messaging services
