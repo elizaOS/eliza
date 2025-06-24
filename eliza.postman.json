@@ -239,6 +239,7 @@
             "description": "Get server debug information"
           }
         }
+      ]
     },
     {
       "name": "Agents Management",
