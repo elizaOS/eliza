@@ -2,7 +2,7 @@ import { ChannelType } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import { type Agent, AgentStatus, type UUID, validateUuid } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -74,7 +74,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Create group mutation
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      return await apiClient.createCentralGroupChat({
+      const hybridApiClient = createHybridClient();
+      return await hybridApiClient.createCentralGroupChat({
         name,
         participantCentralUserIds: participantIds,
         type: ChannelType.GROUP,
@@ -104,7 +105,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       if (!channelId) throw new Error('Channel ID is required for update');
-      return await apiClient.updateChannel(channelId, {
+      const hybridApiClient = createHybridClient();
+      return await hybridApiClient.updateChannel(channelId, {
         name,
         participantCentralUserIds: participantIds,
       });
@@ -120,6 +122,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     },
     onError: (error) => {
       clientLogger.error('Failed to update group', error);
+      console.error('Group update error details:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to update group.';
       toast({ title: 'Error', description: errorMsg, variant: 'destructive' });
     },
@@ -129,7 +132,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error('Channel ID is required for delete');
-      return await apiClient.deleteChannel(channelId);
+      const hybridApiClient = createHybridClient();
+      return await hybridApiClient.deleteChannel(channelId);
     },
     onSuccess: () => {
       toast({ title: 'Group Deleted', description: 'The group has been successfully deleted.' });
@@ -162,7 +166,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
       if (!channelId) return { success: true, data: [] };
-      return apiClient.getChannelParticipants(channelId);
+      const hybridApiClient = createHybridClient();
+      return hybridApiClient.getChannelParticipants(channelId);
     },
     enabled: !!channelId,
   });

@@ -31,7 +31,7 @@ import {
 } from '@/hooks/use-query-hooks';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import {
@@ -445,7 +445,8 @@ export default function Chat({
       async () => {
         clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
         try {
-          await apiClient.deleteChannel(channelToDelete.id);
+          const hybridApiClient = createHybridClient();
+          await hybridApiClient.deleteChannel(channelToDelete.id);
 
           // --- Optimistically update the React-Query cache so UI refreshes instantly ---
           queryClient.setQueryData<MessageChannel[] | undefined>(
@@ -667,12 +668,13 @@ export default function Chat({
       return;
     }
 
-    const data = await apiClient.getChannelTitle(finalChannelIdForHooks, contextId);
+    const hybridApiClient = createHybridClient();
+    const data = await hybridApiClient.getChannelTitle(finalChannelIdForHooks, contextId);
 
     const title = data?.data?.title;
-    const participants = await apiClient.getChannelParticipants(chatState.currentDmChannelId);
+    const participants = await hybridApiClient.getChannelParticipants(chatState.currentDmChannelId);
     if (title && participants) {
-      await apiClient.updateChannel(finalChannelIdForHooks, {
+      await hybridApiClient.updateChannel(finalChannelIdForHooks, {
         name: title,
         participantCentralUserIds: participants.data,
       });
@@ -1242,7 +1244,8 @@ export default function Chat({
                         },
                         async () => {
                           try {
-                            await apiClient.deleteChannel(finalChannelIdForHooks);
+                            const hybridApiClient = createHybridClient();
+                            await hybridApiClient.deleteChannel(finalChannelIdForHooks);
                             toast({
                               title: 'Group Deleted',
                               description: 'The group has been successfully deleted.',

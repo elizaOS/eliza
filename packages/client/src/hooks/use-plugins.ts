@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import clientLogger from '@/lib/logger';
 
 // Registry configuration - centralized for maintainability
@@ -52,7 +52,7 @@ export function usePlugins() {
         // Fetch plugins from registry and agent data in parallel
         const [registryResponse, agentsResponse] = await Promise.all([
           fetch(REGISTRY_URL),
-          apiClient.getAgents(),
+          createHybridClient().getAgents(),
         ]);
 
         // Process registry data
@@ -81,7 +81,7 @@ export function usePlugins() {
               (agent) => agent.status === 'active'
             );
             if (activeAgent && activeAgent.id) {
-              const agentDetailResponse = await apiClient.getAgent(activeAgent.id);
+              const agentDetailResponse = await createHybridClient().getAgent(activeAgent.id);
 
               if (agentDetailResponse.data?.plugins) {
                 agentPlugins = agentDetailResponse.data.plugins;

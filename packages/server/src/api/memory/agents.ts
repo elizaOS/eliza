@@ -257,5 +257,36 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
     }
   });
 
+  // Delete a specific memory for an agent
+  router.delete('/:agentId/memories/:memoryId', async (req, res) => {
+    try {
+      const agentId = validateUuid(req.params.agentId);
+      const memoryId = validateUuid(req.params.memoryId);
+
+      if (!agentId || !memoryId) {
+        return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or memory ID format');
+      }
+
+      const runtime = agents.get(agentId);
+      if (!runtime) {
+        return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
+      }
+
+      // Delete the specific memory
+      await runtime.deleteMemory(memoryId);
+
+      sendSuccess(res, { message: 'Memory deleted successfully' });
+    } catch (error) {
+      logger.error(`[DELETE MEMORY] Error deleting memory ${req.params.memoryId}:`, error);
+      sendError(
+        res,
+        500,
+        'DELETE_ERROR',
+        'Error deleting memory',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  });
+
   return router;
 }
