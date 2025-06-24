@@ -112,18 +112,24 @@ describe('ElizaOS Start Commands', () => {
       const charactersDir = join(__dirname, '../test-characters');
       const adaPath = join(charactersDir, 'ada.json');
 
+      // Verify character file exists
+      const fs = await import('node:fs');
+      if (!fs.existsSync(adaPath)) {
+        throw new Error(`Character file not found at: ${adaPath}`);
+      }
+
       // Start a temporary server with Ada character
       const serverProcess = await startServerAndWait(`-p ${testServerPort} --character ${adaPath}`);
 
       try {
         // Wait longer for agent to fully register - CI environments may be slower
-        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
+        await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.LONG_WAIT));
 
         // Retry logic for CI environments where agent registration might be delayed
         // GitHub Actions and other CI runners may have slower process startup times
         let result = '';
         let lastError: Error | null = null;
-        const maxRetries = 3;
+        const maxRetries = 5;
 
         for (let i = 0; i < maxRetries; i++) {
           try {
@@ -131,7 +137,7 @@ describe('ElizaOS Start Commands', () => {
               encoding: 'utf8',
               timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             });
-            
+
             result = execSync(
               `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
               platformOptions
@@ -142,7 +148,7 @@ describe('ElizaOS Start Commands', () => {
               break;
             }
 
-            // If no Ada found but command succeeded, wait and retry
+            // If we don't have Ada but no error, wait and retry
             if (i < maxRetries - 1) {
               await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
             }
@@ -150,7 +156,7 @@ describe('ElizaOS Start Commands', () => {
             lastError = error;
             // If command failed and we have retries left, wait and retry
             if (i < maxRetries - 1) {
-              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+              await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.MEDIUM_WAIT));
             }
           }
         }
@@ -160,7 +166,9 @@ describe('ElizaOS Start Commands', () => {
           if (lastError) {
             throw lastError;
           }
-          throw new Error(`Agent list did not contain 'Ada'. Output: ${result}`);
+          throw new Error(
+            `Agent list did not contain 'Ada' after ${maxRetries} retries. Output: ${result}`
+          );
         }
 
         expect(result).toContain('Ada');
@@ -248,7 +256,10 @@ describe('ElizaOS Start Commands', () => {
 
   // --build flag accepted
   it('build option flag accepted', () => {
-    const result = execSync(`${elizaosCmd} start --build --help`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = execSync(
+      `${elizaosCmd} start --build --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('start');
   });
 
