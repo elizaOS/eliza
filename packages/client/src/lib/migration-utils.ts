@@ -116,129 +116,121 @@ export function createHybridClient() {
       return result;
     }),
 
-    // Messaging services
-    getServers: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async () => {
-          if (!newClient.messaging?.listServers) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.listServers();
-          // Adapt from { servers: MessageServer[] } to { data: { servers: MessageServer[] } }
-          return { data: { servers: result.servers } };
-        })
-      : legacyClient.getServers,
-    getChannelsForServer: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (serverId: string) => {
-          if (!newClient.messaging?.getServerChannels) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.getServerChannels(serverId);
-          // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
-          return { data: { channels: result.channels } };
-        })
-      : legacyClient.getChannelsForServer,
-    getChannels: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (serverId: string) => {
-          if (!newClient.messaging?.getServerChannels) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.getServerChannels(serverId);
-          // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
-          return { data: { channels: result.channels } };
-        })
-      : legacyClient.getChannels,
-    getOrCreateDmChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
-          if (!newClient.messaging?.getOrCreateDmChannel) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.getOrCreateDmChannel({ 
-            participantIds: [currentUserId, targetUserId] 
-          });
-          // Adapt from MessageChannel to { data: MessageChannel }
-          return { data: result };
-        })
-      : legacyClient.getOrCreateDmChannel,
-    createCentralGroupChat: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (params: any) => {
-          if (!newClient.messaging?.createGroupChannel) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.createGroupChannel(params);
-          // Adapt from MessageChannel to { data: MessageChannel }
-          return { data: result };
-        })
-      : legacyClient.createCentralGroupChat,
-    getChannelMessages: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string, options?: { limit?: number; before?: number }) => {
-          if (!newClient.messaging?.getChannelMessages) {
-            throw new Error('Messaging service not available');
-          }
-          
-          // Convert parameters from legacy format to new format
-          const params: any = {};
-          if (options?.limit) params.limit = options.limit;
-          if (options?.before) {
-            // Convert timestamp number to Date
-            params.before = new Date(options.before).toISOString();
-          }
-          
-          const result = await newClient.messaging.getChannelMessages(channelId, params);
-          // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
-          return { data: { messages: result.messages } };
-        })
-      : legacyClient.getChannelMessages,
-    postMessageToChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string, payload: any) => {
-          const result = await newClient.messaging.postMessage(channelId, payload.text || payload.content, payload.metadata);
-          // Adapt from Message to { data: Message }
-          return { data: result };
-        })
-      : legacyClient.postMessageToChannel,
-    getChannelDetails: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string) => {
-          const result = await newClient.messaging.getChannelDetails(channelId);
-          // Adapt from MessageChannel to { data: MessageChannel }
-          return { data: result };
-        })
-      : legacyClient.getChannelDetails,
-    getChannelParticipants: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string) => {
-          const result = await newClient.messaging.getChannelParticipants(channelId);
-          // Adapt from { participants: ChannelParticipant[] } to { data: ChannelParticipant[] }
-          return { data: result.participants };
-        })
-      : legacyClient.getChannelParticipants,
-    deleteChannelMessage: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string, messageId: string) => {
-          const result = await newClient.messaging.deleteMessage(messageId);
-          // Adapt from { success: boolean } to expected format
-          return { data: { success: result.success } };
-        })
-      : legacyClient.deleteChannelMessage,
-    clearChannelMessages: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string) => {
-          const result = await newClient.messaging.clearChannelHistory(channelId);
-          // Adapt from { deleted: number } to expected format
-          return { data: { deleted: result.deleted } };
-        })
-      : legacyClient.clearChannelMessages,
-    deleteChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string) => {
-          const result = await newClient.messaging.deleteChannel(channelId);
-          // Adapt from { success: boolean } to expected format
-          return { data: { success: result.success } };
-        })
-      : legacyClient.deleteChannel,
-    updateChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string, params: any) => {
-          if (!newClient.messaging?.updateChannel) {
-            throw new Error('Messaging service not available');
-          }
-          const result = await newClient.messaging.updateChannel(channelId, params);
-          return result; // Already in correct format
-        })
-      : legacyClient.updateChannel,
+    // Messaging services - using NEW API client only
+    getServers: wrapWithErrorHandling(async () => {
+      if (!newClient.messaging?.listServers) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.listServers();
+      // Adapt from { servers: MessageServer[] } to { data: { servers: MessageServer[] } }
+      return { data: { servers: result.servers } };
+    }),
+    getChannelsForServer: wrapWithErrorHandling(async (serverId: string) => {
+      if (!newClient.messaging?.getServerChannels) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.getServerChannels(serverId);
+      // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
+      return { data: { channels: result.channels } };
+    }),
+    getChannels: wrapWithErrorHandling(async (serverId: string) => {
+      if (!newClient.messaging?.getServerChannels) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.getServerChannels(serverId);
+      // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
+      return { data: { channels: result.channels } };
+    }),
+    getOrCreateDmChannel: wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
+      if (!newClient.messaging?.getOrCreateDmChannel) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.getOrCreateDmChannel({ 
+        participantIds: [currentUserId, targetUserId] 
+      });
+      // Adapt from MessageChannel to { data: MessageChannel }
+      return { data: result };
+    }),
+    createCentralGroupChat: wrapWithErrorHandling(async (params: any) => {
+      if (!newClient.messaging?.createGroupChannel) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.createGroupChannel(params);
+      // Adapt from MessageChannel to { data: MessageChannel }
+      return { data: result };
+    }),
+    getChannelMessages: wrapWithErrorHandling(async (channelId: string, options?: { limit?: number; before?: number }) => {
+      if (!newClient.messaging?.getChannelMessages) {
+        throw new Error('Messaging service not available');
+      }
+      
+      // Convert parameters from legacy format to new format
+      const params: any = {};
+      if (options?.limit) params.limit = options.limit;
+      if (options?.before) {
+        // Convert timestamp number to Date
+        params.before = new Date(options.before).toISOString();
+      }
+      
+      const result = await newClient.messaging.getChannelMessages(channelId, params);
+      // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
+      return { data: { messages: result.messages } };
+    }),
+    postMessageToChannel: wrapWithErrorHandling(async (channelId: string, payload: any) => {
+      if (!newClient.messaging?.postMessage) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.postMessage(channelId, payload.text || payload.content, payload.metadata);
+      // Adapt from Message to { data: Message }
+      return { data: result };
+    }),
+    getChannelDetails: wrapWithErrorHandling(async (channelId: string) => {
+      if (!newClient.messaging?.getChannelDetails) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.getChannelDetails(channelId);
+      // Adapt from MessageChannel to { data: MessageChannel }
+      return { data: result };
+    }),
+    getChannelParticipants: wrapWithErrorHandling(async (channelId: string) => {
+      if (!newClient.messaging?.getChannelParticipants) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.getChannelParticipants(channelId);
+      // Adapt from { participants: ChannelParticipant[] } to { data: ChannelParticipant[] }
+      return { data: result.participants };
+    }),
+    deleteChannelMessage: wrapWithErrorHandling(async (channelId: string, messageId: string) => {
+      if (!newClient.messaging?.deleteMessage) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.deleteMessage(messageId);
+      // Adapt from { success: boolean } to expected format
+      return { data: { success: result.success } };
+    }),
+    clearChannelMessages: wrapWithErrorHandling(async (channelId: string) => {
+      if (!newClient.messaging?.clearChannelHistory) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.clearChannelHistory(channelId);
+      // Adapt from { deleted: number } to expected format
+      return { data: { deleted: result.deleted } };
+    }),
+    deleteChannel: wrapWithErrorHandling(async (channelId: string) => {
+      if (!newClient.messaging?.deleteChannel) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.deleteChannel(channelId);
+      // Adapt from { success: boolean } to expected format
+      return { data: { success: result.success } };
+    }),
+    updateChannel: wrapWithErrorHandling(async (channelId: string, params: any) => {
+      if (!newClient.messaging?.updateChannel) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.updateChannel(channelId, params);
+      return result; // Already in correct format
+    }),
 
     // Memory services - using NEW API client only
     getAgentMemories: wrapWithErrorHandling(async (agentId: string, channelId?: string, tableName?: string, includeEmbedding = false) => {
@@ -280,129 +272,145 @@ export function createHybridClient() {
       return { data: result };
     }),
 
-    // Media services
-    uploadAgentMedia: MIGRATION_FLAGS.USE_NEW_MEDIA_API
-      ? wrapWithErrorHandling(async (agentId: string, file: File) => {
-          if (!newClient.media?.uploadAgentMedia) {
-            throw new Error('Media service not available');
-          }
-          const result = await newClient.media.uploadAgentMedia(agentId, {
-            file: file,
-            filename: file.name
-          });
-          // Adapt from MediaUploadResponse to { success: boolean; data: { url: string; type: string } }
-          return { 
-            success: true, 
-            data: { 
-              url: result.url, 
-              type: result.contentType || file.type 
-            } 
-          };
-        })
-      : legacyClient.uploadAgentMedia,
-    uploadChannelMedia: MIGRATION_FLAGS.USE_NEW_MEDIA_API
-      ? wrapWithErrorHandling(async (channelId: string, file: File) => {
-          if (!newClient.media?.uploadChannelMedia) {
-            throw new Error('Media service not available');
-          }
-          const result = await newClient.media.uploadChannelMedia(channelId, file);
-          // Adapt from ChannelUploadResponse to expected format
-          return { 
-            success: true, 
-            data: { 
-              url: result.url, 
-              type: result.contentType || file.type 
-            } 
-          };
-        })
-      : legacyClient.uploadChannelMedia,
+    // Media services - using NEW API client only
+    uploadAgentMedia: wrapWithErrorHandling(async (agentId: string, file: File) => {
+      if (!newClient.media?.uploadAgentMedia) {
+        throw new Error('Media service not available');
+      }
+      const result = await newClient.media.uploadAgentMedia(agentId, {
+        file: file,
+        filename: file.name
+      });
+      // Adapt from MediaUploadResponse to { success: boolean; data: { url: string; type: string } }
+      return { 
+        success: true, 
+        data: { 
+          url: result.url, 
+          type: result.contentType || file.type 
+        } 
+      };
+    }),
+    uploadChannelMedia: wrapWithErrorHandling(async (channelId: string, file: File) => {
+      if (!newClient.media?.uploadChannelMedia) {
+        throw new Error('Media service not available');
+      }
+      const result = await newClient.media.uploadChannelMedia(channelId, file);
+      // Adapt from ChannelUploadResponse to expected format
+      return { 
+        success: true, 
+        data: { 
+          url: result.url, 
+          type: result.contentType || file.type 
+        } 
+      };
+    }),
 
-    // Audio services
-    ttsStream: MIGRATION_FLAGS.USE_NEW_AUDIO_API
-      ? wrapWithErrorHandling(async (agentId: string, text: string) => {
-          if (!newClient.audio?.generateSpeech) {
-            throw new Error('Audio service not available');
-          }
-          const result = await newClient.audio.generateSpeech(agentId, { text });
-          // Convert audio data to Blob
-          // Assuming result.audio is base64 data
-          const audioData = atob(result.audio);
-          const bytes = new Uint8Array(audioData.length);
-          for (let i = 0; i < audioData.length; i++) {
-            bytes[i] = audioData.charCodeAt(i);
-          }
-          return new Blob([bytes], { type: 'audio/wav' });
-        })
-      : legacyClient.ttsStream,
-    transcribeAudio: MIGRATION_FLAGS.USE_NEW_AUDIO_API
-      ? wrapWithErrorHandling(async (agentId: string, audioBlob: Blob) => {
-          if (!newClient.audio?.transcribe) {
-            throw new Error('Audio service not available');
-          }
-          const result = await newClient.audio.transcribe(agentId, { audio: audioBlob });
-          // Adapt from TranscriptionResponse to { success: boolean; data: { text: string } }
-          return { 
-            success: true, 
-            data: { 
-              text: result.text || result.transcription || '' 
-            } 
-          };
-        })
-      : legacyClient.transcribeAudio,
+    // Audio services - using NEW API client only
+    ttsStream: wrapWithErrorHandling(async (agentId: string, text: string) => {
+      if (!newClient.audio?.generateSpeech) {
+        throw new Error('Audio service not available');
+      }
+      const result = await newClient.audio.generateSpeech(agentId, { text });
+      // Convert audio data to Blob
+      // Assuming result.audio is base64 data
+      const audioData = atob(result.audio);
+      const bytes = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        bytes[i] = audioData.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: 'audio/wav' });
+    }),
+    transcribeAudio: wrapWithErrorHandling(async (agentId: string, audioBlob: Blob) => {
+      if (!newClient.audio?.transcribe) {
+        throw new Error('Audio service not available');
+      }
+      const result = await newClient.audio.transcribe(agentId, { audio: audioBlob });
+      // Adapt from TranscriptionResponse to { success: boolean; data: { text: string } }
+      return { 
+        success: true, 
+        data: { 
+          text: result.text || result.transcription || '' 
+        } 
+      };
+    }),
 
-    // System services
-    ping: MIGRATION_FLAGS.USE_NEW_SYSTEM_API
-      ? wrapWithErrorHandling(async () => {
-          // New API doesn't have ping endpoint, return mock response
-          return { pong: true, timestamp: Date.now() };
-        })
-      : legacyClient.ping,
+    // System services - using NEW API client only
+    ping: wrapWithErrorHandling(async () => {
+      // New API doesn't have ping endpoint, return mock response
+      return { pong: true, timestamp: Date.now() };
+    }),
 
-    // Environment services
-    getLocalEnvs: MIGRATION_FLAGS.USE_NEW_ENVIRONMENT_API
-      ? wrapWithErrorHandling(async () => {
-          if (!newClient.system?.getEnvironment) {
-            throw new Error('System service not available');
-          }
-          const result = await newClient.system.getEnvironment();
-          // Adapt from Record<string, string> to { data: Record<string, string> }
-          return { data: result };
-        })
-      : legacyClient.getLocalEnvs,
-    updateLocalEnvs: MIGRATION_FLAGS.USE_NEW_ENVIRONMENT_API
-      ? wrapWithErrorHandling(async (envs: Record<string, string>) => {
-          if (!newClient.system?.updateLocalEnvironment) {
-            throw new Error('System service not available');
-          }
-          const result = await newClient.system.updateLocalEnvironment(envs);
-          // Adapt from { success: boolean; message: string } to expected format
-          return { success: result.success, message: result.message };
-        })
-      : legacyClient.updateLocalEnvs,
+    // Environment services - using NEW API client only
+    getLocalEnvs: wrapWithErrorHandling(async () => {
+      if (!newClient.system?.getEnvironment) {
+        throw new Error('System service not available');
+      }
+      const result = await newClient.system.getEnvironment();
+      // Adapt from Record<string, string> to { data: Record<string, string> }
+      return { data: result };
+    }),
+    updateLocalEnvs: wrapWithErrorHandling(async (envs: Record<string, string>) => {
+      if (!newClient.system?.updateLocalEnvironment) {
+        throw new Error('System service not available');
+      }
+      const result = await newClient.system.updateLocalEnvironment(envs);
+      // Adapt from { success: boolean; message: string } to expected format
+      return { success: result.success, message: result.message };
+    }),
 
-    // Global Logs services - using LEGACY (endpoints don't exist in new server yet)
+    // Global Logs services - using NEW API client only
     getGlobalLogs: wrapWithErrorHandling(async (params: any) => {
-      return await legacyClient.getGlobalLogs(params);
+      if (!newClient.system?.getGlobalLogs) {
+        throw new Error('System service not available');
+      }
+      const result = await newClient.system.getGlobalLogs(params);
+      return result;
     }),
     deleteGlobalLogs: wrapWithErrorHandling(async () => {
-      return await legacyClient.deleteGlobalLogs();
+      if (!newClient.system?.deleteGlobalLogs) {
+        throw new Error('System service not available');
+      }
+      const result = await newClient.system.deleteGlobalLogs();
+      return result;
     }),
 
-    // Server Management services - using LEGACY (endpoints don't exist in new server yet)
+    // Server Management services - using NEW API client only
     getAgentsForServer: wrapWithErrorHandling(async (serverId: string) => {
-      return await legacyClient.getAgentsForServer(serverId);
+      if (!newClient.agents?.getAgentsForServer) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.getAgentsForServer(serverId);
+      return result;
     }),
     addAgentToServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
-      return await legacyClient.addAgentToServer(serverId, agentId);
+      if (!newClient.agents?.addAgentToServer) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.addAgentToServer(serverId, agentId);
+      return result;
     }),
     removeAgentFromServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
-      return await legacyClient.removeAgentFromServer(serverId, agentId);
+      if (!newClient.agents?.removeAgentFromServer) {
+        throw new Error('Agents service not available');
+      }
+      const result = await newClient.agents.removeAgentFromServer(serverId, agentId);
+      return result;
     }),
 
-    // Channel Management services
-    getChannelTitle: wrapWithErrorHandling(async (channelId: string, contextId?: string) => {
-      // Using legacy for now - new API has generateChannelTitle but different signature
-      return await legacyClient.getChannelTitle(channelId, contextId);
+    // Channel Management services - using NEW API client only
+    getChannelTitle: wrapWithErrorHandling(async (channelId: string, agentId?: string) => {
+      if (!newClient.messaging?.generateChannelTitle) {
+        throw new Error('Messaging service not available');
+      }
+      const result = await newClient.messaging.generateChannelTitle(channelId);
+      // Adapt from { title: string } to expected format
+      return { 
+        success: true, 
+        data: { 
+          title: result.title, 
+          channelId: channelId 
+        } 
+      };
     }),
 
     // Additional Memory/Log Management services - using NEW API client only
@@ -414,18 +422,20 @@ export function createHybridClient() {
       return { success: true };
     }),
     deleteGroupMemory: wrapWithErrorHandling(async (serverId: string, memoryId: string) => {
-      if (!newClient.memory?.deleteGroupMemory) {
-        throw new Error('Memory service not available');
+      if (!newClient.messaging?.deleteMessage) {
+        throw new Error('Messaging service not available');
       }
-      const result = await newClient.memory.deleteGroupMemory(serverId, memoryId);
+      // Group memory deletion is actually a message deletion in the messaging system
+      const result = await newClient.messaging.deleteMessage(memoryId);
       return { success: result.success };
     }),
     clearGroupChat: wrapWithErrorHandling(async (serverId: string) => {
-      if (!newClient.memory?.clearGroupChat) {
-        throw new Error('Memory service not available');
+      if (!newClient.messaging?.clearChannelHistory) {
+        throw new Error('Messaging service not available');
       }
-      const result = await newClient.memory.clearGroupChat(serverId);
-      return { success: result.success };
+      // Clear group chat is actually clearing channel history in the messaging system
+      const result = await newClient.messaging.clearChannelHistory(serverId);
+      return { success: true, deleted: result.deleted };
     }),
     getAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string, includeEmbedding?: boolean) => {
       if (!newClient.memory?.getAgentInternalMemories) {
