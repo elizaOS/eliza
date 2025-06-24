@@ -36,7 +36,7 @@ describe('ElizaClient', () => {
 
   it('should pass config to all services', () => {
     const client = new ElizaClient(config);
-    
+
     // Test that services are initialized with the same config
     // by checking they're defined (more detailed tests would check internals)
     expect(client.agents).toBeDefined();

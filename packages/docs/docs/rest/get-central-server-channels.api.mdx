@@ -1,71 +1,118 @@
 ---
 id: get-central-server-channels
-title: "Get central server channels"
-description: "Get all channels for a server from central database"
-sidebar_label: "Get central server channels"
+title: 'Get central server channels'
+description: 'Get all channels for a server from central database'
+sidebar_label: 'Get central server channels'
 hide_title: true
 hide_table_of_contents: true
 api: eJy9Vk1z2zYQ/Ss7e2o9tKW0OfHmSdSMZpomEzvTg+3DCliRSECAAUDZiob/vbMgKdPWtE57qC8Ghd23bz/wgAMmqiKWN9hwjFQZV+FdgZqjCqZNxjss8R0nIGtB1eQc2whbH4AgcthxgG3wDSh2KZAFTYk2FBkL9C0HEoS1xhIrTm8Gm6vs9mbEwgJbCtRw4iA8DuioYSxxQF9rLNAIiZZSjQUG/taZwBrLFDouMKqaG8LygGnfZr8UJIkCtz40lLDErjMa+/5OnGPrXeQo9r8sl/LvaaoTLQicguEda4idUhzjtrN2jwUq7xK7JK7UttaonOPiSxT/wykfv/nCKkmaQSqSzBB9RJ0Zbry3TA77AqWKsx0KgSS0SdzEl6GNfrkcz1v82ZlvHYPR7JLZGmmrD5BqnpoutIbOnEI/hfqDGga/fe587Oe/5rZ+O8GNE5dqEydo2LD1roqQvEQZkE8jsOsamfLED1KwnTdKZlQ3WGAVfNeeTv31vs15zHJ4YvBSHcZRgvmvfYENJ3rW32MfnwJcam1kSceTB0fnXnI1yfJjIOyHvwJfL1+fTvZw7MD5BFvfOf1/jHKB/EBNKyy3ZCP3BXIIPryMqbz+gVFbCRhk21xZUbAfdpvMc18TGRtf9nybDVlDTgOMGyY3t7af9ySHwLEfDafajyKY9S7VWOKCWrM4qu5iVNDzYcbj4jAdmH6hHrVy3M1C2QWLJdYpteViYb0iW/uYyl+Xy+UJ8d9lGzTv2Pq2YZfGs4Qii5JGzn0ib813gg9XcPlxfTqVH9egveoEJGeeleLosnt1sbx4tYRzuISt5QezsQzkNERFluTjcg1UCYOtyP69D18vbt2tu5ZDLeAmypExlWMNycOGoYus4d6kGghynnYPoXPOuGoMbFxM5BRfwMrp1huXotxY/j6TU4EpGVcVt64hl8tdZE7GJQ6kZG/An7hFSHXwXSURP62urgfLLSkeufJE1YeKnPnOGcxnldp6iSyY2jdkXCxv3TmcnV3tY+Lm7KyEYXV+bzTD8ZqMmRK7nQne5RZlsizLAeAyUxOAvAJrtqz2aizwo/UMc3B8z40P+0fHJn9nr+B9cxLo/TSV4jJ8MNTktM2lm+ZxKOI4kiPFThufA8kC2uBFGqQW2bRlVjXEvUs1R3Nkpw2Jz2/GMnSt9aSHjGTjhNz1aiXG16GLiTWsHlh1eQ5Xs9I9r8CfvLny6isncf3EZM+TaRiUb5rOjcIHO0MwWF2sP8gtwSEOQz8M9SiZpLJkju+U4+S/GbCS3NSPRzOWi0VlUt1tLpRvFizWPg7/s4q3PqaG3AxRnlvTe2q88WYK8OwOOmr4f3yljXon9+KitWTyHZXpH0ahukFqDRazB2KBz8QKCyxn77Uj27sCRZIE43CQgJ+D7Xv5+VvHYY/lzV2BOwpGhCFrmjZR1nq8MP4h3Z8+jS/Bn+Hv0pieT05asiPbyRcW+JX38wdmf9cXWDNpDpnDsH2pFLdp5nhyRYp0HqX93eoa+/4vE6jt8A==
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
 <Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get central server channels"}
->
-</Heading>
+  as={'h1'}
+  className={'openapi__heading'}
+  children={'Get central server channels'}
+></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/messaging/central-servers/{serverId}/channels"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/messaging/central-servers/{serverId}/channels'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get all channels for a server from central database
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"serverId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'serverId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Channels retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the channel"},"name":{"type":"string","description":"Name of the channel"},"serverId":{"type":"string","format":"uuid","description":"ID of the server this channel belongs to"},"type":{"type":"string","enum":["text","voice","dm","group"],"description":"Type of channel"},"description":{"type":"string","description":"Channel description"},"metadata":{"type":"object","description":"Additional channel metadata"}},"title":"Channel"}}}}}}},"404":{"description":"Server not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Channels retrieved successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'Unique identifier for the channel',
+                    },
+                    name: { type: 'string', description: 'Name of the channel' },
+                    serverId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'ID of the server this channel belongs to',
+                    },
+                    type: {
+                      type: 'string',
+                      enum: ['text', 'voice', 'dm', 'group'],
+                      description: 'Type of channel',
+                    },
+                    description: { type: 'string', description: 'Channel description' },
+                    metadata: { type: 'object', description: 'Additional channel metadata' },
+                  },
+                  title: 'Channel',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Server not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

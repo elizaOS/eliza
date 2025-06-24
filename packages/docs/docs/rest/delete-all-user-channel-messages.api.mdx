@@ -1,71 +1,112 @@
 ---
 id: delete-all-user-channel-messages
-title: "Delete all channel messages by user"
-description: "Delete all messages by a specific user in a channel"
-sidebar_label: "Delete all channel messages by user"
+title: 'Delete all channel messages by user'
+description: 'Delete all messages by a specific user in a channel'
+sidebar_label: 'Delete all channel messages by user'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVk1vGzcQ/SuDObXG2qu0Oe1NsFVAQIwEtoMeYh9G5EjLmEtuSK5sRdj/Xgx39WErbYq2yKm6aCXOvHnzyH2cLSZaRaw+YcMx0sq4FT4UqDmqYNpkvMMKr9hyYiBrYYjiCIsNEMSWlVkaBV3kAMYBgarJObZYoG85kCDMNVaoM8bU2o+Rw+UQdD2CYYEtBWo4cRAuW3TUMFY4gs01FmiESUupxgIDf+lMYI1VCh0XGFXNDWG1xbRpJTGmIJ0UuPShoYQVdp3R2PfFHlsoH4C/dBw2/wr5QZJj613kKPG/TCby9VLJXccwyKEhdkpxjMvOWimvvEvskiRS21qjsoDl5yjZ21M2fvGZVRL9gsidzFB7RD0KXHhvmRz2xbgT+tJ3Q6ExwrjEKw7Y50+Bb7/Ff+7WZI0GkYlj+hGMC+RnalrLWC3JRu4L5BB8+D6m8pq/tXMvW5oJGOTYvhjfgr+dtgvPsiYyNn4/8yoHsobcBhg3nCRZHJRPJkm3Qwnc7cbb090YXyNwPsHSd07/vx8/Zj8ysVT7g7FlC0s1VlhSa8q9mZaKXQpkz0cri+V2b2p9uXPTkqw4ZuSw3jlgFyxWWKfUVmVpvSJb+5iqXyeTyUkH72QZNK/Z+rZhl2BAQjEl6SeLsOvCmq8E729h+mF+gjT9MAftVScgWQJY+gD7lPWbi8nFmwmcwxSWlp/NwjKQ0xAVWZIf0znQShgsxc+ffHi8uHf37q42UQqCEeuLZuVYQ/KwYLk6NDyZVANB7tNuIHTOGbcaCxsXEznFFzBzuvXGpSh3kX/K5FRgSsatinvXkMuiF5mTGFogJWsD/o5bhFQH362k4s3s9m6IXJLikSvvqPqwIme+cgbzkGqGpZfKgql9Q8bF6t6dw9nZ7SYmbs7OKhiezp+MZtjfgTFTYrc2wbu8RZksy+MAMM3UBCA/gTVLVhs1CnyIPsIcEq+58WFzSGzy75wVvG9OCl3vzqakjBcS1OS0zdLtDuog4ngkR4qdNj4XkgdogxePEC1yaMusaogbl2qOZs9OG5Kc34xl6FrrSQ8dycIJubvZTILvQhflepw9s+ryOZwdSfdagd95cevVIydJvWGy58k0DMo3TedGB4S1IRiiLubvsUBpazj0w6EevZNU9s5xSNif/MsBK8klfXg1Y1WWK5PqbnGhfFOyRPs4fMuwga2PqSF3hHg0S41Kv5ipZCp5/VZuD6b+D0ex0QATP6eytWTyHJDb2I629QmpNVgcTYEFvrYuLLA6nsiaw/gm/vVQoFiUYG23C4r8Mdi+l7+H4UpcTZsoNqHHu+MvGv3pZpzEfoY/a+CRN8dz3JpsJ0HZ9dYUjFT676uOf5LbHNfcsTno0z/0BdZMmkMmMaxPleI2HWWeXNLCfn+5XM3eze5m2Pd/AC/aC2U=
-sidebar_class_name: "delete api-method"
+sidebar_class_name: 'delete api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
 <Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Delete all channel messages by user"}
->
-</Heading>
+  as={'h1'}
+  className={'openapi__heading'}
+  children={'Delete all channel messages by user'}
+></Heading>
 
 <MethodEndpoint
-  method={"delete"}
-  path={"/api/messaging/central-channels/{channelId}/messages/all"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'delete'}
+  path={'/api/messaging/central-channels/{channelId}/messages/all'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Delete all messages by a specific user in a channel
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"userId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+    { name: 'userId', in: 'query', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Messages deleted successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"deletedCount":{"type":"integer"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Messages deleted successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { success: { type: 'boolean' }, deletedCount: { type: 'integer' } },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

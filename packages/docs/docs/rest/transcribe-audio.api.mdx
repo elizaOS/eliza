@@ -1,71 +1,179 @@
 ---
 id: transcribe-audio
-title: "Transcribe audio"
-description: "Transcribe audio file to text"
-sidebar_label: "Transcribe audio"
+title: 'Transcribe audio'
+description: 'Transcribe audio file to text'
+sidebar_label: 'Transcribe audio'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tv2zgQ/ivEnHYDxXZ224tu2dYLGNgiQeJiD0kOY3JssaFIlaScuIb+ezGk/KjjJD3lFF8sSvP4+M1wOLOGiIsA5Q1gq7SDuwIUBel1E7WzUMLUo+X1jESSEHNtSEQnIj1GKMA15JFlJwpKiFvp82SugAY91hTJs5M1WKwJSsAF2ThRUIBmJw3GCgrw9L3VnhSU0bdUQJAV1QjlGuKqYbUQvbYLKGDufI0RSmhbraA7BD35LNxcxIpEcgTdXTZOIf7j1IotHvqSzkYWLddQtybqBn0csptThTFheILGzb6RZA4azyxETYG/MkEvYp5pi34Fh6DPf6V3yyRvrw3kmeDXmHieCLYAXfoxF6FxNmS8f41G/HcMzA6EEqGVkkKYt8Yw9j2+sGmMlikJht8Cq/8+Wb3VPcGZc4bQQgH0iHXDXHKEOMZ9IF62mPLyCFHPpbXKmdx1G3I+HONjYpdotBJ9Fr0xAXM0gRkg751/3aZ06mgG/rqlMRsTSbYroKYQcPHbahvxdPQiahNe1/ycBEmJtA2hbc5d/piZjzrybrML2ETjw5Hs5FMtrIti7lqr3qPxZtE4+/g0Gl9taJvG+UhK1KQ0iuT5PShvFJSPxwpWxrAt4Nou8v39Hpa3CUsCFivHXVHj0o2RupwShtjoYYrFcN33Qd1wE6jkMUABgfxy0zS13kAJVYxNORwaJ9FULsTy79Fo9ATqf/xZKFqScU3NZTJbSj0QA0+73cA1+geKi2txfjl52o9cToRysmUjaa9i7rzYqizPBqPB2UicinMxN/SoZ4YEWiWCRIO8OJ/k9kvMuQV8cP5+cGtv7bTSgR0KHYSioBeW72AnZqlJUeJBx0qgSPs0K+Fbazl7s2NtQ0QraSDGVjVO2xgEGuMeEjjpCaO2i+LW1mhxwY8Jk7aRPEr+lu1vsAURK+/aBXu8Gl9Ps+QcJfVYaQPV+QVa/YOSMZd6qrljz2xTuRq1DeWtPRUnJ9erEKk+OSlFfjp90IrEtlMOCRLZpfbOphAlsMSP2UC63wIbyDed0XOSK9kTvJPes5kVv1Dt/GqnWKd10vLO1U8cfUmHQdsFq+QFiQqtMok6WaG1ZEImsU/JHiIncHKUOsXGOy4GqcywaEMkKxFWNlYU9Bad0sg6/3KT2zbGoco7SrfGIbjpeMzCU98GvlrGjyTblIfjPeoOGfifZtdO3lNk1StCcxp1TUK6um5tX+rEUqPIUoPJBRTA28pJn5O6L5IoU5HsZ5Zt5n/KtiK3wbujGcrhcKFj1c4G0tVDYmkX8j9wOeAqUKPds3g4Wx0ewfWuVL86h/UFjFfDxqC2aWxgdOu+8NwANhoK2Lgqd0PYQfW5K4ALDKus1zMM9NWbruPX31vyKyhv7gpYotd8zFOFUjrws+oL/gv7+OOqH7z+FIdT2jOb6F+iZb6XaFpeQQH3tNqbJLu7roCKUJFPiPLXT9nv6TQ3JBvtYxNeV2yUzqWkJu6JP7kluZZuq/vlxfUUCpj1g2WdrrA0lyW7xe6xvLnruu4nBtBhdw==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Transcribe audio"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Transcribe audio'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/audio/{agentId}/transcriptions"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/audio/{agentId}/transcriptions'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Transcribe audio file to text
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Audio file to transcribe"},"userId":{"type":"string","format":"uuid","description":"ID of the user"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', format: 'binary', description: 'Audio file to transcribe' },
+            userId: { type: 'string', format: 'uuid', description: 'ID of the user' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Audio transcribed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"text":{"type":"string","description":"Transcribed text"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"415":{"description":"Unsupported media type","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error transcribing audio","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Audio transcribed successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: { text: { type: 'string', description: 'Transcribed text' } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '415': {
+      description: 'Unsupported media type',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error transcribing audio',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

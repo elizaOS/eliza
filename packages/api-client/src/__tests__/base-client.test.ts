@@ -58,7 +58,7 @@ describe('BaseApiClient', () => {
       expect(url).toBe('http://localhost:3000/api/test');
       expect(options.method).toBe('GET');
       expect(options.headers['X-API-KEY']).toBe('test-key');
-      
+
       return {
         ok: true,
         json: async () => mockResponse,
@@ -80,7 +80,7 @@ describe('BaseApiClient', () => {
       expect(url).toBe('http://localhost:3000/api/test');
       expect(options.method).toBe('POST');
       expect(options.body).toBe(JSON.stringify(body));
-      
+
       return {
         ok: true,
         json: async () => mockResponse,
@@ -98,7 +98,7 @@ describe('BaseApiClient', () => {
     global.fetch = async (url: string, options: any) => {
       expect(options.headers['Content-Type']).toBeUndefined();
       expect(options.body).toBe(formData);
-      
+
       return {
         ok: true,
         json: async () => ({ success: true, data: { uploaded: true } }),
@@ -111,7 +111,7 @@ describe('BaseApiClient', () => {
   it('should add query parameters', async () => {
     global.fetch = async (url: string) => {
       expect(url).toBe('http://localhost:3000/api/test?page=1&limit=10&filter=active');
-      
+
       return {
         ok: true,
         json: async () => ({ success: true, data: [] }),
@@ -133,11 +133,12 @@ describe('BaseApiClient', () => {
       },
     };
 
-    global.fetch = async () => ({
-      ok: false,
-      status: 404,
-      json: async () => errorResponse,
-    } as Response);
+    global.fetch = async () =>
+      ({
+        ok: false,
+        status: 404,
+        json: async () => errorResponse,
+      }) as Response;
 
     try {
       await client.testGet('/api/test');

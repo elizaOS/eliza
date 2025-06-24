@@ -1,6 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, mock, spyOn } from 'bun:test';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+  mock,
+  spyOn,
+} from 'bun:test';
 import { ServerService } from '../../services/server';
-import type { ServerHealth, ServerStatus, ServerDebugInfo, LogSubmitParams } from '../../types/server';
+import type {
+  ServerHealth,
+  ServerStatus,
+  ServerDebugInfo,
+  LogSubmitParams,
+} from '../../types/server';
 
 // Mock the BaseApiClient
 mock.module('../../lib/base-client', () => ({
@@ -17,8 +32,8 @@ const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
 
 beforeEach(() => {
-  console.error = mock(() => { });
-  console.warn = mock(() => { });
+  console.error = mock(() => {});
+  console.warn = mock(() => {});
 });
 
 afterAll(() => {
@@ -68,7 +83,7 @@ describe('ServerService', () => {
       status: 'healthy',
       timestamp: new Date('2024-01-01T00:00:00Z'),
       uptime: 12345,
-      version: '1.0.0'
+      version: '1.0.0',
     };
 
     it('should return health status successfully', async () => {
@@ -125,15 +140,15 @@ describe('ServerService', () => {
       agents: {
         total: 10,
         active: 5,
-        inactive: 5
+        inactive: 5,
       },
       memory: {
         used: 500,
         total: 1000,
-        percentage: 50
+        percentage: 50,
       },
       uptime: 12345,
-      version: '1.0.0'
+      version: '1.0.0',
     };
 
     it('should return server status successfully', async () => {
@@ -163,12 +178,12 @@ describe('ServerService', () => {
       runtime: {
         agents: [],
         connections: 5,
-        memory: { used: 100, total: 1000 }
+        memory: { used: 100, total: 1000 },
       },
       environment: {
         NODE_ENV: 'test',
-        VERSION: '1.0.0'
-      }
+        VERSION: '1.0.0',
+      },
     };
 
     it('should return debug info successfully', async () => {
@@ -183,7 +198,12 @@ describe('ServerService', () => {
 
   describe('submitLogs', () => {
     const mockLogs: LogSubmitParams[] = [
-      { level: 'info', message: 'Test log', source: 'test', metadata: { timestamp: '2024-01-01T00:00:00Z' } }
+      {
+        level: 'info',
+        message: 'Test log',
+        source: 'test',
+        metadata: { timestamp: '2024-01-01T00:00:00Z' },
+      },
     ];
 
     it('should submit logs successfully', async () => {

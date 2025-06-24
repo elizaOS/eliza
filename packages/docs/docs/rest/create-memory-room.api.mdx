@@ -1,71 +1,177 @@
 ---
 id: create-memory-room
-title: "Create a room"
-description: "Create a new room for an agent"
-sidebar_label: "Create a room"
+title: 'Create a room'
+description: 'Create a new room for an agent'
+sidebar_label: 'Create a room'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tvGzcQ/isET62xsuT4kXZvqq22AhLbsB30YPswIme1TLjkhuRKVgT992LI1Tt+FAVyii7i7s7jm/dwzgOMPc/veYWVdTP+mHGJXjhVB2UNz/m5QwjIgBmcMmdtxQrrGBgGYzSBZ9zW6ICIh5LnXETyj1HYjbUVz3gNDioM6EjPnBuokOc8sg8lz7giNTWEkmfc4ddGOZQ8D67BjHtRYgU8n/Mwq4nNB6fMmGe8sK6CwHPeNEryxS7s4QWzBQsltjgXj0k4+vCHlTOSuKtLWBOINJ9zqGutRLSq+9mTwPk+FDv6jCJsgb5P1j1mvHbkl6DQE0eyed+IbcyXUOESNXmarEoc+5xomor0XXzkGf/r5urTNc/4+d/9y8vBhxTEAhpN/okU24ruZnVUtFTibePEMwCXYoRWKd7bom4j6y7qqXVaUj68FrfnwxZFRHDoJui+L2wHS6RkwwtiqzCAhPDdgG2z9aVUdASd8nvFuYg/iq+vrfEplO96R/S3LYIynaXUl8w3QqD3RaP1jP+PtNpOoVbqBuHIWo1gKBmeoKo1pkSmUnjG7m2J6g3xWWTP5O4iW1XwW4S0vumHDWplAo7RvZSAzxbAf8mxF3PoxUxZLJYpcNLr7Ud9aCaglUwdhlHqOlYp75UZs2VPYIVCLf0PzoMCtKdEQOese12msPIN7WlAwlikjV7zHsZvZluSx0YdQGn/OudFJETJohlMmRRX+piiElQga5MKvozUyX6k+jFCxgZW2MbIn9H4UdE4/V7dtNCpJcRSSWvCz4j8gIikdldaWtVq66OptHnlvAu16qYlsDtvW/uiS7Gh5pUaaFrgGqd5zssQ6rzb1VaALq0P+XGv19uD+IE+M4kT1LauqAiTpLiPUWhv1jvZYBmd1Y64srv1Q1xllrNivZGsJgE/LuC30+LspHP6/uh95+T07F1ndFyIzjvx+9lxcXYGBZzxzXGwVrExBchL5MwYgaULtfoG7OqW9a+H+xvE9ZBJKxoyMPo/7sgrlsnRYe/wqMc6rM8KjU9qpJGBkcwL0EAP/WE7RApalafWfTl8MA/mrlSeFDLlmUSvxgYlC5aNkDUeJZuqUDJgMQZ6xlxjDBVUUqyMD2AEHrKBkbVVJngGWttpBLesvuzBVGBgTMeIiaayAxErM8pfYvMslM42Y9J4M7i9S5QFCGyx4hKqdWMw6htGYTZuc4UlzSRT2gqU8fmD6bCDg9uZD1gdHOQsnTpTJZGtrhQ+QkIzUc6amD4RLNIxCYid3ZOA1OO1KlDMROvgNfWGzMSYrihrxpT6kSttgTuKPsYCVWZMLOkBWQlG6ug6UYIxqH1yYlsuLcRGKhsV0YHVzlKDIl9E0hpRlMzPTCjRqxU6qYB4/lQaWVNrCzJZRB/2wN0NBkR85xpPG+jgCUUT83Cw4bpdD/yDo1srvmAg1hsE3QmqQiZsVTWmbb9sooAlqsPhFc84mZWSPiV127hBhI26XWX+eZIVaA9etw2fd7tjFcpmdChs1UWitj79cyo+6kwVmA2Jq1toOyy26m++nh2vX1fbVhLwKXRrDcpQy43Y5m0rvOdQq9gR4o044/n6rpr64WPGqeUR6Xw+Ao+fnF4s6PXXBt2M5/ePGZ+AU1TcsWdK5eks29HzggG/3LSb469s9w77DPj2JRjCOgHd0BPP+BecbdyzF4+LjJcIEl1ElL6eJ70duhFucO8N4EW25OgLgXV4kfZxY8hcX93e8YyP2jt3FScpdzAlZ8I0IbXRD3HixXdzrsGMmzg+eZJJv38Bn9C8mg==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Create a room"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Create a room'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/memory/{agentId}/rooms"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/memory/{agentId}/rooms'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Create a new room for an agent
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["name"],"properties":{"name":{"type":"string","description":"Name of the room"},"type":{"type":"string","enum":["DM","GROUP","CHANNEL"],"default":"DM","description":"Type of room"},"source":{"type":"string","default":"client","description":"Source of the room"},"worldId":{"type":"string","format":"uuid","description":"ID of the world"},"serverId":{"type":"string","description":"Server ID"},"metadata":{"type":"object","description":"Additional room metadata"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', description: 'Name of the room' },
+            type: {
+              type: 'string',
+              enum: ['DM', 'GROUP', 'CHANNEL'],
+              default: 'DM',
+              description: 'Type of room',
+            },
+            source: { type: 'string', default: 'client', description: 'Source of the room' },
+            worldId: { type: 'string', format: 'uuid', description: 'ID of the world' },
+            serverId: { type: 'string', description: 'Server ID' },
+            metadata: { type: 'object', description: 'Additional room metadata' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"201":{"description":"Room created successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"agentId":{"type":"string","format":"uuid"},"createdAt":{"type":"integer"},"source":{"type":"string"},"type":{"type":"string"},"worldId":{"type":"string","format":"uuid"},"serverId":{"type":"string"},"metadata":{"type":"object"}}}}}}}},"400":{"description":"Invalid agent ID or missing required fields","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error creating room","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '201': {
+      description: 'Room created successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  agentId: { type: 'string', format: 'uuid' },
+                  createdAt: { type: 'integer' },
+                  source: { type: 'string' },
+                  type: { type: 'string' },
+                  worldId: { type: 'string', format: 'uuid' },
+                  serverId: { type: 'string' },
+                  metadata: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing required fields',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error creating room',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

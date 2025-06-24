@@ -1,71 +1,131 @@
 ---
 id: process-external-message
-title: "Process external message"
-description: "Process a message from an external platform"
-sidebar_label: "Process external message"
+title: 'Process external message'
+description: 'Process a message from an external platform'
+sidebar_label: 'Process external message'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV01v4zgM/SsCj4XbZPbj4ltmNgsE2KJFm8Ue2hwYiYk1lSWPJCfNBPnvC0p24jbBzC4WmNPmEtkiH59IiqT3EHEdoHyCmkLAtbZrWBSgKEivm6idhRLuvZMUgkCRhUisvKsFWkGvkbxFIxqDceV8DQW4hjyy5kxBCU3WnXaCtxkACvD0paUQPzq1g3KfHrUnBWX0LRUgnY1kI29h0xgtE+Toc2BGewiyohp5FXcNQQlu+Zlk7HAz0BMMWHXMZwoKkBVaSyat20A+v+wMLgrm3JCPmgIbOIKcjIXo2VEFkG1rNqR0kM4zTCRDa49sMm51jORhcRiaP0M5DAld2u0oXlQ8eelsD2NEWdVkYxjso/e4gwJ0pDqc+++QuEZUGC9495B+7OPQOBuyf34aj/nvbcp0cRZd+EmJ0EperVpjdvAf4vs2OB3qQHDpnCG07IHLh3gP8e3Q9Ee9sHno3fHLJQ/M7AaNVqLL8x9x5ALoFevGEJQrNIEOBZD3zn8fUzp14YTv68CUwUSSPaX0P1XrxTkuFFGb8H3N35IgKZGOIbTle5i8BtnzUUc+bTbRvfv1UjQyhy4btV0f6fwflh8SllxWKpdagkvXocFYQQkjbPTo2HxGfUe57ogFKCCQ35DnLrWH1hsooYqxKUcj4ySayoVY/jwej894/sHbQtGGjGu4EIqMBIdFARzfh1MPmvYhGhb8QV0fVImTWwZ1+/SyL9cDsT7DTq/eFOenPRMalF12F3s1haL3pdFfUdw9isn97Oykk/uZUE62DJgCIVbOi6PK5sPN+ObDWFyLiVgZetVLQwKtEkGiQX6YzASu2UMrjzVtnX+5ebbPdl7pwAaFDkJR0GtLSkQnliRaLupbHSuBIsXB7IRvreXLlQ1rGyJaSTdialXjtI1BoDFum8hJTxi1XRfPtkabgl8kTtpG8ih5L+P33IKIlXftmi0+TB/nWXKFkjqu1FN1fo1Wf6UE5kSsSKwcW2ZM5WrUNpTP9lpcXT3uQqT66qoUeXW91YrEcYYJiRLZjfbOphRKZImXGWCSqDFAWgmjVyR3snPwSXqAmRVvqXZ+d1Ks03PS8s7VZ4Zu+zvCKn1/rdAqk1zX5WLITuyuTEexVdolQ7wYVsEk2hDJSoSdjRUFfWSnNLLO79qQaBvjUOUT8cYZufl0ysJz34ZISkxfSbYpD6cD1733wF+0fHTyhSKrPhCa66hrEtLVdWu7Oiw2GkWWupndQQF8rJz0Oam7+4UyVXCL9ZvL8iljRR45TqUjlKPRWseqXd5IV4+IpV3I/2kE4hJVox0g9jPwceI9NZA3V3E/uO3/bm7uam6k1zhqDOo0wiTO+65WPgE2+liLugn0rF4uCuCSyOL7/RID/enN4cCvv7Tkd1A+LQrYoNd88fnpUEBFqMinAvtCOyjhUz7E9ZxJsbhp0/T4vkEeil5jIiU18Zuyi0ETuL97nEMBy278r1OnA49bHuFxCyWkT4mULen7gN/twaBdt6m9Qcbk398QUHWA
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Process external message"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Process external message'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/messaging/external-messages"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/messaging/external-messages'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Process a message from an external platform
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["platform","messageId","channelId","userId","content"],"properties":{"platform":{"type":"string","enum":["discord","telegram","twitter"]},"messageId":{"type":"string"},"channelId":{"type":"string"},"userId":{"type":"string"},"content":{"type":"string"},"attachments":{"type":"array","items":{"type":"object"}},"metadata":{"type":"object"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          required: ['platform', 'messageId', 'channelId', 'userId', 'content'],
+          properties: {
+            platform: { type: 'string', enum: ['discord', 'telegram', 'twitter'] },
+            messageId: { type: 'string' },
+            channelId: { type: 'string' },
+            userId: { type: 'string' },
+            content: { type: 'string' },
+            attachments: { type: 'array', items: { type: 'object' } },
+            metadata: { type: 'object' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Message processed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"object","properties":{"messageId":{"type":"string"},"response":{"type":"string"}}}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing message","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Message processed successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'object',
+                properties: { messageId: { type: 'string' }, response: { type: 'string' } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error processing message',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

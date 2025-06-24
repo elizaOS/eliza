@@ -59,16 +59,16 @@ describe('AgentsService', () => {
             name: 'Agent 1',
             status: 'active' as const,
             createdAt: new Date('2024-01-01T00:00:00Z'),
-            updatedAt: new Date('2024-01-01T00:00:00Z')
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
           },
           {
             id: TEST_AGENT_ID_2,
             name: 'Agent 2',
             status: 'inactive' as const,
             createdAt: new Date('2024-01-01T00:00:00Z'),
-            updatedAt: new Date('2024-01-01T00:00:00Z')
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
           },
-        ]
+        ],
       };
       (agentsService as any).get.mockResolvedValue(mockResponse);
 
@@ -86,7 +86,7 @@ describe('AgentsService', () => {
         name: 'Test Agent',
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z')
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
       };
       (agentsService as any).get.mockResolvedValue(mockAgent);
 
@@ -99,8 +99,7 @@ describe('AgentsService', () => {
     it('should handle agent not found', async () => {
       (agentsService as any).get.mockRejectedValue(new Error('Agent not found'));
 
-      await expect(agentsService.getAgent(TEST_AGENT_ID))
-        .rejects.toThrow('Agent not found');
+      await expect(agentsService.getAgent(TEST_AGENT_ID)).rejects.toThrow('Agent not found');
     });
   });
 
@@ -119,7 +118,7 @@ describe('AgentsService', () => {
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
-        metadata: createParams.metadata
+        metadata: createParams.metadata,
       };
       (agentsService as any).post.mockResolvedValue(mockResponse);
 
@@ -132,8 +131,7 @@ describe('AgentsService', () => {
     it('should handle validation errors', async () => {
       (agentsService as any).post.mockRejectedValue(new Error('Validation failed'));
 
-      await expect(agentsService.createAgent(createParams))
-        .rejects.toThrow('Validation failed');
+      await expect(agentsService.createAgent(createParams)).rejects.toThrow('Validation failed');
     });
   });
 
@@ -150,13 +148,16 @@ describe('AgentsService', () => {
         description: updateParams.description,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z')
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
       };
       (agentsService as any).patch.mockResolvedValue(mockResponse);
 
       const result = await agentsService.updateAgent(TEST_AGENT_ID, updateParams);
 
-      expect((agentsService as any).patch).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}`, updateParams);
+      expect((agentsService as any).patch).toHaveBeenCalledWith(
+        `/api/agents/${TEST_AGENT_ID}`,
+        updateParams
+      );
       expect(result).toEqual(mockResponse);
     });
 
@@ -167,13 +168,16 @@ describe('AgentsService', () => {
         name: partialUpdate.name,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z')
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
       };
       (agentsService as any).patch.mockResolvedValue(mockResponse);
 
       await agentsService.updateAgent(TEST_AGENT_ID, partialUpdate);
 
-      expect((agentsService as any).patch).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}`, partialUpdate);
+      expect((agentsService as any).patch).toHaveBeenCalledWith(
+        `/api/agents/${TEST_AGENT_ID}`,
+        partialUpdate
+      );
     });
   });
 
@@ -191,8 +195,7 @@ describe('AgentsService', () => {
     it('should handle deletion errors', async () => {
       (agentsService as any).delete.mockRejectedValue(new Error('Deletion failed'));
 
-      await expect(agentsService.deleteAgent(TEST_AGENT_ID))
-        .rejects.toThrow('Deletion failed');
+      await expect(agentsService.deleteAgent(TEST_AGENT_ID)).rejects.toThrow('Deletion failed');
     });
   });
 
@@ -203,7 +206,9 @@ describe('AgentsService', () => {
 
       const result = await agentsService.startAgent(TEST_AGENT_ID);
 
-      expect((agentsService as any).post).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}/start`);
+      expect((agentsService as any).post).toHaveBeenCalledWith(
+        `/api/agents/${TEST_AGENT_ID}/start`
+      );
       expect(result).toEqual(mockResponse);
     });
   });
@@ -226,7 +231,7 @@ describe('AgentsService', () => {
         worlds: [
           { id: TEST_WORLD_ID, name: 'World 1' },
           { id: '550e8400-e29b-41d4-a716-446655440005' as UUID, name: 'World 2' },
-        ]
+        ],
       };
       (agentsService as any).get.mockResolvedValue(mockResponse);
 
@@ -259,7 +264,11 @@ describe('AgentsService', () => {
       const mockResponse = { worldId: TEST_WORLD_ID, settings };
       (agentsService as any).patch.mockResolvedValue(mockResponse);
 
-      const result = await agentsService.updateAgentWorldSettings(TEST_AGENT_ID, TEST_WORLD_ID, settings);
+      const result = await agentsService.updateAgentWorldSettings(
+        TEST_AGENT_ID,
+        TEST_WORLD_ID,
+        settings
+      );
 
       expect((agentsService as any).patch).toHaveBeenCalledWith(
         `/api/agents/${TEST_AGENT_ID}/worlds/${TEST_WORLD_ID}`,
@@ -275,13 +284,15 @@ describe('AgentsService', () => {
         panels: [
           { id: 'panel-1', name: 'Panel 1', url: '/panel1', type: 'dashboard' },
           { id: 'panel-2', name: 'Panel 2', url: '/panel2', type: 'logs' },
-        ]
+        ],
       };
       (agentsService as any).get.mockResolvedValue(mockResponse);
 
       const result = await agentsService.getAgentPanels(TEST_AGENT_ID);
 
-      expect((agentsService as any).get).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}/panels`);
+      expect((agentsService as any).get).toHaveBeenCalledWith(
+        `/api/agents/${TEST_AGENT_ID}/panels`
+      );
       expect(result).toEqual(mockResponse);
     });
   });
@@ -295,25 +306,24 @@ describe('AgentsService', () => {
             agentId: TEST_AGENT_ID,
             timestamp: new Date('2024-01-01T00:00:00Z'),
             level: 'info' as const,
-            message: 'Agent started'
+            message: 'Agent started',
           },
           {
             id: '550e8400-e29b-41d4-a716-446655440006' as UUID,
             agentId: TEST_AGENT_ID,
             timestamp: new Date('2024-01-01T00:01:00Z'),
             level: 'debug' as const,
-            message: 'Processing message'
+            message: 'Processing message',
           },
-        ]
+        ],
       };
       (agentsService as any).get.mockResolvedValue(mockLogs);
 
       const result = await agentsService.getAgentLogs(TEST_AGENT_ID);
 
-      expect((agentsService as any).get).toHaveBeenCalledWith(
-        `/api/agents/${TEST_AGENT_ID}/logs`,
-        { params: undefined }
-      );
+      expect((agentsService as any).get).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}/logs`, {
+        params: undefined,
+      });
       expect(result).toEqual(mockLogs);
     });
 
@@ -323,10 +333,9 @@ describe('AgentsService', () => {
 
       await agentsService.getAgentLogs(TEST_AGENT_ID, params);
 
-      expect((agentsService as any).get).toHaveBeenCalledWith(
-        `/api/agents/${TEST_AGENT_ID}/logs`,
-        { params }
-      );
+      expect((agentsService as any).get).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}/logs`, {
+        params,
+      });
     });
   });
 
@@ -337,7 +346,9 @@ describe('AgentsService', () => {
 
       const result = await agentsService.deleteAgentLog(TEST_AGENT_ID, TEST_LOG_ID);
 
-      expect((agentsService as any).delete).toHaveBeenCalledWith(`/api/agents/${TEST_AGENT_ID}/logs/${TEST_LOG_ID}`);
+      expect((agentsService as any).delete).toHaveBeenCalledWith(
+        `/api/agents/${TEST_AGENT_ID}/logs/${TEST_LOG_ID}`
+      );
       expect(result).toEqual(mockResponse);
     });
   });
@@ -346,29 +357,25 @@ describe('AgentsService', () => {
     it('should handle network errors', async () => {
       (agentsService as any).get.mockRejectedValue(new Error('Network error'));
 
-      await expect(agentsService.listAgents())
-        .rejects.toThrow('Network error');
+      await expect(agentsService.listAgents()).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {
       (agentsService as any).post.mockRejectedValue(new Error('API error'));
 
-      await expect(agentsService.createAgent({ name: 'test' }))
-        .rejects.toThrow('API error');
+      await expect(agentsService.createAgent({ name: 'test' })).rejects.toThrow('API error');
     });
 
     it('should handle unauthorized errors', async () => {
       (agentsService as any).get.mockRejectedValue(new Error('Unauthorized'));
 
-      await expect(agentsService.getAgent(TEST_AGENT_ID))
-        .rejects.toThrow('Unauthorized');
+      await expect(agentsService.getAgent(TEST_AGENT_ID)).rejects.toThrow('Unauthorized');
     });
 
     it('should handle rate limiting', async () => {
       (agentsService as any).get.mockRejectedValue(new Error('Rate limit exceeded'));
 
-      await expect(agentsService.listAgents())
-        .rejects.toThrow('Rate limit exceeded');
+      await expect(agentsService.listAgents()).rejects.toThrow('Rate limit exceeded');
     });
   });
 });

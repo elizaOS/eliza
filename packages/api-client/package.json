@@ -11,7 +11,7 @@
     "dev": "tsup --watch",
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "lint": "eslint src/**/*.ts",
+    "lint": "prettier --write ./src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

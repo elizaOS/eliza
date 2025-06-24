@@ -24,12 +24,12 @@ elizaos dev [options]
 
 ## Options
 
-| Option                          | Description                                                          |
-| ------------------------------- | -------------------------------------------------------------------- |
-| `-c, --configure`               | Reconfigure services and AI models (skips using saved configuration) |
-| `--character [paths...]`        | Character file(s) to use - accepts paths or URLs                     |
-| `-b, --build`                   | Build the project before starting                                    |
-| `-p, --port <port>`             | Port to listen on                                                    |
+| Option                   | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| `-c, --configure`        | Reconfigure services and AI models (skips using saved configuration) |
+| `--character [paths...]` | Character file(s) to use - accepts paths or URLs                     |
+| `-b, --build`            | Build the project before starting                                    |
+| `-p, --port <port>`      | Port to listen on                                                    |
 
 </TabItem>
 <TabItem value="examples" label="Examples">

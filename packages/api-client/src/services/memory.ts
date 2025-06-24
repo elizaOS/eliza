@@ -25,20 +25,15 @@ export class MemoryService extends BaseApiClient {
     roomId: UUID,
     params?: MemoryParams
   ): Promise<{ memories: Memory[] }> {
-    return this.get<{ memories: Memory[] }>(
-      `/api/memory/${agentId}/rooms/${roomId}/memories`,
-      { params }
-    );
+    return this.get<{ memories: Memory[] }>(`/api/memory/${agentId}/rooms/${roomId}/memories`, {
+      params,
+    });
   }
 
   /**
    * Update a memory
    */
-  async updateMemory(
-    agentId: UUID,
-    memoryId: UUID,
-    params: MemoryUpdateParams
-  ): Promise<Memory> {
+  async updateMemory(agentId: UUID, memoryId: UUID, params: MemoryUpdateParams): Promise<Memory> {
     return this.patch<Memory>(`/api/memory/${agentId}/memories/${memoryId}`, params);
   }
 
@@ -80,7 +75,10 @@ export class MemoryService extends BaseApiClient {
   /**
    * Create world from server
    */
-  async createWorldFromServer(serverId: UUID, params: WorldCreateParams): Promise<{ worldId: UUID }> {
+  async createWorldFromServer(
+    serverId: UUID,
+    params: WorldCreateParams
+  ): Promise<{ worldId: UUID }> {
     return this.post<{ worldId: UUID }>(`/api/memory/groups/${serverId}`, params);
   }
 

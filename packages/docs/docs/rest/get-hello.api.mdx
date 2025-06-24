@@ -1,63 +1,48 @@
 ---
 id: get-hello
-title: "Basic health check"
-description: "Simple hello world test endpoint"
-sidebar_label: "Basic health check"
+title: 'Basic health check'
+description: 'Simple hello world test endpoint'
+sidebar_label: 'Basic health check'
 hide_title: true
 hide_table_of_contents: true
 api: eJyNVMFy2zgM/RUUx4xiubs33dwd79Yz22mn9k4PSQ4wBYtsKJIlKTuux//eAaU4bnJZXQSKwMMDBLwTZuoSNneYjilzjw8VtpxUNCEb77DBtemDZdBsrYeDj7aFzCkDuzZ44zJW6ANHEvdViw12nD+KM1YYOQXvEidsTvjHfC6v39E/XsE+e2OFyrvMLos/hWCNKvD19yRBJ0xKc09i5WNgbNBvv7MSKiEKmWzGlD2nRB1fOaYcjeuwQn4iqetC4ZtQeIfn8amw56z9VI7gUtbYYE3B1InjnmOtpyLHo/TwhEO02KDOOTR1bb0iq33KzZ/z+RxfN/ZfuYaW92x96NllGJHw/FChcTtfaJtcSC6t+UnweQ2LL6s3SIsvK2i9GgSkNAp2PsIlZP9+Np+9n8MtLGBn+clsLQO5FpIiS3JYrIA6YbCL1PPBx8fZvbt3G22SJASToOVkOsctZA9bhiFxCweTNRCUOu0R4uCccd2U2LiUySmewXKalARkrT8UcioyZeO66t715KgTs3AyLnMkJXcj/jO3BFlHP3SS8etyvRk9d6R44srPVH3syJmfXMA8ZM2w85JZMFvfk3GpuXe3cHOzLkN/c9PAaN0eTMtwmedUKLHbm+hd+UWFLIs5AiwKNQEoFlizY3VUU4NfvK8wx8BP3Pt4fAnsy7lERe/7N4k+lVE2rpOQ8cCgybW2tE5pco5tGps4jeREcWiNL4nEgBC94pSkF8U1MCsN6eiy5mQu7FpDEvO3sQxDsJ7asSK5eENus1yK8yYOKXMLyydWQ5nD5VXrXnfgG2/XXj1yltCvTPY2m55B+b4f3LTxsDcEo9ds9RkrlLLGoR+HetIKUkUrHPW/LctfI1Y+YnW1mqmp685kPWxnyvc1i7dP4xtl94NPuSd3hfiBklGgmWzWoDSrx9dLeHrRrP8jmZMcZX7KdbBkHJ4niqdJa+6QgrnIC1Y46s1DhSIpcn86bSnxf9Gez/L5x8DxiM3dQ4V7ikYWW05niaSWYxGoRz6KYCjFQWjsyQ7C443IigZdJPCf5QbP519gZyOu
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Basic health check"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Basic health check'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/api/server/hello"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/api/server/hello'} context={'endpoint'}></MethodEndpoint>
 
 Simple hello world test endpoint
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Hello world response","content":{"application/json":{"schema":{"type":"object","properties":{"message":{"type":"string","example":"Hello World!"}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Hello world response',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { message: { type: 'string', example: 'Hello World!' } },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

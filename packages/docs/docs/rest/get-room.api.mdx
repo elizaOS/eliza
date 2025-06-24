@@ -1,71 +1,173 @@
 ---
 id: get-room
-title: "Get room details"
-description: "Retrieves details about a specific room"
-sidebar_label: "Get room details"
+title: 'Get room details'
+description: 'Retrieves details about a specific room'
+sidebar_label: 'Get room details'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tz2zYQ/iuYPbUeWlLa9MKbp1EzmmmajO1MD7YPK2BFIgEBGgBlKxr+98wCpKVIieM+xqecBAr7+PbbxWKxhYhVgPIKvHNNgAKwIhsD3BSgKEiv26idhRLOKXpNawpCUURtgsCl66JAEVqSeqWlYBNQgGvJI2stFJRQUTzP/7fosaFInv1twWJDUGZ/CwUFaHbTYqyhAE+3nfakoIy+owKCrKlBKLcQNy2rhei1raCAlfMNRiih67SC/hD24pVwKxFrEskR9MWDZ4b7HI4TLf0N2w6ts4ECm/tlNuOfA5Kda0Z+oQDpbGTQ5RawbY2Widbph8DC22NsbvmBZGSqPSch6uwqdFJSCHuCS+cMoYUC6B6b1lAOl4PA+ASLWn2fkUNC3lt925HQimzUK01erJzfI6gY8nJs90s7f2FDX1JbQHCdl0/QvUhyh9p3zhu1+Bch7XKcTIhY65CsiiUZZ6sgomMHHPFI3eABvccN116kJvw/hH+Twb4/qs75gEhou0MNLBd15HJIpciaSfnl14p1YddotMoHSzAXPge/ePXMtbtCE7h4yXvnv29TOvWEWpmzMZFk+wIaCgGrJ6uN4on4fJy/q/kqCZISKQyhbU4vb+YsjKlJLmDMzMvjzJyljIzpsC6Kleus+pGV58rKb187LxmDz/eottV4X/7IyTPkJAGLtRtGkjSOxBpKmGKrp3nomW6HYaSfpmlous0jQg8FBPLrcXLpvIES6hjbcjo1TqKpXYjlr7PZ7Ajqn7wtFK3JuLbhY5ktpYGAgadoR7hGf0Lx9kKcvVscWTp7txDKyY6NpFjT/fmgsn4xmU1ezMSpOBMrQ/d6aUigVSJINMgfZ4uhVa94Drtz/uPk2l7bS27/bFzzaBd0ZUmJ6MSSRBdIiTsda4EixWk2wnfWcvFmx9qGiFbSRMytap22MQg0xt0lcNITRm2r4to2aLHiZcKkbSSPkvey/RFbELH2rqvY4/n84jJLrlDSgJVGqM5XaPUnSsZcuoRXjj2zTeUa1DaU1/ZUnJxcbEKk5uSkFHl1eqcViYcxNSRIZNfaO5tSlMASL7OB1E8DG8id1egVyY0cCN5J79nMim+ocX6zU2zSd9JKrfnQ0Zt0GLStWCV/kKjRKpOokzVaSyZkEoeSHCB2SrvkiBei9Y6bAXORRFsiWYuwsbGmoB/QKY2s84c2JLrWOFQ5It44Anc5n7Pwpe9CJCXm9yS7VIfzPeoOGfiblhdOfqTIqueE5jTqhoR0TdPZodWJtUaRpSaLt1AAh5WLPhf10CRRpiY5jO8Plf97thV5nNodzVBOp5WOdbecSNdMiaVdyL9p0GldiA3aPYuvKea07CbwL47gdteq/8FzaGhlke7jtDWoLbe6hHM79KArwFbvnl4FlLtH0fgsK4fXyk0B3GxYabtdYqD33vQ9/33bkd9AeXVTwBq95iOfupXSgddqaP6PxPTT+fD4+VkcPpu+EcY4zFrmfo2m4y8o4CNt9p52/Ob6jyge4/JxEANv/U1fQE2oyCdW8uaZlNTGPbWjC5jb9MPF8Xp+CX3/GaoTQB0=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get room details"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get room details'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/agents/{agentId}/rooms/{roomId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/agents/{agentId}/rooms/{roomId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Retrieves details about a specific room
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'roomId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the room',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Room details","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the room"},"name":{"type":"string","description":"Name of the room"},"source":{"type":"string","description":"Source of the room"},"worldId":{"type":"string","format":"uuid","description":"ID of the world this room belongs to"},"entities":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"}}},"description":"Entities in this room"}},"title":"Room"}}}}}},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or room not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving room","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Room details',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'Unique identifier for the room',
+                  },
+                  name: { type: 'string', description: 'Name of the room' },
+                  source: { type: 'string', description: 'Source of the room' },
+                  worldId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the world this room belongs to',
+                  },
+                  entities: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        name: { type: 'string' },
+                      },
+                    },
+                    description: 'Entities in this room',
+                  },
+                },
+                title: 'Room',
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or room ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent or room not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error retrieving room',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

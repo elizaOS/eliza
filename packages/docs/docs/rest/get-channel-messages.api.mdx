@@ -1,71 +1,125 @@
 ---
 id: get-channel-messages
-title: "Get channel messages"
-description: "Get messages for a channel"
-sidebar_label: "Get channel messages"
+title: 'Get channel messages'
+description: 'Get messages for a channel'
+sidebar_label: 'Get channel messages'
 hide_title: true
 hide_table_of_contents: true
 api: eJy9VkuP2zYQ/iuDOSUL7dpp0x50MxI3MNAgQXaDHrJ7oMmRxIQiFZKy1zH034uhHta+ukUD1BdL4sw33wzndcQoyoD5F6wpBFFqW+JNhoqC9LqJ2lnM8R1F6I8pQOE8CJCVsJYMZuga8oIFNwpzLCm+6Y/eDwqYYSO8qCmSZ0NHtKImzHGA2CjMULOZRsQKM/T0vdWeFObRt5RhkBXVAvMjxkPDiiF6pplh4XwtIubYtlph12UTttG1jiPu95b8AR8B0jZSSR7Z30K0JmL+23IOs6XCeXoW50lCN+xNaJwNFFj+l+WS/+5GdwwUeIpe044UhFZKCqFojWGD0tlINrKqaBqjZYr34mtg/eNDPm77lSS733i+nah76wPqTHDrnCFhsctQiTiHEN4LNq0j1eF5aK2eD8f9rPps9feWQCuyUReafEqtWNGYa0wr0m18DPrREAJLwxitLsM2kN/8B2qbt+CKRIURYF85CGTjfXKiJBt/Dj9BwAtd9Aa2h/7LS4b3ztU/h84Ic9KwJeNsGSA6NiA9iUhqFR+ticmItvH3149d3y1EXVOIom5gX5G9Y2ovAgwG2FZNUdzLsSmX7gKvlNL8KMyENSl3nBI6GjpdOnb9L8PXy9cPq2voRmBdhMK1Vv0f9ZQh3Yq6YZqFMIG6DMl755/HlE7R8/m+ZjBIsim0fSD+pdosgRVFoU14XvNtEiQFyQ3Qtk8OPuxjP15KMoHDhdQUKzdMhTQGYoU5LkSjF9O0WUiy0QtzPoyDsDhOg6Fb1KchEsjvxgnSeoM5VjE2+WJhnBSmciHmvy6XywfU/+RjULQj45qai6xHQu7O7EjyfqRv9A8BHy5h9XHzMDE/bkA52TJI8j01rEll9+piefFqCeewgsLQrd4aAmEVBCmM4JfVZqj3gufh3vlvF9f22l5VOrBB0AEUBV1aUhAdbFP7UbDXsQIByU9zAN9aq205GNY2RGElXcDaqsZpGwMIY9w+kUsFqG2ZXdta2BTwLHHiMvdC8lmPP3ILECvv2pItflpfXvWShZA0cKWRqvOlsPoHJTCXar9wbJkxlauFtiG/tudwdnZ5CJHqs7Mc+qfzvVYE0+YQEiWyO+2dTVeUyBI/9gCrRI0B0hMYXZA8yCHAJ+kZZq/4nmrnDyfFOr0nrdQc7xt6P+Ylq4xjpRJWmRS6MUn7IA4pOVBslXbJED9A4x03B45FEm2IZAXhYGNFQU/slBas84c2BG1jnFC9R3zwgNzVes3CV74NkRSsb0m2KQ/Xs9Ddj8BftL108htFVv1Ewpxz0wbp6rq1Q+uDnRbQS11sPmCG7Faf9H1SD01TyNQ0h+1oyvw3PVbkheFUmiFfLEodq3Z7IV29IJZ2of9PjbxxIdbCzhB50RxCDLPSv1OGx1P7/ufFdOhovBMsGiN0WnMSvePQir6gaDRms9U3w/vtCDPM55vqROsmQ246jHI8bkWgz950HX/u90TuU0oHLnw1jIEMv9Fhtp3uhGmZIvLK+YTstIKehG/4xWuWftzKk/F68WnYrV/CUwEa9z97mNsc2Zwi0d10GVYkFPlEoj9fSUnN3LUH85XZT3Ph3foKu+5vshxRYw==
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get channel messages"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get channel messages'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/messaging/central-channels/{channelId}/messages"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/messaging/central-channels/{channelId}/messages'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get messages for a channel
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"limit","in":"query","schema":{"type":"integer","default":50}},{"name":"before","in":"query","schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+    { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
+    { name: 'before', in: 'query', schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Messages retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"data":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the message"},"text":{"type":"string","description":"Message text content"},"userId":{"type":"string","format":"uuid","description":"ID of the user who sent the message"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent (if sent by agent)"},"roomId":{"type":"string","format":"uuid","description":"ID of the room the message belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the message was created"},"metadata":{"type":"object","description":"Additional message metadata"}},"title":"Message"}}}}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Messages retrieved successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'Unique identifier for the message',
+                    },
+                    text: { type: 'string', description: 'Message text content' },
+                    userId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'ID of the user who sent the message',
+                    },
+                    agentId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'ID of the agent (if sent by agent)',
+                    },
+                    roomId: {
+                      type: 'string',
+                      format: 'uuid',
+                      description: 'ID of the room the message belongs to',
+                    },
+                    createdAt: {
+                      type: 'integer',
+                      format: 'int64',
+                      description: 'Unix timestamp when the message was created',
+                    },
+                    metadata: { type: 'object', description: 'Additional message metadata' },
+                  },
+                  title: 'Message',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

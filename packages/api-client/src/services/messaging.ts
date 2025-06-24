@@ -80,10 +80,9 @@ export class MessagingService extends BaseApiClient {
    * Add agent to channel
    */
   async addAgentToChannel(channelId: UUID, agentId: UUID): Promise<{ success: boolean }> {
-    return this.post<{ success: boolean }>(
-      `/api/messaging/central-channels/${channelId}/agents`,
-      { agentId }
-    );
+    return this.post<{ success: boolean }>(`/api/messaging/central-channels/${channelId}/agents`, {
+      agentId,
+    });
   }
 
   /**
@@ -112,11 +111,15 @@ export class MessagingService extends BaseApiClient {
   /**
    * Post a new message to a channel
    */
-  async postMessage(channelId: UUID, content: string, metadata?: Record<string, any>): Promise<Message> {
-    return this.post<Message>(
-      `/api/messaging/central-channels/${channelId}/messages`,
-      { content, metadata }
-    );
+  async postMessage(
+    channelId: UUID,
+    content: string,
+    metadata?: Record<string, any>
+  ): Promise<Message> {
+    return this.post<Message>(`/api/messaging/central-channels/${channelId}/messages`, {
+      content,
+      metadata,
+    });
   }
 
   /**
@@ -171,7 +174,9 @@ export class MessagingService extends BaseApiClient {
    * Get server channels
    */
   async getServerChannels(serverId: UUID): Promise<{ channels: MessageChannel[] }> {
-    return this.get<{ channels: MessageChannel[] }>(`/api/messaging/central-servers/${serverId}/channels`);
+    return this.get<{ channels: MessageChannel[] }>(
+      `/api/messaging/central-servers/${serverId}/channels`
+    );
   }
 
   /**

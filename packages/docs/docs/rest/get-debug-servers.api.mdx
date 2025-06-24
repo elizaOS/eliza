@@ -1,63 +1,65 @@
 ---
 id: get-debug-servers
-title: "Get server debug info"
-description: "Get debug information about active servers (debug endpoint)"
-sidebar_label: "Get server debug info"
+title: 'Get server debug info'
+description: 'Get debug information about active servers (debug endpoint)'
+sidebar_label: 'Get server debug info'
 hide_title: true
 hide_table_of_contents: true
 api: eJylVVFv4zYM/isEn7bCjXPbm9+KLTsU2OEO1w57aPvAyIytqyx5Ep02F+S/D5R8SZZu2ID5xZT1kfxEkZ/3KNQlbB4w7ZLwgE8VtpxMtKPY4LHB9yzQ8nrqwPpNiAPpd6B1mATIiN0yJI5bjgm+Kzj27Risl++xwjByzB63LTbYsfyskLvigBVGTmPwiRM2e/xhudTXX/MX7FsKWKEJXtiL+tA4OmvyRv0lqeMek+l5ILVkNzI2GNZf2AhWOEblJbaknemfASlG2mGFVnhI/x7AtmeYJNH6DissTLHBabItHir0NPBb4KHCJCRT+tst6tjLf6H2T2lPT4UDSx/me9BDkPTYYE2jrUsN6lzlOh2v51iahz1O0WGDvcjY1LULhlwfkjQ/LpdLvGyaX3UbWt6yC+PAXuYewcNThXqJmbkVp9RXzn4l+HgHN59u30S6+XQLbTCTBimttwkRji7bd4vl4t0SruEGNo5f7doxkG8hGXKki5tbyEWETaSBX0J8Xjz6R3/f26QJwSZoOdnOcwsSYM0wJW7hxUoPBPmcbgdx8t76bk5sfRLyhhewmns9ATkXXjI5E5nE+q569AN56tTMnKwXjjozvivxv3FLIH0MU6cZP6/u7gtyQ4ZnrvyNaogdefuVc7AA0jNsgmbWmG0YyPrUPPpruLq6ywN9ddVAsa5fbMtwHMiUKbHf2hh8vqJMltUsAW4yNQ2QLXB2w2Zn5gKf0Gcxi+MHHkLcnRyHvM5eMYThTaIPnFIuk7qUBUNPvnW5dKYn79mlUsS5JWeKU2tDTqQGjDEYTklrkaEjs+kh7bz0nOyRXWtJfX6xjmEaXaC2nEg33pC7X60UfB+nJNzC6pXNlPtwdVa6ywr8zuu7YJ5Z1PUzk7sWOzCYMAyTn3UKtpagoBa3H7FCPVZp+tLUs8KRyQpX1OM0LD+VWKJicBrN1NR1Z6Wf1gsThpoVHVJ5o2rAGJIM5M8iqsCnS5G9nMP9SWz/5x9h1ivhV6lHR9arzOUD7GdFekAa7VF8MpP11J2p0VOFKj2K3O/XlPi36A4H/fzHxHGHzcNThVuKVgVAV4cKe6aWYxayZ96psBjDo8rgltyUlfXyF6JadZTM96t7PBz+BItHftQ=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get server debug info"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get server debug info'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/server/debug/servers"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/server/debug/servers'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get debug information about active servers (debug endpoint)
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Server debug information","content":{"application/json":{"schema":{"type":"object","properties":{"servers":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"status":{"type":"string"},"agents":{"type":"array","items":{"type":"string","format":"uuid"}}}}}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Server debug information',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              servers: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    status: { type: 'string' },
+                    agents: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

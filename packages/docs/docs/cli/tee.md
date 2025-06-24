@@ -83,6 +83,7 @@ elizaos tee phala cvms delete <cvm-id>
 For deploying ElizaOS agents to TEE environments:
 
 1. First, create a TEE-compatible project:
+
    ```bash
    elizaos create my-tee-agent --type tee
    ```
@@ -126,11 +127,13 @@ elizaos tee phala [any-phala-command] [options]
 ```
 
 For the complete list of Phala CLI commands and options, run:
+
 ```bash
 elizaos tee phala help
 ```
 
 Or visit the official Phala CLI documentation:
+
 ```bash
 npx phala help
 ```
@@ -140,11 +143,13 @@ npx phala help
 ### Common Issues
 
 1. **npx not found**: Install Node.js and npm from [nodejs.org](https://nodejs.org) or use a version manager like nvm:
+
    ```bash
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
    ```
 
 2. **Authentication failures**: Ensure your API key is valid and you're logged in:
+
    ```bash
    elizaos tee phala auth login <api-key>
    ```
@@ -184,4 +189,4 @@ When deploying agents to TEE:
 3. Verify attestation reports for production deployments
 4. Follow Phala Cloud security best practices
 
---- 
+---

@@ -1,71 +1,116 @@
 ---
 id: stop-agent
-title: "Stop an agent"
-description: "Stops a running agent"
-sidebar_label: "Stop an agent"
+title: 'Stop an agent'
+description: 'Stops a running agent'
+sidebar_label: 'Stop an agent'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVsFuGzcQ/RViTq2xlpQ2p70JsQoIaGDDctGDrcOIHO0y5pIMyZWtCPr3YsiVrFh201NO1UXkcubNmyH5ODtI2ESo7wEbsinCsgJFUQbtk3YWalgk56NAEXprtW1EtoMKnKeAbDNXUENMzk+HFY8BO0oUGHcHFjuCuuDPFVSgGdZjaqGCQF97HUhBnUJPFUTZUodQ7yBtPWXgoG0DFaxd6DBBDX2vFexf05xfCbcWqaVCUCQnmBPslxwkemcjRcb9bTLhv++9M/Xs4EmJ2EtJMa57Y7ZQgXQ2cWb1DtB7o2VOe/wlsuvunLJbfSGZCxG4SEmXwAPqieHKOUNooQJ6xs4bKlXg3DD9B8SOYsSGzqu1H34VfHwr27ndoNFqqNT8Sgy1/bmprtFEzpVCcOHHmNKpNzJ9fQxmDCay7b56v0Bvux3M8+FKqE38sedVNiQlchpC21JLXiw7kHTibEsIOOzKx/fOoHVJrF1v1f+78XN2IxNLrWMV8y4WAUst1DBGr8dFFse7Qb7246wqFUQKm4PC9cFADW1Kvh6PjZNoWhdT/ftkMjlj+CcvC0UbMs53WXUyUhYq5puTPLA0+huK64WY3szPkKY3c6Gc7Bkkp8jXWBxdNh9Gk9GHibgUU7E29KxXhgRaJaJEgzyZzgcFWLNeP7nwOHqwD/au1ZEDCh2FoqgbS4rldEWij6TEk06tQJHzNNvju1ACaxsTWkkjMbPKO21TFGiMe8rkZCBM2jbVg+3QYsPDzEnbRAElrxX8A7coUhtc33DE29nirliuUdLAlQ5UXWjQ6m+UwVx+CdaOIzOmch1qG+sHeykuLhbbmKi7uKhFGV0+aUXi+KDFTInsRgdn8xZlssTDApCvamSAcmmNXpPcyqHAL9YnmMXxM3UubF8cuzzPXsG57izQ53wHtG3YpUxItGiVyaWTLVpLJpYiDkdyoNgr7XIgHggfHGtAfsDZ1BPJVsStTS1FfWSnNLLPH9qQ6L1xqEpGvHBG7m42Y+O70MdESsyeSfb5HM5OSve6An/TauHkIyV2vSU0l0l3JKTrut4OCic2GkWxGs2voQJOqxz6cqgHbUSZtXFoMI4n/1PBSvx2v1zNWI/HjU5tvxpJ142JrV0s/8AqwJe/Q3uCyK2PQHtseb67f7sXeX63RxrEKtFzGnuD2rKYZUq7QWTuAb2G6tB9VVC/9ElZaZYVsJiw5W63wkh/BbPf8+evPYUt1PfLCjYYNF/prEZKRx6rQdP/hfYvt0P39at4r316J4fhI1qu8QZNzzOo4JG2J63efrmvoCVUFDKzsjqVknw68Tt721gKj5p8c724g/3+H+3rsWQ=
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Stop an agent"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Stop an agent'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/agents/{agentId}/stop"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/agents/{agentId}/stop'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Stops a running agent
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent to stop"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent to stop',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Agent stopped successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"message":{"type":"string"}}}}}}}},"400":{"description":"Invalid agent ID format","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Agent stopped successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: { type: 'object', properties: { message: { type: 'string' } } },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID format',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

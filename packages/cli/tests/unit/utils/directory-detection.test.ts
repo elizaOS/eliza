@@ -48,7 +48,7 @@ const TestFixtures = {
       },
     },
   },
-  
+
   paths: {
     testPath: '/test/path',
     testPlugin: '/test/plugin',
@@ -59,7 +59,7 @@ const TestFixtures = {
     testInvalid: '/test/invalid',
     testUnreadable: '/test/unreadable',
   },
-  
+
   directoryInfo: {
     elizaProject: {
       type: 'elizaos-project' as const,
@@ -130,7 +130,7 @@ describe('directory-detection', () => {
     (fs.readFileSync as any).mockClear();
     (fs.readdirSync as any).mockClear();
     (fs.statSync as any).mockClear();
-    
+
     // Store mock references for easy access
     mocks = {
       findMonorepoRoot: mockFindMonorepoRoot,
@@ -139,7 +139,7 @@ describe('directory-detection', () => {
       readdirSync: fs.readdirSync as any,
       statSync: fs.statSync as any,
     };
-    
+
     // Set default successful mocks
     mocks.existsSync.mockReturnValue(true);
     mocks.readFileSync.mockReturnValue('{}');
@@ -147,7 +147,6 @@ describe('directory-detection', () => {
     mocks.statSync.mockReturnValue({ isDirectory: () => true });
     mocks.findMonorepoRoot.mockReturnValue(null);
   });
-
 
   describe('detectDirectoryType', () => {
     it('should detect elizaos project', () => {
@@ -255,7 +254,9 @@ describe('directory-detection', () => {
 
     it('should count multiple elizaos packages', () => {
       mocks.existsSync.mockReturnValue(true);
-      mocks.readFileSync.mockReturnValue(JSON.stringify(TestFixtures.packageJson.multipleElizaDeps));
+      mocks.readFileSync.mockReturnValue(
+        JSON.stringify(TestFixtures.packageJson.multipleElizaDeps)
+      );
       mocks.readdirSync.mockReturnValue([]);
       mocks.findMonorepoRoot.mockReturnValue(null);
 
@@ -267,7 +268,9 @@ describe('directory-detection', () => {
 
     it('should detect plugin by keywords', () => {
       mocks.existsSync.mockReturnValue(true);
-      mocks.readFileSync.mockReturnValue(JSON.stringify(TestFixtures.packageJson.elizaPluginByKeywords));
+      mocks.readFileSync.mockReturnValue(
+        JSON.stringify(TestFixtures.packageJson.elizaPluginByKeywords)
+      );
       mocks.readdirSync.mockReturnValue([]);
       mocks.findMonorepoRoot.mockReturnValue(null);
 
