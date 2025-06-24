@@ -420,6 +420,56 @@ export function createHybridClient() {
       return await legacyClient.deleteGlobalLogs();
     }),
 
+    // Server Management services - using legacy API for now as new API doesn't have these yet
+    getAgentsForServer: wrapWithErrorHandling(async (serverId: string) => {
+      // Always use legacy API for server management since new API doesn't have this yet
+      return await legacyClient.getAgentsForServer(serverId);
+    }),
+    addAgentToServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
+      // Always use legacy API for server management since new API doesn't have this yet
+      return await legacyClient.addAgentToServer(serverId, agentId);
+    }),
+    removeAgentFromServer: wrapWithErrorHandling(async (serverId: string, agentId: string) => {
+      // Always use legacy API for server management since new API doesn't have this yet
+      return await legacyClient.removeAgentFromServer(serverId, agentId);
+    }),
+
+    // Channel Management services - some missing in new API
+    getChannelTitle: wrapWithErrorHandling(async (channelId: string, contextId?: string) => {
+      // Always use legacy API for getChannelTitle since new API doesn't have this yet
+      return await legacyClient.getChannelTitle(channelId, contextId);
+    }),
+
+    // Additional Memory/Log Management services - using legacy API for specialized methods
+    deleteLog: wrapWithErrorHandling(async (logId: string) => {
+      // Always use legacy API for deleteLog since new API doesn't have this yet
+      return await legacyClient.deleteLog(logId);
+    }),
+    deleteGroupMemory: wrapWithErrorHandling(async (serverId: string, memoryId: string) => {
+      // Always use legacy API for deleteGroupMemory since new API doesn't have this yet
+      return await legacyClient.deleteGroupMemory(serverId, memoryId);
+    }),
+    clearGroupChat: wrapWithErrorHandling(async (serverId: string) => {
+      // Always use legacy API for clearGroupChat since new API doesn't have this yet
+      return await legacyClient.clearGroupChat(serverId);
+    }),
+    getAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string, includeEmbedding?: boolean) => {
+      // Always use legacy API for getAgentInternalMemories since new API doesn't have this yet
+      return await legacyClient.getAgentInternalMemories(agentId, agentPerspectiveRoomId, includeEmbedding);
+    }),
+    deleteAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string) => {
+      // Always use legacy API for deleteAgentInternalMemory since new API doesn't have this yet
+      return await legacyClient.deleteAgentInternalMemory(agentId, memoryId);
+    }),
+    deleteAllAgentInternalMemories: wrapWithErrorHandling(async (agentId: string, agentPerspectiveRoomId: string) => {
+      // Always use legacy API for deleteAllAgentInternalMemories since new API doesn't have this yet
+      return await legacyClient.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
+    }),
+    updateAgentInternalMemory: wrapWithErrorHandling(async (agentId: string, memoryId: string, memoryData: any) => {
+      // Always use legacy API for updateAgentInternalMemory since new API doesn't have this yet
+      return await legacyClient.updateAgentInternalMemory(agentId, memoryId, memoryData);
+    }),
+
     // Keep all other legacy methods for now
     ...legacyClient,
   };

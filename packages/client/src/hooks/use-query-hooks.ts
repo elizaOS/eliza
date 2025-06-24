@@ -575,7 +575,7 @@ export function useDeleteLog() {
 
   return useMutation({
     mutationFn: ({ agentId, logId }: { agentId: string; logId: string }) =>
-      apiClient.deleteLog(logId),
+      hybridApiClient.deleteLog(logId),
 
     onMutate: async ({ agentId, logId }) => {
       // Optimistically update the UI by removing the log from the cache
@@ -670,7 +670,7 @@ export function useDeleteMemory() {
 
   return useMutation({
     mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: string }) => {
-      await apiClient.deleteAgentMemory(agentId, memoryId);
+      await hybridApiClient.deleteAgentMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
     onSuccess: (data) => {
@@ -698,7 +698,7 @@ export function useDeleteAllMemories() {
 
   return useMutation({
     mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
-      await apiClient.deleteAllAgentMemories(agentId, roomId);
+      await hybridApiClient.deleteAllAgentMemories(agentId, roomId);
       return { agentId };
     },
     onSuccess: (data) => {
@@ -731,7 +731,7 @@ export function useUpdateMemory() {
       memoryId: string;
       memoryData: Partial<Memory>;
     }) => {
-      const result = await apiClient.updateAgentMemory(agentId, memoryId, memoryData);
+      const result = await hybridApiClient.updateAgentMemory(agentId, memoryId, memoryData);
       return { agentId, memoryId, result };
     },
 
@@ -782,7 +782,7 @@ export function useDeleteGroupMemory() {
 
   return useMutation({
     mutationFn: async ({ serverId, memoryId }: { serverId: UUID; memoryId: UUID }) => {
-      await apiClient.deleteGroupMemory(serverId, memoryId);
+      await hybridApiClient.deleteGroupMemory(serverId, memoryId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -796,7 +796,7 @@ export function useClearGroupChat() {
 
   return useMutation({
     mutationFn: async (serverId: UUID) => {
-      await apiClient.clearGroupChat(serverId);
+      await hybridApiClient.clearGroupChat(serverId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -967,7 +967,7 @@ export function useAgentInternalMemories(
     ],
     queryFn: async () => {
       if (!agentId || !agentPerspectiveRoomId) return Promise.resolve([]);
-      const response = await apiClient.getAgentInternalMemories(
+      const response = await hybridApiClient.getAgentInternalMemories(
         agentId,
         agentPerspectiveRoomId,
         tableName,
@@ -989,7 +989,7 @@ export function useDeleteAgentInternalMemory() {
     { agentId: UUID; memoryId: string }
   >({
     mutationFn: async ({ agentId, memoryId }) => {
-      await apiClient.deleteAgentInternalMemory(agentId, memoryId); // Uses deleteAgentInternalMemory
+      await hybridApiClient.deleteAgentInternalMemory(agentId, memoryId); // Uses deleteAgentInternalMemory
       return { agentId, memoryId };
     },
     onSuccess: (_data, variables) => {
@@ -1020,7 +1020,7 @@ export function useDeleteAllAgentInternalMemories() {
     { agentId: UUID; agentPerspectiveRoomId: UUID }
   >({
     mutationFn: async ({ agentId, agentPerspectiveRoomId }) => {
-      await apiClient.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId); // Uses deleteAllAgentInternalMemories
+      await hybridApiClient.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId); // Uses deleteAllAgentInternalMemories
       return { agentId, agentPerspectiveRoomId };
     },
     onSuccess: (_data, variables) => {
@@ -1055,7 +1055,7 @@ export function useUpdateAgentInternalMemory() {
     { agentId: UUID; memoryId: string; memoryData: Partial<CoreMemory> }
   >({
     mutationFn: async ({ agentId, memoryId, memoryData }) => {
-      const response = await apiClient.updateAgentInternalMemory(agentId, memoryId, memoryData); // Uses updateAgentInternalMemory
+      const response = await hybridApiClient.updateAgentInternalMemory(agentId, memoryId, memoryData); // Uses updateAgentInternalMemory
       return { agentId, memoryId, response };
     },
     onSuccess: (_data, variables) => {
