@@ -8,11 +8,11 @@ import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
-import { SecretPanel } from './secret-panel';
+import { SecretPanel, type SecretPanelRef } from './secret-panel';
 
 export default function AgentSettings({
   agent,
@@ -29,6 +29,8 @@ export default function AgentSettings({
   const [isDeleting, setIsDeleting] = useState(false);
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
   const isActive = agent?.status === AgentStatus.ACTIVE;
+  const secretPanelRef = useRef<SecretPanelRef>(null);
+  const [currentSecrets, setCurrentSecrets] = useState<Record<string, string | null>>({});
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
@@ -53,33 +55,72 @@ export default function AgentSettings({
   };
 
   const handleSubmit = async () => {
-    try {
-      if (!agentId) {
-        throw new Error('Agent ID is missing');
-      }
+    if (!agentId) {
+      toast({
+        title: 'Error',
+        description: 'Agent ID is missing',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-      // Get only the fields that have changed
-      const changedFields = agentState.getChangedFields();
+    // Define the actual save logic
+    const performSave = async () => {
+      try {
+        // Get secrets from state (or ref as fallback)
+        const secrets = Object.keys(currentSecrets).length > 0
+          ? currentSecrets
+          : secretPanelRef.current?.getSecrets() || {};
 
-      // No need to send update if nothing changed
-      if (Object.keys(changedFields).length === 0) {
-        const secrets = agentState.agent?.settings?.secrets;
-        // Force include secrets if they exist even if no other changes detected
+        // Get only the fields that have changed
+        const changedFields = agentState.getChangedFields();
+
+        // Manually add secrets to changedFields if they exist
         if (secrets && Object.keys(secrets).length > 0) {
-          const forceUpdate = {
-            id: agentId,
-            settings: { secrets },
-          };
+          // Ensure settings object exists in changedFields
+          if (!changedFields.settings) {
+            changedFields.settings = {};
+          }
 
-          await apiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
+          const activeSecrets = Object.entries(secrets)
+            .filter(([_, value]) => value !== null)
+            .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
 
-          queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
-          queryClient.invalidateQueries({ queryKey: ['agents'] });
-          navigate('/');
+          // Add only active secrets to the settings (exclude deleted ones)
+          changedFields.settings.secrets = activeSecrets;
+        }
+
+        // No need to send update if nothing changed
+        if (Object.keys(changedFields).length === 0) {
+          const secrets = agentState.agent?.settings?.secrets;
+          // Force include secrets if they exist even if no other changes detected
+          if (secrets && Object.keys(secrets).length > 0) {
+            const forceUpdate = {
+              id: agentId,
+              settings: { secrets },
+            };
+
+            await apiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
+
+            queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+            queryClient.invalidateQueries({ queryKey: ['agents'] });
+
+            toast({
+              title: 'Success',
+              description: 'Agent secrets updated successfully',
+            });
+
+            if (onSaveComplete) {
+              onSaveComplete();
+            } else {
+              navigate('/');
+            }
+            return;
+          }
 
           toast({
-            title: 'Success',
-            description: 'Agent secrets updated successfully',
+            title: 'No Changes',
+            description: 'No changes were made to the agent',
           });
 
           if (onSaveComplete) {
@@ -90,51 +131,61 @@ export default function AgentSettings({
           return;
         }
 
+        // Always include the ID
+        const partialUpdate = {
+          id: agentId,
+          ...changedFields,
+        };
+
+        // Send the partial update
+        await apiClient.updateAgent(agentId, partialUpdate as Agent);
+
+        // Invalidate both the agent query and the agents list
+        queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+
         toast({
-          title: 'No Changes',
-          description: 'No changes were made to the agent',
+          title: 'Success',
+          description: 'Agent updated successfully',
         });
 
+        // Call the onSaveComplete callback if provided, otherwise navigate
         if (onSaveComplete) {
           onSaveComplete();
         } else {
           navigate('/');
         }
-        return;
+      } catch (error) {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update agent',
+          variant: 'destructive',
+        });
+        throw error;
       }
+    };
 
-      // Always include the ID
-      const partialUpdate = {
-        id: agentId,
-        ...changedFields,
-      };
-
-      // Send the partial update
-      await apiClient.updateAgent(agentId, partialUpdate as Agent);
-
-      // Invalidate both the agent query and the agents list
-      queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-
-      toast({
-        title: 'Success',
-        description: 'Agent updated successfully',
-      });
-
-      // Call the onSaveComplete callback if provided, otherwise navigate
-      if (onSaveComplete) {
-        onSaveComplete();
-      } else {
-        navigate('/');
+    // Validate required secrets if we have a secret panel ref
+    if (secretPanelRef?.current) {
+      const secretValidation = secretPanelRef.current.validateSecrets();
+      if (!secretValidation.isValid) {
+        // Show confirmation dialog for missing secrets
+        confirm(
+          {
+            title: 'Missing Required Secrets',
+            description: `The following required secrets are missing: ${secretValidation.missingSecrets.join(', ')}. Do you want to save anyway?`,
+            confirmText: 'Save Anyway',
+            cancelText: 'Cancel',
+            variant: 'destructive',
+          },
+          performSave
+        );
+        return; // Exit early - performSave will be called if user confirms
       }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update agent',
-        variant: 'destructive',
-      });
-      throw error;
     }
+
+    // If validation passes or no secret panel, proceed with save
+    await performSave();
   };
 
   const handleDelete = () => {
@@ -307,17 +358,11 @@ export default function AgentSettings({
             component: (
               <SecretPanel
                 characterValue={agentState.agent}
-                onChange={(updatedAgent) => {
-                  if (updatedAgent.settings?.secrets) {
-                    // Create a new settings object with the updated secrets
-                    const updatedSettings = {
-                      ...agentState.agent.settings,
-                      secrets: updatedAgent.settings.secrets,
-                    };
-
-                    // Use updateSettings to properly handle the secrets
-                    agentState.updateSettings(updatedSettings);
-                  }
+                ref={secretPanelRef}
+                onChange={(secrets) => {
+                  setCurrentSecrets(secrets);
+                  // Also update the agent state so changes persist across tab switches
+                  agentState.updateSettings({ secrets });
                 }}
               />
             ),
