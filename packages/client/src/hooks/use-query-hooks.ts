@@ -553,7 +553,7 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
   return useQuery({
     queryKey: ['agentActions', agentId, roomId, excludeTypes],
     queryFn: async () => {
-      const response = await apiClient.getAgentLogs(agentId, {
+      const response = await hybridApiClient.getAgentLogs(agentId, {
         roomId,
         count: 50,
         excludeTypes,
@@ -829,7 +829,7 @@ export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
     error?: { code: string; message: string; details?: string };
   }>({
     queryKey: ['agentPanels', agentId],
-    queryFn: () => apiClient.getAgentPanels(agentId || ''),
+    queryFn: () => hybridApiClient.getAgentPanels(agentId || ''),
     enabled: Boolean(agentId),
     staleTime: STALE_TIMES.STANDARD, // Panels are unlikely to change very frequently
     refetchInterval: !network.isOffline && Boolean(agentId) ? STALE_TIMES.RARE : false,
@@ -914,7 +914,7 @@ export function useAgentInternalActions(
     queryKey: ['agentInternalActions', agentId, agentPerspectiveRoomId],
     queryFn: async () => {
       if (!agentId) return []; // Or throw error, depending on desired behavior for null agentId
-      const response = await apiClient.getAgentLogs(agentId, {
+      const response = await hybridApiClient.getAgentLogs(agentId, {
         // Uses getAgentLogs
         roomId: agentPerspectiveRoomId ?? undefined, // Pass undefined if null
         type: 'action',
@@ -932,7 +932,7 @@ export function useDeleteAgentInternalLog() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation<void, Error, { agentId: string; logId: string }>({
-    mutationFn: ({ agentId, logId }) => apiClient.deleteAgentLog(agentId, logId), // Uses deleteAgentLog
+    mutationFn: ({ agentId, logId }) => hybridApiClient.deleteAgentLog(agentId, logId), // Uses deleteAgentLog
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agentInternalActions', agentId] });
       queryClient.invalidateQueries({

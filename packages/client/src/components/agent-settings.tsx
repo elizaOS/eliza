@@ -4,7 +4,7 @@ import { useAgentManagement } from '@/hooks/use-agent-management';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -67,6 +67,7 @@ export default function AgentSettings({
     // Define the actual save logic
     const performSave = async () => {
       try {
+        const hybridApiClient = createHybridClient();
         // Get secrets from state (or ref as fallback)
         const secrets = Object.keys(currentSecrets).length > 0
           ? currentSecrets
@@ -100,7 +101,7 @@ export default function AgentSettings({
               settings: { secrets },
             };
 
-            await apiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
+            await hybridApiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
 
             queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
             queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -138,7 +139,7 @@ export default function AgentSettings({
         };
 
         // Send the partial update
-        await apiClient.updateAgent(agentId, partialUpdate as Agent);
+        await hybridApiClient.updateAgent(agentId, partialUpdate as Agent);
 
         // Invalidate both the agent query and the agents list
         queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
@@ -229,7 +230,8 @@ export default function AgentSettings({
           }
         }, 8000);
 
-        const response = await apiClient.deleteAgent(agentId);
+        const hybridApiClient = createHybridClient();
+        const response = await hybridApiClient.deleteAgent(agentId);
         responseReceived = true;
 
         if (navigationTimer) {

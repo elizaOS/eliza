@@ -59,6 +59,70 @@ export function createHybridClient() {
         })
       : legacyClient.stopAgent,
 
+    // Agent Management services
+    createAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (params: { characterPath?: string; characterJson?: any }) => {
+          if (!newClient.agents?.createAgent) {
+            throw new Error('Agents service not available');
+          }
+          // Convert legacy params to new format
+          const createParams = params.characterJson ? { agent: params.characterJson } : params;
+          const result = await newClient.agents.createAgent(createParams);
+          // Adapt from Agent to { success: boolean; data: Agent }
+          return { success: true, data: result };
+        })
+      : legacyClient.createAgent,
+    updateAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (agentId: string, agentData: any) => {
+          if (!newClient.agents?.updateAgent) {
+            throw new Error('Agents service not available');
+          }
+          const result = await newClient.agents.updateAgent(agentId, agentData);
+          // Adapt from Agent to { success: boolean; data: Agent }
+          return { success: true, data: result };
+        })
+      : legacyClient.updateAgent,
+    deleteAgent: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (agentId: string) => {
+          if (!newClient.agents?.deleteAgent) {
+            throw new Error('Agents service not available');
+          }
+          const result = await newClient.agents.deleteAgent(agentId);
+          // Return the success response format
+          return result;
+        })
+      : legacyClient.deleteAgent,
+    getAgentPanels: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (agentId: string) => {
+          if (!newClient.agents?.getAgentPanels) {
+            throw new Error('Agents service not available');
+          }
+          const result = await newClient.agents.getAgentPanels(agentId);
+          // Adapt from { panels: AgentPanel[] } to { success: boolean; data: AgentPanel[] }
+          return { success: true, data: result.panels };
+        })
+      : legacyClient.getAgentPanels,
+    getAgentLogs: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (agentId: string, options?: any) => {
+          if (!newClient.agents?.getAgentLogs) {
+            throw new Error('Agents service not available');
+          }
+          const result = await newClient.agents.getAgentLogs(agentId, options);
+          // Adapt from { logs: AgentLog[] } to { data: AgentLog[] }
+          return { data: result.logs };
+        })
+      : legacyClient.getAgentLogs,
+    deleteAgentLog: MIGRATION_FLAGS.USE_NEW_AGENTS_API
+      ? wrapWithErrorHandling(async (agentId: string, logId: string) => {
+          if (!newClient.agents?.deleteAgentLog) {
+            throw new Error('Agents service not available');
+          }
+          const result = await newClient.agents.deleteAgentLog(agentId, logId);
+          // Return the success response
+          return result;
+        })
+      : legacyClient.deleteAgentLog,
+
     // Messaging services
     getServers: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async () => {
