@@ -30,11 +30,7 @@ import {
   truncateToCompleteSentence,
   type UUID,
   type WorldPayload,
-<<<<<<< Updated upstream
-  getLocalServerUrl
-=======
-  getLocalMediaUrl,
->>>>>>> Stashed changes
+  getLocalMediaUrl
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -167,13 +163,7 @@ export async function processAttachments(
       const processedAttachment: Media = { ...attachment };
 
       const isRemote = /^(http|https):\/\//.test(attachment.url);
-<<<<<<< Updated upstream
-      const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
-      
-=======
       const url = isRemote ? attachment.url : getLocalMediaUrl(attachment.url);
-
->>>>>>> Stashed changes
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
