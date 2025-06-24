@@ -635,7 +635,7 @@ export function useAgentMemories(
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await apiClient.getAgentMemories(
+      const result = await hybridApiClient.getAgentMemories(
         agentId,
         channelId,
         tableName,

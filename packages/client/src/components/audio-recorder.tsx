@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import { cn } from '@/lib/utils';
 import type { UUID } from '@elizaos/core';
 import { useMutation } from '@tanstack/react-query';
@@ -66,9 +66,10 @@ export const AudioRecorder = ({ className, timerClassName, agentId, onChange }: 
     audioContext: null,
   });
 
+  const hybridApiClient = createHybridClient();
   const mutation = useMutation({
     mutationKey: ['whisper'],
-    mutationFn: (file: Blob) => apiClient.transcribeAudio(agentId, file),
+    mutationFn: (file: Blob) => hybridApiClient.transcribeAudio(agentId, file),
     onSuccess: (data: { data: { text: string } }) => {
       if (data?.data?.text) {
         onChange(data.data.text);

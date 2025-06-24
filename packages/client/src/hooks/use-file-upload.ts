@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { getContentTypeFromMimeType } from '@elizaos/core';
 import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import { useToast } from '@/hooks/use-toast';
 import { handleApiError } from '@/lib/api-error-bridge';
 import clientLogger from '@/lib/logger';
@@ -26,6 +26,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const blobUrlsRef = useRef<Set<string>>(new Set());
   const { toast } = useToast();
+  const hybridApiClient = createHybridClient();
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -126,8 +127,8 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
         try {
           const uploadResult =
             chatType === ChannelType.DM && agentId
-              ? await apiClient.uploadAgentMedia(agentId, fileData.file)
-              : await apiClient.uploadChannelMedia(channelId!, fileData.file);
+              ? await hybridApiClient.uploadAgentMedia(agentId, fileData.file)
+              : await hybridApiClient.uploadChannelMedia(channelId!, fileData.file);
 
           if (uploadResult.success) {
             return {
