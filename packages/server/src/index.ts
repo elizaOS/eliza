@@ -407,22 +407,8 @@ export class AgentServer {
         })
       ); // Parse JSON bodies
 
-      // Global file upload configuration with security constraints
-      // Note: Individual routes use more specific configurations
-      this.app.use(
-        fileUpload({
-          useTempFiles: true,
-          tempFileDir: '/tmp/',
-          createParentPath: true,
-          preserveExtension: true,
-          safeFileNames: true,
-          limits: {
-            fileSize: 50 * 1024 * 1024, // 50MB default limit
-          },
-          abortOnLimit: true,
-          uploadTimeout: 60000, // 60 seconds
-        })
-      );
+      // File uploads are now handled by individual routes using multer
+      // No global file upload middleware needed
 
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;

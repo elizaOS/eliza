@@ -36,50 +36,23 @@ function ensureUploadDir(id: string, type: 'agents' | 'channels'): string {
 export const agentAudioUpload = () =>
   fileUpload({
     limits: {
-      fileSize: MAX_FILE_SIZE, // 50MB max file size
-      files: 1, // Only allow 1 file per request
+      fileSize: MAX_FILE_SIZE,
     },
-    useTempFiles: true,
-    tempFileDir: '/tmp/',
-    parseNested: true,
-    abortOnLimit: true,
-    createParentPath: true,
-    preserveExtension: true,
-    safeFileNames: true,
-    uploadTimeout: 60000, // 60 seconds timeout
   });
 
 export const agentMediaUpload = () =>
   fileUpload({
     limits: {
-      fileSize: MAX_FILE_SIZE, // 50MB max file size
-      files: 1, // Only allow 1 file per request
+      fileSize: MAX_FILE_SIZE,
     },
-    useTempFiles: true,
-    tempFileDir: '/tmp/',
-    parseNested: true,
-    abortOnLimit: true,
-    createParentPath: true,
-    preserveExtension: true,
-    safeFileNames: true,
-    uploadTimeout: 60000, // 60 seconds timeout
   });
 
 // --- Channel-Specific Upload Configuration ---
 export const channelUpload = () =>
   fileUpload({
     limits: {
-      fileSize: MAX_FILE_SIZE, // 50MB max file size
-      files: 1, // Only allow 1 file per request
+      fileSize: MAX_FILE_SIZE,
     },
-    useTempFiles: true,
-    tempFileDir: '/tmp/',
-    parseNested: true,
-    abortOnLimit: true,
-    createParentPath: true,
-    preserveExtension: true,
-    safeFileNames: true,
-    uploadTimeout: 60000, // 60 seconds timeout
   });
 
 // --- Generic Upload Configuration (if ever needed, less specific) ---

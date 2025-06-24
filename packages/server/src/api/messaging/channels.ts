@@ -11,22 +11,56 @@ import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
-import { channelUpload, validateMediaFile, processUploadedFile } from '../../upload';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
-import { MAX_FILE_SIZE } from '../shared/constants';
+import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 import { cleanupUploadedFile } from '../shared/file-utils';
-import type fileUpload from 'express-fileupload';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
-// Using express-fileupload file type
-type UploadedFile = fileUpload.UploadedFile;
+// Configure multer for channel uploads
+const channelStorage = multer.memoryStorage();
+const channelUploadMiddleware = multer({
+  storage: channelStorage,
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 1,
+  },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type'), false);
+    }
+  },
+});
 
-interface ChannelUploadRequest extends Omit<express.Request<{ channelId: string }>, 'files'> {
-  files?: { [fieldname: string]: UploadedFile | UploadedFile[] } | UploadedFile[];
-  params: {
-    channelId: string;
-  };
+// Helper function to save uploaded file
+async function saveChannelUploadedFile(
+  file: Express.Multer.File,
+  channelId: string
+): Promise<{ filename: string; url: string }> {
+  const uploadDir = path.join(process.cwd(), '.eliza/data/uploads/channels', channelId);
+
+  // Ensure directory exists
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const random = Math.round(Math.random() * 1e9);
+  const ext = path.extname(file.originalname);
+  const filename = `${timestamp}-${random}${ext}`;
+  const filePath = path.join(uploadDir, filename);
+
+  // Write file to disk
+  fs.writeFileSync(filePath, file.buffer);
+
+  const url = `/media/uploads/channels/${channelId}/${filename}`;
+  return { filename, url };
 }
 
 /**
@@ -818,59 +852,32 @@ export function createChannelsRouter(
     '/channels/:channelId/upload-media',
     createUploadRateLimit(),
     createFileSystemRateLimit(),
-    channelUpload(),
-    async (req: ChannelUploadRequest, res: express.Response) => {
+    channelUploadMiddleware.single('file'),
+    async (req: express.Request, res: express.Response) => {
       const channelId = validateUuid(req.params.channelId);
       if (!channelId) {
         res.status(400).json({ success: false, error: 'Invalid channelId format' });
         return;
       }
 
-      // Get the uploaded file from express-fileupload
-      let mediaFile: UploadedFile;
-      if (req.files && !Array.isArray(req.files)) {
-        // files is an object with field names
-        mediaFile = req.files.file as UploadedFile;
-      } else if (Array.isArray(req.files) && req.files.length > 0) {
-        // files is an array
-        mediaFile = req.files[0];
-      } else {
-        res.status(400).json({ success: false, error: 'No media file provided' });
-        return;
-      }
-
-      if (!mediaFile) {
+      if (!req.file) {
         res.status(400).json({ success: false, error: 'No media file provided' });
         return;
       }
 
       try {
-        // Enhanced security validation
-        // Validate MIME type
-        if (!validateMediaFile(mediaFile)) {
-          cleanupUploadedFile(mediaFile);
-          res
-            .status(400)
-            .json({ success: false, error: `Invalid file type: ${mediaFile.mimetype}` });
-          return;
-        }
-
         // Additional filename security validation
-        if (!mediaFile.name || mediaFile.name.includes('..') || mediaFile.name.includes('/')) {
-          cleanupUploadedFile(mediaFile);
+        if (
+          !req.file.originalname ||
+          req.file.originalname.includes('..') ||
+          req.file.originalname.includes('/')
+        ) {
           res.status(400).json({ success: false, error: 'Invalid filename detected' });
           return;
         }
 
-        // Validate file size (additional check beyond middleware limits)
-        if (mediaFile.size > MAX_FILE_SIZE) {
-          cleanupUploadedFile(mediaFile);
-          res.status(400).json({ success: false, error: 'File too large' });
-          return;
-        }
-
-        // Process and move the uploaded file
-        const result = await processUploadedFile(mediaFile, channelId, 'channels');
+        // Save the uploaded file
+        const result = await saveChannelUploadedFile(req.file, channelId);
 
         logger.info(
           `[MessagesRouter /upload-media] Secure file uploaded for channel ${channelId}: ${result.filename}. URL: ${result.url}`
@@ -880,10 +887,10 @@ export function createChannelsRouter(
           success: true,
           data: {
             url: result.url, // Relative URL, client prepends server origin
-            type: mediaFile.mimetype,
+            type: req.file.mimetype,
             filename: result.filename,
-            originalName: mediaFile.name,
-            size: mediaFile.size,
+            originalName: req.file.originalname,
+            size: req.file.size,
           },
         });
       } catch (error: unknown) {
@@ -892,9 +899,6 @@ export function createChannelsRouter(
           `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`,
           error
         );
-        if (mediaFile) {
-          cleanupUploadedFile(mediaFile);
-        }
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
