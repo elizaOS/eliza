@@ -267,9 +267,15 @@ export const formatMessages = ({
       const attachmentString =
         attachments && attachments.length > 0
           ? ` (Attachments: ${attachments
-              .map((media) => `[${media.id} - ${media.title} (${media.url})]`)
-              .join(', ')})`
+              .map((media) => {
+                const lines = [`[${media.id} - ${media.title} (${media.url})]`];
+                if (media.text) lines.push(`Text: ${media.text}`);
+                if (media.description) lines.push(`Description: ${media.description}`);
+                return lines.join('\n');
+              })
+              .join('\n')})`
           : null;
+
 
       const messageTime = new Date(message.createdAt);
       const hours = messageTime.getHours().toString().padStart(2, '0');
@@ -673,3 +679,8 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
   }
   return undefined;
 };
+
+export function getLocalMediaUrl(url: string): string {
+  const port = process.env.SERVER_PORT || '3000';
+  return `http://localhost:${port}${url}`;
+}
