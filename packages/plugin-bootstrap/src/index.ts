@@ -162,17 +162,20 @@ export async function processAttachments(
       // Start with the original attachment
       const processedAttachment: Media = { ...attachment };
 
-      const url = /^(http|https):\/\//.test(attachment.url)
-        ? attachment.url
-        : getLocalMediaUrl(attachment.url);
+      const isRemote = /^(http|https):\/\//.test(attachment.url);
+      const url = isRemote ? attachment.url : getLocalMediaUrl(attachment.url);
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+      let imageUrl = url;
 
-      const buffer = await res.buffer();
-      const base64Image = `data:image/png;base64,${buffer.toString('base64')}`;
+      if (!isRemote) {
+        // Only convert local/internal media to base64
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
 
-
+        const buffer = await res.buffer();
+        imageUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+      }
+      
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
@@ -180,7 +183,7 @@ export async function processAttachments(
         try {
           const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
             prompt: imageDescriptionTemplate,
-            imageUrl: base64Image,
+            imageUrl,
           });
 
           if (typeof response === 'string') {
