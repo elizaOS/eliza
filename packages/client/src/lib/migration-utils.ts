@@ -5,7 +5,7 @@ import { wrapWithErrorHandling } from './api-error-bridge';
 // Flag to control gradual migration
 const MIGRATION_FLAGS = {
   USE_NEW_AGENTS_API: true, // ENABLED: Phase 3.1 - Agent Services Migration
-  USE_NEW_MESSAGING_API: true, // ENABLED: Phase 3.2 - Messaging Services Migration
+  USE_NEW_MESSAGING_API: true, // ENABLED: Phase 3.2 - Messaging Services Migration (Fixed)
   USE_NEW_MEMORY_API: false,
   USE_NEW_MEDIA_API: false,
   USE_NEW_SYSTEM_API: false,
@@ -59,26 +59,66 @@ export function createHybridClient() {
         })
       : legacyClient.stopAgent,
 
-    // Messaging services - with data shape adapters
+    // Messaging services
     getServers: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async () => {
+          if (!newClient.messaging?.listServers) {
+            throw new Error('Messaging service not available');
+          }
           const result = await newClient.messaging.listServers();
-          // Adapt from { servers: MessageServer[] } to { data: MessageServer[] }
-          return { data: result.servers };
+          // Adapt from { servers: MessageServer[] } to { data: { servers: MessageServer[] } }
+          return { data: result };
         })
       : legacyClient.getServers,
-    getChannels: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+    getChannelsForServer: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
       ? wrapWithErrorHandling(async (serverId: string) => {
+          if (!newClient.messaging?.getServerChannels) {
+            throw new Error('Messaging service not available');
+          }
           const result = await newClient.messaging.getServerChannels(serverId);
-          // Adapt from { channels: MessageChannel[] } to { data: MessageChannel[] }
-          return { data: result.channels };
+          // Adapt from { channels: MessageChannel[] } to { data: { channels: MessageChannel[] } }
+          return { data: result };
         })
-      : legacyClient.getChannels,
+      : legacyClient.getChannelsForServer,
+    getOrCreateDmChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
+          if (!newClient.messaging?.getOrCreateDmChannel) {
+            throw new Error('Messaging service not available');
+          }
+          const result = await newClient.messaging.getOrCreateDmChannel({ 
+            participantIds: [currentUserId, targetUserId] 
+          });
+          // Adapt from MessageChannel to { data: MessageChannel }
+          return { data: result };
+        })
+      : legacyClient.getOrCreateDmChannel,
+    createCentralGroupChat: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (params: any) => {
+          if (!newClient.messaging?.createGroupChannel) {
+            throw new Error('Messaging service not available');
+          }
+          const result = await newClient.messaging.createGroupChannel(params);
+          // Adapt from MessageChannel to { data: MessageChannel }
+          return { data: result };
+        })
+      : legacyClient.createCentralGroupChat,
     getChannelMessages: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(async (channelId: string, options?: any) => {
-          const result = await newClient.messaging.getChannelMessages(channelId, options);
-          // Adapt from { messages: Message[] } to { data: Message[] }
-          return { data: result.messages };
+      ? wrapWithErrorHandling(async (channelId: string, options?: { limit?: number; before?: number }) => {
+          if (!newClient.messaging?.getChannelMessages) {
+            throw new Error('Messaging service not available');
+          }
+          
+          // Convert parameters from legacy format to new format
+          const params: any = {};
+          if (options?.limit) params.limit = options.limit;
+          if (options?.before) {
+            // Convert timestamp number to Date
+            params.before = new Date(options.before).toISOString();
+          }
+          
+          const result = await newClient.messaging.getChannelMessages(channelId, params);
+          // Adapt from { messages: Message[] } to { data: { messages: ServerMessage[] } }
+          return { data: result };
         })
       : legacyClient.getChannelMessages,
     postMessageToChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API

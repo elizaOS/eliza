@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api';
 import { createHybridClient } from '@/lib/migration-utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +19,7 @@ export function useGetOrCreateDmChannel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const currentUserId = getEntityId();
+  const hybridApiClient = createHybridClient();
 
   return useMutation({
     mutationFn: async (targetUserId: UUID) => {
@@ -62,6 +62,7 @@ export function useDmChannelsForAgent(
   serverId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
 ) {
   const currentUserId = getEntityId();
+  const hybridApiClient = createHybridClient();
 
   return useQuery<MessageChannel[]>({
     queryKey: ['dmChannels', agentId, currentUserId], // This key will be invalidated by useCreateDmChannel
@@ -72,7 +73,7 @@ export function useDmChannelsForAgent(
         agentId
       );
 
-      const response = await hybridApiClient.getChannels(serverId);
+      const response = await hybridApiClient.getChannelsForServer(serverId);
       const allChannels = response.data?.channels || [];
 
       const dmChannels = allChannels.filter((channel) => {
@@ -138,6 +139,7 @@ export function useCreateDmChannel() {
   const { toast } = useToast();
   const currentUserId = getEntityId();
   const navigate = useNavigate();
+  const hybridApiClient = createHybridClient();
 
   return useMutation({
     mutationFn: async ({ agentId, channelName }: { agentId: UUID; channelName: string }) => {
