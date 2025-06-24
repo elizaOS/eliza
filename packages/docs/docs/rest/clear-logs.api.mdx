@@ -1,63 +1,62 @@
 ---
 id: clear-logs
-title: "Clear system logs"
-description: "Clear all system logs"
-sidebar_label: "Clear system logs"
+title: 'Clear system logs'
+description: 'Clear all system logs'
+sidebar_label: 'Clear system logs'
 hide_title: true
 hide_table_of_contents: true
 api: eJytVUFv2zoM/isEj4UbZ3vYxbdg84AAHTasGXZoe2BkxtYqS3qSnDYL8t8HSmnaLm87PV8sWeTHjxT5eY+J+ojNDRrXR7yrsOOogvZJO4sNvjdMAcgYiLuYeIRsVqHzHEhslh02qMTqqpwEjt7ZyBGbPb6dz+X1GlMMIbtwB3FSimPcTMbssELlbGKbxIm8N1rlIPWPKJ57jGrgkWSVdp6xQbf+wSphhT4IpaRL3JgoTfGFXUxB2x4r5EcavcmfSmQ8VDhyjNTz3+3/TPuQnwrf/Ve2bQguFD9t+6f6/U95soCf0/5bSocntiOnwcntdWw4sWBTGrDBmryuI4cth/pIt+ykT/Y4BYMNDin5pq6NU2QGF1Pzz3w+x9/b50qOoeMtG+dHtgkKEh7uKtR24zI/nXKBW6N/Eny+hsWX5RnS4ssSOqcmAcm1go0LcHLZvpnNZ2/mcAkL2Bh+1GvDQLaDqMiQbBZLoF4YbAKN/ODC/ezW3trVoKMEBB2h46h7yx0kB2uGKXIHDzoNQJDzNDsIk7VyjSWwtjGRVTyD1nbeaZuizIp7yORUYEra9tWtHclSL8vMSdvEgZScFfwnbhHSENzUS8Sv7fWqWG5I8ZErP1F1oSerf3IGc5AGho2TyILZuZG0jc2tvYSLi+s8uBcXDZTV5YPuGE4DHDMltlsdnM1XlMmyLAvAIlMTgLwCozesdupY4GfrF5jF8ROPLuyeHce8z17BufEs0Kfcs9r24lI2DAPZzuTSqYGsZRNLEY8teaQ4ddrlQLIAH5xMp9Qim3pmNUDc2TRw1Cd2nSbx+agNw+SNo65kJAdn5FZtK8arMMXEHbSPrKbch+2L0v1ege+8vnbqnpO4fmUyl0mPDMqN42SPQw9bTVCsZsvPWKGkVZq+NPVRLkhlubA0vhqW9wUriXo+j2Zs6rrXaZjWM+XGmsXaxfJGmX7vYhrJvkAsUv9a5l/N4P5Ztf74XzhqTeLHVHtD2ooWZVr7o7zcIHl9khSsTj8eURE53u/XFPlbMIeDfP534rDD5uauwi0FLbMsu0OFA1PHIWvSPe9EI5RiLyK5JTMJjTNpFdk56d6H9qpdtXg4/AJmvG/e
-sidebar_class_name: "delete api-method"
+sidebar_class_name: 'delete api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Clear system logs"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Clear system logs'}></Heading>
 
-<MethodEndpoint
-  method={"delete"}
-  path={"/api/server/logs"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'delete'} path={'/api/server/logs'} context={'endpoint'}></MethodEndpoint>
 
 Clear all system logs
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Logs cleared successfully","content":{"application/json":{"schema":{"type":"object","properties":{"status":{"type":"string","example":"success"},"message":{"type":"string","example":"Logs cleared successfully"}}}}}},"500":{"description":"Error clearing logs","content":{"application/json":{"schema":{"type":"object","properties":{"error":{"type":"string"},"message":{"type":"string"}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Logs cleared successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              status: { type: 'string', example: 'success' },
+              message: { type: 'string', example: 'Logs cleared successfully' },
+            },
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error clearing logs',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { error: { type: 'string' }, message: { type: 'string' } },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

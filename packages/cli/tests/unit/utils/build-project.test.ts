@@ -68,12 +68,14 @@ describe('buildProject', () => {
       hasElizaOSDependencies: true,
       elizaPackageCount: 1,
     });
-    mockReadFileSync.mockReturnValue(JSON.stringify({
-      name: 'test-project',
-      scripts: {
-        build: 'bun run build'
-      }
-    }));
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        name: 'test-project',
+        scripts: {
+          build: 'bun run build',
+        },
+      })
+    );
     mockRunBunCommand.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
   });
@@ -88,7 +90,7 @@ describe('buildProject', () => {
     // Verify logger calls
     expect(mockLogger.info).toHaveBeenCalledWith(`Building project in ${testProjectPath}...`);
     expect(mockLogger.info).toHaveBeenCalledWith('Build completed successfully');
-    
+
     // Verify runBunCommand was called with correct parameters
     expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], testProjectPath);
   });
@@ -99,7 +101,7 @@ describe('buildProject', () => {
     // Verify plugin-specific logging
     expect(mockLogger.info).toHaveBeenCalledWith(`Building plugin in ${testPluginPath}...`);
     expect(mockLogger.info).toHaveBeenCalledWith('Build completed successfully');
-    
+
     // Verify runBunCommand was called for plugin
     expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], testPluginPath);
   });
@@ -113,26 +115,28 @@ describe('buildProject', () => {
     await buildProject(testProjectPath);
 
     // Verify dist cleanup was attempted
-    expect(mockRm).toHaveBeenCalledWith(
-      expect.stringContaining('dist'),
-      { recursive: true, force: true }
-    );
+    expect(mockRm).toHaveBeenCalledWith(expect.stringContaining('dist'), {
+      recursive: true,
+      force: true,
+    });
   });
 
   it('should fallback to tsc when no build script exists', async () => {
     // Mock package.json without build script
-    mockReadFileSync.mockReturnValue(JSON.stringify({
-      name: 'test-project'
-      // No scripts
-    }));
-    
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        name: 'test-project',
+        // No scripts
+      })
+    );
+
     // Mock tsconfig.json exists
     mockExistsSync.mockImplementation((path) => {
       const pathStr = String(path);
       if (pathStr.includes('tsconfig.json')) return true;
       return !pathStr.includes('dist');
     });
-    
+
     mockExeca.mockResolvedValue({ exitCode: 0 });
 
     await buildProject(testProjectPath);
@@ -143,7 +147,7 @@ describe('buildProject', () => {
       ['tsc', '--build'],
       expect.objectContaining({
         cwd: testProjectPath,
-        stdio: 'inherit'
+        stdio: 'inherit',
       })
     );
   });
@@ -185,10 +189,12 @@ describe('buildProject', () => {
 
   it('should throw error when no build method can be determined', async () => {
     // Mock package.json without build script
-    mockReadFileSync.mockReturnValue(JSON.stringify({
-      name: 'test-project'
-    }));
-    
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        name: 'test-project',
+      })
+    );
+
     // Mock no tsconfig.json
     mockExistsSync.mockImplementation((path) => {
       const pathStr = String(path);
@@ -202,24 +208,24 @@ describe('buildProject', () => {
 
   it('should warn when no build script is found', async () => {
     // Mock package.json without build script
-    mockReadFileSync.mockReturnValue(JSON.stringify({
-      name: 'test-project'
-    }));
-    
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        name: 'test-project',
+      })
+    );
+
     // Mock tsconfig.json exists for fallback
     mockExistsSync.mockImplementation((path) => {
       const pathStr = String(path);
       if (pathStr.includes('tsconfig.json')) return true;
       return !pathStr.includes('dist');
     });
-    
+
     mockExeca.mockResolvedValue({ exitCode: 0 });
 
     await buildProject(testProjectPath);
 
     // Verify warning was logged
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('No build script found')
-    );
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('No build script found'));
   });
 });

@@ -77,7 +77,7 @@ export class StarterTestSuite implements TestSuite {
           await runtime.registerPlugin({
             name: 'starter',
             description: 'A starter plugin for Eliza',
-            init: async () => { },
+            init: async () => {},
             config: {},
           });
         } catch (error) {

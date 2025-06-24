@@ -52,7 +52,7 @@ describe('MediaService', () => {
         contentType: 'image/png',
         size: 1024,
         uploadedAt: new Date('2024-01-01T00:00:00Z'),
-        metadata: { description: 'Test image' }
+        metadata: { description: 'Test image' },
       };
       (mediaService as any).request.mockResolvedValue(mockResponse);
 
@@ -76,7 +76,7 @@ describe('MediaService', () => {
         filename: 'test.png',
         contentType: 'image/png',
         size: 512,
-        uploadedAt: new Date('2024-01-01T00:00:00Z')
+        uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
       (mediaService as any).request.mockResolvedValue(mockResponse);
 
@@ -106,7 +106,7 @@ describe('MediaService', () => {
             filename: 'file1.png',
             size: 1024,
             contentType: 'image/png',
-            uploadedAt: new Date('2024-01-01T00:00:00Z')
+            uploadedAt: new Date('2024-01-01T00:00:00Z'),
           },
           {
             id: '550e8400-e29b-41d4-a716-446655440021' as UUID,
@@ -114,10 +114,10 @@ describe('MediaService', () => {
             filename: 'file2.jpg',
             size: 1024,
             contentType: 'image/jpeg',
-            uploadedAt: new Date('2024-01-01T00:00:00Z')
+            uploadedAt: new Date('2024-01-01T00:00:00Z'),
           },
         ],
-        totalSize: 2048
+        totalSize: 2048,
       };
       (mediaService as any).request.mockResolvedValue(mockResponse);
 
@@ -146,7 +146,7 @@ describe('MediaService', () => {
     it('should handle upload with messageId only', async () => {
       const paramsWithMessageId = {
         files: mockFiles,
-        messageId: '550e8400-e29b-41d4-a716-446655440031' as UUID
+        messageId: '550e8400-e29b-41d4-a716-446655440031' as UUID,
       };
       const mockResponse = { uploads: [], totalSize: 0 };
       (mediaService as any).request.mockResolvedValue(mockResponse);
@@ -163,22 +163,25 @@ describe('MediaService', () => {
     it('should handle network errors', async () => {
       (mediaService as any).request.mockRejectedValue(new Error('Network error'));
 
-      await expect(mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' }))
-        .rejects.toThrow('Network error');
+      await expect(
+        mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' })
+      ).rejects.toThrow('Network error');
     });
 
     it('should handle file upload errors', async () => {
       (mediaService as any).request.mockRejectedValue(new Error('Upload failed'));
 
-      await expect(mediaService.uploadChannelFiles(TEST_CHANNEL_ID, { files: [mockFile] }))
-        .rejects.toThrow('Upload failed');
+      await expect(
+        mediaService.uploadChannelFiles(TEST_CHANNEL_ID, { files: [mockFile] })
+      ).rejects.toThrow('Upload failed');
     });
 
     it('should handle API errors', async () => {
       (mediaService as any).request.mockRejectedValue(new Error('API error'));
 
-      await expect(mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' }))
-        .rejects.toThrow('API error');
+      await expect(
+        mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' })
+      ).rejects.toThrow('API error');
     });
   });
 });

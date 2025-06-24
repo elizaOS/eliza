@@ -83,10 +83,7 @@ export class AgentsService extends BaseApiClient {
     worldId: UUID,
     settings: Record<string, any>
   ): Promise<AgentWorldSettings> {
-    return this.patch<AgentWorldSettings>(
-      `/api/agents/${agentId}/worlds/${worldId}`,
-      { settings }
-    );
+    return this.patch<AgentWorldSettings>(`/api/agents/${agentId}/worlds/${worldId}`, { settings });
   }
 
   /**

@@ -99,7 +99,7 @@ const TestFixtures = {
     name: 'test-plugin',
     description: 'Test plugin',
   },
-  
+
   mockProject: {
     isPlugin: false,
     agents: [
@@ -109,7 +109,7 @@ const TestFixtures = {
       },
     ],
   },
-  
+
   mockPluginProject: {
     isPlugin: true,
     pluginModule: {
@@ -123,7 +123,7 @@ const TestFixtures = {
       },
     ],
   },
-  
+
   mockDirectoryInfo: {
     plugin: {
       type: 'elizaos-plugin' as const,
@@ -138,7 +138,7 @@ const TestFixtures = {
       elizaPackageCount: 2,
     },
   },
-  
+
   mockOptions: {
     skipBuild: true,
   },
@@ -154,7 +154,7 @@ describe('E2E Tests Plugin Isolation', () => {
   beforeEach(async () => {
     // Save original ELIZA_TESTING_PLUGIN value specifically
     originalElizaTestingPlugin = process.env.ELIZA_TESTING_PLUGIN;
-    
+
     // Clean environment
     delete process.env.ELIZA_TESTING_PLUGIN;
 
@@ -162,7 +162,7 @@ describe('E2E Tests Plugin Isolation', () => {
     mockFindMonorepoRoot.mockClear();
     mockGetInstance.mockClear();
     mockGetInstanceInfo.mockClear();
-    
+
     // Reconfigure mocks with known state
     mockFindMonorepoRoot.mockReturnValue('/test/monorepo');
     mockGetInstance.mockReturnValue({
@@ -214,18 +214,27 @@ describe('E2E Tests Plugin Isolation', () => {
 
       // Track environment changes with proper cleanup
       let envWasSet = false;
-      const originalDescriptor = Object.getOwnPropertyDescriptor(process.env, 'ELIZA_TESTING_PLUGIN');
-      
+      const originalDescriptor = Object.getOwnPropertyDescriptor(
+        process.env,
+        'ELIZA_TESTING_PLUGIN'
+      );
+
       // Simple spy on environment variable
       Object.defineProperty(process.env, 'ELIZA_TESTING_PLUGIN', {
-        get: () => envWasSet ? 'true' : undefined,
-        set: (value) => { envWasSet = (value === 'true'); },
+        get: () => (envWasSet ? 'true' : undefined),
+        set: (value) => {
+          envWasSet = value === 'true';
+        },
         configurable: true,
         enumerable: true,
       });
 
       try {
-        await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.plugin);
+        await runE2eTests(
+          undefined,
+          TestFixtures.mockOptions,
+          TestFixtures.mockDirectoryInfo.plugin
+        );
 
         // Verify the environment variable was set
         expect(envWasSet).toBe(true);
@@ -246,7 +255,11 @@ describe('E2E Tests Plugin Isolation', () => {
       // Ensure env var is not set initially
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();
 
-      await runE2eTests(undefined, TestFixtures.mockOptions, TestFixtures.mockDirectoryInfo.project);
+      await runE2eTests(
+        undefined,
+        TestFixtures.mockOptions,
+        TestFixtures.mockDirectoryInfo.project
+      );
 
       // Verify the environment variable was not set
       expect(process.env.ELIZA_TESTING_PLUGIN).toBeUndefined();

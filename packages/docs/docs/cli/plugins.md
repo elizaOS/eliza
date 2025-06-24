@@ -24,14 +24,14 @@ elizaos plugins [options] [command]
 
 ## Subcommands
 
-| Subcommand          | Aliases          | Description                                                                        | Arguments                                                                 | Options                                                                |
-| ------------------- | ---------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `list`              | `l`, `ls`        | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)        |
-| `add`               | `install`        | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-s, --skip-env-prompt`, `--skip-verification`, `-b, --branch`, `-T, --tag` |
-| `installed-plugins` |                  | List plugins found in the project dependencies                                     |                                                                           |                                                                        |
-| `remove`            | `delete`, `del`, `rm` | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                        |
-| `upgrade`           |                  | Upgrade a plugin from version 0.x to 1.x using AI-powered migration                | `<path>` (GitHub repository URL or local folder path)                     | `--api-key`, `--skip-tests`, `--skip-validation`                      |
-| `generate`          |                  | Generate a new plugin using AI-powered code generation                             |                                                                           | `--api-key`, `--skip-tests`, `--skip-validation`, `--skip-prompts`, `--spec-file` |
+| Subcommand          | Aliases               | Description                                                                        | Arguments                                                                 | Options                                                                           |
+| ------------------- | --------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `list`              | `l`, `ls`             | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                    |
+| `add`               | `install`             | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-s, --skip-env-prompt`, `--skip-verification`, `-b, --branch`, `-T, --tag`       |
+| `installed-plugins` |                       | List plugins found in the project dependencies                                     |                                                                           |                                                                                   |
+| `remove`            | `delete`, `del`, `rm` | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                   |
+| `upgrade`           |                       | Upgrade a plugin from version 0.x to 1.x using AI-powered migration                | `<path>` (GitHub repository URL or local folder path)                     | `--api-key`, `--skip-tests`, `--skip-validation`                                  |
+| `generate`          |                       | Generate a new plugin using AI-powered code generation                             |                                                                           | `--api-key`, `--skip-tests`, `--skip-validation`, `--skip-prompts`, `--spec-file` |
 
 </TabItem>
 <TabItem value="examples" label="Examples">
@@ -88,8 +88,6 @@ elizaos plugins add github:owner/my-plugin#feature-branch
 # Using alias
 elizaos plugins install openai
 ```
-
-
 
 ### Listing Installed Plugins
 
@@ -156,8 +154,6 @@ elizaos plugins generate --skip-validation
 
 </TabItem>
 <TabItem value="guides" label="Guides & Concepts">
-
-
 
 ## Plugin Installation Formats
 
@@ -264,6 +260,7 @@ The `upgrade` command helps migrate v0.x plugins to v1.x format:
 ### Requirements
 
 Both AI features require an Anthropic API key:
+
 - Set via environment: `export ANTHROPIC_API_KEY=sk-ant-...`
 - Or pass directly: `--api-key sk-ant-...`
 

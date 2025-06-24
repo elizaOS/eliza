@@ -1,71 +1,121 @@
 ---
 id: update-channel
-title: "Update channel"
-description: "Update channel details"
-sidebar_label: "Update channel"
+title: 'Update channel'
+description: 'Update channel details'
+sidebar_label: 'Update channel'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVktz2zYQ/is7e2o9tKW0OfGmuupUM83EYzvTQ+zDCliJiEGAAUDZikb/vbMA9YhsJz10ciovBIndb799YBcbTLSMWH/ElmOkpXFLvK9Qc1TBdMl4hzV+6DQlBtWQc2xBcyJjI1boOw4kQjONNfZZ7LJIYYUdBWo5cRD8DTpqGWscUGYaKzSC3lFqsMLAn3sTWGOdQs8VRtVwS1hvMK07UYwpCLsKFz60lMRgbzRut/dFmWP6zeu1aJxiKe8SuyRb1HXWqEx69CmKe5vnpvz8E6skLgRxMRmOsls8OCW0PQnXC/stJ9KUXjCxzY84EDvvYrHzy3gsr6+TMMQVSpQ1xF4pjnHRW7vG/8zFAfVIcO69ZXJ7pm9fIjdzK7JGw5CHH8GnQn6itrOM9YJs5G2FHIIP38dUXr+QxtOinwoYZNmcQTkd/1ptJ55ro5yW72r+ngVZQ3YDjCt1Lpsl8skk8baYwF023r5eKs4nWPje6f/z8WPyUY5643Vpa6rJXTA1WOOIOjPa99iRYpcC2fOhG8bRZt8Xt1hh5LDa9c0+WKyxSamrRyPrFdnGx1T/Oh6Pn3H+S7ZB84qt71p2CQoSSpOUXF8fGuV0l659a34lEPvfR21MXJWI5DDu4mDNF4L3NzC5mj0DmVzNQHvVC6kcRFj4AHuV1ZuL8cWbMZzDBBaWn8zcMpDTEBVZko/JDGgpHi1kqjz68HBx5+7cbWOiGAQTQXM0S8cakoc5Qx9Zw6NJDRDkuNk1hN4545aDYeNiIqf4AqZOd964FIGs9Y+ZnApMybhldedacjlvVeZkXOJASvYK/o5bhNQE3y/F4vX05rZILkjxwJV3VH1YkjNfOIN5SA3DwotlwdS+JeNifefO4ezsZh0Tt2dnNZTV+aPRDPvRGzMldisTvMspz2RZlgVgkqkJQF6BNQtWazUE+CB9hFkU33Hrw/qg2ObvrBW8b58Zercrb1EpHwwNOW1z6Ha1XoI4lPhAsdfGZ0OygC546TISiyzaMasG4tqlhqPZs9OGROcPYxn6znrSxSPZeEbudjoV4dvQRxmf0ydWfa7D6VHoTiPwN89vvHrgJKrXTPY8mZZB+bbt3dBDYWUIitTF7D1WKG6Voi9FPXRfUunorO0r/7JgJRnih6Me69FoaVLTzy+Ub0cs0j6WN8rh63xMLbkjxK9vaacHcHOYAK/f54aGmPgpjTpLxknDzKQ2Qx/7iNQZrI5uixWe9jKssD7c8u4rlH4lqpvNnCJ/CHa7ld+few5rrD/eV7iiYOSU54anTZS1HgbJNxz56Xq46P0Mr7EffpKT+K7I9vKFFT7w+qvL6PZ+W2HDpDlkEmX/spg6vxWUg/6zCbqtdhoTpbhL35S9P5oSV5Pbyz+xwvlwc23zLMRAj3IlpsdC1mff88zK/zZoyS37PACxgMrzDwf8Gsc=
-sidebar_class_name: "patch api-method"
+sidebar_class_name: 'patch api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Update channel"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Update channel'}></Heading>
 
 <MethodEndpoint
-  method={"patch"}
-  path={"/api/messaging/central-channels/{channelId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'patch'}
+  path={'/api/messaging/central-channels/{channelId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Update channel details
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"metadata":{"type":"object"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            metadata: { type: 'object' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Channel updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Channel not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Channel updated successfully',
+      content: {
+        'application/json': {
+          schema: { type: 'object', properties: { success: { type: 'boolean' } } },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

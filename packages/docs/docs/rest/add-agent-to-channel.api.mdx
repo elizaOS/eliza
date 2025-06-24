@@ -1,71 +1,145 @@
 ---
 id: add-agent-to-channel
-title: "Add agent to channel"
-description: "Add an agent to a specific channel"
-sidebar_label: "Add agent to channel"
+title: 'Add agent to channel'
+description: 'Add an agent to a specific channel'
+sidebar_label: 'Add agent to channel'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV0tv2zgQ/ivEnHYDOXabR3d187ZewMAWLRIv9pDkMCZHFluKVEnKiWv4vxdDyo/E2XSBBXqqL5bEeXzzzWhmtIaIiwDlDTQUAi60XcBdAYqC9LqN2lkoYayUQCtwQTaK6ASK0JLUlZZC1mgtGSjAteSRFaYKSkClxiw+c293Ei16bCiSZ39rsNgQlNBbmCooQLO3FmMNBXj60mlPCsroOyogyJoahHINcdWyYoie0RZQOd9ghBK6TivYbO6yMoX4h1Mr1nhqSzobyUY+wrY1Wibgw0+Bw10fu3LzTyTjI1A3kOiYKqar9Rx91BSSyf7gu1Cf8jx9J1wlYk0HVCuOiH/sPLTOhuzk9WjEf08SldRQKVIidFJSCFVnzAr+R8iPY+utHgjOnTOEFjZFX0J0HPg2gvPnQE/tEo1Wos/Zj8BaAD1g0xqCskITaFMAee/8921Kp56J72kiJ2xMJNmXaHlebSu+4eOI2oTva75LgqRECkNomwuNDzPzUUeONruAbTbOj7PRv67C+b4IrYuicp1VPxPzoxJz8dxrkjGgUtou9v1h339/5uYH5CYBi7XjEde61KzSuCphiK0e7mboUJKNHs2gz08YrndzbjNM2QtQQCC/3I7DzhsooY6xLYdD4ySa2oVYno1GoyPkf/GxULQk49qGSyFbAp59nPGr/fybbJN2MJjgrMLfLqrL88HFm1dvBucXl68H87NKDl7L3y/PqstLrPCSuWROEpFbJoz+iuLDtRh/nB6hGn+cCuVkx4ASjaJyXuxUlq9OR6evRmIgxqIy9KDnhgRaJYJEg3wznvaFXfGicO/859Nbe2tntQ7sUOggFAW9sKS49uckukBK3OtYCxSJM7MSvrOW35HsWNsQ0Uo6FROrWqdtDAKNcfcJnPSEUdtFcWsbtCl1RcKkbSSPks+y/S22IGLtXbdgj1eT61mWrFBSj5W2UJ1foNVfKRlzaaxXjj2zTeUa1DaUt3YgTk6uVyFSc3JSinw1uNeKxG6jCgkS2aX2zqZ0J7DEl9lAGvyBDeQVwOiK5Er2BO+lD2xmxffUOL/aKzbpPml555ojR++3Fc4q+YZEjVaZRN223DOJfXn3EDulXXLEF6L1jvtMamYs2hLJWoSVjTUFvUOnNLLOn9qQ6FrjUOWI+OAI3GwyYeGZ70IkJSYPJLtUh5MD6p4y8A/Nr538TJFVrwjNIOqGhHRN09m+i4qlRpGlTqcfoAAOKxd9Luq+/6JM/bffbHeV/zbbiryH7V/zUA6HCx3rbn4qXTMklnYh/wN3Gm4wDdoDi2kRP279j17D9X4S/LfFvW+SkR7isDWo0yqXYK775nYD2GooDj4RCnja4KCA8nCV73vcXQHcxtjGej3HQH97s9nw4y8d+RWUN3cFLNFrbgCpDyod+Fr1U+aF6H656rfxX8W/hdE/RMvUL9F0fAcFfKbVo0+Pzd2mgJpQkU8g8vnb7GowYyt7/aPxuim2GmMpqY0vyt4djJCPH65nUMC8/0xp0pwEj/f8qYH3GatLoad5lp6twaBddGk4QrbJv29mP8Y4
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Add agent to channel"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Add agent to channel'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/messaging/central-channels/{channelId}/agents"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/messaging/central-channels/{channelId}/agents'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Add an agent to a specific channel
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"channelId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    { name: 'channelId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","required":["agentId"],"properties":{"agentId":{"type":"string","format":"uuid","description":"ID of the agent to add"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          required: ['agentId'],
+          properties: {
+            agentId: { type: 'string', format: 'uuid', description: 'ID of the agent to add' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Agent added successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean"},"message":{"type":"string"}}}}}},"400":{"description":"Invalid request","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Channel or agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error adding agent to channel","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Agent added successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { success: { type: 'boolean' }, message: { type: 'string' } },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid request',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Channel or agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error adding agent to channel',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

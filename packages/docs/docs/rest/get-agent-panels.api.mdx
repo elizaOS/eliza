@@ -1,71 +1,147 @@
 ---
 id: get-agent-panels
-title: "Get agent panels"
-description: "Get public UI panels available for this agent from its plugins"
-sidebar_label: "Get agent panels"
+title: 'Get agent panels'
+description: 'Get public UI panels available for this agent from its plugins'
+sidebar_label: 'Get agent panels'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV8FuGzkM/RWCp91gEru73cvcgq23MNCiRZJiD0kOtETPqNVIU0njxDX87wWlcezG7TbAAjnVF89Y5NPjo0TSG0zURKyvkRp2KeJthZqjCqZPxjus8TUn6IeFNQo+zKEnxzYCrchYWliGpQ+QWhMh+8My+A5MitDboTEuYoW+50ACNtdYY8PpXCzfZyCssKdAHScOwmKDjjrGurCZa6zQCImeUosVBv48mMAa6xQGrjCqljvCeoNp3YtbTMG4Bitc+tBRwhqHwWjcPg5q/gr8ElLLhTZubwU89t5FjoL3x3QqX996ZeI7CQKnYHjFGuKgFMe4HKxdY4XKuySY9Qap761ROfjJxygYm2POfvGRVRIlgkiVTGEwoh4YLry3TA4r5HvqestFBgmO0iEihUDCxCTu4s93KpIfa/ht8K9M7C2tQax34mUpRN2cn59CfLh4A2IJyQPl6A5Rdp8KX35P/LlbkTV6PGfzV8+s9JJsFKk5BB9+jqm8foKmMwGDbLutsOMYqXmy2848H+5ExsYnJDEbsoYcBhhX7oksFumTSRJt2QJ36Xj5o7vgfIKlH5z+lY3nysZf37schcNYkoxrxiL1KyvPk5VMLLV+bHC4K4g4od5MSmedbMaetp08JCdyWO0a3xAs1tim1NeTifWKbOtjqv+cTqdHFN/IMmhesfV9JxexIOU+JoRzlDua1nwheHcJ5+/nR0jn7+egvRoEJMeYG/qDy+rF2fTsxRRO4RyWlu+NtHxyGqKi0v/P5w+dnzq+8+HT2Y27cVcyEgi4iaA5msaxlrK/YBgia7gzqQWCHKddQxick2NbNjYuJnKKz2DmdO+NSxHIWn+XyanAlIxrqhvXkaNGHjMn4xIHUrJW8HfcpM0EPzSy48Xs8qpYLknxyJV3VH1oyJkvnMF87k5LLzsLpvYdGRfrG3cKJyeX65i4OzmpoTyd3hnN8DDsxEyJ3coE73KKMlmWxwKQK2gUgFJLrVmyWqtR4L31AWZxfMudD+u9Y5ffs1fwvjva6G2+BMY14lJeGFpy2mbpVEtOzmMRcTySI8VBG583kgfog5ciIFpk055ZtRDXLrUczQM7bUh8/jGWYeitJ10ikoUjclezmRhfhSEm1jC7ZzXkczg7kO6xAv/y4tKrT5zE9YLJnibTMSjfdYMbSxysDEGxOpu/wwolrHLoy6EeiyOptB+C9pfl74KVZI7aX81YTyaNSe2wOFO+m7BY+1i+UcpA72PqyB0gyvxMB4Pj4yu42Zfo/z9rj5Ut8X2a9JaMk8qX6W/GknSN1BusduN+hfV+1B4J3lYopUdsN5sFRf4Q7HYrP38eOKyxvr6tcEXBCKlcu7SJ8qzHFvAfEf52MY7wv8PjGfwH7HczrZNMrMgO8oYVfuL1wf+E7e22wpZJc8iMyuq5UtynA7+jFigF86F0v55d4Xb7FfHJib4=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get agent panels"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get agent panels'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/agents/{agentId}/panels"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/agents/{agentId}/panels'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Get public UI panels available for this agent from its plugins
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Agent panels retrieved successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string","description":"Display name of the panel"},"path":{"type":"string","description":"URL path to access the panel"}}}}}}}}},"400":{"description":"Invalid agent ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving panels","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Agent panels retrieved successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string', description: 'Display name of the panel' },
+                    path: { type: 'string', description: 'URL path to access the panel' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error retrieving panels',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -17,8 +17,8 @@ const originalConsoleError = console.error;
 const originalConsoleWarn = console.warn;
 
 beforeEach(() => {
-  console.error = mock(() => { });
-  console.warn = mock(() => { });
+  console.error = mock(() => {});
+  console.warn = mock(() => {});
 });
 
 afterAll(() => {
@@ -62,7 +62,7 @@ describe('SystemService', () => {
   describe('getEnvironment', () => {
     const mockEnvironment = {
       NODE_ENV: 'development',
-      VERSION: '1.0.0'
+      VERSION: '1.0.0',
     } as Record<string, string>;
 
     it('should return environment info successfully', async () => {
@@ -145,8 +145,8 @@ describe('SystemService', () => {
       variables: {
         NODE_ENV: 'development',
         DEBUG: 'true',
-        LOG_LEVEL: 'info'
-      }
+        LOG_LEVEL: 'info',
+      },
     };
 
     const mockUpdateResponse = { success: true, message: 'Local env updated' };
@@ -157,23 +157,27 @@ describe('SystemService', () => {
       const result = await systemService.updateLocalEnvironment(mockUpdateParams);
 
       expect(result).toEqual(mockUpdateResponse);
-      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', { content: mockUpdateParams.variables });
+      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', {
+        content: mockUpdateParams.variables,
+      });
     });
 
     it('should handle authorization errors', async () => {
       const authError = new Error('Forbidden');
       mockPost.mockRejectedValue(authError);
 
-      await expect(systemService.updateLocalEnvironment(mockUpdateParams))
-        .rejects.toThrow('Forbidden');
+      await expect(systemService.updateLocalEnvironment(mockUpdateParams)).rejects.toThrow(
+        'Forbidden'
+      );
     });
 
     it('should handle validation errors from server', async () => {
       const validationError = new Error('Invalid configuration parameters');
       mockPost.mockRejectedValue(validationError);
 
-      await expect(systemService.updateLocalEnvironment(mockUpdateParams))
-        .rejects.toThrow('Invalid configuration parameters');
+      await expect(systemService.updateLocalEnvironment(mockUpdateParams)).rejects.toThrow(
+        'Invalid configuration parameters'
+      );
     });
 
     it('should handle empty configuration object', async () => {
@@ -183,17 +187,17 @@ describe('SystemService', () => {
       const result = await systemService.updateLocalEnvironment(emptyConfig);
 
       expect(result.success).toBe(true);
-      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', { content: (emptyConfig as any).variables });
+      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', {
+        content: (emptyConfig as any).variables,
+      });
     });
 
     it('should handle null configuration', async () => {
-      await expect(systemService.updateLocalEnvironment(null as any))
-        .rejects.toThrow();
+      await expect(systemService.updateLocalEnvironment(null as any)).rejects.toThrow();
     });
 
     it('should handle undefined configuration', async () => {
-      await expect(systemService.updateLocalEnvironment(undefined as any))
-        .rejects.toThrow();
+      await expect(systemService.updateLocalEnvironment(undefined as any)).rejects.toThrow();
     });
 
     it('should handle partial configuration updates', async () => {
@@ -203,15 +207,17 @@ describe('SystemService', () => {
       const result = await systemService.updateLocalEnvironment(partialConfig);
 
       expect(result.success).toBe(true);
-      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', { content: partialConfig.variables });
+      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', {
+        content: partialConfig.variables,
+      });
     });
 
     it('should handle configuration with nested objects', async () => {
       const nestedConfig = {
         variables: {
           DATABASE_URL: 'postgresql://localhost:5432/test',
-          REDIS_URL: 'redis://localhost:6379'
-        }
+          REDIS_URL: 'redis://localhost:6379',
+        },
       };
       mockPost.mockResolvedValue({ success: true, message: 'Local env updated' });
 
@@ -285,8 +291,9 @@ describe('SystemService', () => {
       const serviceUnavailableError = new Error('Service unavailable');
       mockPost.mockRejectedValue(serviceUnavailableError);
 
-      await expect(systemService.updateLocalEnvironment({ variables: {} }))
-        .rejects.toThrow('Service unavailable');
+      await expect(systemService.updateLocalEnvironment({ variables: {} })).rejects.toThrow(
+        'Service unavailable'
+      );
     });
   });
 
@@ -295,7 +302,7 @@ describe('SystemService', () => {
       const specialEnvironment = {
         ENV: 'test-env-123',
         VERSION: '1.0.0-beta.1',
-        FEATURE_FLAG: 'feature-with-dashes'
+        FEATURE_FLAG: 'feature-with-dashes',
       } as Record<string, string>;
       mockGet.mockResolvedValue(specialEnvironment);
 
@@ -309,22 +316,24 @@ describe('SystemService', () => {
         variables: {
           MESSAGE: '测试消息 🚀',
           EMOJI: '🎉',
-          ARABIC: 'مرحبا'
-        }
+          ARABIC: 'مرحبا',
+        },
       };
       mockPost.mockResolvedValue({ success: true, message: 'Local env updated' });
 
       const result = await systemService.updateLocalEnvironment(unicodeConfig);
 
       expect(result.success).toBe(true);
-      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', { content: unicodeConfig.variables });
+      expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', {
+        content: unicodeConfig.variables,
+      });
     });
 
     it('should handle very large configuration objects', async () => {
       const largeConfig = {
         variables: Object.fromEntries(
           Array.from({ length: 100 }, (_, i) => [`VAR_${i}`, `value_${i}`])
-        )
+        ),
       };
       mockPost.mockResolvedValue({ success: true, message: 'Local env updated' });
 
@@ -339,8 +348,8 @@ describe('SystemService', () => {
           NULL_VAR: null,
           UNDEFINED_VAR: undefined,
           EMPTY_VAR: '',
-          VALID_VAR: 'value'
-        }
+          VALID_VAR: 'value',
+        },
       };
       mockPost.mockResolvedValue({ success: true, message: 'Local env updated' });
 
@@ -357,7 +366,7 @@ describe('SystemService', () => {
       const results = await Promise.all(promises);
 
       expect(results).toHaveLength(5);
-      results.forEach(result => {
+      results.forEach((result) => {
         expect(result).toEqual({ environment: 'test' });
       });
       expect(mockGet).toHaveBeenCalledTimes(5);

@@ -11,8 +11,8 @@ import {
 
 export class AudioService extends BaseApiClient {
   /**
- * Convert audio input to appropriate FormData value
- */
+   * Convert audio input to appropriate FormData value
+   */
   private processAudioInput(audio: Blob | Buffer | string): Blob | string {
     if (audio instanceof Blob) {
       return audio;
@@ -33,7 +33,9 @@ export class AudioService extends BaseApiClient {
           }
           return new Blob([bytes], { type: mimeType });
         } catch (error) {
-          throw new Error(`Invalid base64 data URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          throw new Error(
+            `Invalid base64 data URL: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
         }
       }
 
@@ -68,12 +70,19 @@ export class AudioService extends BaseApiClient {
       return new Blob([audioAsAny], { type: 'audio/wav' });
     }
 
-    if (audioAsAny && typeof audioAsAny === 'object' && 'buffer' in audioAsAny && audioAsAny.buffer instanceof ArrayBuffer) {
+    if (
+      audioAsAny &&
+      typeof audioAsAny === 'object' &&
+      'buffer' in audioAsAny &&
+      audioAsAny.buffer instanceof ArrayBuffer
+    ) {
       // Handle typed arrays like Uint8Array
       return new Blob([audioAsAny.buffer], { type: 'audio/wav' });
     }
 
-    throw new Error(`Unsupported audio input type: ${typeof audio}. Expected Blob, Buffer, ArrayBuffer, or string.`);
+    throw new Error(
+      `Unsupported audio input type: ${typeof audio}. Expected Blob, Buffer, ArrayBuffer, or string.`
+    );
   }
 
   /**
@@ -95,11 +104,13 @@ export class AudioService extends BaseApiClient {
    * Safe check for Buffer type (works in both Node.js and browser environments)
    */
   private isBuffer(obj: any): obj is Buffer {
-    return obj != null &&
+    return (
+      obj != null &&
       typeof obj === 'object' &&
       typeof obj.constructor === 'function' &&
       obj.constructor.name === 'Buffer' &&
-      typeof obj.readUInt8 === 'function';
+      typeof obj.readUInt8 === 'function'
+    );
   }
 
   /**
@@ -157,10 +168,7 @@ export class AudioService extends BaseApiClient {
   /**
    * Transcribe audio to text
    */
-  async transcribe(
-    agentId: UUID,
-    params: TranscribeParams
-  ): Promise<TranscriptionResponse> {
+  async transcribe(agentId: UUID, params: TranscribeParams): Promise<TranscriptionResponse> {
     const formData = new FormData();
 
     const processedAudio = this.processAudioInput(params.audio);

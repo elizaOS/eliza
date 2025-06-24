@@ -87,7 +87,8 @@ describe('AudioService', () => {
 
     it('should handle base64 data URL strings correctly', async () => {
       // Create a valid base64 data URL
-      const base64Audio = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIB+AAABAAgAZGF0YQA=';
+      const base64Audio =
+        'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAIB+AAABAAgAZGF0YQA=';
 
       await audioService.speechConversation(TEST_AGENT_ID, { audio: base64Audio });
 
@@ -136,7 +137,9 @@ describe('AudioService', () => {
         readUInt8: mock(() => 0),
         // Mock Buffer data
         [Symbol.iterator]: function* () {
-          yield 1; yield 2; yield 3;
+          yield 1;
+          yield 2;
+          yield 3;
         },
         length: 3,
       };
@@ -306,15 +309,17 @@ describe('AudioService', () => {
     it('should handle network errors', async () => {
       (audioService as any).request.mockRejectedValue(new Error('Network error'));
 
-      await expect(audioService.speechConversation(TEST_AGENT_ID, { audio: new Blob() }))
-        .rejects.toThrow('Network error');
+      await expect(
+        audioService.speechConversation(TEST_AGENT_ID, { audio: new Blob() })
+      ).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {
       (audioService as any).post.mockRejectedValue(new Error('API error'));
 
-      await expect(audioService.generateSpeech(TEST_AGENT_ID, { text: 'test' }))
-        .rejects.toThrow('API error');
+      await expect(audioService.generateSpeech(TEST_AGENT_ID, { text: 'test' })).rejects.toThrow(
+        'API error'
+      );
     });
   });
 });

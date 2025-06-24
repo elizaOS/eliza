@@ -29,10 +29,7 @@ const agent = await client.agents.createAgent({
 });
 
 // Send a message
-const message = await client.messaging.postMessage(
-  channelId,
-  'Hello, world!'
-);
+const message = await client.messaging.postMessage(channelId, 'Hello, world!');
 
 // Upload media
 const upload = await client.media.uploadAgentMedia(agentId, {
@@ -44,36 +41,43 @@ const upload = await client.media.uploadAgentMedia(agentId, {
 ## API Domains
 
 ### Agents
+
 - CRUD operations for agents
 - Agent lifecycle management (start/stop)
 - World management
 - Plugin panels and logs
 
 ### Messaging
+
 - Message submission and management
 - Channel operations
 - Server management
 - Message search
 
 ### Memory
+
 - Agent memory management
 - Room operations
 - World management
 
 ### Audio
+
 - Speech processing
 - Text-to-speech
 - Audio transcription
 
 ### Media
+
 - File uploads for agents and channels
 
 ### Server
+
 - Health checks and status
 - Runtime debugging
 - Log management
 
 ### System
+
 - Environment configuration
 
 ## Error Handling

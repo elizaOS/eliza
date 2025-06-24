@@ -1,10 +1,5 @@
 import { BaseApiClient } from '../lib/base-client';
-import {
-  ServerHealth,
-  ServerStatus,
-  ServerDebugInfo,
-  LogSubmitParams,
-} from '../types/server';
+import { ServerHealth, ServerStatus, ServerDebugInfo, LogSubmitParams } from '../types/server';
 
 export class ServerService extends BaseApiClient {
   /**

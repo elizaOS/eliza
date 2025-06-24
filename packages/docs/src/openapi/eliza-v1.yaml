@@ -6,7 +6,7 @@ info:
 
     This API is designed to be used with a locally running Eliza instance. Endpoints allow for creating,
     managing, and interacting with AI agents through a REST interface.
-    
+
     The API is organized into the following domains:
     - **System**: System-wide operations and environment management
     - **Agents**: Agent lifecycle and management operations
@@ -3907,11 +3907,11 @@ paths:
       summary: WebSocket Connection
       description: |
         WebSocket connection for real-time communication. 
-        
+
         **Connection URL**: `ws://localhost:3000/socket.io/`
-        
+
         **Events**:
-        
+
         ### Client to Server Events:
         - `join` - Join a room/channel
           ```json
@@ -3920,7 +3920,7 @@ paths:
             "agentId": "uuid"
           }
           ```
-        
+
         - `leave` - Leave a room/channel
           ```json
           {
@@ -3928,7 +3928,7 @@ paths:
             "agentId": "uuid"
           }
           ```
-        
+
         - `message` - Send a message
           ```json
           {
@@ -3938,14 +3938,14 @@ paths:
             "name": "string"
           }
           ```
-        
+
         - `request-world-state` - Request current state
           ```json
           {
             "roomId": "uuid"
           }
           ```
-        
+
         ### Server to Client Events:
         - `messageBroadcast` - New message broadcast
           ```json
@@ -3963,7 +3963,7 @@ paths:
             "attachments": []
           }
           ```
-        
+
         - `messageComplete` - Message processing complete
           ```json
           {
@@ -3971,7 +3971,7 @@ paths:
             "serverId": "uuid"
           }
           ```
-        
+
         - `world-state` - World state update
           ```json
           {
@@ -3981,7 +3981,7 @@ paths:
             "messages": {}
           }
           ```
-        
+
         - `logEntry` - Real-time log entry
           ```json
           {
@@ -3992,7 +3992,7 @@ paths:
             "agentName": "string"
           }
           ```
-        
+
         - `error` - Error event
           ```json
           {

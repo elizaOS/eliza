@@ -45,7 +45,7 @@ describe('MessagingService', () => {
       agentId: 'agent-123' as any,
       channelId: 'channel-456' as any,
       content: 'Test message',
-      metadata: { source: 'test' }
+      metadata: { source: 'test' },
     };
 
     it('should submit message successfully', async () => {
@@ -64,15 +64,14 @@ describe('MessagingService', () => {
     it('should handle submission errors', async () => {
       (messagingService as any).post.mockRejectedValue(new Error('Submission failed'));
 
-      await expect(messagingService.submitMessage(mockParams))
-        .rejects.toThrow('Submission failed');
+      await expect(messagingService.submitMessage(mockParams)).rejects.toThrow('Submission failed');
     });
   });
 
   describe('completeMessage', () => {
     const mockParams = {
       messageId: 'msg-123' as any,
-      status: 'completed' as 'completed' | 'failed'
+      status: 'completed' as 'completed' | 'failed',
     };
 
     it('should complete message successfully', async () => {
@@ -99,9 +98,9 @@ describe('MessagingService', () => {
           authorId: 'ext-user-1',
           content: 'External message',
           timestamp: Date.now(),
-          metadata: { platform: 'discord' }
-        }
-      ]
+          metadata: { platform: 'discord' },
+        },
+      ],
     };
 
     it('should ingest external messages successfully', async () => {
@@ -123,7 +122,7 @@ describe('MessagingService', () => {
       name: 'New Channel',
       type: 'public' as any,
       serverId: 'server-123' as any,
-      metadata: { description: 'A new channel' }
+      metadata: { description: 'A new channel' },
     };
 
     it('should create channel successfully', async () => {
@@ -144,7 +143,7 @@ describe('MessagingService', () => {
     const mockParams = {
       name: 'Group Channel',
       participantIds: ['user-1', 'user-2'] as any[],
-      metadata: { type: 'group' }
+      metadata: { type: 'group' },
     };
 
     it('should create group channel successfully', async () => {
@@ -163,7 +162,7 @@ describe('MessagingService', () => {
 
   describe('getOrCreateDmChannel', () => {
     const mockParams = {
-      participantIds: ['user-1', 'user-2'] as [any, any]
+      participantIds: ['user-1', 'user-2'] as [any, any],
     };
 
     it('should get or create DM channel successfully', async () => {
@@ -172,10 +171,9 @@ describe('MessagingService', () => {
 
       const result = await messagingService.getOrCreateDmChannel(mockParams);
 
-      expect((messagingService as any).get).toHaveBeenCalledWith(
-        '/api/messaging/dm-channel',
-        { params: mockParams }
-      );
+      expect((messagingService as any).get).toHaveBeenCalledWith('/api/messaging/dm-channel', {
+        params: mockParams,
+      });
       expect(result).toEqual(mockResponse);
     });
   });
@@ -381,7 +379,7 @@ describe('MessagingService', () => {
     const mockParams = {
       query: 'search term',
       channelId: 'channel-123' as any,
-      limit: 10
+      limit: 10,
     };
 
     it('should search messages successfully', async () => {
@@ -431,7 +429,7 @@ describe('MessagingService', () => {
       name: 'New Server',
       sourceType: 'discord',
       sourceId: 'discord-server-123',
-      metadata: { description: 'A new server' }
+      metadata: { description: 'A new server' },
     };
 
     it('should create server successfully', async () => {
@@ -453,8 +451,8 @@ describe('MessagingService', () => {
     const mockParams = {
       channels: [
         { name: 'general', type: 'public' as any, sourceId: 'discord-channel-1' },
-        { name: 'private', type: 'private' as any, sourceId: 'discord-channel-2' }
-      ]
+        { name: 'private', type: 'private' as any, sourceId: 'discord-channel-2' },
+      ],
     };
 
     it('should sync server channels successfully', async () => {
@@ -491,8 +489,7 @@ describe('MessagingService', () => {
     it('should handle network errors', async () => {
       (messagingService as any).get.mockRejectedValue(new Error('Network error'));
 
-      await expect(messagingService.listServers())
-        .rejects.toThrow('Network error');
+      await expect(messagingService.listServers()).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {
@@ -501,11 +498,10 @@ describe('MessagingService', () => {
       const params = {
         agentId: 'agent-123' as any,
         channelId: 'channel-456' as any,
-        content: 'Test message'
+        content: 'Test message',
       };
 
-      await expect(messagingService.submitMessage(params))
-        .rejects.toThrow('API error');
+      await expect(messagingService.submitMessage(params)).rejects.toThrow('API error');
     });
   });
 });

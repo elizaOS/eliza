@@ -1,63 +1,48 @@
 ---
 id: stop-server
-title: "Stop the server"
-description: "Initiates server shutdown"
-sidebar_label: "Stop the server"
+title: 'Stop the server'
+description: 'Initiates server shutdown'
+sidebar_label: 'Stop the server'
 hide_title: true
 hide_table_of_contents: true
 api: eJx9VEFv2zoM/isEj4UbZ28334IhAwK8ocWSh3doe2BkxtYqS5okJ82C/PeBkpumK7BcTEbkx08U+Z0wURexecB4jIkHfKqw5aiC9kk7iw2urE6aEkeIHPYcIPZjat3BYoXOcyCJW7XYYEzOr3MMVhg4emcjR2xO+M98Lp/3wCUUdMyISdsOJljlbGKbJIW8N1rlGvWPKHknjKrngcRKR8/YoNv+YJWwQh+EUdKl6sAxUsdXgTEFbTuskF9o8IbfWAh3r203m83wXH4VDpx6JzfzLmZ4Sj02WJPXdWlGLXlYYfGkjyccg8EG+5R8U9fGKTK9i6n5PJ/P8c/m/ivH0PKejfMD2zQ1Gc9PFWq7c5m8Tpnq0uhfBHdrWNyvPiAt7lfQOjUKSG4X7FyAS8r+02w++zSHW1jAzvCL3hoGsi1ERYbEWayAOmGwCzTwwYXn2aN9tJteRyko79Ry1J3lFpKDLcMYuYWDTj0Q5HuaI4TRWnnJUljbmMgqnsHStt5pmyKQMe6QyanAJM9ePdqBLHViZk7aJg6k8khk/FduEVIf3NhJxe/L9aZE7kjxxJVfqbrQkdW/OIM5SD3DzknlMmYDaRubR3sLNzfrPPg3Nw0U6/agW4bLaMdMie1eB2fzE2WyLGYBWGRqApAtMHrH6qimBr9FX2GWxG88uHB8Sxyyn7OCc8OHQt/yQGvbSUpxGHqyrcmtUz1ZyyaWJk4jOVEcW+1yITHAB6c4RulFDvXMqod4tKnnqC/sWk2S81UbhtEbR225kRx8ILdZLiV4E8aYuIXlC6sxz+HyqnV/duB/3q6deuYkqd+ZzG3SA4NywzDaae9hrwlK1Gx1hxXKtcrQl6GeFINUVgxLw7tl+VKw0hGrq9WMTV13OvXjdqbcULNEu1i+KLsvKz+QvUJcJ+fzIMVXjXu3gac32fqrZk5SlPgl1d6QtnieiJ0mgXlA8voiKmKIyDxVKDoix6fTliL/F8z5LH//HDkcsXl4qnBPQcs2i3eusGdqOWRVeuajqIRS7EXK9mRGofFBX0V4Lrp3f7fe4Pn8G1quIwk=
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Stop the server"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Stop the server'}></Heading>
 
-<MethodEndpoint
-  method={"post"}
-  path={"/api/server/stop"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'post'} path={'/api/server/stop'} context={'endpoint'}></MethodEndpoint>
 
 Initiates server shutdown
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Server is shutting down","content":{"application/json":{"schema":{"type":"object","properties":{"message":{"type":"string","example":"Server stopping..."}}}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Server is shutting down',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: { message: { type: 'string', example: 'Server stopping...' } },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

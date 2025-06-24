@@ -24,12 +24,12 @@ elizaos publish [options]
 
 ## Options
 
-| Option                 | Description                                        |
-| ---------------------- | -------------------------------------------------- |
-| `--npm`                | Publish to npm instead of GitHub                   |
-| `-t, --test`           | Test publish process without making changes        |
-| `-d, --dry-run`        | Generate registry files locally without publishing |
-| `--skip-registry`      | Skip publishing to the registry                    |
+| Option            | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| `--npm`           | Publish to npm instead of GitHub                   |
+| `-t, --test`      | Test publish process without making changes        |
+| `-d, --dry-run`   | Generate registry files locally without publishing |
+| `--skip-registry` | Skip publishing to the registry                    |
 
 </TabItem>
 <TabItem value="examples" label="Examples">

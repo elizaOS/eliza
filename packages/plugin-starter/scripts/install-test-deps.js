@@ -5,9 +5,9 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 
 const testDependencies = {
-  "@cypress/react": "^9.0.1",
-  "@testing-library/cypress": "^10.0.3",
-  "cypress": "^14.4.1"
+  '@cypress/react': '^9.0.1',
+  '@testing-library/cypress': '^10.0.3',
+  cypress: '^14.4.1',
 };
 
 function isInstalled(packageName) {
@@ -36,9 +36,9 @@ function installTestDependencies() {
 
   console.log('Installing test dependencies...');
   try {
-    execSync(`bun add -d ${missingDeps.join(' ')}`, { 
+    execSync(`bun add -d ${missingDeps.join(' ')}`, {
       stdio: 'inherit',
-      cwd: process.cwd()
+      cwd: process.cwd(),
     });
     console.log('✓ Test dependencies installed successfully');
   } catch (error) {
