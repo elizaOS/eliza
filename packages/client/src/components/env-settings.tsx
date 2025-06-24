@@ -230,29 +230,29 @@ export default function EnvSettings() {
           Reset
         </Button>
         <Button
-            type="submit"
-            disabled={isUpdating}
-            onClick={async () => {
-              setIsUpdating(true);
-              try {
-                await apiClient.updateLocalEnvs(localEnvs);
-                toast({
-                  title: 'Success',
-                  description: 'Environment variables updated successfully!',
-                });
-              } catch (error) {
-                toast({
-                  title: 'Error',
-                  description: 'Failed to update environment variables.',
-                  variant: 'destructive',
-                });
-              } finally {
-                setIsUpdating(false);
-              }
-            }}            
-          >
-            Save Changes
-          </Button>
+          type="submit"
+          disabled={isUpdating}
+          onClick={async () => {
+            setIsUpdating(true);
+            try {
+              await apiClient.updateLocalEnvs(localEnvs);
+              toast({
+                title: 'Success',
+                description: 'Environment variables updated successfully!',
+              });
+            } catch (error) {
+              toast({
+                title: 'Error',
+                description: 'Failed to update environment variables.',
+                variant: 'destructive',
+              });
+            } finally {
+              setIsUpdating(false);
+            }
+          }}
+        >
+          Save Changes
+        </Button>
       </div>
     </div>
   );

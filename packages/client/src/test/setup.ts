@@ -28,7 +28,7 @@ const createLocalStorageMock = () => {
       delete store[key];
     },
     clear: (): void => {
-      Object.keys(store).forEach(key => delete store[key]);
+      Object.keys(store).forEach((key) => delete store[key]);
     },
     get length(): number {
       return Object.keys(store).length;
@@ -108,8 +108,6 @@ try {
   console.warn('Failed to set up React internals:', e instanceof Error ? e.message : String(e));
 }
 
-
-
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -117,11 +115,11 @@ Object.defineProperty(window, 'matchMedia', {
     matches: false,
     media: query,
     onchange: null,
-    addListener: () => { },
-    removeListener: () => { },
-    addEventListener: () => { },
-    removeEventListener: () => { },
-    dispatchEvent: () => { },
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => {},
   }),
 });
 
@@ -131,19 +129,21 @@ global.IntersectionObserver = class MockIntersectionObserver {
   rootMargin = '';
   thresholds = [];
 
-  constructor() { }
-  observe() { }
-  disconnect() { }
-  unobserve() { }
-  takeRecords() { return []; }
+  constructor() {}
+  observe() {}
+  disconnect() {}
+  unobserve() {}
+  takeRecords() {
+    return [];
+  }
 } as any;
 
 // Mock ResizeObserver
 global.ResizeObserver = class MockResizeObserver {
-  constructor() { }
-  observe() { }
-  disconnect() { }
-  unobserve() { }
+  constructor() {}
+  observe() {}
+  disconnect() {}
+  unobserve() {}
 } as any;
 
 // Mock scrollTo for window and elements

@@ -8,10 +8,10 @@ import plugin from '../plugin';
 
 // Set up spies on logger
 beforeAll(() => {
-  spyOn(logger, 'info').mockImplementation(() => { });
-  spyOn(logger, 'error').mockImplementation(() => { });
-  spyOn(logger, 'warn').mockImplementation(() => { });
-  spyOn(logger, 'debug').mockImplementation(() => { });
+  spyOn(logger, 'info').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 });
 
 afterAll(() => {
@@ -79,7 +79,7 @@ describe('Integration: Character and Plugin', () => {
         // Those tests belong in plugin.test.ts, actions.test.ts, etc.
         expect(
           Array.isArray((plugin as any)[component]) ||
-          typeof (plugin as any)[component] === 'object'
+            typeof (plugin as any)[component] === 'object'
         ).toBeTruthy();
       }
     });
