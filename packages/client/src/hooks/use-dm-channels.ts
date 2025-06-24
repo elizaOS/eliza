@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import { createHybridClient } from '@/lib/migration-utils';
 import { useToast } from '@/hooks/use-toast';
+
+// Create hybrid client that can switch between old and new APIs
+const hybridApiClient = createHybridClient();
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
 import clientLogger from '@/lib/logger';
@@ -23,7 +27,7 @@ export function useGetOrCreateDmChannel() {
         '[useGetOrCreateDmChannel] Getting or creating canonical DM channel with target:',
         targetUserId
       );
-      const response = await apiClient.getOrCreateDmChannel(targetUserId, currentUserId);
+      const response = await hybridApiClient.getOrCreateDmChannel(targetUserId, currentUserId);
       return response.data;
     },
     onSuccess: (data) => {
@@ -68,7 +72,7 @@ export function useDmChannelsForAgent(
         agentId
       );
 
-      const response = await apiClient.getChannelsForServer(serverId);
+      const response = await hybridApiClient.getChannels(serverId);
       const allChannels = response.data?.channels || [];
 
       const dmChannels = allChannels.filter((channel) => {
@@ -147,7 +151,7 @@ export function useCreateDmChannel() {
         throw new Error('Channel name cannot be empty for a new DM conversation.');
       }
 
-      const newChannelResponse = await apiClient.createCentralGroupChat({
+      const newChannelResponse = await hybridApiClient.createCentralGroupChat({
         name: channelName.trim(),
         participantCentralUserIds: [currentUserId, agentId],
         type: ChannelType.DM, // Set type to DM

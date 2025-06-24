@@ -408,7 +408,7 @@ export function useChannelMessages(
       setInternalError(null);
 
       try {
-        const response = await apiClient.getChannelMessages(channelId, {
+        const response = await hybridApiClient.getChannelMessages(channelId, {
           limit: 30,
           before: beforeTimestamp,
         });
@@ -1081,7 +1081,7 @@ export function useServers(options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ data: { servers: ClientMessageServer[] } }>({
     queryKey: ['servers'],
-    queryFn: () => apiClient.getServers(),
+    queryFn: () => hybridApiClient.getServers(),
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
     ...options,
@@ -1094,7 +1094,7 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
     queryKey: ['channels', serverId],
     queryFn: () => {
       if (!serverId) return Promise.resolve({ data: { channels: [] } }); // Handle undefined serverId case for queryFn
-      return apiClient.getChannelsForServer(serverId);
+      return hybridApiClient.getChannels(serverId);
     },
     enabled: !!serverId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1110,7 +1110,7 @@ export function useChannelDetails(channelId: UUID | undefined, options = {}) {
     queryKey: ['channelDetails', channelId],
     queryFn: () => {
       if (!channelId) return Promise.resolve({ success: true, data: null });
-      return apiClient.getChannelDetails(channelId);
+      return hybridApiClient.getChannelDetails(channelId);
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1126,7 +1126,7 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
     queryKey: ['channelParticipants', channelId],
     queryFn: () => {
       if (!channelId) return Promise.resolve({ success: true, data: [] });
-      return apiClient.getChannelParticipants(channelId);
+      return hybridApiClient.getChannelParticipants(channelId);
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1144,7 +1144,7 @@ export function useDeleteChannelMessage() {
     { channelId: UUID; messageId: UUID }
   >({
     mutationFn: async ({ channelId, messageId }) => {
-      await apiClient.deleteChannelMessage(channelId, messageId);
+      await hybridApiClient.deleteChannelMessage(channelId, messageId);
       return { channelId, messageId };
     },
     onSuccess: (_data, variables) => {
@@ -1168,7 +1168,7 @@ export function useClearChannelMessages() {
   const { toast } = useToast();
   return useMutation<{ channelId: UUID }, Error, UUID>({
     mutationFn: async (channelId: UUID) => {
-      await apiClient.clearChannelMessages(channelId);
+      await hybridApiClient.clearChannelMessages(channelId);
       return { channelId };
     },
     onSuccess: (_data, variables_channelId) => {
@@ -1196,7 +1196,7 @@ export function useDeleteChannel() {
 
   return useMutation<void, Error, { channelId: UUID; serverId: UUID }>({
     mutationFn: async ({ channelId }) => {
-      await apiClient.deleteChannel(channelId);
+      await hybridApiClient.deleteChannel(channelId);
     },
     onSuccess: (_data, variables) => {
       toast({

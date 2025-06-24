@@ -5,7 +5,7 @@ import { wrapWithErrorHandling } from './api-error-bridge';
 // Flag to control gradual migration
 const MIGRATION_FLAGS = {
   USE_NEW_AGENTS_API: true, // ENABLED: Phase 3.1 - Agent Services Migration
-  USE_NEW_MESSAGING_API: false,
+  USE_NEW_MESSAGING_API: true, // ENABLED: Phase 3.2 - Messaging Services Migration
   USE_NEW_MEMORY_API: false,
   USE_NEW_MEDIA_API: false,
   USE_NEW_SYSTEM_API: false,
@@ -59,39 +59,84 @@ export function createHybridClient() {
         })
       : legacyClient.stopAgent,
 
-    // Messaging services
+    // Messaging services - with data shape adapters
     getServers: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(
-          newClient.messaging?.getServers?.bind(newClient.messaging) ||
-            (() => {
-              throw new Error('Messaging service not available');
-            })
-        )
+      ? wrapWithErrorHandling(async () => {
+          const result = await newClient.messaging.listServers();
+          // Adapt from { servers: MessageServer[] } to { data: MessageServer[] }
+          return { data: result.servers };
+        })
       : legacyClient.getServers,
     getChannels: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(
-          newClient.messaging?.getChannels?.bind(newClient.messaging) ||
-            (() => {
-              throw new Error('Messaging service not available');
-            })
-        )
+      ? wrapWithErrorHandling(async (serverId: string) => {
+          const result = await newClient.messaging.getServerChannels(serverId);
+          // Adapt from { channels: MessageChannel[] } to { data: MessageChannel[] }
+          return { data: result.channels };
+        })
       : legacyClient.getChannels,
     getChannelMessages: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(
-          newClient.messaging?.getChannelMessages?.bind(newClient.messaging) ||
-            (() => {
-              throw new Error('Messaging service not available');
-            })
-        )
+      ? wrapWithErrorHandling(async (channelId: string, options?: any) => {
+          const result = await newClient.messaging.getChannelMessages(channelId, options);
+          // Adapt from { messages: Message[] } to { data: Message[] }
+          return { data: result.messages };
+        })
       : legacyClient.getChannelMessages,
     postMessageToChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
-      ? wrapWithErrorHandling(
-          newClient.messaging?.sendMessage?.bind(newClient.messaging) ||
-            (() => {
-              throw new Error('Messaging service not available');
-            })
-        )
+      ? wrapWithErrorHandling(async (channelId: string, payload: any) => {
+          const result = await newClient.messaging.postMessage(channelId, payload.text || payload.content, payload.metadata);
+          // Adapt from Message to { data: Message }
+          return { data: result };
+        })
       : legacyClient.postMessageToChannel,
+    getChannelDetails: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (channelId: string) => {
+          const result = await newClient.messaging.getChannelDetails(channelId);
+          // Adapt from MessageChannel to { data: MessageChannel }
+          return { data: result };
+        })
+      : legacyClient.getChannelDetails,
+    getChannelParticipants: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (channelId: string) => {
+          const result = await newClient.messaging.getChannelParticipants(channelId);
+          // Adapt from { participants: ChannelParticipant[] } to { data: ChannelParticipant[] }
+          return { data: result.participants };
+        })
+      : legacyClient.getChannelParticipants,
+    deleteChannelMessage: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (channelId: string, messageId: string) => {
+          const result = await newClient.messaging.deleteMessage(messageId);
+          // Adapt from { success: boolean } to expected format
+          return { data: { success: result.success } };
+        })
+      : legacyClient.deleteChannelMessage,
+    clearChannelMessages: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (channelId: string) => {
+          const result = await newClient.messaging.clearChannelHistory(channelId);
+          // Adapt from { deleted: number } to expected format
+          return { data: { deleted: result.deleted } };
+        })
+      : legacyClient.clearChannelMessages,
+    getOrCreateDmChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (targetUserId: string, currentUserId: string) => {
+          const result = await newClient.messaging.getOrCreateDmChannel({ targetUserId, currentUserId });
+          // Adapt from MessageChannel to { data: MessageChannel }
+          return { data: result };
+        })
+      : legacyClient.getOrCreateDmChannel,
+    deleteChannel: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (channelId: string) => {
+          const result = await newClient.messaging.deleteChannel(channelId);
+          // Adapt from { success: boolean } to expected format
+          return { data: { success: result.success } };
+        })
+      : legacyClient.deleteChannel,
+    createCentralGroupChat: MIGRATION_FLAGS.USE_NEW_MESSAGING_API
+      ? wrapWithErrorHandling(async (params: any) => {
+          const result = await newClient.messaging.createGroupChannel(params);
+          // Adapt from MessageChannel to { data: MessageChannel }
+          return { data: result };
+        })
+      : legacyClient.createCentralGroupChat,
 
     // Memory services
     getAgentMemories: MIGRATION_FLAGS.USE_NEW_MEMORY_API
