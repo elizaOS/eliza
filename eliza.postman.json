@@ -1535,9 +1535,9 @@
               ]
             },
             "url": {
-              "raw": "{{baseUrl}}/api/media/channels/{{channelId}}/upload",
+              "raw": "{{baseUrl}}/api/messaging/channels/{{channelId}}/upload-media",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "media", "channels", "{{channelId}}", "upload"]
+              "path": ["api", "messaging", "channels", "{{channelId}}", "upload-media"]
             },
             "description": "Upload media file for a channel"
           }

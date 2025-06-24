@@ -426,19 +426,22 @@ export function createMockService(overrides?: Partial<Service>): Service {
 }
 
 /**
- * Creates mock express-fileupload file
+ * Creates mock multer file
  */
-export function createMockUploadedFile(overrides?: Partial<any>): any {
+export function createMockUploadedFile(
+  overrides?: Partial<Express.Multer.File>
+): Express.Multer.File {
   return {
-    name: 'test.jpg',
+    fieldname: 'file',
+    originalname: 'test.jpg',
     encoding: '7bit',
     mimetype: 'image/jpeg',
-    data: Buffer.from('test'),
-    tempFilePath: '/tmp/upload_123456',
+    buffer: Buffer.from('test'),
     size: 12345,
-    truncated: false,
-    md5: 'abc123',
-    mv: jest.fn((_path: string) => Promise.resolve()),
+    stream: undefined as any,
+    destination: '',
+    filename: '',
+    path: '',
     ...overrides,
   };
 }

@@ -3817,7 +3817,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/media/channels/{channelId}/upload:
+  /api/messaging/channels/{channelId}/upload-media:
     post:
       tags:
         - media

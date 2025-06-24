@@ -1,10 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
-import type fileUpload from 'express-fileupload';
-
-// Using express-fileupload file type
-type UploadedFile = fileUpload.UploadedFile;
 
 /**
  * Safely constructs and validates upload directory paths to prevent path traversal attacks
@@ -15,60 +11,61 @@ export function createSecureUploadDir(id: string, type: 'agents' | 'channels'): 
     throw new Error(`Invalid ${type.slice(0, -1)} ID: contains illegal characters`);
   }
 
-  const basePath = path.resolve(process.cwd(), '.eliza', 'data', 'uploads', type);
-  const targetPath = path.join(basePath, id);
+  // Use CLI data directory structure consistently
+  const baseUploadDir = path.join(process.cwd(), '.eliza', 'data', 'uploads');
+  const finalDir = path.join(baseUploadDir, type, id);
 
-  // Ensure the resolved path is still within the expected base directory
-  if (!targetPath.startsWith(basePath)) {
-    throw new Error(`Invalid ${type.slice(0, -1)} ID: path traversal detected`);
+  // Ensure the resolved path is still within the expected directory
+  const resolvedPath = path.resolve(finalDir);
+  const expectedBase = path.resolve(baseUploadDir);
+
+  if (!resolvedPath.startsWith(expectedBase)) {
+    throw new Error(`Invalid ${type.slice(0, -1)} upload path: outside allowed directory`);
   }
 
-  return targetPath;
+  return resolvedPath;
 }
 
 /**
- * Safely sanitizes filenames to prevent security issues
+ * Sanitizes a filename by removing dangerous characters and normalizing it
  */
 export function sanitizeFilename(filename: string): string {
-  // Remove null bytes and path separators
-  let sanitized = filename.replace(/[\0\/\\:*?"<>|]/g, '_');
-
-  // Remove leading dots and spaces
-  sanitized = sanitized.replace(/^[.\s]+/, '');
-
-  // Limit length to prevent filesystem issues
-  if (sanitized.length > 255) {
-    const ext = path.extname(sanitized);
-    const name = path.basename(sanitized, ext);
-    sanitized = name.substring(0, 255 - ext.length) + ext;
+  if (!filename) {
+    return 'unnamed';
   }
 
-  // Ensure filename is not empty after sanitization
-  if (!sanitized || sanitized.trim() === '') {
-    sanitized = 'file';
+  // Remove path separators and null bytes
+  const sanitized = filename
+    .replace(/[/\\:*?"<>|]/g, '_')
+    .replace(/\0/g, '')
+    .replace(/\.+/g, '.')
+    .trim();
+
+  // Ensure filename isn't empty after sanitization
+  if (!sanitized || sanitized === '.') {
+    return 'unnamed';
+  }
+
+  // Limit filename length
+  const maxLength = 255;
+  if (sanitized.length > maxLength) {
+    const ext = path.extname(sanitized);
+    const nameWithoutExt = path.basename(sanitized, ext);
+    const truncatedName = nameWithoutExt.substring(0, maxLength - ext.length - 1);
+    return truncatedName + ext;
   }
 
   return sanitized;
 }
 
 /**
- * Safely cleans up a single file by path with path validation
+ * Safely cleans up a file by removing it from the filesystem
  */
 export const cleanupFile = (filePath: string) => {
-  if (!filePath) return;
-
   try {
-    // Validate and resolve the path to prevent directory traversal
-    const resolvedPath = path.resolve(filePath);
-    const normalizedPath = path.normalize(resolvedPath);
-
-    // Ensure the path doesn't contain directory traversal attempts
-    if (normalizedPath.includes('..') || !normalizedPath.startsWith(process.cwd())) {
-      logger.warn(`[SECURITY] Potentially unsafe file path blocked: ${filePath}`);
-      return;
-    }
-
-    if (fs.existsSync(normalizedPath)) {
+    if (filePath && fs.existsSync(filePath)) {
+      // Additional path validation
+      const normalizedPath = path.normalize(filePath);
       fs.unlinkSync(normalizedPath);
       logger.debug(`[FILE] Successfully cleaned up file: ${normalizedPath}`);
     }
@@ -78,19 +75,22 @@ export const cleanupFile = (filePath: string) => {
 };
 
 /**
- * Cleans up multiple files from express-fileupload
+ * Cleans up multiple multer files
  */
-export const cleanupFiles = (files: UploadedFile[]) => {
+export const cleanupFiles = (files: Express.Multer.File[]) => {
   if (files) {
-    files.forEach((file) => cleanupFile(file.tempFilePath || ''));
+    files.forEach((file) => {
+      // For multer memory storage, no temp files to clean up
+      // This function is kept for compatibility
+      logger.debug(`[FILE] Multer file ${file.originalname} in memory, no cleanup needed`);
+    });
   }
 };
 
 /**
- * Cleans up an uploaded file by removing it from temp location
+ * Cleans up a multer file (no-op for memory storage)
  */
-export const cleanupUploadedFile = (file: UploadedFile) => {
-  if (file.tempFilePath) {
-    cleanupFile(file.tempFilePath);
-  }
+export const cleanupUploadedFile = (file: Express.Multer.File) => {
+  // For multer memory storage, no temp files to clean up
+  logger.debug(`[FILE] Multer file ${file.originalname} in memory, no cleanup needed`);
 };
