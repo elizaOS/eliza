@@ -106,8 +106,8 @@ export function createHybridClient() {
         throw new Error('Agents service not available');
       }
       const result = await newClient.agents.getAgentLogs(agentId, options);
-      // Adapt from { logs: AgentLog[] } to { data: AgentLog[] }
-      return { data: result.logs };
+      // The new API client returns logs directly from server data field
+      return { data: result };
     }),
     deleteAgentLog: wrapWithErrorHandling(async (agentId: string, logId: string) => {
       if (!newClient.agents?.deleteAgentLog) {

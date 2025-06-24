@@ -107,12 +107,12 @@ export class MemoryService extends BaseApiClient {
    * Get agent internal memories
    */
   async getAgentInternalMemories(
-    agentId: UUID, 
-    agentPerspectiveRoomId: UUID, 
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID,
     includeEmbedding?: boolean
   ): Promise<{ success: boolean; data: any[] }> {
     return this.get<{ success: boolean; data: any[] }>(
-      `/api/memory/${agentId}/rooms/${agentPerspectiveRoomId}/memories`, 
+      `/api/memory/${agentId}/rooms/${agentPerspectiveRoomId}/memories`,
       { params: { includeEmbedding } }
     );
   }
@@ -127,8 +127,13 @@ export class MemoryService extends BaseApiClient {
   /**
    * Delete all agent internal memories
    */
-  async deleteAllAgentInternalMemories(agentId: UUID, agentPerspectiveRoomId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/memories/all/${agentPerspectiveRoomId}`);
+  async deleteAllAgentInternalMemories(
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID
+  ): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(
+      `/api/memory/${agentId}/memories/all/${agentPerspectiveRoomId}`
+    );
   }
 
   /**
@@ -142,13 +147,17 @@ export class MemoryService extends BaseApiClient {
    * Delete group memory (implemented via messaging channel message deletion)
    */
   async deleteGroupMemory(serverId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/central-channels/${serverId}/messages/${memoryId}`);
+    return this.delete<{ success: boolean }>(
+      `/api/messaging/central-channels/${serverId}/messages/${memoryId}`
+    );
   }
 
   /**
    * Clear group chat (implemented via messaging channel history clearing)
    */
   async clearGroupChat(serverId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/central-channels/${serverId}/messages`);
+    return this.delete<{ success: boolean }>(
+      `/api/messaging/central-channels/${serverId}/messages`
+    );
   }
 }

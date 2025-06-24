@@ -276,7 +276,6 @@ export const formatMessages = ({
               .join('\n')})`
           : null;
 
-
       const messageTime = new Date(message.createdAt);
       const hours = messageTime.getHours().toString().padStart(2, '0');
       const minutes = messageTime.getMinutes().toString().padStart(2, '0');

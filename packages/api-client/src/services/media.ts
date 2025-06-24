@@ -1,10 +1,6 @@
 import { UUID } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
-import {
-  MediaUploadParams,
-  MediaUploadResponse,
-  ChannelUploadResponse,
-} from '../types/media';
+import { MediaUploadParams, MediaUploadResponse, ChannelUploadResponse } from '../types/media';
 
 export class MediaService extends BaseApiClient {
   /**
