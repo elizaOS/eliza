@@ -186,6 +186,91 @@ describe('BaseApiClient', () => {
     }
   });
 
+  it('should handle 204 No Content responses safely', async () => {
+    global.fetch = async (url: string, options: any) => {
+      expect(url).toBe('http://localhost:3000/api/delete');
+      expect(options.method).toBe('DELETE');
+
+      return {
+        ok: true,
+        status: 204,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? null : null),
+        },
+        json: async () => {
+          throw new Error('No content to parse');
+        },
+      } as Response;
+    };
+
+    const result = await client.testRequest<{ success: boolean }>('DELETE', '/api/delete');
+    expect(result).toEqual({ success: true });
+  });
+
+  it('should handle empty content-length responses safely', async () => {
+    global.fetch = async (url: string, options: any) => {
+      expect(url).toBe('http://localhost:3000/api/clear');
+
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '0' : null),
+        },
+        json: async () => {
+          throw new Error('No content to parse');
+        },
+      } as Response;
+    };
+
+    const result = await client.testRequest<{ success: boolean }>('POST', '/api/clear');
+    expect(result).toEqual({ success: true });
+  });
+
+  it('should handle JSON parse failures for 2xx responses safely', async () => {
+    global.fetch = async (url: string, options: any) => {
+      expect(url).toBe('http://localhost:3000/api/process');
+
+      return {
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '10' : null),
+        },
+        json: async () => {
+          throw new Error('Invalid JSON');
+        },
+      } as Response;
+    };
+
+    const result = await client.testRequest<{ success: boolean }>('POST', '/api/process');
+    expect(result).toEqual({ success: true });
+  });
+
+  it('should handle different expected return types for 204 responses', async () => {
+    global.fetch = async () =>
+      ({
+        ok: true,
+        status: 204,
+        headers: {
+          get: () => null,
+        },
+        json: async () => {
+          throw new Error('No content');
+        },
+      }) as Response;
+
+    // Test with different expected return types
+    const simpleResult = await client.testRequest<{ success: boolean }>('DELETE', '/api/test');
+    expect(simpleResult).toEqual({ success: true });
+
+    const complexResult = await client.testRequest<{ success: boolean; message?: string }>(
+      'DELETE',
+      '/api/test'
+    );
+    expect(complexResult).toEqual({ success: true });
+  });
+
   // Restore fetch after each test
   afterEach(() => {
     global.fetch = fetchMock;
