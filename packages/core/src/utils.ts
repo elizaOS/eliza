@@ -273,7 +273,7 @@ export const formatMessages = ({
                 if (media.description) lines.push(`Description: ${media.description}`);
                 return lines.join('\n');
               })
-              .join('\n')})`
+              .join(', ')})`
           : null;
 
 
