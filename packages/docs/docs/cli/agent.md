@@ -262,7 +262,7 @@ Outputs raw JSON data. Useful for piping into other tools like `jq`. The `-j` fl
 
 ```bash
 # Get JSON output
-elizaos agent get --name eliza --format json
+elizaos agent get --character eliza --format json
 ```
 
 ### `yaml`
@@ -271,12 +271,12 @@ Outputs YAML data, which can be more human-readable than JSON for complex config
 
 ```bash
 # Get YAML output
-elizaos agent get --name eliza --format yaml
+elizaos agent get --character eliza --format yaml
 ```
 
 ## Character File Structure
 
-When using `--path` or `--remote-character`, the character file should follow this structure:
+When using character files, they should follow this structure:
 
 ```json
 {
@@ -419,11 +419,11 @@ elizaos agent list --remote-url http://your-server:3000
 # List all agents to see available options
 elizaos agent list
 
-# Try using agent ID instead of name
-elizaos agent get --name agent_123456
+# Try using character name directly
+elizaos agent get --character eliza
 
-# Try using list index
-elizaos agent get --name 0
+# Try using character file path
+elizaos agent get --character ./characters/eliza.json
 ```
 
 ### Configuration Errors
