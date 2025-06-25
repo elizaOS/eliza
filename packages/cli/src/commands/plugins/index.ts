@@ -4,7 +4,8 @@ import { Command } from 'commander';
 // Import actions
 import { addPlugin } from './actions/install';
 import { removePlugin } from './actions/remove';
-import { listAvailablePlugins, listInstalledPlugins } from './actions/list';
+import { listAvailablePlugins } from './actions/list';
+import { showInstalledPlugins } from './actions/installed-plugins';
 import { upgradePlugin } from './actions/upgrade';
 import { generatePlugin } from './actions/generate';
 
@@ -63,7 +64,7 @@ plugins
   .option('-c, --character <paths...>', 'Show plugins for specific character file(s)')
   .action(async (opts: { character?: string[] }) => {
     try {
-      await listInstalledPlugins(opts.character);
+      await showInstalledPlugins(opts.character);
     } catch (error) {
       if (error instanceof SyntaxError) {
         console.error(`Error parsing package.json: ${error.message}`);
@@ -116,6 +117,7 @@ plugins
 export * from './actions/install';
 export * from './actions/remove';
 export * from './actions/list';
+export * from './actions/installed-plugins';
 export * from './actions/upgrade';
 export * from './actions/generate';
 export * from './types';
