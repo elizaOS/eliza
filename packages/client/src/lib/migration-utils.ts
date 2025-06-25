@@ -21,21 +21,12 @@ let elizaClientInstance: ReturnType<typeof createElizaClient> | null = null;
 function getElizaClient() {
   if (!elizaClientInstance) {
     elizaClientInstance = createElizaClient();
-    console.log('🔍 [Migration Utils] Created new ElizaClient:', {
-      hasAgents: !!elizaClientInstance.agents,
-      hasMessaging: !!elizaClientInstance.messaging,
-      hasSystem: !!elizaClientInstance.system,
-      systemMethods: elizaClientInstance.system ? Object.getOwnPropertyNames(Object.getPrototypeOf(elizaClientInstance.system)).filter(name => name !== 'constructor') : 'N/A',
-      clientServices: Object.keys(elizaClientInstance)
-    });
   }
   return elizaClientInstance;
 }
 
 // Helper to gradually switch APIs
 export function createHybridClient() {
-  // Force refresh client to ensure we have latest
-  elizaClientInstance = null;
   const newClient = getElizaClient();
 
   return {
@@ -430,27 +421,20 @@ export function createHybridClient() {
         return await legacyClient.getGlobalLogs(params);
       }
       try {
-        console.log('✅ [Logs] Using New API Client');
         const result = await newClient.system.getGlobalLogs(params);
-        console.log('✅ [Logs] New API success');
         return result;
       } catch (error) {
-        console.log('❌ [Logs] New API failed, falling back to Legacy API:', error.message);
         return await legacyClient.getGlobalLogs(params);
       }
     }),
     deleteGlobalLogs: wrapWithErrorHandling(async () => {
       if (!newClient.system?.deleteGlobalLogs) {
-        console.log('🔄 [Logs] Delete using Legacy API - system service not available');
         return await legacyClient.deleteGlobalLogs();
       }
       try {
-        console.log('✅ [Logs] Delete using New API Client');
         const result = await newClient.system.deleteGlobalLogs();
-        console.log('✅ [Logs] New API delete success');
         return result;
       } catch (error) {
-        console.log('❌ [Logs] New API delete failed, falling back to Legacy API:', error.message);
         return await legacyClient.deleteGlobalLogs();
       }
     }),

@@ -64,7 +64,57 @@ export class SystemService extends BaseApiClient {
     level: string;
     levels: string[];
   }> {
-    return this.get<any>('/api/server/logs', { params });
+    // Special handling for logs endpoint that returns data directly without wrapper
+    const response = await fetch(this.buildUrl('/api/server/logs', { params }), {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json() as {
+      logs?: Array<{
+        level: number;
+        time: number;
+        msg: string;
+        [key: string]: string | number | boolean | null | undefined;
+      }>;
+      count?: number;
+      total?: number;
+      requestedLevel?: string;
+      level?: string;
+      levels?: string[];
+    };
+    
+    // The logs endpoint returns data directly, not wrapped in { success, data }
+    // Map the response to expected format
+    return {
+      logs: data.logs || [],
+      count: data.count || 0,
+      total: data.total || 0,
+      level: data.requestedLevel || data.level || 'all',
+      levels: data.levels || []
+    };
+  }
+
+  private buildUrl(path: string, options?: { params?: Record<string, any> }): string {
+    const url = new URL(`${this.baseUrl}${path}`);
+    if (options?.params) {
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+    return url.toString();
+  }
+
+  private getHeaders(): Record<string, string> {
+    return {
+      ...this.defaultHeaders,
+    };
   }
 
   async deleteGlobalLogs(): Promise<{ status: string; message: string }> {
@@ -72,6 +122,8 @@ export class SystemService extends BaseApiClient {
   }
 
   async deleteLog(logId: string): Promise<void> {
-    await this.delete(`/api/server/logs/${logId}`);
+    // Note: Individual log deletion is not supported by the server
+    // The server only supports bulk deletion via deleteGlobalLogs()
+    throw new Error('Individual log deletion is not supported. Use deleteGlobalLogs() to clear all logs.');
   }
 }
