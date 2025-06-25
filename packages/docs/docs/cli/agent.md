@@ -53,7 +53,7 @@ elizaos agent [options] [command]
 ### Start Specific Options
 
 - `-n, --name <name>`: Name of an existing agent to start
-- `--path <path>`: Path to local character JSON file
+- `--path <path>`: Path to local character JSON file (supports automatic resolution from common directories)
 - `--remote-character <url>`: URL to remote character JSON file
 
 ### Stop/Remove Specific Options
@@ -127,8 +127,10 @@ elizaos agent g --name eliza
 # Start existing agent by name
 elizaos agent start --name eliza
 
-# Start with local character file
+# Start with local character file (automatic resolution)
+elizaos agent start --path eliza
 elizaos agent start --path ./characters/eliza.json
+elizaos agent start --path eliza.json
 
 # Start from remote character file
 elizaos agent start --remote-character https://example.com/characters/eliza.json
@@ -139,6 +141,19 @@ elizaos agent s --name eliza
 # Start on specific port
 elizaos agent start --path ./eliza.json --port 4000
 ```
+
+**Character File Resolution:**
+When using `--path`, the CLI will:
+1. Check if it's an absolute path or relative path that exists
+2. Search common directories:
+   - Current directory
+   - `./characters/` directory
+   - `./agents/` directory
+   - `./src/characters/` directory
+   - `./src/agents/` directory
+3. If not found, recursively search the entire project directory for matching `.json` or `.ts` files
+
+The `.json` extension is optional and will be added automatically if not provided.
 
 **Required Configuration:**
 You must provide one of these options: `--name`, `--path`, or `--remote-character`
