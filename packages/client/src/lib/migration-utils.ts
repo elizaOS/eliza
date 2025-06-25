@@ -204,14 +204,27 @@ export function createHybridClient() {
     }),
     getChannelParticipants: wrapWithErrorHandling(async (channelId: string) => {
       if (!newClient.messaging?.getChannelParticipants) {
-        throw new Error('Messaging service not available');
+        return await legacyClient.getChannelParticipants(channelId);
       }
-      const result = await newClient.messaging.getChannelParticipants(channelId);
-      // The API client already handles the response transformation
-      // Server returns { success: true, data: UUID[] }
-      // API client returns { participants: UUID[] }
-      // We need to return { success: boolean, data: UUID[] }
-      return { success: true, data: result.participants };
+      try {
+        const result = await newClient.messaging.getChannelParticipants(channelId);
+        
+        // Check what format we actually got and adapt accordingly
+        if (result.participants) {
+          // Expected format: { participants: UUID[] }
+          return { success: true, data: result.participants };
+        } else if (result.data) {
+          // Alternative format: { success: true, data: UUID[] }
+          return { success: true, data: result.data };
+        } else if (Array.isArray(result)) {
+          // Direct array format: UUID[]
+          return { success: true, data: result };
+        } else {
+          return { success: false, data: [], error: { message: 'Unexpected response format' } };
+        }
+      } catch (error) {
+        return await legacyClient.getChannelParticipants(channelId);
+      }
     }),
     deleteChannelMessage: wrapWithErrorHandling(async (channelId: string, messageId: string) => {
       if (!newClient.messaging?.deleteMessage) {

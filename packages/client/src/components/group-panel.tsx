@@ -168,9 +168,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }: UseQueryResult<ChannelParticipantsResponse, Error> = useQuery({
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
+      console.log('🔍 Query function called for channelParticipants, channelId:', channelId);
       if (!channelId) return { success: true, data: [] };
       const hybridApiClient = createHybridClient();
-      return hybridApiClient.getChannelParticipants(channelId);
+      const result = await hybridApiClient.getChannelParticipants(channelId);
+      console.log('🔍 Query function result:', result);
+      return result;
     },
     enabled: !!channelId,
   });
@@ -268,15 +271,30 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY = useMemo(() => [], []);
 
   const initialSelectedComboboxOptions: ComboboxOption[] = useMemo(() => {
+    console.log('🔍 Computing initialSelectedComboboxOptions:', {
+      isLoadingAgents,
+      channelId,
+      agentsInitialized: agentsInitializedRef.current,
+      selectedAgentsLength: selectedAgents.length,
+      selectedAgents: selectedAgents.map(a => ({ id: a.id, name: a.name })),
+      isLoadingChannelParticipants,
+      channelParticipantsApiResponse
+    });
+
     if (isLoadingAgents) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
     if (!channelId) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // Create mode
-    if (selectedAgents.length === 0) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // No agents selected
+    
+    // In edit mode, wait for agents to be initialized before determining selection
+    if (channelId && !agentsInitializedRef.current) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
 
-    return selectedAgents.map((agent) => ({
+    const options = selectedAgents.map((agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
       icon: agent.settings?.avatar || '',
     }));
+
+    console.log('🔍 Returning initialSelectedComboboxOptions:', options);
+    return options;
   }, [channelId, selectedAgents, isLoadingAgents, STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY]);
 
   const handleSelectAgents = useCallback(
