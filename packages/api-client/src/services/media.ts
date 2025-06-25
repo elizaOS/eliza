@@ -1,10 +1,6 @@
 import { UUID } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
-import {
-  MediaUploadParams,
-  MediaUploadResponse,
-  ChannelUploadResponse,
-} from '../types/media';
+import { MediaUploadParams, MediaUploadResponse, ChannelUploadResponse } from '../types/media';
 
 export class MediaService extends BaseApiClient {
   /**
@@ -33,7 +29,7 @@ export class MediaService extends BaseApiClient {
 
     return this.request<ChannelUploadResponse>(
       'POST',
-      `/api/messaging/channels/${channelId}/upload-media`,
+      `/api/messaging/central-channels/${channelId}/upload-media`,
       {
         body: formData,
       }

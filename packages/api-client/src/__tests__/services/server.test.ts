@@ -192,7 +192,7 @@ describe('ServerService', () => {
       const result = await serverService.getDebugInfo();
 
       expect(result).toEqual(mockDebugInfo);
-      expect(mockGet).toHaveBeenCalledWith('/api/server/servers');
+      expect(mockGet).toHaveBeenCalledWith('/api/server/debug/servers');
     });
   });
 

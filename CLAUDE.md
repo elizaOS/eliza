@@ -27,6 +27,7 @@ ElizaOS is organized as a monorepo with the following key packages:
 - **`packages/client`** - Frontend React GUI that displays through the CLI
 - **`packages/app`** - Tauri-based desktop/mobile application
 - **`packages/server`** - Server components and API
+- **`packages/api-client`** - `@elizaos/api-client` - Type-safe API client for ElizaOS server
 
 ### Plugin & Template Packages
 
@@ -64,6 +65,11 @@ bun start                # Start CLI with agent runtime
 bun run start:debug      # Start with debug logging
 bun run start:app        # Start Tauri application
 bun run dev              # Development mode with auto-rebuild
+
+# Package-specific development
+cd packages/cli && bun run dev          # CLI development mode
+cd packages/client && bun run dev       # Client development mode
+cd packages/core && bun run watch       # Core watch mode
 ```
 
 ### Testing
@@ -73,6 +79,11 @@ bun test                 # Run tests (excludes plugin-starter, docs, sql plugin)
 bun run test:client      # Test client package only
 bun run test:core        # Test core package only
 bun run test:app         # Test app package only
+
+# Package-specific testing (run from package directory)
+cd packages/core && bun test           # Test core package directly
+cd packages/cli && bun test            # Test CLI package directly
+bun test src/specific-file.test.ts     # Run specific test file
 ```
 
 ### Code Quality
@@ -82,6 +93,10 @@ bun run lint             # Run linting and prettier
 bun run format           # Format code with prettier
 bun run format:check     # Check formatting without changes
 bun run pre-commit       # Run pre-commit linting script
+
+# Package-specific linting/formatting
+cd packages/core && bun run lint
+cd packages/cli && bun run format
 ```
 
 ### Database & Migration
@@ -192,9 +207,9 @@ bun run release:alpha   # Release alpha version
 
 ### Testing Philosophy
 
-- **Test Framework:** Vitest
-- **E2E Tests:** Use actual runtime, cannot use vitest state
-- **Unit Tests:** Use vitest with standard primitives
+- **Test Framework:** Bun's built-in test runner
+- **E2E Tests:** Use actual runtime with real integrations
+- **Unit Tests:** Use Bun test with standard primitives
 - **Always verify tests pass before declaring changes correct**
 - **First attempts are usually incorrect - test thoroughly**
 
@@ -217,10 +232,14 @@ bun run release:alpha   # Release alpha version
 # Full test suite (recommended)
 bun test
 
-# Package-specific testing
+# Package-specific testing (run from package directory)
 cd packages/core && bun test
 cd packages/cli && bun test
 cd packages/client && bun test
+
+# Run specific test files
+bun test src/path/to/file.test.ts
+bun test --watch                        # Watch mode for development
 
 # Build verification
 bun run build

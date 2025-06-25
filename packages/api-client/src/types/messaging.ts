@@ -111,3 +111,9 @@ export interface ServerSyncParams {
     sourceId: string;
   }>;
 }
+
+export interface ChannelUpdateParams {
+  name?: string;
+  participantCentralUserIds?: UUID[];
+  metadata?: Record<string, any>;
+}

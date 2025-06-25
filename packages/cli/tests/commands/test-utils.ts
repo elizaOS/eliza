@@ -533,7 +533,7 @@ export const crossPlatform = {
  */
 export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
-  
+
   if (process.platform === 'win32') {
     // Only scale the timeout if one was explicitly provided
     if (platformOptions.timeout !== undefined) {
@@ -557,7 +557,7 @@ export function getPlatformOptions(baseOptions: any = {}): any {
       LC_ALL: 'en_US.UTF-8',
     };
   }
-  
+
   return platformOptions;
 }
 

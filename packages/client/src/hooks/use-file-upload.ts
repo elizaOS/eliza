@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { getContentTypeFromMimeType } from '@elizaos/core';
 import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
+import { createElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
+// Direct error handling
 import clientLogger from '@/lib/logger';
 
 export type UploadingFile = {
@@ -25,6 +26,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const blobUrlsRef = useRef<Set<string>>(new Set());
   const { toast } = useToast();
+  const elizaClient = createElizaClient();
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -125,26 +127,32 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
         try {
           const uploadResult =
             chatType === ChannelType.DM && agentId
-              ? await apiClient.uploadAgentMedia(agentId, fileData.file)
-              : await apiClient.uploadChannelMedia(channelId!, fileData.file);
+              ? await elizaClient.media.uploadAgentMedia(agentId, {
+                  file: fileData.file,
+                  filename: fileData.file.name,
+                })
+              : await elizaClient.media.uploadChannelMedia(channelId!, fileData.file);
 
-          if (uploadResult.success) {
-            return {
-              success: true,
-              media: {
-                id: fileData.id,
-                url: uploadResult.data.url,
-                title: fileData.file.name,
-                source: 'file_upload',
-                contentType: getContentTypeFromMimeType(fileData.file.type),
-              } as Media,
-            };
-          } else {
-            throw new Error(`Upload failed for ${fileData.file.name}`);
-          }
+          return {
+            success: true,
+            media: {
+              id: fileData.id,
+              url: uploadResult.url,
+              title: fileData.file.name,
+              source: 'file_upload',
+              contentType: getContentTypeFromMimeType(fileData.file.type),
+            } as Media,
+          };
         } catch (uploadError) {
           clientLogger.error(`Failed to upload ${fileData.file.name}:`, uploadError);
-          toast({ title: `Upload Failed: ${fileData.file.name}`, variant: 'destructive' });
+
+          // Direct error handling
+          toast({
+            title: `Upload Failed: ${fileData.file.name}`,
+            description: uploadError instanceof Error ? uploadError.message : 'Upload failed',
+            variant: 'destructive',
+          });
+
           return {
             success: false,
             file: fileData,

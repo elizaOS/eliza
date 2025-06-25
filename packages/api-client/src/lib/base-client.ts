@@ -34,6 +34,16 @@ export abstract class BaseApiClient {
     }
   }
 
+  /**
+   * Creates a safe response for no-content scenarios (204 responses)
+   * Returns a sensible default based on common API patterns
+   */
+  private createNoContentResponse<T>(): T {
+    // For most delete/update operations, return a success indicator
+    // This handles the common case of { success: boolean } return types
+    return { success: true } as T;
+  }
+
   protected async request<T>(
     method: string,
     path: string,
@@ -93,7 +103,28 @@ export abstract class BaseApiClient {
 
       clearTimeout(timeoutId);
 
-      const data = (await response.json()) as ApiResponse<T>;
+      // Handle empty responses (204 No Content)
+      let data: ApiResponse<T>;
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        // For 204 No Content, create a synthetic success response
+        data = { success: true, data: this.createNoContentResponse<T>() };
+      } else {
+        try {
+          data = (await response.json()) as ApiResponse<T>;
+        } catch (error) {
+          // If JSON parsing fails, treat as success for 2xx responses
+          if (response.ok) {
+            data = { success: true, data: this.createNoContentResponse<T>() };
+          } else {
+            throw new ApiError(
+              'PARSE_ERROR',
+              'Failed to parse response as JSON',
+              undefined,
+              response.status
+            );
+          }
+        }
+      }
 
       if (!response.ok || !data.success) {
         const error =

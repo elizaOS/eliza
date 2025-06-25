@@ -132,7 +132,7 @@ describe('MessagingService', () => {
       const result = await messagingService.createChannel(mockParams);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        '/api/messaging/channels',
+        '/api/messaging/central-channels',
         mockParams
       );
       expect(result).toEqual(mockResponse);
@@ -255,7 +255,7 @@ describe('MessagingService', () => {
       const result = await messagingService.deleteChannel(channelId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/channels/${channelId}`
+        `/api/messaging/central-channels/${channelId}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -266,12 +266,12 @@ describe('MessagingService', () => {
 
     it('should clear channel history successfully', async () => {
       const mockResponse = { deleted: 10 };
-      (messagingService as any).post.mockResolvedValue(mockResponse);
+      (messagingService as any).delete.mockResolvedValue(mockResponse);
 
       const result = await messagingService.clearChannelHistory(channelId);
 
-      expect((messagingService as any).post).toHaveBeenCalledWith(
-        `/api/messaging/channels/${channelId}/clear`
+      expect((messagingService as any).delete).toHaveBeenCalledWith(
+        `/api/messaging/central-channels/${channelId}/messages`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -342,16 +342,17 @@ describe('MessagingService', () => {
   });
 
   describe('deleteMessage', () => {
+    const channelId = 'channel-123' as any;
     const messageId = 'msg-123' as any;
 
     it('should delete message successfully', async () => {
       const mockResponse = { success: true };
       (messagingService as any).delete.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.deleteMessage(messageId);
+      const result = await messagingService.deleteMessage(channelId, messageId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/messages/${messageId}`
+        `/api/messaging/central-channels/${channelId}/messages/${messageId}`
       );
       expect(result).toEqual(mockResponse);
     });

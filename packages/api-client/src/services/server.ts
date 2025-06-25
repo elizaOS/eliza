@@ -41,7 +41,7 @@ export class ServerService extends BaseApiClient {
    * Get runtime debug info
    */
   async getDebugInfo(): Promise<ServerDebugInfo> {
-    return this.get<ServerDebugInfo>('/api/server/servers');
+    return this.get<ServerDebugInfo>('/api/server/debug/servers');
   }
 
   /**
