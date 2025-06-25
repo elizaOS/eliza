@@ -21,12 +21,21 @@ let elizaClientInstance: ReturnType<typeof createElizaClient> | null = null;
 function getElizaClient() {
   if (!elizaClientInstance) {
     elizaClientInstance = createElizaClient();
+    console.log('🔍 [Migration Utils] Created new ElizaClient:', {
+      hasAgents: !!elizaClientInstance.agents,
+      hasMessaging: !!elizaClientInstance.messaging,
+      hasSystem: !!elizaClientInstance.system,
+      systemMethods: elizaClientInstance.system ? Object.getOwnPropertyNames(Object.getPrototypeOf(elizaClientInstance.system)).filter(name => name !== 'constructor') : 'N/A',
+      clientServices: Object.keys(elizaClientInstance)
+    });
   }
   return elizaClientInstance;
 }
 
 // Helper to gradually switch APIs
 export function createHybridClient() {
+  // Force refresh client to ensure we have latest
+  elizaClientInstance = null;
   const newClient = getElizaClient();
 
   return {
@@ -413,20 +422,37 @@ export function createHybridClient() {
       return { success: result.success, message: result.message };
     }),
 
-    // Global Logs services - using NEW API client only
+    // Global Logs services - NEW API client with Legacy fallback
+    // Note: System service not yet implemented in @elizaos/api-client
     getGlobalLogs: wrapWithErrorHandling(async (params: any) => {
       if (!newClient.system?.getGlobalLogs) {
-        throw new Error('System service not available');
+        console.log('🔄 [Logs] Using Legacy API - system service not implemented in New API Client');
+        return await legacyClient.getGlobalLogs(params);
       }
-      const result = await newClient.system.getGlobalLogs(params);
-      return result;
+      try {
+        console.log('✅ [Logs] Using New API Client');
+        const result = await newClient.system.getGlobalLogs(params);
+        console.log('✅ [Logs] New API success');
+        return result;
+      } catch (error) {
+        console.log('❌ [Logs] New API failed, falling back to Legacy API:', error.message);
+        return await legacyClient.getGlobalLogs(params);
+      }
     }),
     deleteGlobalLogs: wrapWithErrorHandling(async () => {
       if (!newClient.system?.deleteGlobalLogs) {
-        throw new Error('System service not available');
+        console.log('🔄 [Logs] Delete using Legacy API - system service not available');
+        return await legacyClient.deleteGlobalLogs();
       }
-      const result = await newClient.system.deleteGlobalLogs();
-      return result;
+      try {
+        console.log('✅ [Logs] Delete using New API Client');
+        const result = await newClient.system.deleteGlobalLogs();
+        console.log('✅ [Logs] New API delete success');
+        return result;
+      } catch (error) {
+        console.log('❌ [Logs] New API delete failed, falling back to Legacy API:', error.message);
+        return await legacyClient.deleteGlobalLogs();
+      }
     }),
 
     // Server Management services - using NEW API client only

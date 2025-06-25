@@ -90,17 +90,21 @@ function generateLogChart(logs: LogEntry[]) {
     hourlyData[key] = { info: 0, errors: 0 };
   }
 
-  // Count logs by hour
+  // Count logs by hour - filter logs to last 24 hours only
+  const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
   logs.forEach((log) => {
-    const logDate = new Date(log.time);
-    logDate.setMinutes(0, 0, 0);
-    const key = logDate.toISOString();
+    // Only count logs from the last 24 hours
+    if (log.time >= twentyFourHoursAgo) {
+      const logDate = new Date(log.time);
+      logDate.setMinutes(0, 0, 0);
+      const key = logDate.toISOString();
 
-    if (hourlyData[key]) {
-      if (log.level >= 50) {
-        hourlyData[key].errors++;
-      } else {
-        hourlyData[key].info++;
+      if (hourlyData[key]) {
+        if (log.level >= 50) {
+          hourlyData[key].errors++;
+        } else {
+          hourlyData[key].info++;
+        }
       }
     }
   });
@@ -232,7 +236,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   const [selectedAgentName, setSelectedAgentName] = useState(agentName || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [timeRange, setTimeRange] = useState('7 days');
-  const [isLive, setIsLive] = useState(true);
+  const [isLive, setIsLive] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [wsLogs, setWsLogs] = useState<LogEntry[]>([]);
   const [useWebSocket, setUseWebSocket] = useState(false);
@@ -246,15 +250,16 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     refetch,
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
-    queryFn: () => {
+    queryFn: async () => {
       const hybridApiClient = createHybridClient();
-      return hybridApiClient.getGlobalLogs({
+      return await hybridApiClient.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
       });
     },
     refetchInterval: isLive && !useWebSocket ? 2000 : false,
     staleTime: 1000,
+    enabled: true, // Always enable the query
   });
 
   const { data: agents } = useAgents();
@@ -298,20 +303,20 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
 
   // Toggle WebSocket usage when live mode changes
   useEffect(() => {
-    if (isLive && !useWebSocket) {
+    if (isLive) {
       // When enabling live mode, try to start WebSocket. Fallback to polling if WebSocket fails
       if (SocketIOManager.isConnected()) {
         setUseWebSocket(true);
       } else {
         // WebSocket not available, continue with API polling
-        console.log('WebSocket not available, continuing with API polling');
+        setUseWebSocket(false);
       }
-    } else if (!isLive && useWebSocket) {
+    } else {
       // When disabling live mode, stop WebSocket and clear WebSocket logs
       setUseWebSocket(false);
       setWsLogs([]);
     }
-  }, [isLive, useWebSocket]);
+  }, [isLive]);
 
   // Update WebSocket filters when selectedAgentName or selectedLevel changes
   useEffect(() => {
@@ -332,15 +337,11 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   // Smart fallback: If WebSocket has significantly fewer logs than API, use API logs
   // This handles cases where WebSocket streaming isn't working properly
   let combinedLogs;
-  if (useWebSocket && isLive) {
-    // If WebSocket has less than 50% of the API logs, fall back to API
-    const wsLogRatio = apiLogs.length > 0 ? wsLogs.length / apiLogs.length : 1;
-    if (wsLogRatio < 0.5 && apiLogs.length > 10) {
-      combinedLogs = apiLogs;
-    } else {
-      combinedLogs = wsLogs;
-    }
+  if (useWebSocket && isLive && wsLogs.length > 0) {
+    // If WebSocket has logs, use them
+    combinedLogs = wsLogs;
   } else {
+    // Use API logs (either not using WebSocket, or WebSocket has no logs)
     combinedLogs = apiLogs;
   }
 
@@ -418,15 +419,29 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
 
   // Error state
   if (error) {
+    const isEndpointNotFound = error.message?.includes('404') || 
+                              error.message?.includes('endpoint not found') ||
+                              error.message?.includes('Not Found');
     return (
       <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
         <div className="flex items-center justify-center flex-1">
-          <div className="text-center">
+          <div className="text-center max-w-md">
             <Database className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h3 className="font-medium">Failed to Load Logs</h3>
-            <p className="text-sm text-muted-foreground">
-              There was an error loading the system logs.
+            <h3 className="font-medium mb-2">
+              {isEndpointNotFound ? 'Global Logs API Not Available' : 'Failed to Load Logs'}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {isEndpointNotFound 
+                ? 'The server does not have the global logs API endpoint configured. You can still view individual agent logs from the agent details pages.'
+                : `There was an error loading the system logs: ${error.message}`
+              }
             </p>
+            {!isEndpointNotFound && (
+              <Button variant="outline" size="sm" onClick={() => refetch?.()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+            )}
           </div>
         </div>
       </div>

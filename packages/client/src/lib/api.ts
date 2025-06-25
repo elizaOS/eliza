@@ -305,10 +305,10 @@ export const apiClient = {
     fetcher({ url: '/messaging/central-channels', method: 'POST', body: payload }),
 
   // Ping, TTS, Transcription, Media Upload, Knowledge (agent-specific or global services)
-  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/api/server/ping' }),
+  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/server/ping' }),
   ttsStream: (agentId: string, text: string): Promise<Blob> =>
     fetcher({
-      url: `/api/audio/${agentId}/speech/generate`,
+      url: `/audio/${agentId}/speech/generate`,
       method: 'POST',
       body: { text },
       headers: {
@@ -322,7 +322,7 @@ export const apiClient = {
   ): Promise<{ success: boolean; data: { text: string } }> => {
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.wav');
-    return fetcher({ url: `/api/audio/${agentId}/transcriptions`, method: 'POST', body: formData });
+    return fetcher({ url: `/audio/${agentId}/transcriptions`, method: 'POST', body: formData });
   },
   uploadAgentMedia: async (
     agentId: string,
@@ -331,7 +331,7 @@ export const apiClient = {
     const formData = new FormData();
     formData.append('file', file);
     return fetcher({
-      url: `/api/media/agents/${agentId}/upload-media`,
+      url: `/media/agents/${agentId}/upload-media`,
       method: 'POST',
       body: formData,
     });
@@ -364,13 +364,13 @@ export const apiClient = {
     if (params.agentName) queryParams.append('agentName', params.agentName);
     if (params.agentId) queryParams.append('agentId', params.agentId);
     return fetcher({
-      url: `/api/server/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
+      url: `/server/logs${queryParams.toString() ? `?${queryParams.toString()}` : ''}`,
     });
   },
   deleteGlobalLogs: (): Promise<{ status: string; message: string }> =>
-    fetcher({ url: '/api/server/logs', method: 'DELETE' }),
+    fetcher({ url: '/server/logs', method: 'DELETE' }),
   deleteLog: (logId: string): Promise<void> =>
-    fetcher({ url: `/api/server/logs/${logId}`, method: 'DELETE' }),
+    fetcher({ url: `/server/logs/${logId}`, method: 'DELETE' }),
   getAgentLogs: (
     agentId: string,
     options?: {
@@ -400,9 +400,9 @@ export const apiClient = {
 
   // ENV vars
   getLocalEnvs: (): Promise<{ success: boolean; data: Record<string, string> }> =>
-    fetcher({ url: `/api/system/env/local` }),
+    fetcher({ url: `/system/env/local` }),
   updateLocalEnvs: (envs: Record<string, string>): Promise<{ success: boolean; message: string }> =>
-    fetcher({ url: `/api/system/env/local`, method: 'POST', body: { content: envs } }),
+    fetcher({ url: `/system/env/local`, method: 'POST', body: { content: envs } }),
 
   testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
 
