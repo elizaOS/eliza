@@ -11,6 +11,11 @@ export interface AddPluginOptions {
   skipVerification?: boolean;
   branch?: string;
   tag?: string;
+  character?: string | string[]; // Character file path(s) to update
+}
+
+export interface RemovePluginOptions {
+  character?: string | string[]; // Character file path(s) to update
 }
 
 export interface UpgradePluginOptions {
