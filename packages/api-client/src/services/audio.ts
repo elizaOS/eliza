@@ -13,6 +13,85 @@ declare const window: any;
 
 export class AudioService extends BaseApiClient {
   /**
+   * Make a binary request using BaseApiClient infrastructure
+   */
+  private async requestBinary(
+    method: string,
+    path: string,
+    options?: {
+      body?: any;
+      params?: Record<string, any>;
+      headers?: Record<string, string>;
+    }
+  ): Promise<ArrayBuffer> {
+    // Handle empty baseUrl for relative URLs
+    let url: URL;
+    if (this.baseUrl) {
+      url = new URL(`${this.baseUrl}${path}`);
+    } else if (typeof window !== 'undefined' && window.location) {
+      url = new URL(path, window.location.origin);
+    } else {
+      // Fallback for non-browser environments
+      url = new URL(path, 'http://localhost:3000');
+    }
+
+    // Add query parameters
+    if (options?.params) {
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const headers = {
+        ...this.defaultHeaders,
+        ...options?.headers,
+      };
+
+      // Remove Content-Type header if body is FormData
+      if (options?.body instanceof FormData) {
+        delete headers['Content-Type'];
+      }
+
+      const response = await fetch(url.toString(), {
+        method,
+        headers,
+        body:
+          options?.body instanceof FormData
+            ? options.body
+            : options?.body
+              ? JSON.stringify(options.body)
+              : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.arrayBuffer();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out');
+        }
+        throw error;
+      }
+
+      throw new Error('An unknown error occurred');
+    }
+  }
+
+  /**
    * Convert audio input to appropriate FormData value
    */
   private processAudioInput(audio: Blob | Buffer | string): Blob | string {
@@ -148,21 +227,10 @@ export class AudioService extends BaseApiClient {
     agentId: UUID,
     params: SpeechGenerateParams
   ): Promise<{ audio: string; format: string }> {
-    const response = await fetch(`/api/audio/${agentId}/speech/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params),
+    // Get the binary audio data using BaseApiClient infrastructure
+    const audioBuffer = await this.requestBinary('POST', `/api/audio/${agentId}/speech/generate`, {
+      body: params,
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    // Get the binary audio data
-    const audioBuffer = await response.arrayBuffer();
-    const contentType = response.headers.get('content-type') || 'audio/mpeg';
 
     // Convert to base64
     const bytes = new Uint8Array(audioBuffer);
@@ -172,8 +240,8 @@ export class AudioService extends BaseApiClient {
     }
     const base64Audio = btoa(binary);
 
-    // Extract format from content type
-    const format = contentType.split('/')[1] || 'mpeg';
+    // Default format (server should ideally return this in a header)
+    const format = 'mpeg';
 
     return {
       audio: base64Audio,

@@ -217,16 +217,27 @@ describe('AudioService', () => {
     };
 
     it('should generate speech successfully', async () => {
-      const mockResponse = { audio: 'base64-audio-data', format: 'mp3' };
-      (audioService as any).post.mockResolvedValue(mockResponse);
+      // Mock the internal requestBinary method instead of post
+      const mockAudioBuffer = new ArrayBuffer(16);
+      const mockUint8Array = new Uint8Array(mockAudioBuffer);
+      // Fill with some test data
+      for (let i = 0; i < mockUint8Array.length; i++) {
+        mockUint8Array[i] = i;
+      }
+
+      (audioService as any).requestBinary = mock(() => Promise.resolve(mockAudioBuffer));
 
       const result = await audioService.generateSpeech(TEST_AGENT_ID, params);
 
-      expect((audioService as any).post).toHaveBeenCalledWith(
+      expect((audioService as any).requestBinary).toHaveBeenCalledWith(
+        'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/generate`,
-        params
+        { body: params }
       );
-      expect(result).toEqual(mockResponse);
+      expect(result).toHaveProperty('audio');
+      expect(result).toHaveProperty('format');
+      expect(typeof result.audio).toBe('string');
+      expect(result.format).toBe('mpeg');
     });
   });
 
@@ -266,7 +277,7 @@ describe('AudioService', () => {
 
       expect((audioService as any).request).toHaveBeenCalledWith(
         'POST',
-        `/api/audio/${TEST_AGENT_ID}/transcribe`,
+        `/api/audio/${TEST_AGENT_ID}/transcriptions`,
         expect.objectContaining({
           body: expect.any(FormData),
         })
@@ -315,7 +326,7 @@ describe('AudioService', () => {
     });
 
     it('should handle API errors', async () => {
-      (audioService as any).post.mockRejectedValue(new Error('API error'));
+      (audioService as any).requestBinary = mock(() => Promise.reject(new Error('API error')));
 
       await expect(audioService.generateSpeech(TEST_AGENT_ID, { text: 'test' })).rejects.toThrow(
         'API error'

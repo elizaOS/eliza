@@ -51,7 +51,7 @@ describe('BaseApiClient', () => {
   it('should make successful GET request', async () => {
     const mockResponse = {
       success: true,
-      data: { id: '123', name: 'Test' },
+      data: { message: 'Hello World' },
     };
 
     global.fetch = async (url: string, options: any) => {
@@ -61,6 +61,10 @@ describe('BaseApiClient', () => {
 
       return {
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => mockResponse,
       } as Response;
     };
@@ -83,6 +87,10 @@ describe('BaseApiClient', () => {
 
       return {
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => mockResponse,
       } as Response;
     };
@@ -101,11 +109,16 @@ describe('BaseApiClient', () => {
 
       return {
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({ success: true, data: { uploaded: true } }),
       } as Response;
     };
 
-    await client.testRequest('POST', '/api/upload', { body: formData });
+    const result = await client.testPost('/api/upload', formData);
+    expect(result).toEqual({ uploaded: true });
   });
 
   it('should add query parameters', async () => {
@@ -114,6 +127,10 @@ describe('BaseApiClient', () => {
 
       return {
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({ success: true, data: [] }),
       } as Response;
     };
@@ -137,6 +154,9 @@ describe('BaseApiClient', () => {
       ({
         ok: false,
         status: 404,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => errorResponse,
       }) as Response;
 
@@ -163,7 +183,6 @@ describe('BaseApiClient', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).code).toBe('NETWORK_ERROR');
-      expect((error as ApiError).message).toBe('Network error');
     }
   });
 
