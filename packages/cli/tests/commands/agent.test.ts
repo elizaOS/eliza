@@ -223,7 +223,7 @@ describe('ElizaOS Agent Commands', () => {
         });
         
         execSync(
-          `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
+          `${elizaosCmd} agent start --remote-url ${testServerUrl} --character ${characterPath}`,
           platformOptions
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
@@ -336,7 +336,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${maxPath}`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} --character ${maxPath}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
