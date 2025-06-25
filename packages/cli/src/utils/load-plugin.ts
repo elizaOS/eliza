@@ -70,7 +70,7 @@ async function tryImporting(
     logger.debug(`[DEBUG] ✅ Import succeeded: ${strategy} (${importPath})`);
     return module;
   } catch (error) {
-    logger.debug(`[DEBUG] ❌ Import failed: ${strategy} (${importPath}) - ${error.message}`);
+    logger.debug(`[DEBUG] ❌ Import failed: ${strategy} (${importPath}) - ${error.message ?? "Unknown error"}`);
     return null;
   }
 }
