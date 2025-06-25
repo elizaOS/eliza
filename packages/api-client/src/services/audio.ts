@@ -1,13 +1,15 @@
 import { UUID } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
 import {
+  AudioSynthesizeParams,
   SpeechConversationParams,
   SpeechGenerateParams,
-  AudioSynthesizeParams,
-  TranscribeParams,
   SpeechResponse,
+  TranscribeParams,
   TranscriptionResponse,
 } from '../types/audio';
+
+declare const window: any;
 
 export class AudioService extends BaseApiClient {
   /**
@@ -146,10 +148,37 @@ export class AudioService extends BaseApiClient {
     agentId: UUID,
     params: SpeechGenerateParams
   ): Promise<{ audio: string; format: string }> {
-    return this.post<{ audio: string; format: string }>(
-      `/api/audio/${agentId}/speech/generate`,
-      params
-    );
+    const response = await fetch(`/api/audio/${agentId}/speech/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Get the binary audio data
+    const audioBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
+
+    // Convert to base64
+    const bytes = new Uint8Array(audioBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Audio = btoa(binary);
+
+    // Extract format from content type
+    const format = contentType.split('/')[1] || 'mpeg';
+
+    return {
+      audio: base64Audio,
+      format: format,
+    };
   }
 
   /**
