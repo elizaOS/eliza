@@ -40,18 +40,18 @@ type ContentWithUser = Content & {
   name: string;
   createdAt: number;
   isLoading?: boolean;
-  worldId?: string;
-  id?: string; // Add optional ID field
+  worldId?: UUID;
+  id?: UUID; // Add optional ID field
 };
 
 // AgentLog type from the API
 type AgentLog = {
-  id?: string;
+  id?: UUID;
   type?: string;
   timestamp?: number;
   message?: string;
   details?: string;
-  roomId?: string;
+  roomId?: UUID;
   body?: {
     modelType?: string;
     modelKey?: string;
@@ -248,8 +248,8 @@ export function useStopAgent() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  return useMutation<{ data: { message: string } }, Error, string>({
-    mutationFn: async (agentId: string) => {
+  return useMutation<{ data: { message: string } }, Error, UUID>({
+    mutationFn: async (agentId: UUID) => {
       const result = await elizaClient.agents.stopAgent(agentId);
       return { data: { message: `Agent ${result.status}` } };
     },
@@ -321,8 +321,8 @@ export function useChannelMessages(
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   addMessage: (newMessage: UiMessage) => void;
-  updateMessage: (messageId: string, updates: Partial<UiMessage>) => void;
-  removeMessage: (messageId: string) => void;
+  updateMessage: (messageId: UUID, updates: Partial<UiMessage>) => void;
+  removeMessage: (messageId: UUID) => void;
   clearMessages: () => void;
 } {
   const currentClientCentralId = getEntityId(); // Central ID of the currently logged-in user
@@ -500,7 +500,7 @@ export function useChannelMessages(
   }, []);
 
   // Add method to update a message by ID
-  const updateMessage = useCallback((messageId: string, updates: Partial<UiMessage>) => {
+  const updateMessage = useCallback((messageId: UUID, updates: Partial<UiMessage>) => {
     setMessages((prev) => {
       return prev.map((m) => {
         if (m.id === messageId) {
@@ -512,7 +512,7 @@ export function useChannelMessages(
   }, []);
 
   // Add method to remove a message by ID
-  const removeMessage = useCallback((messageId: string) => {
+  const removeMessage = useCallback((messageId: UUID) => {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }, []);
 
@@ -584,7 +584,7 @@ export function useDeleteLog() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ agentId, logId }: { agentId: string; logId: string }) => {
+    mutationFn: async ({ agentId, logId }: { agentId: UUID; logId: UUID }) => {
       await elizaClient.agents.deleteAgentLog(agentId, logId);
       return { agentId, logId };
     },
@@ -679,7 +679,7 @@ export function useDeleteMemory() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: string }) => {
+    mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: UUID }) => {
       await elizaClient.memory.deleteMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
@@ -738,7 +738,7 @@ export function useUpdateMemory() {
       memoryData,
     }: {
       agentId: UUID;
-      memoryId: string;
+      memoryId: UUID;
       memoryData: Partial<Memory>;
     }) => {
       const result = await elizaClient.memory.updateMemory(agentId, memoryId, memoryData);
@@ -947,8 +947,8 @@ export function useAgentInternalActions(
 export function useDeleteAgentInternalLog() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  return useMutation<void, Error, { agentId: string; logId: string }>({
-    mutationFn: async ({ agentId, logId }) => {
+  return useMutation<void, Error, { agentId: UUID; logId: UUID }>({
+    mutationFn: async ({ agentId, logId }: { agentId: UUID; logId: UUID }) => {
       await elizaClient.agents.deleteAgentLog(agentId, logId);
       return { agentId, logId };
     },
@@ -1001,12 +1001,8 @@ export function useAgentInternalMemories(
 export function useDeleteAgentInternalMemory() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  return useMutation<
-    { agentId: UUID; memoryId: string },
-    Error,
-    { agentId: UUID; memoryId: string }
-  >({
-    mutationFn: async ({ agentId, memoryId }) => {
+  return useMutation<{ agentId: UUID; memoryId: UUID }, Error, { agentId: UUID; memoryId: UUID }>({
+    mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: UUID }) => {
       await elizaClient.memory.deleteAgentInternalMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
@@ -1070,7 +1066,7 @@ export function useUpdateAgentInternalMemory() {
       response: { success: boolean; data: { id: UUID; message: string } };
     },
     Error,
-    { agentId: UUID; memoryId: string; memoryData: Partial<CoreMemory> }
+    { agentId: UUID; memoryId: UUID; memoryData: Partial<CoreMemory> }
   >({
     mutationFn: async ({ agentId, memoryId, memoryData }) => {
       const response = await elizaClient.memory.updateAgentInternalMemory(
@@ -1154,14 +1150,16 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
       if (!channelId) return Promise.resolve({ success: true, data: [] });
       try {
         const result = await elizaClient.messaging.getChannelParticipants(channelId);
-        
+
         // Handle different possible response formats
         let participants = [];
         if (result && Array.isArray(result.participants)) {
-          participants = result.participants.map(participant => participant.userId);
+          participants = result.participants.map((participant) => participant.userId);
         } else if (result && Array.isArray(result)) {
           // If result is directly an array
-          participants = result.map(participant => participant.userId || participant.id || participant);
+          participants = result.map(
+            (participant) => participant.userId || participant.id || participant
+          );
         }
         return { success: true, data: participants };
       } catch (error) {

@@ -56,7 +56,6 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const initializedRef = useRef(false);
   const lastChannelIdRef = useRef(channelId);
   const agentsInitializedRef = useRef(false);
-  
 
   const { data: channelsData } = useChannels(channelId ? serverId : undefined, {
     enabled: !!channelId,
@@ -181,20 +180,25 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       try {
         const elizaClient = createElizaClient();
         const result = await elizaClient.messaging.getChannelParticipants(channelId);
-        
+
         // Handle different possible response formats
         let participants = [];
         if (result && Array.isArray(result.participants)) {
-          participants = result.participants.map(participant => participant.userId);
+          participants = result.participants.map((participant) => participant.userId);
         } else if (result && Array.isArray(result)) {
           // If result is directly an array
-          participants = result.map(participant => participant.userId || participant.id || participant);
+          participants = result.map(
+            (participant) => participant.userId || participant.id || participant
+          );
         }
-        
+
         return { success: true, data: participants };
       } catch (error) {
         console.error('[GroupPanel] Error fetching channel participants:', error);
-        return { success: false, error: { message: error instanceof Error ? error.message : 'Unknown error' } };
+        return {
+          success: false,
+          error: { message: error instanceof Error ? error.message : 'Unknown error' },
+        };
       }
     },
     enabled: !!channelId,

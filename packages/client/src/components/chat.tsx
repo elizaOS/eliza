@@ -679,11 +679,11 @@ export default function Chat({
       // Handle different possible response formats for participants
       let participantIds = [];
       if (participants && Array.isArray(participants.participants)) {
-        participantIds = participants.participants.map(p => p.userId);
+        participantIds = participants.participants.map((p) => p.userId);
       } else if (participants && Array.isArray(participants)) {
-        participantIds = participants.map(p => p.userId || p.id || p);
+        participantIds = participants.map((p) => p.userId || p.id || p);
       }
-      
+
       await elizaClient.messaging.updateChannel(finalChannelIdForHooks, {
         name: title,
         participantCentralUserIds: participantIds,

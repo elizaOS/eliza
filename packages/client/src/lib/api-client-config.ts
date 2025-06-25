@@ -47,7 +47,7 @@ export function updateApiClientApiKey(newApiKey: string | null): void {
   } else {
     localStorage.removeItem(getLocalStorageApiKey());
   }
-  
+
   // Reset the singleton so it uses the new API key
   resetElizaClient();
 }
