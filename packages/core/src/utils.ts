@@ -273,9 +273,8 @@ export const formatMessages = ({
                 if (media.description) lines.push(`Description: ${media.description}`);
                 return lines.join('\n');
               })
-              .join('\n')})`
+              .join(', ')})`
           : null;
-
 
       const messageTime = new Date(message.createdAt);
       const hours = messageTime.getHours().toString().padStart(2, '0');
