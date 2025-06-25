@@ -129,6 +129,8 @@ async function updateCharacterFiles(pluginName: string, opts: AddPluginOptions):
 
   const characterPaths = resolveCharacterPaths(opts.character);
   
+  let hasFailures = false;
+  
   for (const characterPath of characterPaths) {
     try {
       const characterFile = await loadCharacterFile(characterPath);
@@ -136,8 +138,16 @@ async function updateCharacterFiles(pluginName: string, opts: AddPluginOptions):
       logger.info(`✅ Added plugin '${pluginName}' to character '${characterFile.character.name}'`);
     } catch (error) {
       logger.error(`Failed to update character file ${characterPath}:`, error);
-      process.exit(1);
+      logger.warn('Plugin was installed but character file update failed.');
+      logger.info('You can manually add the plugin to your character file.');
+      hasFailures = true;
+      // Continue with other character files instead of exiting
     }
+  }
+  
+  if (hasFailures) {
+    logger.warn('Some character files could not be updated. Plugin installation was successful.');
+    logger.info(`To manually add the plugin, add "${pluginName}" to the "plugins" array in your character file(s).`);
   }
 }
 

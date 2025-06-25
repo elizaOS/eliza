@@ -33,7 +33,8 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
     const characterFilePaths = await findCharactersFromPaths(parsedPaths);
     
     if (characterFilePaths.size === 0) {
-      console.log('No valid character files found.');
+      console.log('No valid character files found for the specified paths.');
+      console.log('Please check your character paths and try again.');
       return;
     }
 
@@ -86,7 +87,6 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
       characterPluginMap.set(characterName, plugins);
     } catch (error) {
       // Skip files that can't be loaded
-      continue;
     }
   }
 

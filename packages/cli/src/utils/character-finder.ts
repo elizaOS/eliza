@@ -311,12 +311,8 @@ export async function findCharactersFromPaths(
  * @throws Error if file cannot be read or parsed
  */
 export async function loadCharacterQuietly(filePath: string): Promise<any> {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    throw error;
-  }
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return JSON.parse(content);
 }
 
 /**
@@ -359,26 +355,26 @@ export function getTsCharacterName(filePath: string): string | null {
     // First, try to find a character object
     // Look for character: { ... name: "..." ... }
     const characterMatch = content.match(/character\s*:\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
-    if (characterMatch && characterMatch[1]) {
+    if (characterMatch?.[1]) {
       return characterMatch[1];
     }
     
     // Look for agents array with character
     const agentsMatch = content.match(/agents\s*:\s*\[[^\]]*character\s*:\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
-    if (agentsMatch && agentsMatch[1]) {
+    if (agentsMatch?.[1]) {
       return agentsMatch[1];
     }
     
     // Look for const characterName: Character = { name: "..." }
     const typedCharMatch = content.match(/const\s+\w+\s*:\s*Character\s*=\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
-    if (typedCharMatch && typedCharMatch[1]) {
+    if (typedCharMatch?.[1]) {
       return typedCharMatch[1];
     }
     
     // Fallback to simple patterns
     for (const pattern of patterns) {
       const match = content.match(pattern);
-      if (match && match[1]) {
+      if (match?.[1]) {
         return match[1];
       }
     }
