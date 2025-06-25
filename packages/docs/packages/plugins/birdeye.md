@@ -4,7 +4,7 @@ A powerful plugin for Eliza that integrates with Birdeye's comprehensive DeFi an
 
 ## Features
 
-### Provider Featurs
+### Provider Features
 
 - **Agent Portfolio Provider**
 
