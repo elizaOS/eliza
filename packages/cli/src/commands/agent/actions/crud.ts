@@ -1,5 +1,4 @@
 import type { Agent } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
