@@ -55,6 +55,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const serverId = DEFAULT_SERVER_ID;
   const initializedRef = useRef(false);
   const lastChannelIdRef = useRef(channelId);
+  const agentsInitializedRef = useRef(false);
 
   const { data: channelsData } = useChannels(channelId ? serverId : undefined, {
     enabled: !!channelId,
@@ -184,6 +185,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         setInitialChatName(initialName);
         initializedRef.current = true;
         lastChannelIdRef.current = channelId;
+        agentsInitializedRef.current = false; // Reset agents initialization for new channel
       }
     } else if (!channelId) {
       // Reset for create mode
@@ -199,7 +201,14 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   useEffect(() => {
     if (isLoadingAgents) return;
     if (channelId && isLoadingChannelParticipants) return;
-    if (!channelId) return; // Only handle edit mode
+    if (!channelId) {
+      // Reset for create mode
+      agentsInitializedRef.current = false;
+      return;
+    }
+
+    // Only initialize once per channel
+    if (agentsInitializedRef.current && lastChannelIdRef.current === channelId) return;
 
     if (isErrorChannelParticipants) {
       toast({
@@ -208,6 +217,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         variant: 'destructive',
       });
       setSelectedAgents([]);
+      setInitialSelectedAgentIds([]);
+      agentsInitializedRef.current = true;
       return;
     }
 
@@ -217,19 +228,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         participantIds.includes(agent.id)
       );
 
-      const currentSelectedIds = selectedAgents
-        .map((a) => a.id)
-        .sort()
-        .join(',');
-      const newSelectedIds = newSelected
-        .map((a) => a.id)
-        .sort()
-        .join(',');
-
-      if (currentSelectedIds !== newSelectedIds) {
-        setSelectedAgents(newSelected);
-        setInitialSelectedAgentIds(newSelected.map((a) => a.id));
-      }
+      setSelectedAgents(newSelected);
+      setInitialSelectedAgentIds(newSelected.map((a) => a.id));
+      agentsInitializedRef.current = true;
     } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
       toast({
         title: 'Error',
@@ -237,8 +238,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         variant: 'destructive',
       });
       setSelectedAgents([]);
+      setInitialSelectedAgentIds([]);
+      agentsInitializedRef.current = true;
     } else {
       setSelectedAgents([]);
+      setInitialSelectedAgentIds([]);
+      agentsInitializedRef.current = true;
     }
   }, [
     channelId,
@@ -249,7 +254,6 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     isErrorChannelParticipants,
     errorChannelParticipants,
     toast,
-    selectedAgents,
   ]);
 
   const comboboxOptions: ComboboxOption[] = useMemo(() => {
@@ -308,7 +312,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }, [channelId, chatName, initialChatName, selectedAgents, initialSelectedAgentIds]);
 
   const handleCreateOrUpdateGroup = useCallback(async () => {
-    if (selectedAgents.length === 0) {
+    // For create mode, require at least one agent
+    if (!channelId && selectedAgents.length === 0) {
       toast({
         title: 'Validation Error',
         description: 'Please select at least one agent for the group.',
@@ -317,9 +322,18 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       return;
     }
 
+    // For edit mode, warn if removing all agents but allow it
+    if (channelId && selectedAgents.length === 0) {
+      const confirmRemoveAll = window.confirm(
+        'Are you sure you want to remove all agents from this group? This will leave the group with no participants.'
+      );
+      if (!confirmRemoveAll) return;
+    }
+
     const participantIds = selectedAgents.map((agent) => agent.id);
-    // Generate name if empty
-    const finalName = chatName.trim() || selectedAgents.map((agent) => agent.name).join(', ');
+    // Generate name if empty - for groups with no agents, use the chat name or a default
+    const finalName = chatName.trim() || 
+      (selectedAgents.length > 0 ? selectedAgents.map((agent) => agent.name).join(', ') : 'Empty Group');
 
     if (!channelId) {
       createGroupMutation.mutate({ name: finalName, participantIds });
@@ -328,23 +342,18 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     }
   }, [channelId, chatName, selectedAgents, createGroupMutation, updateGroupMutation, toast]);
 
-  // For create mode: require at least one agent
-  // For edit mode: require at least one agent AND changes made
+  // Use the exact same logic as "unsaved changes" detection for update button
   const isSubmitDisabled = channelId 
-    ? // Edit mode - disable if no agents OR no changes OR loading states
-      selectedAgents.length === 0 ||
+    ? // Edit mode - disable if no changes OR loading (allow agent removal)
       !hasFormChanged ||
       createGroupMutation.isPending ||
       updateGroupMutation.isPending ||
-      deleteGroupMutation.isPending ||
-      isLoadingChannelParticipants ||
-      (isErrorAgents && allAvailableSelectableAgents.length === 0)
-    : // Create mode - disable if no agents OR loading states  
+      deleteGroupMutation.isPending
+    : // Create mode - disable if no agents OR loading
       selectedAgents.length === 0 ||
       createGroupMutation.isPending ||
       updateGroupMutation.isPending ||
-      deleteGroupMutation.isPending ||
-      (isErrorAgents && allAvailableSelectableAgents.length === 0);
+      deleteGroupMutation.isPending;
 
 
   return (
