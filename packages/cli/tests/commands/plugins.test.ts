@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { execSync } from 'node:child_process';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { safeChangeDirectory, getPlatformOptions } from './test-utils';
@@ -11,6 +11,7 @@ describe('ElizaOS Plugin Commands', () => {
   let projectDir: string;
   let elizaosCmd: string;
   let originalCwd: string;
+  let characterFile: string;
 
   beforeAll(async () => {
     // Store original working directory
@@ -39,6 +40,21 @@ describe('ElizaOS Plugin Commands', () => {
     // Change to project directory for all tests
     process.chdir(projectDir);
     console.log('Shared test project created at:', projectDir);
+
+    // Create a test character file
+    characterFile = join(projectDir, 'test-character.json');
+    const testCharacter = {
+      name: 'TestAgent',
+      bio: 'A test agent for plugin testing',
+      description: 'A test agent for plugin testing',
+      plugins: [],
+      settings: {
+        // Basic settings for the test character
+        language: 'en',
+      }
+    };
+    await writeFile(characterFile, JSON.stringify(testCharacter, null, 2));
+    console.log('Created test character file at:', characterFile);
   });
 
   beforeEach(() => {
@@ -105,7 +121,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins add @elizaos/plugin-xmtp --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add @elizaos/plugin-xmtp -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -113,8 +129,9 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@elizaos/plugin-xmtp');
+        const characterJson = await readFile(characterFile, 'utf8');
+        const character = JSON.parse(characterJson);
+        expect(character.plugins).toContain('@elizaos/plugin-xmtp');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
@@ -130,7 +147,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins install @elizaos/plugin-mcp --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins install @elizaos/plugin-mcp -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -138,8 +155,9 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@elizaos/plugin-mcp');
+        const characterJson = await readFile(characterFile, 'utf8');
+        const character = JSON.parse(characterJson);
+        expect(character.plugins).toContain('@elizaos/plugin-mcp');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
@@ -155,7 +173,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -163,8 +181,9 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');
+        const characterJson = await readFile(characterFile, 'utf8');
+        const character = JSON.parse(characterJson);
+        expect(character.plugins).toContain('@fleek-platform/eliza-plugin-mcp');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
@@ -181,7 +200,7 @@ describe('ElizaOS Plugin Commands', () => {
       try {
         // First GitHub URL install
         execSync(
-          `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -189,12 +208,13 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson1 = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson1).toContain('plugin-video-understanding');
+        const characterJson1 = await readFile(characterFile, 'utf8');
+        const character1 = JSON.parse(characterJson1);
+        expect(character1.plugins).toContain('plugin-video-understanding');
 
         // Second GitHub URL install with shorthand syntax
         execSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -202,8 +222,9 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson2 = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson2).toContain('plugin-openrouter');
+        const characterJson2 = await readFile(characterFile, 'utf8');
+        const character2 = JSON.parse(characterJson2);
+        expect(character2.plugins).toContain('plugin-openrouter');
       } catch (error: any) {
         console.error('[ERROR] GitHub plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
@@ -218,7 +239,10 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins installed-plugins shows installed plugins',
     async () => {
-      const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
+      const result = execSync(`${elizaosCmd} plugins installed-plugins -c test-character.json`, { 
+        encoding: 'utf8',
+        cwd: projectDir,
+      });
       // Should show previously installed plugins from other tests
       expect(result).toMatch(/@elizaos\/plugin-|github:/);
     },
@@ -231,7 +255,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins add @elizaos/plugin-elevenlabs --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add @elizaos/plugin-elevenlabs -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -239,17 +263,19 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        let packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@elizaos/plugin-elevenlabs');
+        let characterJson = await readFile(characterFile, 'utf8');
+        let character = JSON.parse(characterJson);
+        expect(character.plugins).toContain('@elizaos/plugin-elevenlabs');
 
-        execSync(`${elizaosCmd} plugins remove @elizaos/plugin-elevenlabs`, {
+        execSync(`${elizaosCmd} plugins remove @elizaos/plugin-elevenlabs -c test-character.json`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
           cwd: projectDir,
         });
 
-        packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).not.toContain('@elizaos/plugin-elevenlabs');
+        characterJson = await readFile(characterFile, 'utf8');
+        character = JSON.parse(characterJson);
+        expect(character.plugins).not.toContain('@elizaos/plugin-elevenlabs');
       } catch (error: any) {
         console.error('[ERROR] Plugin remove failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
@@ -272,7 +298,7 @@ describe('ElizaOS Plugin Commands', () => {
 
         // Add all plugins first
         for (const plugin of plugins) {
-          execSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt --skip-verification`, {
+          execSync(`${elizaosCmd} plugins add ${plugin} -c test-character.json --skip-env-prompt --skip-verification`, {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
             cwd: projectDir,
@@ -287,7 +313,7 @@ describe('ElizaOS Plugin Commands', () => {
         ];
 
         for (const [command, plugin] of removeCommands) {
-          execSync(`${elizaosCmd} plugins ${command} ${plugin}`, {
+          execSync(`${elizaosCmd} plugins ${command} ${plugin} -c test-character.json`, {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             cwd: projectDir,
@@ -308,7 +334,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add fails for missing plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add missing --skip-env-prompt`, {
+        execSync(`${elizaosCmd} plugins add missing -c test-character.json --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
           cwd: projectDir,
@@ -328,7 +354,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt --skip-verification`,
+          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x -c test-character.json --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -336,8 +362,9 @@ describe('ElizaOS Plugin Commands', () => {
           }
         );
 
-        const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('github:elizaos-plugins/plugin-farcaster#1.x');
+        const characterJson = await readFile(characterFile, 'utf8');
+        const character = JSON.parse(characterJson);
+        expect(character.plugins).toContain('plugin-farcaster');
       } catch (error: any) {
         console.error('[ERROR] GitHub shorthand plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');
