@@ -202,38 +202,50 @@ Manage ElizaOS agents.
       - `-p, --port <port>`: Port to listen on
   - `get` (alias: `g`): Get agent details
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-j, --json`: Display JSON output in terminal
       - `-o, --output <file>`: Save agent data to file
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `start` (alias: `s`): Start an agent
+  - `start` (alias: `s`): Start agent(s)
     - Options:
-      - `-n, --name <name>`: Name of an existing agent to start
-      - `--path <path>`: Local path to character JSON file
-      - `--remote-character <url>`: URL to remote character JSON file
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `stop` (alias: `st`): Stop an agent
+  - `stop` (alias: `st`): Stop agent(s)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `--all`: Stop all running ElizaOS agents locally
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `remove` (alias: `rm`): Remove an agent
+  - `remove` (alias: `rm`): Remove agent(s)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `set`: Update agent configuration
+  - `set`: Update agent configuration (single agent only)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
-      - `-c, --config <json>`: Agent configuration as JSON string
-      - `-f, --file <path>`: Path to agent configuration JSON file
+      - `-c, --character <path>`: Character name, file path, or URL (single character only)
+      - `--config <json>`: Agent configuration as JSON string
+      - `--file <path>`: Path to agent configuration JSON file
+      - `-r, --remote-url <url>`: URL of the remote agent runtime
+      - `-p, --port <port>`: Port to listen on
+  - `clear-memories`: Clear agent memories
+    - Options:
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
 
-**Note:** All agent commands support interactive mode when run without key parameters.
+**Character Specification:**
+- **Multiple formats supported**: Space-separated, comma-separated, or mixed
+- **Auto-extension**: `.json` extension added automatically if missing
+- **Path resolution**: Supports local files, URLs, and character names
+- **Examples**: 
+  - `elizaos agent start -c bobby,billy` (comma-separated)
+  - `elizaos agent start -c bobby billy` (space-separated)
+  - `elizaos agent get -c ./characters/bobby.json https://example.com/billy.json`
+
+**Note:** All agent commands support interactive mode when run without required parameters. Most commands support multiple characters except `set` which only accepts a single character.
 
 ### Publishing
 

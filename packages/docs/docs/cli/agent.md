@@ -24,14 +24,15 @@ elizaos agent [options] [command]
 
 ## Subcommands
 
-| Subcommand | Aliases | Description                             | Required Options                                               | Additional Options                                                           |
-| ---------- | ------- | --------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `list`     | `ls`    | List available agents                   |                                                                | `--format <format>`, `-r, --remote-url <url>`, `-p, --port <port>`           |
-| `get`      | `g`     | Get agent details                       | `-n, --name <name>`                                            | `--format <format>`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
-| `start`    | `s`     | Start an agent with a character profile | One of: `-n, --name`, `--path`, `--remote-character`           | `-r, --remote-url <url>`, `-p, --port <port>`                                |
-| `stop`     | `st`    | Stop an agent                           | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                                |
-| `remove`   | `rm`    | Remove an agent                         | `-n, --name <name>`                                            | `-r, --remote-url <url>`, `-p, --port <port>`                                |
-| `set`      |         | Update agent configuration              | `-n, --name <name>` AND one of: `-c, --config` OR `-f, --file` | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| Subcommand       | Aliases | Description                             | Required Options                                  | Additional Options                                                           |
+| ---------------- | ------- | --------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `list`           | `ls`    | List available agents                   |                                                   | `--format <format>`, `-r, --remote-url <url>`, `-p, --port <port>`           |
+| `get`            | `g`     | Get agent details                       | `-c, --character <paths...>`                      | `--format <format>`, `-o, --output [file]`, `-r, --remote-url`, `-p, --port` |
+| `start`          | `s`     | Start agent(s) with character profile(s) | `-c, --character <paths...>`                      | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `stop`           | `st`    | Stop agent(s)                           | `-c, --character <paths...>`                      | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `remove`         | `rm`    | Remove agent(s)                         | `-c, --character <paths...>`                      | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `set`            |         | Update agent configuration              | `-c, --character <path>` AND one of: `--config` OR `--file` | `-r, --remote-url <url>`, `-p, --port <port>`                                |
+| `clear-memories` |         | Clear agent memories                    | `-c, --character <paths...>`                      | `-r, --remote-url <url>`, `-p, --port <port>`                                |
 
 ## Options Reference
 
@@ -46,25 +47,23 @@ elizaos agent [options] [command]
 - `-j, --json`: A shorthand for `--format json`.
 - `-o, --output [file]`: For the `get` command, saves the agent's configuration to a JSON file. If no filename is provided, defaults to `{name}.json`.
 
-### Get Specific Options
+### Character Specification Options
 
-- `-n, --name <name>`: Agent id, name, or index number from list (required)
-
-### Start Specific Options
-
-- `-n, --name <name>`: Name of an existing agent to start
-- `--path <path>`: Path to local character JSON file (supports automatic resolution from common directories)
-- `--remote-character <url>`: URL to remote character JSON file
-
-### Stop/Remove Specific Options
-
-- `-n, --name <name>`: Agent id, name, or index number from list (required)
+- `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) 
+  - **Multiple characters supported** (except for `set` command)
+  - **Formats**: Space-separated, comma-separated, or mixed
+  - **Auto-extension**: `.json` extension added automatically if missing
+  - **Path resolution**: Supports local files, URLs, and character names
+  - **Examples**: 
+    - `bobby,billy` (comma-separated)
+    - `bobby billy` (space-separated)  
+    - `./characters/bobby.json https://example.com/billy.json` (mixed formats)
 
 ### Set Specific Options
 
-- `-n, --name <name>`: Agent id, name, or index number from list (required)
-- `-c, --config <json>`: Agent configuration as JSON string
-- `-f, --file <path>`: Path to agent configuration JSON file
+- `-c, --character <path>`: Character name, file path, or URL (single character only)
+- `--config <json>`: Agent configuration as JSON string
+- `--file <path>`: Path to agent configuration JSON file
 
 </TabItem>
 <TabItem value="examples" label="Examples">
@@ -96,117 +95,145 @@ elizaos agent list --port 4000
 ### Getting Agent Details
 
 ```bash
-# Get agent details by name
-elizaos agent get --name eliza
+# Get agent details by character name
+elizaos agent get --character eliza
 
-# Get agent by ID
-elizaos agent get --name agent_123456
+# Get multiple agents
+elizaos agent get --character eliza,bobby
+elizaos agent get --character eliza bobby
 
-# Get agent by index from list
-elizaos agent get --name 0
+# Get agent by character file path
+elizaos agent get --character ./characters/eliza.json
+
+# Get agents from mixed sources
+elizaos agent get --character eliza ./bobby.json https://example.com/alice.json
 
 # Display configuration as JSON in console
-elizaos agent get --name eliza --format json
+elizaos agent get --character eliza --format json
 
 # Display configuration as YAML in console
-elizaos agent get --name eliza --format yaml
+elizaos agent get --character eliza --format yaml
 
 # Save agent configuration to file
-elizaos agent get --name eliza --output
+elizaos agent get --character eliza --output
 
 # Save to specific file
-elizaos agent get --name eliza --output ./my-agent.json
+elizaos agent get --character eliza --output ./my-agent.json
 
 # Using alias
-elizaos agent g --name eliza
+elizaos agent g --character eliza
 ```
 
 ### Starting Agents
 
 ```bash
-# Start existing agent by name
-elizaos agent start --name eliza
+# Start single agent by character name or file
+elizaos agent start --character eliza
+elizaos agent start --character ./characters/eliza.json
 
-# Start with local character file (automatic resolution)
-elizaos agent start --path eliza
-elizaos agent start --path ./characters/eliza.json
-elizaos agent start --path eliza.json
+# Start multiple agents (comma-separated)
+elizaos agent start --character eliza,bobby
 
-# Start from remote character file
-elizaos agent start --remote-character https://example.com/characters/eliza.json
+# Start multiple agents (space-separated)
+elizaos agent start --character eliza bobby
+
+# Start agents from mixed sources
+elizaos agent start --character eliza ./bobby.json https://example.com/alice.json
 
 # Using alias
-elizaos agent s --name eliza
+elizaos agent s --character eliza
 
 # Start on specific port
-elizaos agent start --path ./eliza.json --port 4000
+elizaos agent start --character eliza --port 4000
 ```
 
-**Character File Resolution:**
-When using `--path`, the CLI will:
-1. Check if it's an absolute path or relative path that exists
-2. Search common directories:
-   - Current directory
-   - `./characters/` directory
-   - `./agents/` directory
-   - `./src/characters/` directory
-   - `./src/agents/` directory
-3. If not found, recursively search the entire project directory for matching `.json` or `.ts` files
-
-The `.json` extension is optional and will be added automatically if not provided.
-
-**Required Configuration:**
-You must provide one of these options: `--name`, `--path`, or `--remote-character`
+**Character Resolution:**
+The CLI supports multiple formats and automatically resolves character paths:
+- **Character names**: `eliza`, `bobby` (looks up existing agents)
+- **Local files**: `./characters/eliza.json`, `eliza.json`
+- **URLs**: `https://example.com/characters/eliza.json`
+- **Auto-extension**: `.json` extension added automatically if missing
+- **Multiple formats**: Supports comma-separated (`eliza,bobby`) and space-separated (`eliza bobby`)
 
 ### Stopping Agents
 
 ```bash
-# Stop agent by name
-elizaos agent stop --name eliza
+# Stop single agent
+elizaos agent stop --character eliza
 
-# Stop agent by ID
-elizaos agent stop --name agent_123456
+# Stop multiple agents (comma-separated)
+elizaos agent stop --character eliza,bobby
 
-# Stop agent by index
-elizaos agent stop --name 0
+# Stop multiple agents (space-separated)
+elizaos agent stop --character eliza bobby
+
+# Stop agents from mixed sources
+elizaos agent stop --character eliza ./bobby.json
 
 # Using alias
-elizaos agent st --name eliza
+elizaos agent st --character eliza
 
 # Stop agent on remote runtime
-elizaos agent stop --name eliza --remote-url http://server:3000
+elizaos agent stop --character eliza --remote-url http://server:3000
+
+# Stop all agents locally
+elizaos agent stop --all
 ```
 
 ### Removing Agents
 
 ```bash
-# Remove agent by name
-elizaos agent remove --name pmairca
+# Remove single agent
+elizaos agent remove --character pmairca
 
-# Remove agent by ID
-elizaos agent remove --name agent_123456
+# Remove multiple agents (comma-separated)
+elizaos agent remove --character eliza,bobby
+
+# Remove multiple agents (space-separated)
+elizaos agent remove --character eliza bobby
+
+# Remove agents from mixed sources
+elizaos agent remove --character eliza ./bobby.json
 
 # Using alias
-elizaos agent rm --name pmairca
+elizaos agent rm --character pmairca
 
 # Remove from remote runtime
-elizaos agent remove --name pmairca --remote-url http://server:3000
+elizaos agent remove --character pmairca --remote-url http://server:3000
 ```
 
 ### Updating Agent Configuration
 
 ```bash
-# Update with JSON string
-elizaos agent set --name eliza --config '{"system":"Updated prompt"}'
+# Update with JSON string (single character only)
+elizaos agent set --character eliza --config '{"system":"Updated prompt"}'
 
-# Update from configuration file
-elizaos agent set --name eliza --file ./updated-config.json
+# Update from configuration file (single character only)
+elizaos agent set --character eliza --file ./updated-config.json
 
 # Update agent on remote runtime
-elizaos agent set --name pmairca --config '{"model":"gpt-4"}' --remote-url http://server:3000
+elizaos agent set --character pmairca --config '{"model":"gpt-4"}' --remote-url http://server:3000
 
 # Update agent on specific port
-elizaos agent set --name eliza --file ./config.json --port 4000
+elizaos agent set --character eliza --file ./config.json --port 4000
+```
+
+**Note:** The `set` command only accepts a single character, unlike other agent commands that support multiple characters.
+
+### Clearing Agent Memories
+
+```bash
+# Clear memories for single agent
+elizaos agent clear-memories --character eliza
+
+# Clear memories for multiple agents (comma-separated)
+elizaos agent clear-memories --character eliza,bobby
+
+# Clear memories for multiple agents (space-separated)
+elizaos agent clear-memories --character eliza bobby
+
+# Clear memories on remote runtime
+elizaos agent clear-memories --character eliza --remote-url http://server:3000
 ```
 
 </TabItem>
@@ -267,25 +294,32 @@ When using `--path` or `--remote-character`, the character file should follow th
 }
 ```
 
-## Agent Identification
+## Character Specification
 
-Agents can be identified using:
+Characters can be specified using multiple formats:
 
-1. **Agent Name**: Human-readable name (e.g., "eliza", "pmairca")
-2. **Agent ID**: System-generated ID (e.g., "agent_123456")
-3. **List Index**: Position in `elizaos agent list` output (e.g., "0", "1", "2")
+1. **Character Names**: Human-readable names of existing agents (e.g., "eliza", "bobby")
+2. **File Paths**: Local character files (e.g., "./characters/eliza.json", "eliza.json")
+3. **URLs**: Remote character files (e.g., "https://example.com/characters/eliza.json")
+4. **Multiple Characters**: Space-separated or comma-separated lists (e.g., "eliza,bobby" or "eliza bobby")
+
+**Features:**
+- **Auto-extension**: `.json` extension added automatically if missing
+- **Flexible parsing**: Supports mixed quotes, spaces, and commas
+- **Path resolution**: Automatic resolution of character file locations
 
 ## Interactive Mode
 
 All agent commands support interactive mode when run without required parameters:
 
 ```bash
-# Interactive agent selection
+# Interactive character selection
 elizaos agent get
 elizaos agent start
 elizaos agent stop
 elizaos agent remove
 elizaos agent set
+elizaos agent clear-memories
 ```
 
 ## Remote Runtime Configuration
@@ -317,10 +351,10 @@ elizaos agent list --port 4000
 
 ```bash
 # Create character file
-elizaos create -type agent eliza
+elizaos create --type agent eliza
 
 # Or create project with character
-elizaos create -type project my-project
+elizaos create --type project my-project
 ```
 
 ### 2. Start Agent Runtime
@@ -336,20 +370,29 @@ elizaos start
 # List available agents
 elizaos agent list
 
-# Start an agent
-elizaos agent start --path ./eliza.json
+# Start single or multiple agents
+elizaos agent start --character ./eliza.json
+elizaos agent start --character eliza,bobby
 
 # Check agent status
-elizaos agent get --name eliza
+elizaos agent get --character eliza
 
-# Update configuration
-elizaos agent set --name eliza --config '{"system":"Updated prompt"}'
+# Get multiple agent details
+elizaos agent get --character eliza,bobby
 
-# Stop agent
-elizaos agent stop --name eliza
+# Update configuration (single agent only)
+elizaos agent set --character eliza --config '{"system":"Updated prompt"}'
+
+# Stop single or multiple agents
+elizaos agent stop --character eliza
+elizaos agent stop --character eliza,bobby
+
+# Clear agent memories
+elizaos agent clear-memories --character eliza
 
 # Remove when no longer needed
-elizaos agent remove --name eliza
+elizaos agent remove --character eliza
+elizaos agent remove --character eliza,bobby
 ```
 
 </TabItem>
