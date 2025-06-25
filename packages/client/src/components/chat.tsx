@@ -669,7 +669,7 @@ export default function Chat({
     }
 
     const elizaClient = createElizaClient();
-    const data = await elizaClient.messaging.generateChannelTitle(finalChannelIdForHooks);
+    const data = await elizaClient.messaging.generateChannelTitle(finalChannelIdForHooks, contextId);
 
     const title = data?.title;
     const participants = await elizaClient.messaging.getChannelParticipants(
