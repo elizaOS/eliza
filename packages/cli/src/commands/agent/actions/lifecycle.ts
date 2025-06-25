@@ -1,8 +1,9 @@
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { checkServer, handleError } from '@/src/utils';
+import { resolveCharacterPath, isValidCharacterFile } from '@/src/utils/character-finder';
+import { parseCharacterPaths } from '@/src/utils/character-parser';
 import type { ApiResponse } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
 import type { AgentStartPayload } from '../types';
@@ -75,20 +76,39 @@ export async function startAgent(options: OptionValues): Promise<void> {
       // Handle the path option first
       if (options.path) {
         try {
-          const filePath = path.resolve(process.cwd(), options.path);
-          if (!existsSync(filePath)) {
-            throw new Error(`File not found at path: ${filePath}`);
+          // Use character-parser to handle various path formats
+          const parsedPaths = parseCharacterPaths(options.path);
+          
+          if (parsedPaths.length === 0) {
+            throw new Error(`Invalid character path: ${options.path}`);
           }
-          const fileContent = readFileSync(filePath, 'utf8');
+          
+          // For agent start, we only use the first character
+          const characterPath = parsedPaths[0];
+          
+          // Use character-finder to resolve the path
+          const resolvedPath = resolveCharacterPath(characterPath);
+          
+          if (!resolvedPath) {
+            throw new Error(`Character file not found: ${characterPath}`);
+          }
+          
+          // Validate the character file
+          const isValid = await isValidCharacterFile(resolvedPath);
+          if (!isValid) {
+            throw new Error(`Invalid character file: ${characterPath}`);
+          }
+          
+          const fileContent = readFileSync(resolvedPath, 'utf8');
           payload.characterJson = JSON.parse(fileContent);
           characterName = await createCharacter(payload);
           if (!characterName) {
             logger.error('Failed to create character from file. Check server logs for details.');
           }
         } catch (error) {
-          console.error('Error reading or parsing local JSON file:', error);
+          console.error('Error reading or parsing local character file:', error);
           throw new Error(
-            `Failed to read or parse local JSON file: ${error instanceof Error ? error.message : String(error)}`
+            `Failed to read or parse local character file: ${error instanceof Error ? error.message : String(error)}`
           );
         }
       }
