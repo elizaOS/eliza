@@ -246,37 +246,62 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   afterAll(async () => {
-    if (serverProcess && serverProcess.exitCode === null) {
+    console.log('[CLEANUP] Starting test cleanup...');
+    
+    // Clean up the server process
+    if (serverProcess) {
       try {
-        // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => {});
+        console.log(`[CLEANUP] Killing server process PID: ${serverProcess.pid}`);
+        
+        // Kill the process group to ensure all child processes are terminated
+        if (process.platform !== 'win32' && serverProcess.pid) {
+          try {
+            // Kill the entire process group
+            process.kill(-serverProcess.pid, 'SIGTERM');
+          } catch (e) {
+            // Fallback to regular kill
+            serverProcess.kill('SIGTERM');
+          }
+        } else {
+          serverProcess.kill('SIGTERM');
+        }
 
-        // Use SIGTERM for graceful shutdown
-        serverProcess.kill('SIGTERM');
-
-        // Wait for graceful exit with timeout
-        await Promise.race([
-          exitPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-        ]);
+        // Wait for process to exit
+        if (serverProcess.exited) {
+          await Promise.race([
+            serverProcess.exited,
+            new Promise((resolve) => setTimeout(resolve, 3000))
+          ]);
+        }
 
         // Force kill if still running
-        if (serverProcess.exitCode === null && !serverProcess.killed) {
+        if (serverProcess.exitCode === null) {
+          console.log('[CLEANUP] Force killing server process...');
           serverProcess.kill('SIGKILL');
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (e) {
-        // Ignore cleanup errors but try force kill
-        try {
-          if (!serverProcess.killed) {
-            serverProcess.kill('SIGKILL');
-          }
-        } catch (e2) {
-          // Ignore force kill errors
-        }
+        console.error('[CLEANUP] Error killing server process:', e);
       }
     }
 
+    // Kill any remaining processes on the test port
+    console.log(`[CLEANUP] Killing any remaining processes on port ${testServerPort}...`);
+    await killProcessOnPort(parseInt(testServerPort, 10));
+    
+    // Additional cleanup for any elizaos processes that might be hanging
+    if (process.platform !== 'win32') {
+      try {
+        const { execSync } = await import('child_process');
+        // Kill any remaining elizaos processes
+        execSync('pkill -f "elizaos start" || true', { stdio: 'ignore' });
+        execSync('pkill -f "bun.*dist/index.js start" || true', { stdio: 'ignore' });
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+
+    // Clean up temp directory
     if (testTmpDir) {
       try {
         await rm(testTmpDir, { recursive: true });
@@ -284,6 +309,8 @@ describe('ElizaOS Agent Commands', () => {
         // Ignore cleanup errors
       }
     }
+    
+    console.log('[CLEANUP] Test cleanup complete');
   });
 
   it('agent help displays usage information', async () => {

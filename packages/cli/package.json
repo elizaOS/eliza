@@ -50,7 +50,7 @@
     "test:types": "tsc --noEmit",
     "coverage": "c8 --reporter=lcov --reporter=text bun test",
     "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
-    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000"
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000 && bash tests/cleanup-processes.sh || true"
   },
   "devDependencies": {
     "@types/bun": "^1.2.17",

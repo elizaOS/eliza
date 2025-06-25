@@ -115,6 +115,31 @@ describe('ElizaOS Dev Commands', () => {
   });
 
   afterAll(async () => {
+    console.log('[CLEANUP] Starting final test cleanup...');
+    
+    // Kill any remaining processes
+    for (const proc of runningProcesses) {
+      if (proc && !proc.killed && proc.exitCode === null) {
+        try {
+          console.log(`[CLEANUP] Killing process PID: ${proc.pid}`);
+          proc.kill('SIGKILL');
+        } catch (e) {
+          // Ignore
+        }
+      }
+    }
+    
+    // Additional cleanup for any dev processes that might be hanging
+    if (process.platform !== 'win32') {
+      try {
+        const { execSync } = await import('child_process');
+        execSync('pkill -f "elizaos dev" || true', { stdio: 'ignore' });
+        execSync('pkill -f "bun.*dist/index.js dev" || true', { stdio: 'ignore' });
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+
     // Restore original working directory
     safeChangeDirectory(originalCwd);
 
@@ -125,6 +150,8 @@ describe('ElizaOS Dev Commands', () => {
         // Ignore cleanup errors
       }
     }
+    
+    console.log('[CLEANUP] Final cleanup complete');
   });
 
   // Helper function to start dev process and wait for it to be ready
