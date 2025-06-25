@@ -91,7 +91,7 @@ describe('ElizaOS Agent Commands', () => {
         {
           env: {
             ...process.env,
-            LOG_LEVEL: 'debug',
+            LOG_LEVEL: 'error',
             PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
             NODE_OPTIONS: '--max-old-space-size=4096',
             SERVER_HOST: '127.0.0.1',
@@ -176,13 +176,13 @@ describe('ElizaOS Agent Commands', () => {
 
     // Handle process exit
     serverProcess.exited
-      .then((code) => {
+      .then((code: number) => {
         console.log(`[SERVER EXIT] code: ${code}`);
         if (code !== 0 && !serverError) {
           serverError = new Error(`Server exited with code ${code}`);
         }
       })
-      .catch((error) => {
+      .catch((error: Error) => {
         console.error('[SERVER ERROR]', error);
         serverError = error;
       });
@@ -315,7 +315,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent get shows details with name parameter', async () => {
     const result = execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada`,
       getPlatformOptions({
         encoding: 'utf8',
       })
@@ -325,7 +325,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent get with JSON flag shows character definition', async () => {
     const result = execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --json`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada --json`,
       getPlatformOptions({
         encoding: 'utf8',
       })
@@ -337,7 +337,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada --output ${outputFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
 
@@ -359,21 +359,23 @@ describe('ElizaOS Agent Commands', () => {
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
     } catch (e: any) {
       // If it fails, check if it's because agent already exists
-      expect(e.stdout || e.stderr).toMatch(/(already exists|already running)/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/(already exists|already running)/);
     }
   });
 
   it('agent start works with name parameter', async () => {
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or already exist
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/already/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/already/);
     }
   });
 
@@ -382,7 +384,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n ${nonExistentName}`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c ${nonExistentName}`,
         getPlatformOptions({
           encoding: 'utf8',
           stdio: 'pipe',
@@ -400,7 +402,7 @@ describe('ElizaOS Agent Commands', () => {
     // Ensure Ada is started first
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({ stdio: 'pipe' })
       );
     } catch (e) {
@@ -409,14 +411,15 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = execSync(
-        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       expect(result).toMatch(/(stopped|Stopped)/);
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/(not running|not found)/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/(not running|not found)/);
     }
   });
 
@@ -430,7 +433,7 @@ describe('ElizaOS Agent Commands', () => {
     await writeFile(configFile, configContent);
 
     const result = execSync(
-      `${elizaosCmd} agent set --remote-url ${testServerUrl} -n Ada -f ${configFile}`,
+      `${elizaosCmd} agent set --remote-url ${testServerUrl} -c Ada -f ${configFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toMatch(/(updated|Updated)/);
@@ -440,27 +443,29 @@ describe('ElizaOS Agent Commands', () => {
     // Start agent
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or already exist
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/already/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/already/);
     }
 
     // Stop agent
     try {
       execSync(
-        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or not be running
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/not running/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/not running/);
     }
   });
 
