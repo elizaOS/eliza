@@ -38,7 +38,8 @@ export const start = new Command()
 
           if (!resolvedPath) {
             logger.error(`Character file not found: ${charPath}`);
-            throw new Error(`Character file not found: ${charPath}`);
+            errors.push(`Character file not found: ${charPath}`);
+            continue;
           }
 
           try {
