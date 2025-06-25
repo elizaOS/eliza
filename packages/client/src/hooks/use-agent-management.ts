@@ -56,20 +56,7 @@ export function useAgentManagement() {
       await startAgentMutation.mutateAsync(agentId);
     } catch (error) {
       console.error('Failed to start agent:', error);
-
-      try {
-        // Use centralized error handling
-        throw error;
-      } catch (handledError) {
-        // If the error handler doesn't show a toast (e.g., for auth errors),
-        // we show a fallback toast
-        toast({
-          title: 'Error Starting Agent',
-          description:
-            handledError instanceof Error ? handledError.message : 'Failed to start agent',
-          variant: 'destructive',
-        });
-      }
+      // Let the mutation's onError handler show the appropriate toast
     } finally {
       // Remove agent from starting list regardless of success/failure
       setStartingAgents((prev) => prev.filter((id) => id !== agentId));
@@ -109,20 +96,7 @@ export function useAgentManagement() {
       });
     } catch (error) {
       console.error('Failed to stop agent:', error);
-
-      try {
-        // Use centralized error handling
-        throw error;
-      } catch (handledError) {
-        // If the error handler doesn't show a toast (e.g., for auth errors),
-        // we show a fallback toast
-        toast({
-          title: 'Error Stopping Agent',
-          description:
-            handledError instanceof Error ? handledError.message : 'Failed to stop agent',
-          variant: 'destructive',
-        });
-      }
+      // Let the mutation's onError handler show the appropriate toast
     } finally {
       // Remove agent from stopping list regardless of success/failure
       setStoppingAgents((prev) => prev.filter((id) => id !== agentId));
