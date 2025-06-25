@@ -273,7 +273,10 @@ export const formatMessages = ({
                 if (media.description) lines.push(`Description: ${media.description}`);
                 return lines.join('\n');
               })
-              .join(', ')})`
+              .join(
+                // Use comma separator only if all attachments are single-line (no text/description)
+                attachments.every((media) => !media.text && !media.description) ? ', ' : '\n'
+              )})`
           : null;
 
       const messageTime = new Date(message.createdAt);
