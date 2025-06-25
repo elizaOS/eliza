@@ -1942,7 +1942,6 @@ paths:
       description: |
         Notify the system that an agent has finished processing a message. This is used
         to signal completion of agent responses and update the message state.
-      description: Get agent completion for a message
       operationId: completeMessage
       requestBody:
         required: true
@@ -2004,7 +2003,6 @@ paths:
         Ingest messages from external platforms (Discord, Telegram, etc.) into the central
         messaging system. This endpoint handles messages from external sources and routes
         them to the appropriate agents through the central message bus.
-      description: Ingest a message from an external source
       operationId: ingestExternalMessage
       requestBody:
         required: true
