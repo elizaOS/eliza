@@ -60,9 +60,10 @@ plugins
 plugins
   .command('installed-plugins')
   .description('List plugins found in the project dependencies')
-  .action(async () => {
+  .option('-c, --character <paths...>', 'Show plugins for specific character file(s)')
+  .action(async (opts: { character?: string[] }) => {
     try {
-      await listInstalledPlugins();
+      await listInstalledPlugins(opts.character);
     } catch (error) {
       if (error instanceof SyntaxError) {
         console.error(`Error parsing package.json: ${error.message}`);
