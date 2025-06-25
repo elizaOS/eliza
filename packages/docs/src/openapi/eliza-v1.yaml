@@ -1513,324 +1513,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /api/agents/{agentId}/message:
-    post:
-      tags:
-        - messages
-        - agents
-      summary: Send a message to an agent
-      description: Sends a message to an agent and receives a response
-      operationId: sendMessage
-      parameters:
-        - name: agentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID of the agent
-        - name: worldId
-          in: query
-          schema:
-            type: string
-            format: uuid
-          description: ID of the world (defaults to zero UUID)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                senderId:
-                  type: string
-                  description: ID of the sender
-                roomId:
-                  type: string
-                  description: ID of the room
-                text:
-                  type: string
-                  description: Message text
-                source:
-                  type: string
-                  description: Source of the message
-      responses:
-        '201':
-          description: Message sent and processed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      message:
-                        $ref: '#/components/schemas/Content'
-                      messageId:
-                        type: string
-                        format: uuid
-                      name:
-                        type: string
-                      roomId:
-                        type: string
-                      source:
-                        type: string
-        '400':
-          description: Invalid agent ID or request body
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Agent not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Error processing message
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/agents/{agentId}/audio-messages:
-    post:
-      tags:
-        - audio
-        - agents
-      summary: Send an audio message
-      description: Sends an audio message to an agent for processing
-      operationId: sendAudioMessage
-      parameters:
-        - name: agentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID of the agent
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: Audio file
-      responses:
-        '201':
-          description: Audio message processed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  data:
-                    type: object
-                    properties:
-                      message:
-                        $ref: '#/components/schemas/Content'
-        '400':
-          description: Invalid agent ID or missing audio file
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Agent not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Error processing audio
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/agents/{agentId}/audio-messages/synthesize:
-    post:
-      tags:
-        - audio
-        - agents
-      summary: Convert text to speech
-      description: Converts text to speech using the agent's voice
-      operationId: synthesizeSpeech
-      parameters:
-        - name: agentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID of the agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                text:
-                  type: string
-                  description: Text to convert to speech
-      responses:
-        '200':
-          description: Audio stream with synthesized speech
-          content:
-            audio/mpeg:
-              schema:
-                type: string
-                format: binary
-        '400':
-          description: Invalid agent ID or missing text
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Agent not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Error generating speech
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/agents/{agentId}/speech/generate:
-    post:
-      tags:
-        - audio
-        - agents
-      summary: Generate speech from text
-      description: Generates speech from text using the agent's voice
-      operationId: generateSpeech
-      parameters:
-        - name: agentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID of the agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                text:
-                  type: string
-                  description: Text to convert to speech
-      responses:
-        '200':
-          description: Audio stream with generated speech
-          content:
-            audio/mpeg:
-              schema:
-                type: string
-                format: binary
-        '400':
-          description: Invalid agent ID or missing text
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Agent not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Error generating speech
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /api/agents/{agentId}/speech/conversation:
-    post:
-      tags:
-        - audio
-        - agents
-      summary: Process conversation and return speech
-      description: Processes a conversational message and returns synthesized speech
-      operationId: conversationToSpeech
-      parameters:
-        - name: agentId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: ID of the agent
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                text:
-                  type: string
-                  description: Text message
-                roomId:
-                  type: string
-                  description: Room ID
-                entityId:
-                  type: string
-                  description: Entity ID
-                userName:
-                  type: string
-                  description: User name
-                name:
-                  type: string
-                  description: Entity name
-      responses:
-        '200':
-          description: Audio stream with synthesized speech
-          content:
-            audio/mpeg:
-              schema:
-                type: string
-                format: binary
-        '400':
-          description: Invalid agent ID or missing text
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Agent not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Error processing conversation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /api/memory/{agentId}/memories/all/{roomId}:
     delete:
       tags:
@@ -2173,8 +1855,17 @@ paths:
     post:
       tags:
         - messaging
-      summary: Submit a message
-      description: Submit a message for agent processing
+      summary: Submit a message to the central messaging system
+      description: |
+        Submit a message to the central messaging bus for agent processing. This is the primary endpoint
+        for sending messages to agents, replacing the deprecated agent-specific message endpoints.
+
+        The message is submitted to a central channel and the appropriate agent(s) will process it
+        based on the channel and room configuration. This architecture allows for multi-agent
+        conversations and better message routing.
+
+        **Important**: Do not use `/api/agents/{agentId}/message` - that endpoint no longer exists.
+        All messages should go through this central messaging system.
       operationId: submitMessage
       requestBody:
         required: true
@@ -2183,26 +1874,43 @@ paths:
             schema:
               type: object
               required:
-                - agentId
-                - roomId
-                - userId
-                - text
+                - channel_id
+                - server_id
+                - author_id
+                - content
+                - source_type
+                - raw_message
               properties:
-                agentId:
+                channel_id:
                   type: string
                   format: uuid
-                roomId:
+                  description: Central channel ID where the message is posted
+                server_id:
                   type: string
                   format: uuid
-                userId:
+                  description: Server ID (use '00000000-0000-0000-0000-000000000000' for default)
+                author_id:
                   type: string
                   format: uuid
-                text:
+                  description: ID of the message author (user or agent)
+                content:
                   type: string
+                  description: The message content text
+                in_reply_to_message_id:
+                  type: string
+                  format: uuid
+                  description: Optional ID of the message being replied to
+                source_type:
+                  type: string
+                  description: Source type (e.g., 'agent_response', 'user_message')
+                raw_message:
+                  type: object
+                  description: Raw message object containing additional data
                 metadata:
                   type: object
+                  description: Additional metadata including agent_name if from agent
       responses:
-        '200':
+        '201':
           description: Message submitted successfully
           content:
             application/json:
@@ -2212,12 +1920,7 @@ paths:
                   success:
                     type: boolean
                   data:
-                    type: object
-                    properties:
-                      messages:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Message'
+                    $ref: '#/components/schemas/Message'
         '400':
           description: Invalid request
           content:
@@ -2235,7 +1938,10 @@ paths:
     post:
       tags:
         - messaging
-      summary: Complete a message
+      summary: Mark message processing as complete
+      description: |
+        Notify the system that an agent has finished processing a message. This is used
+        to signal completion of agent responses and update the message state.
       description: Get agent completion for a message
       operationId: completeMessage
       requestBody:
@@ -2293,7 +1999,11 @@ paths:
     post:
       tags:
         - messaging
-      summary: Ingest external message
+      summary: Ingest messages from external platforms
+      description: |
+        Ingest messages from external platforms (Discord, Telegram, etc.) into the central
+        messaging system. This endpoint handles messages from external sources and routes
+        them to the appropriate agents through the central message bus.
       description: Ingest a message from an external source
       operationId: ingestExternalMessage
       requestBody:
@@ -3899,16 +3609,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  # WebSocket Events Documentation
+  # Socket.IO Events Documentation
   /websocket:
     get:
       tags:
         - websocket
-      summary: WebSocket Connection
+      summary: Socket.IO Real-time Connection
       description: |
-        WebSocket connection for real-time communication. 
+        Socket.IO connection for real-time bidirectional communication. The server uses Socket.IO v4.x for WebSocket transport with automatic fallback.
 
-        **Connection URL**: `ws://localhost:3000/socket.io/`
+        **Connection URL**: `ws://localhost:3000/socket.io/` (or `wss://` for secure connections)
+
+        **Socket.IO Client Connection Example**:
+        ```javascript
+        import { io } from 'socket.io-client';
+        const socket = io('http://localhost:3000');
+        ```
 
         **Events**:
 
