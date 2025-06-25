@@ -12,6 +12,7 @@ import { generatePlugin } from './actions/generate';
 import {
   ListPluginsOptions,
   AddPluginOptions,
+  RemovePluginOptions,
   UpgradePluginOptions,
   GeneratePluginOptions,
 } from './types';
@@ -41,8 +42,9 @@ export const pluginsCommand = plugins
 plugins
   .command('add')
   .alias('install')
-  .description('Add a plugin to the project')
-  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
+  .description('Add a plugin to a character')
+  .argument('<plugin>', 'plugin name (e.g., "openrouter", "plugin-abc", "@elizaos/plugin-abc")')
+  .requiredOption('-c, --character <paths...>', 'Character file(s) to update')
   .option('-s, --skip-env-prompt', 'Skip prompting for environment variables')
   .option('--skip-verification', 'Skip plugin import verification after installation')
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
@@ -74,11 +76,12 @@ plugins
 plugins
   .command('remove')
   .aliases(['delete', 'del', 'rm'])
-  .description('Remove a plugins from the project')
-  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
-  .action(async (plugin: string, _opts) => {
+  .description('Remove a plugin from a character')
+  .argument('<plugin>', 'plugin name (e.g., "openrouter", "plugin-abc", "@elizaos/plugin-abc")')
+  .requiredOption('-c, --character <paths...>', 'Character file(s) to update')
+  .action(async (plugin: string, opts: RemovePluginOptions) => {
     try {
-      await removePlugin(plugin);
+      await removePlugin(plugin, opts);
     } catch (error) {
       handleError(error);
       process.exit(1);
