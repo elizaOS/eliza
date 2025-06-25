@@ -50,7 +50,15 @@ agent
 Examples:
   $ elizaos agent start -n "Agent Name"     Start an existing agent by name
   $ elizaos agent start --path ./char.json  Start with a local character file
+  $ elizaos agent start --path eliza        Start with auto-resolved character file
   $ elizaos agent start --remote-character https://example.com/char.json
+
+Character file resolution:
+  When using --path, the CLI will:
+  1. Check if it's an absolute path or relative path that exists
+  2. Search common directories: current dir, ./characters/, ./agents/, ./src/characters/, ./src/agents/
+  3. If not found, recursively search the entire project directory for matching .json or .ts files
+  The .json extension is optional and will be added automatically if not provided.
 
 To create a new agent:
   $ elizaos create -t agent my-agent-name   Create a new agent using Eliza template
