@@ -124,10 +124,10 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(params.audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (params.format) formData.append('format', params.format);
@@ -173,10 +173,10 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(params.audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (params.format) formData.append('format', params.format);
@@ -199,10 +199,10 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (metadata) formData.append('metadata', JSON.stringify(metadata));
