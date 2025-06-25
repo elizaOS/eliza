@@ -4,7 +4,7 @@ import { useAgentManagement } from '@/hooks/use-agent-management';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { createElizaClient } from '@/lib/api-client-config';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -67,10 +67,12 @@ export default function AgentSettings({
     // Define the actual save logic
     const performSave = async () => {
       try {
+        const elizaClient = createElizaClient();
         // Get secrets from state (or ref as fallback)
-        const secrets = Object.keys(currentSecrets).length > 0
-          ? currentSecrets
-          : secretPanelRef.current?.getSecrets() || {};
+        const secrets =
+          Object.keys(currentSecrets).length > 0
+            ? currentSecrets
+            : secretPanelRef.current?.getSecrets() || {};
 
         // Get only the fields that have changed
         const changedFields = agentState.getChangedFields();
@@ -100,7 +102,7 @@ export default function AgentSettings({
               settings: { secrets },
             };
 
-            await apiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
+            await elizaClient.agents.updateAgent(agentId, forceUpdate as Partial<Agent>);
 
             queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
             queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -138,7 +140,7 @@ export default function AgentSettings({
         };
 
         // Send the partial update
-        await apiClient.updateAgent(agentId, partialUpdate as Agent);
+        await elizaClient.agents.updateAgent(agentId, partialUpdate as Agent);
 
         // Invalidate both the agent query and the agents list
         queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
@@ -229,7 +231,8 @@ export default function AgentSettings({
           }
         }, 8000);
 
-        const response = await apiClient.deleteAgent(agentId);
+        const elizaClient = createElizaClient();
+        const response = await elizaClient.agents.deleteAgent(agentId);
         responseReceived = true;
 
         if (navigationTimer) {

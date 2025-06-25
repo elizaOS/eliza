@@ -4,7 +4,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { killProcessOnPort, waitForServerReady, getBunExecutable, getPlatformOptions } from './test-utils';
+import {
+  killProcessOnPort,
+  waitForServerReady,
+  getBunExecutable,
+  getPlatformOptions,
+} from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
@@ -221,7 +226,7 @@ describe('ElizaOS Agent Commands', () => {
           stdio: 'pipe',
           timeout: 30000, // 30 second timeout for loading each character
         });
-        
+
         execSync(
           `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
           platformOptions
@@ -287,32 +292,44 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent list returns agents', async () => {
-    const result = execSync(`${elizaosCmd} agent list --remote-url ${testServerUrl}`, getPlatformOptions({
-      encoding: 'utf8',
-    }));
+    const result = execSync(
+      `${elizaosCmd} agent list --remote-url ${testServerUrl}`,
+      getPlatformOptions({
+        encoding: 'utf8',
+      })
+    );
     expect(result).toMatch(/(Ada|Max|Shaw)/);
   });
 
   it('agent list works with JSON flag', async () => {
-    const result = execSync(`${elizaosCmd} agent list --remote-url ${testServerUrl} --json`, getPlatformOptions({
-      encoding: 'utf8',
-    }));
+    const result = execSync(
+      `${elizaosCmd} agent list --remote-url ${testServerUrl} --json`,
+      getPlatformOptions({
+        encoding: 'utf8',
+      })
+    );
     expect(result).toContain('[');
     expect(result).toContain('{');
     expect(result).toMatch(/(name|Name)/);
   });
 
   it('agent get shows details with name parameter', async () => {
-    const result = execSync(`${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({
-      encoding: 'utf8',
-    }));
+    const result = execSync(
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada`,
+      getPlatformOptions({
+        encoding: 'utf8',
+      })
+    );
     expect(result).toContain('Ada');
   });
 
   it('agent get with JSON flag shows character definition', async () => {
-    const result = execSync(`${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --json`, getPlatformOptions({
-      encoding: 'utf8',
-    }));
+    const result = execSync(
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --json`,
+      getPlatformOptions({
+        encoding: 'utf8',
+      })
+    );
     expect(result).toMatch(/(name|Name)/);
     expect(result).toContain('Ada');
   });
@@ -348,9 +365,12 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent start works with name parameter', async () => {
     try {
-      execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({
-        encoding: 'utf8',
-      }));
+      execSync(
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        getPlatformOptions({
+          encoding: 'utf8',
+        })
+      );
       // Should succeed or already exist
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/already/);
@@ -361,10 +381,13 @@ describe('ElizaOS Agent Commands', () => {
     const nonExistentName = `NonExistent_${Date.now()}`;
 
     try {
-      execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n ${nonExistentName}`, getPlatformOptions({
-        encoding: 'utf8',
-        stdio: 'pipe',
-      }));
+      execSync(
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n ${nonExistentName}`,
+        getPlatformOptions({
+          encoding: 'utf8',
+          stdio: 'pipe',
+        })
+      );
       // Should not reach here
       expect(false).toBe(true);
     } catch (e: any) {
@@ -376,15 +399,21 @@ describe('ElizaOS Agent Commands', () => {
   it('agent stop works after start', async () => {
     // Ensure Ada is started first
     try {
-      execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({ stdio: 'pipe' }));
+      execSync(
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        getPlatformOptions({ stdio: 'pipe' })
+      );
     } catch (e) {
       // May already be running
     }
 
     try {
-      const result = execSync(`${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({
-        encoding: 'utf8',
-      }));
+      const result = execSync(
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        getPlatformOptions({
+          encoding: 'utf8',
+        })
+      );
       expect(result).toMatch(/(stopped|Stopped)/);
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/(not running|not found)/);
@@ -410,9 +439,12 @@ describe('ElizaOS Agent Commands', () => {
   it('agent full lifecycle management', async () => {
     // Start agent
     try {
-      execSync(`${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({
-        encoding: 'utf8',
-      }));
+      execSync(
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        getPlatformOptions({
+          encoding: 'utf8',
+        })
+      );
       // Should succeed or already exist
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/already/);
@@ -420,9 +452,12 @@ describe('ElizaOS Agent Commands', () => {
 
     // Stop agent
     try {
-      execSync(`${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`, getPlatformOptions({
-        encoding: 'utf8',
-      }));
+      execSync(
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        getPlatformOptions({
+          encoding: 'utf8',
+        })
+      );
       // Should succeed or not be running
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/not running/);
@@ -434,10 +469,13 @@ describe('ElizaOS Agent Commands', () => {
     // This tests the --all flag functionality using pkill
     // Placed at end to avoid interfering with other tests that need the server
     try {
-      const result = execSync(`${elizaosCmd} agent stop --all`, getPlatformOptions({
-        encoding: 'utf8',
-        timeout: 10000, // 10 second timeout
-      }));
+      const result = execSync(
+        `${elizaosCmd} agent stop --all`,
+        getPlatformOptions({
+          encoding: 'utf8',
+          timeout: 10000, // 10 second timeout
+        })
+      );
       expect(result).toMatch(/(All ElizaOS agents stopped|stopped successfully)/);
     } catch (e: any) {
       // The command may succeed even if no agents are running

@@ -484,9 +484,10 @@ export default function CharacterForm({
       } else {
         // Secret panel not mounted - validate based on current character settings
         const secretsObj = updatedCharacter.settings?.secrets;
-        const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
-          ? secretsObj as Record<string, any>
-          : {};
+        const currentSecrets =
+          secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj)
+            ? (secretsObj as Record<string, any>)
+            : {};
 
         missingSecrets = requiredSecrets
           .filter((secret) => {
@@ -557,7 +558,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -632,7 +633,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -1024,9 +1025,10 @@ export default function CharacterForm({
           } else {
             // Secret panel not mounted - calculate based on character value
             const secretsObj = characterValue.settings?.secrets;
-            const currentSecrets = (secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj))
-              ? secretsObj as Record<string, any>
-              : {};
+            const currentSecrets =
+              secretsObj && typeof secretsObj === 'object' && !Array.isArray(secretsObj)
+                ? (secretsObj as Record<string, any>)
+                : {};
 
             missingSecretNames = requiredSecrets
               .filter((secret) => {

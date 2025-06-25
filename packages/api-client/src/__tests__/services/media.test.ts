@@ -60,7 +60,7 @@ describe('MediaService', () => {
 
       expect((mediaService as any).request).toHaveBeenCalledWith(
         'POST',
-        `/api/media/${TEST_AGENT_ID}/upload-media`,
+        `/api/media/agents/${TEST_AGENT_ID}/upload-media`,
         expect.objectContaining({
           body: expect.any(FormData),
         })
@@ -86,46 +86,25 @@ describe('MediaService', () => {
     });
   });
 
-  describe('uploadChannelFiles', () => {
-    const mockFiles = [
-      new Blob(['test content 1'], { type: 'image/png' }),
-      new Blob(['test content 2'], { type: 'image/jpeg' }),
-    ];
-    const params = {
-      files: mockFiles,
-      messageId: '550e8400-e29b-41d4-a716-446655440030' as UUID,
-      metadata: { description: 'Test images for channel' },
-    };
+  describe('uploadChannelMedia', () => {
+    const mockFile = new File(['test content'], 'test.png', { type: 'image/png' });
 
-    it('should upload channel files successfully', async () => {
+    it('should upload channel media successfully', async () => {
       const mockResponse = {
-        uploads: [
-          {
-            id: '550e8400-e29b-41d4-a716-446655440020' as UUID,
-            url: 'http://example.com/media/file1.png',
-            filename: 'file1.png',
-            size: 1024,
-            contentType: 'image/png',
-            uploadedAt: new Date('2024-01-01T00:00:00Z'),
-          },
-          {
-            id: '550e8400-e29b-41d4-a716-446655440021' as UUID,
-            url: 'http://example.com/media/file2.jpg',
-            filename: 'file2.jpg',
-            size: 1024,
-            contentType: 'image/jpeg',
-            uploadedAt: new Date('2024-01-01T00:00:00Z'),
-          },
-        ],
-        totalSize: 2048,
+        id: '550e8400-e29b-41d4-a716-446655440020' as UUID,
+        url: 'http://example.com/media/test.png',
+        filename: 'test.png',
+        size: 1024,
+        contentType: 'image/png',
+        uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
       (mediaService as any).request.mockResolvedValue(mockResponse);
 
-      const result = await mediaService.uploadChannelFiles(TEST_CHANNEL_ID, params);
+      const result = await mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile);
 
       expect((mediaService as any).request).toHaveBeenCalledWith(
         'POST',
-        `/api/media/central-channels/${TEST_CHANNEL_ID}/upload`,
+        `/api/messaging/central-channels/${TEST_CHANNEL_ID}/upload-media`,
         expect.objectContaining({
           body: expect.any(FormData),
         })
@@ -133,25 +112,18 @@ describe('MediaService', () => {
       expect(result).toEqual(mockResponse);
     });
 
-    it('should handle multiple files upload without optional parameters', async () => {
-      const paramsMinimal = { files: mockFiles };
-      const mockResponse = { uploads: [], totalSize: 0 };
-      (mediaService as any).request.mockResolvedValue(mockResponse);
-
-      await mediaService.uploadChannelFiles(TEST_CHANNEL_ID, paramsMinimal);
-
-      expect((mediaService as any).request).toHaveBeenCalled();
-    });
-
-    it('should handle upload with messageId only', async () => {
-      const paramsWithMessageId = {
-        files: mockFiles,
-        messageId: '550e8400-e29b-41d4-a716-446655440031' as UUID,
+    it('should handle file upload without errors', async () => {
+      const mockResponse = {
+        id: '550e8400-e29b-41d4-a716-446655440020' as UUID,
+        url: 'http://example.com/media/test.png',
+        filename: 'test.png',
+        size: 1024,
+        contentType: 'image/png',
+        uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
-      const mockResponse = { uploads: [], totalSize: 0 };
       (mediaService as any).request.mockResolvedValue(mockResponse);
 
-      await mediaService.uploadChannelFiles(TEST_CHANNEL_ID, paramsWithMessageId);
+      await mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile);
 
       expect((mediaService as any).request).toHaveBeenCalled();
     });
@@ -171,9 +143,9 @@ describe('MediaService', () => {
     it('should handle file upload errors', async () => {
       (mediaService as any).request.mockRejectedValue(new Error('Upload failed'));
 
-      await expect(
-        mediaService.uploadChannelFiles(TEST_CHANNEL_ID, { files: [mockFile] })
-      ).rejects.toThrow('Upload failed');
+      await expect(mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile)).rejects.toThrow(
+        'Upload failed'
+      );
     });
 
     it('should handle API errors', async () => {

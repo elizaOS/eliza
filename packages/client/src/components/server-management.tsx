@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useAgents, useServers } from '@/hooks/use-query-hooks';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { createElizaClient } from '@/lib/api-client-config';
 import type { UUID } from '@elizaos/core';
 import { Loader2, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -48,7 +48,8 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
 
       for (const server of serversData.data.servers) {
         try {
-          const response = await apiClient.getAgentsForServer(server.id);
+          const elizaClient = createElizaClient();
+          const response = await elizaClient.agents.getAgentsForServer(server.id);
           if (response.success) {
             newServerAgents.set(server.id, response.data.agents);
           }
@@ -75,7 +76,8 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
 
     setIsLoading(true);
     try {
-      await apiClient.addAgentToServer(selectedServerId, selectedAgentId);
+      const elizaClient = createElizaClient();
+      await elizaClient.agents.addAgentToServer(selectedServerId, selectedAgentId);
 
       // Update local state
       setServerAgents((prev) => {
@@ -108,7 +110,8 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   const handleRemoveAgentFromServer = async (serverId: UUID, agentId: UUID) => {
     setIsLoading(true);
     try {
-      await apiClient.removeAgentFromServer(serverId, agentId);
+      const elizaClient = createElizaClient();
+      await elizaClient.agents.removeAgentFromServer(serverId, agentId);
 
       // Update local state
       setServerAgents((prev) => {

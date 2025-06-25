@@ -10,7 +10,6 @@ import AddAgentCard from '@/components/add-agent-card';
 import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
-import { apiClient } from '@/lib/api';
 import { Button } from '../components/ui/button';
 import { Separator } from '../components/ui/separator';
 import clientLogger from '@/lib/logger';

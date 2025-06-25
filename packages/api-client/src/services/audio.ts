@@ -1,15 +1,96 @@
 import { UUID } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
 import {
+  AudioSynthesizeParams,
   SpeechConversationParams,
   SpeechGenerateParams,
-  AudioSynthesizeParams,
-  TranscribeParams,
   SpeechResponse,
+  TranscribeParams,
   TranscriptionResponse,
 } from '../types/audio';
 
+declare const window: any;
+
 export class AudioService extends BaseApiClient {
+  /**
+   * Make a binary request using BaseApiClient infrastructure
+   */
+  private async requestBinary(
+    method: string,
+    path: string,
+    options?: {
+      body?: any;
+      params?: Record<string, any>;
+      headers?: Record<string, string>;
+    }
+  ): Promise<ArrayBuffer> {
+    // Handle empty baseUrl for relative URLs
+    let url: URL;
+    if (this.baseUrl) {
+      url = new URL(`${this.baseUrl}${path}`);
+    } else if (typeof window !== 'undefined' && window.location) {
+      url = new URL(path, window.location.origin);
+    } else {
+      // Fallback for non-browser environments
+      url = new URL(path, 'http://localhost:3000');
+    }
+
+    // Add query parameters
+    if (options?.params) {
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const headers = {
+        ...this.defaultHeaders,
+        ...options?.headers,
+      };
+
+      // Remove Content-Type header if body is FormData
+      if (options?.body instanceof FormData) {
+        delete headers['Content-Type'];
+      }
+
+      const response = await fetch(url.toString(), {
+        method,
+        headers,
+        body:
+          options?.body instanceof FormData
+            ? options.body
+            : options?.body
+              ? JSON.stringify(options.body)
+              : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.arrayBuffer();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out');
+        }
+        throw error;
+      }
+
+      throw new Error('An unknown error occurred');
+    }
+  }
+
   /**
    * Convert audio input to appropriate FormData value
    */
@@ -124,10 +205,10 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(params.audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (params.format) formData.append('format', params.format);
@@ -146,10 +227,26 @@ export class AudioService extends BaseApiClient {
     agentId: UUID,
     params: SpeechGenerateParams
   ): Promise<{ audio: string; format: string }> {
-    return this.post<{ audio: string; format: string }>(
-      `/api/audio/${agentId}/speech/generate`,
-      params
-    );
+    // Get the binary audio data using BaseApiClient infrastructure
+    const audioBuffer = await this.requestBinary('POST', `/api/audio/${agentId}/speech/generate`, {
+      body: params,
+    });
+
+    // Convert to base64
+    const bytes = new Uint8Array(audioBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Audio = btoa(binary);
+
+    // Default format (server should ideally return this in a header)
+    const format = 'mpeg';
+
+    return {
+      audio: base64Audio,
+      format: format,
+    };
   }
 
   /**
@@ -173,16 +270,16 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(params.audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (params.format) formData.append('format', params.format);
     if (params.language) formData.append('language', params.language);
 
-    return this.request<TranscriptionResponse>('POST', `/api/audio/${agentId}/transcribe`, {
+    return this.request<TranscriptionResponse>('POST', `/api/audio/${agentId}/transcriptions`, {
       body: formData,
     });
   }
@@ -199,10 +296,10 @@ export class AudioService extends BaseApiClient {
 
     const processedAudio = this.processAudioInput(audio);
     if (processedAudio instanceof Blob) {
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     } else {
       // String (file path or other string identifier)
-      formData.append('audio', processedAudio);
+      formData.append('file', processedAudio);
     }
 
     if (metadata) formData.append('metadata', JSON.stringify(metadata));

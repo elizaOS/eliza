@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import SocketIOManager from '@/lib/socketio-manager';
+import { updateApiClientApiKey } from '@/lib/api-client-config';
+// Eliza client refresh functionality removed (not needed with direct client)
 
 export const connectionStatusActions = {
   setUnauthorized: (message: string) => {
@@ -31,6 +33,7 @@ interface ConnectionContextType {
   error: string | null;
   setUnauthorizedFromApi: (message: string) => void;
   setOfflineStatusFromProvider: (isOffline: boolean) => void;
+  refreshApiClient: (newApiKey?: string | null) => void;
 }
 
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined);
@@ -74,6 +77,22 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
     },
     [status, error, toast]
   );
+
+  const refreshApiClient = useCallback((newApiKey?: string | null) => {
+    try {
+      // Update localStorage if a new API key is provided
+      if (newApiKey !== undefined) {
+        updateApiClientApiKey(newApiKey);
+      }
+
+      // Refresh the ElizaClient instance with new configuration
+      // Client refresh not needed with direct client pattern
+
+      console.log('API client refreshed with new configuration');
+    } catch (error) {
+      console.error('Failed to refresh API client:', error);
+    }
+  }, []);
 
   useEffect(() => {
     connectionStatusActions.setUnauthorized = setUnauthorizedFromApi;
@@ -153,7 +172,13 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ConnectionContext.Provider
-      value={{ status, error, setUnauthorizedFromApi, setOfflineStatusFromProvider }}
+      value={{
+        status,
+        error,
+        setUnauthorizedFromApi,
+        setOfflineStatusFromProvider,
+        refreshApiClient,
+      }}
     >
       {children}
     </ConnectionContext.Provider>

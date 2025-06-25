@@ -68,7 +68,10 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', async () => {
-    const result = execSync(`${elizaosCmd} create --help`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = execSync(
+      `${elizaosCmd} create --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
