@@ -27,6 +27,7 @@ export const start = new Command()
 
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
+      const errors: string[] = [];
 
       if (options.character && options.character.length > 0) {
         // Parse character paths (handles comma-separated values, quotes, etc.)
@@ -51,12 +52,17 @@ export const start = new Command()
               logger.error(
                 `Failed to load character from ${resolvedPath}: Invalid or empty character file`
               );
-              throw new Error(`Invalid character file: ${resolvedPath}`);
+              errors.push(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
             logger.error(`Failed to load character from ${resolvedPath}:`, e);
-            throw new Error(`Invalid character file: ${resolvedPath}`);
+            errors.push(`Failed to load character from ${resolvedPath}: ${e instanceof Error ? e.message : String(e)}`);
           }
+        }
+        
+        // If we have errors and no successfully loaded characters, throw
+        if (errors.length > 0 && characters.length === 0) {
+          throw new Error(`Failed to load any characters:\n${errors.join('\n')}`);
         }
       } else {
         // Try to load project agents if no character files specified
