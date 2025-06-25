@@ -224,9 +224,10 @@ export class MessagingService extends BaseApiClient {
   /**
    * Generate channel title
    */
-  async generateChannelTitle(channelId: UUID): Promise<{ title: string }> {
+  async generateChannelTitle(channelId: UUID, agentId: UUID): Promise<{ title: string }> {
     return this.post<{ title: string }>(
-      `/api/messaging/central-channels/${channelId}/generate-title`
+      `/api/messaging/central-channels/${channelId}/generate-title`,
+      { agentId }
     );
   }
 
