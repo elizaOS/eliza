@@ -15,11 +15,10 @@ import { getAgents, resolveAgentId } from '../utils';
 export async function startAgent(options: OptionValues): Promise<void> {
   try {
     // Consolidated error handling for missing/invalid inputs
-    // First check if we have enough info to start an agent
+    // First check if we have enough info to start agents
     const hasValidInput =
-      options.path ||
-      options.remoteCharacter ||
-      (options.name && options.name !== true && options.name !== '');
+      options.character ||
+      options.remoteCharacter;
 
     if (!hasValidInput) {
       // Show error and use commander's built-in help
@@ -42,76 +41,114 @@ export async function startAgent(options: OptionValues): Promise<void> {
       throw new Error('MISSING_CHARACTER_CONFIG');
     }
 
-    // API Endpoint: POST /agents
+    const headers = { 'Content-Type': 'application/json' };
+    const baseUrl = getAgentsBaseUrl(options);
+
+    async function createCharacter(payload: any) {
+      const response = await fetch(baseUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`Server returned ${response.status}: ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (!data?.data?.character?.name) {
+        logger.error(`Unexpected response format:`, data);
+        return null;
+      }
+
+      return data.data.character.name;
+    }
+
+    // Handle the character option for multiple characters
+    if (options.character) {
+      try {
+        // Use character-parser to handle various path formats
+        const parsedPaths = parseCharacterPaths(options.character);
+        
+        if (parsedPaths.length === 0) {
+          throw new Error(`Invalid character specification: ${options.character}`);
+        }
+        
+        const startedAgents: string[] = [];
+        const failedAgents: string[] = [];
+        
+        for (const characterPath of parsedPaths) {
+          try {
+            let currentCharacterName = null;
+            
+            // Try to resolve as a character file first
+            const resolvedPath = resolveCharacterPath(characterPath);
+            
+            if (resolvedPath) {
+              // Validate the character file
+              const isValid = await isValidCharacterFile(resolvedPath);
+              if (!isValid) {
+                throw new Error(`Invalid character file: ${characterPath}`);
+              }
+              
+              const fileContent = readFileSync(resolvedPath, 'utf8');
+              const characterPayload = { characterJson: JSON.parse(fileContent) };
+              currentCharacterName = await createCharacter(characterPayload);
+            } else {
+              // Treat as existing agent name
+              currentCharacterName = characterPath;
+            }
+            
+            if (currentCharacterName) {
+              // Start the agent
+              const agentId = await resolveAgentId(currentCharacterName, options);
+              const startResponse = await fetch(`${baseUrl}/${agentId}/start`, {
+                method: 'POST',
+                headers,
+              });
+              
+              if (startResponse.ok) {
+                startedAgents.push(currentCharacterName);
+              } else {
+                const errorData = await startResponse.json().catch(() => ({}));
+                throw new Error(errorData?.error?.message || `Failed to start agent: ${startResponse.statusText}`);
+              }
+            } else {
+              throw new Error(`Failed to create/find character: ${characterPath}`);
+            }
+          } catch (error) {
+            failedAgents.push(`${characterPath}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        
+        // Report results
+        if (startedAgents.length > 0) {
+          console.log(`\x1b[32m[✓] Successfully started ${startedAgents.length} agent(s): ${startedAgents.join(', ')}\x1b[0m`);
+        }
+        
+        if (failedAgents.length > 0) {
+          console.error(`\x1b[31m[✗] Failed to start ${failedAgents.length} agent(s):\x1b[0m`);
+          failedAgents.forEach(error => console.error(`  ${error}`));
+        }
+        
+        // Exit early since we handled multiple characters
+        return;
+        
+      } catch (error) {
+        console.error('Error processing character specifications:', error);
+        throw new Error(
+          `Failed to process character specifications: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
+    // API Endpoint: POST /agents - Single character/remote character handling
     const response: Response = await (async () => {
       const payload: AgentStartPayload = {};
-      const headers = { 'Content-Type': 'application/json' };
-      const baseUrl = getAgentsBaseUrl(options);
-
       let characterName = null;
-
-      async function createCharacter(payload: any) {
-        const response = await fetch(baseUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          logger.error(`Server returned ${response.status}: ${errorText}`);
-          return null;
-        }
-
-        const data = await response.json();
-
-        if (!data?.data?.character?.name) {
-          logger.error(`Unexpected response format:`, data);
-          return null;
-        }
-
-        return data.data.character.name;
-      }
-
-      // Handle the path option first
-      if (options.path) {
-        try {
-          // Use character-parser to handle various path formats
-          const parsedPaths = parseCharacterPaths(options.path);
-          
-          if (parsedPaths.length === 0) {
-            throw new Error(`Invalid character path: ${options.path}`);
-          }
-          
-          // For agent start, we only use the first character
-          const characterPath = parsedPaths[0];
-          
-          // Use character-finder to resolve the path
-          const resolvedPath = resolveCharacterPath(characterPath);
-          
-          if (!resolvedPath) {
-            throw new Error(`Character file not found: ${characterPath}`);
-          }
-          
-          // Validate the character file
-          const isValid = await isValidCharacterFile(resolvedPath);
-          if (!isValid) {
-            throw new Error(`Invalid character file: ${characterPath}`);
-          }
-          
-          const fileContent = readFileSync(resolvedPath, 'utf8');
-          payload.characterJson = JSON.parse(fileContent);
-          characterName = await createCharacter(payload);
-          if (!characterName) {
-            logger.error('Failed to create character from file. Check server logs for details.');
-          }
-        } catch (error) {
-          console.error('Error reading or parsing local character file:', error);
-          throw new Error(
-            `Failed to read or parse local character file: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-      }
 
       if (options.remoteCharacter) {
         if (
@@ -229,12 +266,13 @@ export async function startAgent(options: OptionValues): Promise<void> {
  */
 export async function stopAgent(opts: OptionValues): Promise<void> {
   try {
-    // Validate that either --name or --all is provided
-    const hasValidName = opts.name && opts.name !== true && opts.name !== '';
-    if (!hasValidName && !opts.all) {
-      console.error('\nError: Must provide either --name <name> or --all flag');
+    // Validate that either --character or --all is provided
+    const hasValidCharacter = opts.character && opts.character.length > 0;
+    if (!hasValidCharacter && !opts.all) {
+      console.error('\nError: Must provide either --character <characters...> or --all flag');
       console.error('Examples:');
-      console.error('  elizaos agent stop --name eliza');
+      console.error('  elizaos agent stop --character eliza');
+      console.error('  elizaos agent stop --character bobby,billy');
       console.error('  elizaos agent stop --all');
       process.exit(1);
     }
@@ -291,23 +329,46 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
       return;
     }
 
-    // Stop individual agent by name/ID
-    const resolvedAgentId = await resolveAgentId(opts.name, opts);
+    // Stop individual agents by character names/IDs
+    const parsedPaths = parseCharacterPaths(opts.character);
     const baseUrl = getAgentsBaseUrl(opts);
-
-    console.info(`Stopping agent ${resolvedAgentId}`);
-
-    // API Endpoint: POST /agents/:agentId/stop
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
-
-    if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(errorData.error?.message || `Failed to stop agent: ${response.statusText}`);
+    
+    if (parsedPaths.length === 0) {
+      throw new Error(`Invalid character specification: ${opts.character}`);
     }
+    
+    const stoppedAgents: string[] = [];
+    const failedAgents: string[] = [];
+    
+    for (const characterName of parsedPaths) {
+      try {
+        console.info(`Stopping agent ${characterName}...`);
+        
+        const resolvedAgentId = await resolveAgentId(characterName, opts);
+        
+        // API Endpoint: POST /agents/:agentId/stop
+        const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
 
-    logger.success(`Successfully stopped agent ${opts.name}`);
-    // Add direct console log for higher visibility
-    console.log(`Agent ${opts.name} stopped successfully!`);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({})) as ApiResponse<unknown>;
+          throw new Error(errorData.error?.message || `Failed to stop agent: ${response.statusText}`);
+        }
+        
+        stoppedAgents.push(characterName);
+      } catch (error) {
+        failedAgents.push(`${characterName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    
+    // Report results
+    if (stoppedAgents.length > 0) {
+      console.log(`\x1b[32m[✓] Successfully stopped ${stoppedAgents.length} agent(s): ${stoppedAgents.join(', ')}\x1b[0m`);
+    }
+    
+    if (failedAgents.length > 0) {
+      console.error(`\x1b[31m[✗] Failed to stop ${failedAgents.length} agent(s):\x1b[0m`);
+      failedAgents.forEach(error => console.error(`  ${error}`));
+    }
   } catch (error) {
     await checkServer(opts);
     handleError(error);
