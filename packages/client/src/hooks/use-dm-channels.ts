@@ -28,8 +28,7 @@ export function useGetOrCreateDmChannel() {
       );
       const elizaClient = createElizaClient();
       const result = await elizaClient.messaging.getOrCreateDmChannel({
-        targetUserId,
-        currentUserId,
+        participantIds: [currentUserId, targetUserId],
       });
       return result;
     },
