@@ -29,7 +29,7 @@ export class MediaService extends BaseApiClient {
 
     return this.request<ChannelUploadResponse>(
       'POST',
-      `/api/messaging/channels/${channelId}/upload-media`,
+      `/api/messaging/central-channels/${channelId}/upload-media`,
       {
         body: formData,
       }

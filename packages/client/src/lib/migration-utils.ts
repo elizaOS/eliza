@@ -215,27 +215,41 @@ export function createHybridClient() {
     }),
     deleteChannelMessage: wrapWithErrorHandling(async (channelId: string, messageId: string) => {
       if (!newClient.messaging?.deleteMessage) {
-        throw new Error('Messaging service not available');
+        // Fallback to legacy API
+        return await legacyClient.deleteChannelMessage(channelId, messageId);
       }
-      const result = await newClient.messaging.deleteMessage(channelId, messageId);
-      // Adapt from { success: boolean } to expected format
-      return result;
+      try {
+        const result = await newClient.messaging.deleteMessage(channelId, messageId);
+        return result;
+      } catch (error) {
+        // Add fallback to legacy API
+        return await legacyClient.deleteChannelMessage(channelId, messageId);
+      }
     }),
     clearChannelMessages: wrapWithErrorHandling(async (channelId: string) => {
       if (!newClient.messaging?.clearChannelHistory) {
-        throw new Error('Messaging service not available');
+        // Fallback to legacy API
+        return await legacyClient.clearChannelMessages(channelId);
       }
-      const result = await newClient.messaging.clearChannelHistory(channelId);
-      // Return result as-is - no need to adapt
-      return result;
+      try {
+        const result = await newClient.messaging.clearChannelHistory(channelId);
+        return result;
+      } catch (error) {
+        // Add fallback to legacy API
+        return await legacyClient.clearChannelMessages(channelId);
+      }
     }),
     deleteChannel: wrapWithErrorHandling(async (channelId: string) => {
       if (!newClient.messaging?.deleteChannel) {
         throw new Error('Messaging service not available');
       }
-      const result = await newClient.messaging.deleteChannel(channelId);
-      // Return result as-is - no need to adapt
-      return result;
+      try {
+        const result = await newClient.messaging.deleteChannel(channelId);
+        return result;
+      } catch (error) {
+        // Add fallback to legacy API
+        return await legacyClient.deleteChannel(channelId);
+      }
     }),
     updateChannel: wrapWithErrorHandling(async (channelId: string, params: any) => {
       if (!newClient.messaging?.updateChannel) {

@@ -44,7 +44,7 @@ export class MessagingService extends BaseApiClient {
    * Create a new channel
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/channels', params);
+    return this.post<MessageChannel>('/api/messaging/central-channels', params);
   }
 
   /**

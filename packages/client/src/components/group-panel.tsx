@@ -50,6 +50,8 @@ function isAgentSelectable(agent: Partial<Agent>): agent is SelectableAgent {
 export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const [chatName, setChatName] = useState('');
   const [selectedAgents, setSelectedAgents] = useState<SelectableAgent[]>([]);
+  const [initialChatName, setInitialChatName] = useState('');
+  const [initialSelectedAgentIds, setInitialSelectedAgentIds] = useState<UUID[]>([]);
   const serverId = DEFAULT_SERVER_ID;
   const initializedRef = useRef(false);
   const lastChannelIdRef = useRef(channelId);
@@ -177,7 +179,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     if (channelId && channelsData?.data?.channels) {
       const channelDetails = channelsData.data.channels.find((ch) => ch.id === channelId);
       if (!initializedRef.current || lastChannelIdRef.current !== channelId) {
-        setChatName(channelDetails?.name || '');
+        const initialName = channelDetails?.name || '';
+        setChatName(initialName);
+        setInitialChatName(initialName);
         initializedRef.current = true;
         lastChannelIdRef.current = channelId;
       }
@@ -186,6 +190,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       initializedRef.current = false;
       setChatName('');
       setSelectedAgents([]);
+      setInitialChatName('');
+      setInitialSelectedAgentIds([]);
     }
   }, [channelId, channelsData]);
 
@@ -222,6 +228,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
       if (currentSelectedIds !== newSelectedIds) {
         setSelectedAgents(newSelected);
+        setInitialSelectedAgentIds(newSelected.map((a) => a.id));
       }
     } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
       toast({
@@ -288,6 +295,18 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     deleteGroupMutation.mutate();
   }, [channelId, chatName, channelsData, deleteGroupMutation]);
 
+  // Check if form has changed
+  const hasFormChanged = useMemo(() => {
+    if (!channelId) return true; // Always allow creation
+
+    const nameChanged = chatName.trim() !== initialChatName.trim();
+    const currentAgentIds = selectedAgents.map((a) => a.id).sort();
+    const initialAgentIds = initialSelectedAgentIds.sort();
+    const agentsChanged = JSON.stringify(currentAgentIds) !== JSON.stringify(initialAgentIds);
+
+    return nameChanged || agentsChanged;
+  }, [channelId, chatName, initialChatName, selectedAgents, initialSelectedAgentIds]);
+
   const handleCreateOrUpdateGroup = useCallback(async () => {
     if (selectedAgents.length === 0) {
       toast({
@@ -309,13 +328,24 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     }
   }, [channelId, chatName, selectedAgents, createGroupMutation, updateGroupMutation, toast]);
 
-  const isSubmitDisabled =
-    selectedAgents.length === 0 ||
-    createGroupMutation.isPending ||
-    updateGroupMutation.isPending ||
-    deleteGroupMutation.isPending ||
-    (isErrorAgents && allAvailableSelectableAgents.length === 0) ||
-    (!!channelId && isLoadingChannelParticipants);
+  // For create mode: require at least one agent
+  // For edit mode: require at least one agent AND changes made
+  const isSubmitDisabled = channelId 
+    ? // Edit mode - disable if no agents OR no changes OR loading states
+      selectedAgents.length === 0 ||
+      !hasFormChanged ||
+      createGroupMutation.isPending ||
+      updateGroupMutation.isPending ||
+      deleteGroupMutation.isPending ||
+      isLoadingChannelParticipants ||
+      (isErrorAgents && allAvailableSelectableAgents.length === 0)
+    : // Create mode - disable if no agents OR loading states  
+      selectedAgents.length === 0 ||
+      createGroupMutation.isPending ||
+      updateGroupMutation.isPending ||
+      deleteGroupMutation.isPending ||
+      (isErrorAgents && allAvailableSelectableAgents.length === 0);
+
 
   return (
     <div
@@ -381,6 +411,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
                 <p className="text-sm text-muted-foreground">
                   {selectedAgents.length} agent{selectedAgents.length > 1 ? 's' : ''} selected
                 </p>
+              )}
+              {channelId && hasFormChanged && (
+                <div className="text-sm text-blue-500 mt-1">You have unsaved changes</div>
               )}
             </div>
           </div>

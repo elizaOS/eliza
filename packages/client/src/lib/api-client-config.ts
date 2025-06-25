@@ -4,14 +4,20 @@ export function createApiClientConfig(): ApiClientConfig {
   const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
   const apiKey = localStorage.getItem(getLocalStorageApiKey());
 
-  return {
+  const config: ApiClientConfig = {
     baseUrl: window.location.origin,
-    apiKey: apiKey || undefined,
     timeout: 30000,
     headers: {
       Accept: 'application/json',
     },
   };
+
+  // Only include apiKey if it exists (don't pass undefined)
+  if (apiKey) {
+    config.apiKey = apiKey;
+  }
+
+  return config;
 }
 
 export function createElizaClient(): ElizaClient {

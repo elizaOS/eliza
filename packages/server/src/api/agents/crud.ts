@@ -98,7 +98,7 @@ export function createAgentCrudRouter(
   // Create new agent
   router.post('/', async (req, res) => {
     logger.debug('[AGENT CREATE] Creating new agent');
-    const { characterPath, characterJson } = req.body;
+    const { characterPath, characterJson, agent } = req.body;
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
@@ -112,6 +112,9 @@ export function createAgentCrudRouter(
       } else if (characterPath) {
         logger.debug(`[AGENT CREATE] Loading character from path: ${characterPath}`);
         character = await serverInstance?.loadCharacterTryPath(characterPath);
+      } else if (agent) {
+        logger.debug('[AGENT CREATE] Parsing character from agent object');
+        character = await serverInstance?.jsonToCharacter(agent);
       } else {
         throw new Error('No character configuration provided');
       }

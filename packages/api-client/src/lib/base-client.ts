@@ -93,7 +93,23 @@ export abstract class BaseApiClient {
 
       clearTimeout(timeoutId);
 
-      const data = (await response.json()) as ApiResponse<T>;
+      // Handle empty responses (204 No Content)
+      let data: ApiResponse<T>;
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        // For 204 No Content, create a synthetic success response
+        data = { success: true, data: {} as T };
+      } else {
+        try {
+          data = (await response.json()) as ApiResponse<T>;
+        } catch (error) {
+          // If JSON parsing fails, treat as success for 2xx responses
+          if (response.ok) {
+            data = { success: true, data: {} as T };
+          } else {
+            throw new ApiError('PARSE_ERROR', 'Failed to parse response as JSON', undefined, response.status);
+          }
+        }
+      }
 
       if (!response.ok || !data.success) {
         const error =
