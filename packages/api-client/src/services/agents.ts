@@ -3,12 +3,12 @@ import { BaseApiClient } from '../lib/base-client';
 import {
   Agent,
   AgentCreateParams,
+  AgentLog,
+  AgentLogsParams,
+  AgentPanel,
   AgentUpdateParams,
   AgentWorld,
   AgentWorldSettings,
-  AgentPanel,
-  AgentLog,
-  AgentLogsParams,
 } from '../types/agents';
 
 export class AgentsService extends BaseApiClient {
