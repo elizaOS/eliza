@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStartAgent, useStopAgent } from './use-query-hooks';
 import { useToast } from './use-toast';
-import { handleApiError } from '@/lib/api-error-bridge';
+// Direct error handling
 
 /**
  * Custom hook for managing agents (starting, stopping, and tracking status)
@@ -59,7 +59,7 @@ export function useAgentManagement() {
 
       try {
         // Use centralized error handling
-        handleApiError(error);
+        throw error;
       } catch (handledError) {
         // If the error handler doesn't show a toast (e.g., for auth errors),
         // we show a fallback toast
@@ -112,7 +112,7 @@ export function useAgentManagement() {
 
       try {
         // Use centralized error handling
-        handleApiError(error);
+        throw error;
       } catch (handledError) {
         // If the error handler doesn't show a toast (e.g., for auth errors),
         // we show a fallback toast

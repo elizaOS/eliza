@@ -15,7 +15,7 @@ import { ConnectionProvider, useConnection } from './context/ConnectionContext';
 import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
-import { createHybridClient } from './lib/migration-utils';
+import { createElizaClient } from './lib/api-client-config';
 import Chat from './routes/chat';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
@@ -58,9 +58,10 @@ const prefetchInitialData = async () => {
     // Prefetch agents (real-time data so shorter stale time)
     await queryClient.prefetchQuery({
       queryKey: ['agents'],
-      queryFn: () => {
-        const hybridApiClient = createHybridClient();
-        return hybridApiClient.getAgents();
+      queryFn: async () => {
+        const elizaClient = createElizaClient();
+        const result = await elizaClient.agents.listAgents();
+        return { data: result };
       },
       staleTime: STALE_TIMES.FREQUENT,
     });

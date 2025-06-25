@@ -10,7 +10,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import SocketIOManager from '@/lib/socketio-manager';
 import { updateApiClientApiKey } from '@/lib/api-client-config';
-import { refreshElizaClient } from '@/lib/migration-utils';
+// Eliza client refresh functionality removed (not needed with direct client)
 
 export const connectionStatusActions = {
   setUnauthorized: (message: string) => {
@@ -86,7 +86,7 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Refresh the ElizaClient instance with new configuration
-      refreshElizaClient();
+      // Client refresh not needed with direct client pattern
 
       console.log('API client refreshed with new configuration');
     } catch (error) {

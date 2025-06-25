@@ -1,7 +1,6 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
-import { apiClient } from '@/lib/api';
-import { handleApiError } from '@/lib/api-error-bridge';
-import { createHybridClient } from '@/lib/migration-utils';
+// Direct error handling without bridge layer
+import { createElizaClient } from '@/lib/api-client-config';
 import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
@@ -25,8 +24,8 @@ import type {
 import clientLogger from '@/lib/logger';
 import { useNavigate } from 'react-router-dom';
 
-// Create hybrid client that can switch between old and new APIs
-const hybridApiClient = createHybridClient();
+// Create ElizaClient instance for direct API calls
+const elizaClient = createElizaClient();
 
 /**
  * Represents content with additional user information.
@@ -130,7 +129,10 @@ export function useAgents(options = {}) {
 
   return useQuery<{ data: { agents: Partial<AgentWithStatus>[] } }>({
     queryKey: ['agents'],
-    queryFn: () => hybridApiClient.getAgents(),
+    queryFn: async () => {
+      const result = await elizaClient.agents.listAgents();
+      return { data: result };
+    },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     // Use more frequent polling for real-time updates
     refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,
@@ -158,7 +160,11 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
 
   return useQuery<{ data: AgentWithStatus }>({
     queryKey: ['agent', agentId],
-    queryFn: () => hybridApiClient.getAgent(agentId || ''),
+    queryFn: async () => {
+      if (!agentId) throw new Error('Agent ID is required');
+      const result = await elizaClient.agents.getAgent(agentId);
+      return { data: result };
+    },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     enabled: Boolean(agentId),
     // Use more frequent polling for real-time updates
@@ -188,7 +194,8 @@ export function useStartAgent() {
   return useMutation<{ data: { id: UUID; name: string; status: string } }, Error, UUID>({
     mutationFn: async (agentId: UUID) => {
       try {
-        return await hybridApiClient.startAgent(agentId);
+        const result = await elizaClient.agents.startAgent(agentId);
+        return { data: { id: agentId, name: 'Agent', status: result.status } };
       } catch (error) {
         // Use the centralized error handler, but preserve specific agent logic
         if (error instanceof Error) {
@@ -196,7 +203,7 @@ export function useStartAgent() {
             throw new Error('Agent is already running.');
           }
         }
-        return handleApiError(error);
+        throw error;
       }
     },
     onMutate: async (_agentId) => {
@@ -242,7 +249,10 @@ export function useStopAgent() {
   const { toast } = useToast();
 
   return useMutation<{ data: { message: string } }, Error, string>({
-    mutationFn: (agentId: string) => hybridApiClient.stopAgent(agentId),
+    mutationFn: async (agentId: string) => {
+      const result = await elizaClient.agents.stopAgent(agentId);
+      return { data: { message: `Agent ${result.status}` } };
+    },
     onMutate: async (agentId) => {
       // Optimistically update the UI
       // Get the agent data from the cache
@@ -408,12 +418,12 @@ export function useChannelMessages(
       setInternalError(null);
 
       try {
-        const response = await hybridApiClient.getChannelMessages(channelId, {
+        const response = await elizaClient.messaging.getChannelMessages(channelId, {
           limit: 30,
-          before: beforeTimestamp,
+          before: beforeTimestamp ? new Date(beforeTimestamp).toISOString() : undefined,
         });
 
-        const newUiMessages = response.data.messages.map((msg) =>
+        const newUiMessages = response.messages.map((msg) =>
           transformServerMessageToUiMessage(msg, initialServerId || msg.metadata?.serverId)
         );
 
@@ -553,12 +563,12 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
   return useQuery({
     queryKey: ['agentActions', agentId, roomId, excludeTypes],
     queryFn: async () => {
-      const response = await hybridApiClient.getAgentLogs(agentId, {
+      const response = await elizaClient.agents.getAgentLogs(agentId, {
         roomId,
         count: 50,
         excludeTypes,
       });
-      return response.data || [];
+      return response || [];
     },
     refetchInterval: 1000,
     staleTime: 1000,
@@ -574,8 +584,10 @@ export function useDeleteLog() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: ({ agentId, logId }: { agentId: string; logId: string }) =>
-      hybridApiClient.deleteLog(logId),
+    mutationFn: async ({ agentId, logId }: { agentId: string; logId: string }) => {
+      await elizaClient.agents.deleteAgentLog(agentId, logId);
+      return { agentId, logId };
+    },
 
     onMutate: async ({ agentId, logId }) => {
       // Optimistically update the UI by removing the log from the cache
@@ -635,24 +647,22 @@ export function useAgentMemories(
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await hybridApiClient.getAgentMemories(
-        agentId,
-        channelId,
+      const result = await elizaClient.memory.getAgentMemories(agentId, {
+        roomId: channelId,
         tableName,
-        includeEmbedding
-      ); // Pass channelId
+        includeEmbedding,
+      });
       console.log('Agent memories result:', {
         agentId,
         tableName,
         includeEmbedding,
-        channelId, // Log channelId instead of roomId
+        channelId,
         result,
-        dataLength: result.data?.memories?.length,
-        firstMemory: result.data?.memories?.[0],
-        hasEmbeddings: (result.data?.memories || []).some((m: any) => m.embedding?.length > 0),
+        dataLength: result.memories?.length,
+        firstMemory: result.memories?.[0],
+        hasEmbeddings: (result.memories || []).some((m: any) => m.embedding?.length > 0),
       });
-      // Handle response format
-      return result.data?.memories || [];
+      return result.memories || [];
     },
     enabled: Boolean(agentId && tableName),
     staleTime: 1000,
@@ -670,7 +680,7 @@ export function useDeleteMemory() {
 
   return useMutation({
     mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: string }) => {
-      await hybridApiClient.deleteAgentMemory(agentId, memoryId);
+      await elizaClient.memory.deleteMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
     onSuccess: (data) => {
@@ -698,7 +708,7 @@ export function useDeleteAllMemories() {
 
   return useMutation({
     mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
-      await hybridApiClient.deleteAllAgentMemories(agentId, roomId);
+      await elizaClient.memory.clearRoomMemories(agentId, roomId);
       return { agentId };
     },
     onSuccess: (data) => {
@@ -731,7 +741,7 @@ export function useUpdateMemory() {
       memoryId: string;
       memoryData: Partial<Memory>;
     }) => {
-      const result = await hybridApiClient.updateAgentMemory(agentId, memoryId, memoryData);
+      const result = await elizaClient.memory.updateMemory(agentId, memoryId, memoryData);
       return { agentId, memoryId, result };
     },
 
@@ -782,7 +792,7 @@ export function useDeleteGroupMemory() {
 
   return useMutation({
     mutationFn: async ({ serverId, memoryId }: { serverId: UUID; memoryId: UUID }) => {
-      await hybridApiClient.deleteGroupMemory(serverId, memoryId);
+      await elizaClient.messaging.deleteMessage(serverId, memoryId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -796,7 +806,7 @@ export function useClearGroupChat() {
 
   return useMutation({
     mutationFn: async (serverId: UUID) => {
-      await hybridApiClient.clearGroupChat(serverId);
+      await elizaClient.messaging.clearChannelHistory(serverId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -829,7 +839,11 @@ export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
     error?: { code: string; message: string; details?: string };
   }>({
     queryKey: ['agentPanels', agentId],
-    queryFn: () => hybridApiClient.getAgentPanels(agentId || ''),
+    queryFn: async () => {
+      if (!agentId) throw new Error('Agent ID required');
+      const result = await elizaClient.agents.getAgentPanels(agentId);
+      return { success: true, data: result.panels };
+    },
     enabled: Boolean(agentId),
     staleTime: STALE_TIMES.STANDARD, // Panels are unlikely to change very frequently
     refetchInterval: !network.isOffline && Boolean(agentId) ? STALE_TIMES.RARE : false,
@@ -871,7 +885,10 @@ export function useAgentsWithDetails(): AgentsWithDetailsResult {
   const agentQueries = useQueries<UseQueryResult<{ data: Agent }, Error>[]>({
     queries: agentIds.map((id) => ({
       queryKey: ['agent', id] as const,
-      queryFn: () => hybridApiClient.getAgent(id),
+      queryFn: async () => {
+        const result = await elizaClient.agents.getAgent(id);
+        return { data: result };
+      },
       staleTime: STALE_TIMES.FREQUENT,
       enabled: Boolean(id),
       refetchInterval: !network.isOffline && Boolean(id) ? STALE_TIMES.FREQUENT : false,
@@ -914,13 +931,12 @@ export function useAgentInternalActions(
     queryKey: ['agentInternalActions', agentId, agentPerspectiveRoomId],
     queryFn: async () => {
       if (!agentId) return []; // Or throw error, depending on desired behavior for null agentId
-      const response = await hybridApiClient.getAgentLogs(agentId, {
-        // Uses getAgentLogs
-        roomId: agentPerspectiveRoomId ?? undefined, // Pass undefined if null
+      const response = await elizaClient.agents.getAgentLogs(agentId, {
+        roomId: agentPerspectiveRoomId ?? undefined,
         type: 'action',
         count: 50,
       });
-      return response.data || [];
+      return response || [];
     },
     enabled: !!agentId, // Only enable if agentId is present
     staleTime: STALE_TIMES.FREQUENT,
@@ -932,7 +948,10 @@ export function useDeleteAgentInternalLog() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation<void, Error, { agentId: string; logId: string }>({
-    mutationFn: ({ agentId, logId }) => hybridApiClient.deleteAgentLog(agentId, logId), // Uses deleteAgentLog
+    mutationFn: async ({ agentId, logId }) => {
+      await elizaClient.agents.deleteAgentLog(agentId, logId);
+      return { agentId, logId };
+    },
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agentInternalActions', agentId] });
       queryClient.invalidateQueries({
@@ -967,13 +986,12 @@ export function useAgentInternalMemories(
     ],
     queryFn: async () => {
       if (!agentId || !agentPerspectiveRoomId) return Promise.resolve([]);
-      const response = await hybridApiClient.getAgentInternalMemories(
+      const response = await elizaClient.memory.getAgentInternalMemories(
         agentId,
         agentPerspectiveRoomId,
-        tableName,
-        { includeEmbedding }
-      ); // Uses getAgentInternalMemories
-      return response.data.memories;
+        includeEmbedding
+      );
+      return response.memories;
     },
     enabled: !!agentId && !!agentPerspectiveRoomId,
     staleTime: STALE_TIMES.STANDARD,
@@ -989,7 +1007,7 @@ export function useDeleteAgentInternalMemory() {
     { agentId: UUID; memoryId: string }
   >({
     mutationFn: async ({ agentId, memoryId }) => {
-      await hybridApiClient.deleteAgentInternalMemory(agentId, memoryId); // Uses deleteAgentInternalMemory
+      await elizaClient.memory.deleteAgentInternalMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
     onSuccess: (_data, variables) => {
@@ -1020,7 +1038,7 @@ export function useDeleteAllAgentInternalMemories() {
     { agentId: UUID; agentPerspectiveRoomId: UUID }
   >({
     mutationFn: async ({ agentId, agentPerspectiveRoomId }) => {
-      await hybridApiClient.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId); // Uses deleteAllAgentInternalMemories
+      await elizaClient.memory.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
       return { agentId, agentPerspectiveRoomId };
     },
     onSuccess: (_data, variables) => {
@@ -1055,11 +1073,11 @@ export function useUpdateAgentInternalMemory() {
     { agentId: UUID; memoryId: string; memoryData: Partial<CoreMemory> }
   >({
     mutationFn: async ({ agentId, memoryId, memoryData }) => {
-      const response = await hybridApiClient.updateAgentInternalMemory(
+      const response = await elizaClient.memory.updateAgentInternalMemory(
         agentId,
         memoryId,
         memoryData
-      ); // Uses updateAgentInternalMemory
+      );
       return { agentId, memoryId, response };
     },
     onSuccess: (_data, variables) => {
@@ -1084,7 +1102,10 @@ export function useServers(options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ data: { servers: ClientMessageServer[] } }>({
     queryKey: ['servers'],
-    queryFn: () => hybridApiClient.getServers(),
+    queryFn: async () => {
+      const result = await elizaClient.messaging.listServers();
+      return { data: { servers: result.servers } };
+    },
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
     ...options,
@@ -1095,9 +1116,10 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ data: { channels: ClientMessageChannel[] } }>({
     queryKey: ['channels', serverId],
-    queryFn: () => {
-      if (!serverId) return Promise.resolve({ data: { channels: [] } }); // Handle undefined serverId case for queryFn
-      return hybridApiClient.getChannels(serverId);
+    queryFn: async () => {
+      if (!serverId) return Promise.resolve({ data: { channels: [] } });
+      const result = await elizaClient.messaging.getServerChannels(serverId);
+      return { data: { channels: result.channels } };
     },
     enabled: !!serverId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1111,9 +1133,10 @@ export function useChannelDetails(channelId: UUID | undefined, options = {}) {
   const network = useNetworkStatus();
   return useQuery<{ success: boolean; data: ClientMessageChannel | null }>({
     queryKey: ['channelDetails', channelId],
-    queryFn: () => {
+    queryFn: async () => {
       if (!channelId) return Promise.resolve({ success: true, data: null });
-      return hybridApiClient.getChannelDetails(channelId);
+      const result = await elizaClient.messaging.getChannelDetails(channelId);
+      return { success: true, data: result };
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1127,9 +1150,24 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
   const network = useNetworkStatus();
   return useQuery<{ success: boolean; data: UUID[] }>({
     queryKey: ['channelParticipants', channelId],
-    queryFn: () => {
+    queryFn: async () => {
       if (!channelId) return Promise.resolve({ success: true, data: [] });
-      return hybridApiClient.getChannelParticipants(channelId);
+      try {
+        const result = await elizaClient.messaging.getChannelParticipants(channelId);
+        
+        // Handle different possible response formats
+        let participants = [];
+        if (result && Array.isArray(result.participants)) {
+          participants = result.participants.map(participant => participant.userId);
+        } else if (result && Array.isArray(result)) {
+          // If result is directly an array
+          participants = result.map(participant => participant.userId || participant.id || participant);
+        }
+        return { success: true, data: participants };
+      } catch (error) {
+        console.error('[useChannelParticipants] Error:', error);
+        return { success: false, data: [] };
+      }
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1147,7 +1185,7 @@ export function useDeleteChannelMessage() {
     { channelId: UUID; messageId: UUID }
   >({
     mutationFn: async ({ channelId, messageId }) => {
-      await hybridApiClient.deleteChannelMessage(channelId, messageId);
+      await elizaClient.messaging.deleteMessage(channelId, messageId);
       return { channelId, messageId };
     },
     onSuccess: (_data, variables) => {
@@ -1171,7 +1209,7 @@ export function useClearChannelMessages() {
   const { toast } = useToast();
   return useMutation<{ channelId: UUID }, Error, UUID>({
     mutationFn: async (channelId: UUID) => {
-      await hybridApiClient.clearChannelMessages(channelId);
+      await elizaClient.messaging.clearChannelHistory(channelId);
       return { channelId };
     },
     onSuccess: (_data, variables_channelId) => {
@@ -1199,7 +1237,7 @@ export function useDeleteChannel() {
 
   return useMutation<void, Error, { channelId: UUID; serverId: UUID }>({
     mutationFn: async ({ channelId }) => {
-      await hybridApiClient.deleteChannel(channelId);
+      await elizaClient.messaging.deleteChannel(channelId);
     },
     onSuccess: (_data, variables) => {
       toast({

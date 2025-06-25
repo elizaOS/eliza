@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from './ui/input';
 import { Check, Eye, EyeOff, MoreVertical, Settings, X } from 'lucide-react';
 import { Button } from './ui/button';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import { ApiKeyDialog } from './api-key-dialog';
 import { useToast } from '@/hooks/use-toast';
 
@@ -38,9 +38,9 @@ export default function EnvSettings() {
   }, []);
 
   const fetchLocalEnvs = async () => {
-    const hybridApiClient = createHybridClient();
-    const data = await hybridApiClient.getLocalEnvs();
-    setLocalEnvs(data.data);
+    const elizaClient = createElizaClient();
+    const data = await elizaClient.system.getEnvironment();
+    setLocalEnvs(data);
   };
 
   const handleReset = async () => {
@@ -236,8 +236,8 @@ export default function EnvSettings() {
           onClick={async () => {
             setIsUpdating(true);
             try {
-              const hybridApiClient = createHybridClient();
-              await hybridApiClient.updateLocalEnvs(localEnvs);
+              const elizaClient = createElizaClient();
+              await elizaClient.system.updateLocalEnvironment(localEnvs);
               toast({
                 title: 'Success',
                 description: 'Environment variables updated successfully!',

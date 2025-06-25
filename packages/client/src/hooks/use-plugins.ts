@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
 
 // Registry configuration - centralized for maintainability
@@ -50,9 +50,10 @@ export function usePlugins() {
     queryFn: async () => {
       try {
         // Fetch plugins from registry and agent data in parallel
+        const elizaClient = createElizaClient();
         const [registryResponse, agentsResponse] = await Promise.all([
           fetch(REGISTRY_URL),
-          createHybridClient().getAgents(),
+          elizaClient.agents.listAgents(),
         ]);
 
         // Process registry data
@@ -75,16 +76,14 @@ export function usePlugins() {
         // Process agent plugins from the parallel fetch
         let agentPlugins: string[] = [];
         try {
-          if (agentsResponse.data?.agents?.length > 0) {
+          if (agentsResponse?.length > 0) {
             // Get plugins from the first active agent
-            const activeAgent = agentsResponse.data.agents.find(
-              (agent) => agent.status === 'active'
-            );
+            const activeAgent = agentsResponse.find((agent) => agent.status === 'active');
             if (activeAgent && activeAgent.id) {
-              const agentDetailResponse = await createHybridClient().getAgent(activeAgent.id);
+              const agentDetailResponse = await elizaClient.agents.getAgent(activeAgent.id);
 
-              if (agentDetailResponse.data?.plugins) {
-                agentPlugins = agentDetailResponse.data.plugins;
+              if (agentDetailResponse?.plugins) {
+                agentPlugins = agentDetailResponse.plugins;
               }
             }
           }

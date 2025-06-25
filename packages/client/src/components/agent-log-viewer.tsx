@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAgents } from '../hooks/use-query-hooks';
-import { createHybridClient } from '../lib/migration-utils';
+import { createElizaClient } from '../lib/api-client-config';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 
 // Types
@@ -91,7 +91,7 @@ function generateLogChart(logs: LogEntry[]) {
   }
 
   // Count logs by hour - filter logs to last 24 hours only
-  const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
   logs.forEach((log) => {
     // Only count logs from the last 24 hours
     if (log.time >= twentyFourHoursAgo) {
@@ -251,8 +251,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
     queryFn: async () => {
-      const hybridApiClient = createHybridClient();
-      return await hybridApiClient.getGlobalLogs({
+      const elizaClient = createElizaClient();
+      return await elizaClient.system.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
       });
@@ -382,8 +382,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     ) {
       try {
         setIsClearing(true);
-        const hybridApiClient = createHybridClient();
-        await hybridApiClient.deleteGlobalLogs();
+        const elizaClient = createElizaClient();
+        await elizaClient.system.deleteGlobalLogs();
         queryClient.invalidateQueries({ queryKey: ['logs'] });
 
         // Also clear WebSocket logs if in WebSocket mode
@@ -419,9 +419,10 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
 
   // Error state
   if (error) {
-    const isEndpointNotFound = error.message?.includes('404') || 
-                              error.message?.includes('endpoint not found') ||
-                              error.message?.includes('Not Found');
+    const isEndpointNotFound =
+      error.message?.includes('404') ||
+      error.message?.includes('endpoint not found') ||
+      error.message?.includes('Not Found');
     return (
       <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
         <div className="flex items-center justify-center flex-1">
@@ -431,10 +432,9 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
               {isEndpointNotFound ? 'Global Logs API Not Available' : 'Failed to Load Logs'}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              {isEndpointNotFound 
+              {isEndpointNotFound
                 ? 'The server does not have the global logs API endpoint configured. You can still view individual agent logs from the agent details pages.'
-                : `There was an error loading the system logs: ${error.message}`
-              }
+                : `There was an error loading the system logs: ${error.message}`}
             </p>
             {!isEndpointNotFound && (
               <Button variant="outline" size="sm" onClick={() => refetch?.()}>

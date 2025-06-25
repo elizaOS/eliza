@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
 
-// Create hybrid client that can switch between old and new APIs
-const hybridApiClient = createHybridClient();
+// Create ElizaClient instance
+const elizaClient = createElizaClient();
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
 import clientLogger from '@/lib/logger';
@@ -19,7 +19,6 @@ export function useGetOrCreateDmChannel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const currentUserId = getEntityId();
-  const hybridApiClient = createHybridClient();
 
   return useMutation({
     mutationFn: async (targetUserId: UUID) => {
@@ -27,8 +26,12 @@ export function useGetOrCreateDmChannel() {
         '[useGetOrCreateDmChannel] Getting or creating canonical DM channel with target:',
         targetUserId
       );
-      const response = await hybridApiClient.getOrCreateDmChannel(targetUserId, currentUserId);
-      return response.data;
+      const elizaClient = createElizaClient();
+      const result = await elizaClient.messaging.getOrCreateDmChannel({
+        targetUserId,
+        currentUserId,
+      });
+      return result;
     },
     onSuccess: (data) => {
       clientLogger.info('[useGetOrCreateDmChannel] Canonical DM channel created/found:', data);
@@ -62,7 +65,6 @@ export function useDmChannelsForAgent(
   serverId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
 ) {
   const currentUserId = getEntityId();
-  const hybridApiClient = createHybridClient();
 
   return useQuery<MessageChannel[]>({
     queryKey: ['dmChannels', agentId, currentUserId], // This key will be invalidated by useCreateDmChannel
@@ -73,8 +75,9 @@ export function useDmChannelsForAgent(
         agentId
       );
 
-      const response = await hybridApiClient.getChannelsForServer(serverId);
-      const allChannels = response.data?.channels || [];
+      const elizaClient = createElizaClient();
+      const result = await elizaClient.messaging.getServerChannels(serverId);
+      const allChannels = result.channels || [];
 
       const dmChannels = allChannels.filter((channel) => {
         const metadata = channel.metadata || {};
@@ -139,7 +142,6 @@ export function useCreateDmChannel() {
   const { toast } = useToast();
   const currentUserId = getEntityId();
   const navigate = useNavigate();
-  const hybridApiClient = createHybridClient();
 
   return useMutation({
     mutationFn: async ({ agentId, channelName }: { agentId: UUID; channelName: string }) => {
@@ -153,7 +155,8 @@ export function useCreateDmChannel() {
         throw new Error('Channel name cannot be empty for a new DM conversation.');
       }
 
-      const newChannelResponse = await hybridApiClient.createCentralGroupChat({
+      const elizaClient = createElizaClient();
+      const result = await elizaClient.messaging.createGroupChannel({
         name: channelName.trim(),
         participantCentralUserIds: [currentUserId, agentId],
         type: ChannelType.DM, // Set type to DM
@@ -167,7 +170,7 @@ export function useCreateDmChannel() {
         },
       });
 
-      return newChannelResponse.data; // createCentralGroupChat returns { data: MessageChannel }
+      return result; // Direct result from ElizaClient
     },
     onSuccess: (data, variables) => {
       clientLogger.info('[useCreateDmChannel] Distinct DM channel created successfully:', data);

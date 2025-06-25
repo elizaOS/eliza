@@ -4,7 +4,7 @@ import { useAgentManagement } from '@/hooks/use-agent-management';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -67,7 +67,7 @@ export default function AgentSettings({
     // Define the actual save logic
     const performSave = async () => {
       try {
-        const hybridApiClient = createHybridClient();
+        const elizaClient = createElizaClient();
         // Get secrets from state (or ref as fallback)
         const secrets =
           Object.keys(currentSecrets).length > 0
@@ -102,7 +102,7 @@ export default function AgentSettings({
               settings: { secrets },
             };
 
-            await hybridApiClient.updateAgent(agentId, forceUpdate as Partial<Agent>);
+            await elizaClient.agents.updateAgent(agentId, forceUpdate as Partial<Agent>);
 
             queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
             queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -140,7 +140,7 @@ export default function AgentSettings({
         };
 
         // Send the partial update
-        await hybridApiClient.updateAgent(agentId, partialUpdate as Agent);
+        await elizaClient.agents.updateAgent(agentId, partialUpdate as Agent);
 
         // Invalidate both the agent query and the agents list
         queryClient.invalidateQueries({ queryKey: ['agent', agentId] });
@@ -231,8 +231,8 @@ export default function AgentSettings({
           }
         }, 8000);
 
-        const hybridApiClient = createHybridClient();
-        const response = await hybridApiClient.deleteAgent(agentId);
+        const elizaClient = createElizaClient();
+        const response = await elizaClient.agents.deleteAgent(agentId);
         responseReceived = true;
 
         if (navigationTimer) {

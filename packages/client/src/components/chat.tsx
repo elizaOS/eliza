@@ -31,7 +31,7 @@ import {
 } from '@/hooks/use-query-hooks';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import {
@@ -445,8 +445,8 @@ export default function Chat({
       async () => {
         clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
         try {
-          const hybridApiClient = createHybridClient();
-          await hybridApiClient.deleteChannel(channelToDelete.id);
+          const elizaClient = createElizaClient();
+          await elizaClient.messaging.deleteChannel(channelToDelete.id);
 
           // --- Optimistically update the React-Query cache so UI refreshes instantly ---
           queryClient.setQueryData<MessageChannel[] | undefined>(
@@ -668,15 +668,25 @@ export default function Chat({
       return;
     }
 
-    const hybridApiClient = createHybridClient();
-    const data = await hybridApiClient.getChannelTitle(finalChannelIdForHooks, contextId);
+    const elizaClient = createElizaClient();
+    const data = await elizaClient.messaging.generateChannelTitle(finalChannelIdForHooks);
 
-    const title = data?.data?.title;
-    const participants = await hybridApiClient.getChannelParticipants(chatState.currentDmChannelId);
+    const title = data?.title;
+    const participants = await elizaClient.messaging.getChannelParticipants(
+      chatState.currentDmChannelId
+    );
     if (title && participants) {
-      await hybridApiClient.updateChannel(finalChannelIdForHooks, {
+      // Handle different possible response formats for participants
+      let participantIds = [];
+      if (participants && Array.isArray(participants.participants)) {
+        participantIds = participants.participants.map(p => p.userId);
+      } else if (participants && Array.isArray(participants)) {
+        participantIds = participants.map(p => p.userId || p.id || p);
+      }
+      
+      await elizaClient.messaging.updateChannel(finalChannelIdForHooks, {
         name: title,
-        participantCentralUserIds: participants.data,
+        participantCentralUserIds: participantIds,
       });
 
       const currentUserId = getEntityId();
@@ -1244,8 +1254,8 @@ export default function Chat({
                         },
                         async () => {
                           try {
-                            const hybridApiClient = createHybridClient();
-                            await hybridApiClient.deleteChannel(finalChannelIdForHooks);
+                            const elizaClient = createElizaClient();
+                            await elizaClient.messaging.deleteChannel(finalChannelIdForHooks);
                             toast({
                               title: 'Group Deleted',
                               description: 'The group has been successfully deleted.',

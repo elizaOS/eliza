@@ -2,7 +2,7 @@ import { ChannelType } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import { type Agent, AgentStatus, type UUID, validateUuid } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -56,6 +56,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const initializedRef = useRef(false);
   const lastChannelIdRef = useRef(channelId);
   const agentsInitializedRef = useRef(false);
+  
 
   const { data: channelsData } = useChannels(channelId ? serverId : undefined, {
     enabled: !!channelId,
@@ -74,11 +75,19 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Force fetch participants immediately when component mounts with channelId
+  useEffect(() => {
+    if (channelId) {
+      queryClient.invalidateQueries({ queryKey: ['channelParticipants', channelId] });
+      queryClient.refetchQueries({ queryKey: ['channelParticipants', channelId] });
+    }
+  }, [channelId, queryClient]);
+
   // Create group mutation
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      const hybridApiClient = createHybridClient();
-      return await hybridApiClient.createCentralGroupChat({
+      const elizaClient = createElizaClient();
+      return await elizaClient.messaging.createGroupChannel({
         name,
         participantCentralUserIds: participantIds,
         type: ChannelType.GROUP,
@@ -108,8 +117,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       if (!channelId) throw new Error('Channel ID is required for update');
-      const hybridApiClient = createHybridClient();
-      return await hybridApiClient.updateChannel(channelId, {
+      const elizaClient = createElizaClient();
+      return await elizaClient.messaging.updateChannel(channelId, {
         name,
         participantCentralUserIds: participantIds,
       });
@@ -135,8 +144,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error('Channel ID is required for delete');
-      const hybridApiClient = createHybridClient();
-      return await hybridApiClient.deleteChannel(channelId);
+      const elizaClient = createElizaClient();
+      return await elizaClient.messaging.deleteChannel(channelId);
     },
     onSuccess: () => {
       toast({ title: 'Group Deleted', description: 'The group has been successfully deleted.' });
@@ -169,10 +178,31 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     queryKey: ['channelParticipants', channelId],
     queryFn: async () => {
       if (!channelId) return { success: true, data: [] };
-      const hybridApiClient = createHybridClient();
-      return hybridApiClient.getChannelParticipants(channelId);
+      try {
+        const elizaClient = createElizaClient();
+        const result = await elizaClient.messaging.getChannelParticipants(channelId);
+        
+        // Handle different possible response formats
+        let participants = [];
+        if (result && Array.isArray(result.participants)) {
+          participants = result.participants.map(participant => participant.userId);
+        } else if (result && Array.isArray(result)) {
+          // If result is directly an array
+          participants = result.map(participant => participant.userId || participant.id || participant);
+        }
+        
+        return { success: true, data: participants };
+      } catch (error) {
+        console.error('[GroupPanel] Error fetching channel participants:', error);
+        return { success: false, error: { message: error instanceof Error ? error.message : 'Unknown error' } };
+      }
     },
     enabled: !!channelId,
+    retry: false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    staleTime: 0, // Always fetch fresh data
+    cacheTime: 0, // Don't cache results
   });
 
   // Separate effect for initializing chat name when channel loads
@@ -268,10 +298,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY = useMemo(() => [], []);
 
   const initialSelectedComboboxOptions: ComboboxOption[] = useMemo(() => {
-
     if (isLoadingAgents) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
     if (!channelId) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY; // Create mode
-    
+
     // In edit mode, wait for agents to be initialized before determining selection
     if (channelId && !agentsInitializedRef.current) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
 
@@ -337,8 +366,11 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
     const participantIds = selectedAgents.map((agent) => agent.id);
     // Generate name if empty - for groups with no agents, use the chat name or a default
-    const finalName = chatName.trim() || 
-      (selectedAgents.length > 0 ? selectedAgents.map((agent) => agent.name).join(', ') : 'Empty Group');
+    const finalName =
+      chatName.trim() ||
+      (selectedAgents.length > 0
+        ? selectedAgents.map((agent) => agent.name).join(', ')
+        : 'Empty Group');
 
     if (!channelId) {
       createGroupMutation.mutate({ name: finalName, participantIds });
@@ -348,7 +380,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   }, [channelId, chatName, selectedAgents, createGroupMutation, updateGroupMutation, toast]);
 
   // Use the exact same logic as "unsaved changes" detection for update button
-  const isSubmitDisabled = channelId 
+  const isSubmitDisabled = channelId
     ? // Edit mode - disable if no changes OR loading (allow agent removal)
       !hasFormChanged ||
       createGroupMutation.isPending ||
@@ -359,7 +391,6 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       createGroupMutation.isPending ||
       updateGroupMutation.isPending ||
       deleteGroupMutation.isPending;
-
 
   return (
     <div

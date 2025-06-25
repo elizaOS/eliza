@@ -20,8 +20,23 @@ export function createApiClientConfig(): ApiClientConfig {
   return config;
 }
 
+// Singleton instance
+let elizaClientInstance: ElizaClient | null = null;
+
 export function createElizaClient(): ElizaClient {
-  return ElizaClient.create(createApiClientConfig());
+  if (!elizaClientInstance) {
+    elizaClientInstance = ElizaClient.create(createApiClientConfig());
+  }
+  return elizaClientInstance;
+}
+
+export function getElizaClient(): ElizaClient {
+  return createElizaClient();
+}
+
+// Function to reset the singleton (useful for API key changes)
+export function resetElizaClient(): void {
+  elizaClientInstance = null;
 }
 
 export function updateApiClientApiKey(newApiKey: string | null): void {
@@ -32,4 +47,7 @@ export function updateApiClientApiKey(newApiKey: string | null): void {
   } else {
     localStorage.removeItem(getLocalStorageApiKey());
   }
+  
+  // Reset the singleton so it uses the new API key
+  resetElizaClient();
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
 import type { UUID } from '@elizaos/core';
 
@@ -8,8 +8,10 @@ export function useAddAgentToServer() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: ({ serverId, agentId }: { serverId: UUID; agentId: UUID }) =>
-      createHybridClient().addAgentToServer(serverId, agentId),
+    mutationFn: async ({ serverId, agentId }: { serverId: UUID; agentId: UUID }) => {
+      const elizaClient = createElizaClient();
+      return await elizaClient.agents.addAgentToServer(serverId, agentId);
+    },
     onSuccess: (_data, variables) => {
       // Invalidate server agents query
       queryClient.invalidateQueries({ queryKey: ['serverAgents', variables.serverId] });
@@ -35,8 +37,10 @@ export function useRemoveAgentFromServer() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: ({ serverId, agentId }: { serverId: UUID; agentId: UUID }) =>
-      createHybridClient().removeAgentFromServer(serverId, agentId),
+    mutationFn: async ({ serverId, agentId }: { serverId: UUID; agentId: UUID }) => {
+      const elizaClient = createElizaClient();
+      return await elizaClient.agents.removeAgentFromServer(serverId, agentId);
+    },
     onSuccess: (_data, variables) => {
       // Invalidate server agents query
       queryClient.invalidateQueries({ queryKey: ['serverAgents', variables.serverId] });

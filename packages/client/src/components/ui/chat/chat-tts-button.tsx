@@ -1,5 +1,5 @@
 import { useToast } from '@/hooks/use-toast';
-import { createHybridClient } from '@/lib/migration-utils';
+import { createElizaClient } from '@/lib/api-client-config';
 import { useMutation } from '@tanstack/react-query';
 import { Ellipsis, StopCircle, Volume2 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -12,10 +12,10 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const hybridApiClient = createHybridClient();
+  const elizaClient = createElizaClient();
   const mutation = useMutation({
     mutationKey: ['tts', text],
-    mutationFn: () => hybridApiClient.ttsStream(agentId, text),
+    mutationFn: () => elizaClient.messaging.ttsStream(agentId, text),
     onSuccess: (data: Blob) => {
       setAudioBlob(data);
       play();
