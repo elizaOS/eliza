@@ -1,5 +1,6 @@
 import { useToast } from '@/hooks/use-toast';
 import { createElizaClient } from '@/lib/api-client-config';
+import { UUID } from '@elizaos/core';
 import { useMutation } from '@tanstack/react-query';
 import { Ellipsis, StopCircle, Volume2 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -15,7 +16,36 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   const elizaClient = createElizaClient();
   const mutation = useMutation({
     mutationKey: ['tts', text],
-    mutationFn: () => elizaClient.messaging.ttsStream(agentId, text),
+    mutationFn: async () => {
+      const response = await elizaClient.audio.generateSpeech(agentId as UUID, { text });
+
+      // Convert base64 audio string to Blob
+      const { audio, format } = response;
+
+      // Handle data URL format (data:audio/mp3;base64,...)
+      let audioData: string;
+      let mimeType: string;
+
+      if (audio.startsWith('data:')) {
+        const [header, base64Data] = audio.split(',');
+        const mimeMatch = header.match(/data:([^;]+)/);
+        mimeType = mimeMatch ? mimeMatch[1] : `audio/${format || 'mpeg'}`;
+        audioData = base64Data;
+      } else {
+        // Plain base64 string
+        audioData = audio;
+        mimeType = `audio/${format || 'mpeg'}`;
+      }
+
+      // Convert base64 to Blob
+      const binaryString = atob(audioData);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      return new Blob([bytes], { type: mimeType });
+    },
     onSuccess: (data: Blob) => {
       setAudioBlob(data);
       play();

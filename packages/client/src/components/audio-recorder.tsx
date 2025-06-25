@@ -3,7 +3,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useToast } from '@/hooks/use-toast';
 import { createElizaClient } from '@/lib/api-client-config';
 import { cn } from '@/lib/utils';
-import { TranscriptionResponse } from '@elizaos/api-client';
 import type { UUID } from '@elizaos/core';
 import { useMutation } from '@tanstack/react-query';
 import { Ellipsis, Mic, Send, Trash } from 'lucide-react';
@@ -71,7 +70,7 @@ export const AudioRecorder = ({ className, timerClassName, agentId, onChange }: 
   const mutation = useMutation({
     mutationKey: ['whisper'],
     mutationFn: (file: Blob) => elizaClient.audio.transcribe(agentId, { audio: file }),
-    onSuccess: (data: TranscriptionResponse) => {
+    onSuccess: (data) => {
       if (data?.text) {
         onChange(data.text);
       }
