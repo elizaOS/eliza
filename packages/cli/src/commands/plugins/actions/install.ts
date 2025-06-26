@@ -43,7 +43,10 @@ export async function installPluginFromGitHub(
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
       const packageName = extractPackageName(plugin);
-      console.log(`\n🔧 Checking environment variables for ${packageName}...`);
+
+      // Brief pause to ensure installation logs are complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       try {
         await promptForPluginEnvVars(packageName, cwd);
       } catch (error) {
@@ -53,7 +56,7 @@ export async function installPluginFromGitHub(
         // Don't fail the installation if env prompting fails
       }
     } else {
-      console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
+      console.log(`\nSkipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
     process.exit(0);
@@ -102,7 +105,9 @@ export async function installPluginFromRegistry(
       const actualPackageName =
         findPluginPackageName(targetName, updatedDependencies || {}) || targetName;
 
-      console.log(`\n🔧 Checking environment variables for ${actualPackageName}...`);
+      // Brief pause to ensure installation logs are complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
       try {
         await promptForPluginEnvVars(actualPackageName, cwd);
       } catch (error) {
@@ -112,7 +117,7 @@ export async function installPluginFromRegistry(
         // Don't fail the installation if env prompting fails
       }
     } else {
-      console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
+      console.log(`\nSkipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
     process.exit(0);
