@@ -536,11 +536,19 @@ export class AgentRuntime implements IAgentRuntime {
 
         this.logger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
+        // try exact first
         let action = this.actions.find(
           (a: { name: string }) =>
-            normalizeAction(a.name).includes(normalizedResponseAction) ||
-            normalizedResponseAction.includes(normalizeAction(a.name))
+            normalizeAction(a.name) === normalizedResponseAction
         );
+        if (!action) {
+          // try relaxed
+          action = this.actions.find(
+            (a: { name: string }) =>
+              normalizeAction(a.name).includes(normalizedResponseAction) ||
+              normalizedResponseAction.includes(normalizeAction(a.name))
+          );
+        }
         if (action) {
           this.logger.debug(`Success: Found action: ${action?.name}`);
         } else {
