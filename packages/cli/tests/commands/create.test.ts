@@ -269,7 +269,7 @@ describe('ElizaOS Create Commands', () => {
   }, 60000);
 
   describe('AI Model Selection', () => {
-    it('returns a reasonable number of AI models', () => {
+    it('returns a reasonable number of AI model options', () => {
       const models = getAvailableAIModels();
 
       // Test for minimum providers instead of exact count
