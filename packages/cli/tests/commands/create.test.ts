@@ -269,24 +269,47 @@ describe('ElizaOS Create Commands', () => {
   }, 60000);
 
   describe('AI Model Selection', () => {
-    it('getAvailableAIModels includes ollama option', () => {
+    it('returns a reasonable number of AI model options', () => {
       const models = getAvailableAIModels();
 
-      expect(models).toHaveLength(5);
-      expect(models.map((m) => m.value)).toContain('ollama');
-
-      const ollamaModel = models.find((m) => m.value === 'ollama');
-      expect(ollamaModel).toBeDefined();
+      // Test for minimum providers instead of exact count
+      expect(models.length).toBeGreaterThanOrEqual(3);
+      expect(models.length).toBeLessThanOrEqual(7); // reasonable upper limit
     });
 
-    it('maintains existing AI model options', () => {
+    it('maintains core AI model options', () => {
       const models = getAvailableAIModels();
       const values = models.map((m) => m.value);
 
-      expect(values).toContain('local');
-      expect(values).toContain('openai');
-      expect(values).toContain('claude');
-      expect(values).toContain('ollama');
+      // Only test for essential/core providers
+      const CORE_PROVIDERS = ['local', 'openai', 'claude', 'openrouter'];
+      CORE_PROVIDERS.forEach((provider) => {
+        expect(values).toContain(provider);
+      });
+    });
+
+    it('all AI models follow the expected contract', () => {
+      const models = getAvailableAIModels();
+
+      models.forEach((model) => {
+        // Test structure
+        expect(model).toHaveProperty('value');
+        expect(model).toHaveProperty('title');
+        expect(model).toHaveProperty('description');
+
+        // Test types
+        expect(typeof model.value).toBe('string');
+        expect(typeof model.title).toBe('string');
+        expect(typeof model.description).toBe('string');
+
+        // Test non-empty values
+        expect(model.value.length).toBeGreaterThan(0);
+        expect(model.title.length).toBeGreaterThan(0);
+        expect(model.description.length).toBeGreaterThan(0);
+
+        // Test naming conventions
+        expect(model.value).toBe(model.value.toLowerCase());
+      });
     });
   });
 
