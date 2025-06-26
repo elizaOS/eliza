@@ -7,24 +7,35 @@ import path from 'node:path';
 import { findPluginPackageName } from '../utils/naming';
 import { getDependenciesFromDirectory } from '../utils/directory';
 import { RemovePluginOptions } from '../types';
-import { loadCharacterFile, updateCharacterFile, resolveCharacterPaths } from '../utils/character-updater';
+import {
+  loadCharacterFile,
+  updateCharacterFile,
+  resolveCharacterPaths,
+} from '../utils/character-updater';
 
 /**
  * Update character files to remove the plugin
  */
-async function updateCharacterFilesForRemoval(pluginName: string, opts: RemovePluginOptions): Promise<void> {
+async function updateCharacterFilesForRemoval(
+  pluginName: string,
+  opts: RemovePluginOptions
+): Promise<void> {
   if (!opts.character) {
-    logger.error('No character files specified. Use --character to specify character files to update.');
+    logger.error(
+      'No character files specified. Use --character to specify character files to update.'
+    );
     process.exit(1);
   }
 
   const characterPaths = resolveCharacterPaths(opts.character);
-  
+
   for (const characterPath of characterPaths) {
     try {
       const characterFile = await loadCharacterFile(characterPath);
       await updateCharacterFile(characterFile, pluginName, 'remove');
-      logger.info(`✅ Removed plugin '${pluginName}' from character '${characterFile.character.name}'`);
+      logger.info(
+        `✅ Removed plugin '${pluginName}' from character '${characterFile.character.name}'`
+      );
     } catch (error) {
       logger.error(`Failed to update character file ${characterPath}:`, error);
       process.exit(1);
@@ -40,7 +51,9 @@ export async function removePlugin(plugin: string, opts: RemovePluginOptions): P
   if (!opts.character || (Array.isArray(opts.character) && opts.character.length === 0)) {
     logger.error('No character files specified.');
     logger.info('Use --character to specify one or more character files to update.');
-    logger.info('Example: elizaos plugins remove openrouter --character ./characters/my-agent.json');
+    logger.info(
+      'Example: elizaos plugins remove openrouter --character ./characters/my-agent.json'
+    );
     process.exit(1);
   }
 
@@ -68,7 +81,7 @@ export async function removePlugin(plugin: string, opts: RemovePluginOptions): P
     logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
     logger.info('The plugin may have already been removed from package.json.');
     logger.info('Attempting to remove from character files anyway...');
-    
+
     // Try to remove from character files even if not in package.json
     await updateCharacterFilesForRemoval(plugin, opts);
     process.exit(0);

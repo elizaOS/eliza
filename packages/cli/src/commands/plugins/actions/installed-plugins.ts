@@ -1,11 +1,11 @@
 import { logHeader } from '@/src/utils';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { parseCharacterPaths } from '@/src/utils/character-parser';
-import { 
+import {
   isValidCharacterFile,
   findCharactersFromPaths,
   findAllCharacterFiles,
-  loadCharacterQuietly
+  loadCharacterQuietly,
 } from '@/src/utils/character-finder';
 import { logger } from '@elizaos/core';
 
@@ -31,7 +31,7 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
   if (parsedPaths.length > 0) {
     // First find and validate the character files
     const characterFilePaths = await findCharactersFromPaths(parsedPaths);
-    
+
     if (characterFilePaths.size === 0) {
       console.log('No valid character files found for the specified paths.');
       console.log('Please check your character paths and try again.');
@@ -40,7 +40,7 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
 
     // Then load the characters and get their plugins
     const characterPluginMap = new Map<string, string[]>();
-    
+
     for (const [name, filePath] of characterFilePaths) {
       try {
         const character = await loadCharacterQuietly(filePath);
@@ -51,7 +51,7 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
         logger.error(`Failed to load character from ${filePath}: ${error}`);
       }
     }
-    
+
     // Display character plugin mapping
     logHeader('Character Plugin Mapping:');
     for (const [characterName, plugins] of characterPluginMap) {
@@ -62,16 +62,16 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
         plugins.forEach((plugin: string) => console.log(`  - ${plugin}`));
       }
     }
-    
+
     return;
   }
 
   // If no specific characters provided, scan all character files in the project
   const allCharacterFiles = findAllCharacterFiles(cwd);
-  
+
   // Try to load each file and collect plugin information
   const characterPluginMap = new Map<string, string[]>();
-  
+
   for (const filePath of allCharacterFiles) {
     try {
       // Check if it's a valid character file
@@ -79,7 +79,7 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
       if (!isValid) {
         continue;
       }
-      
+
       // It's a valid character file, try to load it
       const character = await loadCharacterQuietly(filePath);
       const characterName = character.name;
@@ -101,8 +101,8 @@ export async function showInstalledPlugins(characterPaths?: string[]): Promise<v
     if (plugins.length === 0) {
       console.log('  (no plugins)');
     } else {
-      plugins.forEach(plugin => console.log(`  - ${plugin}`));
+      plugins.forEach((plugin) => console.log(`  - ${plugin}`));
     }
     console.log();
   }
-} 
+}

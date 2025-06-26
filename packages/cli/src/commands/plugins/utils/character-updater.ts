@@ -18,13 +18,13 @@ export interface CharacterFile {
  */
 export async function loadCharacterFile(characterPath: string): Promise<CharacterFile> {
   const resolvedPath = resolveCharacterPath(characterPath);
-  
+
   if (!resolvedPath) {
     throw new Error(`Character file not found: ${characterPath}`);
   }
 
   const ext = path.extname(resolvedPath).toLowerCase();
-  
+
   if (ext === '.json') {
     const character = await loadCharacterQuietly(resolvedPath);
     if (!character) {
@@ -34,12 +34,14 @@ export async function loadCharacterFile(characterPath: string): Promise<Characte
       path: resolvedPath,
       format: 'json',
       character,
-      content: fs.readFileSync(resolvedPath, 'utf-8')
+      content: fs.readFileSync(resolvedPath, 'utf-8'),
     };
   } else if (ext === '.ts' || ext === '.js') {
     // For TypeScript/JavaScript files, we need special handling
     // This is a limitation - we can't easily load TS files without compilation
-    throw new Error(`TypeScript/JavaScript character files are not yet supported for plugin updates`);
+    throw new Error(
+      `TypeScript/JavaScript character files are not yet supported for plugin updates`
+    );
   } else {
     throw new Error(`Unsupported character file format: ${ext}`);
   }
@@ -50,16 +52,16 @@ export async function loadCharacterFile(characterPath: string): Promise<Characte
  */
 export function addPluginToCharacter(character: Character, pluginName: string): Character {
   const plugins = character.plugins || [];
-  
+
   // Check if plugin already exists
   if (plugins.includes(pluginName)) {
     logger.info(`Plugin '${pluginName}' is already in character '${character.name}'`);
     return character;
   }
-  
+
   return {
     ...character,
-    plugins: [...plugins, pluginName]
+    plugins: [...plugins, pluginName],
   };
 }
 
@@ -68,16 +70,16 @@ export function addPluginToCharacter(character: Character, pluginName: string): 
  */
 export function removePluginFromCharacter(character: Character, pluginName: string): Character {
   const plugins = character.plugins || [];
-  
+
   // Check if plugin exists
   if (!plugins.includes(pluginName)) {
     logger.info(`Plugin '${pluginName}' is not in character '${character.name}'`);
     return character;
   }
-  
+
   return {
     ...character,
-    plugins: plugins.filter(p => p !== pluginName)
+    plugins: plugins.filter((p) => p !== pluginName),
   };
 }
 
@@ -85,7 +87,7 @@ export function removePluginFromCharacter(character: Character, pluginName: stri
  * Update a JSON character file
  */
 export async function updateJsonCharacterFile(
-  filePath: string, 
+  filePath: string,
   character: Character
 ): Promise<void> {
   const content = JSON.stringify(character, null, 2);
@@ -101,9 +103,10 @@ export async function updateCharacterFile(
   pluginName: string,
   operation: 'add' | 'remove'
 ): Promise<void> {
-  const updatedCharacter = operation === 'add' 
-    ? addPluginToCharacter(characterFile.character, pluginName)
-    : removePluginFromCharacter(characterFile.character, pluginName);
+  const updatedCharacter =
+    operation === 'add'
+      ? addPluginToCharacter(characterFile.character, pluginName)
+      : removePluginFromCharacter(characterFile.character, pluginName);
 
   if (characterFile.format === 'json') {
     await updateJsonCharacterFile(characterFile.path, updatedCharacter);
@@ -116,4 +119,4 @@ export async function updateCharacterFile(
  * Resolve character paths from various input formats
  * Re-export from character-parser for backward compatibility
  */
-export { parseCharacterPaths as resolveCharacterPaths } from '@/src/utils/character-parser'; 
+export { parseCharacterPaths as resolveCharacterPaths } from '@/src/utils/character-parser';

@@ -16,9 +16,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
   try {
     // Consolidated error handling for missing/invalid inputs
     // First check if we have enough info to start agents
-    const hasValidInput =
-      options.character ||
-      options.remoteCharacter;
+    const hasValidInput = options.character || options.remoteCharacter;
 
     if (!hasValidInput) {
       // Show error and use commander's built-in help
@@ -72,28 +70,28 @@ export async function startAgent(options: OptionValues): Promise<void> {
       try {
         // Use character-parser to handle various path formats
         const parsedPaths = parseCharacterPaths(options.character);
-        
+
         if (parsedPaths.length === 0) {
           throw new Error(`Invalid character specification: ${options.character}`);
         }
-        
+
         const startedAgents: string[] = [];
         const failedAgents: string[] = [];
-        
+
         for (const characterPath of parsedPaths) {
           try {
             let currentCharacterName = null;
-            
+
             // Try to resolve as a character file first
             const resolvedPath = resolveCharacterPath(characterPath);
-            
+
             if (resolvedPath) {
               // Validate the character file
               const isValid = await isValidCharacterFile(resolvedPath);
               if (!isValid) {
                 throw new Error(`Invalid character file: ${characterPath}`);
               }
-              
+
               const fileContent = readFileSync(resolvedPath, 'utf8');
               const characterPayload = { characterJson: JSON.parse(fileContent) };
               currentCharacterName = await createCharacter(characterPayload);
@@ -101,7 +99,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
               // Treat as existing agent name
               currentCharacterName = characterPath;
             }
-            
+
             if (currentCharacterName) {
               // Start the agent
               const agentId = await resolveAgentId(currentCharacterName, options);
@@ -109,34 +107,39 @@ export async function startAgent(options: OptionValues): Promise<void> {
                 method: 'POST',
                 headers,
               });
-              
+
               if (startResponse.ok) {
                 startedAgents.push(currentCharacterName);
               } else {
                 const errorData = await startResponse.json().catch(() => ({}));
-                throw new Error(errorData?.error?.message || `Failed to start agent: ${startResponse.statusText}`);
+                throw new Error(
+                  errorData?.error?.message || `Failed to start agent: ${startResponse.statusText}`
+                );
               }
             } else {
               throw new Error(`Failed to create/find character: ${characterPath}`);
             }
           } catch (error) {
-            failedAgents.push(`${characterPath}: ${error instanceof Error ? error.message : String(error)}`);
+            failedAgents.push(
+              `${characterPath}: ${error instanceof Error ? error.message : String(error)}`
+            );
           }
         }
-        
+
         // Report results
         if (startedAgents.length > 0) {
-          console.log(`\x1b[32m[✓] Successfully started ${startedAgents.length} agent(s): ${startedAgents.join(', ')}\x1b[0m`);
+          console.log(
+            `\x1b[32m[✓] Successfully started ${startedAgents.length} agent(s): ${startedAgents.join(', ')}\x1b[0m`
+          );
         }
-        
+
         if (failedAgents.length > 0) {
           console.error(`\x1b[31m[✗] Failed to start ${failedAgents.length} agent(s):\x1b[0m`);
-          failedAgents.forEach(error => console.error(`  ${error}`));
+          failedAgents.forEach((error) => console.error(`  ${error}`));
         }
-        
+
         // Exit early since we handled multiple characters
         return;
-        
       } catch (error) {
         console.error('Error processing character specifications:', error);
         throw new Error(
@@ -332,42 +335,48 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
     // Stop individual agents by character names/IDs
     const parsedPaths = parseCharacterPaths(opts.character);
     const baseUrl = getAgentsBaseUrl(opts);
-    
+
     if (parsedPaths.length === 0) {
       throw new Error(`Invalid character specification: ${opts.character}`);
     }
-    
+
     const stoppedAgents: string[] = [];
     const failedAgents: string[] = [];
-    
+
     for (const characterName of parsedPaths) {
       try {
         console.info(`Stopping agent ${characterName}...`);
-        
+
         const resolvedAgentId = await resolveAgentId(characterName, opts);
-        
+
         // API Endpoint: POST /agents/:agentId/stop
         const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({})) as ApiResponse<unknown>;
-          throw new Error(errorData.error?.message || `Failed to stop agent: ${response.statusText}`);
+          const errorData = (await response.json().catch(() => ({}))) as ApiResponse<unknown>;
+          throw new Error(
+            errorData.error?.message || `Failed to stop agent: ${response.statusText}`
+          );
         }
-        
+
         stoppedAgents.push(characterName);
       } catch (error) {
-        failedAgents.push(`${characterName}: ${error instanceof Error ? error.message : String(error)}`);
+        failedAgents.push(
+          `${characterName}: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
-    
+
     // Report results
     if (stoppedAgents.length > 0) {
-      console.log(`\x1b[32m[✓] Successfully stopped ${stoppedAgents.length} agent(s): ${stoppedAgents.join(', ')}\x1b[0m`);
+      console.log(
+        `\x1b[32m[✓] Successfully stopped ${stoppedAgents.length} agent(s): ${stoppedAgents.join(', ')}\x1b[0m`
+      );
     }
-    
+
     if (failedAgents.length > 0) {
       console.error(`\x1b[31m[✗] Failed to stop ${failedAgents.length} agent(s):\x1b[0m`);
-      failedAgents.forEach(error => console.error(`  ${error}`));
+      failedAgents.forEach((error) => console.error(`  ${error}`));
     }
   } catch (error) {
     await checkServer(opts);

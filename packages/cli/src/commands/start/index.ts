@@ -1,7 +1,12 @@
 import { displayBanner, handleError } from '@/src/utils';
 import { validatePort } from '@/src/utils/port-validation';
 import { parseCharacterPaths } from '@/src/utils/character-parser';
-import { resolveCharacterPath, loadCharacterQuietly, findAllCharacterFiles, getCharacterInfo } from '@/src/utils/character-finder';
+import {
+  resolveCharacterPath,
+  loadCharacterQuietly,
+  findAllCharacterFiles,
+  getCharacterInfo,
+} from '@/src/utils/character-finder';
 import { loadProject } from '@/src/project';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
@@ -32,7 +37,7 @@ export const start = new Command()
       if (options.character && options.character.length > 0) {
         // Parse character paths (handles comma-separated values, quotes, etc.)
         const characterPaths = parseCharacterPaths(options.character);
-        
+
         // Validate and load characters from provided paths
         for (const charPath of characterPaths) {
           const resolvedPath = resolveCharacterPath(charPath);
@@ -56,10 +61,12 @@ export const start = new Command()
             }
           } catch (e) {
             logger.error(`Failed to load character from ${resolvedPath}:`, e);
-            errors.push(`Failed to load character from ${resolvedPath}: ${e instanceof Error ? e.message : String(e)}`);
+            errors.push(
+              `Failed to load character from ${resolvedPath}: ${e instanceof Error ? e.message : String(e)}`
+            );
           }
         }
-        
+
         // If we have errors and no successfully loaded characters, throw
         if (errors.length > 0 && characters.length === 0) {
           throw new Error(`Failed to load any characters:\n${errors.join('\n')}`);
@@ -71,21 +78,21 @@ export const start = new Command()
 
         // First, list available characters
         logger.info('No character files specified. Searching for available characters...');
-        
+
         const allCharacterFiles = await findAllCharacterFiles(cwd);
         const validCharacters: Array<{ name: string; path: string }> = [];
-        
+
         for (const file of allCharacterFiles) {
           const characterInfo = await getCharacterInfo(file);
           if (characterInfo) {
             const relativePath = path.relative(cwd, characterInfo.path);
             validCharacters.push({
               name: characterInfo.name,
-              path: relativePath
+              path: relativePath,
             });
           }
         }
-        
+
         if (validCharacters.length > 0) {
           logger.info(`Found ${validCharacters.length} character file(s) in project:`);
           for (const char of validCharacters) {
@@ -113,7 +120,9 @@ export const start = new Command()
                 logger.info(`\nRunning in plugin test mode with default Eliza character.`);
                 logger.info(`Testing plugin: ${project.pluginModule?.name || 'unknown'}`);
               } else {
-                logger.info(`\nRunning ${project.agents.length} agent(s) from project configuration:`);
+                logger.info(
+                  `\nRunning ${project.agents.length} agent(s) from project configuration:`
+                );
                 for (const agent of project.agents) {
                   if (agent.character) {
                     logger.info(`  - ${agent.character.name}`);

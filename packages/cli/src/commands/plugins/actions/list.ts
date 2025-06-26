@@ -69,5 +69,3 @@ export async function listAvailablePlugins(opts: ListPluginsOptions): Promise<vo
   }
   console.log('');
 }
-
-

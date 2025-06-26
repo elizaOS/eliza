@@ -483,7 +483,7 @@ export class MessageBusService extends Service {
           const channelId = room?.channelId as UUID;
           const serverId = world?.serverId as UUID;
           await this.notifyMessageComplete(channelId, serverId);
-        }
+        },
       });
     } catch (error) {
       logger.error(

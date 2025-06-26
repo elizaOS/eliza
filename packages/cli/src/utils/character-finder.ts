@@ -1,6 +1,6 @@
 /**
  * Character Finder Utility
- * 
+ *
  * This utility handles finding and identifying character files in various locations,
  * resolving paths, and validating character file structures.
  */
@@ -14,7 +14,7 @@ import { globbySync } from 'globby';
  * Resolve a character file path by checking common locations
  * Searches for character files in standard directories and handles
  * various naming conventions (.json extension optional)
- * 
+ *
  * @param characterPath - The character path to resolve (can be name, relative, or absolute path)
  * @returns Resolved absolute path if found, null otherwise
  */
@@ -56,13 +56,13 @@ export function resolveCharacterPath(characterPath: string): string | null {
 
   // If not found in common directories, search all directories
   const allCharacterFiles = findAllCharacterFiles(process.cwd());
-  
+
   // Try to match by filename
   const fileName = path.basename(characterPath);
   for (const file of allCharacterFiles) {
     const baseName = path.basename(file, path.extname(file));
     const fileNameWithoutExt = fileName.replace(/\.(json|ts)$/, '');
-    
+
     if (baseName === fileNameWithoutExt || path.basename(file) === fileName) {
       return file;
     }
@@ -74,7 +74,7 @@ export function resolveCharacterPath(characterPath: string): string | null {
 /**
  * Find all potential character files in a directory tree
  * Searches for .json and .ts files recursively
- * 
+ *
  * @param directory - The root directory to search in
  * @returns Array of absolute file paths
  */
@@ -101,9 +101,9 @@ export function findAllCharacterFiles(directory: string): string[] {
         '**/*.test.ts',
         '**/*.spec.ts',
         '**/*.d.ts',
-      ]
+      ],
     });
-    
+
     return files;
   } catch (error) {
     logger.debug(`Error scanning directory ${directory}: ${error}`);
@@ -113,13 +113,13 @@ export function findAllCharacterFiles(directory: string): string[] {
 
 /**
  * Find character files in common subdirectories (legacy function for compatibility)
- * 
+ *
  * @param directory - The root directory to search in
  * @returns Array of absolute file paths
  */
 export function findCharacterFiles(directory: string): string[] {
   const characterFiles: string[] = [];
-  
+
   // Common directories to search
   const searchDirs = [
     directory,
@@ -128,10 +128,10 @@ export function findCharacterFiles(directory: string): string[] {
     path.join(directory, 'src', 'characters'),
     path.join(directory, 'src', 'agents'),
   ];
-  
+
   for (const dir of searchDirs) {
     if (!fs.existsSync(dir)) continue;
-    
+
     try {
       const files = fs.readdirSync(dir);
       for (const file of files) {
@@ -145,7 +145,7 @@ export function findCharacterFiles(directory: string): string[] {
       logger.debug(`Could not read directory ${dir}: ${error}`);
     }
   }
-  
+
   // Remove duplicates
   return [...new Set(characterFiles)];
 }
@@ -153,7 +153,7 @@ export function findCharacterFiles(directory: string): string[] {
 /**
  * Check if a JSON object has the required structure of a character file
  * A valid character must have a name and at least one of: bio, system, or messageExamples
- * 
+ *
  * @param data - The parsed JSON data to validate
  * @returns True if it's a valid character structure
  */
@@ -161,79 +161,83 @@ export function isValidCharacterStructure(data: any): boolean {
   if (!data || typeof data !== 'object') {
     return false;
   }
-  
+
   // Must have a name (string)
   if (!data.name || typeof data.name !== 'string') {
     return false;
   }
-  
+
   // Must have at least one of these fields
-  const hasRequiredField = 
-    data.bio || 
-    data.system || 
+  const hasRequiredField =
+    data.bio ||
+    data.system ||
     (Array.isArray(data.messageExamples) && data.messageExamples.length > 0);
-    
+
   return hasRequiredField;
 }
 
 /**
  * Check if a TypeScript file exports a character
  * This is a simple check that looks for common patterns
- * 
+ *
  * @param filePath - Path to the TypeScript file
  * @returns True if it likely exports a character
  */
 export function hasCharacterExport(filePath: string): boolean {
   try {
     // Skip test files
-    if (filePath.includes('__tests__') || 
-        filePath.includes('.test.') || 
-        filePath.includes('.spec.') ||
-        filePath.includes('/test/') ||
-        filePath.includes('/tests/')) {
+    if (
+      filePath.includes('__tests__') ||
+      filePath.includes('.test.') ||
+      filePath.includes('.spec.') ||
+      filePath.includes('/test/') ||
+      filePath.includes('/tests/')
+    ) {
       return false;
     }
-    
+
     const content = fs.readFileSync(filePath, 'utf-8');
-    
+
     // Skip files that import test utilities
-    if (content.includes('vitest') || 
-        content.includes('jest') || 
-        content.includes('@testing-library') ||
-        content.includes('describe(') ||
-        content.includes('it(') ||
-        content.includes('test(')) {
+    if (
+      content.includes('vitest') ||
+      content.includes('jest') ||
+      content.includes('@testing-library') ||
+      content.includes('describe(') ||
+      content.includes('it(') ||
+      content.includes('test(')
+    ) {
       return false;
     }
-    
+
     // Look for patterns that indicate a character export
     const patterns = [
       // Direct character exports with proper structure
       /export\s+const\s+character\s*:\s*Character\s*=/,
       /export\s+const\s+\w+Character\s*:\s*Character\s*=/,
       /export\s+default\s+.*character.*:\s*Character/,
-      
+
       // Character in a default export (e.g., project file)
       /export\s+default\s*{\s*[\s\S]*?character\s*:\s*{[\s\S]*?name\s*:/,
       /export\s+default\s*{\s*[\s\S]*?agents\s*:\s*\[[\s\S]*?character\s*:\s*{[\s\S]*?name\s*:/,
-      
+
       // Named character exports with type annotation
       /export\s+const\s+\w+\s*:\s*Character\s*=\s*{[\s\S]*?name\s*:/,
     ];
-    
+
     // Check if any pattern matches
-    const hasCharacterPattern = patterns.some(pattern => pattern.test(content));
-    
+    const hasCharacterPattern = patterns.some((pattern) => pattern.test(content));
+
     // Additional validation: if we found a pattern, verify it has required fields
     if (hasCharacterPattern) {
       // Check for required character fields
       const hasName = /name\s*:\s*["'`][\w\s]+["'`]/.test(content);
-      const hasBio = /bio\s*:\s*["'`][\s\S]+["'`]/.test(content) || 
-                     /bio\s*:\s*\[[\s\S]*?\]/.test(content);
-      
+      const hasBio =
+        /bio\s*:\s*["'`][\s\S]+["'`]/.test(content) || /bio\s*:\s*\[[\s\S]*?\]/.test(content);
+
       return hasName && hasBio;
     }
-    
+
     return false;
   } catch {
     return false;
@@ -242,13 +246,13 @@ export function hasCharacterExport(filePath: string): boolean {
 
 /**
  * Validate a character file (JSON or TypeScript)
- * 
+ *
  * @param filePath - Path to the file to validate
  * @returns True if it's a valid character file
  */
 export async function isValidCharacterFile(filePath: string): Promise<boolean> {
   const ext = path.extname(filePath).toLowerCase();
-  
+
   if (ext === '.json') {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
@@ -260,14 +264,14 @@ export async function isValidCharacterFile(filePath: string): Promise<boolean> {
   } else if (ext === '.ts') {
     return hasCharacterExport(filePath);
   }
-  
+
   return false;
 }
 
 /**
  * Load and validate character files from an array of paths
  * Combines path resolution and validation
- * 
+ *
  * @param characterPaths - Array of character paths to load
  * @returns Map of character names to their file paths
  */
@@ -275,7 +279,7 @@ export async function findCharactersFromPaths(
   characterPaths: string[]
 ): Promise<Map<string, string>> {
   const characterMap = new Map<string, string>();
-  
+
   for (const characterPath of characterPaths) {
     try {
       const resolvedPath = resolveCharacterPath(characterPath);
@@ -283,14 +287,14 @@ export async function findCharactersFromPaths(
         logger.error(`Character file not found: ${characterPath}`);
         continue;
       }
-      
+
       // Just validate and store the path, don't load the content
       const isValid = await isValidCharacterFile(resolvedPath);
       if (!isValid) {
         logger.error(`Invalid character file: ${characterPath}`);
         continue;
       }
-      
+
       // Use the filename as a temporary key
       const baseName = path.basename(resolvedPath, path.extname(resolvedPath));
       characterMap.set(baseName, resolvedPath);
@@ -298,14 +302,14 @@ export async function findCharactersFromPaths(
       logger.error(`Failed to process character from ${characterPath}: ${error}`);
     }
   }
-  
+
   return characterMap;
 }
 
 /**
  * Load a character file without logging
  * This is a simple wrapper around JSON parsing for cases where we don't want console output
- * 
+ *
  * @param filePath - Path to the character file
  * @returns Parsed character object
  * @throws Error if file cannot be read or parsed
@@ -317,7 +321,7 @@ export async function loadCharacterQuietly(filePath: string): Promise<any> {
 
 /**
  * Get the character name from a JSON file
- * 
+ *
  * @param filePath - Path to the JSON file
  * @returns The character name or null if not found
  */
@@ -334,14 +338,14 @@ export function getJsonCharacterName(filePath: string): string | null {
 /**
  * Get the character name from a TypeScript file
  * This is a basic implementation that looks for common patterns
- * 
+ *
  * @param filePath - Path to the TypeScript file
  * @returns The character name or null if not found
  */
 export function getTsCharacterName(filePath: string): string | null {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    
+
     // Look for name in various patterns
     const patterns = [
       // name: "CharacterName" or name: 'CharacterName'
@@ -351,26 +355,30 @@ export function getTsCharacterName(filePath: string): string | null {
       // "name": "CharacterName"
       /["']name["']\s*:\s*["']([^"']+)["']/,
     ];
-    
+
     // First, try to find a character object
     // Look for character: { ... name: "..." ... }
     const characterMatch = content.match(/character\s*:\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
     if (characterMatch?.[1]) {
       return characterMatch[1];
     }
-    
+
     // Look for agents array with character
-    const agentsMatch = content.match(/agents\s*:\s*\[[^\]]*character\s*:\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
+    const agentsMatch = content.match(
+      /agents\s*:\s*\[[^\]]*character\s*:\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/
+    );
     if (agentsMatch?.[1]) {
       return agentsMatch[1];
     }
-    
+
     // Look for const characterName: Character = { name: "..." }
-    const typedCharMatch = content.match(/const\s+\w+\s*:\s*Character\s*=\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/);
+    const typedCharMatch = content.match(
+      /const\s+\w+\s*:\s*Character\s*=\s*{[^}]*name\s*:\s*["'`]([^"'`]+)["'`]/
+    );
     if (typedCharMatch?.[1]) {
       return typedCharMatch[1];
     }
-    
+
     // Fallback to simple patterns
     for (const pattern of patterns) {
       const match = content.match(pattern);
@@ -378,7 +386,7 @@ export function getTsCharacterName(filePath: string): string | null {
         return match[1];
       }
     }
-    
+
     return null;
   } catch {
     return null;
@@ -387,26 +395,28 @@ export function getTsCharacterName(filePath: string): string | null {
 
 /**
  * Get character info including name from a file
- * 
+ *
  * @param filePath - Path to the character file
  * @returns Object with name and path, or null if not valid
  */
-export async function getCharacterInfo(filePath: string): Promise<{ name: string; path: string } | null> {
+export async function getCharacterInfo(
+  filePath: string
+): Promise<{ name: string; path: string } | null> {
   const isValid = await isValidCharacterFile(filePath);
   if (!isValid) return null;
-  
+
   let name: string | null = null;
-  
+
   if (filePath.endsWith('.json')) {
     name = getJsonCharacterName(filePath);
   } else if (filePath.endsWith('.ts') || filePath.endsWith('.js')) {
     name = getTsCharacterName(filePath);
   }
-  
+
   if (!name) {
     // Fallback to filename without extension
     name = path.basename(filePath, path.extname(filePath));
   }
-  
+
   return { name, path: filePath };
-} 
+}

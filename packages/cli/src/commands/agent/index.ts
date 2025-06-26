@@ -28,7 +28,10 @@ agent
   .command('get')
   .alias('g')
   .description('Get agent details')
-  .requiredOption('-c, --character <characters...>', 'agent character name(s), id(s), or index number(s) from list')
+  .requiredOption(
+    '-c, --character <characters...>',
+    'agent character name(s), id(s), or index number(s) from list'
+  )
   .option('-j, --json', 'display agent configuration as JSON in the console')
   .option('-o, --output [file]', 'save agent config to JSON (defaults to {name}.json)')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
@@ -39,7 +42,10 @@ agent
   .command('start')
   .alias('s')
   .description('Start agents with character profiles')
-  .option('-c, --character <characters...>', 'Character name(s), file path(s), or existing agent name(s)')
+  .option(
+    '-c, --character <characters...>',
+    'Character name(s), file path(s), or existing agent name(s)'
+  )
   .option('--remote-character <url>', 'URL to remote character JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
@@ -96,7 +102,10 @@ agent
   .command('stop')
   .alias('st')
   .description('Stop agents')
-  .option('-c, --character <characters...>', 'agent character name(s), id(s), or index number(s) from list')
+  .option(
+    '-c, --character <characters...>',
+    'agent character name(s), id(s), or index number(s) from list'
+  )
   .option('--all', 'stop all running agents')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
@@ -106,7 +115,10 @@ agent
   .command('remove')
   .alias('rm')
   .description('Remove agents')
-  .requiredOption('-c, --character <characters...>', 'agent character name(s), id(s), or index number(s) from list')
+  .requiredOption(
+    '-c, --character <characters...>',
+    'agent character name(s), id(s), or index number(s) from list'
+  )
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(removeAgent);
@@ -114,7 +126,10 @@ agent
 agent
   .command('set')
   .description('Update agent configuration')
-  .requiredOption('-c, --character <character>', 'agent character name, id, or index number from list')
+  .requiredOption(
+    '-c, --character <character>',
+    'agent character name, id, or index number from list'
+  )
   .option('--config <json>', 'agent configuration as JSON string')
   .option('-f, --file <path>', 'path to agent configuration JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
@@ -125,7 +140,10 @@ agent
   .command('clear-memories')
   .alias('clear')
   .description('Clear all memories for agents')
-  .requiredOption('-c, --character <characters...>', 'agent character name(s), id(s), or index number(s) from list')
+  .requiredOption(
+    '-c, --character <characters...>',
+    'agent character name(s), id(s), or index number(s) from list'
+  )
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(clearAgentMemories);

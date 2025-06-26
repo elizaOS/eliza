@@ -7,7 +7,11 @@ import { AddPluginOptions } from '../types';
 import { extractPackageName, findPluginPackageName } from '../utils/naming';
 import { promptForPluginEnvVars } from '../utils/env-vars';
 import { getDependenciesFromDirectory } from '../utils/directory';
-import { loadCharacterFile, updateCharacterFile, resolveCharacterPaths } from '../utils/character-updater';
+import {
+  loadCharacterFile,
+  updateCharacterFile,
+  resolveCharacterPaths,
+} from '../utils/character-updater';
 
 /**
  * Install a plugin from GitHub repository
@@ -123,14 +127,16 @@ export async function installPluginFromRegistry(
  */
 async function updateCharacterFiles(pluginName: string, opts: AddPluginOptions): Promise<void> {
   if (!opts.character) {
-    logger.error('No character files specified. Use --character to specify character files to update.');
+    logger.error(
+      'No character files specified. Use --character to specify character files to update.'
+    );
     process.exit(1);
   }
 
   const characterPaths = resolveCharacterPaths(opts.character);
-  
+
   let hasFailures = false;
-  
+
   for (const characterPath of characterPaths) {
     try {
       const characterFile = await loadCharacterFile(characterPath);
@@ -144,10 +150,12 @@ async function updateCharacterFiles(pluginName: string, opts: AddPluginOptions):
       // Continue with other character files instead of exiting
     }
   }
-  
+
   if (hasFailures) {
     logger.warn('Some character files could not be updated. Plugin installation was successful.');
-    logger.info(`To manually add the plugin, add "${pluginName}" to the "plugins" array in your character file(s).`);
+    logger.info(
+      `To manually add the plugin, add "${pluginName}" to the "plugins" array in your character file(s).`
+    );
   }
 }
 
@@ -205,7 +213,7 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
   if (installedPluginName) {
     logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
     logger.info(`Updating character files...`);
-    
+
     // Even if already installed, update character files
     await updateCharacterFiles(installedPluginName, opts);
     process.exit(0);

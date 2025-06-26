@@ -538,8 +538,7 @@ export class AgentRuntime implements IAgentRuntime {
         const normalizedResponseAction = normalizeAction(responseAction);
         // try exact first
         let action = this.actions.find(
-          (a: { name: string }) =>
-            normalizeAction(a.name) === normalizedResponseAction
+          (a: { name: string }) => normalizeAction(a.name) === normalizedResponseAction
         );
         if (!action) {
           // try relaxed
