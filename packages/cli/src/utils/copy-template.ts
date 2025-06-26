@@ -199,7 +199,15 @@ export async function copyTemplate(
       }
     }
 
-    // Write the updated package.json (only dependency versions changed)
+    // Update the package name to use the actual name provided by the user
+    const projectNameFromPath = path.basename(targetDir);
+
+    if (packageJson.name !== projectNameFromPath) {
+      packageJson.name = projectNameFromPath;
+      logger.info(`Setting package name to ${projectNameFromPath}`);
+    }
+
+    // Write the updated package.json (dependency versions and plugin name changed)
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
     logger.debug('Updated package.json with latest dependency versions');
   } catch (error) {
