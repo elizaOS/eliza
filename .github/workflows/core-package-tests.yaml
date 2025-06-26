@@ -12,7 +12,7 @@ on:
     paths:
       - 'packages/**'
       - '.github/workflows/core-package-tests.yaml'
-  pull_request:
+  pull_request_target:
     branches:
       - '*'
     paths:
@@ -30,7 +30,7 @@ jobs:
   # Validation job
   validate:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -87,7 +87,7 @@ jobs:
   # - SQL plugin: excluded in main package.json
   core-tests:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

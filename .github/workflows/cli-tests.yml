@@ -130,7 +130,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: npm install -g bats
 
-      - name: Run CLI TypeScript tests (macOS)
+      - name: Run CLI TypeScript tests (macOS optimized)
         if: matrix.os == 'macos-latest'
         timeout-minutes: 15
         run: cross-env NODE_OPTIONS="--max-old-space-size=8192" bun test tests/commands/ --timeout 240000
@@ -155,13 +155,3 @@ jobs:
         env:
           ELIZA_TEST_MODE: true
           NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Clean up test processes
-        if: always() && matrix.os != 'windows-latest'
-        run: |
-          echo "Cleaning up any remaining test processes..."
-          pkill -f "elizaos" || true
-          pkill -f "bun.*dist/index.js" || true
-          lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-          lsof -ti:3100 | xargs kill -9 2>/dev/null || true
-          echo "Cleanup complete"

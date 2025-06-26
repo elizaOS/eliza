@@ -28,10 +28,7 @@ agent
   .command('get')
   .alias('g')
   .description('Get agent details')
-  .requiredOption(
-    '-c, --character <characters...>',
-    'agent character name(s), id(s), or index number(s) from list'
-  )
+  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-j, --json', 'display agent configuration as JSON in the console')
   .option('-o, --output [file]', 'save agent config to JSON (defaults to {name}.json)')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
@@ -41,11 +38,9 @@ agent
 agent
   .command('start')
   .alias('s')
-  .description('Start agents with character profiles')
-  .option(
-    '-c, --character <characters...>',
-    'Character name(s), file path(s), or existing agent name(s)'
-  )
+  .description('Start an agent with a character profile')
+  .option('-n, --name <name>', 'Name of an existing agent to start')
+  .option('--path <path>', 'Path to local character JSON file')
   .option('--remote-character <url>', 'URL to remote character JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
@@ -53,25 +48,15 @@ agent
     'after',
     `
 Examples:
-  $ elizaos agent start -c "Agent Name"              Start an existing agent by name
-  $ elizaos agent start -c ./char.json               Start with a local character file
-  $ elizaos agent start -c eliza                     Start with auto-resolved character file
-  $ elizaos agent start -c bobby,billy               Start multiple agents
-  $ elizaos agent start -c "bobby, billy"            Start multiple agents (comma-separated)
+  $ elizaos agent start -n "Agent Name"     Start an existing agent by name
+  $ elizaos agent start --path ./char.json  Start with a local character file
   $ elizaos agent start --remote-character https://example.com/char.json
-
-Character file resolution:
-  When using --character, the CLI will:
-  1. Check if it's an absolute path or relative path that exists
-  2. Search common directories: current dir, ./characters/, ./agents/, ./src/characters/, ./src/agents/
-  3. If not found, recursively search the entire project directory for matching .json or .ts files
-  The .json extension is optional and will be added automatically if not provided.
 
 To create a new agent:
   $ elizaos create -t agent my-agent-name   Create a new agent using Eliza template
 
 Required configuration:
-  You must provide either --character or --remote-character
+  You must provide one of these options: --name, --path, or --remote-character
 `
   )
   .action(async (options) => {
@@ -101,11 +86,8 @@ Required configuration:
 agent
   .command('stop')
   .alias('st')
-  .description('Stop agents')
-  .option(
-    '-c, --character <characters...>',
-    'agent character name(s), id(s), or index number(s) from list'
-  )
+  .description('Stop an agent')
+  .option('-n, --name <name>', 'agent id, name, or index number from list')
   .option('--all', 'stop all running agents')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
@@ -114,11 +96,8 @@ agent
 agent
   .command('remove')
   .alias('rm')
-  .description('Remove agents')
-  .requiredOption(
-    '-c, --character <characters...>',
-    'agent character name(s), id(s), or index number(s) from list'
-  )
+  .description('Remove an agent')
+  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(removeAgent);
@@ -126,11 +105,8 @@ agent
 agent
   .command('set')
   .description('Update agent configuration')
-  .requiredOption(
-    '-c, --character <character>',
-    'agent character name, id, or index number from list'
-  )
-  .option('--config <json>', 'agent configuration as JSON string')
+  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
+  .option('-c, --config <json>', 'agent configuration as JSON string')
   .option('-f, --file <path>', 'path to agent configuration JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
@@ -139,11 +115,8 @@ agent
 agent
   .command('clear-memories')
   .alias('clear')
-  .description('Clear all memories for agents')
-  .requiredOption(
-    '-c, --character <characters...>',
-    'agent character name(s), id(s), or index number(s) from list'
-  )
+  .description('Clear all memories for an agent')
+  .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .action(clearAgentMemories);

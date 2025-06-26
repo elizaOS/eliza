@@ -7,11 +7,7 @@ import { AddPluginOptions } from '../types';
 import { extractPackageName, findPluginPackageName } from '../utils/naming';
 import { promptForPluginEnvVars } from '../utils/env-vars';
 import { getDependenciesFromDirectory } from '../utils/directory';
-import {
-  loadCharacterFile,
-  updateCharacterFile,
-  resolveCharacterPaths,
-} from '../utils/character-updater';
+// Character updater imports removed - reverting to project-scoped plugins
 
 /**
  * Install a plugin from GitHub repository
@@ -37,16 +33,10 @@ export async function installPluginFromGitHub(
   if (success) {
     logger.info(`Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`);
 
-    // Update character files
-    await updateCharacterFiles(pluginNameForPostInstall, opts);
-
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
       const packageName = extractPackageName(plugin);
-
-      // Brief pause to ensure installation logs are complete
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
+      console.log(`\n🔧 Checking environment variables for ${packageName}...`);
       try {
         await promptForPluginEnvVars(packageName, cwd);
       } catch (error) {
@@ -56,7 +46,7 @@ export async function installPluginFromGitHub(
         // Don't fail the installation if env prompting fails
       }
     } else {
-      console.log(`\nSkipping environment variable prompts due to --skip-env-prompt flag`);
+      console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
     process.exit(0);
@@ -95,9 +85,6 @@ export async function installPluginFromRegistry(
   if (registryInstallResult) {
     console.log(`Successfully installed ${targetName}`);
 
-    // Update character files
-    await updateCharacterFiles(targetName, opts);
-
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
       // Refresh dependencies after installation to find the actual installed package name
@@ -105,9 +92,7 @@ export async function installPluginFromRegistry(
       const actualPackageName =
         findPluginPackageName(targetName, updatedDependencies || {}) || targetName;
 
-      // Brief pause to ensure installation logs are complete
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
+      console.log(`\n🔧 Checking environment variables for ${actualPackageName}...`);
       try {
         await promptForPluginEnvVars(actualPackageName, cwd);
       } catch (error) {
@@ -117,7 +102,7 @@ export async function installPluginFromRegistry(
         // Don't fail the installation if env prompting fails
       }
     } else {
-      console.log(`\nSkipping environment variable prompts due to --skip-env-prompt flag`);
+      console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
     process.exit(0);
@@ -127,42 +112,7 @@ export async function installPluginFromRegistry(
   process.exit(1);
 }
 
-/**
- * Update character files with the new plugin
- */
-async function updateCharacterFiles(pluginName: string, opts: AddPluginOptions): Promise<void> {
-  if (!opts.character) {
-    logger.error(
-      'No character files specified. Use --character to specify character files to update.'
-    );
-    process.exit(1);
-  }
 
-  const characterPaths = resolveCharacterPaths(opts.character);
-
-  let hasFailures = false;
-
-  for (const characterPath of characterPaths) {
-    try {
-      const characterFile = await loadCharacterFile(characterPath);
-      await updateCharacterFile(characterFile, pluginName, 'add');
-      logger.info(`✅ Added plugin '${pluginName}' to character '${characterFile.character.name}'`);
-    } catch (error) {
-      logger.error(`Failed to update character file ${characterPath}:`, error);
-      logger.warn('Plugin was installed but character file update failed.');
-      logger.info('You can manually add the plugin to your character file.');
-      hasFailures = true;
-      // Continue with other character files instead of exiting
-    }
-  }
-
-  if (hasFailures) {
-    logger.warn('Some character files could not be updated. Plugin installation was successful.');
-    logger.info(
-      `To manually add the plugin, add "${pluginName}" to the "plugins" array in your character file(s).`
-    );
-  }
-}
 
 /**
  * Main plugin installation function
@@ -174,14 +124,6 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
     logger.info(
       'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")'
     );
-    process.exit(1);
-  }
-
-  // Validate character option
-  if (!opts.character || (Array.isArray(opts.character) && opts.character.length === 0)) {
-    logger.error('No character files specified.');
-    logger.info('Use --character to specify one or more character files to update.');
-    logger.info('Example: elizaos plugins add openrouter --character ./characters/my-agent.json');
     process.exit(1);
   }
 
@@ -217,10 +159,6 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
   const installedPluginName = findPluginPackageName(plugin, allDependencies);
   if (installedPluginName) {
     logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
-    logger.info(`Updating character files...`);
-
-    // Even if already installed, update character files
-    await updateCharacterFiles(installedPluginName, opts);
     process.exit(0);
   }
 

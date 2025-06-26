@@ -4,8 +4,7 @@ import { Command } from 'commander';
 // Import actions
 import { addPlugin } from './actions/install';
 import { removePlugin } from './actions/remove';
-import { listAvailablePlugins } from './actions/list';
-import { showInstalledPlugins } from './actions/installed-plugins';
+import { listAvailablePlugins, listInstalledPlugins } from './actions/list';
 import { upgradePlugin } from './actions/upgrade';
 import { generatePlugin } from './actions/generate';
 
@@ -13,7 +12,6 @@ import { generatePlugin } from './actions/generate';
 import {
   ListPluginsOptions,
   AddPluginOptions,
-  RemovePluginOptions,
   UpgradePluginOptions,
   GeneratePluginOptions,
 } from './types';
@@ -43,9 +41,8 @@ export const pluginsCommand = plugins
 plugins
   .command('add')
   .alias('install')
-  .description('Add a plugin to a character')
-  .argument('<plugin>', 'plugin name (e.g., "openrouter", "plugin-abc", "@elizaos/plugin-abc")')
-  .requiredOption('-c, --character <paths...>', 'Character file(s) to update')
+  .description('Add a plugin to the project')
+  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-s, --skip-env-prompt', 'Skip prompting for environment variables')
   .option('--skip-verification', 'Skip plugin import verification after installation')
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
@@ -61,10 +58,9 @@ plugins
 plugins
   .command('installed-plugins')
   .description('List plugins found in the project dependencies')
-  .option('-c, --character <paths...>', 'Show plugins for specific character file(s)')
-  .action(async (opts: { character?: string[] }) => {
+  .action(async () => {
     try {
-      await showInstalledPlugins(opts.character);
+      await listInstalledPlugins();
     } catch (error) {
       if (error instanceof SyntaxError) {
         console.error(`Error parsing package.json: ${error.message}`);
@@ -78,12 +74,11 @@ plugins
 plugins
   .command('remove')
   .aliases(['delete', 'del', 'rm'])
-  .description('Remove a plugin from a character')
-  .argument('<plugin>', 'plugin name (e.g., "openrouter", "plugin-abc", "@elizaos/plugin-abc")')
-  .requiredOption('-c, --character <paths...>', 'Character file(s) to update')
-  .action(async (plugin: string, opts: RemovePluginOptions) => {
+  .description('Remove a plugins from the project')
+  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
+  .action(async (plugin: string, _opts) => {
     try {
-      await removePlugin(plugin, opts);
+      await removePlugin(plugin);
     } catch (error) {
       handleError(error);
       process.exit(1);
@@ -117,7 +112,6 @@ plugins
 export * from './actions/install';
 export * from './actions/remove';
 export * from './actions/list';
-export * from './actions/installed-plugins';
 export * from './actions/upgrade';
 export * from './actions/generate';
 export * from './types';
