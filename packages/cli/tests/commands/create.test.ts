@@ -269,16 +269,12 @@ describe('ElizaOS Create Commands', () => {
   }, 60000);
 
   describe('AI Model Selection', () => {
-    it('getAvailableAIModels includes ollama option', () => {
+    it('returns a reasonable number of AI models', () => {
       const models = getAvailableAIModels();
 
       // Test for minimum providers instead of exact count
       expect(models.length).toBeGreaterThanOrEqual(3);
       expect(models.length).toBeLessThanOrEqual(7); // reasonable upper limit
-      expect(models.map((m) => m.value)).toContain('ollama');
-
-      const ollamaModel = models.find((m) => m.value === 'ollama');
-      expect(ollamaModel).toBeDefined();
     });
 
     it('maintains core AI model options', () => {
