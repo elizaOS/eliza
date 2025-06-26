@@ -80,7 +80,7 @@ const helloWorldAction: Action = {
       // Call back with the hello world message
       await callback(responseContent);
 
-      return responseContent;
+      return true;
     } catch (error) {
       logger.error('Error in HELLO_WORLD action:', error);
       throw error;
