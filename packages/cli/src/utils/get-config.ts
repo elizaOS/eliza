@@ -757,6 +757,9 @@ export async function storeOllamaConfig(
 export async function promptAndStoreOllamaEmbeddingConfig(
   envFilePath: string
 ): Promise<{ endpoint: string; embeddingModel: string } | null> {
+  // Check if we already have an Ollama endpoint configured
+  let existingEndpoint = process.env.OLLAMA_API_ENDPOINT;
+
   const config: ProviderPromptConfig = {
     name: 'Ollama Embeddings',
     icon: '🦙',
@@ -767,7 +770,7 @@ export async function promptAndStoreOllamaEmbeddingConfig(
         key: 'endpoint',
         message: 'Enter your Ollama API endpoint:',
         placeholder: 'http://localhost:11434',
-        initialValue: 'http://localhost:11434',
+        initialValue: existingEndpoint || 'http://localhost:11434',
         type: 'text',
         validate: (value) => {
           if (value.trim() === '') return 'Ollama endpoint cannot be empty';
@@ -796,18 +799,37 @@ export async function promptAndStoreOllamaEmbeddingConfig(
           content = await fs.readFile(envPath, 'utf8');
         }
 
-        // Remove existing Ollama embedding lines if present
+        // Only remove embedding-specific lines, preserve general Ollama config
         const lines = content
           .split('\n')
           .filter(
             (line) =>
-              !line.startsWith('OLLAMA_API_ENDPOINT=') &&
               !line.startsWith('OLLAMA_EMBEDDING_MODEL=') &&
               !line.startsWith('USE_OLLAMA_EMBEDDINGS=')
           );
 
-        // Add new Ollama embedding configuration
-        lines.push(`OLLAMA_API_ENDPOINT=${results.endpoint}`);
+        // Check if we need to update the endpoint
+        const endpointPattern = /^OLLAMA_API_ENDPOINT=(.*)$/m;
+        const existingEndpointMatch = content.match(endpointPattern);
+
+        if (existingEndpointMatch) {
+          // Endpoint exists, only update if different
+          if (results.endpoint !== existingEndpointMatch[1]) {
+            const updatedLines = lines.map((line) => {
+              if (line.startsWith('OLLAMA_API_ENDPOINT=')) {
+                return `OLLAMA_API_ENDPOINT=${results.endpoint}`;
+              }
+              return line;
+            });
+            lines.length = 0;
+            lines.push(...updatedLines);
+          }
+        } else {
+          // No existing endpoint, add it
+          lines.push(`OLLAMA_API_ENDPOINT=${results.endpoint}`);
+        }
+
+        // Add embedding-specific configuration
         lines.push(`OLLAMA_EMBEDDING_MODEL=${results.embeddingModel}`);
         lines.push('USE_OLLAMA_EMBEDDINGS=true');
 
