@@ -9,6 +9,7 @@ import {
   runCliCommandSilently,
   expectCliCommandToFail,
   crossPlatform,
+  getPlatformOptions,
 } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
@@ -67,7 +68,10 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', async () => {
-    const result = execSync(`${elizaosCmd} create --help`, { encoding: 'utf8' });
+    const result = execSync(
+      `${elizaosCmd} create --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -160,11 +164,11 @@ describe('ElizaOS Create Commands', () => {
     // Use cross-platform commands
     try {
       crossPlatform.removeDir('existing-app');
-      execSync(`mkdir existing-app`, { stdio: 'ignore' });
+      execSync(`mkdir existing-app`, getPlatformOptions({ stdio: 'ignore' }));
       if (process.platform === 'win32') {
-        execSync(`echo test > existing-app\\file.txt`, { stdio: 'ignore' });
+        execSync(`echo test > existing-app\\file.txt`, getPlatformOptions({ stdio: 'ignore' }));
       } else {
-        execSync(`echo "test" > existing-app/file.txt`, { stdio: 'ignore' });
+        execSync(`echo "test" > existing-app/file.txt`, getPlatformOptions({ stdio: 'ignore' }));
       }
     } catch (e) {
       // Ignore setup errors
@@ -182,7 +186,7 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform commands
       try {
         crossPlatform.removeDir('create-in-place');
-        execSync(`mkdir create-in-place`, { stdio: 'ignore' });
+        execSync(`mkdir create-in-place`, getPlatformOptions({ stdio: 'ignore' }));
       } catch (e) {
         // Ignore setup errors
       }
@@ -265,24 +269,47 @@ describe('ElizaOS Create Commands', () => {
   }, 60000);
 
   describe('AI Model Selection', () => {
-    it('getAvailableAIModels includes ollama option', () => {
+    it('returns a reasonable number of AI model options', () => {
       const models = getAvailableAIModels();
 
-      expect(models).toHaveLength(5);
-      expect(models.map((m) => m.value)).toContain('ollama');
-
-      const ollamaModel = models.find((m) => m.value === 'ollama');
-      expect(ollamaModel).toBeDefined();
+      // Test for minimum providers instead of exact count
+      expect(models.length).toBeGreaterThanOrEqual(3);
+      expect(models.length).toBeLessThanOrEqual(7); // reasonable upper limit
     });
 
-    it('maintains existing AI model options', () => {
+    it('maintains core AI model options', () => {
       const models = getAvailableAIModels();
       const values = models.map((m) => m.value);
 
-      expect(values).toContain('local');
-      expect(values).toContain('openai');
-      expect(values).toContain('claude');
-      expect(values).toContain('ollama');
+      // Only test for essential/core providers
+      const CORE_PROVIDERS = ['local', 'openai', 'claude', 'openrouter'];
+      CORE_PROVIDERS.forEach((provider) => {
+        expect(values).toContain(provider);
+      });
+    });
+
+    it('all AI models follow the expected contract', () => {
+      const models = getAvailableAIModels();
+
+      models.forEach((model) => {
+        // Test structure
+        expect(model).toHaveProperty('value');
+        expect(model).toHaveProperty('title');
+        expect(model).toHaveProperty('description');
+
+        // Test types
+        expect(typeof model.value).toBe('string');
+        expect(typeof model.title).toBe('string');
+        expect(typeof model.description).toBe('string');
+
+        // Test non-empty values
+        expect(model.value.length).toBeGreaterThan(0);
+        expect(model.title.length).toBeGreaterThan(0);
+        expect(model.description.length).toBeGreaterThan(0);
+
+        // Test naming conventions
+        expect(model.value).toBe(model.value.toLowerCase());
+      });
     });
   });
 

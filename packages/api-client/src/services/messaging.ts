@@ -14,6 +14,7 @@ import {
   MessageSearchParams,
   ServerCreateParams,
   ServerSyncParams,
+  ChannelUpdateParams,
 } from '../types/messaging';
 import { PaginationParams } from '../types/base';
 
@@ -43,7 +44,7 @@ export class MessagingService extends BaseApiClient {
    * Create a new channel
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/channels', params);
+    return this.post<MessageChannel>('/api/messaging/central-channels', params);
   }
 
   /**
@@ -98,14 +99,16 @@ export class MessagingService extends BaseApiClient {
    * Delete a channel
    */
   async deleteChannel(channelId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/channels/${channelId}`);
+    return this.delete<{ success: boolean }>(`/api/messaging/central-channels/${channelId}`);
   }
 
   /**
    * Clear channel history
    */
   async clearChannelHistory(channelId: UUID): Promise<{ deleted: number }> {
-    return this.post<{ deleted: number }>(`/api/messaging/channels/${channelId}/clear`);
+    return this.delete<{ deleted: number }>(
+      `/api/messaging/central-channels/${channelId}/messages`
+    );
   }
 
   /**
@@ -143,10 +146,12 @@ export class MessagingService extends BaseApiClient {
   }
 
   /**
-   * Delete a message
+   * Delete a message from a channel
    */
-  async deleteMessage(messageId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/messages/${messageId}`);
+  async deleteMessage(channelId: UUID, messageId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(
+      `/api/messaging/central-channels/${channelId}/messages/${messageId}`
+    );
   }
 
   /**
@@ -201,5 +206,93 @@ export class MessagingService extends BaseApiClient {
    */
   async deleteServer(serverId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(`/api/messaging/servers/${serverId}`);
+  }
+
+  /**
+   * Update a channel
+   */
+  async updateChannel(
+    channelId: UUID,
+    params: ChannelUpdateParams
+  ): Promise<{ success: boolean; data: MessageChannel }> {
+    return this.patch<{ success: boolean; data: MessageChannel }>(
+      `/api/messaging/central-channels/${channelId}`,
+      params
+    );
+  }
+
+  /**
+   * Generate channel title
+   */
+  async generateChannelTitle(channelId: UUID, agentId: UUID): Promise<{ title: string }> {
+    return this.post<{ title: string }>(
+      `/api/messaging/central-channels/${channelId}/generate-title`,
+      { agentId }
+    );
+  }
+
+  /**
+   * Add user to channel participants (implemented via updateChannel)
+   */
+  async addUserToChannel(
+    channelId: UUID,
+    userId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel }> {
+    // First get current participants
+    const channel = await this.getChannelDetails(channelId);
+    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+
+    // Add new user if not already present
+    if (!currentParticipants.includes(userId)) {
+      const updatedParticipants = [...currentParticipants, userId];
+      return this.updateChannel(channelId, {
+        participantCentralUserIds: updatedParticipants,
+      });
+    }
+
+    return { success: true, data: channel };
+  }
+
+  /**
+   * Add multiple users to channel participants (implemented via updateChannel)
+   */
+  async addUsersToChannel(
+    channelId: UUID,
+    userIds: UUID[]
+  ): Promise<{ success: boolean; data: MessageChannel }> {
+    // First get current participants
+    const channel = await this.getChannelDetails(channelId);
+    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+
+    // Add new users that aren't already present
+    const newParticipants = [...currentParticipants];
+    for (const userId of userIds) {
+      if (!newParticipants.includes(userId)) {
+        newParticipants.push(userId);
+      }
+    }
+
+    return this.updateChannel(channelId, {
+      participantCentralUserIds: newParticipants,
+    });
+  }
+
+  /**
+   * Remove user from channel participants (implemented via updateChannel)
+   */
+  async removeUserFromChannel(
+    channelId: UUID,
+    userId: UUID
+  ): Promise<{ success: boolean; data: MessageChannel }> {
+    // First get current participants
+    const channel = await this.getChannelDetails(channelId);
+    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+
+    // Remove user from participants
+    const updatedParticipants = currentParticipants.filter((id) => id !== userId);
+
+    return this.updateChannel(channelId, {
+      participantCentralUserIds: updatedParticipants,
+    });
   }
 }

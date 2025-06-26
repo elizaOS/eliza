@@ -476,6 +476,14 @@ export class MessageBusService extends Service {
         runtime: this.runtime,
         message: agentMemory,
         callback: callbackForCentralBus,
+        onComplete: async () => {
+          const room = await this.runtime.getRoom(agentRoomId);
+          const world = await this.runtime.getWorld(agentWorldId);
+
+          const channelId = room?.channelId as UUID;
+          const serverId = world?.serverId as UUID;
+          await this.notifyMessageComplete(channelId, serverId);
+        },
       });
     } catch (error) {
       logger.error(
@@ -578,7 +586,6 @@ export class MessageBusService extends Service {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Cannot map agent room/world to central IDs for response. AgentRoomID: ${agentRoomId}, AgentWorldID: ${agentWorldId}. Room or World object missing, or channelId/serverId not found on them.`
         );
-        await this.notifyMessageComplete(channelId, serverId);
         return;
       }
 
@@ -590,7 +597,6 @@ export class MessageBusService extends Service {
         logger.info(
           `[${this.runtime.character.name}] MessageBusService: Skipping response (reason: ${content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text'})`
         );
-        await this.notifyMessageComplete(channelId, serverId);
         return;
       }
 

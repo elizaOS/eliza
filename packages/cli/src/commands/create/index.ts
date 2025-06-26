@@ -5,7 +5,7 @@ import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
-import { selectDatabase, selectAIModel } from './utils';
+import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 
@@ -134,13 +134,26 @@ export const create = new Command('create')
           // TEE projects need database and AI model selection
           let database = 'pglite';
           let aiModel = 'local';
+          let embeddingModel: string | undefined;
 
           if (!isNonInteractive) {
             database = await selectDatabase();
             aiModel = await selectAIModel();
+
+            // Check if selected AI model needs embedding model fallback
+            if (aiModel === 'claude' || aiModel === 'openrouter') {
+              embeddingModel = await selectEmbeddingModel();
+            }
           }
 
-          await createTEEProject(projectName!, targetDir, database, aiModel, isNonInteractive);
+          await createTEEProject(
+            projectName!,
+            targetDir,
+            database,
+            aiModel,
+            embeddingModel,
+            isNonInteractive
+          );
           break;
         }
 
@@ -149,13 +162,26 @@ export const create = new Command('create')
           // Regular projects need database and AI model selection
           let database = 'pglite';
           let aiModel = 'local';
+          let embeddingModel: string | undefined;
 
           if (!isNonInteractive) {
             database = await selectDatabase();
             aiModel = await selectAIModel();
+
+            // Check if selected AI model needs embedding model fallback
+            if (aiModel === 'claude' || aiModel === 'openrouter') {
+              embeddingModel = await selectEmbeddingModel();
+            }
           }
 
-          await createProject(projectName!, targetDir, database, aiModel, isNonInteractive);
+          await createProject(
+            projectName!,
+            targetDir,
+            database,
+            aiModel,
+            embeddingModel,
+            isNonInteractive
+          );
           break;
         }
       }

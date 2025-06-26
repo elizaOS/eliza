@@ -267,8 +267,16 @@ export const formatMessages = ({
       const attachmentString =
         attachments && attachments.length > 0
           ? ` (Attachments: ${attachments
-              .map((media) => `[${media.id} - ${media.title} (${media.url})]`)
-              .join(', ')})`
+              .map((media) => {
+                const lines = [`[${media.id} - ${media.title} (${media.url})]`];
+                if (media.text) lines.push(`Text: ${media.text}`);
+                if (media.description) lines.push(`Description: ${media.description}`);
+                return lines.join('\n');
+              })
+              .join(
+                // Use comma separator only if all attachments are single-line (no text/description)
+                attachments.every((media) => !media.text && !media.description) ? ', ' : '\n'
+              )})`
           : null;
 
       const messageTime = new Date(message.createdAt);
@@ -673,3 +681,8 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
   }
   return undefined;
 };
+
+export function getLocalServerUrl(path: string): string {
+  const port = process.env.SERVER_PORT || '3000';
+  return `http://localhost:${port}${path}`;
+}

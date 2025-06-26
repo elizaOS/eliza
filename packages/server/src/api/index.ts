@@ -392,10 +392,13 @@ export function createApiRouter(
   // Additional security middleware
   router.use(securityMiddleware());
 
-  // Content type validation for write operations
+  // Mount media router at /media FIRST - handles file uploads without middleware interference
+  router.use('/media', mediaRouter());
+
+  // Content type validation for write operations (applied after media routes)
   router.use(validateContentTypeMiddleware());
 
-  // Body parsing middleware
+  // Body parsing middleware - applied to all routes EXCEPT media uploads
   router.use(
     bodyParser.json({
       limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
@@ -419,9 +422,6 @@ export function createApiRouter(
 
   // Mount messaging router at /messaging - handles messages, channels, and chat functionality
   router.use('/messaging', messagingRouter(agents, serverInstance));
-
-  // Mount media router at /media - handles file uploads, downloads, and media management
-  router.use('/media', mediaRouter());
 
   // Mount memory router at /memory - handles agent memory storage and retrieval
   router.use('/memory', memoryRouter(agents, serverInstance));

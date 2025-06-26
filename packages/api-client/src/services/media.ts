@@ -1,11 +1,6 @@
 import { UUID } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
-import {
-  MediaUploadParams,
-  MediaUploadResponse,
-  ChannelUploadParams,
-  ChannelUploadResponse,
-} from '../types/media';
+import { MediaUploadParams, MediaUploadResponse, ChannelUploadResponse } from '../types/media';
 
 export class MediaService extends BaseApiClient {
   /**
@@ -19,30 +14,22 @@ export class MediaService extends BaseApiClient {
     if (params.contentType) formData.append('contentType', params.contentType);
     if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
 
-    return this.request<MediaUploadResponse>('POST', `/api/media/${agentId}/upload-media`, {
+    return this.request<MediaUploadResponse>('POST', `/api/media/agents/${agentId}/upload-media`, {
       body: formData,
     });
   }
 
   /**
-   * Upload files to a channel
+   * Upload file to a channel
    */
-  async uploadChannelFiles(
-    channelId: UUID,
-    params: ChannelUploadParams
-  ): Promise<ChannelUploadResponse> {
+  async uploadChannelMedia(channelId: UUID, file: File): Promise<ChannelUploadResponse> {
     const formData = new FormData();
 
-    params.files.forEach((file, index) => {
-      formData.append(`files[${index}]`, file);
-    });
-
-    if (params.messageId) formData.append('messageId', params.messageId);
-    if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
+    formData.append('file', file);
 
     return this.request<ChannelUploadResponse>(
       'POST',
-      `/api/media/central-channels/${channelId}/upload`,
+      `/api/messaging/central-channels/${channelId}/upload-media`,
       {
         body: formData,
       }

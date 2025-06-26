@@ -95,4 +95,69 @@ export class MemoryService extends BaseApiClient {
   async clearWorldMemories(serverId: UUID): Promise<{ deleted: number }> {
     return this.delete<{ deleted: number }>(`/api/memory/groups/${serverId}/memories`);
   }
+
+  /**
+   * Delete a specific memory
+   */
+  async deleteMemory(agentId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/memories/${memoryId}`);
+  }
+
+  /**
+   * Get agent internal memories
+   */
+  async getAgentInternalMemories(
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID,
+    includeEmbedding?: boolean
+  ): Promise<{ success: boolean; data: any[] }> {
+    return this.get<{ success: boolean; data: any[] }>(
+      `/api/memory/${agentId}/rooms/${agentPerspectiveRoomId}/memories`,
+      { params: { includeEmbedding } }
+    );
+  }
+
+  /**
+   * Delete agent internal memory
+   */
+  async deleteAgentInternalMemory(agentId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/${agentId}/memories/${memoryId}`);
+  }
+
+  /**
+   * Delete all agent internal memories
+   */
+  async deleteAllAgentInternalMemories(
+    agentId: UUID,
+    agentPerspectiveRoomId: UUID
+  ): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(
+      `/api/memory/${agentId}/memories/all/${agentPerspectiveRoomId}`
+    );
+  }
+
+  /**
+   * Update agent internal memory
+   */
+  async updateAgentInternalMemory(agentId: UUID, memoryId: UUID, memoryData: any): Promise<any> {
+    return this.patch<any>(`/api/memory/${agentId}/memories/${memoryId}`, memoryData);
+  }
+
+  /**
+   * Delete group memory (implemented via messaging channel message deletion)
+   */
+  async deleteGroupMemory(serverId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(
+      `/api/messaging/central-channels/${serverId}/messages/${memoryId}`
+    );
+  }
+
+  /**
+   * Clear group chat (implemented via messaging channel history clearing)
+   */
+  async clearGroupChat(serverId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(
+      `/api/messaging/central-channels/${serverId}/messages`
+    );
+  }
 }

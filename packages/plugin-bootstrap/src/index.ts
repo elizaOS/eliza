@@ -30,6 +30,7 @@ import {
   truncateToCompleteSentence,
   type UUID,
   type WorldPayload,
+  getLocalServerUrl,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -42,6 +43,8 @@ import { TaskService } from './services/task.ts';
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
 export * from './providers/index.ts';
+
+import fetch from 'node-fetch';
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -159,14 +162,28 @@ export async function processAttachments(
       // Start with the original attachment
       const processedAttachment: Media = { ...attachment };
 
+      const isRemote = /^(http|https):\/\//.test(attachment.url);
+      const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
         logger.debug(`[Bootstrap] Generating description for image: ${attachment.url}`);
 
+        let imageUrl = url;
+
+        if (!isRemote) {
+          // Only convert local/internal media to base64
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+
+          const buffer = await res.buffer();
+          const contentType = res.headers.get('content-type') || 'application/octet-stream';
+          imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+        }
+
         try {
           const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
             prompt: imageDescriptionTemplate,
-            imageUrl: attachment.url,
+            imageUrl,
           });
 
           if (typeof response === 'string') {
@@ -199,6 +216,26 @@ export async function processAttachments(
         } catch (error) {
           logger.error(`[Bootstrap] Error generating image description:`, error);
           // Continue processing without description
+        }
+      } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+
+        const contentType = res.headers.get('content-type') || '';
+        const isPlainText = contentType.startsWith('text/plain');
+
+        if (isPlainText) {
+          logger.debug(`[Bootstrap] Processing plain text document: ${attachment.url}`);
+
+          const textContent = await res.text();
+          processedAttachment.text = textContent;
+          processedAttachment.title = processedAttachment.title || 'Text File';
+
+          logger.debug(
+            `[Bootstrap] Extracted text content (first 100 chars): ${processedAttachment.text?.substring(0, 100)}...`
+          );
+        } else {
+          logger.warn(`[Bootstrap] Skipping non-plain-text document: ${contentType}`);
         }
       }
 
@@ -382,6 +419,12 @@ const messageReceivedHandler = async ({
             message.content.attachments,
             runtime
           );
+          if (message.id) {
+            await runtime.updateMemory({
+              id: message.id,
+              content: message.content,
+            });
+          }
         }
 
         let shouldRespond = true;

@@ -8,22 +8,17 @@ export interface MediaUploadParams {
 }
 
 export interface MediaUploadResponse {
-  id: UUID;
-  filename: string;
   url: string;
+  type: string;
+  filename: string;
+  originalName: string;
   size: number;
-  contentType: string;
-  uploadedAt: Date;
-  metadata?: Record<string, any>;
-}
-
-export interface ChannelUploadParams {
-  files: Array<File | Blob>;
-  messageId?: UUID;
-  metadata?: Record<string, any>;
 }
 
 export interface ChannelUploadResponse {
-  uploads: MediaUploadResponse[];
-  totalSize: number;
+  url: string;
+  type: string;
+  filename: string;
+  originalName: string;
+  size: number;
 }

@@ -29,7 +29,6 @@ export default function MultiSelectCombobox({
 
   // Apply initialSelected when it changes - improved to handle both initial load and updates
   useEffect(() => {
-    console.log('[MultiSelectCombobox] initialSelected changed:', initialSelected);
     setSelected(initialSelected);
   }, [initialSelected]);
 

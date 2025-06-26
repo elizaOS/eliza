@@ -67,10 +67,12 @@ async function tryImporting(
 ): Promise<any | null> {
   try {
     const module = await import(importPath);
-    logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
+    logger.debug(`[DEBUG] ✅ Import succeeded: ${strategy} (${importPath})`);
     return module;
   } catch (error) {
-    logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
+    logger.debug(
+      `[DEBUG] ❌ Import failed: ${strategy} (${importPath}) - ${error.message ?? 'Unknown error'}`
+    );
     return null;
   }
 }
@@ -220,8 +222,14 @@ export async function loadPluginModule(repository: string): Promise<any | null> 
   );
 
   for (const strategy of strategies) {
+    logger.debug(`[DEBUG] Trying strategy: ${strategy.name} for '${repository}'`);
     const result = await strategy.tryImport(repository);
-    if (result) return result;
+    if (result) {
+      logger.success(`[DEBUG] ✅ Strategy '${strategy.name}' succeeded for '${repository}'`);
+      return result;
+    } else {
+      logger.debug(`[DEBUG] ❌ Strategy '${strategy.name}' failed for '${repository}'`);
+    }
   }
 
   logger.warn(`Failed to load plugin module '${repository}' using all relevant strategies.`);

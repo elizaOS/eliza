@@ -93,8 +93,14 @@ export default function PluginsPanel({
 
   // Check if the selected voice model requires specific plugins
   const voiceModelPluginInfo = useMemo(() => {
-    const voiceModelValue = characterValue?.settings?.voice?.model;
-    if (!voiceModelValue) return null;
+    const settings = characterValue?.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+
+    const voice = settings.voice;
+    if (!voice || typeof voice !== 'object' || Array.isArray(voice)) return null;
+
+    const voiceModelValue = voice.model;
+    if (!voiceModelValue || typeof voiceModelValue !== 'string') return null;
 
     const voiceModel = getVoiceModelByValue(voiceModelValue);
     if (!voiceModel) return null;
@@ -108,7 +114,7 @@ export default function PluginsPanel({
       requiredPlugin,
       isPluginEnabled,
     };
-  }, [characterValue?.settings?.voice?.model, safeCharacterPlugins]);
+  }, [characterValue?.settings, safeCharacterPlugins]);
 
   // Get all voice-related plugins that are currently enabled
   // const enabledVoicePlugins = useMemo(() => {

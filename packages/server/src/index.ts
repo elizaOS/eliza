@@ -5,10 +5,8 @@ import {
   logger,
   type UUID,
 } from '@elizaos/core';
-import bodyParser from 'body-parser';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
-import fileUpload from 'express-fileupload';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
@@ -402,27 +400,13 @@ export class AgentServer {
         })
       ); // Enable CORS
       this.app.use(
-        bodyParser.json({
+        express.json({
           limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
         })
       ); // Parse JSON bodies
 
-      // Global file upload configuration with security constraints
-      // Note: Individual routes use more specific configurations
-      this.app.use(
-        fileUpload({
-          useTempFiles: true,
-          tempFileDir: '/tmp/',
-          createParentPath: true,
-          preserveExtension: true,
-          safeFileNames: true,
-          limits: {
-            fileSize: 50 * 1024 * 1024, // 50MB default limit
-          },
-          abortOnLimit: true,
-          uploadTimeout: 60000, // 60 seconds
-        })
-      );
+      // File uploads are now handled by individual routes using multer
+      // No global file upload middleware needed
 
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
