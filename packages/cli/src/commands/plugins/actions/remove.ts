@@ -37,7 +37,7 @@ export async function removePlugin(plugin: string): Promise<void> {
 
   if (!packageNameToRemove) {
     logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
-    console.info('\nCheck installed plugins using: elizaos project installed-plugins');
+    console.info('\nCheck installed plugins using: elizaos plugins installed-plugins');
     process.exit(0);
   }
 
