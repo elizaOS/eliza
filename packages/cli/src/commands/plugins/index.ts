@@ -74,7 +74,7 @@ plugins
 plugins
   .command('remove')
   .aliases(['delete', 'del', 'rm'])
-  .description('Remove a plugins from the project')
+  .description('Remove a plugin from the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .action(async (plugin: string, _opts) => {
     try {
