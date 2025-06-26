@@ -1,10 +1,10 @@
-import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { messageServerTable } from './messageServer';
 
 export const channelTable = pgTable('channels', {
   id: text('id').primaryKey(), // UUID stored as text
-  messageServerId: text('server_id')
+  messageServerId: uuid('server_id')
     .notNull()
     .references(() => messageServerTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
