@@ -750,6 +750,90 @@ export async function storeOllamaConfig(
 }
 
 /**
+ * Prompts the user for Ollama embedding model selection
+ * @param envFilePath Path to the .env file
+ * @returns The configured Ollama embedding settings or null if user cancels
+ */
+export async function promptAndStoreOllamaEmbeddingConfig(
+  envFilePath: string
+): Promise<{ endpoint: string; embeddingModel: string } | null> {
+  const config: ProviderPromptConfig = {
+    name: 'Ollama Embeddings',
+    icon: '🦙',
+    noteText:
+      'Select an embedding model for Ollama.\nPopular options: nomic-embed-text, mxbai-embed-large\nMake sure the model is pulled: ollama pull <model-name>',
+    inputs: [
+      {
+        key: 'endpoint',
+        message: 'Enter your Ollama API endpoint:',
+        placeholder: 'http://localhost:11434',
+        initialValue: 'http://localhost:11434',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Ollama endpoint cannot be empty';
+          if (!isValidOllamaEndpoint(value))
+            return 'Invalid URL format (http:// or https:// required)';
+          return undefined;
+        },
+      },
+      {
+        key: 'embeddingModel',
+        message: 'Enter your Ollama embedding model:',
+        placeholder: 'nomic-embed-text',
+        initialValue: 'nomic-embed-text',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Embedding model name cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      // Store Ollama embedding configuration
+      try {
+        let content = '';
+        if (existsSync(envPath)) {
+          content = await fs.readFile(envPath, 'utf8');
+        }
+
+        // Remove existing Ollama embedding lines if present
+        const lines = content
+          .split('\n')
+          .filter(
+            (line) =>
+              !line.startsWith('OLLAMA_API_ENDPOINT=') &&
+              !line.startsWith('OLLAMA_EMBEDDING_MODEL=') &&
+              !line.startsWith('USE_OLLAMA_EMBEDDINGS=')
+          );
+
+        // Add new Ollama embedding configuration
+        lines.push(`OLLAMA_API_ENDPOINT=${results.endpoint}`);
+        lines.push(`OLLAMA_EMBEDDING_MODEL=${results.embeddingModel}`);
+        lines.push('USE_OLLAMA_EMBEDDINGS=true');
+
+        await fs.writeFile(envPath, lines.join('\n'), 'utf8');
+
+        // Update process.env
+        process.env.OLLAMA_API_ENDPOINT = results.endpoint;
+        process.env.OLLAMA_EMBEDDING_MODEL = results.embeddingModel;
+        process.env.USE_OLLAMA_EMBEDDINGS = 'true';
+
+        logger.success('Ollama embedding configuration saved');
+      } catch (error) {
+        logger.error('Error saving Ollama embedding configuration:', error);
+        throw error;
+      }
+    },
+    successMessage: 'Ollama embedding model configured',
+  };
+
+  return await promptAndStoreProviderConfig<{ endpoint: string; embeddingModel: string }>(
+    config,
+    envFilePath
+  );
+}
+
+/**
  * Prompts the user for Ollama configuration, validates it, and stores it
  * @param envFilePath Path to the .env file
  * @returns The configured Ollama settings or null if user cancels
