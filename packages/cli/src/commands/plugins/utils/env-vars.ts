@@ -259,6 +259,7 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
   const spinner = clack.spinner();
   let configuredCount = existingConfigured.length;
   let newlyConfigured = 0;
+  const sessionConfigured = new Set<string>(); // Track variables configured in this session
 
   // Configure each missing variable
   for (let i = 0; i < missingVars.length; i++) {
@@ -283,6 +284,7 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
         spinner.stop(`${varName} configured successfully`);
         newlyConfigured++;
         configuredCount++;
+        sessionConfigured.add(varName); // Track this variable as configured
       } else {
         const isRequired = config.required !== false;
         if (isRequired) {
@@ -303,9 +305,7 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
   const requiredConfigured = Object.entries(envRequirements)
     .filter(([, config]) => config.required !== false)
     .filter(
-      ([name]) =>
-        existingVars[name] ||
-        missingVars.some(([varName]) => varName === name && existingVars[name])
+      ([name]) => (existingVars[name] && existingVars[name] !== '') || sessionConfigured.has(name)
     ).length;
 
   const totalRequired = Object.entries(envRequirements).filter(
