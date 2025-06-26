@@ -35,6 +35,8 @@ export async function installPluginFromGitHub(
 
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
+      // Brief pause to ensure installation logs are complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
       const packageName = extractPackageName(plugin);
       console.log(`\n🔧 Checking environment variables for ${packageName}...`);
       try {
@@ -87,6 +89,8 @@ export async function installPluginFromRegistry(
 
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
+      // Brief pause to ensure installation logs are complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
       // Refresh dependencies after installation to find the actual installed package name
       const updatedDependencies = getDependenciesFromDirectory(cwd);
       const actualPackageName =
