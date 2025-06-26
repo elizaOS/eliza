@@ -1,6 +1,6 @@
 import { logger, type IAgentRuntime, type Project, type ProjectAgent } from '@elizaos/core';
-import mrTeePlugin from './plugin';
-import { mrTeeCharacter } from './character';
+import mrTeePlugin from './plugin.ts';
+import { mrTeeCharacter } from './character.ts';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info(`Initializing character: ${mrTeeCharacter.name}`);

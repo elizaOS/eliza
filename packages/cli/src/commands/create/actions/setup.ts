@@ -6,6 +6,7 @@ import {
   promptAndStoreOpenAIKey,
   promptAndStoreAnthropicKey,
   promptAndStoreOllamaConfig,
+  promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
   runBunCommand,
@@ -262,27 +263,14 @@ export async function setupEmbeddingModelConfig(
             await fs.writeFile(envFilePath, content, 'utf8');
             console.info('[√] Ollama embeddings placeholder configuration added to .env file');
           } else {
-            // Interactive mode - prompt for Ollama configuration
-            console.info('\n[!] Ollama configuration is required for embeddings');
-            await promptAndStoreOllamaConfig(envFilePath);
-            // Add embedding-specific config
-            content = await fs.readFile(envFilePath, 'utf8');
-            if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
-              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
-            }
-            if (!content.includes('USE_OLLAMA_EMBEDDINGS')) {
-              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
-            }
-            await fs.writeFile(envFilePath, content, 'utf8');
+            // Interactive mode - prompt for Ollama embedding model configuration
+            console.info('\n[!] Ollama embedding model configuration is required');
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         } else {
-          // Check if we need to add embedding-specific config
-          if (
-            !content.includes('OLLAMA_EMBEDDING_MODEL') ||
-            !content.includes('USE_OLLAMA_EMBEDDINGS')
-          ) {
-            // Re-read to ensure we have latest content
-            content = await fs.readFile(envFilePath, 'utf8');
+          // Ollama endpoint exists, but we need to prompt for embedding model specifically
+          if (isNonInteractive) {
+            // In non-interactive mode, just add embedding model if not present
             if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
               content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
             }
@@ -292,7 +280,9 @@ export async function setupEmbeddingModelConfig(
             await fs.writeFile(envFilePath, content, 'utf8');
             console.info('[√] Ollama embedding model configuration added to .env file');
           } else {
-            console.info('[√] Ollama configuration already set - will use for embeddings');
+            // Interactive mode - always prompt for embedding model selection
+            console.info('\n[!] Please select an Ollama embedding model');
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         }
         break;
