@@ -826,8 +826,10 @@ export function useClearGroupChat() {
  * @returns {QueryResult} The result of the query containing agent panels.
  */
 export type AgentPanel = {
+  id: string;
   name: string;
-  path: string;
+  url: string;
+  type: string;
 };
 
 export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
