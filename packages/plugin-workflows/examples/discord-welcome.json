@@ -1,0 +1,51 @@
+{
+  "name": "discord-welcome-workflow",
+  "description": "Automatically welcome new Discord members",
+  "version": "1.0.0",
+  "enabled": true,
+  "triggers": [
+    {
+      "type": "event",
+      "event": "ENTITY_JOINED",
+      "conditions": [
+        {
+          "field": "$.source",
+          "operator": "equals",
+          "value": "discord"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "send-welcome",
+      "type": "action",
+      "action": {
+        "id": "welcome-message",
+        "name": "SEND_MESSAGE",
+        "inputs": {
+          "text": "Welcome {{trigger.metadata.username}} to our Discord! 🎉 We're glad to have you here.",
+          "roomId": "{{trigger.roomId}}"
+        }
+      },
+      "next": "send-dm"
+    },
+    {
+      "id": "send-dm",
+      "type": "action",
+      "action": {
+        "id": "dm-guide",
+        "name": "SEND_MESSAGE",
+        "inputs": {
+          "text": "Hi {{trigger.metadata.username}}! I've sent you a DM with helpful information to get you started.",
+          "entityId": "{{trigger.entityId}}",
+          "isDirect": true
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "welcomed": true,
+    "messagesCount": 2
+  }
+} 

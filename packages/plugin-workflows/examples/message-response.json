@@ -1,0 +1,77 @@
+{
+  "name": "message-response-workflow",
+  "description": "Respond to specific message patterns with deterministic actions",
+  "version": "1.0.0",
+  "enabled": true,
+  "triggers": [
+    {
+      "type": "event",
+      "event": "MESSAGE_RECEIVED",
+      "conditions": [
+        {
+          "field": "$.content.text",
+          "operator": "matches",
+          "regex": "^/help.*"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "check-topic",
+      "type": "condition",
+      "condition": {
+        "if": {
+          "field": "$.content.text",
+          "operator": "contains",
+          "value": "workflow"
+        },
+        "then": "send-workflow-help",
+        "else": "send-general-help"
+      }
+    },
+    {
+      "id": "send-workflow-help",
+      "type": "action",
+      "action": {
+        "id": "workflow-help",
+        "name": "SEND_MESSAGE",
+        "inputs": {
+          "text": "**Workflow Help**\n\n• `/help workflow` - Show this help\n• `list workflows` - List all workflows\n• `execute workflow <id>` - Run a workflow manually\n• `enable/disable workflow <id>` - Toggle workflow state",
+          "roomId": "{{trigger.roomId}}"
+        }
+      },
+      "next": "log-help"
+    },
+    {
+      "id": "send-general-help",
+      "type": "action", 
+      "action": {
+        "id": "general-help",
+        "name": "SEND_MESSAGE",
+        "inputs": {
+          "text": "**General Help**\n\nI'm here to help! Available topics:\n• `/help workflow` - Workflow commands\n• `/help actions` - Available actions\n• `/help settings` - Configuration help",
+          "roomId": "{{trigger.roomId}}"
+        }
+      },
+      "next": "log-help"
+    },
+    {
+      "id": "log-help",
+      "type": "action",
+      "action": {
+        "id": "log",
+        "name": "LOG_EVENT",
+        "inputs": {
+          "event": "help_requested",
+          "user": "{{trigger.entityId}}",
+          "topic": "{{steps.check-topic.branch}}"
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "helpProvided": true,
+    "topic": "{{steps.check-topic.branch}}"
+  }
+} 

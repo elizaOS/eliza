@@ -1,0 +1,47 @@
+{
+  "name": "@elizaos/plugin-workflows",
+  "version": "0.1.0",
+  "description": "Deterministic workflow execution system for ElizaOS",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "uuid": "^9.0.0",
+    "jsonpath-plus": "^7.2.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^0.34.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos.git",
+    "directory": "packages/plugin-workflows"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "workflows",
+    "automation",
+    "deterministic"
+  ],
+  "license": "MIT"
+} 
