@@ -280,43 +280,44 @@ describe('AgentsService', () => {
 
   describe('getAgentPanels', () => {
     it('should get agent panels successfully', async () => {
-      const mockResponse = {
-        panels: [
-          { id: 'panel-1', name: 'Panel 1', url: '/panel1', type: 'dashboard' },
-          { id: 'panel-2', name: 'Panel 2', url: '/panel2', type: 'logs' },
-        ],
-      };
-      (agentsService as any).get.mockResolvedValue(mockResponse);
+      const mockApiResponse = [
+        { name: 'Panel 1', path: '/panel1' },
+        { name: 'Panel 2', path: '/panel2' },
+      ];
+      (agentsService as any).get.mockResolvedValue(mockApiResponse);
 
       const result = await agentsService.getAgentPanels(TEST_AGENT_ID);
 
       expect((agentsService as any).get).toHaveBeenCalledWith(
         `/api/agents/${TEST_AGENT_ID}/panels`
       );
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        panels: [
+          { id: 'Panel 1-0', name: 'Panel 1', url: '/panel1', type: 'plugin' },
+          { id: 'Panel 2-1', name: 'Panel 2', url: '/panel2', type: 'plugin' },
+        ],
+      });
     });
   });
 
   describe('getAgentLogs', () => {
     it('should get agent logs successfully', async () => {
-      const mockLogs = {
-        logs: [
-          {
-            id: TEST_LOG_ID,
-            agentId: TEST_AGENT_ID,
-            timestamp: new Date('2024-01-01T00:00:00Z'),
-            level: 'info' as const,
-            message: 'Agent started',
-          },
-          {
-            id: '550e8400-e29b-41d4-a716-446655440006' as UUID,
-            agentId: TEST_AGENT_ID,
-            timestamp: new Date('2024-01-01T00:01:00Z'),
-            level: 'debug' as const,
-            message: 'Processing message',
-          },
-        ],
-      };
+      const mockLogs = [
+        {
+          id: TEST_LOG_ID,
+          agentId: TEST_AGENT_ID,
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+          level: 'info' as const,
+          message: 'Agent started',
+        },
+        {
+          id: '550e8400-e29b-41d4-a716-446655440006' as UUID,
+          agentId: TEST_AGENT_ID,
+          timestamp: new Date('2024-01-01T00:01:00Z'),
+          level: 'debug' as const,
+          message: 'Processing message',
+        },
+      ];
       (agentsService as any).get.mockResolvedValue(mockLogs);
 
       const result = await agentsService.getAgentLogs(TEST_AGENT_ID);
@@ -329,7 +330,7 @@ describe('AgentsService', () => {
 
     it('should handle log parameters', async () => {
       const params = { limit: 100, level: 'error' as const };
-      (agentsService as any).get.mockResolvedValue({ logs: [] });
+      (agentsService as any).get.mockResolvedValue([]);
 
       await agentsService.getAgentLogs(TEST_AGENT_ID, params);
 

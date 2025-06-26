@@ -90,7 +90,18 @@ export class AgentsService extends BaseApiClient {
    * Get agent's plugin panels
    */
   async getAgentPanels(agentId: UUID): Promise<{ panels: AgentPanel[] }> {
-    return this.get<{ panels: AgentPanel[] }>(`/api/agents/${agentId}/panels`);
+    const response = await this.get<Array<{ name: string; path: string }>>(
+      `/api/agents/${agentId}/panels`
+    );
+
+    const panels: AgentPanel[] = (Array.isArray(response) ? response : []).map((panel, index) => ({
+      id: `${panel.name}-${index}`, // Generate an ID since server doesn't send one
+      name: panel.name,
+      url: panel.path,
+      type: 'plugin',
+    }));
+
+    return { panels };
   }
 
   /**

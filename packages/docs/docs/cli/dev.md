@@ -111,6 +111,22 @@ The dev command provides comprehensive development capabilities:
 4. Sets up file watching for source files
 5. Rebuilds and restarts when files change
 
+### Plugin Loading in Development
+
+Plugins are loaded from character files during development:
+
+```json
+{
+  "name": "DevAssistant",
+  "plugins": [
+    "@elizaos/plugin-openai",
+    "./path/to/local/plugin"  // Local plugins supported
+  ]
+}
+```
+
+The runtime automatically installs missing plugins and supports local plugin development paths.
+
 ## File Watching Behavior
 
 ### Watched Files
@@ -214,6 +230,35 @@ Multiple character files can be specified using:
 - Comma separation: `"file1.json,file2.json"`
 - Mixed format: `"file1.json, file2.json"`
 
+### Plugin Development Workflow
+
+When developing plugins locally:
+
+1. Create your plugin within your project or in a separate directory:
+   ```bash
+   # Option 1: Create plugin within project
+   elizaos create --type plugin my-plugin
+   
+   # Option 2: Create plugin in separate directory
+   cd ../
+   elizaos create --type plugin my-plugin
+   cd my-agent-project
+   ```
+
+2. Reference it in your character file:
+   ```json
+   {
+     "plugins": [
+       "./plugin-my-plugin",      // Plugin within project
+       "../plugin-my-plugin",     // Plugin in sibling directory
+       "@elizaos/plugin-openai"    // Published plugin
+     ]
+   }
+   ```
+
+3. The dev command will watch both your project and plugin files
+4. Changes to either will trigger rebuilds
+
 </TabItem>
 <TabItem value="troubleshooting" label="Troubleshooting">
 
@@ -288,6 +333,20 @@ elizaos dev
 
 # Use different port
 elizaos dev --port 8080
+```
+
+### Plugin Loading Issues
+
+```bash
+# If plugins fail to load during development
+# Check character file
+cat character.json | jq .plugins
+
+# Verify plugin paths
+ls ./path/to/local/plugin
+
+# Check npm registry for published plugins
+bun info @elizaos/plugin-name
 ```
 
 ### Configuration Issues

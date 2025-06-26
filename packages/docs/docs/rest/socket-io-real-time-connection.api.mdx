@@ -1,0 +1,163 @@
+---
+id: socket-io-real-time-connection
+title: "Socket.IO Real-time Connection"
+description: "Socket.IO connection for real-time bidirectional communication. The server uses Socket.IO v4.x for WebSocket transport with automatic fallback."
+sidebar_label: "Socket.IO Real-time Connection"
+hide_title: true
+hide_table_of_contents: true
+api: eJztWN1v2zYQ/1cO6kPawB8JticXe8gCb8jQLyQp+lAXMC2dLbYUqZGUHdfw/747UrYU2yo2DBgwwC8xxTve/e54X8wm8WLhktHnZIUzZ9Jv6JMvvSRDl1pZeml0Mkoewv7g7j2kRmtMeRvmxoJFofpeFggzmUkbKUIRW1FUWqaCvwfwmCM4tEu0UDl00Mhb/jx4CpI+4SzugrdCu9JYDyvpcxCVNwXJSWEulJqJ9Ntgoif68vK2gfLx/s3l5QimKzcaDpVJhcqN86Ofrq6uhtGmgTTDKbwkRcTEXNOg1WFaWWxZ5V5F4Q3CWyVRe2hpGz+JolRIGid6Op1+FUsRnTXRsgjANyANbGFuTQEXewD9NIi6eD3RpNB5iBT4hbhfXuTel0foL169DjoiqPGSjrugd6JfvHixw+YNPETvRg6i92H61Ug9hT78Qb8gwBpTDNNckBlqogEYuTOalxv+AzBJmOcumyQjWleVpFVvRxILkvycxqRtLYoRkU6FYoms9A0v/iutBTpHnKz3AXVGauudLo0en3yU6byVetHS+AMwFLq2g6RFgc8FnoBp8c8Kne+vjFVZ33nhA+T7uA0UiZZvMxD+vq8OFXFc1NFAcVFHSDsuat/8ao3IUuE8Y3iHq53PYLYjdGFw5ONOT0TiuyN/9P6d72P16CCmVIY8Zje1XK5H5MSibJ83lU27IMnTYn1uqkXeBVbEesHUzw35S0P3XqR5wX4PPF+6A/fWcD2J0fC2voXSmpSWJJSLaSB33UedXv/AcyegHATlJ/6MoQhVmf0gIkOKBhM322epcrhXwzzcrn1Qb5+qKWYx1t6uY67s+g3tAvJ2Fy6FSyo5wWhdFTO07ZuVu/A8FSuFW3Td+XE5ek47jvsTBqG1xrI1Y14Acm52WRF4O9Bk6IVUJx2X9BKL1EQ1ddtktEmur67556CrU39Nc46wD9Z4kxrl+Ob3jbjV69lHMyVdjlmy3fbo0ig5MpKxoHGhl5TC5/QxbEaIXh13PFlsksoqIp/scMnhrPGGyZDx7ZmyCAUxSEq2NJZIPTdsiJdeITGPlfwu4P0D3Hy4O5JEe5CZtGIhYj+y7I8srwdXg+srMvkG5gqf5ExRx6L24QiA4I+bOwi3So2c7pUyJI4ej7l0rBDohzTKhcaMa+0MebrJ6rEFgp1qDbbSmp0cFUtq/EKnOICxzkpqzd4BsZlVABcqGTHTHRdCiwUvAybiQ8slhwQF+TtsDnxuuU6Rxvvxw2PknAvSELHiDqqxC6HldwzCDB1DUsmaWWZGMxZBCx2Cpp+181jwSBVX/ZXMEExJEELRC5BQL6U1OlxRAItFCGQWcLOoJxUIK1Byjuk6rR3ccLdkxoNvsTB23Rwswnc4xd3hSFEsl2QBH9nVTio0mQqu29Wc6MQ6JGuIVSZNUMSLdr0NrCVimoNba/KTk3t0mRR85jepuC4q6pTRIiYcgXscj5n50VbkxIzmRpo24wTZct2hB/b5x0ebevdsooYladuPqBT4bFYM+hjUtEXZSw3Ic7bwdNJOltsoy6+JrUlNnooXFFrVbEDKhsjcxsXfkPQl5SyZ2JLYTMkN0GZQPkzITcBENp9fFOcXxflFcX5RnF8U5xfF+UXxv3lR+HXJTZ/TbVgqGheTbT0/bOoXwME/Ebnp8OZmMxMOP1q13fI2FSe7pn1aLoWVPGrzV/tZ8fv4kUaOvwBo6Nmb
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Socket.IO Real-time Connection"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/websocket"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Socket.IO connection for real-time bidirectional communication. The server uses Socket.IO v4.x for WebSocket transport with automatic fallback.
+
+**Connection URL**: `ws://localhost:3000/socket.io/` (or `wss://` for secure connections)
+
+**Socket.IO Client Connection Example**:
+```javascript
+import { io } from 'socket.io-client';
+const socket = io('http://localhost:3000');
+```
+
+**Events**:
+
+### Client to Server Events:
+- `join` - Join a room/channel
+  ```json
+  \{
+    "roomId": "uuid",
+    "agentId": "uuid"
+  \}
+  ```
+
+- `leave` - Leave a room/channel
+  ```json
+  \{
+    "roomId": "uuid",
+    "agentId": "uuid"
+  \}
+  ```
+
+- `message` - Send a message
+  ```json
+  \{
+    "text": "string",
+    "roomId": "uuid",
+    "userId": "uuid",
+    "name": "string"
+  \}
+  ```
+
+- `request-world-state` - Request current state
+  ```json
+  \{
+    "roomId": "uuid"
+  \}
+  ```
+
+### Server to Client Events:
+- `messageBroadcast` - New message broadcast
+  ```json
+  \{
+    "senderId": "uuid",
+    "senderName": "string",
+    "text": "string",
+    "roomId": "uuid",
+    "serverId": "uuid",
+    "createdAt": "timestamp",
+    "source": "string",
+    "id": "uuid",
+    "thought": "string",
+    "actions": ["string"],
+    "attachments": []
+  \}
+  ```
+
+- `messageComplete` - Message processing complete
+  ```json
+  \{
+    "channelId": "uuid",
+    "serverId": "uuid"
+  \}
+  ```
+
+- `world-state` - World state update
+  ```json
+  \{
+    "agents": \{\},
+    "users": \{\},
+    "channels": \{\},
+    "messages": \{\}
+  \}
+  ```
+
+- `logEntry` - Real-time log entry
+  ```json
+  \{
+    "level": "number",
+    "time": "timestamp",
+    "msg": "string",
+    "agentId": "uuid",
+    "agentName": "string"
+  \}
+  ```
+
+- `error` - Error event
+  ```json
+  \{
+    "error": "string",
+    "details": \{\}
+  \}
+  ```
+
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"101":{"description":"Switching Protocols - WebSocket connection established"}}}
+>
+  
+</StatusCodes>
+
+
+      

@@ -839,6 +839,86 @@ export async function promptAndStoreGoogleKey(envFilePath: string): Promise<stri
 }
 
 /**
+ * Validates an OpenRouter API key format
+ * @param key The API key to validate
+ * @returns True if the key appears to be in valid format
+ */
+export function isValidOpenRouterKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  // OpenRouter keys typically start with "sk-or-" followed by alphanumeric characters
+  return key.startsWith('sk-or-') && key.length > 10;
+}
+
+/**
+ * Stores OpenRouter API key in the .env file
+ * @param key The API key to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeOpenRouterKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing OpenRouter API key line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('OPENROUTER_API_KEY='));
+
+    // Add new OpenRouter API key
+    lines.push(`OPENROUTER_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+
+    // Update process.env
+    process.env.OPENROUTER_API_KEY = key;
+
+    logger.success('OpenRouter API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving OpenRouter API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Prompts the user for an OpenRouter API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured OpenRouter API key or null if user cancels
+ */
+export async function promptAndStoreOpenRouterKey(envFilePath: string): Promise<string | null> {
+  const config: ProviderPromptConfig = {
+    name: 'OpenRouter',
+    icon: '🔄',
+    noteText: 'Get your API key from: https://openrouter.ai/keys',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your OpenRouter API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'OpenRouter API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidOpenRouterKey(results.key);
+      if (!isValid) {
+        clack.log.warn('Invalid API key format detected. Expected format: sk-or-...');
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeOpenRouterKey(results.key, envPath);
+    },
+    successMessage: 'OpenRouter integration configured',
+  };
+
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
+}
+
+/**
  * Configures the database to use, either PGLite or PostgreSQL
  * @param reconfigure If true, force reconfiguration even if already configured
  * @returns The postgres URL if using Postgres, otherwise null

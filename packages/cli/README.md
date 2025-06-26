@@ -139,21 +139,54 @@ Clone ElizaOS monorepo from a specific branch (defaults to develop).
 
 #### `elizaos plugins <subcommand>`
 
-Manage an ElizaOS plugin.
+Manage ElizaOS plugins through character configurations.
+
+**Important:** ElizaOS uses a character-centric plugin architecture. Plugins are specified in character files, not installed at the project level. This allows each character to have its own set of capabilities.
 
 - **Subcommands:**
-  - `list` (alias: `l`): List available plugins (shows v1.x plugins by default)
-  - `add <plugin>` (alias: `install`): Add a plugin to the project
+  - `list` (alias: `l`): List available plugins in the registry
+  - `add <plugin>` (alias: `install`): Add a plugin to character file(s)
     - Arguments: `<plugin>` (plugin name)
-    - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`, `-T, --tag <tagname>`
+    - Options: `-c, --character <paths...>` (required), `-n, --no-env-prompt`
   - `update` (alias: `refresh`): Fetch the latest plugin registry and update local cache
-  - `installed-plugins`: List plugins found in the project dependencies
-  - `remove <plugin>` (alias: `delete`): Remove a plugin from the project
+  - `installed-plugins`: List plugins found in character files
+    - Options: `-c, --character <paths...>` (required)
+  - `remove <plugin>` (alias: `delete`): Remove a plugin from character file(s)
     - Arguments: `<plugin>` (plugin name)
+    - Options: `-c, --character <paths...>` (required)
   - `upgrade <path>`: Upgrade a plugin from v0.x to v1.x using AI
     - Arguments: `<path>` (GitHub URL or local path)
     - Options: `--api-key <key>`, `--skip-tests`, `--skip-validation`
     - See [Plugin Upgrade Documentation](./docs/PLUGIN_UPGRADE.md) for details
+
+**Character File Example:**
+
+```json
+{
+  "name": "MyAssistant",
+  "plugins": [
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-discord",
+    "./path/to/local/plugin"
+  ],
+  "settings": {
+    // Character-specific settings
+  }
+}
+```
+
+**Plugin Management Examples:**
+
+```bash
+# Add a plugin to a character
+elizaos plugins add openai --character assistant.json
+
+# Remove a plugin from multiple characters
+elizaos plugins remove discord --character bot1.json bot2.json
+
+# List plugins in character files
+elizaos plugins installed-plugins --character assistant.json
+```
 
 ### Agent Management
 
@@ -169,38 +202,50 @@ Manage ElizaOS agents.
       - `-p, --port <port>`: Port to listen on
   - `get` (alias: `g`): Get agent details
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-j, --json`: Display JSON output in terminal
       - `-o, --output <file>`: Save agent data to file
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `start` (alias: `s`): Start an agent
+  - `start` (alias: `s`): Start agent(s)
     - Options:
-      - `-n, --name <name>`: Name of an existing agent to start
-      - `--path <path>`: Local path to character JSON file
-      - `--remote-character <url>`: URL to remote character JSON file
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `stop` (alias: `st`): Stop an agent
+  - `stop` (alias: `st`): Stop agent(s)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `--all`: Stop all running ElizaOS agents locally
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `remove` (alias: `rm`): Remove an agent
+  - `remove` (alias: `rm`): Remove agent(s)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
-  - `set`: Update agent configuration
+  - `set`: Update agent configuration (single agent only)
     - Options:
-      - `-n, --name <name>`: Agent id, name, or index number from list
-      - `-c, --config <json>`: Agent configuration as JSON string
-      - `-f, --file <path>`: Path to agent configuration JSON file
+      - `-c, --character <path>`: Character name, file path, or URL (single character only)
+      - `--config <json>`: Agent configuration as JSON string
+      - `--file <path>`: Path to agent configuration JSON file
+      - `-r, --remote-url <url>`: URL of the remote agent runtime
+      - `-p, --port <port>`: Port to listen on
+  - `clear-memories`: Clear agent memories
+    - Options:
+      - `-c, --character <paths...>`: Character name(s), file path(s), or URL(s) (supports multiple)
       - `-r, --remote-url <url>`: URL of the remote agent runtime
       - `-p, --port <port>`: Port to listen on
 
-**Note:** All agent commands support interactive mode when run without key parameters.
+**Character Specification:**
+- **Multiple formats supported**: Space-separated, comma-separated, or mixed
+- **Auto-extension**: `.json` extension added automatically if missing
+- **Path resolution**: Supports local files, URLs, and character names
+- **Examples**: 
+  - `elizaos agent start -c bobby,billy` (comma-separated)
+  - `elizaos agent start -c bobby billy` (space-separated)
+  - `elizaos agent get -c ./characters/bobby.json https://example.com/billy.json`
+
+**Note:** All agent commands support interactive mode when run without required parameters. Most commands support multiple characters except `set` which only accepts a single character.
 
 ### Publishing
 
@@ -273,6 +318,10 @@ If any character files fail to load, ElizaOS will:
 - Log errors for the failed characters
 - Continue starting with any successfully loaded characters
 - Fall back to the default Eliza character if no characters loaded successfully
+
+**Plugin Loading:**
+
+Plugins are loaded from each character's `plugins` array. The runtime automatically installs any missing plugins when starting.
 
 ### Testing
 
@@ -639,16 +688,14 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 5. **Test your plugin**:
 
    ```bash
-   # Run tests during development
-   elizaos test
-   # Or with the CLI directly:
-   elizaos test
+   # Add to a character file for testing
+   elizaos plugins add ./plugin-my-plugin --character test-character.json
 
-   # Test specific components
-   elizaos test component
+   # Run development mode
+   elizaos dev --character test-character.json
 
-   # Test end-to-end functionality
-   elizaos test e2e
+   # Run tests
+   elizaos test
    ```
 
 6. **Publish your plugin**:
@@ -671,7 +718,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
 
    ```bash
    # Make changes to your plugin
-   elizaos dev  # Test locally
+   elizaos dev --character test-character.json  # Test locally
 
    # Test your changes
    elizaos test
@@ -709,45 +756,42 @@ Projects contain agent configurations and code for building agent-based applicat
 
 3. **Configure your agent**:
 
-   The main character definition is in src/index.ts:
+   Create or edit a character file (e.g., character.json):
 
-   ```typescript
-   import { type Character } from '@elizaos/core';
-
-   export const character: Character = {
-     name: 'My Assistant',
-     plugins: [
-       '@elizaos/plugin-openai',
-       // Add other plugins here
+   ```json
+   {
+     "name": "My Assistant",
+     "plugins": [
+       "@elizaos/plugin-openai",
+       "./path/to/local/plugin"
      ],
-     system: 'You are a helpful assistant...',
-     bio: [
-       'Helpful and knowledgeable',
-       'Communicates clearly and concisely',
-       // Other character traits
+     "system": "You are a helpful assistant...",
+     "bio": [
+       "Helpful and knowledgeable",
+       "Communicates clearly and concisely"
      ],
-     messageExamples: [
+     "messageExamples": [
        // Example conversations
-     ],
-   };
+     ]
+   }
    ```
 
-4. **Add plugins to your project**:
+4. **Add plugins to your character**:
 
    ```bash
-   elizaos plugins add @elizaos/plugin-openai
+   elizaos plugins add @elizaos/plugin-openai --character character.json
    ```
 
 5. **Run your project in development mode**:
 
    ```bash
-   elizaos dev
+   elizaos dev --character character.json
    ```
 
 6. **Build and start your project**:
 
    ```bash
-   elizaos start
+   elizaos start --character character.json
    ```
 
 7. **Test your project**:
@@ -770,13 +814,13 @@ Projects contain agent configurations and code for building agent-based applicat
 
    ```bash
    # Make changes to your project
-   elizaos dev  # Development mode with hot-reload
+   elizaos dev --character character.json  # Development mode with hot-reload
 
    # Test your changes
    elizaos test
 
    # Build and start in production mode
-   elizaos start
+   elizaos start --character character.json
    ```
 
 ## Contributing

@@ -166,7 +166,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
         >
           {detailsTab === panel.name && agentId && (
             <iframe
-              src={panel.path}
+              src={panel.url}
               title={panel.name}
               className="w-full h-full border-0 flex-1 max-w-full"
             />

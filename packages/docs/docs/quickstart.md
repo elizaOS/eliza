@@ -48,10 +48,50 @@ elizaos env edit-local
 
 Your agent will not work without an API key. For more details on environment configuration, see the [Environment Guide](./cli/env.md).
 
-### 4. Start Your Agent
+### 4. Create Your Character (Optional)
+
+ElizaOS uses a character-centric architecture. Each character can have its own set of plugins and capabilities. You can create a custom character file:
 
 ```bash
+# Create a new character file
+elizaos create --type agent my-assistant
+
+# This creates my-assistant.json with a basic template you can customize
+```
+
+Edit `my-assistant.json` to customize your agent:
+
+```json
+{
+  "name": "MyAssistant",
+  "plugins": [
+    "@elizaos/plugin-openai"
+  ],
+  "system": "You are a helpful AI assistant.",
+  "bio": ["Helpful", "Knowledgeable", "Friendly"],
+  "messageExamples": [
+    [
+      {
+        "user": "{{user1}}",
+        "content": { "text": "Hello!" }
+      },
+      {
+        "user": "{{agent}}",
+        "content": { "text": "Hello! How can I help you today?" }
+      }
+    ]
+  ]
+}
+```
+
+### 5. Start Your Agent
+
+```bash
+# Start with default character
 elizaos start
+
+# Or start with your custom character
+elizaos start --character my-assistant.json
 ```
 
 Your agent is now running at [http://localhost:3000](http://localhost:3000)! 🎉
@@ -63,4 +103,4 @@ Congratulations, you have a running ElizaOS agent! Here's where to go next to ex
 - **[Explore all CLI Commands](./cli/overview.md)**: See everything you can do from the command line, including managing agents and plugins.
 - **[Customize Your Agent](./core/characters.md)**: Learn how to edit your agent's personality, knowledge, and abilities using Character Files.
 - **[Understand the Project Structure](./core/project.md)**: Get a detailed breakdown of every file in your new project.
-- **[Extend Your Agent with Plugins](./core/plugins.md)**: Discover how to add new capabilities to your agent.
+- **[Extend Your Agent with Plugins](./core/plugins.md)**: Discover how to add new capabilities to your agent by adding plugins to your character configuration.

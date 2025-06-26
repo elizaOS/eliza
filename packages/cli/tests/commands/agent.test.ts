@@ -91,7 +91,7 @@ describe('ElizaOS Agent Commands', () => {
         {
           env: {
             ...process.env,
-            LOG_LEVEL: 'debug',
+            LOG_LEVEL: 'error',
             PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
             NODE_OPTIONS: '--max-old-space-size=4096',
             SERVER_HOST: '127.0.0.1',
@@ -176,13 +176,13 @@ describe('ElizaOS Agent Commands', () => {
 
     // Handle process exit
     serverProcess.exited
-      .then((code) => {
+      .then((code: number) => {
         console.log(`[SERVER EXIT] code: ${code}`);
         if (code !== 0 && !serverError) {
           serverError = new Error(`Server exited with code ${code}`);
         }
       })
-      .catch((error) => {
+      .catch((error: Error) => {
         console.error('[SERVER ERROR]', error);
         serverError = error;
       });
@@ -228,7 +228,7 @@ describe('ElizaOS Agent Commands', () => {
         });
 
         execSync(
-          `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${characterPath}`,
+          `${elizaosCmd} agent start --remote-url ${testServerUrl} --character ${characterPath}`,
           platformOptions
         );
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
@@ -246,37 +246,62 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   afterAll(async () => {
-    if (serverProcess && serverProcess.exitCode === null) {
+    console.log('[CLEANUP] Starting test cleanup...');
+    
+    // Clean up the server process
+    if (serverProcess) {
       try {
-        // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => {});
+        console.log(`[CLEANUP] Killing server process PID: ${serverProcess.pid}`);
+        
+        // Kill the process group to ensure all child processes are terminated
+        if (process.platform !== 'win32' && serverProcess.pid) {
+          try {
+            // Kill the entire process group
+            process.kill(-serverProcess.pid, 'SIGTERM');
+          } catch (e) {
+            // Fallback to regular kill
+            serverProcess.kill('SIGTERM');
+          }
+        } else {
+          serverProcess.kill('SIGTERM');
+        }
 
-        // Use SIGTERM for graceful shutdown
-        serverProcess.kill('SIGTERM');
-
-        // Wait for graceful exit with timeout
-        await Promise.race([
-          exitPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 3000)),
-        ]);
+        // Wait for process to exit
+        if (serverProcess.exited) {
+          await Promise.race([
+            serverProcess.exited,
+            new Promise((resolve) => setTimeout(resolve, 3000))
+          ]);
+        }
 
         // Force kill if still running
-        if (serverProcess.exitCode === null && !serverProcess.killed) {
+        if (serverProcess.exitCode === null) {
+          console.log('[CLEANUP] Force killing server process...');
           serverProcess.kill('SIGKILL');
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (e) {
-        // Ignore cleanup errors but try force kill
-        try {
-          if (!serverProcess.killed) {
-            serverProcess.kill('SIGKILL');
-          }
-        } catch (e2) {
-          // Ignore force kill errors
-        }
+        console.error('[CLEANUP] Error killing server process:', e);
       }
     }
 
+    // Kill any remaining processes on the test port
+    console.log(`[CLEANUP] Killing any remaining processes on port ${testServerPort}...`);
+    await killProcessOnPort(parseInt(testServerPort, 10));
+    
+    // Additional cleanup for any elizaos processes that might be hanging
+    if (process.platform !== 'win32') {
+      try {
+        const { execSync } = await import('child_process');
+        // Kill any remaining elizaos processes
+        execSync('pkill -f "elizaos start" || true', { stdio: 'ignore' });
+        execSync('pkill -f "bun.*dist/index.js start" || true', { stdio: 'ignore' });
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+
+    // Clean up temp directory
     if (testTmpDir) {
       try {
         await rm(testTmpDir, { recursive: true });
@@ -284,6 +309,8 @@ describe('ElizaOS Agent Commands', () => {
         // Ignore cleanup errors
       }
     }
+    
+    console.log('[CLEANUP] Test cleanup complete');
   });
 
   it('agent help displays usage information', async () => {
@@ -315,7 +342,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent get shows details with name parameter', async () => {
     const result = execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada`,
       getPlatformOptions({
         encoding: 'utf8',
       })
@@ -325,7 +352,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent get with JSON flag shows character definition', async () => {
     const result = execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --json`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada --json`,
       getPlatformOptions({
         encoding: 'utf8',
       })
@@ -337,7 +364,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     execSync(
-      `${elizaosCmd} agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
+      `${elizaosCmd} agent get --remote-url ${testServerUrl} -c Ada --output ${outputFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
 
@@ -353,27 +380,29 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} --path ${maxPath}`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} --character ${maxPath}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
     } catch (e: any) {
       // If it fails, check if it's because agent already exists
-      expect(e.stdout || e.stderr).toMatch(/(already exists|already running)/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/(already exists|already running)/);
     }
   });
 
   it('agent start works with name parameter', async () => {
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or already exist
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/already/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/already/);
     }
   });
 
@@ -382,7 +411,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n ${nonExistentName}`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c ${nonExistentName}`,
         getPlatformOptions({
           encoding: 'utf8',
           stdio: 'pipe',
@@ -400,7 +429,7 @@ describe('ElizaOS Agent Commands', () => {
     // Ensure Ada is started first
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({ stdio: 'pipe' })
       );
     } catch (e) {
@@ -409,14 +438,15 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = execSync(
-        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       expect(result).toMatch(/(stopped|Stopped)/);
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/(not running|not found)/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/(not running|not found)/);
     }
   });
 
@@ -430,7 +460,7 @@ describe('ElizaOS Agent Commands', () => {
     await writeFile(configFile, configContent);
 
     const result = execSync(
-      `${elizaosCmd} agent set --remote-url ${testServerUrl} -n Ada -f ${configFile}`,
+      `${elizaosCmd} agent set --remote-url ${testServerUrl} -c Ada -f ${configFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toMatch(/(updated|Updated)/);
@@ -440,27 +470,29 @@ describe('ElizaOS Agent Commands', () => {
     // Start agent
     try {
       execSync(
-        `${elizaosCmd} agent start --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent start --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or already exist
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/already/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/already/);
     }
 
     // Stop agent
     try {
       execSync(
-        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
+        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -c Ada`,
         getPlatformOptions({
           encoding: 'utf8',
         })
       );
       // Should succeed or not be running
     } catch (e: any) {
-      expect(e.stdout || e.stderr).toMatch(/not running/);
+      const errorOutput = e.stdout || e.stderr || e.message || '';
+      expect(errorOutput).toMatch(/not running/);
     }
   });
 
