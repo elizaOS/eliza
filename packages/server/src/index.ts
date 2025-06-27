@@ -119,14 +119,15 @@ export interface ServerOptions {
 /**
  * Class representing an agent server.
  */ /**
- * Represents an agent server which handles agents, database, and server functionalities.
- */
+* Represents an agent server which handles agents, database, and server functionalities.
+*/
 export class AgentServer {
   public app!: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
   public server!: http.Server;
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
+  private uiEnabled: boolean = true; // Default to enabled until initialized
 
   public database!: DatabaseAdapter;
 
@@ -321,41 +322,41 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-                // Production CSP - includes upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // upgrade-insecure-requests is added by helmet automatically
-                },
-                useDefaults: true,
-              }
-            : {
-                // Development CSP - minimal policy without upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'self'", 'data:'],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
-                },
-                useDefaults: false,
+              // Production CSP - includes upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: ["'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // upgrade-insecure-requests is added by helmet automatically
               },
+              useDefaults: true,
+            }
+            : {
+              // Development CSP - minimal policy without upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: ["'self'", 'data:'],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+              },
+              useDefaults: false,
+            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -367,10 +368,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-                maxAge: 31536000, // 1 year
-                includeSubDomains: true,
-                preload: true,
-              }
+              maxAge: 31536000, // 1 year
+              includeSubDomains: true,
+              preload: true,
+            }
             : false,
           // No Sniff
           noSniff: true,
@@ -420,6 +421,19 @@ export class AgentServer {
         logger.warn(
           'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
         );
+      }
+
+      // Determine if web UI should be enabled
+      const isProduction = process.env.NODE_ENV === 'production';
+      const uiEnabledEnv = process.env.ELIZAOS_UI_ENABLE;
+      this.uiEnabled = uiEnabledEnv !== undefined
+        ? uiEnabledEnv.toLowerCase() === 'true'
+        : !isProduction; // Default: enabled in dev, disabled in prod
+
+      if (this.uiEnabled) {
+        logger.info('Web UI enabled');
+      } else {
+        logger.info('Web UI disabled for security (production mode)');
       }
 
       const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
@@ -568,10 +582,12 @@ export class AgentServer {
         },
       };
 
-      // Serve static assets from the client dist path
+      // Conditionally serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
-      const clientPath = path.resolve(__dirname, '../../cli/dist');
-      this.app.use(express.static(clientPath, staticOptions));
+      if (this.uiEnabled) {
+        const clientPath = path.resolve(__dirname, '../../cli/dist');
+        this.app.use(express.static(clientPath, staticOptions));
+      }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
       const pluginRouteHandler = createPluginRouteHandler(this.agents);
@@ -630,23 +646,36 @@ export class AgentServer {
 
       // Main fallback for the SPA - must be registered after all other routes
       // Use a final middleware that handles all unmatched routes
-      (this.app as any).use((req: express.Request, res: express.Response) => {
-        // For JavaScript requests that weren't handled by static middleware,
-        // return a JavaScript response instead of HTML
-        if (
-          req.path.endsWith('.js') ||
-          req.path.includes('.js?') ||
-          req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-        ) {
-          res.setHeader('Content-Type', 'application/javascript');
-          return res.status(404).send(`// JavaScript module not found: ${req.path}`);
-        }
+      if (this.uiEnabled) {
+        (this.app as any).use((req: express.Request, res: express.Response) => {
+          // For JavaScript requests that weren't handled by static middleware,
+          // return a JavaScript response instead of HTML
+          if (
+            req.path.endsWith('.js') ||
+            req.path.includes('.js?') ||
+            req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+          ) {
+            res.setHeader('Content-Type', 'application/javascript');
+            return res.status(404).send(`// JavaScript module not found: ${req.path}`);
+          }
 
-        // For all other routes, serve the SPA's index.html
-        // Client files are built into the CLI package's dist directory
-        const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-        res.sendFile(path.join(cliDistPath, 'index.html'));
-      });
+          // For all other routes, serve the SPA's index.html
+          // Client files are built into the CLI package's dist directory
+          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
+          res.sendFile(path.join(cliDistPath, 'index.html'));
+        });
+      } else {
+        // Return 404 for non-API routes when UI is disabled
+        (this.app as any).use((_req: express.Request, res: express.Response) => {
+          res.status(404).json({
+            success: false,
+            error: {
+              message: 'Web UI disabled',
+              code: 404
+            }
+          });
+        });
+      }
 
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
@@ -802,11 +831,15 @@ export class AgentServer {
 
       this.server
         .listen(port, host, () => {
-          // Only show the dashboard URL in production mode
-          if (process.env.NODE_ENV !== 'development') {
+          // Only show the dashboard URL if UI is enabled
+          if (this.uiEnabled && process.env.NODE_ENV !== 'development') {
             // Display the dashboard URL with the correct port after the server is actually listening
             console.log(
               `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+            );
+          } else if (!this.uiEnabled) {
+            console.log(
+              `\x1b[32mStartup successful!\nAPI server running at \x1b[1mhttp://localhost:${port}/api\x1b[22m\x1b[0m (Web UI disabled)`
             );
           }
 

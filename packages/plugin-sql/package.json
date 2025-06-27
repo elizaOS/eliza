@@ -28,6 +28,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-ai": "1.0.4",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"
