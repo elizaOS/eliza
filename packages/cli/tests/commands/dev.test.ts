@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { execFileSync, execSync, spawn as nodeSpawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { killProcessOnPort, safeChangeDirectory, getBunExecutable } from './test-utils';
+import { getBunExecutable, killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;

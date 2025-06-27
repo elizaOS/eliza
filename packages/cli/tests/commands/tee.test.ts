@@ -1,9 +1,9 @@
-import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { Command } from 'commander';
 import * as childProcess from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { teeCommand } from '../../src/commands/tee';
 import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
-import { execSync } from 'node:child_process';
 
 // Create spy on spawn function
 let mockSpawn: any;
