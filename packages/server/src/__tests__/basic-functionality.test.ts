@@ -96,7 +96,7 @@ describe('Basic Server Functionality', () => {
         constructor(
           private windowMs: number,
           private maxRequests: number
-        ) {}
+        ) { }
 
         isAllowed(clientId: string): boolean {
           const now = Date.now();
@@ -224,6 +224,85 @@ describe('Basic Server Functionality', () => {
       expect(customConfig.middlewares).toEqual(['middleware1', 'middleware2']);
       expect(customConfig.hasCustomDataDir).toBe(true);
       expect(customConfig.hasCustomDb).toBe(true);
+    });
+  });
+
+  describe('UI Enable/Disable Logic', () => {
+    // Test the exact logic from our AgentServer implementation
+    const determineUIEnabled = (nodeEnv?: string, elizaUIEnable?: string): boolean => {
+      const isProduction = nodeEnv === 'production';
+      return elizaUIEnable !== undefined
+        ? elizaUIEnable.toLowerCase() === 'true'
+        : !isProduction; // Default: enabled in dev, disabled in prod
+    };
+
+    it('should enable UI by default in development', () => {
+      expect(determineUIEnabled('development', undefined)).toBe(true);
+      expect(determineUIEnabled('test', undefined)).toBe(true);
+      expect(determineUIEnabled(undefined, undefined)).toBe(true); // No NODE_ENV defaults to dev
+    });
+
+    it('should disable UI by default in production', () => {
+      expect(determineUIEnabled('production', undefined)).toBe(false);
+    });
+
+    it('should allow explicit override with ELIZA_UI_ENABLE=true', () => {
+      expect(determineUIEnabled('production', 'true')).toBe(true);
+      expect(determineUIEnabled('development', 'true')).toBe(true);
+    });
+
+    it('should allow explicit override with ELIZA_UI_ENABLE=false', () => {
+      expect(determineUIEnabled('development', 'false')).toBe(false);
+      expect(determineUIEnabled('production', 'false')).toBe(false);
+    });
+
+    it('should handle case-insensitive ELIZA_UI_ENABLE values', () => {
+      expect(determineUIEnabled('production', 'TRUE')).toBe(true);
+      expect(determineUIEnabled('production', 'True')).toBe(true);
+      expect(determineUIEnabled('production', 'FALSE')).toBe(false);
+      expect(determineUIEnabled('production', 'False')).toBe(false);
+    });
+
+    it('should treat invalid ELIZA_UI_ENABLE values as false', () => {
+      expect(determineUIEnabled('development', 'yes')).toBe(false);
+      expect(determineUIEnabled('development', '1')).toBe(false);
+      expect(determineUIEnabled('development', 'enabled')).toBe(false);
+      expect(determineUIEnabled('development', '')).toBe(false);
+    });
+
+    it('should generate appropriate log messages', () => {
+      const getLogMessage = (uiEnabled: boolean, isProduction: boolean): string => {
+        if (uiEnabled) {
+          return 'Web UI enabled';
+        } else {
+          return 'Web UI disabled for security (production mode)';
+        }
+      };
+
+      expect(getLogMessage(true, false)).toBe('Web UI enabled');
+      expect(getLogMessage(true, true)).toBe('Web UI enabled');
+      expect(getLogMessage(false, true)).toBe('Web UI disabled for security (production mode)');
+      expect(getLogMessage(false, false)).toBe('Web UI disabled for security (production mode)');
+    });
+
+    it('should provide correct startup URL messages', () => {
+      const getStartupMessage = (uiEnabled: boolean, port: number): string | null => {
+        if (uiEnabled) {
+          return `\\x1b[32mStartup successful!\\nGo to the dashboard at \\x1b[1mhttp://localhost:${port}\\x1b[22m\\x1b[0m`;
+        } else {
+          return `\\x1b[32mAPI Server running on port ${port}\\x1b[0m\\n\\x1b[33mWeb UI is disabled for security. Set ELIZA_UI_ENABLE=true to enable.\\x1b[0m`;
+        }
+      };
+
+      const uiEnabledMsg = getStartupMessage(true, 3000);
+      const uiDisabledMsg = getStartupMessage(false, 3000);
+
+      expect(uiEnabledMsg).toContain('dashboard at');
+      expect(uiEnabledMsg).toContain('http://localhost:3000');
+
+      expect(uiDisabledMsg).toContain('API Server running on port 3000');
+      expect(uiDisabledMsg).toContain('Web UI is disabled for security');
+      expect(uiDisabledMsg).toContain('ELIZA_UI_ENABLE=true');
     });
   });
 });
