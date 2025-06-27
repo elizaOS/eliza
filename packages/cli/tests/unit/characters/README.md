@@ -43,9 +43,9 @@ The system loads plugins in this strict order:
 ```
 1. Core Plugins (SQL)
 2. Text-Only AI Plugins (Anthropic, OpenRouter)
-3. Platform Plugins (Discord, Twitter, Telegram)
-4. Bootstrap Plugin
-5. Embedding-Capable AI Plugins (OpenAI, Ollama, Google, Local-AI)
+3. Embedding-Capable AI Plugins (OpenAI, Ollama, Google, Local-AI)
+4. Platform Plugins (Discord, Twitter, Telegram)
+5. Bootstrap Plugin
 ```
 
 ## Environment Detection Logic
@@ -56,14 +56,13 @@ The system loads plugins in this strict order:
 ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
 ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 
-// Embedding providers (loaded last)
+// Embedding providers (loaded after text-only)
 ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
 ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
 ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
 
-// Final fallback (only when no other AI providers exist)
-...(!process.env.ANTHROPIC_API_KEY &&
-    !process.env.OPENROUTER_API_KEY &&
+// Final fallback (only when no embedding-capable providers exist)
+...(
     !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
     !process.env.OLLAMA_API_ENDPOINT &&
     !process.env.OPENAI_API_KEY
@@ -163,10 +162,10 @@ bun run src/__tests__/plugin-ordering-demo.ts
 The test suite validates these critical rules:
 
 1. ✅ **SQL Always First**: `@elizaos/plugin-sql` must be the first plugin
-2. ✅ **Embedding Plugins Last**: OpenAI, Ollama, Google, Local-AI load after text-only plugins
-3. ✅ **Local-AI Fallback**: Only present when no other AI providers exist
-4. ✅ **Bootstrap Positioning**: Loads before embedding plugins (unless disabled)
-5. ✅ **Platform Integration**: Platform plugins positioned between AI categories
+2. ✅ **AI Plugin Order**: Text-only plugins (Anthropic, OpenRouter) load before embedding-capable plugins
+3. ✅ **Local-AI Fallback**: Only present when no embedding-capable providers exist
+4. ✅ **Platform After AI**: Platform plugins load after all AI plugins
+5. ✅ **Bootstrap Last**: Bootstrap loads after all other plugins (unless disabled)
 6. ✅ **No Duplicates**: Each plugin appears exactly once
 7. ✅ **Consistent Ordering**: Same environment produces same plugin order
 
@@ -183,8 +182,8 @@ When a primary AI provider (like Anthropic/Claude) doesn't support embeddings:
 plugins: [
   '@elizaos/plugin-sql',        // Database
   '@elizaos/plugin-anthropic',  // Primary AI (text only)
-  '@elizaos/plugin-bootstrap',  // Default handlers
-  '@elizaos/plugin-openai'      // Embedding fallback
+  '@elizaos/plugin-openai',     // Embedding fallback
+  '@elizaos/plugin-bootstrap'   // Default handlers
 ]
 ```
 
@@ -196,8 +195,8 @@ When ElizaOS needs:
 ```typescript
 plugins: [
   '@elizaos/plugin-sql',        // Database
-  '@elizaos/plugin-bootstrap',  // Default handlers
-  '@elizaos/plugin-openai'      // Handles both text and embeddings
+  '@elizaos/plugin-openai',     // Handles both text and embeddings
+  '@elizaos/plugin-bootstrap'   // Default handlers
 ]
 ```
 
@@ -232,7 +231,7 @@ When adding new plugins:
 A: Check environment variables are set correctly and match the expected names.
 
 **Q: Why is Local-AI loading when I have other AI providers?**
-A: Check the fallback condition - Local-AI only loads when ALL other AI provider env vars are missing.
+A: Check the fallback condition - Local-AI only loads when ALL embedding-capable AI provider env vars are missing (OpenAI, Ollama, Google GenAI).
 
 **Q: Why isn't Twitter loading?**
 A: Twitter requires ALL 4 environment variables: API key, secret, access token, and access token secret.

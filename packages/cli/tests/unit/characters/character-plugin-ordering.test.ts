@@ -72,18 +72,27 @@ describe('Character Plugin Ordering', () => {
       expect(character.plugins).toContain('@elizaos/plugin-openai');
     });
 
-    it('should NOT include local-ai when Anthropic is available', () => {
+    it('should include local-ai when only Anthropic is available (text-only, no embeddings)', () => {
       process.env.ANTHROPIC_API_KEY = 'test-key';
       const character = getElizaCharacter();
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
+      expect(character.plugins).toContain('@elizaos/plugin-local-ai');
       expect(character.plugins).toContain('@elizaos/plugin-anthropic');
     });
 
-    it('should NOT include local-ai when any AI provider is available', () => {
+    it('should NOT include local-ai when embedding-capable AI provider is available', () => {
       process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
       const character = getElizaCharacter();
       expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
       expect(character.plugins).toContain('@elizaos/plugin-ollama');
+    });
+
+    it('should include local-ai when only text-only providers are available', () => {
+      process.env.ANTHROPIC_API_KEY = 'anthropic-key';
+      process.env.OPENROUTER_API_KEY = 'openrouter-key';
+      const character = getElizaCharacter();
+      expect(character.plugins).toContain('@elizaos/plugin-local-ai');
+      expect(character.plugins).toContain('@elizaos/plugin-anthropic');
+      expect(character.plugins).toContain('@elizaos/plugin-openrouter');
     });
   });
 
@@ -146,7 +155,7 @@ describe('Character Plugin Ordering', () => {
   });
 
   describe('Complex Environment Combinations', () => {
-    it('should handle Anthropic + OpenAI correctly (OpenAI last)', () => {
+    it('should handle Anthropic + OpenAI correctly (OpenAI last, no local-ai)', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
       process.env.OPENAI_API_KEY = 'openai-key';
 
@@ -159,6 +168,7 @@ describe('Character Plugin Ordering', () => {
       ];
 
       expect(character.plugins).toEqual(expectedOrder);
+      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should handle OpenRouter + Ollama correctly (Ollama last)', () => {
@@ -225,6 +235,9 @@ describe('Character Plugin Ordering', () => {
       expect(telegramIndex).toBeGreaterThan(anthropicIndex);
       expect(openaiIndex).toBeGreaterThan(discordIndex);
       expect(openaiIndex).toBeGreaterThan(telegramIndex);
+
+      // Should not include local-ai when embedding-capable provider (OpenAI) is available
+      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should handle Twitter plugin with all required tokens', () => {
@@ -245,6 +258,9 @@ describe('Character Plugin Ordering', () => {
 
       expect(twitterIndex).toBeGreaterThan(anthropicIndex);
       expect(openaiIndex).toBeGreaterThan(twitterIndex);
+
+      // Should not include local-ai when embedding-capable provider (OpenAI) is available
+      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should NOT include Twitter plugin with incomplete tokens', () => {

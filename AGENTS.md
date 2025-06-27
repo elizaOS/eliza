@@ -4573,8 +4573,7 @@ export const character: Character = {
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
     ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    ...(!process.env.ANTHROPIC_API_KEY &&
-    !process.env.OPENROUTER_API_KEY &&
+    ...(
     !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
     !process.env.OLLAMA_API_ENDPOINT &&
     !process.env.OPENAI_API_KEY

@@ -12,12 +12,19 @@ export const character: Character = {
     // Core plugins first
     '@elizaos/plugin-sql',
 
-    // Bootstrap plugin
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-
     // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+
+    // Embedding-capable plugins last (lowest priority for embedding fallback)
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
+    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
+    ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
+    !process.env.OLLAMA_API_ENDPOINT &&
+    !process.env.OPENAI_API_KEY
+      ? ['@elizaos/plugin-local-ai']
+      : []),
 
     // Platform plugins
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
@@ -29,17 +36,8 @@ export const character: Character = {
       : []),
     ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
 
-    // Embedding-capable plugins last (lowest priority for embedding fallback)
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    ...(!process.env.ANTHROPIC_API_KEY &&
-    !process.env.OPENROUTER_API_KEY &&
-    !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : []),
+    // Bootstrap plugin
+    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ],
   settings: {
     secrets: {},
