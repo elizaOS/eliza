@@ -425,7 +425,7 @@ export class AgentServer {
 
       // Determine if web UI should be enabled
       const isProduction = process.env.NODE_ENV === 'production';
-      const uiEnabledEnv = process.env.ELIZAOS_UI_ENABLE;
+      const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
       this.uiEnabled = uiEnabledEnv !== undefined
         ? uiEnabledEnv.toLowerCase() === 'true'
         : !isProduction; // Default: enabled in dev, disabled in prod

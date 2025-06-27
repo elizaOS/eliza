@@ -2,7 +2,7 @@
 
 ## Overview
 
-Added `ELIZAOS_UI_ENABLE` environment variable to control whether the web UI is served by the ElizaOS server. This addresses production security concerns by allowing complete disabling of the web interface while keeping API functionality intact.
+Added `ELIZA_UI_ENABLE` environment variable to control whether the web UI is served by the ElizaOS server. This addresses production security concerns by allowing complete disabling of the web interface while keeping API functionality intact.
 
 ## Implementation
 
@@ -17,7 +17,7 @@ Added `ELIZAOS_UI_ENABLE` environment variable to control whether the web UI is 
 ```typescript
 // Determine if web UI should be enabled
 const isProduction = process.env.NODE_ENV === 'production';
-const uiEnabledEnv = process.env.ELIZAOS_UI_ENABLE;
+const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
 this.uiEnabled = uiEnabledEnv !== undefined 
   ? uiEnabledEnv.toLowerCase() === 'true' 
   : !isProduction; // Default: enabled in dev, disabled in prod
@@ -25,7 +25,7 @@ this.uiEnabled = uiEnabledEnv !== undefined
 
 ### Behavior
 
-| Environment | ELIZAOS_UI_ENABLE | UI Status | Use Case |
+| Environment | ELIZA_UI_ENABLE | UI Status | Use Case |
 |-------------|-------------------|-----------|----------|
 | development | (unset) | ✅ Enabled | Default dev experience |
 | production | (unset) | ❌ Disabled | Secure production default |
@@ -48,16 +48,16 @@ NODE_ENV=production bun start
 
 ### Force Enable UI
 ```bash
-ELIZAOS_UI_ENABLE=true bun start
+ELIZA_UI_ENABLE=true bun start
 # OR
-NODE_ENV=production ELIZAOS_UI_ENABLE=true bun start
+NODE_ENV=production ELIZA_UI_ENABLE=true bun start
 ```
 
 ### Force Disable UI
 ```bash
-ELIZAOS_UI_ENABLE=false bun start
+ELIZA_UI_ENABLE=false bun start
 # OR 
-NODE_ENV=development ELIZAOS_UI_ENABLE=false bun start
+NODE_ENV=development ELIZA_UI_ENABLE=false bun start
 ```
 
 ## Expected Behavior
@@ -116,7 +116,7 @@ curl http://localhost:3000  # Should return {"success":false,...}
 curl http://localhost:3000/api/server/ping  # Should work
 
 # Test 4: Force enable in production
-NODE_ENV=production ELIZAOS_UI_ENABLE=true bun start
+NODE_ENV=production ELIZA_UI_ENABLE=true bun start
 curl http://localhost:3000  # Should return HTML
 ```
 
