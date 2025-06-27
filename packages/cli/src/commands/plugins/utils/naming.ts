@@ -1,7 +1,7 @@
 import { Dependencies } from '../types';
 
 /**
- * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
+ * Normalizes a plugin input string to a standard format, typically 'plugin-name'.
  * Used primarily for display and generating commands in bunx instructions.
  */
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {

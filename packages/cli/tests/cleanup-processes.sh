@@ -1,18 +1,18 @@
 #!/bin/bash
 
-echo "[CLEANUP] Cleaning up test processes..."
+# Cleanup script for CLI tests
+# Kills any lingering processes from test runs
 
-# Kill any elizaos processes
-pkill -f "elizaos start" 2>/dev/null || true
-pkill -f "elizaos dev" 2>/dev/null || true
-pkill -f "bun.*dist/index.js" 2>/dev/null || true
+echo "Cleaning up test processes..."
 
-# Kill processes on test ports
-for port in 3000 3100 3456; do
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -ti:$port | xargs kill -9 2>/dev/null || true
-  fi
-done
+# Kill any bun processes running dist/index.js
+pkill -f "bun.*dist/index.js" || true
 
-echo "[CLEANUP] Complete"
-exit 0 
+# Kill processes on common test ports
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:3100 | xargs kill -9 2>/dev/null || true
+
+# Kill any node processes that might be lingering
+pkill -f "node.*dist/index.js" || true
+
+echo "Cleanup complete" 

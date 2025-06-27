@@ -26,10 +26,10 @@ elizaos plugins [options] [command]
 
 | Subcommand          | Aliases               | Description                                                                        | Arguments                                                                 | Options                                                                           |
 | ------------------- | --------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `list`              | `l`, `ls`             | List available plugins in the registry (shows v1.x plugins by default)             |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                    |
-| `add`               | `install`             | Add a plugin to character file(s)                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-c, --character <paths...>`, `-s, --skip-env-prompt`, `--skip-verification`     |
-| `installed-plugins` |                       | List plugins found in character files                                              |                                                                           | `-c, --character <paths...>`                                                      |
-| `remove`            | `delete`, `del`, `rm` | Remove a plugin from character file(s)                                             | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-c, --character <paths...>`                                                      |
+| `list`              | `l`, `ls`             | List available plugins to install into the project (shows v1.x plugins by default) |                                                                           | `--all` (detailed version info), `--v0` (v0.x compatible only)                    |
+| `add`               | `install`             | Add a plugin to the project                                                        | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") | `-s, --skip-env-prompt`, `--skip-verification`, `-b, --branch`, `-T, --tag`       |
+| `installed-plugins` |                       | List plugins found in the project dependencies                                     |                                                                           |                                                                                   |
+| `remove`            | `delete`, `del`, `rm` | Remove a plugins from the project                                                  | `<plugin>` (plugins name e.g., "abc", "plugin-abc", "elizaos/plugin-abc") |                                                                                   |
 | `upgrade`           |                       | Upgrade a plugin from version 0.x to 1.x using AI-powered migration                | `<path>` (GitHub repository URL or local folder path)                     | `--api-key`, `--skip-tests`, `--skip-validation`                                  |
 | `generate`          |                       | Generate a new plugin using AI-powered code generation                             |                                                                           | `--api-key`, `--skip-tests`, `--skip-validation`, `--skip-prompts`, `--spec-file` |
 
@@ -52,48 +52,63 @@ elizaos plugins list --all
 elizaos plugins list --v0
 ```
 
-### Adding Plugins to Characters
+### Adding Plugins
 
 ```bash
-# Add a plugin to a specific character file
-elizaos plugins add openai --character assistant.json
+# Add a plugin by short name (looks up '@elizaos/plugin-openai')
+elizaos plugins add openai
 
-# Add to multiple character files
-elizaos plugins add @elizaos/plugin-anthropic --character assistant.json chatbot.json
+# Add a plugin by full package name
+elizaos plugins add @elizaos/plugin-anthropic
 
 # Add plugin and skip environment variable prompts
-elizaos plugins add google-ai --character mybot.json --skip-env-prompt
+elizaos plugins add google-ai --skip-env-prompt
 
-# Skip plugin verification after adding
-elizaos plugins add discord --character agent.json --skip-verification
+# Skip plugin verification after installation
+elizaos plugins add discord --skip-verification
+
+# Add plugin from specific branch (for monorepo development)
+elizaos plugins add custom-plugin --branch feature/new-api
+
+# Add a specific version/tag of a plugin from npm
+elizaos plugins add elevenlabs --tag latest
+
+# Install plugin directly from GitHub (HTTPS URL)
+elizaos plugins add https://github.com/owner/my-plugin
+
+# Install from GitHub with branch reference
+elizaos plugins add https://github.com/owner/my-plugin/tree/feature-branch
+
+# Install using GitHub shorthand syntax
+elizaos plugins add github:owner/my-plugin
+
+# Install specific branch using GitHub shorthand
+elizaos plugins add github:owner/my-plugin#feature-branch
 
 # Using alias
-elizaos plugins install openai --character assistant.json
+elizaos plugins install openai
 ```
 
 ### Listing Installed Plugins
 
 ```bash
-# Show plugins in specific character files
-elizaos plugins installed-plugins --character assistant.json
-
-# Check multiple character files
-elizaos plugins installed-plugins --character assistant.json chatbot.json
+# Show plugins currently in your project's package.json
+elizaos plugins installed-plugins
 ```
 
 ### Removing Plugins
 
 ```bash
-# Remove plugin from a character file
-elizaos plugins remove openai --character assistant.json
+# Remove plugin by short name
+elizaos plugins remove openai
 
-# Remove from multiple character files
-elizaos plugins remove @elizaos/plugin-anthropic --character assistant.json chatbot.json
+# Remove plugin by full package name
+elizaos plugins remove @elizaos/plugin-anthropic
 
 # Using aliases
-elizaos plugins delete openai --character mybot.json
-elizaos plugins del twitter --character agent.json
-elizaos plugins rm discord --character bot.json
+elizaos plugins delete openai
+elizaos plugins del twitter
+elizaos plugins rm discord
 ```
 
 ### Upgrading Plugins (AI-Powered)
@@ -140,34 +155,7 @@ elizaos plugins generate --skip-validation
 </TabItem>
 <TabItem value="guides" label="Guides & Concepts">
 
-## Character-Centric Plugin Architecture
-
-ElizaOS uses a character-centric approach to plugin management. Plugins are specified in character files, not installed at the project level. This allows each character to have its own set of capabilities.
-
-### How It Works
-
-1. **Character Configuration**: Each character file specifies its required plugins
-2. **Runtime Loading**: When starting an agent, the runtime loads plugins from the character's configuration
-3. **Automatic Installation**: Missing plugins are automatically installed when needed
-4. **Isolation**: Different characters can use different plugin versions
-
-### Character File Example
-
-```json
-{
-  "name": "MyAssistant",
-  "plugins": [
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-discord",
-    "./path/to/local/plugin"
-  ],
-  "settings": {
-    // Character-specific settings
-  }
-}
-```
-
-## Plugin Formats
+## Plugin Installation Formats
 
 The `add` command supports multiple plugin formats:
 
@@ -175,23 +163,36 @@ The `add` command supports multiple plugin formats:
 
 ```bash
 # Short name (auto-resolves to @elizaos/plugin-*)
-elizaos plugins add openai --character bot.json
+elizaos plugins add openai
 
 # Full package name
-elizaos plugins add @elizaos/plugin-openai --character bot.json
+elizaos plugins add @elizaos/plugin-openai
 
 # Scoped packages
-elizaos plugins add @company/plugin-custom --character bot.json
+elizaos plugins add @company/plugin-custom
 ```
 
-### Local Plugins
+### GitHub Integration
 
 ```bash
-# Add local plugin (useful during development)
-elizaos plugins add ./path/to/my-plugin --character bot.json
+# HTTPS URL
+elizaos plugins add https://github.com/user/my-plugin
 
-# Relative paths are supported
-elizaos plugins add ../my-plugin --character bot.json
+# GitHub shorthand
+elizaos plugins add github:user/my-plugin
+
+# With branch/tag
+elizaos plugins add github:user/my-plugin#feature-branch
+```
+
+### Version Control
+
+```bash
+# Specific npm tag
+elizaos plugins add plugin-name --tag beta
+
+# Development branch (for monorepo)
+elizaos plugins add plugin-name --branch main
 ```
 
 ## Plugin Development Workflow
@@ -199,34 +200,25 @@ elizaos plugins add ../my-plugin --character bot.json
 ### 1. Create a Plugin
 
 ```bash
-# Create plugin in current directory
 elizaos create -t plugin my-awesome-plugin
 cd plugin-my-awesome-plugin
-
-# Or create plugin within your project
-cd my-project
-elizaos create -t plugin my-awesome-plugin
 ```
 
-### 2. Add to Your Character
+### 2. Install in Your Project
 
 ```bash
-# During development, add from local directory
-elizaos plugins add ./plugin-my-awesome-plugin --character assistant.json
+# During development, install from local directory
+elizaos plugins add ./path/to/plugin-my-awesome-plugin
 
-# Or manually edit character file:
-{
-  "plugins": [
-    "./plugin-my-awesome-plugin"
-  ]
-}
+# Or install from your development branch
+elizaos plugins add my-awesome-plugin --branch feature/new-feature
 ```
 
 ### 3. Test Your Plugin
 
 ```bash
-# Start development mode with your character
-elizaos dev --character assistant.json
+# Start development mode
+elizaos dev
 
 # Run tests
 elizaos test
@@ -277,17 +269,46 @@ Both AI features require an Anthropic API key:
 
 ## Troubleshooting
 
-### Character File Issues
+### Plugin Installation Failures
 
 ```bash
-# Verify character file exists
-ls *.json
+# Clear cache and retry
+rm -rf ~/.eliza/cache
+elizaos plugins add plugin-name
+```
 
-# Check character file syntax
-cat character.json | jq .
+### Bun Installation Issues
 
-# View current plugins in character
-cat character.json | jq .plugins
+```bash
+# If you see "bun: command not found" errors
+# Install Bun using the appropriate command for your system:
+
+# Linux/macOS:
+curl -fsSL https://bun.sh/install | bash
+
+# Windows:
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# macOS with Homebrew:
+brew install bun
+
+# After installation, restart your terminal or:
+source ~/.bashrc  # Linux
+source ~/.zshrc   # macOS with zsh
+
+# Verify installation:
+bun --version
+```
+
+### Network Issues
+
+```bash
+# For GitHub authentication problems
+git config --global credential.helper store
+
+# For npm registry issues
+bun config set registry https://registry.npmjs.org/
+elizaos plugins add plugin-name
 ```
 
 ### Plugin Not Found
@@ -297,53 +318,48 @@ cat character.json | jq .plugins
 elizaos plugins list
 
 # Try different naming formats
-elizaos plugins add openai --character bot.json                    # Short name
-elizaos plugins add @elizaos/plugin-openai --character bot.json   # Full package name
-elizaos plugins add plugin-openai --character bot.json            # With plugin prefix
+elizaos plugins add openai                    # Short name
+elizaos plugins add @elizaos/plugin-openai   # Full package name
+elizaos plugins add plugin-openai            # With plugin prefix
 ```
 
-### Runtime Plugin Loading
+### Dependency Conflicts
 
 ```bash
-# If plugins fail to load at runtime
-# Check character file
-cat character.json | jq .plugins
+# If dependency installation fails
+cd your-project
+bun install
 
-# Verify network connectivity (for auto-install)
-ping npmjs.com
+# Check for conflicting dependencies
+bun pm ls
 
-# Clear bun cache
-bun pm cache rm
-
-# Try starting with verbose logging
-elizaos start --character character.json
-```
-
-### Local Plugin Development
-
-```bash
-# Ensure plugin is built
-cd ./my-local-plugin
-bun run build
-
-# Check plugin exports
-cat ./my-local-plugin/package.json | jq .main
-
-# Verify path in character file
-cat character.json | jq '.plugins[] | select(. | startswith("./"))'
+# Force reinstall
+rm -rf node_modules
+bun install
 ```
 
 ### Environment Variable Issues
 
 ```bash
-# If plugin requires environment variables
-elizaos env list
-
-# Set required variables
+# If plugin prompts for missing environment variables
 elizaos env set OPENAI_API_KEY your-key
 
-# Skip environment prompts when adding
-elizaos plugins add plugin-name --character bot.json --skip-env-prompt
+# Skip environment prompts during installation
+elizaos plugins add plugin-name --no-env-prompt
+```
+
+### Branch/Tag Issues
+
+```bash
+# If branch doesn't exist
+git ls-remote --heads https://github.com/user/repo
+
+# If tag doesn't exist
+git ls-remote --tags https://github.com/user/repo
+
+# Use correct branch/tag name
+elizaos plugins add plugin-name --branch main
+elizaos plugins add plugin-name --tag v1.0.0
 ```
 
 ### AI Feature Issues
@@ -373,8 +389,6 @@ NODE_OPTIONS="--max-old-space-size=8192" elizaos plugins upgrade ./my-plugin
 - [`create`](./create.md): Create a new project or plugin
 - [`env`](./env.md): Manage environment variables needed by plugins
 - [`publish`](./publish.md): Publish your plugin to the registry
-- [`start`](./start.md): Start agents with character-defined plugins
-- [`dev`](./dev.md): Develop and test plugins locally
 
 </TabItem>
 </Tabs>
