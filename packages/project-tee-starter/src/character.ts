@@ -29,14 +29,14 @@ export const mrTeeCharacter: Character = {
     // Voice Provider
     '@elizaos/plugin-elevenlabs',
 
+    // Embedding-capable plugins after other AI plugins
+    '@elizaos/plugin-openai',
+
     // Specialized Plugins
     '@elizaos/plugin-tee',
 
     // Platform Plugins
     '@elizaos/plugin-discord',
-
-    // Embedding-capable plugins last (lowest priority for embedding fallback)
-    '@elizaos/plugin-openai',
   ],
   settings: {
     secrets: {
