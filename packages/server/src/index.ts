@@ -157,7 +157,7 @@ export class AgentServer {
   /**
    * Dynamically resolves the client path based on the installation context.
    * Handles both development and production scenarios.
-   * 
+   *
    * @returns {string} The resolved path to the client dist directory
    * @throws {Error} If no valid client path can be found
    */
@@ -167,7 +167,7 @@ export class AgentServer {
       const cliPackageJson = require.resolve('@elizaos/cli/package.json');
       const cliDir = path.dirname(cliPackageJson);
       const cliDistPath = path.join(cliDir, 'dist');
-      
+
       // Verify the path exists
       if (fs.existsSync(path.join(cliDistPath, 'index.html'))) {
         logger.debug(`[CLIENT PATH] Resolved client path from npm package: ${cliDistPath}`);
@@ -201,7 +201,9 @@ export class AgentServer {
       }
     }
 
-    throw new Error('Unable to locate client files. Please ensure @elizaos/cli is properly installed.');
+    throw new Error(
+      'Unable to locate client files. Please ensure @elizaos/cli is properly installed.'
+    );
   }
 
   /**
@@ -709,7 +711,8 @@ export class AgentServer {
               res.status(404).json({
                 success: false,
                 error: {
-                  message: 'Client UI not available. Please ensure @elizaos/cli is properly installed.',
+                  message:
+                    'Client UI not available. Please ensure @elizaos/cli is properly installed.',
                   code: 404,
                 },
               });

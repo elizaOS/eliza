@@ -8,13 +8,10 @@ import { findPluginPackageName } from '../utils/naming';
 import { getDependenciesFromDirectory } from '../utils/directory';
 // Character updater imports removed - reverting to project-scoped plugins
 
-
-
 /**
  * Remove a plugin from the project
  */
 export async function removePlugin(plugin: string): Promise<void> {
-
   const cwd = process.cwd();
   const directoryInfo = detectDirectoryType(cwd);
 

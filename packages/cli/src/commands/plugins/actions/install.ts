@@ -116,8 +116,6 @@ export async function installPluginFromRegistry(
   process.exit(1);
 }
 
-
-
 /**
  * Main plugin installation function
  */
