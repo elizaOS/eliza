@@ -2,18 +2,16 @@
 
 ## Problem
 
-ElizaOS currently serves the web UI to anyone who can reach the server. While there's `ELIZA_SERVER_AUTH_TOKEN` for API endpoints, the web interface itself (HTML, CSS, JS files) is completely open. In production deployments, this creates an unnecessary attack surface.
-
-I'm probably being paranoid since this is my first proper PR, but it seems like production servers should be able to run API-only without exposing a web interface.
+elizaOS currently serves the web UI to anyone who can reach the server. While there's `ELIZA_SERVER_AUTH_TOKEN` for API endpoints, the web interface itself is wide open. In production deployments, this creates an unnecessary attack surface.
 
 ## Solution
 
-Added `ELIZA_UI_ENABLE` environment variable with smart defaults:
-- **Development**: UI enabled by default (unchanged developer experience)
-- **Production**: UI disabled by default (secure by default)
-- **Override**: Set `ELIZA_UI_ENABLE=true/false` to force enable/disable
+Added `ELIZA_UI_ENABLE` environment variable with sensible defaults:
+- **Development**: UI enabled by default
+- **Production**: UI disabled by default
+- **Override**: Set `ELIZA_UI_ENABLE=true/false`
 
-When disabled, the web UI returns a clean 404 JSON response, but all API endpoints continue working normally.
+When disabled, the web UI returns a 404 JSON response, but all API endpoints continue working normally.
 
 ## Implementation
 
@@ -46,9 +44,9 @@ When UI is disabled:
 
 ## Questions for the team
 
-I don't know enough about the deployment patterns people use with ElizaOS to be sure this covers all use cases. Are there scenarios where this approach might cause issues?
+Are there scenarios where this approach might cause issues?
 
-Also, I kept the API authentication (`ELIZA_SERVER_AUTH_TOKEN`) completely separate from this UI disable feature. Should they be related somehow, or is it good that they're independent controls?
+Also, I kept the API authentication (`ELIZA_SERVER_AUTH_TOKEN`) completely separate from this UI disable feature. 
 
 ## Backward compatibility
 
