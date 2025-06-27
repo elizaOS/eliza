@@ -69,9 +69,9 @@ NODE_ENV=development ELIZA_UI_ENABLE=false bun start
 - ✅ SPA routing works (serves index.html for client-side routes)
 
 ### When UI is Disabled
-- ❌ `http://localhost:3000` returns `{"success":false,"error":{"message":"Web UI disabled","code":404}}`
+- ❌ `http://localhost:3000` returns standard HTTP 403 Forbidden
 - ✅ `http://localhost:3000/api/*` still works normally
-- ❌ Static files return 404
+- ❌ Static files return 403 Forbidden
 - ❌ No HTML/CSS/JS served
 
 ## Logging
@@ -110,7 +110,7 @@ curl http://localhost:3000  # Should return HTML
 
 # Test 2: Production default (should block UI)  
 NODE_ENV=production bun start
-curl http://localhost:3000  # Should return {"success":false,...}
+curl http://localhost:3000  # Should return HTTP 403 Forbidden
 
 # Test 3: API still works when UI disabled
 curl http://localhost:3000/api/server/ping  # Should work

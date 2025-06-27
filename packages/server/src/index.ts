@@ -665,15 +665,9 @@ export class AgentServer {
           res.sendFile(path.join(cliDistPath, 'index.html'));
         });
       } else {
-        // Return 404 for non-API routes when UI is disabled
+        // Return 403 Forbidden for non-API routes when UI is disabled
         (this.app as any).use((_req: express.Request, res: express.Response) => {
-          res.status(404).json({
-            success: false,
-            error: {
-              message: 'Web UI disabled',
-              code: 404
-            }
-          });
+          res.sendStatus(403); // Standard HTTP 403 Forbidden
         });
       }
 

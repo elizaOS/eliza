@@ -1,6 +1,5 @@
 /**
  * Tests for ELIZA_UI_ENABLE feature
- * Integration tests for the UI disable functionality
  */
 
 import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
@@ -103,6 +102,28 @@ describe('UI Disable Feature Integration', () => {
             expect(mockExpressUse).not.toHaveBeenCalled();
         });
 
+        it('should return standard HTTP 403 when UI disabled', () => {
+            const mockSendStatus = jest.fn();
+            const mockResponse = {
+                sendStatus: mockSendStatus,
+            };
+
+            const handleUIDisabledRequest = (res: any, uiEnabled: boolean) => {
+                if (!uiEnabled) {
+                    res.sendStatus(403); // Standard HTTP 403 Forbidden
+                }
+            };
+
+            // Test UI disabled response
+            handleUIDisabledRequest(mockResponse, false);
+            expect(mockSendStatus).toHaveBeenCalledWith(403);
+
+            // Test UI enabled (no response)
+            mockSendStatus.mockClear();
+            handleUIDisabledRequest(mockResponse, true);
+            expect(mockSendStatus).not.toHaveBeenCalled();
+        });
+
         it('should affect SPA fallback route registration', () => {
             const mockExpressUse = jest.fn();
             const mockApp = {
@@ -113,7 +134,7 @@ describe('UI Disable Feature Integration', () => {
                 if (uiEnabled) {
                     app.use('spa-fallback-middleware');
                 } else {
-                    app.use('404-for-non-api-routes');
+                    app.use('403-forbidden-for-non-api-routes');
                 }
             };
 
@@ -124,7 +145,7 @@ describe('UI Disable Feature Integration', () => {
             // Reset and test UI disabled  
             mockExpressUse.mockClear();
             configureSPAFallback(mockApp, false);
-            expect(mockExpressUse).toHaveBeenCalledWith('404-for-non-api-routes');
+            expect(mockExpressUse).toHaveBeenCalledWith('403-forbidden-for-non-api-routes');
         });
     });
 

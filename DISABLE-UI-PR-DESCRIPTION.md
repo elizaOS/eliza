@@ -11,7 +11,7 @@ Added `ELIZA_UI_ENABLE` environment variable with sensible defaults:
 - **Production**: UI disabled by default
 - **Override**: Set `ELIZA_UI_ENABLE=true/false`
 
-When disabled, the web UI returns a 404 JSON response, but all API endpoints continue working normally.
+When disabled, the web UI returns standard HTTP 403 Forbidden, but all API endpoints continue working normally.
 
 ## Implementation
 
@@ -39,7 +39,7 @@ ELIZA_UI_ENABLE=false bun start
 ```
 
 When UI is disabled:
-- `http://localhost:3000` → `{"success":false,"error":{"message":"Web UI disabled","code":404}}`
+- `http://localhost:3000` → HTTP 403 Forbidden  
 - `http://localhost:3000/api/server/ping` → Still works fine
 
 ## Questions for the team
