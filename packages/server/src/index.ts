@@ -155,6 +155,58 @@ export class AgentServer {
   }
 
   /**
+   * Dynamically resolves the client path based on the installation context.
+   * Handles both development and production scenarios.
+   *
+   * @returns {string} The resolved path to the client dist directory
+   * @throws {Error} If no valid client path can be found
+   */
+  private resolveClientPath(): string {
+    // First, try to resolve from the @elizaos/cli package directly
+    try {
+      const cliPackageJson = require.resolve('@elizaos/cli/package.json');
+      const cliDir = path.dirname(cliPackageJson);
+      const cliDistPath = path.join(cliDir, 'dist');
+
+      // Verify the path exists
+      if (fs.existsSync(path.join(cliDistPath, 'index.html'))) {
+        logger.debug(`[CLIENT PATH] Resolved client path from npm package: ${cliDistPath}`);
+        return cliDistPath;
+      }
+    } catch (e) {
+      // Package not found, continue to other methods
+      logger.debug('[CLIENT PATH] Could not resolve @elizaos/cli package, trying other methods');
+    }
+
+    // Fallback to relative path for development/local installation
+    const relativePath = path.resolve(__dirname, '../../cli/dist');
+    if (fs.existsSync(path.join(relativePath, 'index.html'))) {
+      logger.debug(`[CLIENT PATH] Resolved client path from relative path: ${relativePath}`);
+      return relativePath;
+    }
+
+    // Final fallback: look for dist in current working directory
+    const cwdPath = path.join(process.cwd(), 'dist');
+    if (fs.existsSync(path.join(cwdPath, 'index.html'))) {
+      logger.debug(`[CLIENT PATH] Resolved client path from current directory: ${cwdPath}`);
+      return cwdPath;
+    }
+
+    // If environment variable is set, try that
+    if (process.env.ELIZA_CLIENT_PATH) {
+      const envPath = path.resolve(process.env.ELIZA_CLIENT_PATH);
+      if (fs.existsSync(path.join(envPath, 'index.html'))) {
+        logger.debug(`[CLIENT PATH] Resolved client path from environment variable: ${envPath}`);
+        return envPath;
+      }
+    }
+
+    throw new Error(
+      'Unable to locate client files. Please ensure @elizaos/cli is properly installed.'
+    );
+  }
+
+  /**
    * Initializes the database and server.
    *
    * @param {ServerOptions} [options] - Optional server options.
@@ -570,8 +622,15 @@ export class AgentServer {
 
       // Serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
-      const clientPath = path.resolve(__dirname, '../../cli/dist');
-      this.app.use(express.static(clientPath, staticOptions));
+      try {
+        const clientPath = this.resolveClientPath();
+        this.app.use(express.static(clientPath, staticOptions));
+        logger.info(`[STATIC] Serving client files from: ${clientPath}`);
+      } catch (error) {
+        logger.error('[STATIC] Failed to resolve client path:', error);
+        logger.warn('[STATIC] Client UI will not be available. API endpoints will still work.');
+        // Continue without static file serving - API will still work
+      }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
       const pluginRouteHandler = createPluginRouteHandler(this.agents);
@@ -644,8 +703,31 @@ export class AgentServer {
 
         // For all other routes, serve the SPA's index.html
         // Client files are built into the CLI package's dist directory
-        const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-        res.sendFile(path.join(cliDistPath, 'index.html'));
+        try {
+          const cliDistPath = this.resolveClientPath();
+          res.sendFile(path.join(cliDistPath, 'index.html'), (err) => {
+            if (err && !res.headersSent) {
+              logger.error('[STATIC] Failed to serve index.html:', err);
+              res.status(404).json({
+                success: false,
+                error: {
+                  message:
+                    'Client UI not available. Please ensure @elizaos/cli is properly installed.',
+                  code: 404,
+                },
+              });
+            }
+          });
+        } catch (error) {
+          logger.error('[STATIC] Failed to resolve client path for fallback route:', error);
+          res.status(404).json({
+            success: false,
+            error: {
+              message: 'Client UI not available. API endpoints are still accessible at /api/*',
+              code: 404,
+            },
+          });
+        }
       });
 
       // Create HTTP server for Socket.io

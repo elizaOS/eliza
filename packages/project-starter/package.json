@@ -30,6 +30,8 @@
   "dependencies": {
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@tanstack/react-query": "^5.29.0",
     "clsx": "^2.1.1",
     "react": "^18.3.1",

@@ -1,8 +1,8 @@
-import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const messageServerTable = pgTable('message_servers', {
-  id: text('id').primaryKey(), // UUID stored as text
+  id: uuid('id').primaryKey(),
   name: text('name').notNull(),
   sourceType: text('source_type').notNull(),
   sourceId: text('source_id'),

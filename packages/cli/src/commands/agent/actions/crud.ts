@@ -1,100 +1,89 @@
 import type { Agent } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
-import { parseCharacterPaths } from '@/src/utils/character-parser';
 import type { ApiResponse } from '../../shared';
 import { getAgentsBaseUrl } from '../../shared';
 import { resolveAgentId } from '../utils';
+
+/**
+ * Safely parse JSON response with error handling
+ * @param response - The fetch Response object
+ * @returns Parsed JSON data or null if parsing fails
+ */
+async function safeJsonParse<T>(response: Response): Promise<T | null> {
+  try {
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to parse response as JSON:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse error response and throw appropriate error
+ * @param response - The fetch Response object
+ * @param defaultMessage - Default error message if JSON parsing fails
+ */
+async function handleErrorResponse(response: Response, defaultMessage: string): Promise<never> {
+  const errorData = await safeJsonParse<ApiResponse<unknown>>(response);
+  throw new Error(errorData?.error?.message || defaultMessage);
+}
 
 /**
  * Get command implementation - retrieves and displays agent details
  */
 export async function getAgent(opts: OptionValues): Promise<void> {
   try {
-    const parsedPaths = parseCharacterPaths(opts.character);
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
     const baseUrl = getAgentsBaseUrl(opts);
 
-    if (parsedPaths.length === 0) {
-      throw new Error(`Invalid character specification: ${opts.character}`);
+    console.info(`Getting agent ${resolvedAgentId}`);
+
+    // API Endpoint: GET /agents/:agentId
+    const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
+    if (!response.ok) {
+      logger.error(`Failed to get agent`);
+      process.exit(1);
     }
 
-    const retrievedAgents: Agent[] = [];
-    const failedAgents: string[] = [];
-
-    for (const characterName of parsedPaths) {
-      try {
-        console.info(`Getting agent ${characterName}...`);
-
-        const resolvedAgentId = await resolveAgentId(characterName, opts);
-
-        // API Endpoint: GET /agents/:agentId
-        const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
-        if (!response.ok) {
-          throw new Error(`Failed to get agent: ${response.statusText}`);
-        }
-
-        const { data: agent } = (await response.json()) as ApiResponse<Agent>;
-
-        if (!agent) {
-          throw new Error('No agent data received from server');
-        }
-
-        retrievedAgents.push(agent);
-      } catch (error) {
-        failedAgents.push(
-          `${characterName}: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
+    const responseData = await safeJsonParse<ApiResponse<Agent>>(response);
+    if (!responseData) {
+      throw new Error('Failed to parse agent data from server response');
     }
 
-    // Handle output file option for multiple agents
+    const agent = responseData.data;
+    if (!agent) {
+      throw new Error('No agent data received from server');
+    }
+
+    // Save to file if output option is specified - exit early
     if (opts.output !== undefined) {
-      if (retrievedAgents.length === 1) {
-        // Single agent - save as before
-        const agent = retrievedAgents[0];
-        const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
-        const filename =
-          opts.output === true
-            ? `${agent.name || 'agent'}.json`
-            : `${String(opts.output)}${String(opts.output).endsWith('.json') ? '' : '.json'}`;
-        const jsonPath = path.resolve(process.cwd(), filename);
-        writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
-        console.log(`Saved agent configuration to ${jsonPath}`);
-      } else if (retrievedAgents.length > 1) {
-        // Multiple agents - save each with agent name
-        for (const agent of retrievedAgents) {
-          const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
-          const filename = `${agent.name || agent.id || 'agent'}.json`;
-          const jsonPath = path.resolve(process.cwd(), filename);
-          writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
-          console.log(`Saved agent configuration to ${jsonPath}`);
-        }
-      }
+      // Extract config without metadata fields
+      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+
+      // Create filename with appropriate .json extension
+      const filename =
+        opts.output === true
+          ? `${agent.name || 'agent'}.json`
+          : `${String(opts.output)}${String(opts.output).endsWith('.json') ? '' : '.json'}`;
+
+      // Save file and exit
+      const jsonPath = path.resolve(process.cwd(), filename);
+      writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
+      console.log(`Saved agent configuration to ${jsonPath}`);
       return;
     }
 
-    // Display agent details
-    for (const agent of retrievedAgents) {
-      console.log(''); // Add spacing between agents
-      displayAgent(agent, `Agent Details: ${agent.name || agent.id}`);
+    // Display agent details if not using output option
+    displayAgent(agent, 'Agent Details');
 
-      // Display JSON if requested
-      if (opts.json) {
-        const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
-        console.log(JSON.stringify(agentConfig, null, 2));
-      }
-    }
-
-    // Report any failures
-    if (failedAgents.length > 0) {
-      console.error(`\x1b[31m[✗] Failed to get ${failedAgents.length} agent(s):\x1b[0m`);
-      failedAgents.forEach((error) => console.error(`  ${error}`));
-    }
-
-    if (retrievedAgents.length > 0) {
-      console.log(`\x1b[32m[✓] Successfully retrieved ${retrievedAgents.length} agent(s)\x1b[0m`);
+    // Display JSON if requested
+    if (opts.json) {
+      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+      console.log(JSON.stringify(agentConfig, null, 2));
     }
 
     return;
@@ -105,59 +94,26 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 }
 
 /**
- * Remove command implementation - deletes agents
+ * Remove command implementation - deletes an agent
  */
 export async function removeAgent(opts: OptionValues): Promise<void> {
   try {
-    const parsedPaths = parseCharacterPaths(opts.character);
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
     const baseUrl = getAgentsBaseUrl(opts);
 
-    if (parsedPaths.length === 0) {
-      throw new Error(`Invalid character specification: ${opts.character}`);
+    console.info(`Removing agent ${resolvedAgentId}`);
+
+    // API Endpoint: DELETE /agents/:agentId
+    const response = await fetch(`${baseUrl}/${resolvedAgentId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      await handleErrorResponse(response, `Failed to remove agent: ${response.statusText}`);
     }
 
-    const removedAgents: string[] = [];
-    const failedAgents: string[] = [];
-
-    for (const characterName of parsedPaths) {
-      try {
-        console.info(`Removing agent ${characterName}...`);
-
-        const resolvedAgentId = await resolveAgentId(characterName, opts);
-
-        // API Endpoint: DELETE /agents/:agentId
-        const response = await fetch(`${baseUrl}/${resolvedAgentId}`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          const errorData = (await response.json().catch(() => ({}))) as ApiResponse<unknown>;
-          throw new Error(
-            errorData.error?.message || `Failed to remove agent: ${response.statusText}`
-          );
-        }
-
-        // Server returns 204 No Content for successful deletion, no need to parse response
-        removedAgents.push(characterName);
-      } catch (error) {
-        failedAgents.push(
-          `${characterName}: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
-
-    // Report results
-    if (removedAgents.length > 0) {
-      console.log(
-        `\x1b[32m[✓] Successfully removed ${removedAgents.length} agent(s): ${removedAgents.join(', ')}\x1b[0m`
-      );
-    }
-
-    if (failedAgents.length > 0) {
-      console.error(`\x1b[31m[✗] Failed to remove ${failedAgents.length} agent(s):\x1b[0m`);
-      failedAgents.forEach((error) => console.error(`  ${error}`));
-    }
-
+    // Server returns 204 No Content for successful deletion, no need to parse response
+    console.log(`Successfully removed agent ${opts.name}`);
     return;
   } catch (error) {
     await checkServer(opts);
@@ -166,69 +122,30 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 }
 
 /**
- * Clear memories command implementation - clears all memories for agents
+ * Clear memories command implementation - clears all memories for an agent
  */
 export async function clearAgentMemories(opts: OptionValues): Promise<void> {
   try {
-    const parsedPaths = parseCharacterPaths(opts.character);
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
     const baseUrl = getAgentsBaseUrl(opts);
 
-    if (parsedPaths.length === 0) {
-      throw new Error(`Invalid character specification: ${opts.character}`);
+    console.info(`Clearing all memories for agent ${resolvedAgentId}`);
+
+    // API Endpoint: DELETE /agents/:agentId/memories
+    const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      await handleErrorResponse(response, `Failed to clear agent memories: ${response.statusText}`);
     }
 
-    const clearedAgents: Array<{ name: string; deletedCount: number }> = [];
-    const failedAgents: string[] = [];
+    const data = await safeJsonParse<ApiResponse<{ deletedCount: number }>>(response);
+    const result = data?.data || null;
 
-    for (const characterName of parsedPaths) {
-      try {
-        console.info(`Clearing all memories for agent ${characterName}...`);
-
-        const resolvedAgentId = await resolveAgentId(characterName, opts);
-
-        // API Endpoint: DELETE /agents/:agentId/memories
-        const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          const errorData = (await response.json().catch(() => ({}))) as ApiResponse<unknown>;
-          throw new Error(
-            errorData.error?.message || `Failed to clear agent memories: ${response.statusText}`
-          );
-        }
-
-        const data = (await response.json()) as ApiResponse<{ deletedCount: number }>;
-        const result = data.data;
-
-        clearedAgents.push({
-          name: characterName,
-          deletedCount: result?.deletedCount || 0,
-        });
-      } catch (error) {
-        failedAgents.push(
-          `${characterName}: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
-
-    // Report results
-    if (clearedAgents.length > 0) {
-      console.log(
-        `\x1b[32m[✓] Successfully cleared memories for ${clearedAgents.length} agent(s):\x1b[0m`
-      );
-      clearedAgents.forEach(({ name, deletedCount }) => {
-        console.log(`  ${name}: ${deletedCount} memories cleared`);
-      });
-    }
-
-    if (failedAgents.length > 0) {
-      console.error(
-        `\x1b[31m[✗] Failed to clear memories for ${failedAgents.length} agent(s):\x1b[0m`
-      );
-      failedAgents.forEach((error) => console.error(`  ${error}`));
-    }
-
+    console.log(
+      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
+    );
     return;
   } catch (error) {
     await checkServer(opts);
@@ -241,7 +158,7 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
  */
 export async function setAgentConfig(opts: OptionValues): Promise<void> {
   try {
-    const resolvedAgentId = await resolveAgentId(opts.character, opts);
+    const resolvedAgentId = await resolveAgentId(opts.name, opts);
 
     console.info(`Updating configuration for agent ${resolvedAgentId}`);
 
@@ -274,14 +191,14 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     });
 
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(
-        errorData.error?.message || `Failed to update agent configuration: ${response.statusText}`
+      await handleErrorResponse(
+        response,
+        `Failed to update agent configuration: ${response.statusText}`
       );
     }
 
-    const data = (await response.json()) as ApiResponse<{ id: string }>;
-    const result = data.data;
+    const data = await safeJsonParse<ApiResponse<{ id: string }>>(response);
+    const result = data?.data || null;
 
     console.log(`Successfully updated configuration for agent ${result?.id || resolvedAgentId}`);
   } catch (error) {

@@ -135,30 +135,12 @@ When you run the `start` command, ElizaOS:
 1. **Project Detection**: Detects whether you're in a project or plugin directory
 2. **Configuration Loading**: Loads and validates the configuration
 3. **Database Initialization**: Initializes the database system
-4. **Character Loading**: Loads character files (plugins are loaded from character.plugins array)
-5. **Plugin Loading**: Loads plugins specified in each character's configuration
-6. **Service Startup**: Starts any configured services
-7. **Knowledge Processing**: Processes knowledge files if present
-8. **API Server**: Starts the HTTP API server
-9. **Agent Runtime**: Initializes agent runtimes
-10. **Event Listening**: Begins listening for messages and events
-
-### Plugin Loading
-
-Plugins are loaded exclusively from character files. Each character specifies its required plugins in the `plugins` array:
-
-```json
-{
-  "name": "MyAssistant",
-  "plugins": [
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-discord"
-  ],
-  // ... other character configuration
-}
-```
-
-The runtime will automatically install any missing plugins when starting. You don't need to manually install plugins in your project's package.json.
+4. **Plugin Loading**: Loads required plugins
+5. **Service Startup**: Starts any configured services
+6. **Knowledge Processing**: Processes knowledge files if present
+7. **API Server**: Starts the HTTP API server
+8. **Agent Runtime**: Initializes agent runtimes
+9. **Event Listening**: Begins listening for messages and events
 
 </TabItem>
 <TabItem value="troubleshooting" label="Troubleshooting">
@@ -202,23 +184,6 @@ elizaos start --character /full/path/to/character.json
 
 # Start without character to use default
 elizaos start
-```
-
-### Plugin Loading Issues
-
-If plugins fail to load:
-
-1. **Check Character File**: Ensure plugins are listed in the character's `plugins` array
-2. **Verify Plugin Names**: Use correct package names (e.g., `@elizaos/plugin-openai`)
-3. **Network Issues**: The runtime needs internet access to install missing plugins
-4. **Clear Cache**: Try clearing the npm cache if plugins fail to install
-
-```bash
-# Check character file plugins
-cat character.json | jq .plugins
-
-# Clear bun cache if needed
-bun pm cache rm
 ```
 
 ### Configuration Problems

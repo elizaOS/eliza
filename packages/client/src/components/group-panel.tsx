@@ -95,13 +95,13 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       });
     },
     onSuccess: (response) => {
-      if (response.data) {
+      if (response) {
         toast({ title: 'Success', description: 'Group created successfully.' });
         queryClient.invalidateQueries({ queryKey: ['channels', serverId] });
         queryClient.invalidateQueries({ queryKey: ['channels'] });
         onClose();
         setTimeout(() => {
-          navigate(`/group/${response.data.id}?serverId=${serverId}`);
+          navigate(`/group/${response.id}?serverId=${serverId}`);
         }, 100);
       }
     },
