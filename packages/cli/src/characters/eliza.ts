@@ -6,13 +6,7 @@ import type { Character } from '@elizaos/core';
  */
 const baseCharacter: Character = {
   name: 'Eliza',
-  plugins: [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-openai',
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-local-ai',
-    '@elizaos/plugin-bootstrap',
-  ],
+  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
   secrets: {},
   system:
     'Respond to all messages in a helpful, conversational manner. Provide assistance on a wide range of topics, using knowledge when needed. Be concise but thorough, friendly but professional. Use humor when appropriate and be empathetic to user needs. Provide valuable information and insights when questions are asked.',
@@ -196,13 +190,37 @@ const baseCharacter: Character = {
  */
 export function getElizaCharacter(): Character {
   const plugins = [
+    // Core plugins first
     '@elizaos/plugin-sql',
+
+    // Bootstrap plugin
+    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+
+    // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+
+    // Platform plugins
+    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
+    ...(process.env.TWITTER_API_KEY &&
+    process.env.TWITTER_API_SECRET_KEY &&
+    process.env.TWITTER_ACCESS_TOKEN &&
+    process.env.TWITTER_ACCESS_TOKEN_SECRET
+      ? ['@elizaos/plugin-twitter']
+      : []),
+    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+
+    // Embedding-capable plugins last (lowest priority for embedding fallback)
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY
+    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
+    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
+    ...(!process.env.ANTHROPIC_API_KEY &&
+    !process.env.OPENROUTER_API_KEY &&
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
+    !process.env.OLLAMA_API_ENDPOINT &&
+    !process.env.OPENAI_API_KEY
       ? ['@elizaos/plugin-local-ai']
       : []),
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ];
 
   return {

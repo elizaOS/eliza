@@ -75,6 +75,7 @@
     "@anthropic-ai/sdk": "^0.54.0",
     "@clack/prompts": "^0.11.0",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-ai": "1.0.4",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
     "bun": "^1.2.17",

@@ -1,16 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { execFileSync, execSync, spawn as nodeSpawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
-  killProcessOnPort,
-  waitForServerReady,
   getBunExecutable,
   getPlatformOptions,
+  killProcessOnPort,
+  waitForServerReady,
 } from './test-utils';
-import { TEST_TIMEOUTS } from '../test-timeouts';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;

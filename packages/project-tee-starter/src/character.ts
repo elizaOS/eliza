@@ -19,13 +19,18 @@ const avatar = fs.existsSync(imagePath)
 export const mrTeeCharacter: Character = {
   name: 'Mr. TEE',
   plugins: [
+    // Core plugins first
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-openai',
+
+    // Specialized plugins
     '@elizaos/plugin-redpill',
     '@elizaos/plugin-bootstrap',
     '@elizaos/plugin-elevenlabs',
     '@elizaos/plugin-tee',
     '@elizaos/plugin-discord',
+
+    // Embedding-capable plugins last (lowest priority for embedding fallback)
+    '@elizaos/plugin-openai',
   ],
   settings: {
     secrets: {
