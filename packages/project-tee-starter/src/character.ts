@@ -21,12 +21,18 @@ export const mrTeeCharacter: Character = {
   plugins: [
     // Core plugins first
     '@elizaos/plugin-sql',
-
-    // Specialized plugins
-    '@elizaos/plugin-redpill',
     '@elizaos/plugin-bootstrap',
+
+    // LLM provider
+    '@elizaos/plugin-redpill',
+
+    // Voice Provider
     '@elizaos/plugin-elevenlabs',
+
+    // Specialized Plugins
     '@elizaos/plugin-tee',
+
+    // Platform Plugins
     '@elizaos/plugin-discord',
 
     // Embedding-capable plugins last (lowest priority for embedding fallback)
