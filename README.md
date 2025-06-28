@@ -14,10 +14,6 @@ A framework for multi-agent development and deployment
 - 🚀 Highly extensible - create your own actions and clients.
 - 📦 Just works!
 
-## Video Tutorials
-
-[AI Agent Dev School](https://www.youtube.com/watch?v=ArptLpQiKfI&list=PLx5pnFXdPTRzWla0RaOxALTSTnVq53fKL)
-
 ## 🎯 Use Cases
 
 - 🤖 Chatbots
