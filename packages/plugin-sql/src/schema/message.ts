@@ -1,13 +1,13 @@
-import { pgTable, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, jsonb, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { channelTable } from './channel';
 
 export const messageTable = pgTable('central_messages', {
-  id: text('id').primaryKey(), // UUID stored as text
-  channelId: text('channel_id')
+  id: uuid('id').primaryKey(), // UUID stored as text
+  channelId: uuid('channel_id')
     .notNull()
     .references(() => channelTable.id, { onDelete: 'cascade' }),
-  authorId: text('author_id').notNull(),
+  authorId: uuid('author_id').notNull(),
   content: text('content').notNull(),
   rawMessage: jsonb('raw_message'),
   inReplyToRootMessageId: text('in_reply_to_root_message_id').references(() => messageTable.id, {

@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { messageServerTable } from './messageServer';
 
 export const channelTable = pgTable('channels', {
-  id: text('id').primaryKey(), // UUID stored as text
+  id: uuid('id').primaryKey(), // UUID stored as text
   messageServerId: uuid('server_id')
     .notNull()
     .references(() => messageServerTable.id, { onDelete: 'cascade' }),

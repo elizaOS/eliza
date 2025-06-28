@@ -1,6 +1,6 @@
 import type { MessageExample } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
-import { boolean, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgTable, text, unique, uuid, timestamp } from 'drizzle-orm/pg-core';
 
 /**
  * Represents a table for storing agent data.
@@ -67,9 +67,5 @@ export const agentTable = pgTable(
       .default(sql`'{}'::jsonb`)
       .notNull(),
   },
-  (table) => {
-    return {
-      nameUnique: unique('name_unique').on(table.name),
-    };
-  }
+  (table) => [unique('name_unique').on(table.name)]
 );

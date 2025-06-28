@@ -126,4 +126,19 @@ export default plugin;
 
 // Export additional utilities that may be needed by consumers
 export { DatabaseMigrationService } from './migration-service';
+export { EnhancedMigrationService } from './enhanced-migration-service';
+export { DatabaseIntrospector } from './database-introspector';
+export { SchemaDiffEngine } from './schema-diff-engine';
+export { MigrationPlanner } from './migration-planner';
+export { MigrationExecutor } from './migration-executor';
+export { MigrationHistoryManager } from './migration-history';
 export { schema };
+
+// Export types that may be useful for consumers
+export type { EnhancedMigrationOptions, MigrationSummary } from './enhanced-migration-service';
+export type { MigrationPlan, MigrationOptions, MigrationWarning } from './migration-planner';
+export type { MigrationResult, ExecutedOperation, FailedOperation } from './migration-executor';
+export type { MigrationHistoryEntry } from './migration-history';
+export type { SchemaDiff, TableAlterations, ColumnModification } from './schema-diff-engine';
+export type { DatabaseTable, DatabaseColumn, DatabaseIndex, DatabaseForeignKey } from './database-introspector';
+export type { MigrationOperation } from './alter-statement-generator';

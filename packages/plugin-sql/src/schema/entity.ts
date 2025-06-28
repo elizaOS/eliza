@@ -26,9 +26,5 @@ export const entityTable = pgTable(
       .default(sql`'{}'::jsonb`)
       .notNull(),
   },
-  (table) => {
-    return {
-      idAgentIdUnique: unique('id_agent_id_unique').on(table.id, table.agentId),
-    };
-  }
+  (table) => [unique('id_agent_id_unique').on(table.id, table.agentId)]
 );

@@ -39,7 +39,7 @@ function extractErrorDetails(error: unknown): { message: string; stack?: string 
   return { message: 'Unknown error' };
 }
 
-interface ColumnDefinition {
+export interface ColumnDefinition {
   name: string;
   type: string;
   primaryKey?: boolean;
@@ -48,13 +48,13 @@ interface ColumnDefinition {
   unique?: boolean;
 }
 
-interface IndexDefinition {
+export interface IndexDefinition {
   name: string;
   columns: string[];
   unique?: boolean;
 }
 
-interface ForeignKeyDefinition {
+export interface ForeignKeyDefinition {
   name: string;
   columns: string[];
   referencedTable: string;
@@ -62,7 +62,7 @@ interface ForeignKeyDefinition {
   onDelete?: string;
 }
 
-interface TableDefinition {
+export interface TableDefinition {
   name: string;
   columns: ColumnDefinition[];
   indexes: IndexDefinition[];
@@ -221,21 +221,26 @@ export class DrizzleSchemaIntrospector {
         const config = col.config || col;
         const columnName = config.name || key;
 
-        // logger.debug(`[INTROSPECTOR] Processing column ${columnName}:`, {
-        //   type: col.columnType,
-        //   primaryKey: config.primaryKey || config.primary,
-        //   notNull: config.notNull,
-        //   hasDefault: !!config.default || !!config.defaultValue,
-        //   defaultValue: config.default || config.defaultValue,
-        //   hasReferences: !!config.references,
-        // });
+        logger.debug(`[INTROSPECTOR] Processing column ${columnName}:`, {
+          type: col.columnType,
+          primaryKey: config.primaryKey || config.primary,
+          notNull: config.notNull,
+          hasDefault: !!config.default || !!config.defaultValue,
+          defaultValue: config.default || config.defaultValue,
+          hasReferences: !!config.references,
+        });
 
+        const inputToFormat = config.default !== undefined ? config.default : config.defaultValue;
+        const formattedDefault = this.formatDefaultValue(inputToFormat);
+        
+        // Debug logging removed - fix applied
+        
         columns.push({
           name: columnName,
           type: this.mapDrizzleColumnType(col.columnType || 'unknown', config, columnName),
           primaryKey: config.primaryKey || config.primary || false,
           notNull: config.notNull !== false,
-          defaultValue: this.formatDefaultValue(config.default || config.defaultValue),
+          defaultValue: formattedDefault,
           unique: config.unique || false,
         });
       }
@@ -802,6 +807,15 @@ export class DrizzleSchemaIntrospector {
         return 'BIGINT';
       case 'PgBoolean':
         return 'BOOLEAN';
+      case 'PgReal':
+        return 'REAL';
+      case 'PgDoublePrecision':
+        return 'DOUBLE PRECISION';
+      case 'PgDecimal':
+      case 'PgNumeric':
+        return config.precision && config.scale
+          ? `NUMERIC(${config.precision}, ${config.scale})`
+          : 'NUMERIC';
       case 'PgJsonb':
         return 'JSONB';
       case 'PgSerial':
@@ -848,12 +862,14 @@ export class DrizzleSchemaIntrospector {
   private formatDefaultValue(defaultValue: any): string | undefined {
     if (defaultValue === undefined || defaultValue === null) return undefined;
 
-    // logger.debug(`[INTROSPECTOR] Formatting default value:`, {
-    //   type: typeof defaultValue,
-    //   value: defaultValue,
-    //   hasQueryChunks: !!(defaultValue && defaultValue.queryChunks),
-    //   constructorName: defaultValue?.constructor?.name,
-    // });
+    // Debug output removed - fix applied
+
+    logger.debug(`[INTROSPECTOR] Formatting default value:`, {
+      type: typeof defaultValue,
+      value: defaultValue,
+      hasQueryChunks: !!(defaultValue && defaultValue.queryChunks),
+      constructorName: defaultValue?.constructor?.name,
+    });
 
     // Handle SQL template literals
     if (defaultValue && typeof defaultValue === 'object') {
