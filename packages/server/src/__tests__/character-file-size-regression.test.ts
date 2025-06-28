@@ -95,7 +95,7 @@ describe('Character File Size Limits - Issue #5268 Regression Test', () => {
       
       // Verify the fix provides significant increase
       expect(newLimit).toBeGreaterThan(oldLimit);
-      expect(newLimit / oldLimit).toBe(20.48); // 20.48x increase
+      expect(newLimit / oldLimit).toBeCloseTo(20.48); // 20.48x increase
       
       // The reported 150KB file should now be well within limits
       const reportedFileSize = 150 * 1024;
