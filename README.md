@@ -26,7 +26,7 @@ A framework for multi-agent development and deployment
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- [Node.js](https://nodejs.org/) (v23 or higher recommended)
 - [bun](https://bun.sh/docs/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
