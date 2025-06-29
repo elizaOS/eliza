@@ -455,7 +455,15 @@ const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean f
 
 ## Bootstrap Plugin
 
-The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
+The Bootstrap Plugin is a foundational component of ElizaOS that **provides essential communication capabilities and is mandatory for basic agent functionality**. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
+
+**Without the Bootstrap Plugin, your agent will be unable to:**
+- Process incoming messages from Discord, Telegram, or other platforms
+- Respond to user interactions
+- Handle communication events
+- Generate responses to conversations
+
+**The Bootstrap Plugin is required unless you're building a completely custom event handling system from scratch.**
 
 ```typescript
 export const bootstrapPlugin: Plugin = {
@@ -568,13 +576,16 @@ While the Bootstrap Plugin provides core functionality, it's designed to be exte
 4. **Handle additional events** - React to more system events
 5. **Initialize custom services** - Provide new functionality
 
-When working with plugins in relation to the Bootstrap Plugin:
+**Important: The Bootstrap Plugin is mandatory for communication.** When working with plugins in relation to the Bootstrap Plugin:
 
-1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
-2. **Understand provider contribution** - Know how each provider contributes to the agent's context
-3. **Learn the core actions** - Become familiar with the actions that all agents can perform
-4. **Leverage event handlers** - Use the event system for reactive behavior
-5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
+1. **Always include bootstrap** - Unless building a custom event system, include `@elizaos/plugin-bootstrap` in your plugins array
+2. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
+3. **Understand provider contribution** - Know how each provider contributes to the agent's context
+4. **Learn the core actions** - Become familiar with the actions that all agents can perform
+5. **Leverage event handlers** - Use the event system for reactive behavior
+6. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
+
+**For testing purposes only**, you can disable the Bootstrap Plugin with `IGNORE_BOOTSTRAP=true`, but this will break standard agent communication functionality.
 
 ---
 
