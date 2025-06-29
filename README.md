@@ -311,10 +311,13 @@ Eliza is organized as a monorepo using Bun, Lerna, and Turbo for efficient packa
   - `client/`: Client libraries for web interfaces
   - `create-eliza/`: Project scaffolding tool
   - `docs/`: Official documentation source files
-  - `plugin-bootstrap/`: Core agent initialization (@elizaos/plugin-bootstrap)
-    - Provides fundamental agent actions (reply, follow/unfollow, mute/unmute)
-    - Implements core evaluators and providers
-    - Handles message processing and world events
+  - `plugin-bootstrap/`: **Essential communication core** (@elizaos/plugin-bootstrap)
+    - **Required for basic agent functionality** - handles all message processing
+    - Provides critical event handlers (MESSAGE_RECEIVED, VOICE_MESSAGE_RECEIVED, etc.)
+    - Implements fundamental agent actions (reply, follow/unfollow, mute/unmute)
+    - Contains core evaluators and providers for agent cognition
+    - Manages message processing pipeline and response generation
+    - **Mandatory unless building custom event handling system**
   - `plugin-sql/`: Database integration (@elizaos/plugin-sql)
     - PostgreSQL integration with PGLite support
     - Drizzle ORM for type-safe queries

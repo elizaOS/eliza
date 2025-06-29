@@ -442,14 +442,25 @@ Here's the required loading order:
 
 ### Can I skip the bootstrap plugin?
 
-While the bootstrap plugin is technically optional, it provides essential functionality:
+**The bootstrap plugin is mandatory for communication and basic agent functionality unless you're doing heavy customizations.**
 
-- Message processing and response generation
-- Basic actions (reply, ignore, follow/unfollow rooms)
-- Memory and context management
-- Event handling for all platforms
+The bootstrap plugin provides critical event handlers that enable your agent to:
 
-You can create your own implementation of these features, but for most users, the bootstrap plugin provides a solid foundation that follows ElizaOS best practices. Think of it as the "standard library" for ElizaOS agents.
+- **Process incoming messages** - Without it, your agent won't respond to messages from Discord, Telegram, or other platforms
+- **Handle communication events** - MESSAGE_RECEIVED, VOICE_MESSAGE_RECEIVED, and other essential events
+- **Generate responses** - Core message processing pipeline and response generation
+- **Manage basic actions** - reply, ignore, follow/unfollow rooms, mute/unmute
+- **Process memory and context** - Essential evaluators and providers for agent cognition
+- **Handle platform events** - World joins, entity management, and lifecycle events
+
+**When you can skip it:**
+- You're building a completely custom event handling system
+- You're creating specialized agents that don't need standard communication
+- You're implementing your own message processing pipeline from scratch
+
+**For 99% of use cases, you should include `@elizaos/plugin-bootstrap` in your plugins array.** Without it, your agent will appear "deaf and mute" - unable to process messages or respond to users. Think of it as the essential nervous system that connects your agent's brain to the outside world.
+
+You can disable it for testing with `IGNORE_BOOTSTRAP=true` environment variable, but this will break standard agent functionality.
 
 ---
 
