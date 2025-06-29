@@ -87,11 +87,17 @@ plugins
 
 plugins
   .command('upgrade')
-  .description('Upgrade a plugin from version 0.x to 1.x using AI-powered migration')
+  .description(
+    'Upgrade a plugin from version 0.x to 1.x using AI-powered migration (requires Claude Code CLI)'
+  )
   .argument('<path>', 'GitHub repository URL or local folder path')
   .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
   .option('--skip-tests', 'Skip test validation loop')
   .option('--skip-validation', 'Skip production readiness validation')
+  .option('--quiet', 'Suppress progress display')
+  .option('--verbose', 'Show detailed information')
+  .option('--debug', 'Show debug information')
+  .option('--skip-confirmation', 'Skip user confirmation')
   .action(async (pluginPath: string, opts: UpgradePluginOptions) => {
     await upgradePlugin(pluginPath, opts);
   });
