@@ -16,6 +16,7 @@ import { getElizaCharacter } from '@/src/characters/eliza';
 import { startAgent } from '@/src/commands/start';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
+import { cwd } from 'node:process';
 
 /**
  * Function that runs the end-to-end tests.
@@ -144,9 +145,7 @@ export async function runE2eTests(
         throw new Error('No agents found in project configuration');
       }
 
-      logger.info(
-        `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'} configuration`
-      );
+      logger.info(`Found ${project.agents.length} agents`);
 
       // Set up server properties
       logger.info('Setting up server properties...');
