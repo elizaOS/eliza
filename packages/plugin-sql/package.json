@@ -54,7 +54,8 @@
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
-    "test:integration": "bun test __tests__/integration",
+    "test:integration": "bash scripts/run-integration-tests.sh",
+    "test:integration:fast": "bun test __tests__/integration --bail=5 --timeout=180000",
     "test:postgres": "POSTGRES_URL=postgresql://postgres:cT5nfCeebBS8R0q3@db.mwyntrazuakaieibjuvo.supabase.co:5432/postgres bun test",
     "build:clean": "rm -rf dist",
     "lint:fix": "eslint . --fix"
