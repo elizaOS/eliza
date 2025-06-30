@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
 import { UserEnvironment } from './user-environment';
 
+// Helper function to check if running from node_modules
+export function isRunningFromNodeModules(): boolean {
+  const __filename = fileURLToPath(import.meta.url);
+  return __filename.includes('node_modules');
+}
+
 // Function to get the package version
 // --- Utility: Get local CLI version from package.json ---
 export function getVersion(): string {
@@ -15,6 +21,12 @@ export function getVersion(): string {
 
   if (monorepoRoot) {
     // We're in the monorepo, return 'monorepo' as version
+    return 'monorepo';
+  }
+
+  // Check if running from node_modules (proper installation)
+  if (!isRunningFromNodeModules()) {
+    // Running from local dist or development build, not properly installed
     return 'monorepo';
   }
 
@@ -39,6 +51,7 @@ export function getVersion(): string {
   }
   return version;
 }
+
 
 // --- Utility: Get install tag based on CLI version ---
 export function getCliInstallTag(): string {
