@@ -6,6 +6,7 @@ import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { findPluginPackageName } from '../utils/naming';
 import { getDependenciesFromDirectory } from '../utils/directory';
+// Character updater imports removed - reverting to project-scoped plugins
 
 /**
  * Remove a plugin from the project
@@ -33,7 +34,7 @@ export async function removePlugin(plugin: string): Promise<void> {
 
   if (!packageNameToRemove) {
     logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
-    console.info('\nCheck installed plugins using: elizaos project installed-plugins');
+    console.info('\nCheck installed plugins using: elizaos plugins installed-plugins');
     process.exit(0);
   }
 

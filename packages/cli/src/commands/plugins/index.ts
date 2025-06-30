@@ -42,7 +42,7 @@ plugins
   .command('add')
   .alias('install')
   .description('Add a plugin to the project')
-  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
+  .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-s, --skip-env-prompt', 'Skip prompting for environment variables')
   .option('--skip-verification', 'Skip plugin import verification after installation')
   .option('-b, --branch <branchName>', 'Branch to install from when using monorepo source', 'main')
@@ -74,7 +74,7 @@ plugins
 plugins
   .command('remove')
   .aliases(['delete', 'del', 'rm'])
-  .description('Remove a plugins from the project')
+  .description('Remove a plugin from the project')
   .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .action(async (plugin: string, _opts) => {
     try {

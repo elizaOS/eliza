@@ -30,6 +30,11 @@ export function getAvailableAIModels(): AIModelOption[] {
       description: 'Claude models',
     },
     {
+      title: 'OpenRouter',
+      value: 'openrouter',
+      description: 'Access multiple AI models',
+    },
+    {
       title: 'Ollama',
       value: 'ollama',
       description: 'Self-hosted models',
@@ -106,4 +111,56 @@ export async function selectAIModel(): Promise<string> {
   }
 
   return aiModel as string;
+}
+
+/**
+ * Gets available embedding models for selection when primary AI model doesn't support embeddings.
+ */
+export function getAvailableEmbeddingModels(): AIModelOption[] {
+  return [
+    {
+      title: 'Local AI',
+      value: 'local',
+      description: 'Local embeddings, no API required',
+    },
+    {
+      title: 'OpenAI',
+      value: 'openai',
+      description: 'OpenAI text-embedding-ada-002',
+    },
+    {
+      title: 'Ollama',
+      value: 'ollama',
+      description: 'Self-hosted embedding models',
+    },
+    {
+      title: 'Google Generative AI',
+      value: 'google',
+      description: 'Google embedding models',
+    },
+  ];
+}
+
+/**
+ * Prompts user to select an embedding model when the primary AI model doesn't support embeddings.
+ */
+export async function selectEmbeddingModel(): Promise<string> {
+  const availableModels = getAvailableEmbeddingModels();
+
+  const embeddingModel = await clack.select({
+    message: "Select an embedding model (required since your AI model doesn't support embeddings):",
+    options: availableModels.map((model) => ({
+      label: model.title,
+      value: model.value,
+      hint: model.description,
+    })),
+    initialValue: 'local',
+  });
+
+  if (clack.isCancel(embeddingModel)) {
+    clack.cancel('Operation cancelled.');
+    process.exit(0);
+  }
+
+  return embeddingModel as string;
 }

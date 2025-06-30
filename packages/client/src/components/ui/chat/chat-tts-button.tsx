@@ -19,7 +19,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   const audioBlobRef = useRef<Blob | null>(null);
 
   const elizaClient = createElizaClient();
-  
+
   // Cleanup blob URL when component unmounts or audioBlob changes
   useEffect(() => {
     return () => {
@@ -35,7 +35,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
       console.log('🎵 Starting TTS API call...');
       console.log('🎵 agentId:', agentId);
       console.log('🎵 text:', text);
-      
+
       const response = await elizaClient.audio.generateSpeech(agentId as UUID, { text });
       console.log('🎵 TTS API response:', response);
 
@@ -71,7 +71,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
       audioBlobRef.current = data;
       const url = URL.createObjectURL(data);
       setAudioUrl(url);
-      
+
       // Auto-play after TTS generation
       setTimeout(() => {
         play();
@@ -94,13 +94,13 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
           currentlyPlayingAudio.pause();
           currentlyPlayingAudio.currentTime = 0;
         }
-        
+
         // Set this as the currently playing audio
         currentlyPlayingAudio = audioRef.current;
-        
+
         audioRef.current.volume = 1.0;
         audioRef.current.muted = false;
-        
+
         await audioRef.current.play();
         setPlaying(true);
       } catch (err) {
@@ -118,7 +118,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-      
+
       // Clear global reference if this was the currently playing audio
       if (currentlyPlayingAudio === audioRef.current) {
         currentlyPlayingAudio = null;
@@ -126,7 +126,6 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
     }
     setPlaying(false);
   };
-
 
   const execute = async () => {
     if (mutation?.isPending) {
@@ -139,7 +138,10 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
     }
 
     // Check if audio is already available
-    const hasAudioBlob = audioBlob || audioBlobRef.current || (audioRef.current?.src && audioRef.current.src.startsWith('blob:'));
+    const hasAudioBlob =
+      audioBlob ||
+      audioBlobRef.current ||
+      (audioRef.current?.src && audioRef.current.src.startsWith('blob:'));
     if (hasAudioBlob) {
       await play();
       return;

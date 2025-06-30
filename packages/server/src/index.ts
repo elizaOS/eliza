@@ -402,9 +402,9 @@ export class AgentServer {
       ); // Enable CORS
       this.app.use(
         express.json({
-          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+          limit: process.env.EXPRESS_MAX_PAYLOAD || '2mb',
         })
-      ); // Parse JSON bodies
+      ); // Parse JSON bodies with 2MB limit to support large character files
 
       // File uploads are now handled by individual routes using multer
       // No global file upload middleware needed

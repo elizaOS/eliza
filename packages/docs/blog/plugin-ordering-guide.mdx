@@ -1,0 +1,283 @@
+---
+title: Understanding Plugin Ordering in ElizaOS
+authors: team
+date: 2025-01-15
+description: Deep dive into how ElizaOS orders plugins for optimal AI model provider precedence and embedding fallback behavior
+tags: [plugins, architecture, models, providers, guide]
+image: /img/plugin-ordering.jpg
+---
+
+# Understanding Plugin Ordering in ElizaOS
+
+Plugin ordering in ElizaOS isn't just a technical detail—it's a sophisticated system that ensures your AI agents work reliably with the right providers for different tasks. Whether you're using Anthropic for chat, OpenAI for embeddings, or running everything locally with Ollama, understanding how plugins are ordered can save you from headaches and help you build more robust agents.
+
+{/* truncate */}
+
+## Why Plugin Order Matters
+
+Here's the thing: different AI providers support different capabilities. Anthropic's Claude is excellent for conversation but doesn't provide embeddings. OpenRouter gives you access to dozens of models but no embedding endpoint. OpenAI handles both chat and embeddings beautifully. 
+
+ElizaOS needs to know which provider should handle which type of request, and plugin ordering is how we solve this puzzle.
+
+### The Core Problem
+
+When you call `runtime.useModel(ModelType.TEXT_LARGE, params)` in your agent, ElizaOS needs to decide which provider should handle that request. If you have both Anthropic and OpenAI configured, which one should it choose? What about embeddings—if you're using Anthropic for chat, where do embeddings come from?
+
+### The ElizaOS Solution
+
+Plugin array order determines priority. **First plugins get first pick** for handling model requests. But here's the clever part: ElizaOS automatically orders plugins to ensure:
+
+1. Your preferred text provider handles conversations
+2. Embedding-capable providers serve as fallbacks for embeddings
+3. Local providers kick in when cloud services fail
+
+## How It Works Under the Hood
+
+### The `useModel()` System
+
+Every AI interaction in ElizaOS goes through the `useModel()` system:
+
+```typescript
+// Plugin registers a model handler during initialization
+runtime.registerModel(
+  ModelType.TEXT_LARGE,
+  myModelHandler,
+  'my-plugin-name',
+  priority: 10  // Higher = more preferred
+);
+
+// Agent uses the model
+const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: "What's the weather like?",
+  temperature: 0.7
+});
+```
+
+ElizaOS sorts available handlers by priority, then by registration order. The highest-priority available handler wins.
+
+### Automatic Plugin Ordering
+
+When you create a new project with `elizaos create`, your `src/character.ts` file automatically includes optimized plugin ordering:
+
+```typescript
+export const character: Character = {
+  name: 'MyAgent',
+  plugins: [
+    // Core plugins first
+    '@elizaos/plugin-sql',
+
+    // Text-only plugins (no embedding support) 
+    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+
+    // Embedding-capable plugins last (fallback for embeddings)
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
+    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
+    
+    // Local-AI fallback (only when no embedding providers exist)
+    ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
+        !process.env.OLLAMA_API_ENDPOINT &&
+        !process.env.OPENAI_API_KEY
+          ? ['@elizaos/plugin-local-ai']
+          : []),
+
+    // Platform and bootstrap plugins
+    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
+    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+  ],
+  // ... rest of character config
+};
+```
+
+## Plugin Categories & Loading Order
+
+### 1. Core Infrastructure
+- `@elizaos/plugin-sql` - Always loads first, provides database functionality
+
+### 2. Text-Only AI Providers
+- `@elizaos/plugin-anthropic` - Claude models (conversation only)
+- `@elizaos/plugin-openrouter` - Multiple AI models via OpenRouter
+
+### 3. Platform Integrations
+- `@elizaos/plugin-discord` - Discord bot capabilities
+- `@elizaos/plugin-twitter` - Twitter integration
+- `@elizaos/plugin-telegram` - Telegram bot
+
+### 4. Bootstrap Plugin
+- `@elizaos/plugin-bootstrap` - Default actions, providers, and evaluators
+
+### 5. Embedding-Capable AI Providers (Always Last)
+- `@elizaos/plugin-openai` - GPT models + embeddings
+- `@elizaos/plugin-ollama` - Local models + embeddings  
+- `@elizaos/plugin-google-genai` - Gemini models + embeddings
+- `@elizaos/plugin-local-ai` - Final fallback when no other AI providers exist
+
+## Real-World Examples
+
+### Scenario 1: Cost-Optimized Setup
+**Goal**: Use Claude for chat (better quality), OpenAI for embeddings (only option)
+
+**Environment**:
+```bash
+ANTHROPIC_API_KEY=your_claude_key
+OPENAI_API_KEY=your_openai_key
+```
+
+**Result**: Anthropic handles text generation, OpenAI handles embeddings. No Local-AI needed.
+
+### Scenario 2: Privacy-First Local Setup
+**Goal**: Everything runs locally, no cloud API calls
+
+**Environment**:
+```bash
+OLLAMA_API_ENDPOINT=http://localhost:11434
+# No other API keys
+```
+
+**Result**: Ollama handles both text generation and embeddings locally.
+
+### Scenario 3: High-Availability Production
+**Goal**: Multiple fallbacks for reliability
+
+**Environment**:
+```bash
+OPENAI_API_KEY=primary_key
+ANTHROPIC_API_KEY=backup_key  
+OLLAMA_API_ENDPOINT=http://localhost:11434
+```
+
+**Result**: OpenAI primary for everything, Anthropic backup for text, Ollama local fallback.
+
+## The Local-AI Safety Net
+
+Here's a neat feature: Local-AI automatically loads as a fallback when you don't have any embedding-capable cloud providers. This ensures your agent always has access to embeddings (needed for memory and context) even with a text-only provider like Anthropic.
+
+The logic is simple:
+```typescript
+// Only load Local-AI if no embedding providers are configured
+...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
+    !process.env.OLLAMA_API_ENDPOINT &&
+    !process.env.OPENAI_API_KEY
+      ? ['@elizaos/plugin-local-ai']
+      : [])
+```
+
+## Environment Variables That Matter
+
+### AI Provider Keys
+- `ANTHROPIC_API_KEY` - Enables Claude (text-only)
+- `OPENROUTER_API_KEY` - Enables OpenRouter (text-only)
+- `OPENAI_API_KEY` - Enables OpenAI (text + embeddings)
+- `OLLAMA_API_ENDPOINT` - Enables Ollama (text + embeddings)
+- `GOOGLE_GENERATIVE_AI_API_KEY` - Enables Google GenAI (text + embeddings)
+
+### Platform Integration
+- `DISCORD_API_TOKEN` - Discord bot
+- `TELEGRAM_BOT_TOKEN` - Telegram bot
+- `TWITTER_API_KEY` + `TWITTER_API_SECRET_KEY` + `TWITTER_ACCESS_TOKEN` + `TWITTER_ACCESS_TOKEN_SECRET` - Twitter (requires all 4)
+
+### Control Flags
+- `IGNORE_BOOTSTRAP=true` - Disables bootstrap plugin
+
+## Testing Your Configuration
+
+Want to see how your plugins are ordered? Create a test project:
+
+```bash
+# Create new project
+elizaos create test-agent
+cd test-agent
+
+# Set your environment variables
+cp .env.example .env
+# Edit .env with your API keys
+
+# Check plugin order (it's logged during startup)
+elizaos start --log-level debug
+```
+
+You can also run the plugin ordering tests:
+
+```bash
+cd packages/project-starter
+bun test src/__tests__/character-plugin-ordering.test.ts
+```
+
+## Troubleshooting Common Issues
+
+### "Wrong provider handling my requests"
+**Check**: Plugin order in your character file. Text-only providers should load before embedding providers.
+
+### "Embedding operations failing"
+**Verify**: At least one embedding-capable provider (OpenAI, Ollama, Google GenAI, or Local-AI) is configured and loading.
+
+### "Local-AI loading unexpectedly"
+**Solution**: Check that your embedding-capable provider environment variables are set correctly.
+
+### "Plugin not loading"
+**Debug**: Verify environment variable names match expected patterns exactly.
+
+## Customizing Plugin Order
+
+While the default ordering works great for most cases, you can customize it for specific needs:
+
+```typescript
+export const character: Character = {
+  name: 'CustomAgent',
+  plugins: [
+    '@elizaos/plugin-sql',
+    
+    // Add your custom plugin early for high priority
+    '@my-org/my-custom-plugin',
+    
+    // Standard ordering for AI providers
+    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    
+    // Rest of plugins...
+  ],
+  // ... rest of config
+};
+```
+
+You can also set custom priorities in your plugin:
+
+```typescript
+const myPlugin: Plugin = {
+  name: 'my-custom-plugin',
+  models: {
+    [ModelType.TEXT_LARGE]: myCustomHandler
+  },
+  priority: 15  // Higher than default plugins
+};
+```
+
+## The Bigger Picture
+
+Plugin ordering in ElizaOS reflects a key architectural principle: **intelligent defaults with full customization**. The system works automatically based on your environment variables, but gives you complete control when you need it.
+
+This approach scales from simple single-provider setups to complex multi-provider, multi-platform deployments. Whether you're building a personal assistant or a production-grade autonomous agent, the plugin ordering system ensures reliable, predictable behavior.
+
+## Getting Started
+
+Ready to build your own agent with optimal plugin ordering?
+
+```bash
+# Create a new project (includes optimized plugin ordering)
+elizaos create my-agent
+
+# Navigate to your project  
+cd my-agent
+
+# Configure your environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# Start your agent
+elizaos start
+```
+
+The template handles the complexity for you, so you can focus on building your agent's unique capabilities. But now you understand what's happening under the hood—and can customize it when needed.
+
+Plugin ordering might seem like a small detail, but it's this kind of thoughtful design that makes ElizaOS agents reliable and predictable in production. Happy building!

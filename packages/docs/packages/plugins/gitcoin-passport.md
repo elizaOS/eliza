@@ -35,4 +35,4 @@ Getting your Scorer ID
 ## Usage
 
 Results are saved as message and agents can retrieve it from there for different use cases.
-Default passport threshold of 20 is used, but you can pick your own value and match it agains that
+Default passport threshold of 20 is used, but you can pick your own value and match it against that

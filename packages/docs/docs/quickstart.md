@@ -64,3 +64,5 @@ Congratulations, you have a running ElizaOS agent! Here's where to go next to ex
 - **[Customize Your Agent](./core/characters.md)**: Learn how to edit your agent's personality, knowledge, and abilities using Character Files.
 - **[Understand the Project Structure](./core/project.md)**: Get a detailed breakdown of every file in your new project.
 - **[Extend Your Agent with Plugins](./core/plugins.md)**: Discover how to add new capabilities to your agent.
+
+> **Important Note**: Your agent includes the `@elizaos/plugin-bootstrap` plugin by default, which is **essential for communication**. This plugin handles all message processing, response generation, and platform interactions. Without it, your agent won't be able to respond to messages. Only remove it if you're building a completely custom event handling system.

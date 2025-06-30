@@ -9,6 +9,30 @@ import { getAgentsBaseUrl } from '../../shared';
 import { resolveAgentId } from '../utils';
 
 /**
+ * Safely parse JSON response with error handling
+ * @param response - The fetch Response object
+ * @returns Parsed JSON data or null if parsing fails
+ */
+async function safeJsonParse<T>(response: Response): Promise<T | null> {
+  try {
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to parse response as JSON:', error);
+    return null;
+  }
+}
+
+/**
+ * Parse error response and throw appropriate error
+ * @param response - The fetch Response object
+ * @param defaultMessage - Default error message if JSON parsing fails
+ */
+async function handleErrorResponse(response: Response, defaultMessage: string): Promise<never> {
+  const errorData = await safeJsonParse<ApiResponse<unknown>>(response);
+  throw new Error(errorData?.error?.message || defaultMessage);
+}
+
+/**
  * Get command implementation - retrieves and displays agent details
  */
 export async function getAgent(opts: OptionValues): Promise<void> {
@@ -25,8 +49,12 @@ export async function getAgent(opts: OptionValues): Promise<void> {
       process.exit(1);
     }
 
-    const { data: agent } = (await response.json()) as ApiResponse<Agent>;
+    const responseData = await safeJsonParse<ApiResponse<Agent>>(response);
+    if (!responseData) {
+      throw new Error('Failed to parse agent data from server response');
+    }
 
+    const agent = responseData.data;
     if (!agent) {
       throw new Error('No agent data received from server');
     }
@@ -81,8 +109,7 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
     });
 
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(errorData.error?.message || `Failed to remove agent: ${response.statusText}`);
+      await handleErrorResponse(response, `Failed to remove agent: ${response.statusText}`);
     }
 
     // Server returns 204 No Content for successful deletion, no need to parse response
@@ -110,14 +137,11 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     });
 
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(
-        errorData.error?.message || `Failed to clear agent memories: ${response.statusText}`
-      );
+      await handleErrorResponse(response, `Failed to clear agent memories: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as ApiResponse<{ deletedCount: number }>;
-    const result = data.data;
+    const data = await safeJsonParse<ApiResponse<{ deletedCount: number }>>(response);
+    const result = data?.data || null;
 
     console.log(
       `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
@@ -167,14 +191,14 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     });
 
     if (!response.ok) {
-      const errorData = (await response.json()) as ApiResponse<unknown>;
-      throw new Error(
-        errorData.error?.message || `Failed to update agent configuration: ${response.statusText}`
+      await handleErrorResponse(
+        response,
+        `Failed to update agent configuration: ${response.statusText}`
       );
     }
 
-    const data = (await response.json()) as ApiResponse<{ id: string }>;
-    const result = data.data;
+    const data = await safeJsonParse<ApiResponse<{ id: string }>>(response);
+    const result = data?.data || null;
 
     console.log(`Successfully updated configuration for agent ${result?.id || resolvedAgentId}`);
   } catch (error) {

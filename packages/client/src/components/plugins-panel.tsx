@@ -59,6 +59,11 @@ const ESSENTIAL_PLUGINS: Record<string, EssentialPluginInfo> = {
     description:
       'Provides language model access. If removed, replace with another LLM plugin or your agent may fail to function properly.',
   },
+  '@elizaos/plugin-bootstrap': {
+    title: 'Essential Plugin: Bootstrap',
+    description:
+      'Provides default message processing, event handling, and attachment workflows for your agent. If removed, ensure you have a custom plugin handling these responsibilities, or your agent may not process events or respond to messages as expected.',
+  },  
 };
 
 export default function PluginsPanel({
@@ -279,25 +284,12 @@ export default function PluginsPanel({
                                 ? 'bg-blue-800 text-blue-700 hover:bg-blue-600'
                                 : 'bg-primary/10 text-primary hover:bg-primary/20'
                             } px-2.5 py-0.5 text-xs font-medium h-auto`}
-                            onClick={() => {
-                              // Don't allow removing if it's required by the voice model
-                              if (isRequiredByVoice) {
-                                toast({
-                                  title: "Can't Remove Plugin",
-                                  description:
-                                    'This plugin is required by the selected voice model.',
-                                  variant: 'destructive',
-                                });
-                                return;
-                              }
-                              handlePluginRemove(plugin);
-                            }}
                             title={
                               isRequiredByVoice
                                 ? 'Required by voice model'
                                 : isEssential
-                                  ? 'Essential plugin for agent functionality (click to remove)'
-                                  : 'Click to remove'
+                                  ? 'Essential plugin for agent functionality'
+                                  : ''
                             }
                           >
                             {isEssential && (
@@ -309,6 +301,19 @@ export default function PluginsPanel({
                                 'ml-1 opacity-70 hover:opacity-100',
                                 isEssential && 'text-white'
                               )}
+                              onClick={() => {
+                                // Don't allow removing if it's required by the voice model
+                                if (isRequiredByVoice) {
+                                  toast({
+                                    title: "Can't Remove Plugin",
+                                    description:
+                                      'This plugin is required by the selected voice model.',
+                                    variant: 'destructive',
+                                  });
+                                  return;
+                                }
+                                handlePluginRemove(plugin);
+                              }}
                             >
                               ×
                             </span>

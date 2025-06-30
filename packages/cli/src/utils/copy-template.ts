@@ -199,7 +199,15 @@ export async function copyTemplate(
       }
     }
 
-    // Write the updated package.json (only dependency versions changed)
+    // Update the package name to use the actual name provided by the user
+    const projectNameFromPath = path.basename(targetDir);
+
+    if (packageJson.name !== projectNameFromPath) {
+      packageJson.name = projectNameFromPath;
+      logger.info(`Setting package name to ${projectNameFromPath}`);
+    }
+
+    // Write the updated package.json (dependency versions and plugin name changed)
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
     logger.debug('Updated package.json with latest dependency versions');
   } catch (error) {
@@ -278,7 +286,8 @@ export async function copyClientDist() {
 
   if (!existsSync(indexSrc)) {
     logger.error(`index.html not found at ${indexSrc} after ${maxRetries} attempts`);
-    return;
+    logger.error('Client package must be built before CLI package. Run: bun run build:client');
+    throw new Error('Client dist files not found - build the client package first');
   }
 
   // Copy everything
@@ -287,8 +296,10 @@ export async function copyClientDist() {
   // Verify it made it into CLI dist
   if (!existsSync(indexDest)) {
     logger.error(`index.html missing in CLI dist at ${indexDest}`);
-    return;
+    throw new Error('Failed to copy client files to CLI dist directory');
   }
+
+  logger.info('✅ Client files successfully copied to CLI package');
 
   logger.success('Client dist files copied successfully');
 }

@@ -6,7 +6,9 @@ import {
   promptAndStoreOpenAIKey,
   promptAndStoreAnthropicKey,
   promptAndStoreOllamaConfig,
+  promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
+  promptAndStoreOpenRouterKey,
   runBunCommand,
   setupPgLite,
 } from '@/src/utils';
@@ -85,6 +87,32 @@ export async function setupAIModelConfig(
         break;
       }
 
+      case 'openrouter': {
+        if (isNonInteractive) {
+          // In non-interactive mode, just add placeholder
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# AI Model Configuration\n';
+          content += '# OpenRouter Configuration\n';
+          content += 'OPENROUTER_API_KEY=your_openrouter_api_key_here\n';
+          content += '# Get your API key from: https://openrouter.ai/keys\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+          console.info('[√] OpenRouter placeholder configuration added to .env file');
+        } else {
+          // Interactive mode - prompt for OpenRouter API key
+          await promptAndStoreOpenRouterKey(envFilePath);
+        }
+        break;
+      }
+
       case 'ollama': {
         if (isNonInteractive) {
           // In non-interactive mode, just add placeholder
@@ -150,6 +178,151 @@ export async function setupAIModelConfig(
 }
 
 /**
+ * Checks if an environment variable has a real value (not a placeholder) in the content
+ */
+function hasValidApiKey(content: string, keyName: string): boolean {
+  const regex = new RegExp(`^${keyName}=(.+)$`, 'm');
+  const match = content.match(regex);
+  if (!match) return false;
+
+  const value = match[1].trim();
+  // Check if it's not empty and not a placeholder
+  return (
+    value !== '' &&
+    !value.includes('your_') &&
+    !value.includes('_here') &&
+    !value.includes('PLACEHOLDER') &&
+    !value.includes('placeholder')
+  );
+}
+
+/**
+ * Sets up embedding model configuration when the primary AI model doesn't support embeddings.
+ */
+export async function setupEmbeddingModelConfig(
+  embeddingModel: string,
+  envFilePath: string,
+  isNonInteractive = false
+): Promise<void> {
+  try {
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    if (content && !content.endsWith('\n')) {
+      content += '\n';
+    }
+
+    switch (embeddingModel) {
+      case 'local': {
+        content += '\n# Embedding Model Configuration (Fallback)\n';
+        content += '# Using local embeddings - no additional configuration needed\n';
+        await fs.writeFile(envFilePath, content, 'utf8');
+        console.info('[√] Using Local embeddings - no additional configuration needed');
+        break;
+      }
+
+      case 'openai': {
+        // Check if OpenAI key already exists with a valid value
+        if (!hasValidApiKey(content, 'OPENAI_API_KEY')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('OPENAI_API_KEY=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# OpenAI Embeddings Configuration\n';
+              content += 'OPENAI_API_KEY=your_openai_api_key_here\n';
+              content += '# Get your API key from: https://platform.openai.com/api-keys\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+            console.info('[√] OpenAI embeddings placeholder configuration added to .env file');
+          } else {
+            // Interactive mode - prompt for OpenAI API key
+            console.info('\n[!] OpenAI API key is required for embeddings');
+            await promptAndStoreOpenAIKey(envFilePath);
+          }
+        } else {
+          console.info('[√] OpenAI API key already configured - will use for embeddings');
+        }
+        break;
+      }
+
+      case 'ollama': {
+        // Check if Ollama config already exists with valid values
+        if (!hasValidApiKey(content, 'OLLAMA_API_ENDPOINT')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('OLLAMA_API_ENDPOINT=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# Ollama Embeddings Configuration\n';
+              content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
+              content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+            console.info('[√] Ollama embeddings placeholder configuration added to .env file');
+          } else {
+            // Interactive mode - prompt for Ollama embedding model configuration
+            console.info('\n[!] Ollama embedding model configuration is required');
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+          }
+        } else {
+          // Ollama endpoint exists, but we need to prompt for embedding model specifically
+          if (isNonInteractive) {
+            // In non-interactive mode, just add embedding model if not present
+            if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
+              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+            }
+            if (!content.includes('USE_OLLAMA_EMBEDDINGS')) {
+              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+            console.info('[√] Ollama embedding model configuration added to .env file');
+          } else {
+            // Interactive mode - always prompt for embedding model selection
+            console.info('\n[!] Please select an Ollama embedding model');
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+          }
+        }
+        break;
+      }
+
+      case 'google': {
+        // Check if Google API key already exists with a valid value
+        if (!hasValidApiKey(content, 'GOOGLE_GENERATIVE_AI_API_KEY')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('GOOGLE_GENERATIVE_AI_API_KEY=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# Google Generative AI Embeddings Configuration\n';
+              content += 'GOOGLE_GENERATIVE_AI_API_KEY=your_google_api_key_here\n';
+              content += '# Get your API key from: https://aistudio.google.com/apikey\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+            console.info('[√] Google embeddings placeholder configuration added to .env file');
+          } else {
+            // Interactive mode - prompt for Google API key
+            console.info('\n[!] Google Generative AI API key is required for embeddings');
+            await promptAndStoreGoogleKey(envFilePath);
+          }
+        } else {
+          console.info('[√] Google API key already configured - will use for embeddings');
+        }
+        break;
+      }
+
+      default:
+        console.warn(`Unknown embedding model: ${embeddingModel}, skipping configuration`);
+        return;
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Failed to set up embedding model configuration: ${errorMessage}`);
+  }
+}
+
+/**
  * Installs dependencies for the specified target directory.
  */
 export async function installDependencies(targetDir: string): Promise<void> {
@@ -170,6 +343,7 @@ export async function setupProjectEnvironment(
   targetDir: string,
   database: string,
   aiModel: string,
+  embeddingModel?: string,
   isNonInteractive = false
 ): Promise<void> {
   // Create project directories first
@@ -185,4 +359,9 @@ export async function setupProjectEnvironment(
 
   // Set up AI model configuration
   await setupAIModelConfig(aiModel, envFilePath, isNonInteractive);
+
+  // Set up embedding model configuration if needed
+  if (embeddingModel) {
+    await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+  }
 }

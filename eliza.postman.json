@@ -64,6 +64,12 @@
       "value": "",
       "description": "Message ID for message-specific endpoints",
       "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "description": "User ID for user-specific operations and message authoring",
+      "type": "string"
     }
   ],
   "auth": {
@@ -528,7 +534,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"Hello from API\",\n  \"agentId\": \"{{agentId}}\",\n  \"roomId\": \"{{roomId}}\"\n}"
+              "raw": "{\n  \"channel_id\": \"{{channelId}}\",\n  \"server_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"author_id\": \"{{userId}}\",\n  \"content\": \"Hello from API\",\n  \"source_type\": \"user_message\",\n  \"raw_message\": {\n    \"text\": \"Hello from API\"\n  },\n  \"metadata\": {\n    \"platform\": \"api\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/submit",

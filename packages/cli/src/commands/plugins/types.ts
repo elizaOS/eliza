@@ -63,6 +63,9 @@ export interface PluginRegistry {
 export interface EnvVarConfig {
   type: string;
   description: string;
+  required?: boolean;
+  default?: string;
+  sensitive?: boolean;
 }
 
 /**

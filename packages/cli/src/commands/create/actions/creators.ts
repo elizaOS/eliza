@@ -118,6 +118,7 @@ export async function createTEEProject(
   targetDir: string,
   database: string,
   aiModel: string,
+  embeddingModel?: string,
   isNonInteractive = false
 ): Promise<void> {
   const teeTargetDir = join(targetDir, projectName);
@@ -143,7 +144,7 @@ export async function createTEEProject(
   await copyTemplateUtil('project-tee-starter', teeTargetDir);
 
   // Set up project environment
-  await setupProjectEnvironment(teeTargetDir, database, aiModel, isNonInteractive);
+  await setupProjectEnvironment(teeTargetDir, database, aiModel, embeddingModel, isNonInteractive);
 
   // Install dependencies
   await installDependencies(teeTargetDir);
@@ -165,6 +166,7 @@ export async function createProject(
   targetDir: string,
   database: string,
   aiModel: string,
+  embeddingModel?: string,
   isNonInteractive = false
 ): Promise<void> {
   // Handle current directory case
@@ -191,7 +193,13 @@ export async function createProject(
   await copyTemplateUtil('project-starter', projectTargetDir);
 
   // Set up project environment
-  await setupProjectEnvironment(projectTargetDir, database, aiModel, isNonInteractive);
+  await setupProjectEnvironment(
+    projectTargetDir,
+    database,
+    aiModel,
+    embeddingModel,
+    isNonInteractive
+  );
 
   // Install dependencies
   await installDependencies(projectTargetDir);

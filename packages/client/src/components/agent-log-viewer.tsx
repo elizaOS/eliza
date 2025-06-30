@@ -236,7 +236,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   const [selectedAgentName, setSelectedAgentName] = useState(agentName || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [timeRange, setTimeRange] = useState('7 days');
-  const [isLive, setIsLive] = useState(false);
+  const [isLive, setIsLive] = useState(true);
   const [isClearing, setIsClearing] = useState(false);
   const [wsLogs, setWsLogs] = useState<LogEntry[]>([]);
   const [useWebSocket, setUseWebSocket] = useState(false);
@@ -257,7 +257,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
       });
     },
-    refetchInterval: isLive && !useWebSocket ? 2000 : false,
+    refetchInterval: isLive && !useWebSocket ? 5000 : false,
     staleTime: 1000,
     enabled: true, // Always enable the query
   });

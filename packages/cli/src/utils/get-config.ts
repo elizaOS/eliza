@@ -750,6 +750,112 @@ export async function storeOllamaConfig(
 }
 
 /**
+ * Prompts the user for Ollama embedding model selection
+ * @param envFilePath Path to the .env file
+ * @returns The configured Ollama embedding settings or null if user cancels
+ */
+export async function promptAndStoreOllamaEmbeddingConfig(
+  envFilePath: string
+): Promise<{ endpoint: string; embeddingModel: string } | null> {
+  // Check if we already have an Ollama endpoint configured
+  let existingEndpoint = process.env.OLLAMA_API_ENDPOINT;
+
+  const config: ProviderPromptConfig = {
+    name: 'Ollama Embeddings',
+    icon: '🦙',
+    noteText:
+      'Select an embedding model for Ollama.\nPopular options: nomic-embed-text, mxbai-embed-large\nMake sure the model is pulled: ollama pull <model-name>',
+    inputs: [
+      {
+        key: 'endpoint',
+        message: 'Enter your Ollama API endpoint:',
+        placeholder: 'http://localhost:11434',
+        initialValue: existingEndpoint || 'http://localhost:11434',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Ollama endpoint cannot be empty';
+          if (!isValidOllamaEndpoint(value))
+            return 'Invalid URL format (http:// or https:// required)';
+          return undefined;
+        },
+      },
+      {
+        key: 'embeddingModel',
+        message: 'Enter your Ollama embedding model:',
+        placeholder: 'nomic-embed-text',
+        initialValue: 'nomic-embed-text',
+        type: 'text',
+        validate: (value) => {
+          if (value.trim() === '') return 'Embedding model name cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      // Store Ollama embedding configuration
+      try {
+        let content = '';
+        if (existsSync(envPath)) {
+          content = await fs.readFile(envPath, 'utf8');
+        }
+
+        // Only remove embedding-specific lines, preserve general Ollama config
+        const lines = content
+          .split('\n')
+          .filter(
+            (line) =>
+              !line.startsWith('OLLAMA_EMBEDDING_MODEL=') &&
+              !line.startsWith('USE_OLLAMA_EMBEDDINGS=')
+          );
+
+        // Check if we need to update the endpoint
+        const endpointPattern = /^OLLAMA_API_ENDPOINT=(.*)$/m;
+        const existingEndpointMatch = content.match(endpointPattern);
+
+        if (existingEndpointMatch) {
+          // Endpoint exists, only update if different
+          if (results.endpoint !== existingEndpointMatch[1]) {
+            const updatedLines = lines.map((line) => {
+              if (line.startsWith('OLLAMA_API_ENDPOINT=')) {
+                return `OLLAMA_API_ENDPOINT=${results.endpoint}`;
+              }
+              return line;
+            });
+            lines.length = 0;
+            lines.push(...updatedLines);
+          }
+        } else {
+          // No existing endpoint, add it
+          lines.push(`OLLAMA_API_ENDPOINT=${results.endpoint}`);
+        }
+
+        // Add embedding-specific configuration
+        lines.push(`OLLAMA_EMBEDDING_MODEL=${results.embeddingModel}`);
+        lines.push('USE_OLLAMA_EMBEDDINGS=true');
+
+        await fs.writeFile(envPath, lines.join('\n'), 'utf8');
+
+        // Update process.env
+        process.env.OLLAMA_API_ENDPOINT = results.endpoint;
+        process.env.OLLAMA_EMBEDDING_MODEL = results.embeddingModel;
+        process.env.USE_OLLAMA_EMBEDDINGS = 'true';
+
+        logger.success('Ollama embedding configuration saved');
+      } catch (error) {
+        logger.error('Error saving Ollama embedding configuration:', error);
+        throw error;
+      }
+    },
+    successMessage: 'Ollama embedding model configured',
+  };
+
+  return await promptAndStoreProviderConfig<{ endpoint: string; embeddingModel: string }>(
+    config,
+    envFilePath
+  );
+}
+
+/**
  * Prompts the user for Ollama configuration, validates it, and stores it
  * @param envFilePath Path to the .env file
  * @returns The configured Ollama settings or null if user cancels
@@ -832,6 +938,86 @@ export async function promptAndStoreGoogleKey(envFilePath: string): Promise<stri
       await storeGoogleKey(results.key, envPath);
     },
     successMessage: 'Google Generative AI integration configured',
+  };
+
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
+}
+
+/**
+ * Validates an OpenRouter API key format
+ * @param key The API key to validate
+ * @returns True if the key appears to be in valid format
+ */
+export function isValidOpenRouterKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  // OpenRouter keys typically start with "sk-or-" followed by alphanumeric characters
+  return key.startsWith('sk-or-') && key.length > 10;
+}
+
+/**
+ * Stores OpenRouter API key in the .env file
+ * @param key The API key to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeOpenRouterKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing OpenRouter API key line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('OPENROUTER_API_KEY='));
+
+    // Add new OpenRouter API key
+    lines.push(`OPENROUTER_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+
+    // Update process.env
+    process.env.OPENROUTER_API_KEY = key;
+
+    logger.success('OpenRouter API key saved to configuration');
+  } catch (error) {
+    logger.error('Error saving OpenRouter API key:', error);
+    throw error;
+  }
+}
+
+/**
+ * Prompts the user for an OpenRouter API key, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured OpenRouter API key or null if user cancels
+ */
+export async function promptAndStoreOpenRouterKey(envFilePath: string): Promise<string | null> {
+  const config: ProviderPromptConfig = {
+    name: 'OpenRouter',
+    icon: '🔄',
+    noteText: 'Get your API key from: https://openrouter.ai/keys',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your OpenRouter API key:',
+        type: 'password',
+        validate: (value) => {
+          if (value.trim() === '') return 'OpenRouter API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidOpenRouterKey(results.key);
+      if (!isValid) {
+        clack.log.warn('Invalid API key format detected. Expected format: sk-or-...');
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeOpenRouterKey(results.key, envPath);
+    },
+    successMessage: 'OpenRouter integration configured',
   };
 
   const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
