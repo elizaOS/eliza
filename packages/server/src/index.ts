@@ -433,7 +433,12 @@ export class AgentServer {
       if (this.uiEnabled) {
         logger.info('Web UI enabled');
       } else {
-        logger.info('Web UI disabled for security (production mode)');
+        // Determine the reason for UI being disabled
+        if (uiEnabledEnv !== undefined) {
+          logger.info(`Web UI disabled by environment variable (ELIZA_UI_ENABLE=${uiEnabledEnv})`);
+        } else {
+          logger.info('Web UI disabled for security (production mode)');
+        }
       }
 
       const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
