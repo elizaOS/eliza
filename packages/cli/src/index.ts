@@ -16,9 +16,6 @@ import { update } from '@/src/commands/update';
 import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
-import path, { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { configureEmojis } from '@/src/utils/emoji-handler';
 
 process.on('SIGINT', () => process.exit(0));
@@ -40,20 +37,8 @@ async function main() {
     process.env.ELIZA_NO_AUTO_INSTALL = 'true';
   }
 
-  // For ESM modules we need to use import.meta.url instead of __dirname
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-
-  // Find package.json relative to the current file
-  const packageJsonPath = path.resolve(__dirname, '../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!existsSync(packageJsonPath)) {
-  } else {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-    version = packageJson.version;
-  }
+  // Get version - will return 'monorepo' if in monorepo context
+  const version = getVersion();
 
   // Check for built-in flags that exit early (before preAction hook runs)
   const args = process.argv.slice(2);
