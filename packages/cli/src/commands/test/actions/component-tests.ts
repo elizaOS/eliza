@@ -64,7 +64,7 @@ export async function runComponentTests(
       }
     }
 
-    const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
+    const targetPath = testPath ? path.resolve(process.cwd(), testPath) : process.cwd();
 
     // Bun test doesn't use separate config files
 

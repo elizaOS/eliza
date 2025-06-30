@@ -133,14 +133,11 @@ export async function runE2eTests(
     let project;
     try {
       logger.info('Attempting to load project or plugin...');
-      // Resolve path from monorepo root, not cwd (using centralized detection)
+      // Resolve path - use monorepo root if available, otherwise use cwd
       const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
-      if (!monorepoRoot) {
-        throw new Error(
-          'Could not find monorepo root. Make sure to run tests from within the Eliza project.'
-        );
-      }
-      const targetPath = testPath ? path.resolve(monorepoRoot, testPath) : process.cwd();
+      const baseDir = monorepoRoot ?? process.cwd();
+      const targetPath = testPath ? path.resolve(baseDir, testPath) : process.cwd();
+      
       project = await loadProject(targetPath);
 
       if (!project || !project.agents || project.agents.length === 0) {
