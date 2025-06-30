@@ -3,6 +3,7 @@
 This guide provides comprehensive instructions for writing tests for ElizaOS plugins using Bun's test runner.
 
 ## Table of Contents
+
 1. [Test Environment Setup](#1-test-environment-setup)
 2. [Creating Test Utilities](#2-creating-test-utilities)
 3. [Testing Actions](#3-testing-actions)
@@ -19,6 +20,7 @@ This guide provides comprehensive instructions for writing tests for ElizaOS plu
 ## 1. Test Environment Setup
 
 ### Directory Structure
+
 ```
 src/
   __tests__/
@@ -36,6 +38,7 @@ src/
 ```
 
 ### Required Dependencies
+
 ```json
 {
   "devDependencies": {
@@ -46,18 +49,19 @@ src/
 ```
 
 ### Base Test Imports
+
 ```typescript
 import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
-import { 
-    type IAgentRuntime, 
-    type Memory, 
-    type State, 
-    type HandlerCallback,
-    type Action,
-    type Provider,
-    type Evaluator,
-    ModelType,
-    logger
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  type Action,
+  type Provider,
+  type Evaluator,
+  ModelType,
+  logger,
 } from '@elizaos/core';
 ```
 
@@ -69,164 +73,166 @@ Create a comprehensive `test-utils.ts` file with reusable mock objects and helpe
 
 ```typescript
 import { mock } from 'bun:test';
-import { 
-    type IAgentRuntime, 
-    type Memory, 
-    type State, 
-    type Character, 
-    type UUID,
-    type Content,
-    type Room,
-    type Entity,
-    ChannelType
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type Character,
+  type UUID,
+  type Content,
+  type Room,
+  type Entity,
+  ChannelType,
 } from '@elizaos/core';
 
 // Mock Runtime Type
 export type MockRuntime = Partial<IAgentRuntime> & {
-    agentId: UUID;
-    character: Character;
-    getSetting: ReturnType<typeof mock>;
-    useModel: ReturnType<typeof mock>;
-    composeState: ReturnType<typeof mock>;
-    createMemory: ReturnType<typeof mock>;
-    getMemories: ReturnType<typeof mock>;
-    searchMemories: ReturnType<typeof mock>;
-    updateMemory: ReturnType<typeof mock>;
-    getRoom: ReturnType<typeof mock>;
-    getParticipantUserState: ReturnType<typeof mock>;
-    setParticipantUserState: ReturnType<typeof mock>;
-    emitEvent: ReturnType<typeof mock>;
-    getTasks: ReturnType<typeof mock>;
-    providers: any[];
-    actions: any[];
-    evaluators: any[];
-    services: any[];
+  agentId: UUID;
+  character: Character;
+  getSetting: ReturnType<typeof mock>;
+  useModel: ReturnType<typeof mock>;
+  composeState: ReturnType<typeof mock>;
+  createMemory: ReturnType<typeof mock>;
+  getMemories: ReturnType<typeof mock>;
+  searchMemories: ReturnType<typeof mock>;
+  updateMemory: ReturnType<typeof mock>;
+  getRoom: ReturnType<typeof mock>;
+  getParticipantUserState: ReturnType<typeof mock>;
+  setParticipantUserState: ReturnType<typeof mock>;
+  emitEvent: ReturnType<typeof mock>;
+  getTasks: ReturnType<typeof mock>;
+  providers: any[];
+  actions: any[];
+  evaluators: any[];
+  services: any[];
 };
 
 // Create Mock Runtime
 export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRuntime {
-    return {
-        agentId: 'test-agent-id' as UUID,
-        character: {
-            name: 'Test Agent',
-            bio: 'A test agent for unit testing',
-            templates: {
-                messageHandlerTemplate: 'Test template {{recentMessages}}',
-                shouldRespondTemplate: 'Should respond {{recentMessages}}',
-            },
-        } as Character,
-        
-        // Core methods with default implementations
-        useModel: mock().mockResolvedValue('Mock response'),
-        composeState: mock().mockResolvedValue({ 
-            values: { 
-                agentName: 'Test Agent',
-                recentMessages: 'Test message' 
-            }, 
-            data: {
-                room: {
-                    id: 'test-room-id',
-                    type: ChannelType.DIRECT
-                }
-            } 
-        }),
-        createMemory: mock().mockResolvedValue({ id: 'memory-id' }),
-        getMemories: mock().mockResolvedValue([]),
-        searchMemories: mock().mockResolvedValue([]),
-        updateMemory: mock().mockResolvedValue(undefined),
-        getSetting: mock().mockImplementation((key: string) => {
-            const settings: Record<string, string> = {
-                TEST_SETTING: 'test-value',
-                API_KEY: 'test-api-key',
-                // Add common settings your plugin might need
-            };
-            return settings[key];
-        }),
-        getRoom: mock().mockResolvedValue({
-            id: 'test-room-id',
-            type: ChannelType.DIRECT,
-            worldId: 'test-world-id',
-            serverId: 'test-server-id',
-            source: 'test'
-        }),
-        getParticipantUserState: mock().mockResolvedValue('ACTIVE'),
-        setParticipantUserState: mock().mockResolvedValue(undefined),
-        emitEvent: mock().mockResolvedValue(undefined),
-        getTasks: mock().mockResolvedValue([]),
-        
-        // Provider/action/evaluator lists
-        providers: [],
-        actions: [],
-        evaluators: [],
-        services: [],
-        
-        // Override with custom implementations
-        ...overrides,
-    };
+  return {
+    agentId: 'test-agent-id' as UUID,
+    character: {
+      name: 'Test Agent',
+      bio: 'A test agent for unit testing',
+      templates: {
+        messageHandlerTemplate: 'Test template {{recentMessages}}',
+        shouldRespondTemplate: 'Should respond {{recentMessages}}',
+      },
+    } as Character,
+
+    // Core methods with default implementations
+    useModel: mock().mockResolvedValue('Mock response'),
+    composeState: mock().mockResolvedValue({
+      values: {
+        agentName: 'Test Agent',
+        recentMessages: 'Test message',
+      },
+      data: {
+        room: {
+          id: 'test-room-id',
+          type: ChannelType.DIRECT,
+        },
+      },
+    }),
+    createMemory: mock().mockResolvedValue({ id: 'memory-id' }),
+    getMemories: mock().mockResolvedValue([]),
+    searchMemories: mock().mockResolvedValue([]),
+    updateMemory: mock().mockResolvedValue(undefined),
+    getSetting: mock().mockImplementation((key: string) => {
+      const settings: Record<string, string> = {
+        TEST_SETTING: 'test-value',
+        API_KEY: 'test-api-key',
+        // Add common settings your plugin might need
+      };
+      return settings[key];
+    }),
+    getRoom: mock().mockResolvedValue({
+      id: 'test-room-id',
+      type: ChannelType.DIRECT,
+      worldId: 'test-world-id',
+      serverId: 'test-server-id',
+      source: 'test',
+    }),
+    getParticipantUserState: mock().mockResolvedValue('ACTIVE'),
+    setParticipantUserState: mock().mockResolvedValue(undefined),
+    emitEvent: mock().mockResolvedValue(undefined),
+    getTasks: mock().mockResolvedValue([]),
+
+    // Provider/action/evaluator lists
+    providers: [],
+    actions: [],
+    evaluators: [],
+    services: [],
+
+    // Override with custom implementations
+    ...overrides,
+  };
 }
 
 // Create Mock Memory
 export function createMockMemory(overrides: Partial<Memory> = {}): Partial<Memory> {
-    return {
-        id: 'test-message-id' as UUID,
-        roomId: 'test-room-id' as UUID,
-        entityId: 'test-entity-id' as UUID,
-        agentId: 'test-agent-id' as UUID,
-        content: {
-            text: 'Test message',
-            channelType: ChannelType.DIRECT,
-            source: 'direct',
-        } as Content,
-        createdAt: Date.now(),
-        userId: 'test-user-id' as UUID,
-        ...overrides,
-    };
+  return {
+    id: 'test-message-id' as UUID,
+    roomId: 'test-room-id' as UUID,
+    entityId: 'test-entity-id' as UUID,
+    agentId: 'test-agent-id' as UUID,
+    content: {
+      text: 'Test message',
+      channelType: ChannelType.DIRECT,
+      source: 'direct',
+    } as Content,
+    createdAt: Date.now(),
+    userId: 'test-user-id' as UUID,
+    ...overrides,
+  };
 }
 
 // Create Mock State
 export function createMockState(overrides: Partial<State> = {}): Partial<State> {
-    return {
-        values: {
-            agentName: 'Test Agent',
-            recentMessages: 'User: Test message',
-            ...overrides.values,
-        },
-        data: {
-            room: {
-                id: 'test-room-id',
-                type: ChannelType.DIRECT,
-            },
-            ...overrides.data,
-        },
-        ...overrides,
-    };
+  return {
+    values: {
+      agentName: 'Test Agent',
+      recentMessages: 'User: Test message',
+      ...overrides.values,
+    },
+    data: {
+      room: {
+        id: 'test-room-id',
+        type: ChannelType.DIRECT,
+      },
+      ...overrides.data,
+    },
+    ...overrides,
+  };
 }
 
 // Setup Action Test Helper
-export function setupActionTest(options: {
+export function setupActionTest(
+  options: {
     runtimeOverrides?: Partial<MockRuntime>;
     messageOverrides?: Partial<Memory>;
     stateOverrides?: Partial<State>;
-} = {}) {
-    const mockRuntime = createMockRuntime(options.runtimeOverrides);
-    const mockMessage = createMockMemory(options.messageOverrides);
-    const mockState = createMockState(options.stateOverrides);
-    const callbackFn = mock().mockResolvedValue([]);
-    
-    return {
-        mockRuntime,
-        mockMessage,
-        mockState,
-        callbackFn,
-    };
+  } = {}
+) {
+  const mockRuntime = createMockRuntime(options.runtimeOverrides);
+  const mockMessage = createMockMemory(options.messageOverrides);
+  const mockState = createMockState(options.stateOverrides);
+  const callbackFn = mock().mockResolvedValue([]);
+
+  return {
+    mockRuntime,
+    mockMessage,
+    mockState,
+    callbackFn,
+  };
 }
 
 // Mock Logger Helper
 export function mockLogger() {
-    spyOn(logger, 'error').mockImplementation(() => {});
-    spyOn(logger, 'warn').mockImplementation(() => {});
-    spyOn(logger, 'info').mockImplementation(() => {});
-    spyOn(logger, 'debug').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'info').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 }
 ```
 
@@ -242,113 +248,111 @@ import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import { myAction } from '../actions/myAction';
 import { setupActionTest, mockLogger } from './test-utils';
 import type { MockRuntime } from './test-utils';
-import { 
-    type IAgentRuntime, 
-    type Memory, 
-    type State, 
-    type HandlerCallback,
-    ModelType
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  ModelType,
 } from '@elizaos/core';
 
 describe('My Action', () => {
-    let mockRuntime: MockRuntime;
-    let mockMessage: Partial<Memory>;
-    let mockState: Partial<State>;
-    let callbackFn: HandlerCallback;
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
+  let callbackFn: HandlerCallback;
 
-    beforeEach(() => {
-        mockLogger();
-        const setup = setupActionTest();
-        mockRuntime = setup.mockRuntime;
-        mockMessage = setup.mockMessage;
-        mockState = setup.mockState;
-        callbackFn = setup.callbackFn as HandlerCallback;
+  beforeEach(() => {
+    mockLogger();
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn as HandlerCallback;
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  describe('validation', () => {
+    it('should validate when conditions are met', async () => {
+      // Setup message content that should validate
+      mockMessage.content = {
+        text: 'perform action',
+        channelType: 'direct',
+      };
+
+      const isValid = await myAction.validate(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State
+      );
+
+      expect(isValid).toBe(true);
     });
 
-    afterEach(() => {
-        mock.restore();
+    it('should not validate when conditions are not met', async () => {
+      // Setup message content that should not validate
+      mockMessage.content = {
+        text: 'unrelated message',
+        channelType: 'direct',
+      };
+
+      const isValid = await myAction.validate(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State
+      );
+
+      expect(isValid).toBe(false);
+    });
+  });
+
+  describe('handler', () => {
+    it('should handle action successfully', async () => {
+      // Mock runtime methods specific to this action
+      mockRuntime.useModel = mock().mockResolvedValue({
+        action: 'PERFORM',
+        parameters: { value: 'test' },
+      });
+
+      const result = await myAction.handler(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State,
+        {},
+        callbackFn
+      );
+
+      expect(result).toBe(true);
+      expect(callbackFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.any(String),
+          content: expect.any(Object),
+        })
+      );
     });
 
-    describe('validation', () => {
-        it('should validate when conditions are met', async () => {
-            // Setup message content that should validate
-            mockMessage.content = {
-                text: 'perform action',
-                channelType: 'direct'
-            };
+    it('should handle errors gracefully', async () => {
+      // Mock an error scenario
+      mockRuntime.useModel = mock().mockRejectedValue(new Error('Model error'));
 
-            const isValid = await myAction.validate(
-                mockRuntime as IAgentRuntime,
-                mockMessage as Memory,
-                mockState as State
-            );
+      await myAction.handler(
+        mockRuntime as IAgentRuntime,
+        mockMessage as Memory,
+        mockState as State,
+        {},
+        callbackFn
+      );
 
-            expect(isValid).toBe(true);
-        });
-
-        it('should not validate when conditions are not met', async () => {
-            // Setup message content that should not validate
-            mockMessage.content = {
-                text: 'unrelated message',
-                channelType: 'direct'
-            };
-
-            const isValid = await myAction.validate(
-                mockRuntime as IAgentRuntime,
-                mockMessage as Memory,
-                mockState as State
-            );
-
-            expect(isValid).toBe(false);
-        });
+      expect(callbackFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('error'),
+        })
+      );
     });
-
-    describe('handler', () => {
-        it('should handle action successfully', async () => {
-            // Mock runtime methods specific to this action
-            mockRuntime.useModel = mock().mockResolvedValue({
-                action: 'PERFORM',
-                parameters: { value: 'test' }
-            });
-
-            const result = await myAction.handler(
-                mockRuntime as IAgentRuntime,
-                mockMessage as Memory,
-                mockState as State,
-                {},
-                callbackFn
-            );
-
-            expect(result).toBe(true);
-            expect(callbackFn).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    text: expect.any(String),
-                    content: expect.any(Object),
-                })
-            );
-        });
-
-        it('should handle errors gracefully', async () => {
-            // Mock an error scenario
-            mockRuntime.useModel = mock().mockRejectedValue(
-                new Error('Model error')
-            );
-
-            await myAction.handler(
-                mockRuntime as IAgentRuntime,
-                mockMessage as Memory,
-                mockState as State,
-                {},
-                callbackFn
-            );
-
-            expect(callbackFn).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    text: expect.stringContaining('error'),
-                })
-            );
-        });
-    });
+  });
 });
 ```
 
@@ -356,28 +360,28 @@ describe('My Action', () => {
 
 ```typescript
 describe('Async Action', () => {
-    it('should handle async operations', async () => {
-        const setup = setupActionTest({
-            runtimeOverrides: {
-                useModel: mock().mockImplementation(async (modelType) => {
-                    // Simulate async delay
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    return { result: 'async result' };
-                })
-            }
-        });
-
-        const result = await asyncAction.handler(
-            setup.mockRuntime as IAgentRuntime,
-            setup.mockMessage as Memory,
-            setup.mockState as State,
-            {},
-            setup.callbackFn as HandlerCallback
-        );
-
-        expect(result).toBe(true);
-        expect(setup.callbackFn).toHaveBeenCalled();
+  it('should handle async operations', async () => {
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        useModel: mock().mockImplementation(async (modelType) => {
+          // Simulate async delay
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return { result: 'async result' };
+        }),
+      },
     });
+
+    const result = await asyncAction.handler(
+      setup.mockRuntime as IAgentRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State,
+      {},
+      setup.callbackFn as HandlerCallback
+    );
+
+    expect(result).toBe(true);
+    expect(setup.callbackFn).toHaveBeenCalled();
+  });
 });
 ```
 
@@ -393,72 +397,70 @@ import { createMockRuntime, createMockMemory, createMockState } from './test-uti
 import { type IAgentRuntime, type Memory, type State } from '@elizaos/core';
 
 describe('My Provider', () => {
-    let mockRuntime: any;
-    let mockMessage: Partial<Memory>;
-    let mockState: Partial<State>;
+  let mockRuntime: any;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
 
-    beforeEach(() => {
-        mockRuntime = createMockRuntime();
-        mockMessage = createMockMemory();
-        mockState = createMockState();
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockMessage = createMockMemory();
+    mockState = createMockState();
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  it('should have required properties', () => {
+    expect(myProvider.name).toBe('MY_PROVIDER');
+    expect(myProvider.get).toBeDefined();
+    expect(typeof myProvider.get).toBe('function');
+  });
+
+  it('should return data in correct format', async () => {
+    // Mock any runtime methods the provider uses
+    mockRuntime.getMemories = mock().mockResolvedValue([
+      { content: { text: 'Memory 1' }, createdAt: Date.now() },
+      { content: { text: 'Memory 2' }, createdAt: Date.now() - 1000 },
+    ]);
+
+    const result = await myProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
+
+    expect(result).toMatchObject({
+      text: expect.any(String),
+      data: expect.any(Object),
     });
+  });
 
-    afterEach(() => {
-        mock.restore();
-    });
+  it('should handle empty data gracefully', async () => {
+    mockRuntime.getMemories = mock().mockResolvedValue([]);
 
-    it('should have required properties', () => {
-        expect(myProvider.name).toBe('MY_PROVIDER');
-        expect(myProvider.get).toBeDefined();
-        expect(typeof myProvider.get).toBe('function');
-    });
+    const result = await myProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
-    it('should return data in correct format', async () => {
-        // Mock any runtime methods the provider uses
-        mockRuntime.getMemories = mock().mockResolvedValue([
-            { content: { text: 'Memory 1' }, createdAt: Date.now() },
-            { content: { text: 'Memory 2' }, createdAt: Date.now() - 1000 }
-        ]);
+    expect(result).toBeDefined();
+    expect(result.text).toContain('No data available');
+  });
 
-        const result = await myProvider.get(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State
-        );
+  it('should handle errors gracefully', async () => {
+    mockRuntime.getMemories = mock().mockRejectedValue(new Error('Database error'));
 
-        expect(result).toMatchObject({
-            text: expect.any(String),
-            data: expect.any(Object),
-        });
-    });
+    const result = await myProvider.get(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
-    it('should handle empty data gracefully', async () => {
-        mockRuntime.getMemories = mock().mockResolvedValue([]);
-
-        const result = await myProvider.get(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State
-        );
-
-        expect(result).toBeDefined();
-        expect(result.text).toContain('No data available');
-    });
-
-    it('should handle errors gracefully', async () => {
-        mockRuntime.getMemories = mock().mockRejectedValue(
-            new Error('Database error')
-        );
-
-        const result = await myProvider.get(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State
-        );
-
-        expect(result).toBeDefined();
-        expect(result.text).toContain('Error retrieving data');
-    });
+    expect(result).toBeDefined();
+    expect(result.text).toContain('Error retrieving data');
+  });
 });
 ```
 
@@ -474,69 +476,69 @@ import { createMockRuntime, createMockMemory, createMockState } from './test-uti
 import { type IAgentRuntime, type Memory, type State } from '@elizaos/core';
 
 describe('My Evaluator', () => {
-    let mockRuntime: any;
-    let mockMessage: Partial<Memory>;
-    let mockState: Partial<State>;
+  let mockRuntime: any;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
 
-    beforeEach(() => {
-        mockRuntime = createMockRuntime();
-        mockMessage = createMockMemory();
-        mockState = createMockState();
-    });
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockMessage = createMockMemory();
+    mockState = createMockState();
+  });
 
-    afterEach(() => {
-        mock.restore();
-    });
+  afterEach(() => {
+    mock.restore();
+  });
 
-    it('should have required properties', () => {
-        expect(myEvaluator.name).toBe('MY_EVALUATOR');
-        expect(myEvaluator.evaluate).toBeDefined();
-        expect(myEvaluator.validate).toBeDefined();
-    });
+  it('should have required properties', () => {
+    expect(myEvaluator.name).toBe('MY_EVALUATOR');
+    expect(myEvaluator.evaluate).toBeDefined();
+    expect(myEvaluator.validate).toBeDefined();
+  });
 
-    it('should validate when conditions are met', async () => {
-        const isValid = await myEvaluator.validate(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State
-        );
+  it('should validate when conditions are met', async () => {
+    const isValid = await myEvaluator.validate(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
 
-        expect(isValid).toBe(true);
-    });
+    expect(isValid).toBe(true);
+  });
 
-    it('should evaluate and create memory', async () => {
-        mockRuntime.createMemory = mock().mockResolvedValue({ id: 'new-memory-id' });
+  it('should evaluate and create memory', async () => {
+    mockRuntime.createMemory = mock().mockResolvedValue({ id: 'new-memory-id' });
 
-        await myEvaluator.evaluate(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State,
-            {}
-        );
+    await myEvaluator.evaluate(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State,
+      {}
+    );
 
-        expect(mockRuntime.createMemory).toHaveBeenCalledWith(
-            expect.objectContaining({
-                content: expect.objectContaining({
-                    text: expect.any(String)
-                })
-            }),
-            expect.any(String) // tableName
-        );
-    });
+    expect(mockRuntime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          text: expect.any(String),
+        }),
+      }),
+      expect.any(String) // tableName
+    );
+  });
 
-    it('should not create memory when evaluation fails', async () => {
-        // Mock a scenario where evaluation should fail
-        mockMessage.content = { text: 'invalid content' };
+  it('should not create memory when evaluation fails', async () => {
+    // Mock a scenario where evaluation should fail
+    mockMessage.content = { text: 'invalid content' };
 
-        await myEvaluator.evaluate(
-            mockRuntime as IAgentRuntime,
-            mockMessage as Memory,
-            mockState as State,
-            {}
-        );
+    await myEvaluator.evaluate(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State,
+      {}
+    );
 
-        expect(mockRuntime.createMemory).not.toHaveBeenCalled();
-    });
+    expect(mockRuntime.createMemory).not.toHaveBeenCalled();
+  });
 });
 ```
 
@@ -552,49 +554,49 @@ import { createMockRuntime } from './test-utils';
 import { type IAgentRuntime } from '@elizaos/core';
 
 describe('My Service', () => {
-    let mockRuntime: any;
+  let mockRuntime: any;
 
-    beforeEach(() => {
-        mockRuntime = createMockRuntime();
-    });
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+  });
 
-    afterEach(() => {
-        mock.restore();
-    });
+  afterEach(() => {
+    mock.restore();
+  });
 
-    it('should initialize service', async () => {
-        const service = await myService.initialize(mockRuntime as IAgentRuntime);
-        
-        expect(service).toBeDefined();
-        expect(service.start).toBeDefined();
-        expect(service.stop).toBeDefined();
-    });
+  it('should initialize service', async () => {
+    const service = await myService.initialize(mockRuntime as IAgentRuntime);
 
-    it('should start service successfully', async () => {
-        const service = await myService.initialize(mockRuntime as IAgentRuntime);
-        const startSpy = mock(service.start);
-        
-        await service.start();
-        
-        expect(startSpy).toHaveBeenCalled();
-    });
+    expect(service).toBeDefined();
+    expect(service.start).toBeDefined();
+    expect(service.stop).toBeDefined();
+  });
 
-    it('should stop service successfully', async () => {
-        const service = await myService.initialize(mockRuntime as IAgentRuntime);
-        await service.start();
-        
-        const stopSpy = mock(service.stop);
-        await service.stop();
-        
-        expect(stopSpy).toHaveBeenCalled();
-    });
+  it('should start service successfully', async () => {
+    const service = await myService.initialize(mockRuntime as IAgentRuntime);
+    const startSpy = mock(service.start);
 
-    it('should handle service errors', async () => {
-        const service = await myService.initialize(mockRuntime as IAgentRuntime);
-        service.start = mock().mockRejectedValue(new Error('Service start failed'));
-        
-        await expect(service.start()).rejects.toThrow('Service start failed');
-    });
+    await service.start();
+
+    expect(startSpy).toHaveBeenCalled();
+  });
+
+  it('should stop service successfully', async () => {
+    const service = await myService.initialize(mockRuntime as IAgentRuntime);
+    await service.start();
+
+    const stopSpy = mock(service.stop);
+    await service.stop();
+
+    expect(stopSpy).toHaveBeenCalled();
+  });
+
+  it('should handle service errors', async () => {
+    const service = await myService.initialize(mockRuntime as IAgentRuntime);
+    service.start = mock().mockRejectedValue(new Error('Service start failed'));
+
+    await expect(service.start()).rejects.toThrow('Service start failed');
+  });
 });
 ```
 
@@ -607,69 +609,66 @@ describe('My Service', () => {
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import { myPlugin } from '../index';
 import { setupActionTest } from './test-utils';
-import { 
-    type IAgentRuntime, 
-    type Memory,
-    EventType,
-    type MessagePayload,
-    type EntityPayload
+import {
+  type IAgentRuntime,
+  type Memory,
+  EventType,
+  type MessagePayload,
+  type EntityPayload,
 } from '@elizaos/core';
 
 describe('Event Handlers', () => {
-    let mockRuntime: any;
-    let mockMessage: Partial<Memory>;
-    let mockCallback: any;
+  let mockRuntime: any;
+  let mockMessage: Partial<Memory>;
+  let mockCallback: any;
 
-    beforeEach(() => {
-        const setup = setupActionTest();
-        mockRuntime = setup.mockRuntime;
-        mockMessage = setup.mockMessage;
-        mockCallback = setup.callbackFn;
-    });
+  beforeEach(() => {
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockCallback = setup.callbackFn;
+  });
 
-    afterEach(() => {
-        mock.restore();
-    });
+  afterEach(() => {
+    mock.restore();
+  });
 
-    it('should handle MESSAGE_RECEIVED event', async () => {
-        const messageHandler = myPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-        expect(messageHandler).toBeDefined();
+  it('should handle MESSAGE_RECEIVED event', async () => {
+    const messageHandler = myPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
+    expect(messageHandler).toBeDefined();
 
-        if (messageHandler) {
-            await messageHandler({
-                runtime: mockRuntime as IAgentRuntime,
-                message: mockMessage as Memory,
-                callback: mockCallback,
-                source: 'test'
-            } as MessagePayload);
+    if (messageHandler) {
+      await messageHandler({
+        runtime: mockRuntime as IAgentRuntime,
+        message: mockMessage as Memory,
+        callback: mockCallback,
+        source: 'test',
+      } as MessagePayload);
 
-            expect(mockRuntime.createMemory).toHaveBeenCalledWith(
-                mockMessage, 
-                'messages'
-            );
-        }
-    });
+      expect(mockRuntime.createMemory).toHaveBeenCalledWith(mockMessage, 'messages');
+    }
+  });
 
-    it('should handle ENTITY_JOINED event', async () => {
-        const entityHandler = myPlugin.events?.[EventType.ENTITY_JOINED]?.[0];
-        expect(entityHandler).toBeDefined();
+  it('should handle ENTITY_JOINED event', async () => {
+    const entityHandler = myPlugin.events?.[EventType.ENTITY_JOINED]?.[0];
+    expect(entityHandler).toBeDefined();
 
-        if (entityHandler) {
-            await entityHandler({
-                runtime: mockRuntime as IAgentRuntime,
-                entityId: 'test-entity-id',
-                worldId: 'test-world-id',
-                roomId: 'test-room-id',
-                metadata: {
-                    type: 'user',
-                    username: 'testuser'
-                },
-                source: 'test'
-            } as EntityPayload);
+    if (entityHandler) {
+      await entityHandler({
+        runtime: mockRuntime as IAgentRuntime,
+        entityId: 'test-entity-id',
+        worldId: 'test-world-id',
+        roomId: 'test-room-id',
+        metadata: {
+          type: 'user',
+          username: 'testuser',
+        },
+        source: 'test',
+      } as EntityPayload);
 
-            expect(mockRuntime.ensureConnection).toHaveBeenCalled();
-        }
-    });
+      expect(mockRuntime.ensureConnection).toHaveBeenCalled();
+    }
+  });
 });
 ```
 
@@ -681,34 +680,34 @@ describe('Event Handlers', () => {
 
 ```typescript
 describe('Complex State Action', () => {
-    it('should handle complex state transformations', async () => {
-        const setup = setupActionTest({
-            stateOverrides: {
-                values: {
-                    taskList: ['task1', 'task2'],
-                    currentStep: 2,
-                    metadata: { key: 'value' }
-                },
-                data: {
-                    customData: { 
-                        nested: { 
-                            value: 'deep' 
-                        } 
-                    }
-                }
-            }
-        });
-
-        const result = await complexAction.handler(
-            setup.mockRuntime as IAgentRuntime,
-            setup.mockMessage as Memory,
-            setup.mockState as State,
-            {},
-            setup.callbackFn as HandlerCallback
-        );
-
-        expect(result).toBe(true);
+  it('should handle complex state transformations', async () => {
+    const setup = setupActionTest({
+      stateOverrides: {
+        values: {
+          taskList: ['task1', 'task2'],
+          currentStep: 2,
+          metadata: { key: 'value' },
+        },
+        data: {
+          customData: {
+            nested: {
+              value: 'deep',
+            },
+          },
+        },
+      },
     });
+
+    const result = await complexAction.handler(
+      setup.mockRuntime as IAgentRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State,
+      {},
+      setup.callbackFn as HandlerCallback
+    );
+
+    expect(result).toBe(true);
+  });
 });
 ```
 
@@ -716,31 +715,31 @@ describe('Complex State Action', () => {
 
 ```typescript
 describe('Sequential Operations', () => {
-    it('should handle sequential API calls', async () => {
-        const setup = setupActionTest({
-            runtimeOverrides: {
-                useModel: mock()
-                    .mockResolvedValueOnce({ step: 1, data: 'first' })
-                    .mockResolvedValueOnce({ step: 2, data: 'second' })
-                    .mockResolvedValueOnce({ step: 3, data: 'final' })
-            }
-        });
-
-        await sequentialAction.handler(
-            setup.mockRuntime as IAgentRuntime,
-            setup.mockMessage as Memory,
-            setup.mockState as State,
-            {},
-            setup.callbackFn as HandlerCallback
-        );
-
-        expect(setup.mockRuntime.useModel).toHaveBeenCalledTimes(3);
-        expect(setup.callbackFn).toHaveBeenCalledWith(
-            expect.objectContaining({
-                text: expect.stringContaining('final')
-            })
-        );
+  it('should handle sequential API calls', async () => {
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        useModel: mock()
+          .mockResolvedValueOnce({ step: 1, data: 'first' })
+          .mockResolvedValueOnce({ step: 2, data: 'second' })
+          .mockResolvedValueOnce({ step: 3, data: 'final' }),
+      },
     });
+
+    await sequentialAction.handler(
+      setup.mockRuntime as IAgentRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State,
+      {},
+      setup.callbackFn as HandlerCallback
+    );
+
+    expect(setup.mockRuntime.useModel).toHaveBeenCalledTimes(3);
+    expect(setup.callbackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('final'),
+      })
+    );
+  });
 });
 ```
 
@@ -748,35 +747,35 @@ describe('Sequential Operations', () => {
 
 ```typescript
 describe('Error Recovery', () => {
-    it('should retry on failure', async () => {
-        let attempts = 0;
-        const setup = setupActionTest({
-            runtimeOverrides: {
-                useModel: mock().mockImplementation(async () => {
-                    attempts++;
-                    if (attempts < 3) {
-                        throw new Error('Temporary failure');
-                    }
-                    return { success: true };
-                })
-            }
-        });
-
-        await retryAction.handler(
-            setup.mockRuntime as IAgentRuntime,
-            setup.mockMessage as Memory,
-            setup.mockState as State,
-            {},
-            setup.callbackFn as HandlerCallback
-        );
-
-        expect(attempts).toBe(3);
-        expect(setup.callbackFn).toHaveBeenCalledWith(
-            expect.objectContaining({
-                content: expect.objectContaining({ success: true })
-            })
-        );
+  it('should retry on failure', async () => {
+    let attempts = 0;
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        useModel: mock().mockImplementation(async () => {
+          attempts++;
+          if (attempts < 3) {
+            throw new Error('Temporary failure');
+          }
+          return { success: true };
+        }),
+      },
     });
+
+    await retryAction.handler(
+      setup.mockRuntime as IAgentRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State,
+      {},
+      setup.callbackFn as HandlerCallback
+    );
+
+    expect(attempts).toBe(3);
+    expect(setup.callbackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ success: true }),
+      })
+    );
+  });
 });
 ```
 
@@ -785,40 +784,43 @@ describe('Error Recovery', () => {
 ## 9. Best Practices
 
 ### 1. Test Organization
+
 - Group related tests using `describe` blocks
 - Use clear, descriptive test names
 - Follow the Arrange-Act-Assert pattern
 - Keep tests focused and independent
 
 ### 2. Mock Management
+
 ```typescript
 // Good: Specific mocks for each test
 it('should handle specific scenario', async () => {
-    const setup = setupActionTest({
-        runtimeOverrides: {
-            useModel: mock().mockResolvedValue({ specific: 'response' })
-        }
-    });
-    // ... test implementation
+  const setup = setupActionTest({
+    runtimeOverrides: {
+      useModel: mock().mockResolvedValue({ specific: 'response' }),
+    },
+  });
+  // ... test implementation
 });
 
 // Bad: Global mocks that affect all tests
 beforeAll(() => {
-    globalMock = mock().mockResolvedValue('global response');
+  globalMock = mock().mockResolvedValue('global response');
 });
 ```
 
 ### 3. Assertion Patterns
+
 ```typescript
 // Check callback was called with correct structure
 expect(callbackFn).toHaveBeenCalledWith(
-    expect.objectContaining({
-        text: expect.stringContaining('expected text'),
-        content: expect.objectContaining({
-            success: true,
-            data: expect.arrayContaining(['item1', 'item2'])
-        })
-    })
+  expect.objectContaining({
+    text: expect.stringContaining('expected text'),
+    content: expect.objectContaining({
+      success: true,
+      data: expect.arrayContaining(['item1', 'item2']),
+    }),
+  })
 );
 
 // Check multiple calls in sequence
@@ -830,82 +832,87 @@ expect(calls[2][0].text).toContain('completed');
 ```
 
 ### 4. Testing Edge Cases
+
 ```typescript
 describe('Edge Cases', () => {
-    it('should handle empty input', async () => {
-        mockMessage.content = { text: '' };
-        // ... test implementation
-    });
+  it('should handle empty input', async () => {
+    mockMessage.content = { text: '' };
+    // ... test implementation
+  });
 
-    it('should handle null values', async () => {
-        mockMessage.content = null as any;
-        // ... test implementation
-    });
+  it('should handle null values', async () => {
+    mockMessage.content = null as any;
+    // ... test implementation
+  });
 
-    it('should handle very long input', async () => {
-        mockMessage.content = { text: 'a'.repeat(10000) };
-        // ... test implementation
-    });
+  it('should handle very long input', async () => {
+    mockMessage.content = { text: 'a'.repeat(10000) };
+    // ... test implementation
+  });
 });
 ```
 
 ### 5. Async Testing Best Practices
+
 ```typescript
 // Always await async operations
 it('should handle async operations', async () => {
-    const promise = someAsyncOperation();
-    await expect(promise).resolves.toBe(expectedValue);
+  const promise = someAsyncOperation();
+  await expect(promise).resolves.toBe(expectedValue);
 });
 
 // Test rejected promises
 it('should handle errors', async () => {
-    const promise = failingOperation();
-    await expect(promise).rejects.toThrow('Expected error');
+  const promise = failingOperation();
+  await expect(promise).rejects.toThrow('Expected error');
 });
 
 // Use async/await instead of .then()
 it('should process data', async () => {
-    const result = await processData();
-    expect(result).toBeDefined();
+  const result = await processData();
+  expect(result).toBeDefined();
 });
 ```
 
 ### 6. Cleanup
+
 ```typescript
 afterEach(() => {
-    // Reset all mocks after each test
-    mock.restore();
-    
-    // Clean up any side effects
-    // Clear timers, close connections, etc.
+  // Reset all mocks after each test
+  mock.restore();
+
+  // Clean up any side effects
+  // Clear timers, close connections, etc.
 });
 ```
 
 ### 7. Test Coverage Requirements
+
 **IMPORTANT**: All ElizaOS plugins must maintain 100% test coverage or as close to it as possible (minimum 95%).
 
 ```typescript
 // Ensure all code paths are tested
 describe('Complete Coverage', () => {
-    it('should test success path', async () => {
-        // Test the happy path
-    });
+  it('should test success path', async () => {
+    // Test the happy path
+  });
 
-    it('should test error handling', async () => {
-        // Test error scenarios
-    });
+  it('should test error handling', async () => {
+    // Test error scenarios
+  });
 
-    it('should test edge cases', async () => {
-        // Test boundary conditions
-    });
+  it('should test edge cases', async () => {
+    // Test boundary conditions
+  });
 
-    it('should test all conditional branches', async () => {
-        // Test if/else, switch cases, etc.
-    });
+  it('should test all conditional branches', async () => {
+    // Test if/else, switch cases, etc.
+  });
 });
 ```
 
 **Coverage Best Practices:**
+
 - Use `bun test --coverage` to check coverage regularly
 - Set up CI/CD to fail builds with coverage below 95%
 - Document any legitimate reasons for uncovered code
@@ -917,6 +924,7 @@ describe('Complete Coverage', () => {
 ## 10. Running Tests
 
 ### Basic Commands
+
 ```bash
 # Run all tests
 bun run test
@@ -935,7 +943,9 @@ bun run test --test-name-pattern "should validate"
 ```
 
 ### Test Configuration
+
 Create a `bunfig.toml` file in your project root:
+
 ```toml
 [test]
 root = "./src/__tests__"
@@ -944,13 +954,14 @@ coverageThreshold = 95  # Minimum 95% coverage required, aim for 100%
 ```
 
 ### Debugging Tests
+
 ```typescript
 // Add console.logs for debugging
 it('should debug test', async () => {
     console.log('Current state:', mockState);
-    
+
     const result = await action.handler(...);
-    
+
     console.log('Result:', result);
     console.log('Callback calls:', (callbackFn as any).mock.calls);
 });
@@ -959,6 +970,7 @@ it('should debug test', async () => {
 ### Common Issues and Solutions
 
 #### Issue: Mock not being called
+
 ```typescript
 // Solution: Ensure the mock is set before the action is called
 mockRuntime.useModel = mock().mockResolvedValue(response);
@@ -967,27 +979,29 @@ await action.handler(...);
 ```
 
 #### Issue: Tests timing out
+
 ```typescript
 // Solution: Mock all async dependencies
 beforeEach(() => {
-    // Mock all external calls
-    mockRuntime.getMemories = mock().mockResolvedValue([]);
-    mockRuntime.searchMemories = mock().mockResolvedValue([]);
-    mockRuntime.createMemory = mock().mockResolvedValue({ id: 'test' });
+  // Mock all external calls
+  mockRuntime.getMemories = mock().mockResolvedValue([]);
+  mockRuntime.searchMemories = mock().mockResolvedValue([]);
+  mockRuntime.createMemory = mock().mockResolvedValue({ id: 'test' });
 });
 ```
 
 #### Issue: Inconsistent test results
+
 ```typescript
 // Solution: Reset mocks between tests
 afterEach(() => {
-    mock.restore();
+  mock.restore();
 });
 
 // And use fresh setup for each test
 beforeEach(() => {
-    const setup = setupActionTest();
-    // ... assign to test variables
+  const setup = setupActionTest();
+  // ... assign to test variables
 });
 ```
 
@@ -1004,4 +1018,4 @@ This guide provides a comprehensive approach to testing ElizaOS plugins. Key tak
 5. **Follow best practices** for organization, assertions, and cleanup
 6. **Run tests regularly** as part of your development workflow
 
-Remember: Good tests are as important as good code. They ensure your plugin works correctly and continues to work as the codebase evolves. 
+Remember: Good tests are as important as good code. They ensure your plugin works correctly and continues to work as the codebase evolves.

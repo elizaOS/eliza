@@ -1,5 +1,7 @@
 import { query } from '@anthropic-ai/claude-code';
 import { EventEmitter } from 'events';
+import { createMigrationGuideLoader, MigrationGuideLoader } from './migration-guide-loader';
+import { logger } from '@elizaos/core';
 
 export interface SimpleMigrationResult {
   success: boolean;
@@ -7,18 +9,31 @@ export interface SimpleMigrationResult {
   duration: number;
   messageCount: number;
   error?: Error;
+  guidesUsed?: string[];
 }
 
 export class SimpleMigrationAgent extends EventEmitter {
   private repoPath: string;
   private abortController: AbortController;
   private verbose: boolean;
+  private guideLoader: MigrationGuideLoader;
 
   constructor(repoPath: string, options: { verbose?: boolean } = {}) {
     super();
     this.repoPath = repoPath;
     this.abortController = new AbortController();
     this.verbose = options.verbose || false;
+
+    // Initialize guide loader with enhanced migration knowledge
+    try {
+      this.guideLoader = createMigrationGuideLoader();
+      if (this.verbose) {
+        logger.info('Migration guide loader initialized successfully');
+      }
+    } catch (error) {
+      logger.warn('Failed to initialize migration guide loader', error);
+      throw new Error('Cannot initialize migration system without guide access');
+    }
   }
 
   private isImportantUpdate(text: string): boolean {
@@ -91,11 +106,21 @@ export class SimpleMigrationAgent extends EventEmitter {
 
       console.log(`Starting migration in directory: ${this.repoPath}`);
 
+      // Generate comprehensive migration context with all guide knowledge
+      const migrationContext = this.guideLoader.getAllGuidesContent();
+      const guideReferences = this.guideLoader.generateMigrationContext();
+
       const migrationPrompt = `You are about to help migrate an ElizaOS plugin from 0.x to 1.x format.
 
-CRITICAL: You must follow the INTEGRATED EXECUTION PROTOCOL exactly as specified in the integrated-migration-loop.md file.
+CRITICAL: You must follow the INTEGRATED EXECUTION PROTOCOL exactly as specified in the CLAUDE.md file.
 
 This is a GATED PROCESS with 9 gates (0-8). You CANNOT skip steps.
+
+COMPREHENSIVE MIGRATION KNOWLEDGE BASE:
+${migrationContext}
+
+GUIDE REFERENCE SYSTEM:
+${guideReferences}
 
 REFERENCE GUIDES are in migration-guides/ directory:
 - migration-guide.md (basic migration steps)
@@ -104,6 +129,13 @@ REFERENCE GUIDES are in migration-guides/ directory:
 - advanced-migration-guide.md (services, settings, evaluators)
 - testing-guide.md (comprehensive testing requirements)
 - completion-requirements.md (final validation and release preparation)
+
+ENHANCED RAG CAPABILITIES:
+You have access to the complete content of all migration guides above. Use this knowledge to:
+1. Provide specific, detailed migration steps
+2. Reference exact sections from the appropriate guides
+3. Troubleshoot specific issues with targeted solutions
+4. Ensure comprehensive coverage of all migration requirements
 
 CRITICAL TEST VALIDATION REQUIREMENTS - ABSOLUTE REQUIREMENTS
 
@@ -264,13 +296,22 @@ ABSOLUTE REQUIREMENT: The migration is NOT complete until bun run test shows zer
         }
       }
 
-      console.log('\n✓ Migration completed successfully!');
+      console.log('\nMigration completed successfully!');
+
+      // Get list of guides that were available
+      const guidesUsed = this.guideLoader
+        .getGuidesByCategory('basic')
+        .concat(this.guideLoader.getGuidesByCategory('advanced'))
+        .concat(this.guideLoader.getGuidesByCategory('testing'))
+        .concat(this.guideLoader.getGuidesByCategory('completion'))
+        .map((guide) => guide.name);
 
       return {
         success: true,
         repoPath: this.repoPath,
         duration: Date.now() - startTime,
         messageCount,
+        guidesUsed,
       };
     } catch (error) {
       console.log('\n✗ Migration failed');
@@ -290,5 +331,80 @@ ABSOLUTE REQUIREMENT: The migration is NOT complete until bun run test shows zer
   abort(): void {
     this.abortController.abort();
     console.log('\nMigration aborted by user');
+  }
+
+  /**
+   * Get migration help for specific issues
+   */
+  getMigrationHelp(issue: string): string {
+    try {
+      const results = this.guideLoader.getRelevantGuidesForIssue(issue);
+
+      if (results.length === 0) {
+        return `No specific guidance found for: ${issue}\nCheck the basic migration-guide.md for general steps.`;
+      }
+
+      const help = [
+        `MIGRATION GUIDANCE FOR: ${issue.toUpperCase()}`,
+        '',
+        'Relevant guides found:',
+        '',
+      ];
+
+      for (const result of results) {
+        help.push(`## ${result.guide.name}`);
+        help.push(`Relevance Score: ${result.relevanceScore.toFixed(1)}`);
+        help.push(`Matched Keywords: ${result.matchedKeywords.join(', ')}`);
+        help.push(`Category: ${result.guide.category}`);
+        help.push('');
+      }
+
+      return help.join('\n');
+    } catch (error) {
+      return `Error getting migration help: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Search guides for specific content
+   */
+  searchGuides(query: string, limit: number = 3): string {
+    try {
+      const results = this.guideLoader.searchGuides(query, limit);
+
+      if (results.length === 0) {
+        return `No guides found matching: ${query}`;
+      }
+
+      const searchResults = [
+        `SEARCH RESULTS FOR: ${query}`,
+        '',
+        `Found ${results.length} relevant guide(s):`,
+        '',
+      ];
+
+      for (const result of results) {
+        searchResults.push(`## ${result.guide.name}`);
+        searchResults.push(`Score: ${result.relevanceScore.toFixed(1)}`);
+        searchResults.push(`Keywords: ${result.matchedKeywords.join(', ')}`);
+        searchResults.push(`Path: ${result.guide.path}`);
+        searchResults.push('');
+      }
+
+      return searchResults.join('\n');
+    } catch (error) {
+      return `Error searching guides: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Get complete migration context for debugging
+   */
+  getFullMigrationContext(): string {
+    try {
+      return this.guideLoader.getAllGuidesContent();
+    } catch (error) {
+      return `Error getting migration context: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 }

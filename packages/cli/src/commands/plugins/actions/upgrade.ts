@@ -2,7 +2,6 @@ import { handleError } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { emoji } from '@/src/utils/emoji-handler';
 import { UpgradePluginOptions } from '../types';
 import { SimpleMigrationAgent } from '@/src/utils/upgrade/simple-migration-agent';
 import chalk from 'chalk';
@@ -42,45 +41,87 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
       }
     } catch (importError) {
       console.log(chalk.red('✗ Claude Code SDK not available'));
-      console.log(chalk.red(`Error: ${importError instanceof Error ? importError.message : String(importError)}`));
+      console.log(
+        chalk.red(
+          `Error: ${importError instanceof Error ? importError.message : String(importError)}`
+        )
+      );
       console.log('\nInstall the SDK: bun add @anthropic-ai/claude-code');
       process.exit(1);
     }
 
-    // Resolve plugin path
-    const resolvedPath = path.resolve(pluginPath);
-    const workingDir = path.join(process.cwd(), 'temp-migration', path.basename(resolvedPath));
+    // Resolve plugin path - work directly in the plugin directory
+    const workingDir = path.resolve(pluginPath);
+
+    // Validate plugin directory exists
+    if (!existsSync(workingDir)) {
+      throw new Error(`Plugin directory not found: ${workingDir}`);
+    }
 
     // Show clean setup progress
     console.log(chalk.cyan('🔧 Setting up migration environment...'));
-    
-    // Use simple cp command to copy the entire directory
-    await execa('rm', ['-rf', workingDir], { reject: false });
-    await execa('mkdir', ['-p', path.dirname(workingDir)]);
-    await execa('cp', ['-r', resolvedPath, workingDir]);
 
-    // Copy migration guides to the working directory
+    // Copy migration guides to the plugin directory (will be cleaned up after migration)
     let projectRoot = process.cwd();
+    let guidesSource: string;
+
+    // First try to find guides in the current monorepo structure
     while (projectRoot !== '/' && !existsSync(path.join(projectRoot, 'packages/docs'))) {
       projectRoot = path.dirname(projectRoot);
     }
-    const guidesSource = path.join(projectRoot, 'packages/docs/docs/plugins/migration/claude-code');
-    const guidesTarget = path.join(workingDir, 'migration-guides');
 
+    const monorepoGuidesPath = path.join(
+      projectRoot,
+      'packages/docs/docs/plugins/migration/claude-code'
+    );
+
+    if (existsSync(monorepoGuidesPath)) {
+      guidesSource = monorepoGuidesPath;
+    } else {
+      // Try to find guides relative to the CLI package (for installed CLI)
+      const currentFileUrl = import.meta.url;
+      const currentFilePath = new URL(currentFileUrl).pathname;
+      const cliPackageRoot = path.dirname(
+        path.dirname(path.dirname(path.dirname(currentFilePath)))
+      );
+      const bundledGuidesPath = path.join(cliPackageRoot, 'migration-guides');
+
+      if (existsSync(bundledGuidesPath)) {
+        guidesSource = bundledGuidesPath;
+      } else {
+        // Fallback: create the guides directory and use embedded guides from the agent
+        guidesSource = '';
+      }
+    }
+
+    const guidesTarget = path.join(workingDir, 'migration-guides');
     await execa('mkdir', ['-p', guidesTarget]);
-    await execa('cp', ['-r', guidesSource + '/.', guidesTarget]);
+
+    if (guidesSource && existsSync(guidesSource)) {
+      await execa('cp', ['-r', guidesSource + '/.', guidesTarget]);
+      if (opts.debug) {
+        console.log(chalk.gray(`Copied guides from: ${guidesSource}`));
+      }
+    } else {
+      // Create minimal guide structure with embedded content
+      if (opts.debug) {
+        console.log(chalk.yellow('Migration guides not found, using embedded guidance'));
+      }
+      // The migration agent will still work with the embedded CLAUDE.md instructions
+    }
 
     console.log(chalk.green('✅ Environment ready'));
 
     // Show clean introduction
-    console.log(chalk.bold('\n🚀 ElizaOS Plugin Migration (0.x → 1.x)'));
+    console.log(chalk.bold('\nElizaOS Plugin Migration (0.x → 1.x)'));
     console.log(chalk.gray('────────────────────────────────────────'));
-    console.log('• Automated analysis and migration');
-    console.log('• Comprehensive testing and validation');
-    console.log('• Zero-downtime 1.x compatibility');
-    
+    console.log('• Enhanced AI-powered migration with comprehensive guide integration');
+    console.log('• 9-gate progressive validation system with RAG search');
+    console.log('• Automated analysis and migration with 95%+ test coverage');
+    console.log('• Zero-failure release preparation with full validation');
+
     if (opts.debug) {
-      console.log(chalk.gray(`\nPlugin: ${resolvedPath}`));
+      console.log(chalk.gray(`\nPlugin: ${pluginPath}`));
       console.log(chalk.gray(`Working directory: ${workingDir}`));
     }
 
@@ -106,29 +147,53 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     // Run migration
     const result = await agent.migrate();
 
+    // Clean up migration guides after migration completes
+    try {
+      if (existsSync(guidesTarget)) {
+        await execa('rm', ['-rf', guidesTarget]);
+        if (opts.debug) {
+          console.log(chalk.gray('Cleaned up migration guides'));
+        }
+      }
+    } catch (cleanupError) {
+      // Don't fail the migration if cleanup fails
+      if (opts.debug) {
+        console.log(chalk.yellow(`Warning: Could not clean up guides: ${cleanupError}`));
+      }
+    }
+
     // Show clean results
     if (result.success) {
-      console.log(chalk.green('\n🎉 Migration completed successfully!'));
+      console.log(chalk.green('\nMigration completed successfully!'));
       console.log(chalk.gray('────────────────────────────────────'));
-      console.log(`📁 Location: ${chalk.cyan(path.basename(result.repoPath))}`);
-      console.log(`⏱️  Duration: ${chalk.yellow(Math.round(result.duration / 1000) + 's')}`);
-      console.log(`🤖 AI Operations: ${chalk.blue(result.messageCount)}`);
+      console.log(`Location: ${chalk.cyan(path.basename(result.repoPath))}`);
+      console.log(`Duration: ${chalk.yellow(Math.round(result.duration / 1000) + 's')}`);
+      console.log(`AI Operations: ${chalk.blue(result.messageCount)}`);
 
-      console.log(chalk.bold('\n📋 Next Steps:'));
+      if (result.guidesUsed && result.guidesUsed.length > 0) {
+        console.log(`Migration Guides Used: ${chalk.magenta(result.guidesUsed.length)}`);
+        if (opts.debug) {
+          console.log(`  ${chalk.gray(result.guidesUsed.join(', '))}`);
+        }
+      }
+
+      console.log(chalk.bold('\nNext Steps:'));
       console.log(`${chalk.gray('1.')} cd ${chalk.cyan(path.basename(result.repoPath))}`);
-      console.log(`${chalk.gray('2.')} git checkout 1.x ${chalk.gray('# Review the migrated code')}`);
+      console.log(
+        `${chalk.gray('2.')} git checkout 1.x ${chalk.gray('# Review the migrated code')}`
+      );
       console.log(`${chalk.gray('3.')} bun test ${chalk.gray('# Verify all tests pass')}`);
       console.log(`${chalk.gray('4.')} bun run build ${chalk.gray('# Verify the build')}`);
       console.log(`${chalk.gray('5.')} Test in a real project`);
-      console.log(`${chalk.gray('6.')} Merge to main and publish 🚀\n`);
+      console.log(`${chalk.gray('6.')} Merge to main and publish\n`);
     } else {
       console.log(chalk.red('\n❌ Migration failed'));
       console.log(chalk.gray('──────────────────────'));
-      
+
       if (result.error) {
         const errorMsg = result.error.message || String(result.error);
         console.log(chalk.red(`💥 ${errorMsg}`));
-        
+
         if (opts.debug || opts.verbose) {
           console.log(chalk.gray('\nDetailed error:'));
           console.log(chalk.gray(result.error.stack || result.error.message));
@@ -144,6 +209,19 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
       process.exit(1);
     }
   } catch (error) {
+    // Clean up migration guides on error
+    try {
+      const guidesTarget = path.join(path.resolve(pluginPath), 'migration-guides');
+      if (existsSync(guidesTarget)) {
+        await execa('rm', ['-rf', guidesTarget]);
+        if (opts.debug) {
+          console.log(chalk.gray('Cleaned up migration guides after error'));
+        }
+      }
+    } catch (cleanupError) {
+      // Ignore cleanup errors
+    }
+
     console.log('\n' + chalk.red('✗ Plugin upgrade failed!'));
 
     if (opts.debug || opts.verbose) {

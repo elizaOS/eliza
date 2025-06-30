@@ -1,6 +1,6 @@
 # ElizaOS Advanced Migration Guide - v1.x
 
-> **Important**: This guide covers advanced breaking changes for evaluators, services, and runtime methods. Read the main [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md) first for actions, providers, and basic migrations.
+> **Important**: This guide covers advanced breaking changes for evaluators, services, and runtime methods. Read the main [migration-guide.md](./migration-guide.md) first for actions, providers, and basic migrations.
 
 ## Table of Contents
 
@@ -454,6 +454,6 @@ class MyClient extends Service {
 
 If you encounter issues not covered in this guide:
 
-1. Check the main [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md) for basic migrations
+1. Check the main [migration-guide.md](./migration-guide.md) for basic migrations
 2. Review the [v1.x examples](../packages/core/examples) for reference implementations
 3. Join our Discord community for support
