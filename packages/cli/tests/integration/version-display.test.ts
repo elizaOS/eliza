@@ -70,6 +70,37 @@ describe('CLI version display integration tests', () => {
       // This scenario is better tested manually or in a separate test suite
     });
   });
+
+  describe('local dist behavior', () => {
+    it('should display "monorepo" when running from dist folder outside monorepo', async () => {
+      // When the CLI is built and copied to a location outside the monorepo,
+      // it should display "monorepo" if not in node_modules
+      const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-dist-test-'));
+      
+      try {
+        // Copy the dist CLI to temp directory
+        const tempCliPath = path.join(tempDir, 'index.js');
+        await fs.promises.copyFile(CLI_PATH, tempCliPath);
+        
+        // Also copy package.json to avoid errors
+        const cliPackageJson = path.resolve(__dirname, '../../package.json');
+        const tempPackageJson = path.join(tempDir, 'package.json');
+        await fs.promises.copyFile(cliPackageJson, tempPackageJson);
+        
+        const result = await runCLI(['--version'], { 
+          cwd: tempDir,
+          cliPath: tempCliPath 
+        });
+        
+        expect(result.stdout.trim()).toBe('monorepo');
+        expect(result.stderr).toBe('');
+        expect(result.code).toBe(0);
+      } finally {
+        // Clean up
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 /**
