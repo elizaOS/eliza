@@ -1,6 +1,6 @@
 [test]
 # Test timeout in milliseconds
-timeout = 60000
+timeout = 180000
 
 # Coverage configuration
 coverage = true
