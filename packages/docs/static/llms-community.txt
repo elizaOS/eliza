@@ -13739,7 +13739,7 @@ The plugin requires environment variables or runtime settings:
 ```env
 MVX_PRIVATE_KEY=your-wallet-private-key
 MVX_NETWORK=devnet  # mainnet, devnet, or testnet
-ACCESS_TOKEN_MANAGEMENT_TO=everyone  # you can put an userid to limit token managament to one user only
+ACCESS_TOKEN_MANAGEMENT_TO=everyone  # you can put an userid to limit token management to one user only
 ```
 
 ## Integration
@@ -18666,7 +18666,7 @@ This plugin provides advanced functionality for the Flow Blockchain.
 - Accounts management based on Account Linking feature
 - Token Price Query for any token on Flow Blockchain
 - Token Transfer from User's account to others' address
-- Token Registeration for any token on Flow Blockchain
+- Token Registration for any token on Flow Blockchain
 
 ## Installation
 
