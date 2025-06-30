@@ -329,4 +329,48 @@ describe('ElizaOS Create Commands', () => {
       expect(isValidOllamaEndpoint(undefined as any)).toBe(false);
     });
   });
+
+  describe('Cleanup on Interruption', () => {
+    it(
+      'cleans up partial plugin creation on process termination',
+      async () => {
+        // this test verifies that when you press ctrl-c during 'bun install'
+        // the partially created directory gets cleaned up automatically
+        // fixing the bug where abandoned directories were left behind
+        
+        const pluginName = 'test-cleanup-plugin';
+        const pluginDir = `plugin-${pluginName}`;
+
+        // ensure plugin directory doesn't exist before test
+        crossPlatform.removeDir(pluginDir);
+        expect(existsSync(pluginDir)).toBe(false);
+
+        // start the create command in a subprocess that we can kill
+        const { spawn } = await import('node:child_process');
+        const createProcess = spawn('bun', [elizaosCmd.replace('bun ', ''), 'create', pluginName, '--type', 'plugin', '--yes'], {
+          stdio: 'ignore',
+          detached: false
+        });
+
+        // give it a moment to start creating the directory (before it gets to bun install)
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // send SIGINT to simulate ctrl-c
+        if (createProcess.pid) {
+          try {
+            process.kill(createProcess.pid, 'SIGINT');
+          } catch (e) {
+            // process might have already exited
+          }
+        }
+
+        // wait a bit for our cleanup handlers to do their thing
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        // verify the directory was cleaned up - no abandoned directories!
+        expect(existsSync(pluginDir)).toBe(false);
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+  });
 });
