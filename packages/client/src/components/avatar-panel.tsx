@@ -121,10 +121,6 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
             )}
           </div>
 
-          {hasChanged && (
-            <div className="text-sm text-blue-500 mt-1 text-center">Avatar has been updated</div>
-          )}
-
           <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground mt-1">
             <Info className="w-3.5 h-3.5" />
             <span>Images greater than 300x300 will be resized</span>
