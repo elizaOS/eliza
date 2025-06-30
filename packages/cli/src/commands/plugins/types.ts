@@ -17,6 +17,10 @@ export interface UpgradePluginOptions {
   apiKey?: string;
   skipTests?: boolean;
   skipValidation?: boolean;
+  quiet?: boolean;
+  verbose?: boolean;
+  debug?: boolean;
+  skipConfirmation?: boolean;
 }
 
 export interface GeneratePluginOptions {
