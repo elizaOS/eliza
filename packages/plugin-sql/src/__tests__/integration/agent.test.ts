@@ -702,9 +702,9 @@ describe('Agent Integration Tests', () => {
 
       it('should cascade delete all related data when deleting an agent', async () => {
         // Create a separate test instance for cascade delete test
-        const agentId = uuidv4() as UUID;
-        const setup = await createTestDatabase(agentId);
+        const setup = await createIsolatedTestDatabase('agent-cascade-delete');
         const cascadeAdapter = setup.adapter;
+        const agentId = setup.testAgentId;
 
         try {
           // The agent was already created by the test helper
