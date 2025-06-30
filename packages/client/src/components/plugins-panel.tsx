@@ -59,6 +59,11 @@ const ESSENTIAL_PLUGINS: Record<string, EssentialPluginInfo> = {
     description:
       'Provides language model access. If removed, replace with another LLM plugin or your agent may fail to function properly.',
   },
+  '@elizaos/plugin-bootstrap': {
+    title: 'Essential Plugin: Bootstrap',
+    description:
+      'Provides default message processing, event handling, and attachment workflows for your agent. If removed, ensure you have a custom plugin handling these responsibilities, or your agent may not process events or respond to messages as expected.',
+  },  
 };
 
 export default function PluginsPanel({
