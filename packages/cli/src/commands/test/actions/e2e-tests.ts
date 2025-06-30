@@ -3,7 +3,6 @@ import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/ser
 import {
   buildProject,
   findNextAvailablePort,
-  promptForEnvVars,
   TestRunner,
   UserEnvironment,
 } from '@/src/utils';
@@ -94,18 +93,7 @@ export async function runE2eTests(
     }
 
     // Always ensure database configuration is set
-    try {
-      logger.info('Configuring database...');
-      await promptForEnvVars('pglite'); // This ensures PGLITE_DATA_DIR is set if not already
-      logger.info('Database configuration completed');
-    } catch (error) {
-      logger.error('Error configuring database:', error);
-      if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
-      }
-      throw error;
-    }
+    logger.info('Database configuration completed');
 
     // Look for PostgreSQL URL in environment variables
     const postgresUrl = process.env.POSTGRES_URL;

@@ -2,7 +2,6 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { logger } from '@elizaos/core';
 import { UserEnvironment } from './user-environment';
-import { validatePluginEnvVars } from './env-prompt';
 
 /**
  * Interface for the agent's configuration
@@ -84,47 +83,5 @@ export async function saveConfig(config: AgentConfig): Promise<void> {
     logger.info(`Configuration saved to ${configPath}`);
   } catch (error) {
     logger.error(`Error saving configuration: ${error}`);
-  }
-}
-
-/**
- * Checks whether the required environment variables for a plugin are valid.
- *
- * @param pluginName - The name of the plugin to validate.
- * @returns An object indicating if the environment is valid and a message describing the result.
- */
-export async function checkPluginRequirements(pluginName: string): Promise<{
-  valid: boolean;
-  message: string;
-}> {
-  return validatePluginEnvVars(pluginName);
-}
-
-/**
- * Retrieves the environment variable validation status for each plugin listed in the agent configuration.
- *
- * @returns A record mapping plugin names to a boolean indicating whether their required environment variables are valid.
- */
-export async function getPluginStatus(): Promise<Record<string, boolean>> {
-  const configPath = await getConfigFilePath();
-  if (!(await fileExists(configPath))) {
-    return {};
-  }
-
-  try {
-    const configContent = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    const status: Record<string, boolean> = {};
-
-    // Check each plugin's environment variables
-    for (const plugin of Object.keys(config.plugins ?? {})) {
-      const check = await validatePluginEnvVars(plugin);
-      status[plugin] = check.valid;
-    }
-
-    return status;
-  } catch (error) {
-    logger.error(`Error reading config file: ${error}`);
-    return {};
   }
 }
