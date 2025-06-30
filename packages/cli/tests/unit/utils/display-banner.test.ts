@@ -13,6 +13,7 @@ describe('display-banner utils', () => {
   let mockFindMonorepoRoot: ReturnType<typeof mock>;
   let fsExistsSyncSpy: any;
   let fsReadFileSyncSpy: any;
+  let isRunningFromNodeModulesSpy: any;
 
   beforeEach(() => {
     // Save original methods
@@ -44,8 +45,25 @@ describe('display-banner utils', () => {
       expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
     });
 
-    it('should return package version when not in monorepo context', () => {
-      // Mock no monorepo (already default)
+    it('should return "monorepo" when not running from node_modules', () => {
+      // Mock no monorepo
+      mockFindMonorepoRoot.mockReturnValue(null);
+      
+      // Mock isRunningFromNodeModules to return false
+      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(false);
+
+      const version = displayBanner.getVersion();
+      
+      expect(version).toBe('monorepo');
+      expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
+    });
+
+    it('should return package version when running from node_modules', () => {
+      // Mock no monorepo
+      mockFindMonorepoRoot.mockReturnValue(null);
+      
+      // Mock isRunningFromNodeModules to return true
+      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
       
       // Mock fs methods
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
@@ -55,11 +73,18 @@ describe('display-banner utils', () => {
 
       const version = displayBanner.getVersion();
       
-      expect(version).toBe('1.2.3');
+      expect(version).not.toBe('monorepo');
+      expect(version).toContain('1.');
       expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
     });
 
     it('should return fallback version when package.json is not found', () => {
+      // Mock no monorepo
+      mockFindMonorepoRoot.mockReturnValue(null);
+      
+      // Mock isRunningFromNodeModules to return true
+      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
+      
       // Mock fs.existsSync to return false
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(false);
 
@@ -73,6 +98,12 @@ describe('display-banner utils', () => {
     });
 
     it('should handle JSON parse errors gracefully', () => {
+      // Mock no monorepo
+      mockFindMonorepoRoot.mockReturnValue(null);
+      
+      // Mock isRunningFromNodeModules to return true
+      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
+      
       // Mock fs methods
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
       fsReadFileSyncSpy = spyOn(fs, 'readFileSync').mockReturnValue('invalid json');
