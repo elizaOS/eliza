@@ -8,15 +8,17 @@ concurrency:
 on:
   push:
     branches:
-      - '*'
-  pull_request_target:
+      - 'main'
+      - 'develop'
+  pull_request:
     branches:
-      - '*'
+      - 'main'
+      - 'develop'
 
 jobs:
   databaseIntegrationTests:
-    # Skip duplicate runs: run on push to main/develop branches, or on pull_request_target events only
-    if: github.event_name == 'pull_request_target' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
