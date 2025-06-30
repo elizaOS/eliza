@@ -150,11 +150,10 @@ jobs:
       - name: Run CLI TypeScript tests (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         timeout-minutes: 15
-        run: bun run test:cli
+        run: cross-env NODE_OPTIONS="--max-old-space-size=4096" bun test tests/commands/ --timeout 240000
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
-          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Cleanup test processes (Ubuntu)
         if: always() && matrix.os == 'ubuntu-latest'
@@ -168,11 +167,10 @@ jobs:
       - name: Run CLI TypeScript tests (Windows)
         if: matrix.os == 'windows-latest'
         timeout-minutes: 15
-        run: bun run test:cli
+        run: cross-env NODE_OPTIONS="--max-old-space-size=4096" bun test tests/commands/ --timeout 240000
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
-          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Cleanup test processes (Windows)
         if: always() && matrix.os == 'windows-latest'
