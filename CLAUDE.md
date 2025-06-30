@@ -155,6 +155,30 @@ bun run release:alpha   # Release alpha version
 - **The `elizaos` CLI is for external consumers, NOT internal monorepo development**
 - **For monorepo development:** Use `bun` commands directly
 
+### ElizaOS Test Command
+
+The `elizaos test` command runs tests for ElizaOS projects and plugins:
+
+```bash
+elizaos test [path]           # Run all tests (component + e2e)
+elizaos test -t component     # Run only component tests
+elizaos test -t e2e          # Run only e2e tests
+elizaos test --name "test"   # Filter tests by name
+elizaos test --skip-build    # Skip building before tests
+```
+
+**Test Types:**
+- **Component Tests:** Unit tests via `bun test` - test individual modules/components in isolation
+- **E2E Tests:** Full integration tests via ElizaOS TestRunner - test complete agent runtime with server, database, and plugins
+
+**Context Support:**
+- Works in both monorepo packages and standalone projects created with `elizaos create`
+- Automatically detects project type and adjusts paths accordingly
+- For plugins: Creates default Eliza character as test agent
+- For projects: Uses agents defined in project configuration
+
+**Note:** The test command does NOT run Cypress or other UI tests - only ElizaOS-specific tests
+
 ---
 
 ## ARCHITECTURE PATTERNS
