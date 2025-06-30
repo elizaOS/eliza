@@ -278,8 +278,7 @@ export const assertions = {
 export async function waitForServerReady(
   port: number,
   maxWaitTime: number = TEST_TIMEOUTS.SERVER_STARTUP,
-  endpoint: string = '/api/agents',
-  expectAgents: boolean = true
+  endpoint: string = '/api/agents'
 ): Promise<void> {
   const startTime = Date.now();
   const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
@@ -362,27 +361,6 @@ export async function waitForServerReady(
       clearTimeout(timeoutId);
       if (response.ok) {
         console.log(`[DEBUG] Server responded with status ${response.status}`);
-
-        // If we expect agents to be available, verify they exist
-        if (expectAgents && endpoint === '/api/agents') {
-          try {
-            const data = await response.json();
-            if (data.success && data.data && data.data.agents && data.data.agents.length > 0) {
-              console.log(`[DEBUG] Server ready with ${data.data.agents.length} agents available`);
-            } else {
-              console.log(
-                `[DEBUG] Server responding but no agents found yet, continuing to wait...`
-              );
-              await new Promise((resolve) => setTimeout(resolve, pollInterval));
-              continue;
-            }
-          } catch (jsonError) {
-            console.log(`[DEBUG] Could not parse agents response, continuing to wait...`);
-            await new Promise((resolve) => setTimeout(resolve, pollInterval));
-            continue;
-          }
-        }
-
         // Server is ready, give it more time to stabilize especially on macOS CI
         const stabilizationTime = isMacOS && isCI ? 3000 : isMacOS ? 2000 : 1000;
         console.log(`[DEBUG] Stabilizing for ${stabilizationTime}ms...`);

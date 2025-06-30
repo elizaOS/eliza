@@ -198,7 +198,7 @@ describe('ElizaOS Agent Commands', () => {
         throw serverError;
       }
 
-      await waitForServerReady(parseInt(testServerPort, 10), 30000, '/api/agents', true); // 30 second timeout in tests, expect agents
+      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
       console.log('[DEBUG] Server is ready!');
     } catch (error) {
       console.error('[ERROR] Server failed to start:', error);
