@@ -352,8 +352,8 @@ describe('ElizaOS Create Commands', () => {
           detached: false
         });
 
-        // give it a moment to start creating the directory (before it gets to bun install)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // give process time to start creating the directory
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
         // send SIGINT to simulate ctrl-c
         if (createProcess.pid) {
@@ -364,8 +364,8 @@ describe('ElizaOS Create Commands', () => {
           }
         }
 
-        // wait a bit for our cleanup handlers to do their thing
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // wait for cleanup handlers to complete
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // verify the directory was cleaned up - no abandoned directories!
         expect(existsSync(pluginDir)).toBe(false);

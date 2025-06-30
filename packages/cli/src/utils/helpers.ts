@@ -7,7 +7,6 @@ import path from 'node:path';
  * 
  * converts paths like "." to "Desktop" or "/Users/me/Desktop" to "Desktop"
  * so the create command shows nice prompts like "Create plugin 'my-plugin' in Desktop?"
- * instead of "Create plugin 'my-plugin' in .?"
  * 
  * @param targetDir The directory path to display
  * @returns A user-friendly directory name
@@ -18,7 +17,8 @@ export function getDisplayDirectory(targetDir: string): string {
     return path.basename(process.cwd());
   }
   // for absolute paths, show just the directory name
-  if (targetDir.startsWith('/') || targetDir.match(/^[A-Z]:\\/)) {
+  // handles unix paths (/), windows paths (C:\ or c:/), and UNC paths (\\server\share)
+  if (targetDir.startsWith('/') || targetDir.match(/^[a-zA-Z]:[\\\/]/) || targetDir.startsWith('\\\\')) {
     return path.basename(targetDir);
   }
   // for relative paths, show as-is

@@ -18,10 +18,9 @@ async function withCleanupOnInterrupt<T>(
   displayName: string,
   fn: () => Promise<T>
 ): Promise<T> {
-  let directoryCreated = false;
-  
   const cleanup = () => {
-    if (directoryCreated && existsSync(targetDir)) {
+    // only clean up if directory actually exists
+    if (existsSync(targetDir)) {
       console.info(colors.red(`\n\nInterrupted! Cleaning up ${displayName}...`));
       try {
         rmSync(targetDir, { recursive: true, force: true });
@@ -32,34 +31,36 @@ async function withCleanupOnInterrupt<T>(
     }
   };
 
+  // store handler references for proper cleanup
+  const sigintHandler = () => {
+    cleanup();
+    process.exit(130);
+  };
+  const sigtermHandler = () => {
+    cleanup();
+    process.exit(143);
+  };
+
   // register cleanup on all the ways a process can die
   // SIGINT (130) is ctrl-c, SIGTERM (143) is kill command
   process.on('exit', cleanup);
-  process.on('SIGINT', () => {
-    cleanup();
-    process.exit(130);
-  });
-  process.on('SIGTERM', () => {
-    cleanup();
-    process.exit(143);
-  });
+  process.on('SIGINT', sigintHandler);
+  process.on('SIGTERM', sigtermHandler);
 
   try {
-    // mark that directory will be created
-    directoryCreated = true;
     const result = await fn();
     
-    // success - remove cleanup handlers
+    // success - remove only our cleanup handlers
     process.removeListener('exit', cleanup);
-    process.removeAllListeners('SIGINT');
-    process.removeAllListeners('SIGTERM');
+    process.removeListener('SIGINT', sigintHandler);
+    process.removeListener('SIGTERM', sigtermHandler);
     
     return result;
   } catch (error) {
-    // remove cleanup handlers
+    // remove only our cleanup handlers
     process.removeListener('exit', cleanup);
-    process.removeAllListeners('SIGINT');
-    process.removeAllListeners('SIGTERM');
+    process.removeListener('SIGINT', sigintHandler);
+    process.removeListener('SIGTERM', sigtermHandler);
     
     // cleanup on error
     if (existsSync(targetDir)) {
