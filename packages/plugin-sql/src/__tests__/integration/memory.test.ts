@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from
 import { PgDatabaseAdapter } from '../../pg/adapter';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
 import { embeddingTable, memoryTable } from '../../schema';
-import { createTestDatabase } from '../test-helpers';
+import { createIsolatedTestDatabase } from '../test-helpers';
 import {
   documentMemoryId,
   memoryTestAgentId,
@@ -35,15 +35,15 @@ describe('Memory Integration Tests', () => {
 
   beforeAll(async () => {
     try {
+      const setup = await createIsolatedTestDatabase('memory_tests');
+      adapter = setup.adapter;
+      cleanup = setup.cleanup;
+      testAgentId = setup.testAgentId;
+
       // Use random UUIDs to avoid conflicts
-      testAgentId = v4() as UUID;
       testRoomId = v4() as UUID;
       testEntityId = v4() as UUID;
       testWorldId = v4() as UUID;
-
-      ({ adapter, cleanup } = await createTestDatabase(testAgentId));
-
-      console.log('ADAPTER IS', adapter);
 
       await adapter.createWorld({
         id: testWorldId,
