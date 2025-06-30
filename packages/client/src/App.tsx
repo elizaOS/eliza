@@ -178,7 +178,7 @@ function AppContent() {
               <Route
                 path="settings/"
                 element={
-                  <div className="flex w-full justify-center">
+                  <div className="flex w-full justify-center overflow-y-auto">
                     <div className="w-full md:max-w-4xl">
                       <EnvSettings />
                     </div>
