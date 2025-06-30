@@ -9,9 +9,9 @@ import {
   promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
-  runBunCommand,
   setupPgLite,
 } from '@/src/utils';
+import { execa } from 'execa';
 
 /**
  * Creates necessary project directories.
@@ -324,6 +324,9 @@ export async function setupEmbeddingModelConfig(
 
 /**
  * Installs dependencies for the specified target directory.
+ * 
+ * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
+ * we use stdio: 'inherit' here so the user sees the install progress in real-time
  */
 export async function installDependencies(targetDir: string): Promise<void> {
   // Skip dependency installation in CI/test environments to save memory and time
@@ -333,7 +336,18 @@ export async function installDependencies(targetDir: string): Promise<void> {
   }
 
   console.info('Installing dependencies...');
-  await runBunCommand(['install'], targetDir);
+  
+  // run bun install and let it inherit our stdio so user sees progress
+  // exit code 130 = user pressed ctrl-c (SIGINT), that's fine
+  const subprocess = await execa('bun', ['install'], {
+    cwd: targetDir,
+    stdio: 'inherit',
+    reject: false,
+  });
+
+  if (subprocess.exitCode !== 0 && subprocess.exitCode !== 130) {
+    throw new Error(`Dependency installation failed with exit code ${subprocess.exitCode}`);
+  }
 }
 
 /**
