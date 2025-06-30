@@ -101,7 +101,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       onClick={handleCardClick}
       data-testid="agent-card"
     >
-      <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16">
+      <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16 z-10">
         <Avatar className="h-10 w-10 border">
           <AvatarImage src={avatarUrl} alt={agentName} />
           {/* Fallback can be initials or generic icon */}
