@@ -832,8 +832,16 @@ export class AgentServer {
               `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
             );
           } else if (!this.uiEnabled) {
+            // Use actual host or localhost
+            const actualHost = host === '0.0.0.0' ? 'localhost' : host;
+            const baseUrl = `http://${actualHost}:${port}`;
+
             console.log(
-              `\x1b[32mStartup successful!\nAPI server running at \x1b[1mhttp://localhost:${port}/api\x1b[22m\x1b[0m (Web UI disabled)`
+              `\x1b[32mStartup successful!\x1b[0m\n` +
+              `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+              `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+              `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+              `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
             );
           }
 

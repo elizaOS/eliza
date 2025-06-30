@@ -290,7 +290,7 @@ describe('Basic Server Functionality', () => {
         if (uiEnabled) {
           return `\\x1b[32mStartup successful!\\nGo to the dashboard at \\x1b[1mhttp://localhost:${port}\\x1b[22m\\x1b[0m`;
         } else {
-          return `\\x1b[32mAPI Server running on port ${port}\\x1b[0m\\n\\x1b[33mWeb UI is disabled for security. Set ELIZA_UI_ENABLE=true to enable.\\x1b[0m`;
+          return `\\x1b[32mStartup successful!\\x1b[0m\\n\\x1b[33mWeb UI disabled.\\x1b[0m \\x1b[32mAPI endpoints available at:\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/server/ping\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/agents\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/messaging\\x1b[22m\\x1b[0m`;
         }
       };
 
@@ -300,9 +300,9 @@ describe('Basic Server Functionality', () => {
       expect(uiEnabledMsg).toContain('dashboard at');
       expect(uiEnabledMsg).toContain('http://localhost:3000');
 
-      expect(uiDisabledMsg).toContain('API Server running on port 3000');
-      expect(uiDisabledMsg).toContain('Web UI is disabled for security');
-      expect(uiDisabledMsg).toContain('ELIZA_UI_ENABLE=true');
+      expect(uiDisabledMsg).toContain('Web UI disabled.');
+      expect(uiDisabledMsg).toContain('API endpoints available at:');
+      expect(uiDisabledMsg).toContain('/api/server/ping');
     });
   });
 });

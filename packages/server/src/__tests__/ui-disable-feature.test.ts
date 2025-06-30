@@ -160,7 +160,7 @@ describe('UI Disable Feature Integration', () => {
                 } else if (!uiEnabled) {
                     return {
                         type: 'api-only',
-                        message: `\\x1b[32mAPI Server running on port ${port}\\x1b[0m\\n\\x1b[33mWeb UI is disabled for security. Set ELIZA_UI_ENABLE=true to enable.\\x1b[0m`,
+                        message: `\\x1b[32mStartup successful!\\x1b[0m\\n\\x1b[33mWeb UI disabled.\\x1b[0m \\x1b[32mAPI endpoints available at:\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/server/ping\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/agents\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/messaging\\x1b[22m\\x1b[0m`,
                     };
                 }
                 return null; // Development mode doesn't show dashboard URL
@@ -174,8 +174,8 @@ describe('UI Disable Feature Integration', () => {
             // Test production with UI disabled
             const prodDisabled = generateStartupMessage(false, 3000, 'production');
             expect(prodDisabled?.type).toBe('api-only');
-            expect(prodDisabled?.message).toContain('API Server running');
-            expect(prodDisabled?.message).toContain('ELIZA_UI_ENABLE=true');
+            expect(prodDisabled?.message).toContain('Web UI disabled.');
+            expect(prodDisabled?.message).toContain('API endpoints available at:');
 
             // Test development (no message)
             const devResult = generateStartupMessage(true, 3000, 'development');
