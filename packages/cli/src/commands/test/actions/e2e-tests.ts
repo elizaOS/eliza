@@ -133,17 +133,10 @@ export async function runE2eTests(
     let project;
     try {
       logger.info('Attempting to load project or plugin...');
-      // Resolve path - check if we're in monorepo or standalone
+      // Resolve path - use monorepo root if available, otherwise use cwd
       const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
-      let targetPath: string;
-      
-      if (monorepoRoot) {
-        // We're in a monorepo - resolve path from monorepo root
-        targetPath = testPath ? path.resolve(monorepoRoot, testPath) : process.cwd();
-      } else {
-        // We're in a standalone project - resolve path from cwd
-        targetPath = testPath ? path.resolve(process.cwd(), testPath) : process.cwd();
-      }
+      const baseDir = monorepoRoot ?? process.cwd();
+      const targetPath = testPath ? path.resolve(baseDir, testPath) : process.cwd();
       
       project = await loadProject(targetPath);
 
