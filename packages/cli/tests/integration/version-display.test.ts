@@ -78,9 +78,10 @@ describe('CLI version display integration tests', () => {
       const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-dist-test-'));
       
       try {
-        // Copy the dist CLI to temp directory
-        const tempCliPath = path.join(tempDir, 'index.js');
-        await fs.promises.copyFile(CLI_PATH, tempCliPath);
+        // Copy the entire dist folder to the temp directory
+        const distFolderPath = path.resolve(__dirname, '../../dist');
+        const tempDistPath = path.join(tempDir, 'dist');
+        await fs.promises.cp(distFolderPath, tempDistPath, { recursive: true });
         
         // Also copy package.json to avoid errors
         const cliPackageJson = path.resolve(__dirname, '../../package.json');
