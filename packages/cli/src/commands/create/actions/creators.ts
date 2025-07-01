@@ -33,16 +33,13 @@ async function withCleanupOnInterrupt<T>(
 
   // store handler references for proper cleanup
   const sigintHandler = () => {
-    cleanup();
     process.exit(130);
   };
   const sigtermHandler = () => {
-    cleanup();
     process.exit(143);
   };
 
-  // register cleanup on all the ways a process can die
-  // SIGINT (130) is ctrl-c, SIGTERM (143) is kill command
+  // register cleanup on process exit (handles all termination cases)
   process.on('exit', cleanup);
   process.on('SIGINT', sigintHandler);
   process.on('SIGTERM', sigtermHandler);
