@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.0.12",
+  "version": "1.0.15",
   "private": true,
   "sideEffects": false,
   "type": "module",
