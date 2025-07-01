@@ -47,9 +47,6 @@ export const create = new Command('create')
 
       if (!isNonInteractive) {
         await displayBanner();
-        // Use projectType if already set from options, otherwise show generic message
-        const introType = formatProjectType(options.type);
-        clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
       projectType = options.type;
@@ -93,6 +90,12 @@ export const create = new Command('create')
           projectType = selectedType as 'project' | 'plugin' | 'agent' | 'tee';
         }
 
+        // Show intro message after type is determined
+        if (!isNonInteractive) {
+          const introType = formatProjectType(projectType);
+          clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
+        }
+
         // Prompt for name
         if (!isNonInteractive) {
           const nameInput = await clack.text({
@@ -128,6 +131,12 @@ export const create = new Command('create')
         if (!nameValidation.isValid) {
           throw new Error(nameValidation.error);
         }
+      }
+
+      // Show intro message now that we have both type and name
+      if (!isNonInteractive && name) {
+        const introType = formatProjectType(projectType);
+        clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
       const targetDir = options.dir;
