@@ -930,14 +930,14 @@ export default function CharacterForm({
               </DropdownMenuItem>
               {stopDeleteOptions.length > 0 && <DropdownMenuSeparator />}
               {stopDeleteOptions.length > 0 &&
-                stopDeleteOptions.map((option, index) => {
+                stopDeleteOptions.map((option) => {
                   const isStopAction = option.label === 'Stop Agent';
                   const isDeleteAction = option.label === 'Delete Agent';
                   const isLoading = isStopAction ? isStopping : isDeleteAction ? isDeleting : false;
 
                   return (
                     <DropdownMenuItem
-                      key={index}
+                      key={option.label}
                       onClick={option.onClick}
                       disabled={isLoading}
                       className={
