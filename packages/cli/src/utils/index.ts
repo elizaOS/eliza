@@ -5,7 +5,7 @@ export * from './cli-prompts';
 export * from './config-manager';
 export * from './copy-template';
 export * from './display-banner';
-export * from './env-prompt';
+export { getEnvFilePath, readEnvFile, writeEnvFile } from './env-prompt';
 export * from './get-config';
 export * from './get-package-info';
 export * from './github';

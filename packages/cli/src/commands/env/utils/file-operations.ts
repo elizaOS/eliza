@@ -1,7 +1,5 @@
-import { UserEnvironment } from '@/src/utils';
-import dotenv from 'dotenv';
+import { getEnvFileService, createEnvFileService } from '@/src/services/env-file.service';
 import { existsSync } from 'node:fs';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { EnvVars } from '../types';
 
@@ -10,8 +8,8 @@ import { EnvVars } from '../types';
  * @returns The path to the .env file
  */
 export async function getGlobalEnvPath(): Promise<string> {
-  const envInfo = await UserEnvironment.getInstanceInfo();
-  return envInfo.paths.envFilePath;
+  const service = await getEnvFileService();
+  return service.getFilePath();
 }
 
 /**
@@ -29,23 +27,8 @@ export async function getLocalEnvPath(): Promise<string | null> {
  * @returns Object containing the key-value pairs
  */
 export async function parseEnvFile(filePath: string): Promise<EnvVars> {
-  try {
-    if (!existsSync(filePath)) {
-      return {};
-    }
-
-    const content = await fs.readFile(filePath, 'utf-8');
-    // Handle empty file case gracefully
-    if (content.trim() === '') {
-      return {};
-    }
-    return dotenv.parse(content);
-  } catch (error) {
-    console.error(
-      `Error parsing .env file: ${error instanceof Error ? error.message : String(error)}`
-    );
-    return {};
-  }
+  const service = createEnvFileService(filePath);
+  return service.read();
 }
 
 /**
@@ -54,22 +37,11 @@ export async function parseEnvFile(filePath: string): Promise<EnvVars> {
  * @param envVars Object containing the key-value pairs
  */
 export async function writeEnvFile(filePath: string, envVars: EnvVars): Promise<void> {
-  try {
-    const dir = path.dirname(filePath);
-    if (!existsSync(dir)) {
-      await fs.mkdir(dir, { recursive: true });
-    }
-
-    const content = Object.entries(envVars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-
-    await fs.writeFile(filePath, content);
-  } catch (error) {
-    console.error(
-      `Error writing .env file: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+  const service = createEnvFileService(filePath);
+  await service.write(envVars, {
+    preserveComments: true,
+    updateProcessEnv: true
+  });
 }
 
 /**
@@ -83,7 +55,9 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
       return false;
     }
 
-    const envVars = await parseEnvFile(filePath);
+    const service = createEnvFileService(filePath);
+    const envVars = await service.read();
+    
     if (Object.keys(envVars).length === 0) {
       return false; // No variables to reset
     }
@@ -93,7 +67,11 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
       return acc;
     }, {} as EnvVars);
 
-    await writeEnvFile(filePath, resetVars);
+    await service.write(resetVars, {
+      preserveComments: true,
+      updateProcessEnv: false // Don't update process.env with empty values
+    });
+    
     return true;
   } catch (error) {
     console.error(
