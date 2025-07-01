@@ -347,7 +347,11 @@ describe('ElizaOS Create Commands', () => {
 
         // start the create command in a subprocess that we can kill
         const { spawn } = await import('node:child_process');
-        const createProcess = spawn('bun', [elizaosCmd.replace('bun ', ''), 'create', pluginName, '--type', 'plugin', '--yes'], {
+        // Extract the script path from elizaosCmd, handling quoted paths
+        // elizaosCmd is like: bun "/path/to/index.js" or bun /path/to/index.js
+        const match = elizaosCmd.match(/^bun\s+(?:"([^"]+)"|(\S+))$/);
+        const scriptPath = match?.[1] || match?.[2] || elizaosCmd.replace('bun ', '');
+        const createProcess = spawn('bun', [scriptPath, 'create', pluginName, '--type', 'plugin', '--yes'], {
           stdio: 'ignore',
           detached: false
         });
