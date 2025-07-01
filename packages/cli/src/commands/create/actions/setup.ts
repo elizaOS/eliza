@@ -324,6 +324,28 @@ export async function setupEmbeddingModelConfig(
 }
 
 /**
+ * Helper function to install a model plugin with error handling
+ */
+async function installModelPlugin(
+  modelName: string,
+  targetDir: string,
+  purpose: string = ''
+): Promise<void> {
+  // For claude, the plugin name is 'anthropic'
+  const pluginName = modelName === 'claude' ? 'anthropic' : modelName;
+  const purposeText = purpose ? ` ${purpose}` : '';
+  
+  try {
+    console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
+    await installPlugin(pluginName, targetDir);
+    console.info(`✅ Installed plugin successfully!`);
+  } catch (error) {
+    console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
+  }
+}
+
+/**
  * Installs dependencies for the specified target directory.
  */
 export async function installDependencies(targetDir: string): Promise<void> {
@@ -368,27 +390,11 @@ export async function setupProjectEnvironment(
 
   // Install AI model plugin (skip for local AI)
   if (aiModel !== 'local') {
-    try {
-      // For claude, the plugin name is 'anthropic'
-      const pluginName = aiModel === 'claude' ? 'anthropic' : aiModel;
-      console.info(`\n📦 Installing ${aiModel} plugin...`);
-      await installPlugin(pluginName, targetDir);
-      console.info(`✅ Installed plugin successfully!`);
-    } catch (error) {
-      console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.info(`💡 You can install it manually with: elizaos plugins add ${aiModel}`);
-    }
+    await installModelPlugin(aiModel, targetDir);
   }
 
   // Install embedding model plugin if different from AI model
   if (embeddingModel && embeddingModel !== 'local' && embeddingModel !== aiModel) {
-    try {
-      console.info(`\n📦 Installing ${embeddingModel} plugin for embeddings...`);
-      await installPlugin(embeddingModel, targetDir);
-      console.info(`✅ Installed plugin successfully!`);
-    } catch (error) {
-      console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.info(`💡 You can install it manually with: elizaos plugins add ${embeddingModel}`);
-    }
+    await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
   }
 }
