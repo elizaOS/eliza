@@ -11,6 +11,7 @@ import {
   promptAndStoreOpenRouterKey,
   runBunCommand,
   setupPgLite,
+  installPlugin,
 } from '@/src/utils';
 
 /**
@@ -363,5 +364,31 @@ export async function setupProjectEnvironment(
   // Set up embedding model configuration if needed
   if (embeddingModel) {
     await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+  }
+
+  // Install AI model plugin (skip for local AI)
+  if (aiModel !== 'local') {
+    try {
+      // For claude, the plugin name is 'anthropic'
+      const pluginName = aiModel === 'claude' ? 'anthropic' : aiModel;
+      console.info(`\n📦 Installing ${aiModel} plugin...`);
+      await installPlugin(pluginName, targetDir);
+      console.info(`✅ Installed plugin successfully!`);
+    } catch (error) {
+      console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.info(`💡 You can install it manually with: elizaos plugins add ${aiModel}`);
+    }
+  }
+
+  // Install embedding model plugin if different from AI model
+  if (embeddingModel && embeddingModel !== 'local' && embeddingModel !== aiModel) {
+    try {
+      console.info(`\n📦 Installing ${embeddingModel} plugin for embeddings...`);
+      await installPlugin(embeddingModel, targetDir);
+      console.info(`✅ Installed plugin successfully!`);
+    } catch (error) {
+      console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.info(`💡 You can install it manually with: elizaos plugins add ${embeddingModel}`);
+    }
   }
 }
