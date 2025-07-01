@@ -9,10 +9,10 @@ import {
   promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
-  runBunCommand,
   setupPgLite,
   installPlugin,
 } from '@/src/utils';
+import { execa } from 'execa';
 
 /**
  * Creates necessary project directories.
@@ -367,6 +367,9 @@ async function installModelPlugin(
 
 /**
  * Installs dependencies for the specified target directory.
+ * 
+ * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
+ * we use stdio: 'inherit' here so the user sees the install progress in real-time
  */
 export async function installDependencies(targetDir: string): Promise<void> {
   // Skip dependency installation in CI/test environments to save memory and time
@@ -376,7 +379,24 @@ export async function installDependencies(targetDir: string): Promise<void> {
   }
 
   console.info('Installing dependencies...');
-  await runBunCommand(['install'], targetDir);
+  
+  // run bun install and let it inherit our stdio so user sees progress
+  const subprocess = await execa('bun', ['install'], {
+    cwd: targetDir,
+    stdio: 'inherit',
+    reject: false,
+  });
+
+  // Handle various signal termination scenarios:
+  // - exitCode can be null/undefined when process is killed by signal
+  // - exitCode >= 128 indicates signal termination (128 + signal number)
+  // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
+  const exitCode = subprocess.exitCode;
+  const isSignalTermination = exitCode == null || exitCode >= 128;
+  
+  if (exitCode !== 0 && !isSignalTermination) {
+    throw new Error(`Dependency installation failed with exit code ${exitCode}`);
+  }
 }
 
 /**
