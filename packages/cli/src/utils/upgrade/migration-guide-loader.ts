@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 
 export interface MigrationGuide {
@@ -59,7 +60,7 @@ export class MigrationGuideLoader {
 
     // Strategy 4: Look relative to CLI package
     const currentFileUrl = import.meta.url;
-    const currentFilePath = new URL(currentFileUrl).pathname;
+    const currentFilePath = fileURLToPath(currentFileUrl);
     const cliPackageRoot = path.dirname(path.dirname(path.dirname(path.dirname(currentFilePath))));
     const bundledGuidesPath = path.join(cliPackageRoot, 'migration-guides');
     if (existsSync(bundledGuidesPath)) {

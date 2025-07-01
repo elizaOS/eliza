@@ -2,6 +2,7 @@ import { handleError } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import fs from 'fs-extra';
 import { UpgradePluginOptions } from '../types';
 import { SimpleMigrationAgent } from '@/src/utils/upgrade/simple-migration-agent';
@@ -82,7 +83,7 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     } else {
       // Try to find guides relative to the CLI package (for installed CLI)
       const currentFileUrl = import.meta.url;
-      const currentFilePath = new URL(currentFileUrl).pathname;
+      const currentFilePath = fileURLToPath(currentFileUrl);
       const cliPackageRoot = path.dirname(
         path.dirname(path.dirname(path.dirname(currentFilePath)))
       );
