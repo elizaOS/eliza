@@ -206,7 +206,7 @@ export const create = new Command('create')
     } catch (error) {
       if (!opts?.yes) {
         // Dynamic error message based on project type
-        const errorType = projectType || 'project';
+        const errorType = formatProjectType(projectType || 'project');
         clack.cancel(`Failed to create ${errorType}.`);
       }
       logger.error('Create command failed:', error);
