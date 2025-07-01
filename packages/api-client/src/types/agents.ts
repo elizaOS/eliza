@@ -12,9 +12,9 @@ export interface Agent {
 }
 
 export interface AgentCreateParams {
-  name: string;
-  description?: string;
-  metadata?: Record<string, any>;
+  characterPath?: string;
+  characterJson?: Record<string, any>;
+  agent?: Record<string, any>;
 }
 
 export interface AgentUpdateParams {
