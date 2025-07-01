@@ -18,9 +18,13 @@ async function withCleanupOnInterrupt<T>(
   displayName: string,
   fn: () => Promise<T>
 ): Promise<T> {
+  // Check if directory already exists before we start
+  const directoryExistedBefore = existsSync(targetDir);
+  let directoryCreatedByUs = false;
+  
   const cleanup = () => {
-    // only clean up if directory actually exists
-    if (existsSync(targetDir)) {
+    // Only clean up if we created the directory
+    if (!directoryExistedBefore && directoryCreatedByUs && existsSync(targetDir)) {
       console.info(colors.red(`\n\nInterrupted! Cleaning up ${displayName}...`));
       try {
         rmSync(targetDir, { recursive: true, force: true });
@@ -45,7 +49,17 @@ async function withCleanupOnInterrupt<T>(
   process.on('SIGTERM', sigtermHandler);
 
   try {
+    // Check if directory was created after we registered our handlers
+    if (!directoryExistedBefore && existsSync(targetDir)) {
+      directoryCreatedByUs = true;
+    }
+    
     const result = await fn();
+    
+    // Check again in case the function created the directory
+    if (!directoryExistedBefore && !directoryCreatedByUs && existsSync(targetDir)) {
+      directoryCreatedByUs = true;
+    }
     
     // success - remove only our cleanup handlers
     process.removeListener('exit', cleanup);
@@ -59,8 +73,8 @@ async function withCleanupOnInterrupt<T>(
     process.removeListener('SIGINT', sigintHandler);
     process.removeListener('SIGTERM', sigtermHandler);
     
-    // cleanup on error
-    if (existsSync(targetDir)) {
+    // cleanup on error - only if we created the directory
+    if (!directoryExistedBefore && directoryCreatedByUs && existsSync(targetDir)) {
       try {
         console.info(colors.red(`\nCleaning up due to error...`));
         rmSync(targetDir, { recursive: true, force: true });
