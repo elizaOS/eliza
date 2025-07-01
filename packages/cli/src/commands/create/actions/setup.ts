@@ -11,6 +11,7 @@ import {
   promptAndStoreOpenRouterKey,
   runBunCommand,
   setupPgLite,
+  installPlugin,
 } from '@/src/utils';
 
 /**
@@ -323,6 +324,48 @@ export async function setupEmbeddingModelConfig(
 }
 
 /**
+ * Resolves AI model name to plugin name
+ */
+function resolveModelToPlugin(modelName: string): string | null {
+  const modelToPlugin: Record<string, string> = {
+    'openai': 'openai',
+    'claude': 'anthropic',
+    'anthropic': 'anthropic',
+    'openrouter': 'openrouter',
+    'ollama': 'ollama',
+    'google': 'google'
+  };
+  
+  return modelToPlugin[modelName] || null;
+}
+
+/**
+ * Helper function to install a model plugin with error handling
+ */
+async function installModelPlugin(
+  modelName: string,
+  targetDir: string,
+  purpose: string = ''
+): Promise<void> {
+  const pluginName = resolveModelToPlugin(modelName);
+  if (!pluginName) {
+    console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
+    return;
+  }
+  
+  const purposeText = purpose ? ` ${purpose}` : '';
+  
+  try {
+    console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
+    await installPlugin(pluginName, targetDir);
+    console.info(`✅ Installed plugin successfully!`);
+  } catch (error) {
+    console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
+  }
+}
+
+/**
  * Installs dependencies for the specified target directory.
  */
 export async function installDependencies(targetDir: string): Promise<void> {
@@ -363,5 +406,21 @@ export async function setupProjectEnvironment(
   // Set up embedding model configuration if needed
   if (embeddingModel) {
     await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+  }
+
+  // Install AI model plugin (skip for local AI)
+  if (aiModel !== 'local') {
+    await installModelPlugin(aiModel, targetDir);
+  }
+
+  // Install embedding model plugin if different from AI model
+  if (embeddingModel && embeddingModel !== 'local') {
+    // Compare resolved plugin names to avoid duplicate installations
+    const aiPluginName = resolveModelToPlugin(aiModel);
+    const embeddingPluginName = resolveModelToPlugin(embeddingModel);
+    
+    if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+    }
   }
 }
