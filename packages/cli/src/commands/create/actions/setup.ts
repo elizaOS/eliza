@@ -324,6 +324,22 @@ export async function setupEmbeddingModelConfig(
 }
 
 /**
+ * Resolves AI model name to plugin name
+ */
+function resolveModelToPlugin(modelName: string): string | null {
+  const modelToPlugin: Record<string, string> = {
+    'openai': 'openai',
+    'claude': 'anthropic',
+    'anthropic': 'anthropic',
+    'openrouter': 'openrouter',
+    'ollama': 'ollama',
+    'google': 'google'
+  };
+  
+  return modelToPlugin[modelName] || null;
+}
+
+/**
  * Helper function to install a model plugin with error handling
  */
 async function installModelPlugin(
@@ -331,8 +347,12 @@ async function installModelPlugin(
   targetDir: string,
   purpose: string = ''
 ): Promise<void> {
-  // For claude, the plugin name is 'anthropic'
-  const pluginName = modelName === 'claude' ? 'anthropic' : modelName;
+  const pluginName = resolveModelToPlugin(modelName);
+  if (!pluginName) {
+    console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
+    return;
+  }
+  
   const purposeText = purpose ? ` ${purpose}` : '';
   
   try {
@@ -394,7 +414,13 @@ export async function setupProjectEnvironment(
   }
 
   // Install embedding model plugin if different from AI model
-  if (embeddingModel && embeddingModel !== 'local' && embeddingModel !== aiModel) {
-    await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+  if (embeddingModel && embeddingModel !== 'local') {
+    // Compare resolved plugin names to avoid duplicate installations
+    const aiPluginName = resolveModelToPlugin(aiModel);
+    const embeddingPluginName = resolveModelToPlugin(embeddingModel);
+    
+    if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+    }
   }
 }
