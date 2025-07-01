@@ -150,6 +150,8 @@ export class EnvFileService {
       }
 
       let content = '';
+      // Create a shallow copy to avoid mutating the input
+      const varsCopy = { ...vars };
 
       if (preserveComments) {
         // Preserve existing comments
@@ -158,28 +160,31 @@ export class EnvFileService {
         
         // Write existing entries with their comments
         for (const entry of existingEntries) {
-          if (vars.hasOwnProperty(entry.key)) {
+          if (Object.prototype.hasOwnProperty.call(varsCopy, entry.key)) {
             if (entry.comment) {
               content += `# ${entry.comment.replace(/\n/g, '\n# ')}\n`;
             }
-            content += `${entry.key}=${vars[entry.key]}\n`;
-            delete vars[entry.key];
+            content += `${entry.key}=${varsCopy[entry.key]}\n`;
+            delete varsCopy[entry.key];
           }
         }
 
         // Add any new entries
-        if (Object.keys(vars).length > 0 && content) {
+        if (Object.keys(varsCopy).length > 0 && content) {
           content += '\n';
         }
       }
 
       // Write remaining variables
-      for (const [key, value] of Object.entries(vars)) {
-        content += `${key}=${value}\n`;
-        
-        // Update process.env if requested
-        if (updateProcessEnv) {
-          process.env[key] = value;
+      for (const [key, value] of Object.entries(varsCopy)) {
+        // Only write string values (env vars must be strings)
+        if (typeof value === 'string') {
+          content += `${key}=${value}\n`;
+          
+          // Update process.env if requested
+          if (updateProcessEnv) {
+            process.env[key] = value;
+          }
         }
       }
 
@@ -238,7 +243,7 @@ export class EnvFileService {
    */
   async exists(key: string): Promise<boolean> {
     const vars = await this.read();
-    return vars.hasOwnProperty(key);
+    return Object.prototype.hasOwnProperty.call(vars, key);
   }
 
   /**

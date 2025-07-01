@@ -92,9 +92,7 @@ export async function runE2eTests(
       logger.warn(`Environment file not found: ${envFilePath}`);
     }
 
-    // Always ensure database configuration is set
-    logger.info('Database configuration completed');
-
+    // Database directory has been set in environment variables above
     // Look for PostgreSQL URL in environment variables
     const postgresUrl = process.env.POSTGRES_URL;
     logger.info(
