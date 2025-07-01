@@ -2,10 +2,10 @@ import { handleError } from '@/src/utils';
 import { logger } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import fs from 'fs-extra';
 import { UpgradePluginOptions } from '../types';
 import { SimpleMigrationAgent } from '@/src/utils/upgrade/simple-migration-agent';
 import chalk from 'chalk';
-import { execa } from 'execa';
 
 /**
  * Upgrade a plugin from version 0.x to 1.x using AI-powered migration with Claude Code SDK
@@ -66,7 +66,9 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     let guidesSource: string;
 
     // First try to find guides in the current monorepo structure
-    while (projectRoot !== '/' && !existsSync(path.join(projectRoot, 'packages/docs'))) {
+    let previousRoot = '';
+    while (projectRoot !== previousRoot && !existsSync(path.join(projectRoot, 'packages/docs'))) {
+      previousRoot = projectRoot;
       projectRoot = path.dirname(projectRoot);
     }
 
@@ -95,10 +97,13 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     }
 
     const guidesTarget = path.join(workingDir, 'migration-guides');
-    await execa('mkdir', ['-p', guidesTarget]);
+
+    // Create directory using fs-extra (cross-platform)
+    await fs.ensureDir(guidesTarget);
 
     if (guidesSource && existsSync(guidesSource)) {
-      await execa('cp', ['-r', guidesSource + '/.', guidesTarget]);
+      // Copy files using fs-extra (cross-platform)
+      await fs.copy(guidesSource, guidesTarget, { overwrite: true });
       if (opts.debug) {
         console.log(chalk.gray(`Copied guides from: ${guidesSource}`));
       }
@@ -150,7 +155,8 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     // Clean up migration guides after migration completes
     try {
       if (existsSync(guidesTarget)) {
-        await execa('rm', ['-rf', guidesTarget]);
+        // Remove directory using fs-extra (cross-platform)
+        await fs.remove(guidesTarget);
         if (opts.debug) {
           console.log(chalk.gray('Cleaned up migration guides'));
         }
@@ -213,7 +219,8 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     try {
       const guidesTarget = path.join(path.resolve(pluginPath), 'migration-guides');
       if (existsSync(guidesTarget)) {
-        await execa('rm', ['-rf', guidesTarget]);
+        // Remove directory using fs-extra (cross-platform)
+        await fs.remove(guidesTarget);
         if (opts.debug) {
           console.log(chalk.gray('Cleaned up migration guides after error'));
         }

@@ -37,7 +37,9 @@ export class MigrationGuideLoader {
 
     // Strategy 2: Find project root from current working directory
     let currentRoot = process.cwd();
-    while (currentRoot !== '/' && !existsSync(path.join(currentRoot, 'packages/docs'))) {
+    let previousRoot = '';
+    while (currentRoot !== previousRoot && !existsSync(path.join(currentRoot, 'packages/docs'))) {
+      previousRoot = currentRoot;
       currentRoot = path.dirname(currentRoot);
     }
 
