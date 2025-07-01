@@ -96,48 +96,67 @@ export abstract class BaseApiClient {
           options?.body instanceof FormData
             ? options.body
             : options?.body
-              ? JSON.stringify(options.body)
-              : undefined,
+            ? JSON.stringify(options.body)
+            : undefined,
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       // Handle empty responses (204 No Content)
-      let data: ApiResponse<T>;
       if (response.status === 204 || response.headers.get('content-length') === '0') {
         // For 204 No Content, create a synthetic success response
-        data = { success: true, data: this.createNoContentResponse<T>() };
-      } else {
-        try {
-          data = (await response.json()) as ApiResponse<T>;
-        } catch (error) {
-          // If JSON parsing fails, treat as success for 2xx responses
-          if (response.ok) {
-            data = { success: true, data: this.createNoContentResponse<T>() };
-          } else {
-            throw new ApiError(
-              'PARSE_ERROR',
-              'Failed to parse response as JSON',
-              undefined,
-              response.status
-            );
-          }
+        return this.createNoContentResponse<T>();
+      }
+
+      // Parse JSON response
+      let jsonData: any;
+      try {
+        jsonData = await response.json();
+      } catch (error) {
+        // If JSON parsing fails, treat as success for 2xx responses
+        if (response.ok) {
+          return this.createNoContentResponse<T>();
+        } else {
+          throw new ApiError(
+            'PARSE_ERROR',
+            'Failed to parse response as JSON',
+            undefined,
+            response.status
+          );
         }
       }
 
-      if (!response.ok || !data.success) {
-        const error =
-          'error' in data
-            ? data.error
-            : {
-                code: 'UNKNOWN_ERROR',
-                message: 'An unknown error occurred',
-              };
+      // Handle error responses
+      if (!response.ok) {
+        // Try to extract error information from response
+        const error = jsonData?.error || {
+          code: 'HTTP_ERROR',
+          message: `HTTP ${response.status}: ${response.statusText}`,
+        };
         throw new ApiError(error.code, error.message, error.details, response.status);
       }
 
-      return data.data;
+      // Handle successful responses
+      // Check if response is wrapped in { success: true, data: ... } format
+      if (jsonData && typeof jsonData === 'object' && 'success' in jsonData) {
+        const apiResponse = jsonData as ApiResponse<T>;
+        if (!apiResponse.success) {
+          const error =
+            'error' in apiResponse
+              ? apiResponse.error
+              : {
+                  code: 'UNKNOWN_ERROR',
+                  message: 'An unknown error occurred',
+                };
+          throw new ApiError(error.code, error.message, error.details, response.status);
+        }
+        return apiResponse.data;
+      } else {
+        // Response is not wrapped - return the data directly
+        // This handles server endpoints like /health, /ping, /status
+        return jsonData as T;
+      }
     } catch (error) {
       clearTimeout(timeoutId);
 
