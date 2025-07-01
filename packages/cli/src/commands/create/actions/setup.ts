@@ -9,9 +9,10 @@ import {
   promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
-  runBunCommand,
   setupPgLite,
+  installPlugin,
 } from '@/src/utils';
+import { execa } from 'execa';
 
 /**
  * Creates necessary project directories.
@@ -323,7 +324,52 @@ export async function setupEmbeddingModelConfig(
 }
 
 /**
+ * Resolves AI model name to plugin name
+ */
+function resolveModelToPlugin(modelName: string): string | null {
+  const modelToPlugin: Record<string, string> = {
+    'openai': 'openai',
+    'claude': 'anthropic',
+    'anthropic': 'anthropic',
+    'openrouter': 'openrouter',
+    'ollama': 'ollama',
+    'google': 'google'
+  };
+  
+  return modelToPlugin[modelName] || null;
+}
+
+/**
+ * Helper function to install a model plugin with error handling
+ */
+async function installModelPlugin(
+  modelName: string,
+  targetDir: string,
+  purpose: string = ''
+): Promise<void> {
+  const pluginName = resolveModelToPlugin(modelName);
+  if (!pluginName) {
+    console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
+    return;
+  }
+  
+  const purposeText = purpose ? ` ${purpose}` : '';
+  
+  try {
+    console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
+    await installPlugin(pluginName, targetDir);
+    console.info(`✅ Installed plugin successfully!`);
+  } catch (error) {
+    console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
+  }
+}
+
+/**
  * Installs dependencies for the specified target directory.
+ * 
+ * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
+ * we use stdio: 'inherit' here so the user sees the install progress in real-time
  */
 export async function installDependencies(targetDir: string): Promise<void> {
   // Skip dependency installation in CI/test environments to save memory and time
@@ -333,7 +379,24 @@ export async function installDependencies(targetDir: string): Promise<void> {
   }
 
   console.info('Installing dependencies...');
-  await runBunCommand(['install'], targetDir);
+  
+  // run bun install and let it inherit our stdio so user sees progress
+  const subprocess = await execa('bun', ['install'], {
+    cwd: targetDir,
+    stdio: 'inherit',
+    reject: false,
+  });
+
+  // Handle various signal termination scenarios:
+  // - exitCode can be null/undefined when process is killed by signal
+  // - exitCode >= 128 indicates signal termination (128 + signal number)
+  // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
+  const exitCode = subprocess.exitCode;
+  const isSignalTermination = exitCode == null || exitCode >= 128;
+  
+  if (exitCode !== 0 && !isSignalTermination) {
+    throw new Error(`Dependency installation failed with exit code ${exitCode}`);
+  }
 }
 
 /**
@@ -363,5 +426,21 @@ export async function setupProjectEnvironment(
   // Set up embedding model configuration if needed
   if (embeddingModel) {
     await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+  }
+
+  // Install AI model plugin (skip for local AI)
+  if (aiModel !== 'local') {
+    await installModelPlugin(aiModel, targetDir);
+  }
+
+  // Install embedding model plugin if different from AI model
+  if (embeddingModel && embeddingModel !== 'local') {
+    // Compare resolved plugin names to avoid duplicate installations
+    const aiPluginName = resolveModelToPlugin(aiModel);
+    const embeddingPluginName = resolveModelToPlugin(embeddingModel);
+    
+    if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+    }
   }
 }

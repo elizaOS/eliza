@@ -2,7 +2,7 @@
   "info": {
     "name": "Eliza AI Framework API Collection",
     "description": "Complete Postman collection for the Eliza AI Framework REST API endpoints. Updated to match actual API implementation.",
-    "version": "1.0.12",
+    "version": "1.0.15",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
