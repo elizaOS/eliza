@@ -20,7 +20,7 @@ import {
   useChannels,
   useServers, // New hook
 } from '@/hooks/use-query-hooks';
-import info from '@/lib/info.json';
+import { useVersion } from '@/hooks/use-server-version';
 import { cn, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
 import type {
   MessageChannel as ClientMessageChannel,
@@ -442,6 +442,7 @@ export function AppSidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient(); // Get query client instance
+  const version = useVersion(); // Get server version
 
   const {
     data: agentsData,
@@ -516,7 +517,7 @@ export function AppSidebar({
                       src="/elizaos-logo-light.png"
                       className="w-32 max-w-full"
                     />
-                    <span className="text-xs font-mono text-muted-foreground">v{info.version}</span>
+                    <span className="text-xs font-mono text-muted-foreground">v{version}</span>
                   </div>
                 </a>
               </SidebarMenuButton>
@@ -565,7 +566,7 @@ export function AppSidebar({
                "Create Group" is a + button in the GroupChannelListSection.
                So the old CreateButton component and its direct usage here can be removed.
             */}
-          {/* 
+          {/*
             <div className="px-4 py-2 mb-2">
               <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
             </div>
