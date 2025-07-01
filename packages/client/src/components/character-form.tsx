@@ -29,12 +29,28 @@ import {
 } from '@/components/ui/select';
 import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { Trash, Loader2, RotateCcw, Download, Upload, Save, StopCircle } from 'lucide-react';
+import {
+  Trash,
+  Loader2,
+  RotateCcw,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Save,
+  StopCircle,
+  MoreVertical,
+} from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { agentTemplates, getTemplateById } from '@/config/agent-templates';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { SplitButton } from '@/components/ui/split-button';
+
 import type { SecretPanelRef } from './secret-panel';
 import { MissingSecretsDialog } from './missing-secrets-dialog';
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
@@ -894,111 +910,97 @@ export default function CharacterForm({
           </Card>
         </Tabs>
 
-        <div className="flex flex-col gap-3 mt-6">
-          {/* Stop/Delete Split Button - only show if we have options */}
-          {stopDeleteOptions.length > 0 && (
-            <SplitButton
-              mainAction={{
-                label:
-                  stopDeleteOptions[0].label === 'Stop Agent' && isStopping
-                    ? 'Stopping...'
-                    : stopDeleteOptions[0].label,
-                onClick: stopDeleteOptions[0].onClick,
-                icon:
-                  stopDeleteOptions[0].label === 'Stop Agent' ? (
-                    isStopping ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="flex items-center justify-between w-full mt-6">
+          {/* Three-dot menu button on the left */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="icon" className="flex-shrink-0">
+                <MoreVertical className="h-4 w-4" />
+                <span className="sr-only">More options</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="top">
+              <DropdownMenuItem onClick={handleExportJSON}>
+                <ArrowDownToLine className="h-4 w-4 mr-2" />
+                Export
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleImportClick}>
+                <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                Import
+              </DropdownMenuItem>
+              {stopDeleteOptions.length > 0 && <DropdownMenuSeparator />}
+              {stopDeleteOptions.length > 0 &&
+                stopDeleteOptions.map((option, index) => (
+                  <DropdownMenuItem
+                    key={index}
+                    onClick={option.onClick}
+                    disabled={option.label === 'Stop Agent' ? isStopping : false}
+                    className={
+                      option.label === 'Delete Agent'
+                        ? 'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                        : ''
+                    }
+                  >
+                    {option.label === 'Stop Agent' ? (
+                      isStopping ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <StopCircle className="h-4 w-4 mr-2" />
+                      )
                     ) : (
-                      <StopCircle className="h-4 w-4" />
-                    )
-                  ) : (
-                    <Trash className="h-4 w-4" />
-                  ),
-                disabled: stopDeleteOptions[0].label === 'Stop Agent' ? isStopping : false,
-              }}
-              actions={stopDeleteOptions.slice(1).map((option) => ({
-                label: option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label,
-                onClick: option.onClick,
-                icon:
-                  option.label === 'Stop Agent' ? (
-                    isStopping ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Trash className="h-4 w-4 mr-2" />
+                    )}
+                    {option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label}
+                  </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Reset and Save buttons on the right with gap */}
+          <div className="flex items-center gap-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      onReset?.();
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span className="ml-2">Reset</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset all form fields to their original values</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="ml-2">Saving...</span>
+                      </>
                     ) : (
-                      <StopCircle className="h-4 w-4" />
-                    )
-                  ) : (
-                    <Trash className="h-4 w-4" />
-                  ),
-                variant: 'destructive' as const,
-                disabled: option.label === 'Stop Agent' ? isStopping : false,
-              }))}
-              variant="destructive"
-              disabled={isDeleting}
-              className="w-full"
-            />
-          )}
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    onReset?.();
-                  }}
-                  className="w-full"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  <span className="ml-2">Reset Changes</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Reset all form fields to their original values</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Import/Export Split Button */}
-          <SplitButton
-            mainAction={{
-              label: 'Export JSON',
-              onClick: handleExportJSON,
-              icon: <Download className="h-4 w-4" />,
-            }}
-            actions={[
-              {
-                label: 'Import JSON',
-                onClick: handleImportClick,
-                icon: <Upload className="h-4 w-4" />,
-              },
-            ]}
-            variant="outline"
-            className="w-full"
-          />
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button type="submit" disabled={isSubmitting} className="agent-form-submit w-full">
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="ml-2">Saving...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      <span className="ml-2">Save Changes</span>
-                    </>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Save all changes to the agent configuration</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                      <>
+                        <Save className="h-4 w-4" />
+                        <span className="ml-2">Save</span>
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Save all changes to the agent configuration</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
 
           {/* Hidden file input for import */}
           <input
