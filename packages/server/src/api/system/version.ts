@@ -1,16 +1,25 @@
 import express from 'express';
+import packageJson from '../../../package.json';
+
+interface VersionInfo {
+  version: string;
+  source: string;
+  timestamp: string;
+  environment: string;
+  uptime: number;
+  error?: string;
+}
 
 /**
  * Gets version information using CLI-compatible logic
  */
-function getVersionInfo() {
+function getVersionInfo(): VersionInfo {
   const timestamp = new Date().toISOString();
 
   try {
-    const version = require('@elizaos/server/package.json').version;
-
     return {
-      version,
+      version: packageJson.version,
+      source: 'server',
       timestamp,
       environment: process.env.NODE_ENV || 'development',
       uptime: process.uptime(),
@@ -20,6 +29,7 @@ function getVersionInfo() {
 
     return {
       version: 'unknown',
+      source: 'server',
       timestamp,
       environment: process.env.NODE_ENV || 'development',
       uptime: process.uptime(),

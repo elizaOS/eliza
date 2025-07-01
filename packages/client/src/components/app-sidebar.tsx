@@ -20,7 +20,7 @@ import {
   useChannels,
   useServers, // New hook
 } from '@/hooks/use-query-hooks';
-import { useVersion } from '@/hooks/use-server-version';
+import { useServerVersionString } from '@/hooks/use-server-version';
 import { cn, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
 import type {
   MessageChannel as ClientMessageChannel,
@@ -442,7 +442,7 @@ export function AppSidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient(); // Get query client instance
-  const version = useVersion(); // Get server version
+  const version = useServerVersionString(); // Get server version
 
   const {
     data: agentsData,

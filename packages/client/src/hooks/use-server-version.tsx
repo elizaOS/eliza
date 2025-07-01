@@ -39,7 +39,7 @@ export function useServerVersion() {
 /**
  * Hook that returns just the version string for backwards compatibility
  */
-export function useVersion() {
+export function useServerVersionString() {
   const { data } = useServerVersion();
   return data?.version || '0.0.0-loading';
 }
