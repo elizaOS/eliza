@@ -20,11 +20,12 @@ async function withCleanupOnInterrupt<T>(
 ): Promise<T> {
   // Check if directory already exists before we start
   const directoryExistedBefore = existsSync(targetDir);
-  let directoryCreatedByUs = false;
-  
+
   const cleanup = () => {
-    // Only clean up if we created the directory
-    if (!directoryExistedBefore && directoryCreatedByUs && existsSync(targetDir)) {
+    // Clean up if the directory didn't exist before and exists now
+    // This handles cases where fn() created the directory but was interrupted
+    // before we could set directoryCreatedByUs flag
+    if (!directoryExistedBefore && existsSync(targetDir)) {
       console.info(colors.red(`\n\nInterrupted! Cleaning up ${displayName}...`));
       try {
         rmSync(targetDir, { recursive: true, force: true });
@@ -49,32 +50,22 @@ async function withCleanupOnInterrupt<T>(
   process.on('SIGTERM', sigtermHandler);
 
   try {
-    // Check if directory was created after we registered our handlers
-    if (!directoryExistedBefore && existsSync(targetDir)) {
-      directoryCreatedByUs = true;
-    }
-    
     const result = await fn();
-    
-    // Check again in case the function created the directory
-    if (!directoryExistedBefore && !directoryCreatedByUs && existsSync(targetDir)) {
-      directoryCreatedByUs = true;
-    }
-    
+
     // success - remove only our cleanup handlers
     process.removeListener('exit', cleanup);
     process.removeListener('SIGINT', sigintHandler);
     process.removeListener('SIGTERM', sigtermHandler);
-    
+
     return result;
   } catch (error) {
     // remove only our cleanup handlers
     process.removeListener('exit', cleanup);
     process.removeListener('SIGINT', sigintHandler);
     process.removeListener('SIGTERM', sigtermHandler);
-    
-    // cleanup on error - only if we created the directory
-    if (!directoryExistedBefore && directoryCreatedByUs && existsSync(targetDir)) {
+
+    // cleanup on error - if the directory didn't exist before and exists now
+    if (!directoryExistedBefore && existsSync(targetDir)) {
       try {
         console.info(colors.red(`\nCleaning up due to error...`));
         rmSync(targetDir, { recursive: true, force: true });
@@ -229,7 +220,13 @@ export async function createTEEProject(
     await copyTemplateUtil('project-tee-starter', teeTargetDir);
 
     // Set up project environment
-    await setupProjectEnvironment(teeTargetDir, database, aiModel, embeddingModel, isNonInteractive);
+    await setupProjectEnvironment(
+      teeTargetDir,
+      database,
+      aiModel,
+      embeddingModel,
+      isNonInteractive
+    );
 
     // Install dependencies
     await installDependencies(teeTargetDir);
