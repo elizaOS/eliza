@@ -9,6 +9,14 @@ import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 
+/**
+ * Formats the project type for display in messages
+ */
+function formatProjectType(type: string): string {
+  return type === 'tee' ? 'TEE Project' : 
+         type.charAt(0).toUpperCase() + type.slice(1);
+}
+
 export const create = new Command('create')
   .description('Create a new ElizaOS project, plugin, agent, or TEE project')
   .argument('[name]', 'name of the project/plugin/agent to create')
@@ -40,8 +48,7 @@ export const create = new Command('create')
       if (!isNonInteractive) {
         await displayBanner();
         // Use projectType if already set from options, otherwise show generic message
-        const introType = options.type === 'tee' ? 'TEE Project' : 
-                          options.type.charAt(0).toUpperCase() + options.type.slice(1);
+        const introType = formatProjectType(options.type);
         clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
@@ -193,8 +200,8 @@ export const create = new Command('create')
 
       if (!isNonInteractive) {
         // Dynamic outro message based on project type
-        const typeLabel = projectType === 'tee' ? 'TEE project' : projectType;
-        clack.outro(colors.green(`${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} created successfully! 🎉`));
+        const typeLabel = formatProjectType(projectType);
+        clack.outro(colors.green(`${typeLabel} created successfully! 🎉`));
       }
     } catch (error) {
       if (!opts?.yes) {
