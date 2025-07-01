@@ -4,6 +4,7 @@ import {
   type IAgentRuntime,
   logger,
   type UUID,
+  parseBooleanFromText,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -117,6 +118,24 @@ export interface ServerOptions {
 }
 
 /**
+ * Determines if the web UI should be enabled based on environment variables.
+ * 
+ * @returns {boolean} - Returns true if UI should be enabled, false otherwise
+ */
+export function isWebUIEnabled(): boolean {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
+  
+  // Treat empty strings as undefined
+  if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
+    return parseBooleanFromText(uiEnabledEnv);
+  }
+  
+  // Default: enabled in dev, disabled in prod
+  return !isProduction;
+}
+
+/**
  * Class representing an agent server.
  */ /**
 * Represents an agent server which handles agents, database, and server functionalities.
@@ -127,7 +146,7 @@ export class AgentServer {
   public server!: http.Server;
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
-  private uiEnabled: boolean = true; // Default to enabled until initialized
+  private isWebUIEnabled: boolean = true; // Default to enabled until initialized
 
   public database!: DatabaseAdapter;
 
@@ -424,17 +443,14 @@ export class AgentServer {
       }
 
       // Determine if web UI should be enabled
-      const isProduction = process.env.NODE_ENV === 'production';
-      const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
-      this.uiEnabled = uiEnabledEnv !== undefined
-        ? uiEnabledEnv.toLowerCase() === 'true'
-        : !isProduction; // Default: enabled in dev, disabled in prod
+      this.isWebUIEnabled = isWebUIEnabled();
 
-      if (this.uiEnabled) {
+      if (this.isWebUIEnabled) {
         logger.info('Web UI enabled');
       } else {
         // Determine the reason for UI being disabled
-        if (uiEnabledEnv !== undefined) {
+        const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
+        if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
           logger.info(`Web UI disabled by environment variable (ELIZA_UI_ENABLE=${uiEnabledEnv})`);
         } else {
           logger.info('Web UI disabled for security (production mode)');
@@ -589,7 +605,7 @@ export class AgentServer {
 
       // Conditionally serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
-      if (this.uiEnabled) {
+      if (this.isWebUIEnabled) {
         const clientPath = path.resolve(__dirname, '../../cli/dist');
         this.app.use(express.static(clientPath, staticOptions));
       }
@@ -651,7 +667,7 @@ export class AgentServer {
 
       // Main fallback for the SPA - must be registered after all other routes
       // Use a final middleware that handles all unmatched routes
-      if (this.uiEnabled) {
+      if (this.isWebUIEnabled) {
         (this.app as any).use((req: express.Request, res: express.Response) => {
           // For JavaScript requests that weren't handled by static middleware,
           // return a JavaScript response instead of HTML
@@ -831,12 +847,12 @@ export class AgentServer {
       this.server
         .listen(port, host, () => {
           // Only show the dashboard URL if UI is enabled
-          if (this.uiEnabled && process.env.NODE_ENV !== 'development') {
+          if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
             // Display the dashboard URL with the correct port after the server is actually listening
             console.log(
               `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
             );
-          } else if (!this.uiEnabled) {
+          } else if (!this.isWebUIEnabled) {
             // Use actual host or localhost
             const actualHost = host === '0.0.0.0' ? 'localhost' : host;
             const baseUrl = `http://${actualHost}:${port}`;
