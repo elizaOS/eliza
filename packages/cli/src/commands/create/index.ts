@@ -16,6 +16,8 @@ export const create = new Command('create')
   .option('--yes, -y', 'skip prompts and use defaults')
   .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
+    let projectType: string | undefined; // Declare outside try block for catch access
+    
     try {
       // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
       if (
@@ -37,10 +39,13 @@ export const create = new Command('create')
 
       if (!isNonInteractive) {
         await displayBanner();
-        clack.intro(colors.inverse(' Creating ElizaOS Project '));
+        // Use projectType if already set from options, otherwise show generic message
+        const introType = options.type === 'tee' ? 'TEE Project' : 
+                          options.type.charAt(0).toUpperCase() + options.type.slice(1);
+        clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
-      let projectType = options.type;
+      projectType = options.type;
       let projectName = name;
 
       // If no name provided, prompt for type first then name
@@ -187,11 +192,15 @@ export const create = new Command('create')
       }
 
       if (!isNonInteractive) {
-        clack.outro(colors.green('Project created successfully! 🎉'));
+        // Dynamic outro message based on project type
+        const typeLabel = projectType === 'tee' ? 'TEE project' : projectType;
+        clack.outro(colors.green(`${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} created successfully! 🎉`));
       }
     } catch (error) {
       if (!opts?.yes) {
-        clack.cancel('Failed to create project.');
+        // Dynamic error message based on project type
+        const errorType = projectType || 'project';
+        clack.cancel(`Failed to create ${errorType}.`);
       }
       logger.error('Create command failed:', error);
       handleError(error);
