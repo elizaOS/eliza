@@ -69,9 +69,7 @@ export default function AgentCreator() {
       }
 
       const elizaClient = createElizaClient();
-      await elizaClient.agents.createAgent({
-        characterJson: completeCharacter,
-      });
+      await elizaClient.agents.createAgent(completeCharacter);
 
       // Invalidate the characters query to refresh the characters list
       queryClient.invalidateQueries({ queryKey: ['characters'] });
