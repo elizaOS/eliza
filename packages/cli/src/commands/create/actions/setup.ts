@@ -338,15 +338,21 @@ export async function installDependencies(targetDir: string): Promise<void> {
   console.info('Installing dependencies...');
   
   // run bun install and let it inherit our stdio so user sees progress
-  // exit code 130 = user pressed ctrl-c (SIGINT), that's fine
   const subprocess = await execa('bun', ['install'], {
     cwd: targetDir,
     stdio: 'inherit',
     reject: false,
   });
 
-  if (subprocess.exitCode !== 0 && subprocess.exitCode !== 130) {
-    throw new Error(`Dependency installation failed with exit code ${subprocess.exitCode}`);
+  // Handle various signal termination scenarios:
+  // - exitCode can be null/undefined when process is killed by signal
+  // - exitCode >= 128 indicates signal termination (128 + signal number)
+  // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
+  const exitCode = subprocess.exitCode;
+  const isSignalTermination = exitCode == null || exitCode >= 128;
+  
+  if (exitCode !== 0 && !isSignalTermination) {
+    throw new Error(`Dependency installation failed with exit code ${exitCode}`);
   }
 }
 
