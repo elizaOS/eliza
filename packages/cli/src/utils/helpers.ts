@@ -1,5 +1,29 @@
 import type { Agent, MessageExample } from '@elizaos/core';
 import colors from 'yoctocolors';
+import path from 'node:path';
+
+/**
+ * Gets a user-friendly display name for a directory path
+ * 
+ * converts paths like "." to "Desktop" or "/Users/me/Desktop" to "Desktop"
+ * so the create command shows nice prompts like "Create plugin 'my-plugin' in Desktop?"
+ * 
+ * @param targetDir The directory path to display
+ * @returns A user-friendly directory name
+ */
+export function getDisplayDirectory(targetDir: string): string {
+  if (targetDir === '.') {
+    // for current directory, show the actual directory name
+    return path.basename(process.cwd());
+  }
+  // for absolute paths, show just the directory name
+  // handles unix paths (/), windows paths (C:\ or c:/), and UNC paths (\\server\share)
+  if (targetDir.startsWith('/') || targetDir.match(/^[a-zA-Z]:[\\\/]/) || targetDir.startsWith('\\\\')) {
+    return path.basename(targetDir);
+  }
+  // for relative paths, show as-is
+  return targetDir;
+}
 
 /**
  * Display character
