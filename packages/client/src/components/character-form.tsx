@@ -574,7 +574,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.name in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -649,7 +649,7 @@ export default function CharacterForm({
                 {field.title}
                 {field.path in FIELD_REQUIREMENTS &&
                   (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
               </Label>
             </TooltipTrigger>
             {field.tooltip && (
@@ -930,29 +930,33 @@ export default function CharacterForm({
               </DropdownMenuItem>
               {stopDeleteOptions.length > 0 && <DropdownMenuSeparator />}
               {stopDeleteOptions.length > 0 &&
-                stopDeleteOptions.map((option, index) => (
-                  <DropdownMenuItem
-                    key={index}
-                    onClick={option.onClick}
-                    disabled={option.label === 'Stop Agent' ? isStopping : false}
-                    className={
-                      option.label === 'Delete Agent'
-                        ? 'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
-                        : ''
-                    }
-                  >
-                    {option.label === 'Stop Agent' ? (
-                      isStopping ? (
+                stopDeleteOptions.map((option, index) => {
+                  const isStopAction = option.label === 'Stop Agent';
+                  const isDeleteAction = option.label === 'Delete Agent';
+                  const isLoading = isStopAction ? isStopping : isDeleteAction ? isDeleting : false;
+
+                  return (
+                    <DropdownMenuItem
+                      key={index}
+                      onClick={option.onClick}
+                      disabled={isLoading}
+                      className={
+                        isDeleteAction
+                          ? 'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                          : ''
+                      }
+                    >
+                      {isLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
+                      ) : isStopAction ? (
                         <StopCircle className="h-4 w-4 mr-2" />
-                      )
-                    ) : (
-                      <Trash className="h-4 w-4 mr-2" />
-                    )}
-                    {option.label === 'Stop Agent' && isStopping ? 'Stopping...' : option.label}
-                  </DropdownMenuItem>
-                ))}
+                      ) : (
+                        <Trash className="h-4 w-4 mr-2" />
+                      )}
+                      {isLoading ? `${isStopAction ? 'Stopping' : 'Deleting'}...` : option.label}
+                    </DropdownMenuItem>
+                  );
+                })}
             </DropdownMenuContent>
           </DropdownMenu>
 
