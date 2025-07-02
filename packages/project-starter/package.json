@@ -31,6 +31,8 @@
     "@elizaos/cli": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-google-genai": "1.0.0",
+    "@elizaos/plugin-knowledge": "1.0.10",
     "@elizaos/plugin-sql": "workspace:*",
     "@tanstack/react-query": "^5.29.0",
     "clsx": "^2.1.1",
