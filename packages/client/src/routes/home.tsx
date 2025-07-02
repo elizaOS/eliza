@@ -122,7 +122,6 @@ export default function Home() {
 
                 {!isLoading && !isError && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 agents-section">
-                    <AddAgentCard />
                     {agents
                       .sort((a, b) => {
                         // Sort by status - ACTIVE agents first
