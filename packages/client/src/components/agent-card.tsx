@@ -1,22 +1,25 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Assuming Card components
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage } from '@/components/ui/avatar';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { formatAgentName, cn } from '@/lib/utils';
-import type { Agent, UUID, Character } from '@elizaos/core';
+import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
-import { InfoIcon, MessageSquare, Settings, Play, UserX, Loader2, PowerOff } from 'lucide-react'; // Icons for actions
-import { useAgentManagement } from '@/hooks/use-agent-management'; // For start/stop logic
+import { MoreHorizontal, MessageSquare, Settings, Pause, Play, Loader2 } from 'lucide-react';
+import { useAgentManagement } from '@/hooks/use-agent-management';
 import type { AgentWithStatus } from '@/types';
-import clientLogger from '@/lib/logger'; // Assuming you have a logger
+import clientLogger from '@/lib/logger';
 
 interface AgentCardProps {
-  agent: Partial<AgentWithStatus>; // Use AgentWithStatus from client types
+  agent: Partial<AgentWithStatus>;
   onChat: (agent: Partial<AgentWithStatus>) => void;
-  // onInfo: (agent: Partial<AgentWithStatus>) => void; // If you have an info overlay
-  // onSettings: (agentId: UUID) => void; // If navigating to a specific settings page
 }
 
 const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
@@ -26,14 +29,18 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
     clientLogger.error('[AgentCard] Agent data or ID is missing', { agent });
     return (
-      <Card className="p-4 min-h-[220px] flex items-center justify-center text-muted-foreground">
+      <Card className="p-4 min-h-[80px] flex items-center justify-center text-muted-foreground">
         Agent data not available.
       </Card>
     );
   }
-  const agentIdForNav = agent.id; // Store for logging
+
+  const agentIdForNav = agent.id;
   const agentName = agent.name || 'Unnamed Agent';
-  const avatarUrl = agent.settings?.avatar;
+  const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
+  const description =
+    (typeof agent.bio === 'string' && agent.bio.trim()) ||
+    'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -60,144 +67,157 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     updatedAt: typeof agent.updatedAt === 'number' ? agent.updatedAt : Date.now(),
   };
 
-  const handleStart = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleStart = () => {
     startAgent(agentForMutation);
   };
 
-  const handleStop = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleStop = () => {
     stopAgent(agentForMutation);
   };
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    clientLogger.info('[AgentCard] handleCardClick triggered', {
-      agentId: agentIdForNav,
-      currentStatus: agent.status,
-      isActive,
-    });
-    if (!isActive) {
-      clientLogger.info(`[AgentCard] Agent is not active. Navigating to /chat/${agentIdForNav}`);
-      navigate(`/chat/${agentIdForNav}`);
+  const handleNewChat = () => {
+    onChat(agent);
+  };
+
+  const handleSettings = () => {
+    navigate(`/settings/${agentIdForNav}`);
+  };
+
+  const handlePauseAgent = () => {
+    if (isActive) {
+      handleStop();
     } else {
-      clientLogger.info(
-        '[AgentCard] Agent is active. Click intended for chat button or other actions.'
-      );
-      handleChatClick(e);
+      handleStart();
     }
   };
 
-  const handleChatClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onChat(agent);
+  const getStatusText = () => {
+    if (isStarting) return 'Starting...';
+    if (isStopping) return 'Stopping...';
+    return isActive ? 'Active' : 'Inactive';
+  };
+
+  const getStatusColor = () => {
+    if (isStarting || isStopping) return 'bg-yellow-500';
+    return isActive ? 'bg-green-500' : 'bg-red-500';
   };
 
   return (
     <Card
       className={cn(
-        'w-full aspect-square flex flex-col transition-all hover:shadow-xl cursor-pointer relative',
+        'w-full transition-all hover:shadow-lg cursor-pointer bg-card',
         isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
-      onClick={handleCardClick}
+      onClick={handleNewChat}
       data-testid="agent-card"
     >
-      <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16 z-10">
-        <Avatar className="h-10 w-10 border">
-          <AvatarImage src={avatarUrl} alt={agentName} />
-          {/* Fallback can be initials or generic icon */}
-        </Avatar>
-        <div className="overflow-hidden">
-          <CardTitle
-            className="text-lg truncate overflow-hidden whitespace-nowrap text-ellipsis"
-            title={agentName}
-          >
-            {agentName}
-          </CardTitle>
-          <div className="flex items-center gap-1.5 mt-1">
-            <div
-              className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-red-500')}
-            />
-            <p className="text-xs text-muted-foreground">
-              {isStarting
-                ? 'Starting...'
-                : isStopping
-                  ? 'Stopping...'
-                  : agent.status?.toString() || CoreAgentStatus.INACTIVE}
-            </p>
-          </div>
-        </div>
-        {/* Action buttons in header */}
-        <div className="flex items-center gap-1 ml-auto">
-          <Tooltip>
-            <TooltipTrigger asChild>
+      <CardContent className="p-4 relative">
+        {/* Menu positioned absolutely in top-right */}
+        <div className="absolute top-2 right-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/settings/${agentIdForNav}`);
-                }}
                 variant="ghost"
                 size="icon"
+                className="h-8 w-8 hover:bg-muted"
+                onClick={(e) => e.stopPropagation()}
               >
-                <Settings className="h-4 w-4 m-2" />
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>Configure Agent</TooltipContent>
-          </Tooltip>
-          {isActive && !isStopping && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={handleStop} variant="ghost" size="icon">
-                  <PowerOff className="h-4 w-4 m-2 text-red-500" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Stop Agent</TooltipContent>
-            </Tooltip>
-          )}
-          {isStopping && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNewChat();
+                }}
+              >
+                <MessageSquare className="mr-2 h-4 w-4" />
+                New Chat
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePauseAgent();
+                }}
+                disabled={isStarting || isStopping}
+              >
+                {isStarting || isStopping ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : isActive ? (
+                  <Pause className="mr-2 h-4 w-4" />
+                ) : (
+                  <Play className="mr-2 h-4 w-4" />
+                )}
+                {isStarting
+                  ? 'Starting...'
+                  : isStopping
+                    ? 'Stopping...'
+                    : isActive
+                      ? 'Pause Agent'
+                      : 'Start Agent'}
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSettings();
+                }}
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      </CardHeader>
-      <CardContent className="flex-grow flex items-center justify-center p-0 overflow-hidden">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={agentName}
-            className={cn(
-              'w-full aspect-square object-cover rounded-lg',
-              isActive ? '' : 'grayscale'
-            )}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center rounded-lg justify-center bg-secondary text-2xl font-semibold text-muted-foreground">
-            {formatAgentName(agentName)}
+
+        <div className="flex items-start gap-3 pr-8">
+          {/* Avatar */}
+          <Avatar className="h-12 w-12 flex-shrink-0 rounded-lg">
+            <AvatarImage src={avatarUrl} alt={agentName} />
+            <AvatarFallback className="text-sm font-medium">
+              {formatAgentName(agentName)}
+            </AvatarFallback>
+          </Avatar>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            {/* Name and Status */}
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-semibold text-base truncate" title={agentName}>
+                {agentName}
+              </h3>
+              <div className="flex items-center gap-1.5">
+                <div className={cn('w-2 h-2 rounded-full', getStatusColor())} />
+                <span
+                  className={cn(
+                    'text-sm font-medium',
+                    isActive
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
+                  )}
+                >
+                  {getStatusText()}
+                </span>
+              </div>
+            </div>
+
+            {/* Description - Reserve space for 2 lines */}
+            <div className="h-10 flex items-start">
+              <p
+                className="text-sm text-muted-foreground leading-5 overflow-hidden"
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                }}
+                title={description}
+              >
+                {description}
+              </p>
+            </div>
           </div>
-        )}
-        <div className="absolute bottom-4 right-4">
-          {isActive ? (
-            <Button
-              onClick={handleChatClick}
-              className=""
-              variant="default"
-              size="sm"
-              disabled={isStopping || isStarting} /* Also disable if starting */
-            >
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleStart}
-              disabled={isStarting || isStopping}
-              className=""
-              variant="outline"
-              size="sm"
-            >
-              {isStarting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              {isStarting ? 'Starting...' : 'Start'}
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>

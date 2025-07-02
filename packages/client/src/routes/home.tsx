@@ -94,7 +94,7 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr agents-section">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 p-2 agents-section">
               <AddAgentCard />
               {agents
                 .sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
