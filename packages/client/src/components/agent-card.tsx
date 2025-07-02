@@ -98,27 +98,22 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       <CardContent className="p-4 relative">
         {/* Toggle Switch - positioned absolutely in top-right */}
         <div className="absolute top-3 right-3">
-          {isStarting || isStopping ? (
-            <div className="h-[1.15rem] w-8 flex items-center justify-center">
-              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <Switch
-              checked={isActive}
-              onCheckedChange={(checked) => {
-                if (checked !== isActive) {
-                  handleToggle();
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              aria-label={`Toggle ${agentName}`}
-              className={cn(
-                isActive
-                  ? 'data-[state=checked]:bg-green-500'
-                  : 'data-[state=unchecked]:bg-red-500/80'
-              )}
-            />
-          )}
+          <Switch
+            checked={isActive}
+            onCheckedChange={(checked) => {
+              if (checked !== isActive) {
+                handleToggle();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Toggle ${agentName}`}
+            disabled={isStarting || isStopping}
+            className={cn(
+              isActive
+                ? 'data-[state=checked]:bg-green-500'
+                : 'data-[state=unchecked]:bg-red-500/80'
+            )}
+          />
         </div>
 
         <div className="flex items-center gap-4 pr-10">
