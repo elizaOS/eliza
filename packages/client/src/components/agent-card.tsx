@@ -119,7 +119,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
 
         <div className="flex items-start gap-4 pr-10">
           {/* Avatar */}
-          <Avatar className="h-14 w-14 flex-shrink-0 rounded-xl">
+          <Avatar className="h-18 w-18 flex-shrink-0 rounded-xl">
             <AvatarImage src={avatarUrl} alt={agentName} />
             <AvatarFallback className="text-lg font-medium rounded-xl">
               {formatAgentName(agentName)}
@@ -161,9 +161,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               e.stopPropagation();
               handleNewChat();
             }}
-            className="h-8 px-4 rounded-md border-muted-foreground/20 hover:bg-muted/30"
+            className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30"
           >
-            <MessageSquare className="h-4 w-4 mr-2" />
             New Chat
           </Button>
         </div>
