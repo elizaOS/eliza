@@ -20,7 +20,9 @@ export function useServerVersion() {
         const response = await fetch('/api/system/version');
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch server version: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `Failed to fetch server version: ${response.status} ${response.statusText}`
+          );
         }
 
         const data = await response.json();
