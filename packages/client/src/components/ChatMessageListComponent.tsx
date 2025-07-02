@@ -91,10 +91,11 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           message.id === animatedMessageId;
 
         const senderAgent =
-          chatType === ChannelType.GROUP && !isUser && getAgentInMessage
+          !isUser && getAgentInMessage
             ? getAgentInMessage(message.senderId)
             : undefined;
 
+            console.log("debuggggg", senderAgent)
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
@@ -102,21 +103,24 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           >
             <ChatBubble
               variant={isUser ? 'sent' : 'received'}
-              className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
+              className={`flex flex-col gap-1 ${isUser ? 'flex-row-reverse' : ''}`}
             >
               {!isUser && (
-                <Avatar className="size-8 border rounded-full select-none mb-2">
-                  <AvatarImage
-                    src={getAgentAvatar(
-                      chatType === ChannelType.DM
-                        ? targetAgentData
-                        : senderAgent ||
-                            (agentAvatarMap && message.senderId && allAgents
-                              ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                              : undefined)
-                    )}
-                  />
-                </Avatar>
+                <div className='flex items-center gap-2 text-muted-foreground'>
+                  <Avatar className="size-8 border rounded-full select-none">
+                    <AvatarImage
+                      src={getAgentAvatar(
+                        chatType === ChannelType.DM
+                          ? targetAgentData
+                          : senderAgent ||
+                              (agentAvatarMap && message.senderId && allAgents
+                                ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                                : undefined)
+                      )}
+                    />
+                  </Avatar>
+                  <div>{senderAgent?.name}</div>
+                </div>
               )}
               <MemoizedMessageContent
                 message={message}
