@@ -861,7 +861,7 @@ export default function CharacterForm({
             )}
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto pb-4">
+          <div className="max-h-[60vh] overflow-y-auto pb-4 px-1">
             {AGENT_FORM_SCHEMA.map((section) => (
               <TabsContent
                 key={section.sectionValue}
