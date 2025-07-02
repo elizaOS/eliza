@@ -54,17 +54,7 @@ const AddAgentCard: React.FC = () => {
 
         <Separator className="my-3" />
 
-        <div className="flex items-center justify-between">
-          {/* Settings button placeholder */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 opacity-30 cursor-default"
-            disabled
-          >
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </Button>
-
+        <div className="flex items-center justify-end">
           {/* Create button styled like New Chat */}
           <Button
             variant="outline"
