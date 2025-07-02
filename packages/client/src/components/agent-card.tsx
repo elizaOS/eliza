@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
@@ -23,7 +24,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
     clientLogger.error('[AgentCard] Agent data or ID is missing', { agent });
     return (
-      <Card className="p-4 min-h-[120px] flex items-center justify-center text-muted-foreground">
+      <Card className="p-4 min-h-[100px] flex items-center justify-center text-muted-foreground">
         Agent data not available.
       </Card>
     );
@@ -88,77 +89,59 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all hover:shadow-lg cursor-pointer bg-card overflow-hidden',
+        'w-full transition-all hover:shadow-lg cursor-pointer bg-card border border-border/50',
         isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
       onClick={handleNewChat}
       data-testid="agent-card"
     >
-      <CardContent className="p-4">
-        {/* Top section with avatar, name, description and toggle */}
-        <div className="flex items-start gap-3 mb-4">
+      <CardContent className="p-4 relative">
+        {/* Toggle Switch - positioned absolutely in top-right */}
+        <div className="absolute top-3 right-3">
+          {isStarting || isStopping ? (
+            <div className="h-[1.15rem] w-8 flex items-center justify-center">
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Switch
+              checked={isActive}
+              onCheckedChange={(checked) => {
+                if (checked !== isActive) {
+                  handleToggle();
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Toggle ${agentName}`}
+              className={cn(
+                isActive
+                  ? 'data-[state=checked]:bg-green-500'
+                  : 'data-[state=unchecked]:bg-red-500/80'
+              )}
+            />
+          )}
+        </div>
+
+        <div className="flex items-center gap-4 pr-10">
           {/* Avatar */}
-          <Avatar className="h-16 w-16 flex-shrink-0 rounded-lg">
+          <Avatar className="h-14 w-14 flex-shrink-0 rounded-xl">
             <AvatarImage src={avatarUrl} alt={agentName} />
-            <AvatarFallback className="text-lg font-medium">
+            <AvatarFallback className="text-lg font-medium rounded-xl">
               {formatAgentName(agentName)}
             </AvatarFallback>
           </Avatar>
 
-          {/* Content */}
+          {/* Content - Name and Description */}
           <div className="flex-1 min-w-0">
-            {/* Name */}
-            <h3 className="font-semibold text-lg mb-2" title={agentName}>
+            <h3 className="font-semibold text-xl mb-1 truncate" title={agentName}>
               {agentName}
             </h3>
-
-            {/* Description */}
-            <div className="h-10 flex items-start">
-              <p
-                className="text-sm text-muted-foreground leading-5 overflow-hidden"
-                style={{
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                }}
-              >
-                {description}
-              </p>
-            </div>
-          </div>
-
-          {/* Toggle Switch */}
-          <div className="flex-shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggle();
-              }}
-              disabled={isStarting || isStopping}
-              className={cn(
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
-                isActive ? 'bg-green-500' : 'bg-red-500'
-              )}
-              role="switch"
-              aria-checked={isActive}
-              aria-label={`Toggle ${agentName}`}
-            >
-              {isStarting || isStopping ? (
-                <Loader2 className="h-4 w-4 animate-spin text-white mx-auto" />
-              ) : (
-                <span
-                  className={cn(
-                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                    isActive ? 'translate-x-6' : 'translate-x-1'
-                  )}
-                />
-              )}
-            </button>
+            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+              {description}
+            </p>
           </div>
         </div>
 
-        {/* Bottom section with settings and new chat buttons */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mt-3">
           {/* Settings button */}
           <Button
             variant="ghost"
@@ -167,20 +150,20 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               e.stopPropagation();
               handleSettings();
             }}
-            className="h-8 px-2"
+            className="h-8 w-8 p-0 hover:bg-muted/50"
           >
-            <Settings className="h-4 w-4" />
+            <Settings className="h-4 w-4 text-muted-foreground" />
           </Button>
 
-          {/* New Chat button */}
+          {/* New Chat button - ghost variant */}
           <Button
-            variant="default"
+            variant="outline"
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
               handleNewChat();
             }}
-            className="h-8 px-3"
+            className="h-8 px-4 rounded-full border-muted-foreground/20 hover:bg-muted/30"
           >
             <MessageSquare className="h-4 w-4 mr-2" />
             New Chat
