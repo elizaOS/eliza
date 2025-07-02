@@ -111,8 +111,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             disabled={isStarting || isStopping}
             className={cn(
               isActive
-                ? 'data-[state=checked]:!bg-green-500'
-                : 'data-[state=unchecked]:!bg-gray-500/80'
+                ? 'data-[state=checked]:!bg-green-600'
+                : 'data-[state=unchecked]:!bg-red-600'
             )}
           />
         </div>
