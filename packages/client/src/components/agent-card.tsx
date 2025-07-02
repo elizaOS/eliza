@@ -90,8 +90,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all hover:shadow-lg cursor-pointer bg-card border border-border/50',
-        isActive ? '' : 'opacity-75 hover:opacity-100'
+        'w-full transition-all hover:shadow-lg hover:bg-muted/30 cursor-pointer bg-card border border-border/50',
+        isActive ? '' : 'opacity-75'
       )}
       onClick={handleNewChat}
       data-testid="agent-card"
@@ -111,8 +111,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             disabled={isStarting || isStopping}
             className={cn(
               isActive
-                ? 'data-[state=checked]:bg-green-500'
-                : 'data-[state=unchecked]:bg-red-500/80'
+                ? 'data-[state=checked]:!bg-green-500'
+                : 'data-[state=unchecked]:!bg-gray-500/80'
             )}
           />
         </div>

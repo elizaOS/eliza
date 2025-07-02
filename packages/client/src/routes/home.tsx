@@ -1,18 +1,17 @@
-import PageTitle from '@/components/page-title';
-import ProfileOverlay from '@/components/profile-overlay';
-import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
-import { getEntityId } from '@/lib/utils';
-import { type Agent, type UUID, ChannelType as CoreChannelType } from '@elizaos/core';
-import { Plus } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import AddAgentCard from '@/components/add-agent-card';
 import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
-import { Button } from '../components/ui/button';
-import { Separator } from '../components/ui/separator';
+import ProfileOverlay from '@/components/profile-overlay';
+import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
+import { getEntityId } from '@/lib/utils';
+import { type Agent, type UUID, ChannelType as CoreChannelType } from '@elizaos/core';
+import { Plus } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '../components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 /**
  * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
@@ -22,10 +21,10 @@ import clientLogger from '@/lib/logger';
 export default function Home() {
   const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();
-  const currentClientEntityId = getEntityId();
 
   // Extract agents properly from the response
-  const agents = agentsData?.agents || [];
+  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
+  const enabledAgentsCount = agents.filter((a) => a.enabled).length;
 
   const { data: serversData, isLoading: isLoadingServers } = useServers();
   const servers = serversData?.data?.servers || [];
@@ -34,11 +33,7 @@ export default function Home() {
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Partial<Agent> | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<UUID | null>(null);
-
-  const openOverlay = (agent: Partial<Agent>) => {
-    setSelectedAgent(agent);
-    setOverlayOpen(true);
-  };
+  const [activeTab, setActiveTab] = useState('agents');
 
   const closeOverlay = () => {
     setSelectedAgent(null);
@@ -63,67 +58,108 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex-1 p-3 w-full overflow-y-auto">
-        <div className="flex flex-col gap-4 w-full md:max-w-4xl mx-auto">
-          <div className="flex items-center justify-between gap-2 p-2">
-            <PageTitle title="Agents" />
-            <Button
-              variant="outline"
-              onClick={() => navigate('/create')}
-              className="create-agent-button"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-          <Separator />
-
-          {isLoading && <div className="text-center py-8">Loading agents...</div>}
-
-          {isError && (
-            <div className="text-center py-8">
-              Error loading agents: {error instanceof Error ? error.message : 'Unknown error'}
+      <div className="flex-1 w-full overflow-y-auto bg-background">
+        <div className="flex flex-col w-full h-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full h-full flex flex-col"
+          >
+            <div className="w-full">
+              <div className="w-full md:max-w-4xl mx-auto px-6 py-6">
+                <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
+                  <TabsTrigger
+                    value="agents"
+                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  >
+                    Agents
+                    {enabledAgentsCount > 0 && (
+                      <span className="ml-2.5 inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#0B35F1] text-white text-xs font-semibold">
+                        {enabledAgentsCount}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="groups"
+                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  >
+                    Groups
+                  </TabsTrigger>
+                </TabsList>
+              </div>
             </div>
-          )}
 
-          {agents.length === 0 && !isLoading && (
-            <div className="text-center py-8 flex flex-col items-center gap-4">
-              <p className="text-muted-foreground">
-                No agents currently running. Start a character to begin.
-              </p>
-            </div>
-          )}
+            <TabsContent value="agents" className="flex-1 mt-0 bg-background">
+              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-8">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-xl font-semibold">Your Agents</h2>
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/create')}
+                    className="create-agent-button"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
 
-          {!isLoading && !isError && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 p-2 agents-section">
-              <AddAgentCard />
-              {agents
-                .sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
-                .map((agent) => {
-                  return (
-                    <AgentCard
-                      key={agent.id}
-                      agent={agent}
-                      onChat={() => handleNavigateToDm(agent)}
-                    />
-                  );
-                })}
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-2 p-2">
-            <PageTitle title="Groups" />
-            <Button variant="outline" onClick={handleCreateGroup} className="groups-create-button">
-              <Plus className="w-2 h-2" />
-            </Button>
-          </div>
-          <Separator />
+                {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
-          {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2 auto-rows-fr groups-section">
-              {servers.map((server) => (
-                <ServerChannels key={server.id} serverId={server.id} />
-              ))}
-            </div>
-          )}
+                {isError && (
+                  <div className="text-center py-8">
+                    Error loading agents: {error instanceof Error ? error.message : 'Unknown error'}
+                  </div>
+                )}
+
+                {agents.length === 0 && !isLoading && (
+                  <div className="text-center py-8 flex flex-col items-center gap-4">
+                    <p className="text-muted-foreground">
+                      No agents currently running. Start a character to begin.
+                    </p>
+                  </div>
+                )}
+
+                {!isLoading && !isError && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 agents-section">
+                    <AddAgentCard />
+                    {agents
+                      .sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
+                      .map((agent) => {
+                        return (
+                          <AgentCard
+                            key={agent.id}
+                            agent={agent}
+                            onChat={() => handleNavigateToDm(agent)}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="groups" className="flex-1 mt-0 bg-background">
+              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-8">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-xl font-semibold">Your Groups</h2>
+                  <Button
+                    variant="outline"
+                    onClick={handleCreateGroup}
+                    className="groups-create-button"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {!isLoading && !isError && (
+                  <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr groups-section">
+                    {servers.map((server) => (
+                      <ServerChannels key={server.id} serverId={server.id} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
@@ -145,7 +181,7 @@ export default function Home() {
 }
 
 // Sub-component to fetch and display channels for a given server
-const ServerChannels = ({ serverId }: { serverId: UUID }) => {
+const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
   const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
   const groupChannels = useMemo(
     () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
@@ -166,4 +202,4 @@ const ServerChannels = ({ serverId }: { serverId: UUID }) => {
       ))}
     </>
   );
-};
+});
