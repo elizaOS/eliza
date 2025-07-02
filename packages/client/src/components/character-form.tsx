@@ -1,6 +1,5 @@
 import ArrayInput from '@/components/array-input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -26,8 +25,18 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
 } from '@/components/ui/select';
-import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
+import { 
+  getAllVoiceModels, 
+  getVoiceModelByValue, 
+  providerPluginMap,
+  localVoiceModels,
+  openAIVoiceModels,
+  elevenLabsVoiceModels,
+} from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import {
   Trash,
@@ -564,29 +573,14 @@ export default function CharacterForm({
   const renderInputField = (field: InputField) => (
     <div
       key={field.name}
-      className={`space-y-2 w-full ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
+      className={`w-full ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
     >
-      <div className="flex items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Label htmlFor={field.name} className="flex items-center gap-1">
-                {field.title}
-                {field.name in FIELD_REQUIREMENTS &&
-                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
-              </Label>
-            </TooltipTrigger>
-            {field.tooltip && (
-              <TooltipContent>
-                <p>{field.tooltip}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-
-      {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
+      <Label htmlFor={field.name} className="text-sm font-normal block mb-2">
+        {field.title}
+        {field.name in FIELD_REQUIREMENTS &&
+          (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+            FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
+      </Label>
 
       {field.fieldType === 'textarea' ? (
         <Textarea
@@ -620,11 +614,59 @@ export default function CharacterForm({
             />
           </SelectTrigger>
           <SelectContent>
-            {field.options?.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
+            {field.name === 'settings.voice.model' ? (
+              <>
+                <SelectGroup>
+                  <SelectItem value="none">No Voice</SelectItem>
+                </SelectGroup>
+                
+                <SelectSeparator />
+                
+                <SelectGroup>
+                  <SelectLabel>Local Voices</SelectLabel>
+                  {localVoiceModels.map((model) => (
+                    <SelectItem key={model.value} value={model.value}>
+                      {model.label.replace('Local Voice - ', '')}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                
+                <SelectSeparator />
+                
+                <SelectGroup>
+                  <SelectLabel>OpenAI Voices</SelectLabel>
+                  {openAIVoiceModels.map((model) => (
+                    <SelectItem key={model.value} value={model.value}>
+                      {model.label.replace('OpenAI - ', '')}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                
+                <SelectSeparator />
+                
+                <SelectGroup>
+                  <SelectLabel>ElevenLabs Voices</SelectLabel>
+                  {/* Show default ElevenLabs voices from config */}
+                  {elevenLabsVoiceModels.map((model) => (
+                    <SelectItem key={model.value} value={model.value}>
+                      {model.label.replace('ElevenLabs - ', '')}
+                    </SelectItem>
+                  ))}
+                  {/* Show custom ElevenLabs voices if available */}
+                  {elevenlabsVoices && elevenlabsVoices.length > 0 && elevenlabsVoices.map((voice) => (
+                    <SelectItem key={voice.value} value={voice.value}>
+                      {voice.label.replace('ElevenLabs - ', '')}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </>
+            ) : (
+              field.options?.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       ) : (
@@ -636,35 +678,26 @@ export default function CharacterForm({
           onChange={handleChange}
         />
       )}
+      
+      {field.description && <p className="text-xs text-muted-foreground mt-1">{field.description}</p>}
     </div>
   );
 
   const renderArrayField = (field: ArrayField) => (
-    <div key={field.path} className="space-y-2">
-      <div className="flex items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Label htmlFor={field.path} className="flex items-center gap-1">
-                {field.title}
-                {field.path in FIELD_REQUIREMENTS &&
-                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                  FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
-              </Label>
-            </TooltipTrigger>
-            {field.tooltip && (
-              <TooltipContent>
-                <p>{field.tooltip}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
+    <div key={field.path} className="w-full">
+      <Label htmlFor={field.path} className="text-sm font-normal block mb-2">
+        {field.title}
+        {field.path in FIELD_REQUIREMENTS &&
+          (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+            FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
+      </Label>
+      
       <ArrayInput
         data={field.getData(characterValue)}
         onChange={(newData) => updateArray(field.path, newData)}
       />
+      
+      {field.description && <p className="text-xs text-muted-foreground mt-1">{field.description}</p>}
     </div>
   );
 
@@ -798,24 +831,26 @@ export default function CharacterForm({
   ];
 
   return (
-    <div ref={containerRef} className="w-full max-w-full mx-auto p-4 sm:p-6 h-full overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
-          <p className="text-muted-foreground mt-1">
-            {description || 'Configure your agent settings'}
-          </p>
+    <div ref={containerRef} className="w-full max-w-full mx-auto p-6 sm:p-8 h-full overflow-y-auto">
+      {(title || description) && (
+        <div className="mb-8">
+          {title && <h1 className="text-2xl font-semibold mb-2">{title}</h1>}
+          {description && (
+            <p className="text-sm text-muted-foreground whitespace-pre-line">
+              {description}
+            </p>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Template Selector */}
-      <div className="mb-6">
-        <Label htmlFor="template-selector" className="text-base font-medium">
-          Start with Template:
+      <div className="mb-8">
+        <Label htmlFor="template-selector" className="text-sm">
+          Start with a template
         </Label>
         <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
-          <SelectTrigger className="w-full mt-2">
-            <SelectValue placeholder="Select a template" />
+          <SelectTrigger className="w-full mt-1">
+            <SelectValue placeholder="None (blank start)" />
           </SelectTrigger>
           <SelectContent>
             {agentTemplates.map((template) => (
@@ -838,7 +873,7 @@ export default function CharacterForm({
 
       <form onSubmit={handleFormSubmit}>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="relative mb-6">
+          <div className="relative mb-4">
             {/* Scroll button left */}
             {showLeftScroll && (
               <Button
@@ -854,13 +889,13 @@ export default function CharacterForm({
 
             {/* Tabs container */}
             <div ref={tabsContainerRef} className="overflow-x-auto scrollbar-hide">
-              <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground w-full">
+              <TabsList className="inline-flex h-10 items-center justify-start text-muted-foreground w-full">
                 {allTabs.map((tab) => (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
                     className={cn(
-                      'whitespace-nowrap px-3 py-1.5 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:rounded-md data-[state=active]:border-0',
+                      'whitespace-nowrap',
                       !showLabels && 'px-2 text-xs' // Smaller padding and text on mobile
                     )}
                   >
@@ -884,30 +919,28 @@ export default function CharacterForm({
             )}
           </div>
 
-          <Card>
-            <CardContent className="p-6 max-h-[60vh] overflow-y-auto">
-              {AGENT_FORM_SCHEMA.map((section) => (
-                <TabsContent
-                  key={section.sectionValue}
-                  value={section.sectionValue}
-                  className="space-y-6 mt-0 focus:outline-none"
-                >
-                  {section.sectionType === SECTION_TYPE.INPUT
-                    ? (section.fields as InputField[]).map(renderInputField)
-                    : (section.fields as ArrayField[]).map(renderArrayField)}
-                </TabsContent>
-              ))}
-              {customComponents.map((component) => (
-                <TabsContent
-                  key={`custom-${component.name}`}
-                  value={`custom-${component.name}`}
-                  className="mt-0 focus:outline-none"
-                >
-                  <div className="h-full">{component.component}</div>
-                </TabsContent>
-              ))}
-            </CardContent>
-          </Card>
+          <div className="max-h-[60vh] overflow-y-auto pb-4 px-1">
+            {AGENT_FORM_SCHEMA.map((section) => (
+              <TabsContent
+                key={section.sectionValue}
+                value={section.sectionValue}
+                className="space-y-6 mt-0 focus:outline-none"
+              >
+                {section.sectionType === SECTION_TYPE.INPUT
+                  ? (section.fields as InputField[]).map(renderInputField)
+                  : (section.fields as ArrayField[]).map(renderArrayField)}
+              </TabsContent>
+            ))}
+            {customComponents.map((component) => (
+              <TabsContent
+                key={`custom-${component.name}`}
+                value={`custom-${component.name}`}
+                className="mt-0 focus:outline-none"
+              >
+                <div className="h-full">{component.component}</div>
+              </TabsContent>
+            ))}
+          </div>
         </Tabs>
 
         <div className="flex items-center justify-between w-full mt-6">

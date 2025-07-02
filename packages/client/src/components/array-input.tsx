@@ -14,7 +14,7 @@ type TagProps = {
 const Tag = ({ tag, onRemove }: TagProps) => (
   <Badge
     variant="outline"
-    className="flex items-center gap-1.5 pr-1.5 text-sm py-1 px-2 transition-colors hover:bg-white hover:text-black dark:hover:text-black"
+    className="flex items-center gap-1.5 pr-1.5 text-sm py-1 px-2 transition-colors hover:bg-accent hover:text-accent-foreground"
   >
     {tag}
     <Button
@@ -22,7 +22,7 @@ const Tag = ({ tag, onRemove }: TagProps) => (
       variant="ghost"
       size="icon"
       onClick={() => onRemove(tag)}
-      className="hover:bg-muted/20 rounded-full p-0.5 transition-colors h-auto w-auto min-w-0 min-h-0"
+      className="hover:bg-accent/20 rounded-full p-0.5 transition-colors h-auto w-auto min-w-0 min-h-0"
     >
       <X className="h-3 w-3" />
       <span className="sr-only">Remove {tag}</span>
@@ -86,7 +86,7 @@ export default function ArrayInput({ title, data, onChange }: ArrayInputProps) {
   return (
     <div className="space-y-2">
       <Label>{title}</Label>
-      <div className="p-2 bg-card rounded-md border">
+      <div className="p-2 bg-card rounded border border-input">
         <TagList tags={data} onRemove={removeTag} />
         <TagInput
           value={inputValue}
