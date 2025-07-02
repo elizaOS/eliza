@@ -96,7 +96,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       onClick={handleNewChat}
       data-testid="agent-card"
     >
-      <CardContent className="p-4 relative">
+      <CardContent className="p-0 relative">
         {/* Toggle Switch - positioned absolutely in top-right */}
         <div className="absolute top-3 right-3">
           <Switch
@@ -117,55 +117,56 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           />
         </div>
 
-        <div className="flex items-start gap-4 pr-10">
-          {/* Avatar */}
-          <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
-            <AvatarImage src={avatarUrl} alt={agentName} />
-            <AvatarFallback className="text-lg font-medium rounded-xl">
-              {formatAgentName(agentName)}
-            </AvatarFallback>
-          </Avatar>
+        <div className='flex flex-col justify-between'>
+          <div className="flex items-center gap-4 p-2">
+            {/* Avatar */}
+            <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
+              <AvatarImage src={avatarUrl} alt={agentName} />
+              <AvatarFallback className="text-lg font-medium rounded-xl">
+                {formatAgentName(agentName)}
+              </AvatarFallback>
+            </Avatar>
 
-          {/* Content - Name and Description */}
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-xl mb-1 truncate" title={agentName}>
-              {agentName}
-            </h3>
-            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
-              {description}
-            </p>
+            {/* Content - Name and Description */}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-xl mb-1 truncate" title={agentName}>
+                {agentName}
+              </h3>
+              <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                {description}
+              </p>
+            </div>
+          </div>
+          <div className="border-t border-muted" />
+          <div className="flex items-center justify-between py-1 px-2">
+            {/* Settings button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSettings();
+              }}
+              className="h-8 w-8 p-0 hover:bg-muted/50"
+            >
+              <Settings className="h-4 w-4 text-muted-foreground" />
+            </Button>
+
+            {/* New Chat button - ghost variant */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewChat();
+              }}
+              className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30"
+            >
+              New Chat
+            </Button>
           </div>
         </div>
-
-        <Separator className="my-3" />
-
-        <div className="flex items-center justify-between">
-          {/* Settings button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSettings();
-            }}
-            className="h-8 w-8 p-0 hover:bg-muted/50"
-          >
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </Button>
-
-          {/* New Chat button - ghost variant */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleNewChat();
-            }}
-            className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30"
-          >
-            New Chat
-          </Button>
-        </div>
+        
       </CardContent>
     </Card>
   );
