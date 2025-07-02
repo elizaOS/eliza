@@ -25,6 +25,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
+  SelectSeparator,
 } from '@/components/ui/select';
 import { getAllVoiceModels, getVoiceModelByValue, providerPluginMap } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
@@ -604,11 +607,59 @@ export default function CharacterForm({
             />
           </SelectTrigger>
           <SelectContent>
-            {field.options?.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
+            {field.name === 'settings.voice.model' ? (
+              <>
+                <SelectGroup>
+                  <SelectItem value="none">No Voice</SelectItem>
+                </SelectGroup>
+                
+                <SelectSeparator />
+                
+                <SelectGroup>
+                  <SelectLabel>Local Voices</SelectLabel>
+                  <SelectItem value="female_1">Female 1</SelectItem>
+                  <SelectItem value="female_2">Female 2</SelectItem>
+                  <SelectItem value="male_1">Male 1</SelectItem>
+                  <SelectItem value="male_2">Male 2</SelectItem>
+                </SelectGroup>
+                
+                <SelectSeparator />
+                
+                <SelectGroup>
+                  <SelectLabel>OpenAI Voices</SelectLabel>
+                  <SelectItem value="alloy">Alloy</SelectItem>
+                  <SelectItem value="echo">Echo</SelectItem>
+                  <SelectItem value="fable">Fable</SelectItem>
+                  <SelectItem value="onyx">Onyx</SelectItem>
+                  <SelectItem value="nova">Nova</SelectItem>
+                  <SelectItem value="shimmer">Shimmer</SelectItem>
+                  <SelectItem value="ash">Ash</SelectItem>
+                  <SelectItem value="ballad">Ballad</SelectItem>
+                  <SelectItem value="coral">Coral</SelectItem>
+                  <SelectItem value="sage">Sage</SelectItem>
+                </SelectGroup>
+                
+                {elevenlabsVoices && elevenlabsVoices.length > 0 && (
+                  <>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectLabel>ElevenLabs Voices</SelectLabel>
+                      {elevenlabsVoices.map((voice) => (
+                        <SelectItem key={voice.voice_id} value={voice.voice_id}>
+                          {voice.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </>
+                )}
+              </>
+            ) : (
+              field.options?.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       ) : (
