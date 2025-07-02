@@ -51,10 +51,18 @@ export function useElevenLabsVoices() {
 
         const data = await response.json();
 
-        // Transform the API response to match our VoiceModel format
-        const apiVoices: VoiceModel[] = data.voices.map((voice: ElevenLabsVoice) => ({
+        // Get the IDs of the default voices we already have
+        const defaultVoiceIds = elevenLabsVoiceModels.map(v => v.value);
+        
+        // Filter to only include custom/cloned voices (those not in the default list)
+        const customVoices: ElevenLabsVoice[] = data.voices.filter(
+          (voice: ElevenLabsVoice) => !defaultVoiceIds.includes(voice.voice_id)
+        );
+
+        // Transform only the custom voices to match our VoiceModel format
+        const apiVoices: VoiceModel[] = customVoices.map((voice: ElevenLabsVoice) => ({
           value: voice.voice_id,
-          label: `ElevenLabs - ${voice.name}`,
+          label: `ElevenLabs - ${voice.name} (Custom)`,
           provider: 'elevenlabs',
           gender: voice.labels?.gender === 'female' ? 'female' : 'male',
           language: 'en',
