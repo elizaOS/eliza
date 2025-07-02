@@ -3,16 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
-import { MoreHorizontal, MessageSquare, Settings, Pause, Play, Loader2 } from 'lucide-react';
+import { MessageSquare, Settings, Loader2 } from 'lucide-react';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import type { AgentWithStatus } from '@/types';
 import clientLogger from '@/lib/logger';
@@ -29,7 +23,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
     clientLogger.error('[AgentCard] Agent data or ID is missing', { agent });
     return (
-      <Card className="p-4 min-h-[80px] flex items-center justify-center text-muted-foreground">
+      <Card className="p-4 min-h-[120px] flex items-center justify-center text-muted-foreground">
         Agent data not available.
       </Card>
     );
@@ -83,7 +77,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     navigate(`/settings/${agentIdForNav}`);
   };
 
-  const handlePauseAgent = () => {
+  const handleToggle = () => {
     if (isActive) {
       handleStop();
     } else {
@@ -91,119 +85,34 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     }
   };
 
-  const getStatusText = () => {
-    if (isStarting) return 'Starting...';
-    if (isStopping) return 'Stopping...';
-    return isActive ? 'Active' : 'Inactive';
-  };
-
-  const getStatusColor = () => {
-    if (isStarting || isStopping) return 'bg-yellow-500';
-    return isActive ? 'bg-green-500' : 'bg-red-500';
-  };
-
   return (
     <Card
       className={cn(
-        'w-full transition-all hover:shadow-lg cursor-pointer bg-card',
+        'w-full transition-all hover:shadow-lg cursor-pointer bg-card overflow-hidden',
         isActive ? '' : 'opacity-75 hover:opacity-100'
       )}
       onClick={handleNewChat}
       data-testid="agent-card"
     >
-      <CardContent className="p-4 relative">
-        {/* Menu positioned absolutely in top-right */}
-        <div className="absolute top-2 right-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 hover:bg-muted"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNewChat();
-                }}
-              >
-                <MessageSquare className="mr-2 h-4 w-4" />
-                New Chat
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePauseAgent();
-                }}
-                disabled={isStarting || isStopping}
-              >
-                {isStarting || isStopping ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : isActive ? (
-                  <Pause className="mr-2 h-4 w-4" />
-                ) : (
-                  <Play className="mr-2 h-4 w-4" />
-                )}
-                {isStarting
-                  ? 'Starting...'
-                  : isStopping
-                    ? 'Stopping...'
-                    : isActive
-                      ? 'Pause Agent'
-                      : 'Start Agent'}
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSettings();
-                }}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="flex items-start gap-3 pr-8">
+      <CardContent className="p-4">
+        {/* Top section with avatar, name, description and toggle */}
+        <div className="flex items-start gap-3 mb-4">
           {/* Avatar */}
-          <Avatar className="h-12 w-12 flex-shrink-0 rounded-lg">
+          <Avatar className="h-16 w-16 flex-shrink-0 rounded-lg">
             <AvatarImage src={avatarUrl} alt={agentName} />
-            <AvatarFallback className="text-sm font-medium">
+            <AvatarFallback className="text-lg font-medium">
               {formatAgentName(agentName)}
             </AvatarFallback>
           </Avatar>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            {/* Name and Status */}
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-base truncate" title={agentName}>
-                {agentName}
-              </h3>
-              <div className="flex items-center gap-1.5">
-                <div className={cn('w-2 h-2 rounded-full', getStatusColor())} />
-                <span
-                  className={cn(
-                    'text-sm font-medium',
-                    isActive
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                  )}
-                >
-                  {getStatusText()}
-                </span>
-              </div>
-            </div>
+            {/* Name */}
+            <h3 className="font-semibold text-lg mb-2" title={agentName}>
+              {agentName}
+            </h3>
 
-            {/* Description - Reserve space for 2 lines */}
+            {/* Description */}
             <div className="h-10 flex items-start">
               <p
                 className="text-sm text-muted-foreground leading-5 overflow-hidden"
@@ -212,12 +121,70 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
                 }}
-                title={description}
               >
                 {description}
               </p>
             </div>
           </div>
+
+          {/* Toggle Switch */}
+          <div className="flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggle();
+              }}
+              disabled={isStarting || isStopping}
+              className={cn(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
+                isActive ? 'bg-green-500' : 'bg-red-500'
+              )}
+              role="switch"
+              aria-checked={isActive}
+              aria-label={`Toggle ${agentName}`}
+            >
+              {isStarting || isStopping ? (
+                <Loader2 className="h-4 w-4 animate-spin text-white mx-auto" />
+              ) : (
+                <span
+                  className={cn(
+                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                    isActive ? 'translate-x-6' : 'translate-x-1'
+                  )}
+                />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom section with settings and new chat buttons */}
+        <div className="flex items-center justify-between">
+          {/* Settings button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSettings();
+            }}
+            className="h-8 px-2"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+
+          {/* New Chat button */}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNewChat();
+            }}
+            className="h-8 px-3"
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            New Chat
+          </Button>
         </div>
       </CardContent>
     </Card>

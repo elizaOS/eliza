@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Plus, Settings } from 'lucide-react';
 
 const AddAgentCard: React.FC = () => {
   const navigate = useNavigate();
@@ -20,21 +21,17 @@ const AddAgentCard: React.FC = () => {
       aria-label="Create new agent"
       data-testid="add-agent-button"
     >
-      <CardContent className="p-4 relative">
-        {/* Empty space for three-dot menu alignment */}
-        <div className="absolute top-2 right-2">
-          <div className="h-8 w-8"></div>
-        </div>
-
-        <div className="flex items-start gap-3 pr-8">
+      <CardContent className="p-4">
+        {/* Top section with placeholder avatar, name, description and empty toggle space */}
+        <div className="flex items-start gap-3 mb-4">
           {/* Icon placeholder matching avatar size */}
-          <div className="h-12 w-12 flex-shrink-0 rounded-lg border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
-            <Plus className="h-6 w-6 text-muted-foreground" />
+          <div className="h-16 w-16 flex-shrink-0 rounded-lg border-2 border-dashed border-muted-foreground/50 flex items-center justify-center">
+            <Plus className="h-8 w-8 text-muted-foreground" />
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base text-muted-foreground mb-1">Create New Agent</h3>
+            <h3 className="font-semibold text-lg text-muted-foreground mb-2">Create New Agent</h3>
 
             {/* Description - Reserve space for 2 lines to match agent cards */}
             <div className="h-10 flex items-start">
@@ -50,6 +47,31 @@ const AddAgentCard: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* Empty space for toggle alignment */}
+          <div className="flex-shrink-0 w-11 h-6"></div>
+        </div>
+
+        {/* Bottom section with placeholder buttons to match layout */}
+        <div className="flex items-center justify-between">
+          {/* Settings button placeholder */}
+          <Button variant="ghost" size="sm" className="h-8 px-2 opacity-50 cursor-default" disabled>
+            <Settings className="h-4 w-4" />
+          </Button>
+
+          {/* Create button styled like New Chat */}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClick();
+            }}
+            className="h-8 px-3"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Create
+          </Button>
         </div>
       </CardContent>
     </Card>
