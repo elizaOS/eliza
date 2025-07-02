@@ -1,13 +1,14 @@
 import { ToastAction } from '@/components/ui/toast';
-import info from '@/lib/info.json';
 import { useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router';
 import semver from 'semver';
 import { useToast } from './use-toast';
+import { useServerVersion } from './use-server-version';
 import clientLogger from '../lib/logger';
 
 export default function useVersion() {
   const { toast } = useToast();
+  const { data: versionInfo } = useServerVersion();
 
   async function getLatestRelease(repo: string) {
     const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
@@ -35,7 +36,7 @@ export default function useVersion() {
   const compareVersion = useCallback(async () => {
     try {
       const latestVersion = await getLatestRelease('elizaos/eliza');
-      const thisVersion = info?.version;
+      const thisVersion = versionInfo?.version;
       if (latestVersion && thisVersion) {
         if (semver.gt(latestVersion.replace('v', ''), thisVersion.replace('v', ''))) {
           toast({
@@ -53,7 +54,7 @@ export default function useVersion() {
     } catch (e) {
       clientLogger.error(`Unable to retrieve latest version from GitHub: ${e}`);
     }
-  }, [toast]);
+  }, [toast, versionInfo?.version]);
 
   useEffect(() => {
     compareVersion();

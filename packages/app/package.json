@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.0.12",
+  "version": "1.0.15",
   "private": true,
   "type": "module",
   "scripts": {

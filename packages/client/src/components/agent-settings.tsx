@@ -337,7 +337,9 @@ export default function AgentSettings({
         characterValue={agentState.agent}
         setCharacterValue={agentState}
         title="Agent Settings"
-        description="Configure your AI agent's behavior and capabilities"
+        description="Configure your AI agent's behaviour and capabilities.
+
+Required default plugins: @elizaos/plugin-sql, @elizaos/plugin-bootstrap"
         onSubmit={handleSubmit}
         onReset={agentState.reset}
         onDelete={handleDelete}

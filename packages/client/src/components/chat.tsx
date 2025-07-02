@@ -140,9 +140,6 @@ export function MessageContent({
   agentAvatarMap?: Record<UUID, string | null>;
   chatType?: ChannelType;
 }) {
-  const agentData =
-    !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : agentForTts;
-
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -150,24 +147,6 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        {!isUser && agentData && (
-          <div className="w-full">
-            {message.thought && (
-              <Collapsible className="mb-1">
-                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
-                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                  {(agentData as Agent)?.name || 'Agent'}'s Thought Process
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pl-5 pt-1">
-                  <Badge variant="outline" className="text-xs">
-                    {message.thought}
-                  </Badge>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
-          </div>
-        )}
-
         <div className="py-2">
           {(() => {
             if (!message.text) return null;
@@ -223,14 +202,20 @@ export function MessageContent({
               title={attachment.title || 'Attachment'}
             />
           ))}
-
-        {(message.text || message.attachments?.length) && message.createdAt && (
-          <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
-        )}
       </ChatBubbleMessage>
 
-      <div className="flex justify-between items-end w-full">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center justify-between w-full p-1">
+        <div>
+          {!isUser && (message.text || message.attachments?.length) && message.createdAt && (
+            <ChatBubbleTimestamp
+              className="text-muted-foreground"
+              timestamp={moment(message.createdAt).format('LT')}
+            />
+          )}
+        </div>
+        <div
+          className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+        >
           {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />
@@ -241,13 +226,6 @@ export function MessageContent({
             <RetryButton onClick={() => onRetry(message)} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
-        </div>
-        <div>
-          {message.actions && message.actions.length > 0 && (
-            <Badge variant="outline" className="text-sm">
-              {Array.isArray(message.actions) ? message.actions.join(', ') : message.actions}
-            </Badge>
-          )}
         </div>
       </div>
     </div>
@@ -1012,7 +990,7 @@ export default function Chat({
   const renderChatHeader = () => {
     if (chatType === ChannelType.DM && targetAgentData) {
       return (
-        <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+        <div className="flex items-center justify-between mb-4 p-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="relative flex-shrink-0">
               <Avatar className="size-4 sm:size-10 border rounded-full">
@@ -1358,7 +1336,7 @@ export default function Chat({
                 'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
               )}
             >
-              <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden px-5 py-2">
                 <ChatMessageListComponent
                   messages={messages}
                   isLoadingMessages={isLoadingMessages}
@@ -1426,7 +1404,7 @@ export default function Chat({
                       'flex flex-col transition-all duration-300 w-full flex-1 min-h-0 overflow-hidden p-2 sm:p-4 pt-0'
                     )}
                   >
-                    <div className="flex-1 min-h-0 overflow-hidden">
+                    <div className="flex-1 min-h-0 overflow-hidden px-5 py-2">
                       <ChatMessageListComponent
                         messages={messages}
                         isLoadingMessages={isLoadingMessages}

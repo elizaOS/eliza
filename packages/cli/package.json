@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.12",
+  "version": "1.0.15",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -50,7 +50,7 @@
     "test:types": "tsc --noEmit",
     "coverage": "c8 --reporter=lcov --reporter=text bun test",
     "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
-    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000 && bash tests/cleanup-processes.sh || true"
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000; EXIT_CODE=$?; bash tests/cleanup-processes.sh; exit $EXIT_CODE"
   },
   "devDependencies": {
     "@types/bun": "^1.2.17",
@@ -72,12 +72,14 @@
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.35",
     "@anthropic-ai/sdk": "^0.54.0",
     "@clack/prompts": "^0.11.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
     "bun": "^1.2.17",
+    "chalk": "^5.3.0",
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",

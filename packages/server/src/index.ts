@@ -4,6 +4,7 @@ import {
   type IAgentRuntime,
   logger,
   type UUID,
+  parseBooleanFromText,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -117,6 +118,24 @@ export interface ServerOptions {
 }
 
 /**
+ * Determines if the web UI should be enabled based on environment variables.
+ *
+ * @returns {boolean} - Returns true if UI should be enabled, false otherwise
+ */
+export function isWebUIEnabled(): boolean {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
+
+  // Treat empty strings as undefined
+  if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
+    return parseBooleanFromText(uiEnabledEnv);
+  }
+
+  // Default: enabled in dev, disabled in prod
+  return !isProduction;
+}
+
+/**
  * Class representing an agent server.
  */ /**
  * Represents an agent server which handles agents, database, and server functionalities.
@@ -127,6 +146,7 @@ export class AgentServer {
   public server!: http.Server;
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
+  private isWebUIEnabled: boolean = true; // Default to enabled until initialized
 
   public database!: DatabaseAdapter;
 
@@ -401,9 +421,9 @@ export class AgentServer {
       ); // Enable CORS
       this.app.use(
         express.json({
-          limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+          limit: process.env.EXPRESS_MAX_PAYLOAD || '2mb',
         })
-      ); // Parse JSON bodies
+      ); // Parse JSON bodies with 2MB limit to support large character files
 
       // File uploads are now handled by individual routes using multer
       // No global file upload middleware needed
@@ -420,6 +440,21 @@ export class AgentServer {
         logger.warn(
           'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
         );
+      }
+
+      // Determine if web UI should be enabled
+      this.isWebUIEnabled = isWebUIEnabled();
+
+      if (this.isWebUIEnabled) {
+        logger.info('Web UI enabled');
+      } else {
+        // Determine the reason for UI being disabled
+        const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
+        if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
+          logger.info(`Web UI disabled by environment variable (ELIZA_UI_ENABLE=${uiEnabledEnv})`);
+        } else {
+          logger.info('Web UI disabled for security (production mode)');
+        }
       }
 
       const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
@@ -568,10 +603,12 @@ export class AgentServer {
         },
       };
 
-      // Serve static assets from the client dist path
+      // Conditionally serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
-      const clientPath = path.resolve(__dirname, '../../cli/dist');
-      this.app.use(express.static(clientPath, staticOptions));
+      if (this.isWebUIEnabled) {
+        const clientPath = path.resolve(__dirname, '../../cli/dist');
+        this.app.use(express.static(clientPath, staticOptions));
+      }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
       const pluginRouteHandler = createPluginRouteHandler(this.agents);
@@ -630,23 +667,30 @@ export class AgentServer {
 
       // Main fallback for the SPA - must be registered after all other routes
       // Use a final middleware that handles all unmatched routes
-      (this.app as any).use((req: express.Request, res: express.Response) => {
-        // For JavaScript requests that weren't handled by static middleware,
-        // return a JavaScript response instead of HTML
-        if (
-          req.path.endsWith('.js') ||
-          req.path.includes('.js?') ||
-          req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-        ) {
-          res.setHeader('Content-Type', 'application/javascript');
-          return res.status(404).send(`// JavaScript module not found: ${req.path}`);
-        }
+      if (this.isWebUIEnabled) {
+        (this.app as any).use((req: express.Request, res: express.Response) => {
+          // For JavaScript requests that weren't handled by static middleware,
+          // return a JavaScript response instead of HTML
+          if (
+            req.path.endsWith('.js') ||
+            req.path.includes('.js?') ||
+            req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+          ) {
+            res.setHeader('Content-Type', 'application/javascript');
+            return res.status(404).send(`// JavaScript module not found: ${req.path}`);
+          }
 
-        // For all other routes, serve the SPA's index.html
-        // Client files are built into the CLI package's dist directory
-        const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-        res.sendFile(path.join(cliDistPath, 'index.html'));
-      });
+          // For all other routes, serve the SPA's index.html
+          // Client files are built into the CLI package's dist directory
+          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
+          res.sendFile(path.join(cliDistPath, 'index.html'));
+        });
+      } else {
+        // Return 403 Forbidden for non-API routes when UI is disabled
+        (this.app as any).use((_req: express.Request, res: express.Response) => {
+          res.sendStatus(403); // Standard HTTP 403 Forbidden
+        });
+      }
 
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
@@ -802,11 +846,23 @@ export class AgentServer {
 
       this.server
         .listen(port, host, () => {
-          // Only show the dashboard URL in production mode
-          if (process.env.NODE_ENV !== 'development') {
+          // Only show the dashboard URL if UI is enabled
+          if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
             // Display the dashboard URL with the correct port after the server is actually listening
             console.log(
               `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+            );
+          } else if (!this.isWebUIEnabled) {
+            // Use actual host or localhost
+            const actualHost = host === '0.0.0.0' ? 'localhost' : host;
+            const baseUrl = `http://${actualHost}:${port}`;
+
+            console.log(
+              `\x1b[32mStartup successful!\x1b[0m\n` +
+                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
             );
           }
 

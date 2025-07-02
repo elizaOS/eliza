@@ -32,16 +32,9 @@ const mockGetInstanceInfo = mock().mockResolvedValue({
 
 mock.module('../../../../src/utils', () => ({
   buildProject: mock().mockResolvedValue(undefined),
-  findNextAvailablePort: mock().mockResolvedValue(3000),
-  promptForEnvVars: mock().mockResolvedValue(undefined),
-  TestRunner: mock().mockImplementation(() => ({
-    runTests: mock().mockResolvedValue({
-      total: 0,
-      passed: 0,
-      failed: 0,
-      skipped: 0,
-      hasTests: false,
-    }),
+  findNextAvailablePort: mock().mockResolvedValue(3001),
+  TestRunner: mock(() => ({
+    runTests: mock().mockResolvedValue({ failed: false, hasTests: true }),
   })),
   UserEnvironment: {
     getInstanceInfo: mockGetInstanceInfo,

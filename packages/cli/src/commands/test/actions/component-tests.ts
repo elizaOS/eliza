@@ -1,4 +1,4 @@
-import { buildProject } from '@/src/utils';
+import { buildProject, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import { spawn } from 'node:child_process';
@@ -64,7 +64,10 @@ export async function runComponentTests(
       }
     }
 
-    const targetPath = testPath ? path.resolve(process.cwd(), '..', testPath) : process.cwd();
+    // Resolve path - use monorepo root if available, otherwise use cwd
+    const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
+    const baseDir = monorepoRoot ?? process.cwd();
+    const targetPath = testPath ? path.resolve(baseDir, testPath) : process.cwd();
 
     // Bun test doesn't use separate config files
 

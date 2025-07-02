@@ -9,7 +9,7 @@ This plugin provides advanced functionality for the Flow Blockchain. It includes
 - Accounts management based on Account Linking feature on Flow Blockchain
 - Token Price Query for any token on Flow Blockchain
 - Token Transfer from User's account to others' address(Cadence or EVM)
-- Token Registeration for any token on Flow Blockchain
+- Token Registration for any token on Flow Blockchain
 
 ## Installation
 

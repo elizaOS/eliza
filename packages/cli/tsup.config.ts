@@ -49,6 +49,10 @@ const require = createRequire(import.meta.url);
           from: './templates/**/.*',
           to: './dist/templates',
         },
+        {
+          from: '../docs/docs/plugins/migration/claude-code/**/*',
+          to: './dist/migration-guides',
+        },
       ],
       // Setting this to true will output a list of copied files
       verbose: true,

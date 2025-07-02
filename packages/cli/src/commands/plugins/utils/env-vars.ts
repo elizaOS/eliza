@@ -1,8 +1,9 @@
 import { logger } from '@elizaos/core';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { EnvVarConfig } from '../types';
+import { createEnvFileService } from '@/src/services/env-file.service';
 
 /**
  * Attempts to find the package.json of an installed plugin and extract environment variable requirements
@@ -13,21 +14,78 @@ export const extractPluginEnvRequirements = async (
   cwd: string
 ): Promise<Record<string, EnvVarConfig>> => {
   try {
-    // Try to find the plugin's package.json in node_modules
-    const nodeModulesPath = path.join(cwd, 'node_modules', packageName, 'package.json');
+    // Try multiple possible paths for the plugin
+    const possiblePaths = [
+      // Direct path
+      path.join(cwd, 'node_modules', packageName, 'package.json'),
+      // Scoped package path (e.g., @elizaos/plugin-discord)
+      path.join(cwd, 'node_modules', packageName.replace('/', path.sep), 'package.json'),
+    ];
 
-    if (!existsSync(nodeModulesPath)) {
-      logger.debug(`Plugin package.json not found at: ${nodeModulesPath}`);
+    // If the package name doesn't start with @elizaos/, also try with that prefix
+    if (!packageName.startsWith('@elizaos/')) {
+      possiblePaths.push(
+        path.join(cwd, 'node_modules', '@elizaos', packageName, 'package.json'),
+        path.join(cwd, 'node_modules', '@elizaos', `plugin-${packageName}`, 'package.json')
+      );
+    }
+
+    // Also check if it's installed globally or in a parent directory
+    let currentDir = cwd;
+    for (let i = 0; i < 5; i++) {
+      const parentNodeModules = path.join(currentDir, 'node_modules');
+      if (existsSync(parentNodeModules)) {
+        possiblePaths.push(
+          path.join(parentNodeModules, packageName, 'package.json'),
+          path.join(parentNodeModules, packageName.replace('/', path.sep), 'package.json')
+        );
+      }
+      const parentDir = path.dirname(currentDir);
+      if (parentDir === currentDir) break; // Reached root
+      currentDir = parentDir;
+    }
+
+    // Find the first existing path
+    let packageJsonPath: string | null = null;
+    for (const possiblePath of possiblePaths) {
+      if (existsSync(possiblePath)) {
+        packageJsonPath = possiblePath;
+        logger.debug(`Found plugin package.json at: ${packageJsonPath}`);
+        break;
+      }
+    }
+
+    if (!packageJsonPath) {
+      // Try to find any matching package in node_modules
+      const nodeModulesPath = path.join(cwd, 'node_modules');
+      if (existsSync(nodeModulesPath)) {
+        const packages = readdirSync(nodeModulesPath);
+        for (const pkg of packages) {
+          if (pkg.includes(packageName.replace('@elizaos/', '').replace('plugin-', ''))) {
+            const pkgJsonPath = path.join(nodeModulesPath, pkg, 'package.json');
+            if (existsSync(pkgJsonPath)) {
+              packageJsonPath = pkgJsonPath;
+              logger.debug(`Found matching plugin package.json at: ${packageJsonPath}`);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!packageJsonPath) {
+      logger.debug(`Plugin package.json not found for: ${packageName}`);
+      logger.debug(`Searched paths: ${possiblePaths.join(', ')}`);
       return {};
     }
 
-    const packageJsonContent = readFileSync(nodeModulesPath, 'utf-8');
+    const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
     const packageJson = JSON.parse(packageJsonContent);
 
     // Extract environment variables from agentConfig.pluginParameters
     const agentConfig = packageJson.agentConfig;
     if (!agentConfig || !agentConfig.pluginParameters) {
-      logger.debug(`No agentConfig.pluginParameters found in ${packageName}`);
+      logger.debug(`No agentConfig.pluginParameters found in ${packageName} at ${packageJsonPath}`);
       return {};
     }
 
@@ -47,22 +105,22 @@ export const extractPluginEnvRequirements = async (
 /**
  * Reads the current .env file content
  */
-export const readEnvFile = (cwd: string): string => {
+export const readEnvFile = async (cwd: string): Promise<Record<string, string>> => {
   const envPath = path.join(cwd, '.env');
-  try {
-    return readFileSync(envPath, 'utf-8');
-  } catch (error) {
-    // File doesn't exist, return empty string
-    return '';
-  }
+  const envService = createEnvFileService(envPath);
+  return envService.read();
 };
 
 /**
  * Writes content to the .env file
  */
-export const writeEnvFile = (cwd: string, content: string): void => {
+export const writeEnvFile = async (cwd: string, vars: Record<string, string>): Promise<void> => {
   const envPath = path.join(cwd, '.env');
-  writeFileSync(envPath, content, 'utf-8');
+  const envService = createEnvFileService(envPath);
+  await envService.write(vars, {
+    preserveComments: false,
+    updateProcessEnv: true,
+  });
 };
 
 /**
@@ -90,9 +148,11 @@ const extractDefaultFromDescription = (description: string): string | undefined 
  */
 export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Promise<string> => {
   const {
+    type = 'string',
     description = 'No description available',
     default: explicitDefault,
     sensitive = false,
+    required = true, // Default to true for backwards compatibility
   } = config;
 
   // Determine default value (explicit default takes precedence over extracted default)
@@ -107,14 +167,198 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
         varName.toLowerCase().includes('secret') ||
         varName.toLowerCase().includes('password');
 
-  // Create a more informative message with better formatting
-  const message = defaultValue ? `Enter ${varName} (default: ${defaultValue})` : `Enter ${varName}`;
-  const placeholder = isSecret ? 'Your secret key/token...' : defaultValue || 'Enter value...';
-
-  // Show additional context for the environment variable with better formatting
+  // Show additional context for the environment variable first (for all types)
   if (description && description !== 'No description available') {
     clack.note(`${description}`, `${varName} Info`);
   }
+
+  // Handle boolean type specifically
+  if (type === 'boolean') {
+    const defaultBool = defaultValue === 'true' || String(explicitDefault).toLowerCase() === 'true';
+    const response = await clack.confirm({
+      message: required ? `Enable ${varName}?` : `Enable ${varName}? (optional)`,
+      initialValue: defaultBool,
+    });
+
+    if (clack.isCancel(response)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+
+    // For optional booleans, if user cancels/skips, return empty string
+    if (!required && response === undefined) {
+      return '';
+    }
+
+    return String(response);
+  }
+
+  // Handle number type
+  if (type === 'number') {
+    const message = defaultValue
+      ? `Enter ${varName} (default: ${String(defaultValue)})`
+      : required
+        ? `Enter ${varName}`
+        : `Enter ${varName} (press Enter to skip)`;
+
+    const promptConfig = {
+      message,
+      placeholder: required
+        ? String(defaultValue || 'Enter a number')
+        : String(defaultValue || 'Press Enter to skip'),
+      initialValue: defaultValue ? String(defaultValue) : undefined,
+      validate: (input: string) => {
+        // Allow empty input for optional fields
+        if ((!input || input.trim() === '') && !required) {
+          return undefined;
+        }
+
+        if ((!input || input.trim() === '') && required && !defaultValue) {
+          return 'This field cannot be empty. Press Ctrl+C to cancel.';
+        }
+
+        // Validate number format
+        const trimmed = input.trim();
+        if (trimmed && isNaN(Number(trimmed))) {
+          return 'Please enter a valid number';
+        }
+
+        return undefined;
+      },
+    };
+
+    const response = await clack.text(promptConfig);
+
+    if (clack.isCancel(response)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+
+    const finalValue = (response && response.trim()) || defaultValue || '';
+    return finalValue.trim();
+  }
+
+  // Handle array type (comma-separated values)
+  if (type === 'array') {
+    const message = defaultValue
+      ? `Enter ${varName} (comma-separated, default: ${String(defaultValue)})`
+      : required
+        ? `Enter ${varName} (comma-separated values)`
+        : `Enter ${varName} (comma-separated values, press Enter to skip)`;
+
+    const promptConfig = {
+      message,
+      placeholder: required
+        ? String(defaultValue || 'value1,value2,value3')
+        : String(defaultValue || 'Press Enter to skip'),
+      initialValue: defaultValue ? String(defaultValue) : undefined,
+      validate: (input: string) => {
+        // Allow empty input for optional fields
+        if ((!input || input.trim() === '') && !required) {
+          return undefined;
+        }
+
+        if ((!input || input.trim() === '') && required && !defaultValue) {
+          return 'This field cannot be empty. Press Ctrl+C to cancel.';
+        }
+
+        return undefined;
+      },
+    };
+
+    const response = await clack.text(promptConfig);
+
+    if (clack.isCancel(response)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+
+    // Clean up the array format
+    const finalValue = (response && response.trim()) || defaultValue || '';
+    if (finalValue) {
+      // Remove spaces after commas for consistency
+      return finalValue
+        .split(',')
+        .map((v) => v.trim())
+        .filter((v) => v)
+        .join(',');
+    }
+    return finalValue;
+  }
+
+  // Handle JSON object type
+  if (type === 'json') {
+    clack.log.info('Enter a JSON object. For multi-line input, use the editor.');
+
+    const message = defaultValue
+      ? `Enter ${varName} JSON (default: ${String(defaultValue)})`
+      : required
+        ? `Enter ${varName} JSON`
+        : `Enter ${varName} JSON (press Enter to skip)`;
+
+    const promptConfig = {
+      message,
+      placeholder: required
+        ? String(defaultValue || '{"key": "value"}')
+        : String(defaultValue || 'Press Enter to skip'),
+      initialValue: defaultValue ? String(defaultValue) : undefined,
+      validate: (input: string) => {
+        // Allow empty input for optional fields
+        if ((!input || input.trim() === '') && !required) {
+          return undefined;
+        }
+
+        if ((!input || input.trim() === '') && required && !defaultValue) {
+          return 'This field cannot be empty. Press Ctrl+C to cancel.';
+        }
+
+        // Validate JSON format
+        if (input && input.trim()) {
+          try {
+            JSON.parse(input.trim());
+          } catch (error) {
+            return 'Please enter valid JSON format';
+          }
+        }
+
+        return undefined;
+      },
+    };
+
+    const response = await clack.text(promptConfig);
+
+    if (clack.isCancel(response)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+
+    const finalValue = (response && response.trim()) || defaultValue || '';
+    // Minify JSON for storage in .env
+    if (finalValue) {
+      try {
+        const parsed = JSON.parse(finalValue);
+        return JSON.stringify(parsed);
+      } catch {
+        return finalValue;
+      }
+    }
+    return finalValue;
+  }
+
+  // Default string handling (existing code)
+  // Create a more informative message with better formatting
+  const message = defaultValue
+    ? `Enter ${varName} (default: ${String(defaultValue)})`
+    : required
+      ? `Enter ${varName}`
+      : `Enter ${varName} (press Enter to skip)`;
+
+  // Ensure placeholder is always a string
+  const placeholder = isSecret
+    ? 'Your secret key/token...'
+    : required
+      ? String(defaultValue || 'Required value')
+      : String(defaultValue || 'Press Enter to skip');
 
   const promptFn = isSecret ? clack.password : clack.text;
 
@@ -122,21 +366,29 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
     message,
     placeholder,
     validate: (input: string) => {
-      // Allow empty input if there's a default value
-      if ((!input || input.trim() === '') && !defaultValue) {
+      // Allow empty input for optional fields
+      if ((!input || input.trim() === '') && required && !defaultValue) {
         return 'This field cannot be empty. Press Ctrl+C to cancel.';
+      }
+
+      // Skip validation for empty optional fields
+      if ((!input || input.trim() === '') && !required) {
+        return undefined; // Valid - allow empty for optional fields
       }
 
       // Basic validation for common patterns
       if (varName.includes('URL') || varName.includes('ENDPOINT')) {
-        try {
-          new URL(input.trim());
-        } catch {
-          return 'Please enter a valid URL (e.g., https://api.example.com)';
+        // Only validate if input is provided
+        if (input && input.trim()) {
+          try {
+            new URL(input.trim());
+          } catch {
+            return 'Please enter a valid URL (e.g., https://api.example.com)';
+          }
         }
       }
 
-      if (varName.includes('API_KEY') && input.trim().length < 5) {
+      if (varName.includes('API_KEY') && input.trim().length > 0 && input.trim().length < 5) {
         return 'API key seems too short. Please verify you entered the complete key.';
       }
 
@@ -146,7 +398,7 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 
   // Add default value if available (only for non-secret fields)
   if (defaultValue && !isSecret) {
-    promptConfig.initialValue = defaultValue;
+    promptConfig.initialValue = String(defaultValue);
   }
 
   const response = await promptFn(promptConfig);
@@ -164,25 +416,15 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 /**
  * Updates the .env file with a new environment variable
  */
-export const updateEnvFile = (cwd: string, varName: string, value: string): void => {
-  const envContent = readEnvFile(cwd);
-  const lines = envContent.split('\n');
+export const updateEnvFile = async (cwd: string, varName: string, value: string): Promise<void> => {
+  const envPath = path.join(cwd, '.env');
+  const envService = createEnvFileService(envPath);
 
-  // Check if the variable already exists
-  const existingLineIndex = lines.findIndex((line) => line.startsWith(`${varName}=`));
-
-  if (existingLineIndex >= 0) {
-    // Update existing line
-    lines[existingLineIndex] = `${varName}=${value}`;
-  } else {
-    // Add new line
-    if (envContent && !envContent.endsWith('\n')) {
-      lines.push(''); // Add empty line if file doesn't end with newline
-    }
-    lines.push(`${varName}=${value}`);
-  }
-
-  writeEnvFile(cwd, lines.join('\n'));
+  // Update the environment variable and process.env
+  await envService.update(varName, value, {
+    preserveComments: true,
+    updateProcessEnv: true,
+  });
 };
 
 /**
@@ -190,11 +432,48 @@ export const updateEnvFile = (cwd: string, varName: string, value: string): void
  * and writes them to the .env file
  */
 export const promptForPluginEnvVars = async (packageName: string, cwd: string): Promise<void> => {
-  const envRequirements = await extractPluginEnvRequirements(packageName, cwd);
+  let envRequirements = await extractPluginEnvRequirements(packageName, cwd);
+
+  // If no requirements found and package doesn't start with @elizaos/, try with that prefix
+  if (Object.keys(envRequirements).length === 0 && !packageName.startsWith('@elizaos/')) {
+    // Try with @elizaos/ prefix
+    const elizaosPackageName = `@elizaos/${packageName.replace('plugin-', '')}`;
+    envRequirements = await extractPluginEnvRequirements(elizaosPackageName, cwd);
+
+    // Also try with @elizaos/plugin- prefix
+    if (Object.keys(envRequirements).length === 0) {
+      const elizaosPluginPackageName = `@elizaos/plugin-${packageName.replace('plugin-', '')}`;
+      envRequirements = await extractPluginEnvRequirements(elizaosPluginPackageName, cwd);
+    }
+  }
 
   if (Object.keys(envRequirements).length === 0) {
-    logger.debug(`No environment variables required for ${packageName}`);
-    clack.log.success(`No environment variables required for ${packageName}`);
+    // Check if package exists but has no env requirements
+    const nodeModulesPath = path.join(cwd, 'node_modules');
+    const possiblePackages = [
+      packageName,
+      `@elizaos/${packageName.replace('plugin-', '')}`,
+      `@elizaos/plugin-${packageName.replace('plugin-', '')}`,
+    ];
+
+    let packageFound = false;
+    for (const pkg of possiblePackages) {
+      const pkgPath = path.join(nodeModulesPath, ...pkg.split('/'));
+      if (existsSync(path.join(pkgPath, 'package.json'))) {
+        packageFound = true;
+        break;
+      }
+    }
+
+    if (packageFound) {
+      logger.debug(`Package ${packageName} found but has no environment variables defined`);
+      clack.log.success(`No environment variables required for ${packageName}`);
+    } else {
+      logger.debug(`Package ${packageName} not found in node_modules`);
+      clack.log.warn(
+        `Could not find ${packageName} in node_modules. Environment variables may need to be configured manually.`
+      );
+    }
     return;
   }
 
@@ -204,15 +483,8 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
   clack.intro(`Setting up ${packageName} Plugin`);
 
   // Read current .env file to check for existing values
-  const envContent = readEnvFile(cwd);
-  const existingVars: Record<string, string> = {};
-
-  envContent.split('\n').forEach((line) => {
-    const match = line.match(/^([^=]+)=(.*)$/);
-    if (match) {
-      existingVars[match[1]] = match[2];
-    }
-  });
+  const envVars = await readEnvFile(cwd);
+  const existingVars: Record<string, string> = envVars;
 
   // Separate existing and missing variables
   const missingVars: Array<[string, EnvVarConfig]> = [];
@@ -280,7 +552,7 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
 
       if (value) {
         spinner.start(`Saving ${varName} to .env file...`);
-        updateEnvFile(cwd, varName, value);
+        await updateEnvFile(cwd, varName, value);
         spinner.stop(`${varName} configured successfully`);
         newlyConfigured++;
         configuredCount++;

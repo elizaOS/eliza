@@ -28,19 +28,19 @@ const SAMPLE_ENV_TEMPLATE = `### elizaOS Environment Variables ###
 # To get started, copy this file to .env, or make a .env and add the settings you'd like to override
 # Please read the comments for each of the configurations
 
-## The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
+## The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys,
 ## i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai or ollama plugin
 ## Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
 ## For multi-agent, each agent will need keys for the various services it is connected to
 -------------------------------
-## You can use the .env or environment variables generally for shared keys, such as to model providers, 
+## You can use the .env or environment variables generally for shared keys, such as to model providers,
 ## database, etc, with scoped keys for services such as Telegram, Discord, etc
 
 ## MODEL PROVIDER KEYS ##
-## Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
+## Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs,
 ## and you can use them by overriding the base URL
 
-## NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
+## NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will
 ## need to get embeddings using another provider, for example openai or our local-ai plugin
 
 # OpenAI Configuration
@@ -87,7 +87,7 @@ ANTHROPIC_API_KEY=
 
 
 # Highly recommended to use nomic-embed-text for embeddings
-# OLLAMA_EMBEDDING_MODEL=nomic-embed-text 
+# OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 
 ### DATABASE ###
 # By default, Eliza will use a local pglite instance
@@ -196,35 +196,21 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
     const envExists = existsSync(envFilePath);
 
     if (!envExists) {
-      // Create the file with hybrid merge of process.env and example variables
-      const mergedVars = mergeProcessEnvWithTemplate(SAMPLE_ENV_TEMPLATE);
-      const formattedContent = formatEnvFileWithTemplate(mergedVars, SAMPLE_ENV_TEMPLATE);
-      await fs.writeFile(envFilePath, formattedContent, 'utf8');
+      // Create the file with template variables
+      await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
 
-      const processEnvCount = Object.keys(process.env).filter(
-        (key) => process.env[key] && process.env[key]!.trim() !== ''
-      ).length;
-
-      logger.info(
-        `[Config] Created .env file with ${processEnvCount} variables from process.env merged with example variables at: ${envFilePath}`
-      );
+      logger.info(`[Config] Created .env file with template variables at: ${envFilePath}`);
     } else {
       // File exists, check if it's empty
       const content = await fs.readFile(envFilePath, 'utf8');
       const trimmedContent = content.trim();
 
       if (trimmedContent === '') {
-        // File is empty, write the hybrid merge
-        const mergedVars = mergeProcessEnvWithTemplate(SAMPLE_ENV_TEMPLATE);
-        const formattedContent = formatEnvFileWithTemplate(mergedVars, SAMPLE_ENV_TEMPLATE);
-        await fs.writeFile(envFilePath, formattedContent, 'utf8');
-
-        const processEnvCount = Object.keys(process.env).filter(
-          (key) => process.env[key] && process.env[key]!.trim() !== ''
-        ).length;
+        // File is empty, write the template
+        await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
 
         logger.info(
-          `[Config] Populated empty .env file with ${processEnvCount} variables from process.env merged with example variables at: ${envFilePath}`
+          `[Config] Populated empty .env file with template variables at: ${envFilePath}`
         );
       } else {
         logger.debug(`[Config] .env file already exists and has content at: ${envFilePath}`);
@@ -1132,103 +1118,4 @@ export async function loadEnvironment(projectDir: string = process.cwd()): Promi
   if (existsSync(envPath)) {
     dotenv.config({ path: envPath });
   }
-}
-
-/**
- * Merges environment variables from process.env with example variables from template.
- * Prioritizes process.env variables that have actual values, and uses example variables as fallback.
- * @param templateContent The template content containing example variables
- * @returns Merged environment variables object
- */
-export function mergeProcessEnvWithTemplate(templateContent: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const processedKeys = new Set<string>();
-
-  // First, parse the template to get example variables and their structure
-  const templateLines = templateContent.split('\n');
-  const templateVars: Record<string, string> = {};
-
-  for (const line of templateLines) {
-    const trimmedLine = line.trim();
-    if (trimmedLine && !trimmedLine.startsWith('#') && trimmedLine.includes('=')) {
-      const equalIndex = trimmedLine.indexOf('=');
-      const key = trimmedLine.substring(0, equalIndex).trim();
-      const value = trimmedLine.substring(equalIndex + 1).trim();
-      if (key) {
-        templateVars[key] = value;
-      }
-    }
-  }
-
-  // Add all process.env variables that have actual values (prioritized)
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value && value.trim() !== '') {
-      result[key] = value;
-      processedKeys.add(key);
-    }
-  }
-
-  // Add template variables that aren't already set from process.env
-  for (const [key, value] of Object.entries(templateVars)) {
-    if (!processedKeys.has(key)) {
-      result[key] = value;
-      processedKeys.add(key);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Converts environment variables object back to .env file format, preserving comments from template
- * @param envVars Environment variables object
- * @param templateContent Original template content for structure and comments
- * @returns Formatted .env file content
- */
-export function formatEnvFileWithTemplate(
-  envVars: Record<string, string>,
-  templateContent: string
-): string {
-  const lines: string[] = [];
-  const processedKeys = new Set<string>();
-  const templateLines = templateContent.split('\n');
-
-  // First pass: go through template preserving structure and comments
-  for (const line of templateLines) {
-    const trimmedLine = line.trim();
-
-    if (!trimmedLine || trimmedLine.startsWith('#') || !trimmedLine.includes('=')) {
-      // Preserve comments and empty lines
-      lines.push(line);
-    } else {
-      // This is a variable line
-      const equalIndex = trimmedLine.indexOf('=');
-      const key = trimmedLine.substring(0, equalIndex).trim();
-
-      if (key && envVars.hasOwnProperty(key)) {
-        lines.push(`${key}=${envVars[key]}`);
-        processedKeys.add(key);
-      } else {
-        // Variable not found, keep original line
-        lines.push(line);
-      }
-    }
-  }
-
-  // Second pass: add any new variables from process.env that weren't in template
-  const newVars: string[] = [];
-  for (const [key, value] of Object.entries(envVars)) {
-    if (!processedKeys.has(key)) {
-      newVars.push(`${key}=${value}`);
-    }
-  }
-
-  if (newVars.length > 0) {
-    lines.push('');
-    lines.push('### Additional Environment Variables from Runtime ###');
-    lines.push('# Variables found in process.env that were not in the template');
-    lines.push(...newVars);
-  }
-
-  return lines.join('\n');
 }

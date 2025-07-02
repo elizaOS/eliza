@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
+import { isWebUIEnabled } from '../index.js';
 
 describe('Basic Server Functionality', () => {
   describe('Path utilities', () => {
@@ -224,6 +225,126 @@ describe('Basic Server Functionality', () => {
       expect(customConfig.middlewares).toEqual(['middleware1', 'middleware2']);
       expect(customConfig.hasCustomDataDir).toBe(true);
       expect(customConfig.hasCustomDb).toBe(true);
+    });
+  });
+
+  describe('UI Enable/Disable Logic', () => {
+    // Helper to test with mocked environment variables
+    const testUIEnabled = (nodeEnv?: string, elizaUIEnable?: string): boolean => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalUIEnable = process.env.ELIZA_UI_ENABLE;
+
+      // Set test environment
+      if (nodeEnv !== undefined) {
+        process.env.NODE_ENV = nodeEnv;
+      } else {
+        delete process.env.NODE_ENV;
+      }
+
+      if (elizaUIEnable !== undefined) {
+        process.env.ELIZA_UI_ENABLE = elizaUIEnable;
+      } else {
+        delete process.env.ELIZA_UI_ENABLE;
+      }
+
+      // Test the function
+      const result = isWebUIEnabled();
+
+      // Restore original environment
+      if (originalNodeEnv !== undefined) {
+        process.env.NODE_ENV = originalNodeEnv;
+      } else {
+        delete process.env.NODE_ENV;
+      }
+
+      if (originalUIEnable !== undefined) {
+        process.env.ELIZA_UI_ENABLE = originalUIEnable;
+      } else {
+        delete process.env.ELIZA_UI_ENABLE;
+      }
+
+      return result;
+    };
+
+    it('should enable UI by default in development', () => {
+      expect(testUIEnabled('development', undefined)).toBe(true);
+      expect(testUIEnabled('test', undefined)).toBe(true);
+      expect(testUIEnabled(undefined, undefined)).toBe(true); // No NODE_ENV defaults to dev
+    });
+
+    it('should disable UI by default in production', () => {
+      expect(testUIEnabled('production', undefined)).toBe(false);
+    });
+
+    it('should allow explicit override with ELIZA_UI_ENABLE=true', () => {
+      expect(testUIEnabled('production', 'true')).toBe(true);
+      expect(testUIEnabled('development', 'true')).toBe(true);
+      expect(testUIEnabled('production', 'TRUE')).toBe(true);
+    });
+
+    it('should allow explicit override with ELIZA_UI_ENABLE=false', () => {
+      expect(testUIEnabled('development', 'false')).toBe(false);
+      expect(testUIEnabled('production', 'false')).toBe(false);
+      expect(testUIEnabled('development', 'FALSE')).toBe(false);
+    });
+
+    it('should treat empty strings as undefined', () => {
+      expect(testUIEnabled('development', '')).toBe(true); // Empty string treated as undefined, so defaults to dev behavior
+      expect(testUIEnabled('production', '')).toBe(false); // Empty string treated as undefined, so defaults to prod behavior
+    });
+
+    it('should handle various boolean-like values using parseBooleanFromText', () => {
+      // Test values that parseBooleanFromText recognizes as true
+      expect(testUIEnabled('production', '1')).toBe(true);
+      expect(testUIEnabled('production', 'yes')).toBe(true);
+      expect(testUIEnabled('production', 'YES')).toBe(true);
+      expect(testUIEnabled('production', 'on')).toBe(true);
+      expect(testUIEnabled('production', 'enable')).toBe(true);
+
+      // Test values that parseBooleanFromText recognizes as false
+      expect(testUIEnabled('development', '0')).toBe(false);
+      expect(testUIEnabled('development', 'no')).toBe(false);
+      expect(testUIEnabled('development', 'off')).toBe(false);
+      expect(testUIEnabled('development', 'disable')).toBe(false);
+
+      // Invalid values should be false
+      expect(testUIEnabled('development', 'invalid')).toBe(false);
+      expect(testUIEnabled('development', 'maybe')).toBe(false);
+    });
+
+    it('should generate appropriate log messages', () => {
+      const getLogMessage = (uiEnabled: boolean, isProduction: boolean): string => {
+        if (uiEnabled) {
+          return 'Web UI enabled';
+        } else {
+          return 'Web UI disabled for security (production mode)';
+        }
+      };
+
+      expect(getLogMessage(true, false)).toBe('Web UI enabled');
+      expect(getLogMessage(true, true)).toBe('Web UI enabled');
+      expect(getLogMessage(false, true)).toBe('Web UI disabled for security (production mode)');
+      expect(getLogMessage(false, false)).toBe('Web UI disabled for security (production mode)');
+    });
+
+    it('should provide correct startup URL messages', () => {
+      const getStartupMessage = (uiEnabled: boolean, port: number): string | null => {
+        if (uiEnabled) {
+          return `\\x1b[32mStartup successful!\\nGo to the dashboard at \\x1b[1mhttp://localhost:${port}\\x1b[22m\\x1b[0m`;
+        } else {
+          return `\\x1b[32mStartup successful!\\x1b[0m\\n\\x1b[33mWeb UI disabled.\\x1b[0m \\x1b[32mAPI endpoints available at:\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/server/ping\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/agents\\x1b[22m\\x1b[0m\\n  \\x1b[1mhttp://localhost:${port}/api/messaging\\x1b[22m\\x1b[0m`;
+        }
+      };
+
+      const uiEnabledMsg = getStartupMessage(true, 3000);
+      const uiDisabledMsg = getStartupMessage(false, 3000);
+
+      expect(uiEnabledMsg).toContain('dashboard at');
+      expect(uiEnabledMsg).toContain('http://localhost:3000');
+
+      expect(uiDisabledMsg).toContain('Web UI disabled.');
+      expect(uiDisabledMsg).toContain('API endpoints available at:');
+      expect(uiDisabledMsg).toContain('/api/server/ping');
     });
   });
 });

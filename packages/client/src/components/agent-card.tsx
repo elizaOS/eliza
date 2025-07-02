@@ -1,22 +1,21 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Assuming Card components
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage } from '@/components/ui/avatar';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 import { formatAgentName, cn } from '@/lib/utils';
-import type { Agent, UUID, Character } from '@elizaos/core';
+import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
-import { InfoIcon, MessageSquare, Settings, Play, UserX, Loader2, PowerOff } from 'lucide-react'; // Icons for actions
-import { useAgentManagement } from '@/hooks/use-agent-management'; // For start/stop logic
+import { MessageSquare, Settings, Loader2 } from 'lucide-react';
+import { useAgentManagement } from '@/hooks/use-agent-management';
 import type { AgentWithStatus } from '@/types';
-import clientLogger from '@/lib/logger'; // Assuming you have a logger
+import clientLogger from '@/lib/logger';
 
 interface AgentCardProps {
-  agent: Partial<AgentWithStatus>; // Use AgentWithStatus from client types
+  agent: Partial<AgentWithStatus>;
   onChat: (agent: Partial<AgentWithStatus>) => void;
-  // onInfo: (agent: Partial<AgentWithStatus>) => void; // If you have an info overlay
-  // onSettings: (agentId: UUID) => void; // If navigating to a specific settings page
 }
 
 const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
@@ -26,14 +25,18 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   if (!agent || !agent.id) {
     clientLogger.error('[AgentCard] Agent data or ID is missing', { agent });
     return (
-      <Card className="p-4 min-h-[220px] flex items-center justify-center text-muted-foreground">
+      <Card className="p-4 min-h-[100px] flex items-center justify-center text-muted-foreground">
         Agent data not available.
       </Card>
     );
   }
-  const agentIdForNav = agent.id; // Store for logging
+
+  const agentIdForNav = agent.id;
   const agentName = agent.name || 'Unnamed Agent';
-  const avatarUrl = agent.settings?.avatar;
+  const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
+  const description =
+    (typeof agent.bio === 'string' && agent.bio.trim()) ||
+    'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -60,144 +63,108 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     updatedAt: typeof agent.updatedAt === 'number' ? agent.updatedAt : Date.now(),
   };
 
-  const handleStart = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleStart = () => {
     startAgent(agentForMutation);
   };
 
-  const handleStop = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleStop = () => {
     stopAgent(agentForMutation);
   };
 
-  const handleCardClick = (e: React.MouseEvent) => {
-    clientLogger.info('[AgentCard] handleCardClick triggered', {
-      agentId: agentIdForNav,
-      currentStatus: agent.status,
-      isActive,
-    });
-    if (!isActive) {
-      clientLogger.info(`[AgentCard] Agent is not active. Navigating to /chat/${agentIdForNav}`);
-      navigate(`/chat/${agentIdForNav}`);
-    } else {
-      clientLogger.info(
-        '[AgentCard] Agent is active. Click intended for chat button or other actions.'
-      );
-      handleChatClick(e);
-    }
+  const handleNewChat = () => {
+    onChat(agent);
   };
 
-  const handleChatClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onChat(agent);
+  const handleSettings = () => {
+    navigate(`/settings/${agentIdForNav}`);
+  };
+
+  const handleToggle = () => {
+    if (isActive) {
+      handleStop();
+    } else {
+      handleStart();
+    }
   };
 
   return (
     <Card
       className={cn(
-        'w-full aspect-square flex flex-col transition-all hover:shadow-xl cursor-pointer relative',
-        isActive ? '' : 'opacity-75 hover:opacity-100'
+        'w-full transition-all hover:shadow-lg hover:bg-muted/30 cursor-pointer bg-card border border-border/50',
+        isActive ? '' : 'opacity-75'
       )}
-      onClick={handleCardClick}
+      onClick={handleNewChat}
       data-testid="agent-card"
     >
-      <CardHeader className="flex flex-row items-center gap-3 absolute w-full h-16">
-        <Avatar className="h-10 w-10 border">
-          <AvatarImage src={avatarUrl} alt={agentName} />
-          {/* Fallback can be initials or generic icon */}
-        </Avatar>
-        <div className="overflow-hidden">
-          <CardTitle
-            className="text-lg truncate overflow-hidden whitespace-nowrap text-ellipsis"
-            title={agentName}
-          >
-            {agentName}
-          </CardTitle>
-          <div className="flex items-center gap-1.5 mt-1">
-            <div
-              className={cn('w-2.5 h-2.5 rounded-full', isActive ? 'bg-green-500' : 'bg-red-500')}
-            />
-            <p className="text-xs text-muted-foreground">
-              {isStarting
-                ? 'Starting...'
-                : isStopping
-                  ? 'Stopping...'
-                  : agent.status?.toString() || CoreAgentStatus.INACTIVE}
+      <CardContent className="p-4 relative">
+        {/* Toggle Switch - positioned absolutely in top-right */}
+        <div className="absolute top-3 right-3">
+          <Switch
+            checked={isActive}
+            onCheckedChange={(checked) => {
+              if (checked !== isActive) {
+                handleToggle();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Toggle ${agentName}`}
+            disabled={isStarting || isStopping}
+            className={cn(
+              isActive
+                ? 'data-[state=checked]:!bg-green-500'
+                : 'data-[state=unchecked]:!bg-gray-500/80'
+            )}
+          />
+        </div>
+
+        <div className="flex items-start gap-4 pr-10">
+          {/* Avatar */}
+          <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
+            <AvatarImage src={avatarUrl} alt={agentName} />
+            <AvatarFallback className="text-lg font-medium rounded-xl">
+              {formatAgentName(agentName)}
+            </AvatarFallback>
+          </Avatar>
+
+          {/* Content - Name and Description */}
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-xl mb-1 truncate" title={agentName}>
+              {agentName}
+            </h3>
+            <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+              {description}
             </p>
           </div>
         </div>
-        {/* Action buttons in header */}
-        <div className="flex items-center gap-1 ml-auto">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/settings/${agentIdForNav}`);
-                }}
-                variant="ghost"
-                size="icon"
-              >
-                <Settings className="h-4 w-4 m-2" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Configure Agent</TooltipContent>
-          </Tooltip>
-          {isActive && !isStopping && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={handleStop} variant="ghost" size="icon">
-                  <PowerOff className="h-4 w-4 m-2 text-red-500" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Stop Agent</TooltipContent>
-            </Tooltip>
-          )}
-          {isStopping && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        </div>
-      </CardHeader>
-      <CardContent className="flex-grow flex items-center justify-center p-0 overflow-hidden">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={agentName}
-            className={cn(
-              'w-full aspect-square object-cover rounded-lg',
-              isActive ? '' : 'grayscale'
-            )}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center rounded-lg justify-center bg-secondary text-2xl font-semibold text-muted-foreground">
-            {formatAgentName(agentName)}
-          </div>
-        )}
-        <div className="absolute bottom-4 right-4">
-          {isActive ? (
-            <Button
-              onClick={handleChatClick}
-              className=""
-              variant="default"
-              size="sm"
-              disabled={isStopping || isStarting} /* Also disable if starting */
-            >
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleStart}
-              disabled={isStarting || isStopping}
-              className=""
-              variant="outline"
-              size="sm"
-            >
-              {isStarting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              {isStarting ? 'Starting...' : 'Start'}
-            </Button>
-          )}
+
+        <Separator className="my-3" />
+
+        <div className="flex items-center justify-between">
+          {/* Settings button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSettings();
+            }}
+            className="h-8 w-8 p-0 hover:bg-muted/50"
+          >
+            <Settings className="h-4 w-4 text-muted-foreground" />
+          </Button>
+
+          {/* New Chat button - ghost variant */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNewChat();
+            }}
+            className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30"
+          >
+            New Chat
+          </Button>
         </div>
       </CardContent>
     </Card>
