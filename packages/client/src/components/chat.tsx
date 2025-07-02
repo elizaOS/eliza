@@ -987,7 +987,7 @@ export default function Chat({
   const renderChatHeader = () => {
     if (chatType === ChannelType.DM && targetAgentData) {
       return (
-        <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+        <div className="flex items-center justify-between mb-4 p-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="relative flex-shrink-0">
               <Avatar className="size-4 sm:size-10 border rounded-full">
