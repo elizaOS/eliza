@@ -104,14 +104,12 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
               variant={isUser ? 'sent' : 'received'}
               className={`flex flex-col gap-1 ${isUser ? 'flex-row-reverse' : ''}`}
             >
-              {!isUser && (
+              {!isUser && chatType === ChannelType.GROUP && (
                 <div className='flex items-center gap-2 text-muted-foreground'>
                   <Avatar className="size-8 border rounded-full select-none">
                     <AvatarImage
                       src={getAgentAvatar(
-                        chatType === ChannelType.DM
-                          ? targetAgentData
-                          : senderAgent ||
+                        senderAgent ||
                               (agentAvatarMap && message.senderId && allAgents
                                 ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
                                 : undefined)
