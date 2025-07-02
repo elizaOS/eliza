@@ -94,8 +94,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           !isUser && getAgentInMessage
             ? getAgentInMessage(message.senderId)
             : undefined;
-
-            console.log("debuggggg", senderAgent)
+        
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
