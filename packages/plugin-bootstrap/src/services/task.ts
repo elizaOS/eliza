@@ -168,6 +168,124 @@ export class TaskService extends Service {
   }
 
   /**
+   * Checks if a scheduled task should run based on its schedule
+   */
+  private shouldRunScheduledTask(
+    task: Task,
+    currentDate: Date,
+    scheduledTime: Date,
+    lastRunTime: number,
+    updateInterval: number
+  ): boolean {
+    const timeSinceLastRun = currentDate.getTime() - lastRunTime;
+
+    if (lastRunTime === 0) {
+      // First run - only run if we've passed the scheduled time
+      const timeSinceScheduled = currentDate.getTime() - scheduledTime.getTime();
+
+      // Check if we've just passed the scheduled time (within 60 seconds after)
+      const justPassed = timeSinceScheduled >= 0 && timeSinceScheduled <= 60000;
+
+      // Also check if we've passed the scheduled time today but within the update interval
+      const hasPassedToday = timeSinceScheduled > 0 && timeSinceScheduled < updateInterval;
+
+      if (justPassed) {
+        logger.debug(
+          `[Bootstrap] Scheduled task ${task.name} triggered at ${scheduledTime.getUTCHours()}:${scheduledTime.getUTCMinutes().toString().padStart(2, '0')} UTC`
+        );
+        return true;
+      } else if (hasPassedToday && !justPassed) {
+        logger.debug(`[Bootstrap] Scheduled task ${task.name} missed exact window, running now`);
+        return true;
+      }
+      return false;
+    } else {
+      // Subsequent runs - check if we've passed the scheduled time AND interval has passed
+      const timeSinceScheduled = currentDate.getTime() - scheduledTime.getTime();
+      const isScheduledTime = timeSinceScheduled >= 0 && timeSinceScheduled <= 60000;
+      return isScheduledTime && timeSinceLastRun >= updateInterval;
+    }
+  }
+
+  /**
+   * Process a scheduled task (task with scheduledHour and scheduledMinute)
+   */
+  private async processScheduledTask(task: Task): Promise<void> {
+    if (!task.metadata) return;
+
+    const currentDate = new Date();
+    const hour = typeof task.metadata.scheduledHour === 'number' ? task.metadata.scheduledHour : 0;
+    const minute =
+      typeof task.metadata.scheduledMinute === 'number' ? task.metadata.scheduledMinute : 0;
+
+    // Create scheduled time in UTC
+    const todayScheduled = new Date();
+    todayScheduled.setUTCHours(hour, minute, 0, 0);
+
+    const lastRunTime = typeof task.metadata.updatedAt === 'number' ? task.metadata.updatedAt : 0;
+    const updateInterval =
+      typeof task.metadata.updateInterval === 'number'
+        ? task.metadata.updateInterval
+        : 24 * 60 * 60 * 1000; // Default 24 hours
+
+    const shouldRun = this.shouldRunScheduledTask(
+      task,
+      currentDate,
+      todayScheduled,
+      lastRunTime,
+      updateInterval
+    );
+
+    if (shouldRun) {
+      await this.executeTask(task);
+    }
+  }
+
+  /**
+   * Process an interval-based task
+   */
+  private async processIntervalTask(task: Task, now: number): Promise<void> {
+    // Non-repeating tasks execute immediately
+    if (!task.tags?.includes('repeat')) {
+      await this.executeTask(task);
+      return;
+    }
+
+    // Get task start time from various sources
+    const taskStartTime = this.getTaskStartTime(task);
+    const updateIntervalMs = task.metadata?.updateInterval ?? 0;
+
+    // Check for immediate execution
+    if (task.metadata?.updatedAt === task.metadata?.createdAt && task.tags?.includes('immediate')) {
+      logger.debug(`[Bootstrap] Immediately running task ${task.name}`);
+      await this.executeTask(task);
+      return;
+    }
+
+    // Check if enough time has passed since last update
+    if (now - taskStartTime >= updateIntervalMs) {
+      logger.debug(
+        `[Bootstrap] Executing task ${task.name} - interval of ${updateIntervalMs}ms has elapsed`
+      );
+      await this.executeTask(task);
+    }
+  }
+
+  /**
+   * Get the start time for a task, checking multiple sources
+   */
+  private getTaskStartTime(task: Task): number {
+    if (typeof task.updatedAt === 'number') {
+      return task.updatedAt;
+    } else if (task.metadata?.updatedAt && typeof task.metadata.updatedAt === 'number') {
+      return task.metadata.updatedAt;
+    } else if (task.updatedAt) {
+      return new Date(task.updatedAt).getTime();
+    }
+    return 0; // Default to immediate execution if no timestamp found
+  }
+
+  /**
    * Asynchronous method that checks tasks with "queue" tag, validates and sorts them, then executes them based on interval and tags.
    *
    * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
@@ -182,55 +300,24 @@ export class TaskService extends Service {
       // validate the tasks and sort them
       const tasks = await this.validateTasks(allTasks);
 
+      if (tasks.length > 0) {
+        logger.debug(`[Bootstrap] Checking ${tasks.length} queued tasks`);
+      }
+
       const now = Date.now();
 
       for (const task of tasks) {
-        // First check task.updatedAt (for newer task format)
-        // Then fall back to task.metadata.updatedAt (for older tasks)
-        // Finally default to 0 if neither exists
-        let taskStartTime: number;
-
-        // if tags does not contain "repeat", execute immediately
-        if (!task.tags?.includes('repeat')) {
-          // does not contain repeat
-          await this.executeTask(task);
+        // Check if this is a time-of-day scheduled task
+        if (
+          task.metadata?.scheduledHour !== undefined &&
+          task.metadata?.scheduledMinute !== undefined
+        ) {
+          await this.processScheduledTask(task);
           continue;
         }
 
-        if (typeof task.updatedAt === 'number') {
-          taskStartTime = task.updatedAt;
-        } else if (task.metadata?.updatedAt && typeof task.metadata.updatedAt === 'number') {
-          taskStartTime = task.metadata.updatedAt;
-        } else if (task.updatedAt) {
-          taskStartTime = new Date(task.updatedAt).getTime();
-        } else {
-          taskStartTime = 0; // Default to immediate execution if no timestamp found
-        }
-
-        // Get updateInterval from metadata
-        const updateIntervalMs = task.metadata?.updateInterval ?? 0; // update immediately
-
-        // if tags does not contain "repeat", execute immediately
-        if (!task.tags?.includes('repeat')) {
-          await this.executeTask(task);
-          continue;
-        }
-
-        if (task.metadata?.updatedAt === task.metadata?.createdAt) {
-          if (task.tags?.includes('immediate')) {
-            logger.debug('[Bootstrap] Immediately running task', task.name);
-            await this.executeTask(task);
-            continue;
-          }
-        }
-
-        // Check if enough time has passed since last update
-        if (now - taskStartTime >= updateIntervalMs) {
-          logger.debug(
-            `[Bootstrap] Executing task ${task.name} - interval of ${updateIntervalMs}ms has elapsed`
-          );
-          await this.executeTask(task);
-        }
+        // Process interval-based tasks
+        await this.processIntervalTask(task, now);
       }
     } catch (error) {
       logger.error('[Bootstrap] Error checking tasks:', error);
