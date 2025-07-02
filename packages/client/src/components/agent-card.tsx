@@ -110,14 +110,12 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             aria-label={`Toggle ${agentName}`}
             disabled={isStarting || isStopping}
             className={cn(
-              isActive
-                ? 'data-[state=checked]:!bg-green-600'
-                : 'data-[state=unchecked]:!bg-red-600'
+              isActive ? 'data-[state=checked]:!bg-green-600' : 'data-[state=unchecked]:!bg-red-600'
             )}
           />
         </div>
 
-        <div className='flex flex-col justify-between'>
+        <div className="flex flex-col justify-between">
           <div className="flex items-center gap-4 p-2">
             {/* Avatar */}
             <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
@@ -166,7 +164,6 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             </Button>
           </div>
         </div>
-        
       </CardContent>
     </Card>
   );
