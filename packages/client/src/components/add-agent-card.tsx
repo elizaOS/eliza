@@ -47,7 +47,7 @@ const AddAgentCard: React.FC = () => {
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-xl mb-1 text-muted-foreground">Create New Agent</h3>
             <p className="text-sm text-muted-foreground/70 line-clamp-2 leading-relaxed">
-              Add a new AI agent to your collection
+              Add a new AI agent to your <br></br> collection
             </p>
           </div>
         </div>
