@@ -31,9 +31,9 @@ export function useElevenLabsVoices() {
   return useQuery({
     queryKey: ['elevenlabs-voices', apiKey],
     queryFn: async () => {
-      // If no API key is available, use the hardcoded models
+      // If no API key is available, return empty array (no custom voices)
       if (!apiKey) {
-        return elevenLabsVoiceModels;
+        return [];
       }
 
       try {
@@ -46,7 +46,7 @@ export function useElevenLabsVoices() {
 
         if (!response.ok) {
           console.error('Failed to fetch ElevenLabs voices:', response.statusText);
-          return elevenLabsVoiceModels;
+          return [];
         }
 
         const data = await response.json();
@@ -72,7 +72,7 @@ export function useElevenLabsVoices() {
         return apiVoices;
       } catch (error) {
         console.error('Error fetching ElevenLabs voices:', error);
-        return elevenLabsVoiceModels;
+        return [];
       }
     },
     // Refresh the data every hour
