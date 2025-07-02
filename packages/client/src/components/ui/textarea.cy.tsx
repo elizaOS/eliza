@@ -11,7 +11,7 @@ describe('Textarea Component', () => {
     cy.get('textarea').should('exist');
     cy.get('textarea').should('have.attr', 'placeholder', 'Enter your message');
     cy.get('textarea').should('have.class', 'flex');
-    cy.get('textarea').should('have.class', 'min-h-[60px]');
+    cy.get('textarea').should('have.class', 'min-h-[120px]');
   });
 
   it('accepts user input', () => {
@@ -96,7 +96,7 @@ describe('Textarea Component', () => {
 
     cy.get('textarea').focus();
     cy.get('textarea').should('have.focus');
-    cy.get('textarea').should('have.class', 'focus-visible:ring');
+    cy.get('textarea').should('have.class', 'focus-visible:ring-1');
   });
 
   it('handles long content properly', () => {
