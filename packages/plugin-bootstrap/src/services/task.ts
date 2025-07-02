@@ -180,24 +180,26 @@ export class TaskService extends Service {
     const timeSinceLastRun = currentDate.getTime() - lastRunTime;
 
     if (lastRunTime === 0) {
-      // First run - only run if we've passed the scheduled time
+      // First run - only run if we're within the scheduled time window
       const timeSinceScheduled = currentDate.getTime() - scheduledTime.getTime();
 
-      // Check if we've just passed the scheduled time (within 60 seconds after)
-      const justPassed = timeSinceScheduled >= 0 && timeSinceScheduled <= 60000;
+      // Check if we're within 60 seconds of the scheduled time
+      const isWithinWindow = timeSinceScheduled >= 0 && timeSinceScheduled <= 60000;
 
-      // Also check if we've passed the scheduled time today but within the update interval
-      const hasPassedToday = timeSinceScheduled > 0 && timeSinceScheduled < updateInterval;
-
-      if (justPassed) {
+      if (isWithinWindow) {
         logger.debug(
           `[Bootstrap] Scheduled task ${task.name} triggered at ${scheduledTime.getUTCHours()}:${scheduledTime.getUTCMinutes().toString().padStart(2, '0')} UTC`
         );
         return true;
-      } else if (hasPassedToday && !justPassed) {
-        logger.debug(`[Bootstrap] Scheduled task ${task.name} missed exact window, running now`);
-        return true;
       }
+
+      // For first run, if we've already passed today's scheduled time, wait until tomorrow
+      if (timeSinceScheduled > 60000) {
+        logger.debug(
+          `[Bootstrap] Scheduled task ${task.name} missed today's window (scheduled for ${scheduledTime.getUTCHours()}:${scheduledTime.getUTCMinutes().toString().padStart(2, '0')} UTC), will run tomorrow`
+        );
+      }
+
       return false;
     } else {
       // Subsequent runs - check if we've passed the scheduled time AND interval has passed
@@ -218,9 +220,18 @@ export class TaskService extends Service {
     const minute =
       typeof task.metadata.scheduledMinute === 'number' ? task.metadata.scheduledMinute : 0;
 
-    // Create scheduled time in UTC
-    const todayScheduled = new Date();
-    todayScheduled.setUTCHours(hour, minute, 0, 0);
+    // Create scheduled time in UTC for today
+    const scheduledTime = new Date();
+    scheduledTime.setUTCHours(hour, minute, 0, 0);
+
+    // If we've already passed today's scheduled time and this is not within the execution window,
+    // we should be checking against tomorrow's scheduled time
+    const timeSinceScheduled = currentDate.getTime() - scheduledTime.getTime();
+    if (timeSinceScheduled > 60000) {
+      // More than 60 seconds past scheduled time
+      // Move to tomorrow's scheduled time
+      scheduledTime.setUTCDate(scheduledTime.getUTCDate() + 1);
+    }
 
     const lastRunTime = typeof task.metadata.updatedAt === 'number' ? task.metadata.updatedAt : 0;
     const updateInterval =
@@ -231,7 +242,7 @@ export class TaskService extends Service {
     const shouldRun = this.shouldRunScheduledTask(
       task,
       currentDate,
-      todayScheduled,
+      scheduledTime,
       lastRunTime,
       updateInterval
     );
@@ -312,6 +323,7 @@ export class TaskService extends Service {
           task.metadata?.scheduledHour !== undefined &&
           task.metadata?.scheduledMinute !== undefined
         ) {
+          logger.debug(`[Bootstrap] Processing scheduled task ${task.name}`);
           await this.processScheduledTask(task);
           continue;
         }
