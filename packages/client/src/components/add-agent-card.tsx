@@ -23,7 +23,7 @@ const AddAgentCard: React.FC = () => {
 
   return (
     <Card
-      className="w-full cursor-pointer hover:shadow-lg transition-shadow border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 bg-card/50"
+      className="w-full cursor-pointer hover:shadow-lg transition-all border-2 border-dashed border-muted-foreground/30 bg-card/50 hover:bg-card/80"
       onClick={handleCardClick}
       onKeyPress={(e) => e.key === 'Enter' && handleClick()}
       tabIndex={0}
