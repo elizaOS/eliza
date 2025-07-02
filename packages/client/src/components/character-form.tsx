@@ -29,9 +29,9 @@ import {
   SelectLabel,
   SelectSeparator,
 } from '@/components/ui/select';
-import { 
-  getAllVoiceModels, 
-  getVoiceModelByValue, 
+import {
+  getAllVoiceModels,
+  getVoiceModelByValue,
   providerPluginMap,
   localVoiceModels,
   openAIVoiceModels,
@@ -619,9 +619,9 @@ export default function CharacterForm({
                 <SelectGroup>
                   <SelectItem value="none">No Voice</SelectItem>
                 </SelectGroup>
-                
+
                 <SelectSeparator />
-                
+
                 <SelectGroup>
                   <SelectLabel>Local Voices</SelectLabel>
                   {localVoiceModels.map((model) => (
@@ -630,9 +630,9 @@ export default function CharacterForm({
                     </SelectItem>
                   ))}
                 </SelectGroup>
-                
+
                 <SelectSeparator />
-                
+
                 <SelectGroup>
                   <SelectLabel>OpenAI Voices</SelectLabel>
                   {openAIVoiceModels.map((model) => (
@@ -641,9 +641,9 @@ export default function CharacterForm({
                     </SelectItem>
                   ))}
                 </SelectGroup>
-                
+
                 <SelectSeparator />
-                
+
                 <SelectGroup>
                   <SelectLabel>ElevenLabs Voices</SelectLabel>
                   {/* Show default ElevenLabs voices from config */}
@@ -653,11 +653,13 @@ export default function CharacterForm({
                     </SelectItem>
                   ))}
                   {/* Show custom ElevenLabs voices if available */}
-                  {elevenlabsVoices && elevenlabsVoices.length > 0 && elevenlabsVoices.map((voice) => (
-                    <SelectItem key={voice.value} value={voice.value}>
-                      {voice.label.replace('ElevenLabs - ', '')}
-                    </SelectItem>
-                  ))}
+                  {elevenlabsVoices &&
+                    elevenlabsVoices.length > 0 &&
+                    elevenlabsVoices.map((voice) => (
+                      <SelectItem key={voice.value} value={voice.value}>
+                        {voice.label.replace('ElevenLabs - ', '')}
+                      </SelectItem>
+                    ))}
                 </SelectGroup>
               </>
             ) : (
@@ -678,8 +680,10 @@ export default function CharacterForm({
           onChange={handleChange}
         />
       )}
-      
-      {field.description && <p className="text-xs text-muted-foreground mt-1">{field.description}</p>}
+
+      {field.description && (
+        <p className="text-xs text-muted-foreground mt-1">{field.description}</p>
+      )}
     </div>
   );
 
@@ -691,13 +695,15 @@ export default function CharacterForm({
           (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
             FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
       </Label>
-      
+
       <ArrayInput
         data={field.getData(characterValue)}
         onChange={(newData) => updateArray(field.path, newData)}
       />
-      
-      {field.description && <p className="text-xs text-muted-foreground mt-1">{field.description}</p>}
+
+      {field.description && (
+        <p className="text-xs text-muted-foreground mt-1">{field.description}</p>
+      )}
     </div>
   );
 
@@ -836,9 +842,7 @@ export default function CharacterForm({
         <div className="mb-8">
           {title && <h1 className="text-2xl font-semibold mb-2">{title}</h1>}
           {description && (
-            <p className="text-sm text-muted-foreground whitespace-pre-line">
-              {description}
-            </p>
+            <p className="text-sm text-muted-foreground whitespace-pre-line">{description}</p>
           )}
         </div>
       )}

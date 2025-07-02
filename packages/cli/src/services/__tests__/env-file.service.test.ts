@@ -38,7 +38,7 @@ describe('EnvFileService', () => {
   beforeEach(async () => {
     service = new EnvFileService('/test/.env');
     // Reset all mocks
-    Object.values(mockFs.promises).forEach(fn => fn.mockClear?.());
+    Object.values(mockFs.promises).forEach((fn) => fn.mockClear?.());
     mockFs.existsSync.mockClear?.();
     mockLogger.info.mockClear?.();
     mockLogger.error.mockClear?.();
@@ -55,7 +55,7 @@ describe('EnvFileService', () => {
         EXISTING_KEY: 'new_value',
         NEW_KEY: 'new_key_value',
       };
-      
+
       // Create a copy to verify the original is not mutated
       const varsCopy = { ...originalVars };
 
@@ -91,7 +91,7 @@ describe('EnvFileService', () => {
 
       // Verify the file was written correctly
       expect(mockFs.promises.writeFile).toHaveBeenCalled();
-      const calls = (mockFs.promises.writeFile.mock.calls as any[]);
+      const calls = mockFs.promises.writeFile.mock.calls as any[];
       expect(calls.length).toBe(1);
       expect(calls[0]).toEqual(['/test/.env', 'TEST_KEY=test_value\n', 'utf-8']);
     });
@@ -136,4 +136,4 @@ describe('EnvFileService', () => {
       service.read = originalRead;
     });
   });
-}); 
+});

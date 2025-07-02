@@ -119,7 +119,7 @@ export const writeEnvFile = async (cwd: string, vars: Record<string, string>): P
   const envService = createEnvFileService(envPath);
   await envService.write(vars, {
     preserveComments: false,
-    updateProcessEnv: true
+    updateProcessEnv: true,
   });
 };
 
@@ -176,9 +176,7 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
   if (type === 'boolean') {
     const defaultBool = defaultValue === 'true' || String(explicitDefault).toLowerCase() === 'true';
     const response = await clack.confirm({
-      message: required 
-        ? `Enable ${varName}?`
-        : `Enable ${varName}? (optional)`,
+      message: required ? `Enable ${varName}?` : `Enable ${varName}? (optional)`,
       initialValue: defaultBool,
     });
 
@@ -197,15 +195,15 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 
   // Handle number type
   if (type === 'number') {
-    const message = defaultValue 
-      ? `Enter ${varName} (default: ${String(defaultValue)})` 
-      : required 
+    const message = defaultValue
+      ? `Enter ${varName} (default: ${String(defaultValue)})`
+      : required
         ? `Enter ${varName}`
         : `Enter ${varName} (press Enter to skip)`;
 
     const promptConfig = {
       message,
-      placeholder: required 
+      placeholder: required
         ? String(defaultValue || 'Enter a number')
         : String(defaultValue || 'Press Enter to skip'),
       initialValue: defaultValue ? String(defaultValue) : undefined,
@@ -214,7 +212,7 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
         if ((!input || input.trim() === '') && !required) {
           return undefined;
         }
-        
+
         if ((!input || input.trim() === '') && required && !defaultValue) {
           return 'This field cannot be empty. Press Ctrl+C to cancel.';
         }
@@ -242,15 +240,15 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 
   // Handle array type (comma-separated values)
   if (type === 'array') {
-    const message = defaultValue 
-      ? `Enter ${varName} (comma-separated, default: ${String(defaultValue)})` 
-      : required 
+    const message = defaultValue
+      ? `Enter ${varName} (comma-separated, default: ${String(defaultValue)})`
+      : required
         ? `Enter ${varName} (comma-separated values)`
         : `Enter ${varName} (comma-separated values, press Enter to skip)`;
 
     const promptConfig = {
       message,
-      placeholder: required 
+      placeholder: required
         ? String(defaultValue || 'value1,value2,value3')
         : String(defaultValue || 'Press Enter to skip'),
       initialValue: defaultValue ? String(defaultValue) : undefined,
@@ -259,7 +257,7 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
         if ((!input || input.trim() === '') && !required) {
           return undefined;
         }
-        
+
         if ((!input || input.trim() === '') && required && !defaultValue) {
           return 'This field cannot be empty. Press Ctrl+C to cancel.';
         }
@@ -279,7 +277,11 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
     const finalValue = (response && response.trim()) || defaultValue || '';
     if (finalValue) {
       // Remove spaces after commas for consistency
-      return finalValue.split(',').map(v => v.trim()).filter(v => v).join(',');
+      return finalValue
+        .split(',')
+        .map((v) => v.trim())
+        .filter((v) => v)
+        .join(',');
     }
     return finalValue;
   }
@@ -287,16 +289,16 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
   // Handle JSON object type
   if (type === 'json') {
     clack.log.info('Enter a JSON object. For multi-line input, use the editor.');
-    
-    const message = defaultValue 
-      ? `Enter ${varName} JSON (default: ${String(defaultValue)})` 
-      : required 
+
+    const message = defaultValue
+      ? `Enter ${varName} JSON (default: ${String(defaultValue)})`
+      : required
         ? `Enter ${varName} JSON`
         : `Enter ${varName} JSON (press Enter to skip)`;
 
     const promptConfig = {
       message,
-      placeholder: required 
+      placeholder: required
         ? String(defaultValue || '{"key": "value"}')
         : String(defaultValue || 'Press Enter to skip'),
       initialValue: defaultValue ? String(defaultValue) : undefined,
@@ -305,7 +307,7 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
         if ((!input || input.trim() === '') && !required) {
           return undefined;
         }
-        
+
         if ((!input || input.trim() === '') && required && !defaultValue) {
           return 'This field cannot be empty. Press Ctrl+C to cancel.';
         }
@@ -345,16 +347,16 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 
   // Default string handling (existing code)
   // Create a more informative message with better formatting
-  const message = defaultValue 
-    ? `Enter ${varName} (default: ${String(defaultValue)})` 
-    : required 
+  const message = defaultValue
+    ? `Enter ${varName} (default: ${String(defaultValue)})`
+    : required
       ? `Enter ${varName}`
       : `Enter ${varName} (press Enter to skip)`;
-  
+
   // Ensure placeholder is always a string
-  const placeholder = isSecret 
-    ? 'Your secret key/token...' 
-    : required 
+  const placeholder = isSecret
+    ? 'Your secret key/token...'
+    : required
       ? String(defaultValue || 'Required value')
       : String(defaultValue || 'Press Enter to skip');
 
@@ -417,11 +419,11 @@ export const promptForEnvVar = async (varName: string, config: EnvVarConfig): Pr
 export const updateEnvFile = async (cwd: string, varName: string, value: string): Promise<void> => {
   const envPath = path.join(cwd, '.env');
   const envService = createEnvFileService(envPath);
-  
+
   // Update the environment variable and process.env
   await envService.update(varName, value, {
     preserveComments: true,
-    updateProcessEnv: true
+    updateProcessEnv: true,
   });
 };
 
@@ -437,7 +439,7 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
     // Try with @elizaos/ prefix
     const elizaosPackageName = `@elizaos/${packageName.replace('plugin-', '')}`;
     envRequirements = await extractPluginEnvRequirements(elizaosPackageName, cwd);
-    
+
     // Also try with @elizaos/plugin- prefix
     if (Object.keys(envRequirements).length === 0) {
       const elizaosPluginPackageName = `@elizaos/plugin-${packageName.replace('plugin-', '')}`;
@@ -451,9 +453,9 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
     const possiblePackages = [
       packageName,
       `@elizaos/${packageName.replace('plugin-', '')}`,
-      `@elizaos/plugin-${packageName.replace('plugin-', '')}`
+      `@elizaos/plugin-${packageName.replace('plugin-', '')}`,
     ];
-    
+
     let packageFound = false;
     for (const pkg of possiblePackages) {
       const pkgPath = path.join(nodeModulesPath, ...pkg.split('/'));
@@ -462,13 +464,15 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
         break;
       }
     }
-    
+
     if (packageFound) {
       logger.debug(`Package ${packageName} found but has no environment variables defined`);
       clack.log.success(`No environment variables required for ${packageName}`);
     } else {
       logger.debug(`Package ${packageName} not found in node_modules`);
-      clack.log.warn(`Could not find ${packageName} in node_modules. Environment variables may need to be configured manually.`);
+      clack.log.warn(
+        `Could not find ${packageName} in node_modules. Environment variables may need to be configured manually.`
+      );
     }
     return;
   }

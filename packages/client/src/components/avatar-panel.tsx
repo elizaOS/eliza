@@ -124,7 +124,9 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
 
           <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground mt-1">
             <Info className="w-3.5 h-3.5" />
-            <span>Images greater than {AVATAR_IMAGE_MAX_SIZE}x{AVATAR_IMAGE_MAX_SIZE} will be resized</span>
+            <span>
+              Images greater than {AVATAR_IMAGE_MAX_SIZE}x{AVATAR_IMAGE_MAX_SIZE} will be resized
+            </span>
           </div>
         </div>
       </div>

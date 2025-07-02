@@ -91,10 +91,8 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           message.id === animatedMessageId;
 
         const senderAgent =
-          !isUser && getAgentInMessage
-            ? getAgentInMessage(message.senderId)
-            : undefined;
-        
+          !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : undefined;
+
         return (
           <div
             key={`${message.id}-${message.createdAt}`}
@@ -105,14 +103,14 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
               className={`flex flex-col gap-1 ${isUser ? 'flex-row-reverse' : ''}`}
             >
               {!isUser && chatType === ChannelType.GROUP && (
-                <div className='flex items-center gap-2 text-muted-foreground'>
+                <div className="flex items-center gap-2 text-muted-foreground">
                   <Avatar className="size-8 border rounded-full select-none">
                     <AvatarImage
                       src={getAgentAvatar(
                         senderAgent ||
-                              (agentAvatarMap && message.senderId && allAgents
-                                ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                                : undefined)
+                          (agentAvatarMap && message.senderId && allAgents
+                            ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                            : undefined)
                       )}
                     />
                   </Avatar>

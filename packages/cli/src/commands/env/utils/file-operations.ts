@@ -40,7 +40,7 @@ export async function writeEnvFile(filePath: string, envVars: EnvVars): Promise<
   const service = createEnvFileService(filePath);
   await service.write(envVars, {
     preserveComments: true,
-    updateProcessEnv: true
+    updateProcessEnv: true,
   });
 }
 
@@ -57,7 +57,7 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
 
     const service = createEnvFileService(filePath);
     const envVars = await service.read();
-    
+
     if (Object.keys(envVars).length === 0) {
       return false; // No variables to reset
     }
@@ -69,9 +69,9 @@ export async function resetEnvFile(filePath: string): Promise<boolean> {
 
     await service.write(resetVars, {
       preserveComments: true,
-      updateProcessEnv: false // Don't update process.env with empty values
+      updateProcessEnv: false, // Don't update process.env with empty values
     });
-    
+
     return true;
   } catch (error) {
     console.error(
