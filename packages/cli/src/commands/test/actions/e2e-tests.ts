@@ -1,11 +1,6 @@
 import { loadProject } from '@/src/project';
 import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
-import {
-  buildProject,
-  findNextAvailablePort,
-  TestRunner,
-  UserEnvironment,
-} from '@/src/utils';
+import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent, Project } from '@elizaos/core';
 import * as dotenv from 'dotenv';

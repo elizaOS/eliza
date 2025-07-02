@@ -52,8 +52,8 @@ export function useElevenLabsVoices() {
         const data = await response.json();
 
         // Get the IDs of the default voices we already have
-        const defaultVoiceIds = elevenLabsVoiceModels.map(v => v.value);
-        
+        const defaultVoiceIds = elevenLabsVoiceModels.map((v) => v.value);
+
         // Filter to only include custom/cloned voices (those not in the default list)
         const customVoices: ElevenLabsVoice[] = data.voices.filter(
           (voice: ElevenLabsVoice) => !defaultVoiceIds.includes(voice.voice_id)

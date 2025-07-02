@@ -202,17 +202,20 @@ export function MessageContent({
               title={attachment.title || 'Attachment'}
             />
           ))}
-
-        
       </ChatBubbleMessage>
 
       <div className="flex items-center justify-between w-full p-1">
         <div>
-          {(!isUser && (message.text || message.attachments?.length)) && message.createdAt && (
-            <ChatBubbleTimestamp className="text-muted-foreground" timestamp={moment(message.createdAt).format('LT')} />
+          {!isUser && (message.text || message.attachments?.length) && message.createdAt && (
+            <ChatBubbleTimestamp
+              className="text-muted-foreground"
+              timestamp={moment(message.createdAt).format('LT')}
+            />
           )}
         </div>
-        <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500`}>
+        <div
+          className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+        >
           {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />

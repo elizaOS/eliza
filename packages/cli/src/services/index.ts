@@ -4,5 +4,5 @@ export {
   createEnvFileService,
   type EnvVarEntry,
   type WriteOptions,
-  type ValidationResult
-} from './env-file.service'; 
+  type ValidationResult,
+} from './env-file.service';

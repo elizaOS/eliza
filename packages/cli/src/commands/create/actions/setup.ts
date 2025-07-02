@@ -328,14 +328,14 @@ export async function setupEmbeddingModelConfig(
  */
 function resolveModelToPlugin(modelName: string): string | null {
   const modelToPlugin: Record<string, string> = {
-    'openai': 'openai',
-    'claude': 'anthropic',
-    'anthropic': 'anthropic',
-    'openrouter': 'openrouter',
-    'ollama': 'ollama',
-    'google': 'google'
+    openai: 'openai',
+    claude: 'anthropic',
+    anthropic: 'anthropic',
+    openrouter: 'openrouter',
+    ollama: 'ollama',
+    google: 'google',
   };
-  
+
   return modelToPlugin[modelName] || null;
 }
 
@@ -352,22 +352,24 @@ async function installModelPlugin(
     console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
     return;
   }
-  
+
   const purposeText = purpose ? ` ${purpose}` : '';
-  
+
   try {
     console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
     await installPlugin(pluginName, targetDir);
     console.info(`✅ Installed plugin successfully!`);
   } catch (error) {
-    console.warn(`⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.warn(
+      `⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
     console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
   }
 }
 
 /**
  * Installs dependencies for the specified target directory.
- * 
+ *
  * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
  * we use stdio: 'inherit' here so the user sees the install progress in real-time
  */
@@ -379,7 +381,7 @@ export async function installDependencies(targetDir: string): Promise<void> {
   }
 
   console.info('Installing dependencies...');
-  
+
   // run bun install and let it inherit our stdio so user sees progress
   const subprocess = await execa('bun', ['install'], {
     cwd: targetDir,
@@ -393,7 +395,7 @@ export async function installDependencies(targetDir: string): Promise<void> {
   // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
   const exitCode = subprocess.exitCode;
   const isSignalTermination = exitCode == null || exitCode >= 128;
-  
+
   if (exitCode !== 0 && !isSignalTermination) {
     throw new Error(`Dependency installation failed with exit code ${exitCode}`);
   }
@@ -438,7 +440,7 @@ export async function setupProjectEnvironment(
     // Compare resolved plugin names to avoid duplicate installations
     const aiPluginName = resolveModelToPlugin(aiModel);
     const embeddingPluginName = resolveModelToPlugin(embeddingModel);
-    
+
     if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
       await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
     }
