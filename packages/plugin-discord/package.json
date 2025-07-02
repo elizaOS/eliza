@@ -1,0 +1,94 @@
+{
+  "name": "@elizaos/plugin-discord",
+  "version": "1.0.10",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-discord.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/rest": "2.4.3",
+    "@discordjs/voice": "0.18.0",
+    "@elizaos/core": "^1.0.4",
+    "discord.js": "14.18.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "get-func-name": "^3.0.0",
+    "libsodium-wrappers": "^0.7.13",
+    "opusscript": "^0.1.1",
+    "prism-media": "1.3.5",
+    "typescript": "^5.8.3",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "elizaos test",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "DISCORD_API_TOKEN": {
+        "type": "string",
+        "description": "Discord API token used to authenticate and log in the Discord client/service.",
+        "required": true,
+        "sensitive": true
+      },
+      "DISCORD_APPLICATION_ID": {
+        "type": "string",
+        "description": "Discord application ID for the bot",
+        "required": true,
+        "sensitive": false
+      },
+      "CHANNEL_IDS": {
+        "type": "string",
+        "description": "Comma-separated list of Discord channel IDs that will be parsed into an array if provided.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_TEST_CHANNEL_ID": {
+        "type": "string",
+        "description": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
+        "required": false,
+        "sensitive": false
+      },
+      "DISCORD_VOICE_CHANNEL_ID": {
+        "type": "string",
+        "description": "ID of the Discord voice channel the bot should join when scanning a guild. If not supplied, the bot selects a channel based on member activity.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}
