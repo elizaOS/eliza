@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
@@ -136,7 +137,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           </div>
         </div>
 
-        <div className="flex items-center justify-between mt-3">
+        <Separator className="my-3" />
+
+        <div className="flex items-center justify-between">
           {/* Settings button */}
           <Button
             variant="ghost"
@@ -158,7 +161,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               e.stopPropagation();
               handleNewChat();
             }}
-            className="h-8 px-4 rounded-full border-muted-foreground/20 hover:bg-muted/30"
+            className="h-8 px-4 rounded-md border-muted-foreground/20 hover:bg-muted/30"
           >
             <MessageSquare className="h-4 w-4 mr-2" />
             New Chat

@@ -1,8 +1,9 @@
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Plus, Settings } from 'lucide-react';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, Settings, MessageSquare } from 'lucide-react';
 
 const AddAgentCard: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +52,9 @@ const AddAgentCard: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center justify-between mt-3">
+        <Separator className="my-3" />
+
+        <div className="flex items-center justify-between">
           {/* Settings button placeholder */}
           <Button
             variant="ghost"
@@ -70,7 +73,7 @@ const AddAgentCard: React.FC = () => {
               e.stopPropagation();
               handleClick();
             }}
-            className="h-8 px-4 rounded-full border-muted-foreground/20 hover:bg-muted/30"
+            className="h-8 px-4 rounded-md border-muted-foreground/20 hover:bg-muted/30"
           >
             <Plus className="h-4 w-4 mr-2" />
             Create
