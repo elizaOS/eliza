@@ -119,7 +119,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
 
         <div className="flex items-start gap-4 pr-10">
           {/* Avatar */}
-          <Avatar className="h-18 w-18 flex-shrink-0 rounded-xl">
+          <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
             <AvatarImage src={avatarUrl} alt={agentName} />
             <AvatarFallback className="text-lg font-medium rounded-xl">
               {formatAgentName(agentName)}
