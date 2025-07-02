@@ -36,7 +36,7 @@ const AddAgentCard: React.FC = () => {
           <div className="h-4 w-8"></div>
         </div>
 
-        <div className="flex items-center gap-4 pr-10">
+        <div className="flex items-start gap-4 pr-10">
           {/* Icon placeholder matching avatar size */}
           <div className="h-14 w-14 flex-shrink-0 rounded-xl border-2 border-dashed border-muted-foreground/50 flex items-center justify-center bg-muted/20">
             <Plus className="h-6 w-6 text-muted-foreground" />

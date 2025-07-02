@@ -116,7 +116,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           />
         </div>
 
-        <div className="flex items-center gap-4 pr-10">
+        <div className="flex items-start gap-4 pr-10">
           {/* Avatar */}
           <Avatar className="h-14 w-14 flex-shrink-0 rounded-xl">
             <AvatarImage src={avatarUrl} alt={agentName} />
