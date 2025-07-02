@@ -34,7 +34,7 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
           onTouchMove={disableAutoScroll}
           {...props}
         >
-          <div className="flex flex-col gap-1" ref={contentRef}>
+          <div className="flex flex-col gap-10" ref={contentRef}>
             {children}
           </div>
         </div>
