@@ -154,7 +154,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   const iconClass = 'text-muted-foreground size-4';
 
   return (
-    <div>
+    <>
       {audioBlob ? (
         <audio
           crossOrigin="anonymous"
@@ -194,6 +194,6 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
           <p>{playing ? 'Stop' : 'Read aloud'}</p>
         </TooltipContent>
       </Tooltip>
-    </div>
+    </>
   );
 }
