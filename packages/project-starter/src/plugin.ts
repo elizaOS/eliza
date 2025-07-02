@@ -9,10 +9,7 @@ import { initializeDailyChannelSummaryTask } from './schedule/summary';
  */
 const configSchema = z.object({
   DAILY_SUMMARY_CHANNEL_ID: z.string().min(1, 'Daily summary channel ID is required').optional(),
-  DAILY_SUMMARY_ENABLED: z
-    .string()
-    .optional()
-    .transform((val) => val !== 'false'), // Convert to boolean
+  DAILY_SUMMARY_ENABLED: z.string().optional().default('disabled'), // Default to disabled if not specified
   DAILY_SUMMARY_CHANNEL_NAME: z.string().optional(),
   DAILY_SUMMARY_MESSAGE_LIMIT: z
     .string()
@@ -76,7 +73,18 @@ const plugin: Plugin = {
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 
-      // Check if required configuration is provided
+      // Check if daily summary is enabled
+      if (validatedConfig.DAILY_SUMMARY_ENABLED !== 'enabled') {
+        logger.info(
+          'Daily Summary is disabled (DAILY_SUMMARY_ENABLED is not set to "enabled") - Daily Summary plugin is loaded but task will not be scheduled'
+        );
+        logger.info(
+          'To enable Daily Summary functionality, set DAILY_SUMMARY_ENABLED=enabled in your .env file'
+        );
+        return;
+      }
+
+      // Check if required channel ID is provided
       if (!validatedConfig.DAILY_SUMMARY_CHANNEL_ID) {
         logger.info(
           'Daily Summary Channel ID not provided - Daily Summary plugin is loaded but task will not be scheduled'
@@ -86,6 +94,8 @@ const plugin: Plugin = {
         );
         return;
       }
+
+      logger.info('Daily Summary is enabled - scheduling task');
 
       // Start async initialization in background
       (async () => {

@@ -129,18 +129,11 @@ export async function initializeDailyChannelSummaryTask(runtime: IAgentRuntime):
   const roomId = createUniqueUuid(runtime, channelId) as UUID;
   const room = await runtime.getRoom(roomId);
 
-  // Calculate scheduled time
-  const now = new Date();
-  const scheduledTime = new Date();
-  scheduledTime.setUTCHours(scheduledHour, scheduledMinute, 0, 0);
-
-  // If time has passed today, schedule for tomorrow
-  if (scheduledTime <= now) {
-    scheduledTime.setUTCDate(scheduledTime.getUTCDate() + 1);
-  }
-
   // Format time for display
   const timeString = `${scheduledHour.toString().padStart(2, '0')}:${scheduledMinute.toString().padStart(2, '0')} UTC`;
+
+  console.log('#### SCHEDULED HOUR', scheduledHour);
+  console.log('#### SCHEDULED MINUTE', scheduledMinute);
 
   // Create the task
   await runtime.createTask({
