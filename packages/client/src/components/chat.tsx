@@ -208,7 +208,7 @@ export function MessageContent({
 
       <div className="flex items-center justify-between w-full p-1">
         <div>
-          {(!isUser && message.text || message.attachments?.length) && message.createdAt && (
+          {(!isUser && (message.text || message.attachments?.length)) && message.createdAt && (
             <ChatBubbleTimestamp className="text-muted-foreground" timestamp={moment(message.createdAt).format('LT')} />
           )}
         </div>
