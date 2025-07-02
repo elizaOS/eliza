@@ -852,14 +852,14 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                     Value
                   </label>
                   <div className="relative">
-                    <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                    <div className={`rounded border ${scrollbarContainerClass}`}>
                       <Input
                         id="new-secret-value"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter value..."
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                         style={{ minWidth: '100%' }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
@@ -917,14 +917,14 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                     Value
                   </label>
                   <div className="relative">
-                    <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                    <div className={`rounded border ${scrollbarContainerClass}`}>
                       <Input
                         id="new-secret-value-mobile"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter value..."
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
-                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                        className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                         style={{ minWidth: '100%' }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
@@ -1011,11 +1011,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                           {editingIndex === index ? (
                             <div className="flex items-center gap-2">
                               <div className="relative flex-1">
-                                <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                                <div className={`rounded border ${scrollbarContainerClass}`}>
                                   <Input
                                     value={editedValue}
                                     onChange={(e) => setEditedValue(e.target.value)}
-                                    className="font-mono text-sm border-0 focus-visible:ring-0 w-auto min-w-full"
+                                    className="font-mono text-sm border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                                     style={{ minWidth: '100%' }}
                                     type={visibleSecrets.has(index) ? 'text' : 'password'}
                                     placeholder={env.example || 'Enter value...'}
@@ -1068,7 +1068,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                           ) : (
                             <div className="flex items-center gap-2 group">
                               <div
-                                className={`flex-1 border rounded-md px-3 py-1 ${scrollbarContainerClass}`}
+                                className={`flex-1 border rounded px-3 py-1 ${scrollbarContainerClass}`}
                               >
                                 {visibleSecrets.has(index) ? (
                                   <code className="font-mono text-sm whitespace-nowrap block">
@@ -1203,11 +1203,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                         {editingIndex === index ? (
                           <div className="space-y-2">
                             <div className="relative">
-                              <div className={`rounded-md border ${scrollbarContainerClass}`}>
+                              <div className={`rounded border ${scrollbarContainerClass}`}>
                                 <Input
                                   value={editedValue}
                                   onChange={(e) => setEditedValue(e.target.value)}
-                                  className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full"
+                                  className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                                   style={{ minWidth: '100%' }}
                                   type={visibleSecrets.has(index) ? 'text' : 'password'}
                                   placeholder={env.example || 'Enter value...'}
@@ -1262,7 +1262,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                         ) : (
                           <div className="flex items-center gap-2">
                             <div
-                              className={`flex-1 border rounded-md px-3 py-1 ${scrollbarContainerClass}`}
+                              className={`flex-1 border rounded px-3 py-1 ${scrollbarContainerClass}`}
                             >
                               {visibleSecrets.has(index) ? (
                                 <code className="font-mono text-sm whitespace-nowrap block">
