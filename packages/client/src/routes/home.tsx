@@ -5,8 +5,8 @@ import GroupPanel from '@/components/group-panel';
 import ProfileOverlay from '@/components/profile-overlay';
 import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
-import { getEntityId } from '@/lib/utils';
-import { type Agent, type UUID, ChannelType as CoreChannelType } from '@elizaos/core';
+import { type Agent, type UUID, ChannelType as CoreChannelType, AgentStatus } from '@elizaos/core';
+import type { MessageChannel, MessageServer } from '@/types';
 import { Plus } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,9 +24,11 @@ export default function Home() {
 
   // Extract agents properly from the response
   const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
-  const enabledAgentsCount = agents.filter((a) => a.enabled).length;
+  const activeAgentsCount = agents.filter((a) => a.status === AgentStatus.ACTIVE).length;
 
-  const { data: serversData, isLoading: isLoadingServers } = useServers();
+  const { data: serversData } = useServers() as {
+    data: { data: { servers: MessageServer[] } } | undefined;
+  };
   const servers = serversData?.data?.servers || [];
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
@@ -40,7 +42,7 @@ export default function Home() {
     setOverlayOpen(false);
   };
 
-  const handleNavigateToDm = async (agent: Agent) => {
+  const handleNavigateToDm = async (agent: Partial<Agent>) => {
     if (!agent.id) return;
     // Navigate directly to agent chat - DM channel will be created automatically with default server
     navigate(`/chat/${agent.id}`);
@@ -73,9 +75,9 @@ export default function Home() {
                     className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   >
                     Agents
-                    {enabledAgentsCount > 0 && (
+                    {activeAgentsCount > 0 && (
                       <span className="ml-2.5 inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#0B35F1] text-white text-xs font-semibold">
-                        {enabledAgentsCount}
+                        {activeAgentsCount}
                       </span>
                     )}
                   </TabsTrigger>
@@ -122,13 +124,18 @@ export default function Home() {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 agents-section">
                     <AddAgentCard />
                     {agents
-                      .sort((a, b) => Number(b?.enabled) - Number(a?.enabled))
+                      .sort((a, b) => {
+                        // Sort by status - ACTIVE agents first
+                        const aActive = a.status === AgentStatus.ACTIVE ? 1 : 0;
+                        const bActive = b.status === AgentStatus.ACTIVE ? 1 : 0;
+                        return bActive - aActive;
+                      })
                       .map((agent) => {
                         return (
                           <AgentCard
                             key={agent.id}
                             agent={agent}
-                            onChat={() => handleNavigateToDm(agent)}
+                            onChat={() => handleNavigateToDm(agent as Agent)}
                           />
                         );
                       })}
@@ -152,7 +159,7 @@ export default function Home() {
 
                 {!isLoading && !isError && (
                   <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr groups-section">
-                    {servers.map((server) => (
+                    {servers.map((server: MessageServer) => (
                       <ServerChannels key={server.id} serverId={server.id} />
                     ))}
                   </div>
@@ -182,9 +189,15 @@ export default function Home() {
 
 // Sub-component to fetch and display channels for a given server
 const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId) as {
+    data: { data: { channels: MessageChannel[] } } | undefined;
+    isLoading: boolean;
+  };
   const groupChannels = useMemo(
-    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    () =>
+      channelsData?.data?.channels?.filter(
+        (ch: MessageChannel) => ch.type === CoreChannelType.GROUP
+      ) || [],
     [channelsData]
   );
 
@@ -194,12 +207,14 @@ const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
 
   return (
     <>
-      {groupChannels.map((channel) => (
+      {groupChannels.map((channel: MessageChannel) => (
         <GroupCard
           key={channel.id}
-          group={{ ...channel, server_id: serverId }} // Pass server_id for navigation context
+          group={{ ...channel, server_id: serverId } as MessageChannel & { server_id: UUID }} // Pass server_id for navigation context
         />
       ))}
     </>
   );
 });
+
+ServerChannels.displayName = 'ServerChannels';
