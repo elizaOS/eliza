@@ -212,7 +212,7 @@ export function MessageContent({
             <ChatBubbleTimestamp className="text-muted-foreground" timestamp={moment(message.createdAt).format('LT')} />
           )}
         </div>
-        <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-500 transition-opacity duration-500`}>
+        <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-500`}>
           {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />
