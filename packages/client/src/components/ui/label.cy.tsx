@@ -11,7 +11,7 @@ describe('Label Component', () => {
     cy.get('label').should('exist');
     cy.get('label').should('contain', 'Email Address');
     cy.get('label').should('have.class', 'text-sm');
-    cy.get('label').should('have.class', 'font-medium');
+    cy.get('label').should('have.class', 'font-normal');
   });
 
   it('associates with form controls using htmlFor', () => {
