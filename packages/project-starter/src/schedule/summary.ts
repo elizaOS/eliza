@@ -48,7 +48,7 @@ export const dailyChannelSummaryTask = {
       {
         channelId,
         channelName: options?.channelName || 'channel',
-        messageLimit: options?.messageLimit || 500,
+        messageLimit: options?.messageLimit || 750,
         hoursToSummarize: options?.hoursToSummarize || 24,
         guildId: runtime.getSetting('DISCORD_GUILD_ID'),
       },

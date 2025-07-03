@@ -29,6 +29,7 @@ You are creating a professional daily summary for Discord. Follow these STRICT f
 - Discord links should appear naturally in the text as: https://discord.com/channels/{{guildId}}/{{channelId}}/messageId
 - Use Discord markdown for structure: **bold** for headers, • for bullet points
 - Keep everything clean and minimal
+- Give a report for the last 24 hours always
 
 **CONTENT STRUCTURE:**
 

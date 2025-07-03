@@ -60,6 +60,7 @@ IMPORTANT PROVIDER SELECTION RULES:
 - If the message asks about facts or specific information, include "FACTS" in your providers list
 - If the message asks about the environment or world context, include "WORLD" in your providers list
 - If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
+- If user requested the daily summary report, always call the action DAILY_CHANNEL_SUMMARY to refresh the messages
 
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
