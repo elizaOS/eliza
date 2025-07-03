@@ -69,6 +69,11 @@ export class PluginCreator {
     
     this.handleCancellation(input);
     
+    // Return empty array if no input provided (for optional fields)
+    if (!input || input.trim() === '') {
+      return [];
+    }
+    
     return input
       .split(',')
       .map((item: string) => item.trim())
@@ -262,19 +267,19 @@ export class PluginCreator {
     };
 
     if (answers.components.includes('actions')) {
-      spec.actions = await this.getCommaSeparatedInput('Action names (comma-separated):', true);
+      spec.actions = await this.getCommaSeparatedInput('Action names (comma-separated):', false);
     }
 
     if (answers.components.includes('providers')) {
-      spec.providers = await this.getCommaSeparatedInput('Provider names (comma-separated):', true);
+      spec.providers = await this.getCommaSeparatedInput('Provider names (comma-separated):', false);
     }
 
     if (answers.components.includes('evaluators')) {
-      spec.evaluators = await this.getCommaSeparatedInput('Evaluator names (comma-separated):', true);
+      spec.evaluators = await this.getCommaSeparatedInput('Evaluator names (comma-separated):', false);
     }
 
     if (answers.components.includes('services')) {
-      spec.services = await this.getCommaSeparatedInput('Service names (comma-separated):', true);
+      spec.services = await this.getCommaSeparatedInput('Service names (comma-separated):', false);
     }
 
     return spec;
