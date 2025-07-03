@@ -97,7 +97,7 @@ export class EnvFileService {
 
       for (const line of lines) {
         const trimmedLine = line.trim();
-        
+
         if (trimmedLine.startsWith('#')) {
           // Accumulate comments
           const comment = trimmedLine.substring(1).trim();
@@ -110,7 +110,7 @@ export class EnvFileService {
             entries.push({
               key,
               value,
-              comment: currentComment
+              comment: currentComment,
             });
             currentComment = undefined;
           }
@@ -130,11 +130,7 @@ export class EnvFileService {
    * Write environment variables to file
    */
   async write(vars: Record<string, string>, options: WriteOptions = {}): Promise<void> {
-    const {
-      preserveComments = false,
-      createBackup = false,
-      updateProcessEnv = true
-    } = options;
+    const { preserveComments = false, createBackup = false, updateProcessEnv = true } = options;
 
     try {
       const dir = path.dirname(this.filePath);
@@ -156,8 +152,8 @@ export class EnvFileService {
       if (preserveComments) {
         // Preserve existing comments
         const existingEntries = await this.readWithComments();
-        const existingKeys = new Set(existingEntries.map(e => e.key));
-        
+        const existingKeys = new Set(existingEntries.map((e) => e.key));
+
         // Write existing entries with their comments
         for (const entry of existingEntries) {
           if (Object.prototype.hasOwnProperty.call(varsCopy, entry.key)) {
@@ -180,7 +176,7 @@ export class EnvFileService {
         // Only write string values (env vars must be strings)
         if (typeof value === 'string') {
           content += `${key}=${value}\n`;
-          
+
           // Update process.env if requested
           if (updateProcessEnv) {
             process.env[key] = value;
@@ -202,12 +198,12 @@ export class EnvFileService {
   async update(key: string, value: string, options: WriteOptions = {}): Promise<void> {
     const vars = await this.read();
     vars[key] = value;
-    
+
     // Update process.env by default for single updates
     if (options.updateProcessEnv !== false) {
       process.env[key] = value;
     }
-    
+
     await this.write(vars, { preserveComments: true, ...options });
   }
 
@@ -217,14 +213,14 @@ export class EnvFileService {
   async updateMany(updates: Record<string, string>, options: WriteOptions = {}): Promise<void> {
     const vars = await this.read();
     Object.assign(vars, updates);
-    
+
     // Update process.env by default
     if (options.updateProcessEnv !== false) {
       for (const [key, value] of Object.entries(updates)) {
         process.env[key] = value;
       }
     }
-    
+
     await this.write(vars, { preserveComments: true, ...options });
   }
 
@@ -301,7 +297,7 @@ export class EnvFileService {
 
     return {
       valid: errors.length === 0,
-      errors
+      errors,
     };
   }
 }
@@ -325,4 +321,4 @@ export async function getEnvFileService(): Promise<EnvFileService> {
  */
 export function createEnvFileService(filePath: string): EnvFileService {
   return new EnvFileService(filePath);
-} 
+}

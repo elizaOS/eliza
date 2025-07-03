@@ -6,7 +6,7 @@ import { Button } from '../button';
 import MessageLoading from './message-loading';
 
 // ChatBubble
-const chatBubbleVariant = cva('flex gap-2 max-w-[60%] items-end relative group', {
+const chatBubbleVariant = cva('flex gap-2 max-w-[60%] relative group', {
   variants: {
     variant: {
       received: 'self-start',
@@ -64,11 +64,11 @@ const ChatBubbleAvatar: React.FC<ChatBubbleAvatarProps> = ({ src, fallback, clas
 );
 
 // ChatBubbleMessage
-const chatBubbleMessageVariants = cva('p-3', {
+const chatBubbleMessageVariants = cva('', {
   variants: {
     variant: {
-      received: 'bg-secondary text-secondary-foreground rounded-lg rounded-bl-none',
-      sent: 'bg-primary text-primary-foreground rounded-lg rounded-br-none',
+      received: 'text-secondary-foreground',
+      sent: 'px-5 py-2.5 bg-secondary text-secondary-foreground rounded-lg',
     },
     layout: {
       default: '',

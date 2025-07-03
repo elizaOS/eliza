@@ -17,7 +17,7 @@ describe('Version API', () => {
     const response = await fetch(`http://localhost:${port}/api/system/version`);
     return {
       status: response.status,
-      body: await response.json()
+      body: await response.json(),
     };
   };
 
@@ -30,7 +30,7 @@ describe('Version API', () => {
   beforeEach((done) => {
     app = express();
     app.use('/api/system/version', createVersionRouter());
-    
+
     // Find an available port
     server = app.listen(0, () => {
       port = server.address().port;
@@ -45,7 +45,7 @@ describe('Version API', () => {
   describe('GET /api/system/version', () => {
     it('should return version information with status 200', async () => {
       const { status, body } = await getVersion();
-      
+
       expect(status).toBe(200);
       expect(body).toHaveProperty('version');
       expect(body).toHaveProperty('source');
@@ -74,7 +74,7 @@ describe('Version API', () => {
 
     it('should return the correct environment', async () => {
       const originalEnv = process.env.NODE_ENV;
-      
+
       // Test default environment
       delete process.env.NODE_ENV;
       const { body: body1 } = await getVersion();
@@ -97,7 +97,9 @@ describe('Version API', () => {
     });
 
     it('should handle multiple concurrent requests', async () => {
-      const requests = Array(10).fill(null).map(() => getVersion());
+      const requests = Array(10)
+        .fill(null)
+        .map(() => getVersion());
       const results = await Promise.all(requests);
 
       results.forEach(({ status, body }) => {
@@ -122,7 +124,7 @@ describe('Version API', () => {
 
     it('should only accept GET requests', async () => {
       const methods = ['POST', 'PUT', 'DELETE'];
-      
+
       for (const method of methods) {
         const response = await makeRequest(method);
         expect(response.status).toBe(404);

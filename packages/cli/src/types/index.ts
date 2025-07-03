@@ -4,4 +4,4 @@ export interface EnvVarConfig {
   required: boolean;
   sensitive?: boolean;
   default?: string;
-} 
+}

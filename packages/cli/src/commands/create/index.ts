@@ -13,8 +13,7 @@ import type { CreateOptions } from './types';
  * Formats the project type for display in messages
  */
 function formatProjectType(type: string): string {
-  return type === 'tee' ? 'TEE Project' : 
-         type.charAt(0).toUpperCase() + type.slice(1);
+  return type === 'tee' ? 'TEE Project' : type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 export const create = new Command('create')
@@ -25,7 +24,7 @@ export const create = new Command('create')
   .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
     let projectType: string | undefined; // Declare outside try block for catch access
-    
+
     try {
       // Set non-interactive mode if environment variable is set or if -y/--yes flag is present in process.argv
       if (

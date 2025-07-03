@@ -3,6 +3,7 @@ import type { Agent } from '@elizaos/core';
 import { Image as ImageIcon, Upload, X, Info } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { compressImage } from '@/lib/utils';
+import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
 
 interface AvatarPanelProps {
   characterValue: Agent;
@@ -123,7 +124,9 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
 
           <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground mt-1">
             <Info className="w-3.5 h-3.5" />
-            <span>Images greater than 300x300 will be resized</span>
+            <span>
+              Images greater than {AVATAR_IMAGE_MAX_SIZE}x{AVATAR_IMAGE_MAX_SIZE} will be resized
+            </span>
           </div>
         </div>
       </div>

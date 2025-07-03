@@ -52,7 +52,6 @@ export function getVersion(): string {
   return version;
 }
 
-
 // --- Utility: Get install tag based on CLI version ---
 export function getCliInstallTag(): string {
   const version = getVersion();
