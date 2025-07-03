@@ -923,7 +923,7 @@ export default function CharacterForm({
             )}
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto pb-4 px-1">
+          <div className="max-h-[100vh] overflow-y-auto pb-4 px-1">
             {AGENT_FORM_SCHEMA.map((section) => (
               <TabsContent
                 key={section.sectionValue}
@@ -958,11 +958,11 @@ export default function CharacterForm({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="top">
               <DropdownMenuItem onClick={handleExportJSON}>
-                <ArrowDownToLine className="h-4 w-4 mr-2" />
+                <ArrowUpFromLine className="h-4 w-4 mr-2" />
                 Export
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImportClick}>
-                <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                <ArrowDownToLine className="h-4 w-4 mr-2" />
                 Import
               </DropdownMenuItem>
               {stopDeleteOptions.length > 0 && <DropdownMenuSeparator />}

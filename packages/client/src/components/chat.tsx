@@ -147,7 +147,7 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        <div className="py-2">
+        <div>
           {(() => {
             if (!message.text) return null;
 
@@ -204,7 +204,7 @@ export function MessageContent({
           ))}
       </ChatBubbleMessage>
 
-      <div className="flex items-center justify-between w-full p-1">
+      <div className="flex items-center justify-between w-full py-1">
         <div>
           {!isUser && (message.text || message.attachments?.length) && message.createdAt && (
             <ChatBubbleTimestamp
