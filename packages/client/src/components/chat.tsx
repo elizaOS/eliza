@@ -147,7 +147,7 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        <div className="py-2">
+        <div>
           {(() => {
             if (!message.text) return null;
 
