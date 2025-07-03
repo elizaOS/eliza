@@ -410,11 +410,6 @@ export function createApiRouter(
       limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
     })
   );
-  router.use(
-    express.json({
-      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-    })
-  );
 
   // Setup new domain-based routes
   // Mount agents router at /agents - handles agent creation, management, and interactions
