@@ -951,7 +951,7 @@ export default function CharacterForm({
           {/* Three-dot menu button on the left */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="icon" className="flex-shrink-0">
+              <Button type="button" variant="outline" size="icon" className="flex-shrink-0 p-2.5">
                 <MoreVertical className="h-4 w-4" />
                 <span className="sr-only">More options</span>
               </Button>
