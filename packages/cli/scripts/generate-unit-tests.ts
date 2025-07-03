@@ -166,17 +166,17 @@ async function main() {
   console.log('(This will create .todo tests that you can implement later)\n');
 
   const shouldGenerateTests = await clack.confirm({
-    message: 'Generate tests?',
+    message: 'Generate test skeletons for all untested files?',
     initialValue: true
   });
 
   if (clack.isCancel(shouldGenerateTests)) {
-    console.log('Operation cancelled.');
+    clack.cancel('Operation cancelled.');
     return;
   }
 
   if (!shouldGenerateTests) {
-    console.log('Test generation skipped.');
+    clack.cancel('Test generation skipped.');
     return;
   }
 

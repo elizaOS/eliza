@@ -55,6 +55,25 @@ export class PluginCreator {
       process.exit(0);
     }
   }
+  
+  private async getCommaSeparatedInput(message: string, required: boolean = false): Promise<string[]> {
+    const input = await clack.text({
+      message,
+      validate: required ? (value) => {
+        if (!value || value.trim() === '') {
+          return 'At least one item is required';
+        }
+        return undefined;
+      } : undefined,
+    });
+    
+    this.handleCancellation(input);
+    
+    return input
+      .split(',')
+      .map((item: string) => item.trim())
+      .filter((item: string) => item);
+  }
   private anthropic: Anthropic | null = null;
   private activeClaudeProcess: any = null;
   private options: CreatorOptions;
@@ -194,7 +213,7 @@ export class PluginCreator {
 
     this.handleCancellation(name);
 
-    const pluginName = name.toLowerCase().replace(/\s+/g, '-');
+    const pluginName = (name as string).toLowerCase().replace(/\s+/g, '-');
 
     // Plugin description input
     const description = await clack.text({
@@ -203,18 +222,14 @@ export class PluginCreator {
     });
 
     this.handleCancellation(description);
+    
+    const pluginDescription = description as string;
 
     // Features input
-    const featuresInput = await clack.text({
-      message: 'Main features (comma-separated):',
-    });
-
-    this.handleCancellation(featuresInput);
-
-    const features = featuresInput
-      .split(',')
-      .map((f: string) => f.trim())
-      .filter((f: string) => f);
+    const features = await this.getCommaSeparatedInput(
+      'Main features (comma-separated):',
+      true // Required
+    );
 
     // Component selection
     const components = await clack.multiselect({
@@ -230,11 +245,13 @@ export class PluginCreator {
 
     this.handleCancellation(components);
 
+    const selectedComponents = components as string[];
+
     const answers = {
       name: pluginName,
-      description,
+      description: pluginDescription,
       features,
-      components,
+      components: selectedComponents,
     };
 
     // Collect specific component details
@@ -245,55 +262,19 @@ export class PluginCreator {
     };
 
     if (answers.components.includes('actions')) {
-      const actionsInput = await clack.text({
-        message: 'Action names (comma-separated):',
-      });
-
-      this.handleCancellation(actionsInput);
-
-      spec.actions = actionsInput
-        .split(',')
-        .map((a: string) => a.trim())
-        .filter((a: string) => a);
+      spec.actions = await this.getCommaSeparatedInput('Action names (comma-separated):', true);
     }
 
     if (answers.components.includes('providers')) {
-      const providersInput = await clack.text({
-        message: 'Provider names (comma-separated):',
-      });
-
-      this.handleCancellation(providersInput);
-
-      spec.providers = providersInput
-        .split(',')
-        .map((p: string) => p.trim())
-        .filter((p: string) => p);
+      spec.providers = await this.getCommaSeparatedInput('Provider names (comma-separated):', true);
     }
 
     if (answers.components.includes('evaluators')) {
-      const evaluatorsInput = await clack.text({
-        message: 'Evaluator names (comma-separated):',
-      });
-
-      this.handleCancellation(evaluatorsInput);
-
-      spec.evaluators = evaluatorsInput
-        .split(',')
-        .map((e: string) => e.trim())
-        .filter((e: string) => e);
+      spec.evaluators = await this.getCommaSeparatedInput('Evaluator names (comma-separated):', true);
     }
 
     if (answers.components.includes('services')) {
-      const servicesInput = await clack.text({
-        message: 'Service names (comma-separated):',
-      });
-
-      this.handleCancellation(servicesInput);
-
-      spec.services = servicesInput
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter((s: string) => s);
+      spec.services = await this.getCommaSeparatedInput('Service names (comma-separated):', true);
     }
 
     return spec;
