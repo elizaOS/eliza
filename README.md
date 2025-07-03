@@ -1,4 +1,4 @@
-# Eliza
+# XMRT Hires... Eliza
 
 A framework for multi-agent development and deployment
 
