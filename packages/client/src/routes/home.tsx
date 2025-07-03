@@ -75,11 +75,15 @@ export default function Home() {
                     className="relative rounded-full data-[state=active]:border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-bold cursor-pointer text-lg py-1"
                   >
                     Agents
-                    {activeAgentsCount > 0 && (
-                      <span className="absolute -top-2.5 right-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-600 text-white text-[8px] font-semibold border border-black">
-                        {activeAgentsCount}
-                      </span>
-                    )}
+                    <span
+                      className={`
+                        absolute -top-2.5 right-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-600 text-white text-[8px] font-semibold border border-black
+                        transition-all duration-300 ease-in-out
+                        ${activeTab === 'agents' && activeAgentsCount > 0 ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}
+                      `}
+                    >
+                      {activeAgentsCount}
+                    </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="groups"
