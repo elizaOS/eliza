@@ -454,6 +454,7 @@ The bootstrap plugin provides critical event handlers that enable your agent to:
 - **Handle platform events** - World joins, entity management, and lifecycle events
 
 **When you can skip it:**
+
 - You're building a completely custom event handling system
 - You're creating specialized agents that don't need standard communication
 - You're implementing your own message processing pipeline from scratch

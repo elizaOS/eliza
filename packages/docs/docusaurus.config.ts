@@ -362,6 +362,23 @@ const config = {
           label: 'Documentation',
         },
         {
+          type: 'dropdown',
+          label: 'Learn',
+          position: 'left',
+          items: [
+            {
+              type: 'docSidebar',
+              sidebarId: 'simpleSidebar',
+              label: '🎯 Simple Track (Non-Technical)',
+            },
+            {
+              type: 'docSidebar',
+              sidebarId: 'technicalSidebar',
+              label: '🔧 Technical Track (Developers)',
+            },
+          ],
+        },
+        {
           type: 'docsVersionDropdown',
           position: 'right',
         },

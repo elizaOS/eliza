@@ -5,6 +5,11 @@ const sidebars: SidebarsConfig = {
   tutorialSidebar: [
     {
       type: 'doc',
+      id: 'index',
+      label: '🏠 Home',
+    },
+    {
+      type: 'doc',
       id: 'intro',
       label: '🚀 Introduction',
     },
@@ -199,6 +204,178 @@ const sidebars: SidebarsConfig = {
       type: 'doc',
       id: 'changelog',
       label: 'CHANGELOG',
+    },
+  ],
+  
+  // Simple track for non-technical users
+  simpleSidebar: [
+    {
+      type: 'category',
+      label: '🎯 Getting Started',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/getting-started/quick-start',
+          label: '⚡ 5-Minute Quick Start',
+        },
+        {
+          type: 'doc',
+          id: 'simple/getting-started/first-agent',
+          label: '🤖 Your First Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/getting-started/troubleshooting',
+          label: '🔧 Troubleshooting',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🎨 Templates & Examples',
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/templates/gallery',
+          label: '📚 Template Gallery',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/customization',
+          label: '✏️ Customization Guide',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '📖 Guides',
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/guides/character-creation',
+          label: '👤 Character Creation',
+        },
+        {
+          type: 'doc',
+          id: 'simple/guides/plugin-usage',
+          label: '🧩 Using Plugins',
+        },
+        {
+          type: 'doc',
+          id: 'simple/guides/deployment',
+          label: '🚀 Deployment',
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      id: 'simple/faq',
+      label: '❓ FAQ',
+    },
+  ],
+
+  // Technical track for developers
+  technicalSidebar: [
+    {
+      type: 'category',
+      label: '🏗️ Architecture',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/architecture/overview',
+          label: '📐 System Overview',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/core-concepts',
+          label: '🧠 Core Concepts',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/state-management',
+          label: '💾 State Management',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/plugin-system',
+          label: '🔌 Plugin Architecture',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '💻 Development',
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/development/monorepo-guide',
+          label: '📦 Monorepo Development',
+        },
+        {
+          type: 'doc',
+          id: 'technical/development/standalone-guide',
+          label: '🚀 Standalone Projects',
+        },
+        {
+          type: 'doc',
+          id: 'technical/development/plugin-development',
+          label: '🔧 Plugin Development',
+        },
+        {
+          type: 'doc',
+          id: 'technical/development/testing-guide',
+          label: '🧪 Testing Guide',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '📚 API Reference',
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/api-reference/core-api',
+          label: '🔵 Core API',
+        },
+        {
+          type: 'doc',
+          id: 'technical/api-reference/plugin-api',
+          label: '🧩 Plugin API',
+        },
+        {
+          type: 'doc',
+          id: 'technical/api-reference/service-api',
+          label: '⚙️ Service API',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🚀 Advanced Topics',
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/advanced/performance',
+          label: '⚡ Performance',
+        },
+        {
+          type: 'doc',
+          id: 'technical/advanced/scaling',
+          label: '📈 Scaling',
+        },
+        {
+          type: 'doc',
+          id: 'technical/advanced/security',
+          label: '🔐 Security',
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      id: 'technical/faq',
+      label: '❓ Technical FAQ',
     },
   ],
 };
