@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 
 /**
  * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
@@ -69,42 +70,50 @@ export default function Home() {
           >
             <div className="w-full">
               <div className="w-full md:max-w-4xl mx-auto px-6 pt-6 pb-2">
-                <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
-                  <TabsTrigger
-                    value="agents"
-                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
-                  >
-                    <div className='relative'>
+                <div className='flex justify-between items-center mb-3'>
+                  <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
+                    <TabsTrigger
+                      value="agents"
+                      className="relative rounded-full data-[state=active]:border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-bold cursor-pointer text-lg py-1"
+                    >
                       Agents
-                      {activeAgentsCount > 0 && (
-                        <span className="absolute -top-1.5 -right-4 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[8px] font-semibold">
-                          {activeAgentsCount}
-                        </span>
-                      )}
-                    </div>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="groups"
-                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
-                  >
-                    Groups
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-
-            <TabsContent value="agents" className="flex-1 mt-0 bg-background">
-              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
-                <div className="flex items-center justify-end gap-2">
+                      <span
+                        className={`
+                          absolute -top-2.5 right-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-600 text-white text-[8px] font-semibold border border-black
+                          transition-all duration-300 ease-in-out
+                          ${activeTab === 'agents' && activeAgentsCount > 0 ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}
+                        `}
+                      >
+                        {activeAgentsCount}
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="groups"
+                      className="rounded-full data-[state=active]:border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-bold cursor-pointer text-lg py-1"
+                    >
+                      Groups
+                    </TabsTrigger>
+                  </TabsList>
                   <Button
                     variant="outline"
-                    onClick={() => navigate('/create')}
+                    onClick={() => {
+                      if (activeTab === 'agents') {
+                        navigate('/create')
+                      } else {
+                        handleCreateGroup()
+                      }
+                    }}
                     className="create-agent-button"
                   >
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
-
+                <Separator/>
+              </div>
+            </div>
+            
+            <TabsContent value="agents" className="flex-1 mt-0 bg-background">
+              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
                 {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
                 {isError && (
@@ -146,16 +155,6 @@ export default function Home() {
 
             <TabsContent value="groups" className="flex-1 mt-0 bg-background">
               <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
-                <div className="flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleCreateGroup}
-                    className="groups-create-button"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-
                 {!isLoading && !isError && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 groups-section">
                     {servers.map((server: MessageServer) => (

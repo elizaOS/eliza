@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
-import { MessageSquare, Settings, Loader2 } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import type { AgentWithStatus } from '@/types';
 import clientLogger from '@/lib/logger';
@@ -33,9 +33,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const agentIdForNav = agent.id;
   const agentName = agent.name || 'Unnamed Agent';
   const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
-  const description =
-    (typeof agent.bio === 'string' && agent.bio.trim()) ||
-    'Engages with all types of questions and conversations';
+  const description = (
+      Array.isArray(agent.bio) && agent.bio.filter(Boolean).join(' ').trim()
+  ) || 'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -94,7 +94,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
       )}
       data-testid="agent-card"
     >
-      <CardContent className="p-0 relative">
+      <CardContent className="p-0 relative h-full">
         {/* Toggle Switch - positioned absolutely in top-right */}
         <div className="absolute top-3 right-3">
           <Switch
@@ -108,13 +108,13 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             aria-label={`Toggle ${agentName}`}
             disabled={isStarting || isStopping}
             className={cn(
-              isActive ? 'data-[state=checked]:!bg-green-600' : 'data-[state=unchecked]:!bg-red-600'
+              isActive ? 'data-[state=checked]:!bg-green-600' : 'data-[state=unchecked]:!bg-gray-500/80'
             )}
           />
         </div>
 
-        <div className="flex flex-col justify-between">
-          <div className="flex items-center gap-4 p-2">
+        <div className="flex flex-col justify-between h-full">
+          <div className="flex items-center gap-4 p-2 h-[90%]">
             {/* Avatar */}
             <Avatar className="h-16 w-16 flex-shrink-0 rounded-sm">
               <AvatarImage src={avatarUrl} alt={agentName} />
@@ -156,9 +156,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
                 e.stopPropagation();
                 handleNewChat();
               }}
-              className="h-8 px-2 rounded-sm bg-muted hover:bg-muted-foreground cursor-pointer"
+              className="h-8 px-2 rounded-sm bg-muted hover:bg-muted/50 cursor-pointer"
             >
-              <MessageSquare/>
               New Chat
             </Button>
           </div>
