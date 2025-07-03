@@ -96,7 +96,7 @@ const AgentRow = ({
   isOnline: boolean;
   active: boolean;
 }) => (
-  <SidebarMenuItem className="">
+  <SidebarMenuItem>
     <NavLink to={`/chat/${agent.id}`}>
       <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
         <span className="text-base truncate max-w-24">{agent.name}</span>
@@ -148,7 +148,7 @@ const GroupRow = ({
   const extraCount = groupAgents.length > 3 ? groupAgents.length - 3 : 0;
 
   return (
-    <SidebarMenuItem className="h-12">
+    <SidebarMenuItem>
       <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
         <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
           {/* Name */}
@@ -191,15 +191,11 @@ const GroupRow = ({
 
 
 const AgentListSection = ({
-  title,
   agents,
   activePath,
-  className,
 }: {
-  title: string;
   agents: Partial<Agent>[];
   activePath: string;
-  className?: string;
 }) => (
   <>
     <div className="flex items-center px-4 pt-1 pb-0 text-muted-foreground">
@@ -211,16 +207,20 @@ const AgentListSection = ({
       </SectionHeader>
       <Separator/>
     </div>
-    <SidebarSection title={title} className={className}>
-      {agents.map((a) => (
-        <AgentRow
-          key={a?.id}
-          agent={a as Agent}
-          isOnline={a.status === CoreAgentStatus.ACTIVE}
-          active={activePath.includes(`/chat/${String(a?.id)}`)}
-        />
-      ))}
-    </SidebarSection>
+    <SidebarGroup>
+      <SidebarGroupContent className="px-1 mt-0">
+        <SidebarMenu>
+          {agents.map((a) => (
+            <AgentRow
+              key={a?.id}
+              agent={a as Agent}
+              isOnline={a.status === CoreAgentStatus.ACTIVE}
+              active={activePath.includes(`/chat/${String(a?.id)}`)}
+            />
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   </>
 );
 
@@ -228,12 +228,10 @@ const GroupListSection = ({
   servers,
   isLoadingServers,
   activePath,
-  className = '',
 }: {
   servers: ClientMessageServer[] | undefined;
   isLoadingServers: boolean;
   activePath: string;
-  className?: string;
 }) => {
   return (
     <>
@@ -614,22 +612,21 @@ export function AppSidebar({
               The "Create Agent" button should ideally be next to the "Agents" title.
               Let's adjust the structure slightly if needed or place it prominently.
           */}
+          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
+
+          <div className='px-4 py-6'>
+            {renderCreateNewButton()}
+          </div>
 
           {isLoadingAgents && !agentLoadError && (
             <SidebarSection title="Agents">
               <SidebarMenuSkeleton />
             </SidebarSection>
           )}
-          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
-
-          <div className='px-4 py-6'>
-            {renderCreateNewButton()}
-          </div>
           
           {!isLoadingAgents && !agentLoadError && (
             <>
               <AgentListSection
-                title="" // Title is now handled by the SectionHeader above
                 agents={[...onlineAgents, ...offlineAgents]}
                 activePath={location.pathname}
               />
@@ -637,7 +634,6 @@ export function AppSidebar({
                 servers={servers}
                 isLoadingServers={isLoadingServers}
                 activePath={location.pathname}
-                className="mt-2"
               />
             </>
           )}
