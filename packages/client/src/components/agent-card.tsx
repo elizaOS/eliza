@@ -90,10 +90,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all hover:shadow-lg hover:bg-muted/30 cursor-pointer bg-card border border-border/50',
+        'w-full transition-all hover:shadow-lg hover:bg-muted/30 bg-card border border-border/50',
         isActive ? '' : 'opacity-75'
       )}
-      onClick={handleNewChat}
       data-testid="agent-card"
     >
       <CardContent className="p-0 relative">
@@ -145,7 +144,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
                 e.stopPropagation();
                 handleSettings();
               }}
-              className="h-8 w-8 p-0 hover:bg-muted/50"
+              className="h-8 w-8 p-0 hover:bg-muted/50 cursor-pointer"
             >
               <Settings className="h-4 w-4 text-muted-foreground" />
             </Button>
@@ -158,7 +157,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
                 e.stopPropagation();
                 handleNewChat();
               }}
-              className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30"
+              className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30 cursor-pointer"
             >
               New Chat
             </Button>
