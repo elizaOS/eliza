@@ -97,7 +97,7 @@ describe('Basic Server Functionality', () => {
         constructor(
           private windowMs: number,
           private maxRequests: number
-        ) { }
+        ) {}
 
         isAllowed(clientId: string): boolean {
           const now = Date.now();
@@ -233,36 +233,36 @@ describe('Basic Server Functionality', () => {
     const testUIEnabled = (nodeEnv?: string, elizaUIEnable?: string): boolean => {
       const originalNodeEnv = process.env.NODE_ENV;
       const originalUIEnable = process.env.ELIZA_UI_ENABLE;
-      
+
       // Set test environment
       if (nodeEnv !== undefined) {
         process.env.NODE_ENV = nodeEnv;
       } else {
         delete process.env.NODE_ENV;
       }
-      
+
       if (elizaUIEnable !== undefined) {
         process.env.ELIZA_UI_ENABLE = elizaUIEnable;
       } else {
         delete process.env.ELIZA_UI_ENABLE;
       }
-      
+
       // Test the function
       const result = isWebUIEnabled();
-      
+
       // Restore original environment
       if (originalNodeEnv !== undefined) {
         process.env.NODE_ENV = originalNodeEnv;
       } else {
         delete process.env.NODE_ENV;
       }
-      
+
       if (originalUIEnable !== undefined) {
         process.env.ELIZA_UI_ENABLE = originalUIEnable;
       } else {
         delete process.env.ELIZA_UI_ENABLE;
       }
-      
+
       return result;
     };
 
@@ -300,13 +300,13 @@ describe('Basic Server Functionality', () => {
       expect(testUIEnabled('production', 'YES')).toBe(true);
       expect(testUIEnabled('production', 'on')).toBe(true);
       expect(testUIEnabled('production', 'enable')).toBe(true);
-      
+
       // Test values that parseBooleanFromText recognizes as false
       expect(testUIEnabled('development', '0')).toBe(false);
       expect(testUIEnabled('development', 'no')).toBe(false);
       expect(testUIEnabled('development', 'off')).toBe(false);
       expect(testUIEnabled('development', 'disable')).toBe(false);
-      
+
       // Invalid values should be false
       expect(testUIEnabled('development', 'invalid')).toBe(false);
       expect(testUIEnabled('development', 'maybe')).toBe(false);

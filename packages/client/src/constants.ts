@@ -2,7 +2,7 @@ export const USER_NAME = 'user';
 export const CHAT_SOURCE = 'client_chat';
 export const GROUP_CHAT_SOURCE = 'client_group_chat';
 
-export const AVATAR_IMAGE_MAX_SIZE = 1024;
+export const AVATAR_IMAGE_MAX_SIZE = 512;
 
 export enum FIELD_REQUIREMENT_TYPE {
   REQUIRED = 'required',

@@ -47,7 +47,7 @@ describe('Button Component', () => {
         } else if (size === 'lg') {
           cy.get('[data-slot="button"]').should('have.class', 'h-10');
         } else if (size === 'icon') {
-          cy.get('[data-slot="button"]').should('have.class', 'size-9');
+          cy.get('[data-slot="button"]').should('have.class', 'h-auto').and('have.class', 'w-auto');
         } else {
           cy.get('[data-slot="button"]').should('have.class', 'h-9');
         }

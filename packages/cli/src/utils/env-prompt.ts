@@ -32,6 +32,6 @@ export async function writeEnvFile(envVars: Record<string, string>): Promise<voi
   const service = await getEnvFileService();
   await service.write(envVars, {
     preserveComments: false,
-    updateProcessEnv: true
+    updateProcessEnv: true,
   });
 }
