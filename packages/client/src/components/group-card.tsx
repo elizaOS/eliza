@@ -70,7 +70,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
               <Avatar className="bg-[#282829] h-16 w-16 flex-shrink-0 rounded-[3px] relative overflow-hidden">
                 {groupAgents && groupAgents.length > 0 ? (
                   <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full p-1">
-                    {groupAgents.slice(0, 3).map((agent, idx) => (
+                    {groupAgents.slice(0, 3).map((agent) =>
                       agent.settings?.avatar ? (
                         <img
                           key={agent.id}
@@ -86,25 +86,19 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                           {formatAgentName(agent.name)}
                         </div>
                       )
-                    ))}
+                    )}
                     {groupAgents.length > 3 ? (
                       <div className="flex items-center justify-center bg-[#3F3F3F] text-xs font-medium w-full h-full rounded-[3px]">
                         +{groupAgents.length - 3}
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center bg-[#3F3F3F] text-xs font-medium w-full h-full rounded-[3px]">
-                        {groupAgents[3]?.settings?.avatar ? (
-                          <img
-                            src={groupAgents[3].settings.avatar}
-                            alt={groupAgents[3].name}
-                            className="object-cover w-full h-full"
-                          />
-                        ) : groupAgents[3] ? (
-                          formatAgentName(groupAgents[3].name)
-                        ) : (
-                          ""
-                        )}
-                      </div>
+                      Array.from({ length: 4 - groupAgents.slice(0, 3).length }).map((_, idx) => (
+                        <div
+                          key={`empty-${idx}`}
+                          className="flex items-center justify-center bg-[#2D2D2D] text-xs font-medium w-full h-full rounded-[3px]"
+                        >
+                        </div>
+                      ))
                     )}
                   </div>
                 ) : (
@@ -113,6 +107,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                   </div>
                 )}
               </Avatar>
+
 
 
               {/* Content - Name and Description */}
