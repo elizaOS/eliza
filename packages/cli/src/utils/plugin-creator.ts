@@ -48,6 +48,13 @@ export interface CreatorOptions {
 export class PluginCreator {
   private git: SimpleGit;
   private pluginPath: string | null = null;
+  
+  private handleCancellation(value: any): void {
+    if (clack.isCancel(value)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+  }
   private anthropic: Anthropic | null = null;
   private activeClaudeProcess: any = null;
   private options: CreatorOptions;
@@ -185,10 +192,7 @@ export class PluginCreator {
       },
     });
 
-    if (clack.isCancel(name)) {
-      clack.cancel('Operation cancelled.');
-      process.exit(0);
-    }
+    this.handleCancellation(name);
 
     const pluginName = name.toLowerCase().replace(/\s+/g, '-');
 
@@ -198,20 +202,14 @@ export class PluginCreator {
       validate: (input) => (input.length > 0 ? undefined : 'Description is required'),
     });
 
-    if (clack.isCancel(description)) {
-      clack.cancel('Operation cancelled.');
-      process.exit(0);
-    }
+    this.handleCancellation(description);
 
     // Features input
     const featuresInput = await clack.text({
       message: 'Main features (comma-separated):',
     });
 
-    if (clack.isCancel(featuresInput)) {
-      clack.cancel('Operation cancelled.');
-      process.exit(0);
-    }
+    this.handleCancellation(featuresInput);
 
     const features = featuresInput
       .split(',')
@@ -230,10 +228,7 @@ export class PluginCreator {
       initialValues: ['actions', 'providers'],
     });
 
-    if (clack.isCancel(components)) {
-      clack.cancel('Operation cancelled.');
-      process.exit(0);
-    }
+    this.handleCancellation(components);
 
     const answers = {
       name: pluginName,
@@ -254,10 +249,7 @@ export class PluginCreator {
         message: 'Action names (comma-separated):',
       });
 
-      if (clack.isCancel(actionsInput)) {
-        clack.cancel('Operation cancelled.');
-        process.exit(0);
-      }
+      this.handleCancellation(actionsInput);
 
       spec.actions = actionsInput
         .split(',')
@@ -270,10 +262,7 @@ export class PluginCreator {
         message: 'Provider names (comma-separated):',
       });
 
-      if (clack.isCancel(providersInput)) {
-        clack.cancel('Operation cancelled.');
-        process.exit(0);
-      }
+      this.handleCancellation(providersInput);
 
       spec.providers = providersInput
         .split(',')
@@ -286,10 +275,7 @@ export class PluginCreator {
         message: 'Evaluator names (comma-separated):',
       });
 
-      if (clack.isCancel(evaluatorsInput)) {
-        clack.cancel('Operation cancelled.');
-        process.exit(0);
-      }
+      this.handleCancellation(evaluatorsInput);
 
       spec.evaluators = evaluatorsInput
         .split(',')
@@ -302,10 +288,7 @@ export class PluginCreator {
         message: 'Service names (comma-separated):',
       });
 
-      if (clack.isCancel(servicesInput)) {
-        clack.cancel('Operation cancelled.');
-        process.exit(0);
-      }
+      this.handleCancellation(servicesInput);
 
       spec.services = servicesInput
         .split(',')
