@@ -589,7 +589,7 @@ export function AppSidebar({
                 <a
                   href="/"
                   onClick={handleLogoClick}
-                  className="px-6 py-2 h-full sidebar-logo no-underline"
+                  className="px-4 py-2 h-full sidebar-logo no-underline"
                 >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
                     <img
@@ -641,7 +641,7 @@ export function AppSidebar({
         </SidebarContent>
 
         {/* ---------- footer ---------- */}
-        <SidebarFooter className="px-4 py-4">
+        <SidebarFooter className="px-2 py-4">
           <SidebarMenu>
             <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
             <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />

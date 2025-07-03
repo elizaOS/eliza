@@ -1,4 +1,3 @@
-import AddAgentCard from '@/components/add-agent-card';
 import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
