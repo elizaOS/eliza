@@ -72,20 +72,18 @@ export default function Home() {
                 <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
                   <TabsTrigger
                     value="agents"
-                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
+                    className="relative rounded-full data-[state=active]:border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-bold cursor-pointer text-lg py-1"
                   >
-                    <div className='relative'>
-                      Agents
-                      {activeAgentsCount > 0 && (
-                        <span className="absolute -top-1.5 -right-4 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[8px] font-semibold">
-                          {activeAgentsCount}
-                        </span>
-                      )}
-                    </div>
+                    Agents
+                    {activeAgentsCount > 0 && (
+                      <span className="absolute -top-2.5 right-0 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-600 text-white text-[8px] font-semibold border border-black">
+                        {activeAgentsCount}
+                      </span>
+                    )}
                   </TabsTrigger>
                   <TabsTrigger
                     value="groups"
-                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
+                    className="rounded-full data-[state=active]:border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:font-bold cursor-pointer text-lg py-1"
                   >
                     Groups
                   </TabsTrigger>
