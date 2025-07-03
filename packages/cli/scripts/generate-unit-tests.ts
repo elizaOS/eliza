@@ -176,7 +176,7 @@ async function main() {
   }
 
   if (!shouldGenerateTests) {
-    clack.cancel('Test generation skipped.');
+    clack.outro('Test generation skipped.');
     return;
   }
 
