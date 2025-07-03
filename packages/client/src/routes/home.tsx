@@ -103,7 +103,7 @@ export default function Home() {
                         handleCreateGroup()
                       }
                     }}
-                    className="create-agent-button"
+                    className="create-agent-button cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     {activeTab === 'agents' ? "Create New Agent" : "Create New Group"}
