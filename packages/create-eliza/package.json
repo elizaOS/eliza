@@ -1,6 +1,6 @@
 {
   "name": "create-eliza",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Initialize an Eliza project",
   "type": "module",
   "private": true,
