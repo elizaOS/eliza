@@ -1,6 +1,6 @@
 {
   "name": "eliza",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "module": "index.ts",
   "type": "module",
   "engines": {
