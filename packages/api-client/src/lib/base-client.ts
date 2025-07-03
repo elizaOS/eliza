@@ -139,7 +139,7 @@ export abstract class BaseApiClient {
 
       // Handle successful responses
       // Check if response is wrapped in { success: true, data: ... } format
-      if (jsonData && typeof jsonData === 'object' && 'success' in jsonData) {
+      if (jsonData && typeof jsonData === 'object' && 'success' in jsonData && 'data' in jsonData) {
         const apiResponse = jsonData as ApiResponse<T>;
         if (!apiResponse.success) {
           const error =
