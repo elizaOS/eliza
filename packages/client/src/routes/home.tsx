@@ -95,7 +95,7 @@ export default function Home() {
                     </TabsTrigger>
                   </TabsList>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     onClick={() => {
                       if (activeTab === 'agents') {
                         navigate('/create')
@@ -103,9 +103,10 @@ export default function Home() {
                         handleCreateGroup()
                       }
                     }}
-                    className="create-agent-button"
+                    className="create-agent-button cursor-pointer gap-1"
                   >
                     <Plus className="w-4 h-4" />
+                    {activeTab === 'agents' ? "Create New Agent" : "Create New Group"}
                   </Button>
                 </div>
                 <Separator/>
