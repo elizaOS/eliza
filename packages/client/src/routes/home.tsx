@@ -69,7 +69,7 @@ export default function Home() {
           >
             <div className="w-full">
               <div className="w-full md:max-w-4xl mx-auto px-6 pt-6 pb-2">
-                <div className='flex justify-between items-center mb-3'>
+                <div className="flex justify-between items-center mb-3">
                   <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
                     <TabsTrigger
                       value="agents"
@@ -97,21 +97,21 @@ export default function Home() {
                     variant="ghost"
                     onClick={() => {
                       if (activeTab === 'agents') {
-                        navigate('/create')
+                        navigate('/create');
                       } else {
-                        handleCreateGroup()
+                        handleCreateGroup();
                       }
                     }}
                     className="create-agent-button cursor-pointer gap-1"
                   >
                     <Plus className="w-4 h-4" />
-                    {activeTab === 'agents' ? "Create New Agent" : "Create New Group"}
+                    {activeTab === 'agents' ? 'Create New Agent' : 'Create New Group'}
                   </Button>
                 </div>
-                <Separator/>
+                <Separator />
               </div>
             </div>
-            
+
             <TabsContent value="agents" className="flex-1 mt-0 bg-background">
               <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
                 {isLoading && <div className="text-center py-8">Loading agents...</div>}

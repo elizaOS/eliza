@@ -16,7 +16,8 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 
 import {
-  useAgentsWithDetails, useChannelParticipants, // New hook
+  useAgentsWithDetails,
+  useChannelParticipants, // New hook
   useChannels,
   useServers, // New hook
 } from '@/hooks/use-query-hooks';
@@ -39,7 +40,12 @@ import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
 import { Book, Cog, Hash, Plus, TerminalIcon, Trash2, Users, Bot } from 'lucide-react'; // Added Users icon for groups and Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
 
 /* ---------- helpers ---------- */
@@ -98,7 +104,10 @@ const AgentRow = ({
 }) => (
   <SidebarMenuItem>
     <NavLink to={`/chat/${agent.id}`}>
-      <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
+      <SidebarMenuButton
+        isActive={active}
+        className="px-2 py-2 my-1 h-full rounded-md justify-between"
+      >
         <span className="text-base truncate max-w-24">{agent.name}</span>
         <div className="flex items-center">
           <div className="relative w-6 h-6 rounded-full bg-gray-600">
@@ -134,14 +143,9 @@ const GroupRow = ({
   const { data: agentsData } = useAgentsWithDetails();
   const allAgents = agentsData?.agents || [];
 
-  const { data: participantsData } = useChannelParticipants(
-    channel.id
-  );
+  const { data: participantsData } = useChannelParticipants(channel.id);
   const participants = participantsData?.data;
-  const participantsIds: UUID[] = 
-  participants && Array.isArray(participants)
-                    ? participants
-                  : [];
+  const participantsIds: UUID[] = participants && Array.isArray(participants) ? participants : [];
   const groupAgents = allAgents.filter((agent) => participantsIds.includes(agent.id));
 
   const displayedAgents = groupAgents.slice(0, 3);
@@ -150,7 +154,10 @@ const GroupRow = ({
   return (
     <SidebarMenuItem>
       <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
-        <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
+        <SidebarMenuButton
+          isActive={active}
+          className="px-2 py-2 my-1 h-full rounded-md justify-between"
+        >
           {/* Name */}
           <span className="text-base truncate max-w-24">
             {channel.name ||
@@ -189,7 +196,6 @@ const GroupRow = ({
   );
 };
 
-
 const AgentListSection = ({
   agents,
   activePath,
@@ -200,12 +206,10 @@ const AgentListSection = ({
   <>
     <div className="flex items-center px-4 pt-1 pb-0 text-muted-foreground">
       <SectionHeader className="px-0 py-0 text-xs flex gap-1 mr-2">
-        <Bot className="size-4"/>
-        <div>
-          Agents
-        </div>
+        <Bot className="size-4" />
+        <div>Agents</div>
       </SectionHeader>
-      <Separator/>
+      <Separator />
     </div>
     <SidebarGroup>
       <SidebarGroupContent className="px-1 mt-0">
@@ -237,12 +241,10 @@ const GroupListSection = ({
     <>
       <div className="flex items-center px-4 pt-1 pb-0 text-muted-foreground">
         <SectionHeader className="px-0 py-0 text-xs flex gap-1 mr-2">
-          <Users className="size-4"/>
-          <div>
-            Groups
-          </div>
+          <Users className="size-4" />
+          <div>Groups</div>
         </SectionHeader>
-        <Separator/>
+        <Separator />
       </div>
       <SidebarGroup>
         <SidebarGroupContent className="px-1 mt-0">
@@ -509,7 +511,6 @@ export function AppSidebar({
     [agents]
   );
 
-
   const agentLoadError = agentsError
     ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
     : undefined;
@@ -538,15 +539,15 @@ export function AppSidebar({
 
   function renderCreateNewButton() {
     const navigate = useNavigate();
-  
+
     const handleCreateAgent = () => {
       navigate('/create');
     };
-  
+
     const handleCreateGroup = () => {
       navigate('/group/new');
     };
-  
+
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -558,7 +559,10 @@ export function AppSidebar({
             Create New
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-full min-w-[var(--radix-dropdown-menu-trigger-width)]">
+        <DropdownMenuContent
+          align="start"
+          className="w-full min-w-[var(--radix-dropdown-menu-trigger-width)]"
+        >
           <DropdownMenuItem onClick={handleCreateAgent} className="w-full">
             Create New Agent
           </DropdownMenuItem>
@@ -614,16 +618,14 @@ export function AppSidebar({
           */}
           {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
-          <div className='px-4 py-6'>
-            {renderCreateNewButton()}
-          </div>
+          <div className="px-4 py-6">{renderCreateNewButton()}</div>
 
           {isLoadingAgents && !agentLoadError && (
             <SidebarSection title="Agents">
               <SidebarMenuSkeleton />
             </SidebarSection>
           )}
-          
+
           {!isLoadingAgents && !agentLoadError && (
             <>
               <AgentListSection
@@ -637,7 +639,6 @@ export function AppSidebar({
               />
             </>
           )}
-          
         </SidebarContent>
 
         {/* ---------- footer ---------- */}
