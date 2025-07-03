@@ -204,7 +204,7 @@ export function MessageContent({
           ))}
       </ChatBubbleMessage>
 
-      <div className="flex items-center justify-between w-full p-1">
+      <div className="flex items-center justify-between w-full">
         <div>
           {!isUser && (message.text || message.attachments?.length) && message.createdAt && (
             <ChatBubbleTimestamp

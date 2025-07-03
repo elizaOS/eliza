@@ -72,7 +72,7 @@ export default function Home() {
                 <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
                   <TabsTrigger
                     value="agents"
-                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
                   >
                     Agents
                     {activeAgentsCount > 0 && (
@@ -83,7 +83,7 @@ export default function Home() {
                   </TabsTrigger>
                   <TabsTrigger
                     value="groups"
-                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
                   >
                     Groups
                   </TabsTrigger>
