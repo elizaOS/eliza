@@ -144,7 +144,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                   e.stopPropagation();
                   handleChatClick();
                 }}
-                className="h-8 px-2 rounded-sm bg-muted hover:bg-muted-foreground cursor-pointer"
+                className="h-8 px-2 rounded-sm bg-muted hover:bg-muted/50 cursor-pointer"
               >
                 New Chat
               </Button>
