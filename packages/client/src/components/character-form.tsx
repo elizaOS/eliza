@@ -957,13 +957,13 @@ export default function CharacterForm({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="top">
-              <DropdownMenuItem onClick={handleExportJSON}>
-                <ArrowUpFromLine className="h-4 w-4 mr-2" />
-                Export
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleImportClick}>
-                <ArrowDownToLine className="h-4 w-4 mr-2" />
+                <ArrowUpFromLine className="h-4 w-4 mr-2" />
                 Import
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportJSON}>
+                <ArrowDownToLine className="h-4 w-4 mr-2" />
+                Export
               </DropdownMenuItem>
               {stopDeleteOptions.length > 0 && <DropdownMenuSeparator />}
               {stopDeleteOptions.length > 0 &&
