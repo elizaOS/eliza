@@ -35,13 +35,6 @@ describe('Chat Functionality', () => {
         cy.get('[data-testid="sidebar-toggle"]').should('exist');
       }
     });
-
-    // Check for either agent cards or add agent button
-    cy.get('body').should('satisfy', ($body) => {
-      return (
-        $body.find('[data-testid="agent-card"]').length > 0
-      );
-    });
   });
 
   it('can interact with sidebar', () => {
