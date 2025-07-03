@@ -16,12 +16,12 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 
 import {
-  useAgentsWithDetails, // New hook
+  useAgentsWithDetails, useChannelParticipants, // New hook
   useChannels,
   useServers, // New hook
 } from '@/hooks/use-query-hooks';
 import { useServerVersionString } from '@/hooks/use-server-version';
-import { cn, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
+import { cn, formatAgentName, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
 import type {
   MessageChannel as ClientMessageChannel,
   MessageServer as ClientMessageServer,
@@ -36,9 +36,11 @@ import {
 import { useDeleteChannel } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
-import { Book, Cog, Hash, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Users icon for groups and Hash for channels
+import { Book, Cog, Hash, Plus, TerminalIcon, Trash2, Users, Bot } from 'lucide-react'; // Added Users icon for groups and Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { Separator } from './ui/separator';
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -94,11 +96,12 @@ const AgentRow = ({
   isOnline: boolean;
   active: boolean;
 }) => (
-  <SidebarMenuItem className="h-16">
+  <SidebarMenuItem>
     <NavLink to={`/chat/${agent.id}`}>
-      <SidebarMenuButton isActive={active} className="px-4 py-2 my-2 h-full rounded-md">
-        <div className="flex items-center gap-2">
-          <div className="relative w-8 h-8 rounded-full bg-gray-600">
+      <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
+        <span className="text-base truncate max-w-24">{agent.name}</span>
+        <div className="flex items-center">
+          <div className="relative w-6 h-6 rounded-full bg-gray-600">
             <img
               src={getAgentAvatar(agent)}
               alt={agent.name || 'avatar'}
@@ -106,12 +109,11 @@ const AgentRow = ({
             />
             <span
               className={cn(
-                'absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border border-white',
+                'absolute bottom-0 right-0 w-[8px] h-[8px] rounded-full border border-white',
                 isOnline ? 'bg-green-500' : 'bg-muted-foreground'
               )}
             />
           </div>
-          <span className="text-base truncate max-w-24">{agent.name}</span>
         </div>
       </SidebarMenuButton>
     </NavLink>
@@ -129,16 +131,57 @@ const GroupRow = ({
 }) => {
   const currentClientId = getEntityId();
 
+  const { data: agentsData } = useAgentsWithDetails();
+  const allAgents = agentsData?.agents || [];
+
+  const { data: participantsData } = useChannelParticipants(
+    channel.id
+  );
+  const participants = participantsData?.data;
+  const participantsIds: UUID[] = 
+  participants && Array.isArray(participants)
+                    ? participants
+                  : [];
+  const groupAgents = allAgents.filter((agent) => participantsIds.includes(agent.id));
+
+  const displayedAgents = groupAgents.slice(0, 3);
+  const extraCount = groupAgents.length > 3 ? groupAgents.length - 3 : 0;
+
   return (
-    <SidebarMenuItem className="h-12">
-      <NavLink to={`/group/${channel.id}?serverId=${serverId}`}>
-        <SidebarMenuButton isActive={active} className="px-4 py-2 my-1 h-full rounded-md">
-          <div className="flex items-center gap-3">
-            <Hash className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm truncate max-w-32">
-              {channel.name ||
-                generateGroupName(channel, (channel as any).participants || [], currentClientId)}
-            </span>
+    <SidebarMenuItem>
+      <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+        <SidebarMenuButton isActive={active} className="px-2 py-2 my-1 h-full rounded-md justify-between">
+          {/* Name */}
+          <span className="text-base truncate max-w-24">
+            {channel.name ||
+              generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+          </span>
+          <div className="flex items-center gap-2">
+            {/* Avatars */}
+            <div className="flex -space-x-2">
+              {displayedAgents.map((agent) =>
+                agent.settings?.avatar ? (
+                  <img
+                    key={agent.id}
+                    src={agent.settings.avatar}
+                    alt={agent.name}
+                    className="w-6 h-6 rounded-full object-cover border border-background"
+                  />
+                ) : (
+                  <div
+                    key={agent.id}
+                    className="w-6 h-6 rounded-full bg-muted text-xs flex items-center justify-center border border-background"
+                  >
+                    {formatAgentName(agent.name)}
+                  </div>
+                )
+              )}
+              {extraCount > 0 && (
+                <div className="w-6 h-6 rounded-full bg-muted text-[10px] flex items-center justify-center border border-background">
+                  +{extraCount}
+                </div>
+              )}
+            </div>
           </div>
         </SidebarMenuButton>
       </NavLink>
@@ -146,53 +189,60 @@ const GroupRow = ({
   );
 };
 
+
 const AgentListSection = ({
-  title,
   agents,
   activePath,
-  className,
 }: {
-  title: string;
   agents: Partial<Agent>[];
   activePath: string;
-  className?: string;
 }) => (
-  <SidebarSection title={title} className={className}>
-    {agents.map((a) => (
-      <AgentRow
-        key={a?.id}
-        agent={a as Agent}
-        isOnline={a.status === CoreAgentStatus.ACTIVE}
-        active={activePath.includes(`/chat/${String(a?.id)}`)}
-      />
-    ))}
-  </SidebarSection>
+  <>
+    <div className="flex items-center px-4 pt-1 pb-0 text-muted-foreground">
+      <SectionHeader className="px-0 py-0 text-xs flex gap-1 mr-2">
+        <Bot className="size-4"/>
+        <div>
+          Agents
+        </div>
+      </SectionHeader>
+      <Separator/>
+    </div>
+    <SidebarGroup>
+      <SidebarGroupContent className="px-1 mt-0">
+        <SidebarMenu>
+          {agents.map((a) => (
+            <AgentRow
+              key={a?.id}
+              agent={a as Agent}
+              isOnline={a.status === CoreAgentStatus.ACTIVE}
+              active={activePath.includes(`/chat/${String(a?.id)}`)}
+            />
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  </>
 );
 
 const GroupListSection = ({
   servers,
   isLoadingServers,
   activePath,
-  className = '',
 }: {
   servers: ClientMessageServer[] | undefined;
   isLoadingServers: boolean;
   activePath: string;
-  className?: string;
 }) => {
-  const navigate = useNavigate();
-
-  const handleCreateGroup = () => {
-    navigate('/group/new');
-  };
-
   return (
     <>
-      <div className="flex items-center justify-between px-4 pt-1 pb-0">
-        <SectionHeader className="px-0 py-0">Groups</SectionHeader>
-        <Button variant="ghost" size="icon" onClick={handleCreateGroup} aria-label="Create Group">
-          <Plus className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center px-4 pt-1 pb-0 text-muted-foreground">
+        <SectionHeader className="px-0 py-0 text-xs flex gap-1 mr-2">
+          <Users className="size-4"/>
+          <div>
+            Groups
+          </div>
+        </SectionHeader>
+        <Separator/>
       </div>
       <SidebarGroup>
         <SidebarGroupContent className="px-1 mt-0">
@@ -459,10 +509,6 @@ export function AppSidebar({
     [agents]
   );
 
-  // const [isGroupPanelOpen, setGroupPanelOpen] = useState(false); // GroupPanel logic needs rethink
-  const handleCreateAgent = () => {
-    navigate('/create'); // Navigate to agent creation route
-  };
 
   const agentLoadError = agentsError
     ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
@@ -489,6 +535,40 @@ export function AppSidebar({
       navigate('/');
     }
   };
+
+  function renderCreateNewButton() {
+    const navigate = useNavigate();
+  
+    const handleCreateAgent = () => {
+      navigate('/create');
+    };
+  
+    const handleCreateGroup = () => {
+      navigate('/group/new');
+    };
+  
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="w-full justify-start rounded-[8px] py-5 border-white"
+          >
+            <Plus className="size-4" />
+            Create New
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-full min-w-[var(--radix-dropdown-menu-trigger-width)]">
+          <DropdownMenuItem onClick={handleCreateAgent} className="w-full">
+            Create New Agent
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleCreateGroup} className="w-full">
+            Create New Group
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   return (
     <>
@@ -532,51 +612,32 @@ export function AppSidebar({
               The "Create Agent" button should ideally be next to the "Agents" title.
               Let's adjust the structure slightly if needed or place it prominently.
           */}
+          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
+
+          <div className='px-4 py-6'>
+            {renderCreateNewButton()}
+          </div>
 
           {isLoadingAgents && !agentLoadError && (
             <SidebarSection title="Agents">
               <SidebarMenuSkeleton />
             </SidebarSection>
           )}
-          {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
-
+          
           {!isLoadingAgents && !agentLoadError && (
             <>
-              <div className="flex items-center justify-between px-4 pt-1 pb-0">
-                <SectionHeader className="px-0 py-0">Agents</SectionHeader>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCreateAgent}
-                  aria-label="Create Agent"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
               <AgentListSection
-                title="" // Title is now handled by the SectionHeader above
                 agents={[...onlineAgents, ...offlineAgents]}
+                activePath={location.pathname}
+              />
+              <GroupListSection
+                servers={servers}
+                isLoadingServers={isLoadingServers}
                 activePath={location.pathname}
               />
             </>
           )}
-          {/* Original CreateButton placement - to be removed or repurposed if "Create Group" is elsewhere */}
-          {/* The old CreateButton had "Create Agent" and "Create Group".
-               "Create Agent" is now a + button next to "Agents" title.
-               "Create Group" is a + button in the GroupChannelListSection.
-               So the old CreateButton component and its direct usage here can be removed.
-            */}
-          {/*
-            <div className="px-4 py-2 mb-2">
-              <CreateButton onCreateGroupChannel={handleCreateGroupChannel} />
-            </div>
-          */}
-          <GroupListSection
-            servers={servers}
-            isLoadingServers={isLoadingServers}
-            activePath={location.pathname}
-            className="mt-2"
-          />
+          
         </SidebarContent>
 
         {/* ---------- footer ---------- */}
