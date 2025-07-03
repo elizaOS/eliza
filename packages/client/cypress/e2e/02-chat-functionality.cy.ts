@@ -18,9 +18,6 @@ describe('Chat Functionality', () => {
 
         // Should navigate to some route (could be chat or agent details)
         cy.url().should('not.eq', `${Cypress.config('baseUrl')}/`);
-      } else if ($body.find('[data-testid="add-agent-button"]').length > 0) {
-        // If no agents exist but add button does, verify it exists
-        cy.get('[data-testid="add-agent-button"]').should('exist');
       } else {
         // Just verify the main interface loaded
         cy.get('[data-testid="app-sidebar"]').should('exist');
@@ -42,8 +39,7 @@ describe('Chat Functionality', () => {
     // Check for either agent cards or add agent button
     cy.get('body').should('satisfy', ($body) => {
       return (
-        $body.find('[data-testid="agent-card"]').length > 0 ||
-        $body.find('[data-testid="add-agent-button"]').length > 0
+        $body.find('[data-testid="agent-card"]').length > 0
       );
     });
   });
@@ -212,7 +208,6 @@ describe('Chat Functionality', () => {
     cy.get('[data-testid="app-sidebar"]').should('exist');
 
     // Verify multiple elements work simultaneously
-    cy.get('[data-testid="add-agent-button"]').should('exist');
     cy.get('[data-testid="mobile-menu-button"]').should('exist');
   });
 });
