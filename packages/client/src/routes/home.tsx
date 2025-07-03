@@ -68,22 +68,24 @@ export default function Home() {
             className="w-full h-full flex flex-col"
           >
             <div className="w-full">
-              <div className="w-full md:max-w-4xl mx-auto px-6 py-6">
+              <div className="w-full md:max-w-4xl mx-auto px-6 pt-6 pb-2">
                 <TabsList className="h-auto p-0 bg-transparent border-0 border-b-0 gap-2 w-auto">
                   <TabsTrigger
                     value="agents"
-                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
+                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
                   >
-                    Agents
-                    {activeAgentsCount > 0 && (
-                      <span className="ml-2.5 inline-flex items-center justify-center h-6 w-6 rounded-full bg-[#0B35F1] text-white text-xs font-semibold">
-                        {activeAgentsCount}
-                      </span>
-                    )}
+                    <div className='relative'>
+                      Agents
+                      {activeAgentsCount > 0 && (
+                        <span className="absolute -top-1.5 -right-4 inline-flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[8px] font-semibold">
+                          {activeAgentsCount}
+                        </span>
+                      )}
+                    </div>
                   </TabsTrigger>
                   <TabsTrigger
                     value="groups"
-                    className="relative rounded-full px-7 py-3 text-base font-semibold transition-colors duration-150 border-0 border-b-0 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-md data-[state=active]:border-b-0 data-[state=inactive]:text-muted-foreground data-[state=inactive]:bg-transparent hover:text-foreground/80 hover:bg-white/50 hover:border-b-0 focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
+                    className="data-[state=active]:border-blue-600 cursor-pointer text-lg data-[state=active]:font-black py-1"
                   >
                     Groups
                   </TabsTrigger>
@@ -92,9 +94,8 @@ export default function Home() {
             </div>
 
             <TabsContent value="agents" className="flex-1 mt-0 bg-background">
-              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-8">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-xl font-semibold">Your Agents</h2>
+              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
+                <div className="flex items-center justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={() => navigate('/create')}
@@ -144,9 +145,8 @@ export default function Home() {
             </TabsContent>
 
             <TabsContent value="groups" className="flex-1 mt-0 bg-background">
-              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-8">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-xl font-semibold">Your Groups</h2>
+              <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
+                <div className="flex items-center justify-end gap-2">
                   <Button
                     variant="outline"
                     onClick={handleCreateGroup}
@@ -157,7 +157,7 @@ export default function Home() {
                 </div>
 
                 {!isLoading && !isError && (
-                  <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr groups-section">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 groups-section">
                     {servers.map((server: MessageServer) => (
                       <ServerChannels key={server.id} serverId={server.id} />
                     ))}
