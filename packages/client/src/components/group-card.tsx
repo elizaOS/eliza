@@ -31,7 +31,6 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
   }
 
   const groupName = generateGroupName(group, group.participants || [], currentClientId);
-  
 
   const handleChatClick = () => {
     navigate(`/group/${group.id}?serverId=${group.server_id}`);
@@ -39,26 +38,27 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
 
   const { data: agentsData } = useAgentsWithDetails();
   const allAgents = agentsData?.agents || [];
-  
-  const { data: participantsData } = useChannelParticipants(
-    group.id
-  );
-  const participants = participantsData?.data;
-  const participantsIds: UUID[] = 
-  participants && Array.isArray(participants)
-                    ? participants
-                  : [];
 
-  const groupAgents = participantsIds ? allAgents.filter((agent) => participantsIds.includes(agent.id)) : [];
+  const { data: participantsData } = useChannelParticipants(group.id);
+  const participants = participantsData?.data;
+  const participantsIds: UUID[] = participants && Array.isArray(participants) ? participants : [];
+
+  const groupAgents = participantsIds
+    ? allAgents.filter((agent) => participantsIds.includes(agent.id))
+    : [];
 
   const handleSettings = () => {
     setShowGroupPanel(true);
   };
 
-  const agentNames = groupAgents.map((agent) => agent.name).filter(Boolean).join(', ') || 'No members';
+  const agentNames =
+    groupAgents
+      .map((agent) => agent.name)
+      .filter(Boolean)
+      .join(', ') || 'No members';
 
   return (
-    <> 
+    <>
       <Card
         className="w-full transition-all bg-card border border-border/50 rounded-sm"
         data-testid="agent-card"
@@ -96,8 +96,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                         <div
                           key={`empty-${idx}`}
                           className="flex items-center justify-center bg-[#2D2D2D] text-xs font-medium w-full h-full rounded-[3px]"
-                        >
-                        </div>
+                        ></div>
                       ))
                     )}
                   </div>
@@ -108,8 +107,6 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                 )}
               </Avatar>
 
-
-
               {/* Content - Name and Description */}
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-xl mb-1 truncate" title={groupName}>
@@ -118,7 +115,6 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                 <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
                   {agentNames}
                 </p>
-
               </div>
             </div>
             <div className="border-t border-muted" />
@@ -151,12 +147,9 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
             </div>
           </div>
         </CardContent>
-      </Card> 
+      </Card>
       {showGroupPanel && (
-        <GroupPanel
-          onClose={() => setShowGroupPanel(false)}
-          channelId={group.id}
-        />
+        <GroupPanel onClose={() => setShowGroupPanel(false)} channelId={group.id} />
       )}
     </>
   );
