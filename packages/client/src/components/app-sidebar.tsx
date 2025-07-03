@@ -39,6 +39,7 @@ import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
 import { Book, Cog, Hash, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Users icon for groups and Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -490,6 +491,40 @@ export function AppSidebar({
     }
   };
 
+  function renderCreateNewButton() {
+    const navigate = useNavigate();
+  
+    const handleCreateAgent = () => {
+      navigate('/create');
+    };
+  
+    const handleCreateGroup = () => {
+      navigate('/group/new');
+    };
+  
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="w-full justify-start rounded-[8px] py-5 border-white"
+          >
+            <Plus className="size-4" />
+            Create New
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-full min-w-[var(--radix-dropdown-menu-trigger-width)]">
+          <DropdownMenuItem onClick={handleCreateAgent} className="w-full">
+            Create New Agent
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleCreateGroup} className="w-full">
+            Create New Group
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   return (
     <>
       <Sidebar
@@ -540,6 +575,12 @@ export function AppSidebar({
           )}
           {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
+          <div className='px-4 py-6'>
+            
+            {renderCreateNewButton()}
+
+          </div>
+          
           {!isLoadingAgents && !agentLoadError && (
             <>
               <div className="flex items-center justify-between px-4 pt-1 pb-0">
