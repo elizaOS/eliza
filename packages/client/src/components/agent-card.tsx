@@ -4,7 +4,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import { formatAgentName, cn } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
@@ -90,7 +89,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all hover:shadow-lg hover:bg-muted/30 bg-card border border-border/50',
+        'w-full transition-all bg-card border border-border/50 rounded-sm',
         isActive ? '' : 'opacity-75'
       )}
       data-testid="agent-card"
@@ -117,9 +116,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
         <div className="flex flex-col justify-between">
           <div className="flex items-center gap-4 p-2">
             {/* Avatar */}
-            <Avatar className="h-16 w-16 flex-shrink-0 rounded-xl">
+            <Avatar className="h-16 w-16 flex-shrink-0 rounded-sm">
               <AvatarImage src={avatarUrl} alt={agentName} />
-              <AvatarFallback className="text-lg font-medium rounded-xl">
+              <AvatarFallback className="text-lg font-medium rounded-sm">
                 {formatAgentName(agentName)}
               </AvatarFallback>
             </Avatar>
@@ -157,8 +156,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
                 e.stopPropagation();
                 handleNewChat();
               }}
-              className="h-8 px-4 rounded-sm bg-background border-muted-foreground/20 hover:bg-muted/30 cursor-pointer"
+              className="h-8 px-2 rounded-sm bg-muted hover:bg-muted-foreground cursor-pointer"
             >
+              <MessageSquare/>
               New Chat
             </Button>
           </div>
