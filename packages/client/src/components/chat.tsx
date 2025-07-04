@@ -86,7 +86,6 @@ import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
 import { useLocation } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
@@ -270,7 +269,6 @@ export default function Chat({
     isMobile: false,
   });
 
-  const navigate = useNavigate();
   const location = useLocation();
   const state = location.state as ChatLocationState | null;
   const forceNew = state?.forceNew || false;
