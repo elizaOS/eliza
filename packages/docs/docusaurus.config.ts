@@ -280,6 +280,8 @@ const config = {
           path: 'news',
         },
         docs: {
+          routeBasePath: '/',
+          path: 'docs',
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
           editUrl: 'https://github.com/elizaos/eliza/tree/develop/packages/docs/',
