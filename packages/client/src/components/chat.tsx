@@ -1232,6 +1232,8 @@ export default function Chat({
                   ]}
                   variant="outline"
                   size="sm"
+                  mainButtonClassName="rounded-l-[12px] h-9"
+                  dropdownButtonClassName="rounded-r-[12px] h-9"
                 />
 
                 <Tooltip>
