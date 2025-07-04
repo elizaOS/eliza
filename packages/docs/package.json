@@ -17,7 +17,12 @@
     "write-translations": "docusaurus write-translations",
     "write-heading-ids": "docusaurus write-heading-ids",
     "gen-api-docs": "docusaurus gen-api-docs",
-    "clean-api-docs": "docusaurus clean-api-docs"
+    "clean-api-docs": "docusaurus clean-api-docs",
+    "test:links": "node scripts/link-verification.js",
+    "test:performance": "node scripts/performance-test.js",
+    "test:accessibility": "node scripts/accessibility-test.js",
+    "test:qa": "npm run test:links && npm run test:performance && npm run test:accessibility",
+    "qa:full": "npm run build && npm run serve & sleep 5 && npm run test:qa; kill %1"
   },
   "dependencies": {
     "@docusaurus/core": "3.8.1",
@@ -45,7 +50,9 @@
     "docusaurus-plugin-typedoc": "1.4.0",
     "typedoc": "0.28.5",
     "typedoc-plugin-markdown": "4.7.0",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "puppeteer": "^21.0.0",
+    "lodash": "^4.17.21"
   },
   "browserslist": {
     "production": [

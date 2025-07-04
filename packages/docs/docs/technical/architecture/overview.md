@@ -14,14 +14,14 @@ graph TB
         SM[State Manager]
         EV[Event System]
     end
-    
+
     subgraph "Service Layer"
         DB[Database Service]
         AI[AI Service]
         TR[Transport Service]
         AU[Auth Service]
     end
-    
+
     subgraph "Plugin System"
         PL[Plugin Loader]
         AC[Actions]
@@ -29,29 +29,29 @@ graph TB
         EL[Evaluators]
         TS[Tasks]
     end
-    
+
     subgraph "Platform Adapters"
         DC[Discord]
         TW[Twitter]
         TG[Telegram]
         WB[Web]
     end
-    
+
     RT --> MM
     RT --> SM
     RT --> EV
     RT --> PL
-    
+
     PL --> AC
     PL --> PR
     PL --> EL
     PL --> TS
-    
+
     RT --> DB
     RT --> AI
     RT --> TR
     RT --> AU
-    
+
     TR --> DC
     TR --> TW
     TR --> TG
@@ -63,6 +63,7 @@ graph TB
 ### Runtime Engine (`packages/core/src/runtime.ts`)
 
 The heart of ElizaOS, responsible for:
+
 - **Agent Lifecycle Management**: Starting, stopping, and managing agent instances
 - **Message Processing Pipeline**: Routing messages through the plugin system
 - **Context Assembly**: Building comprehensive context for AI interactions
@@ -70,23 +71,23 @@ The heart of ElizaOS, responsible for:
 
 ```typescript
 class AgentRuntime {
-    // Core properties
-    agentId: UUID;
-    character: Character;
-    memory: IMemoryManager;
-    state: IStateManager;
-    
-    // Service registry
-    services: Map<string, IService>;
-    
-    // Plugin components
-    actions: Map<string, Action>;
-    providers: Map<string, Provider>;
-    evaluators: Map<string, Evaluator>;
-    
-    // Message processing
-    async processMessage(message: Message): Promise<Response>;
-    async evaluate(message: Message, response: Response): Promise<void>;
+  // Core properties
+  agentId: UUID;
+  character: Character;
+  memory: IMemoryManager;
+  state: IStateManager;
+
+  // Service registry
+  services: Map<string, IService>;
+
+  // Plugin components
+  actions: Map<string, Action>;
+  providers: Map<string, Provider>;
+  evaluators: Map<string, Evaluator>;
+
+  // Message processing
+  async processMessage(message: Message): Promise<Response>;
+  async evaluate(message: Message, response: Response): Promise<void>;
 }
 ```
 
@@ -95,6 +96,7 @@ class AgentRuntime {
 Sophisticated memory management with multiple storage types:
 
 #### Memory Types
+
 1. **Short-term Memory**: Recent conversation context (last 10-20 messages)
 2. **Long-term Memory**: Persistent facts and relationships
 3. **Episodic Memory**: Specific conversation events and outcomes
@@ -102,18 +104,18 @@ Sophisticated memory management with multiple storage types:
 
 ```typescript
 interface IMemoryManager {
-    // Core operations
-    createMemory(memory: Memory): Promise<void>;
-    searchMemories(query: string, count: number): Promise<Memory[]>;
-    getRecentMemories(count: number): Promise<Memory[]>;
-    
-    // Relationship management
-    createRelationship(userA: UUID, userB: UUID, type: string): Promise<void>;
-    getRelationships(userId: UUID): Promise<Relationship[]>;
-    
-    // Embedding operations
-    createEmbedding(text: string): Promise<number[]>;
-    searchByEmbedding(embedding: number[], threshold: number): Promise<Memory[]>;
+  // Core operations
+  createMemory(memory: Memory): Promise<void>;
+  searchMemories(query: string, count: number): Promise<Memory[]>;
+  getRecentMemories(count: number): Promise<Memory[]>;
+
+  // Relationship management
+  createRelationship(userA: UUID, userB: UUID, type: string): Promise<void>;
+  getRelationships(userId: UUID): Promise<Relationship[]>;
+
+  // Embedding operations
+  createEmbedding(text: string): Promise<number[]>;
+  searchByEmbedding(embedding: number[], threshold: number): Promise<Memory[]>;
 }
 ```
 
@@ -123,21 +125,21 @@ ElizaOS uses a hierarchical state system:
 
 ```typescript
 interface State {
-    // Agent state
-    agentId: UUID;
-    roomId: UUID;
-    
-    // Conversation state
-    recentMessages: Message[];
-    conversationContext: string;
-    goals: Goal[];
-    
-    // User state
-    userId: UUID;
-    userContext: Map<string, any>;
-    
-    // Plugin state
-    pluginStates: Map<string, any>;
+  // Agent state
+  agentId: UUID;
+  roomId: UUID;
+
+  // Conversation state
+  recentMessages: Message[];
+  conversationContext: string;
+  goals: Goal[];
+
+  // User state
+  userId: UUID;
+  userContext: Map<string, any>;
+
+  // Plugin state
+  pluginStates: Map<string, any>;
 }
 ```
 
@@ -146,38 +148,41 @@ interface State {
 ### Plugin Types
 
 1. **Actions**: Discrete behaviors the agent can perform
+
    ```typescript
    interface Action {
-       name: string;
-       description: string;
-       examples: string[][];
-       validate: (context: Context) => Promise<boolean>;
-       execute: (context: Context) => Promise<Response>;
+     name: string;
+     description: string;
+     examples: string[][];
+     validate: (context: Context) => Promise<boolean>;
+     execute: (context: Context) => Promise<Response>;
    }
    ```
 
 2. **Providers**: Supply contextual information
+
    ```typescript
    interface Provider {
-       name: string;
-       get: (context: Context) => Promise<string>;
+     name: string;
+     get: (context: Context) => Promise<string>;
    }
    ```
 
 3. **Evaluators**: Post-processing and learning
+
    ```typescript
    interface Evaluator {
-       name: string;
-       evaluate: (context: Context) => Promise<EvaluationResult>;
+     name: string;
+     evaluate: (context: Context) => Promise<EvaluationResult>;
    }
    ```
 
 4. **Tasks**: Scheduled or deferred operations
    ```typescript
    interface Task {
-       name: string;
-       schedule: CronExpression | 'periodic' | 'once';
-       execute: (context: Context) => Promise<void>;
+     name: string;
+     schedule: CronExpression | 'periodic' | 'once';
+     execute: (context: Context) => Promise<void>;
    }
    ```
 
@@ -189,7 +194,7 @@ sequenceDiagram
     participant PL as PluginLoader
     participant P as Plugin
     participant S as ServiceRegistry
-    
+
     R->>PL: loadPlugin(name)
     PL->>P: import plugin
     P->>PL: return { actions, providers, evaluators, services }
@@ -207,11 +212,11 @@ ElizaOS abstracts platform-specific concepts into a unified model:
 
 ```typescript
 interface Room {
-    id: UUID;          // Platform-agnostic ID
-    platformId: string; // Platform-specific ID
-    type: 'discord' | 'twitter' | 'telegram' | 'direct';
-    members: UUID[];
-    metadata: Map<string, any>;
+  id: UUID; // Platform-agnostic ID
+  platformId: string; // Platform-specific ID
+  type: 'discord' | 'twitter' | 'telegram' | 'direct';
+  members: UUID[];
+  metadata: Map<string, any>;
 }
 ```
 
@@ -221,13 +226,13 @@ All platform messages are normalized:
 
 ```typescript
 interface Message {
-    id: UUID;
-    userId: UUID;
-    roomId: UUID;
-    content: string;
-    attachments: Attachment[];
-    platformData: any; // Original platform message
-    timestamp: Date;
+  id: UUID;
+  userId: UUID;
+  roomId: UUID;
+  content: string;
+  attachments: Attachment[];
+  platformData: any; // Original platform message
+  timestamp: Date;
 }
 ```
 
@@ -244,7 +249,7 @@ sequenceDiagram
     participant P as Providers
     participant A as AI Service
     participant E as Evaluators
-    
+
     C->>T: Send Message
     T->>R: Normalized Message
     R->>M: Store Message
@@ -309,15 +314,15 @@ CREATE TABLE goals (
 
 ```typescript
 class CacheManager {
-    // Multi-level cache
-    l1Cache: LRUCache<string, any>; // In-process cache
-    l2Cache: RedisCache;             // Distributed cache
-    
-    // Cache invalidation
-    invalidatePattern(pattern: string): Promise<void>;
-    
-    // Smart caching
-    cacheWithTTL(key: string, value: any, ttl: number): Promise<void>;
+  // Multi-level cache
+  l1Cache: LRUCache<string, any>; // In-process cache
+  l2Cache: RedisCache; // Distributed cache
+
+  // Cache invalidation
+  invalidatePattern(pattern: string): Promise<void>;
+
+  // Smart caching
+  cacheWithTTL(key: string, value: any, ttl: number): Promise<void>;
 }
 ```
 
@@ -334,17 +339,17 @@ class CacheManager {
 
 ```typescript
 interface SecurityContext {
-    // User authentication
-    userId: UUID;
-    permissions: Permission[];
-    
-    // Platform verification
-    platformId: string;
-    platformVerified: boolean;
-    
-    // Rate limiting
-    rateLimitBucket: string;
-    requestCount: number;
+  // User authentication
+  userId: UUID;
+  permissions: Permission[];
+
+  // Platform verification
+  platformId: string;
+  platformVerified: boolean;
+
+  // Rate limiting
+  rateLimitBucket: string;
+  requestCount: number;
 }
 ```
 
@@ -361,19 +366,19 @@ interface SecurityContext {
 
 ```typescript
 interface Metrics {
-    // Performance metrics
-    messageProcessingTime: Histogram;
-    aiResponseTime: Histogram;
-    memoryOperationTime: Histogram;
-    
-    // Business metrics
-    messagesProcessed: Counter;
-    activeUsers: Gauge;
-    pluginExecutions: Counter;
-    
-    // Error tracking
-    errors: Counter;
-    aiFailures: Counter;
+  // Performance metrics
+  messageProcessingTime: Histogram;
+  aiResponseTime: Histogram;
+  memoryOperationTime: Histogram;
+
+  // Business metrics
+  messagesProcessed: Counter;
+  activeUsers: Gauge;
+  pluginExecutions: Counter;
+
+  // Error tracking
+  errors: Counter;
+  aiFailures: Counter;
 }
 ```
 
@@ -391,31 +396,31 @@ interface Metrics {
 ```mermaid
 graph LR
     LB[Load Balancer]
-    
+
     subgraph "Agent Cluster"
         A1[Agent 1]
         A2[Agent 2]
         A3[Agent 3]
     end
-    
+
     subgraph "Shared Services"
         DB[(PostgreSQL)]
         RD[(Redis)]
         Q[Message Queue]
     end
-    
+
     LB --> A1
     LB --> A2
     LB --> A3
-    
+
     A1 --> DB
     A2 --> DB
     A3 --> DB
-    
+
     A1 --> RD
     A2 --> RD
     A3 --> RD
-    
+
     A1 --> Q
     A2 --> Q
     A3 --> Q
@@ -434,15 +439,15 @@ graph LR
 
 ```typescript
 abstract class BaseService implements IService {
-    protected runtime: AgentRuntime;
-    
-    abstract initialize(): Promise<void>;
-    abstract shutdown(): Promise<void>;
-    
-    // Service discovery
-    getService<T extends IService>(name: string): T {
-        return this.runtime.getService<T>(name);
-    }
+  protected runtime: AgentRuntime;
+
+  abstract initialize(): Promise<void>;
+  abstract shutdown(): Promise<void>;
+
+  // Service discovery
+  getService<T extends IService>(name: string): T {
+    return this.runtime.getService<T>(name);
+  }
 }
 ```
 
@@ -451,15 +456,15 @@ abstract class BaseService implements IService {
 ```typescript
 // Event emitter pattern
 runtime.on('message:received', async (message) => {
-    await processMessage(message);
+  await processMessage(message);
 });
 
 runtime.on('memory:created', async (memory) => {
-    await indexMemory(memory);
+  await indexMemory(memory);
 });
 
 runtime.on('goal:completed', async (goal) => {
-    await evaluateGoal(goal);
+  await evaluateGoal(goal);
 });
 ```
 

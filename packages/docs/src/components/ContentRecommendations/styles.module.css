@@ -1,0 +1,452 @@
+/* Content Recommendations Component Styles */
+
+.container {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: var(--ifm-background-surface-color);
+  border-radius: 12px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.header h2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+  color: var(--ifm-color-primary);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.header p {
+  margin: 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+}
+
+/* Loading States */
+.loadingGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.loadingCard {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  padding: 1.5rem;
+  height: 200px;
+}
+
+.loadingSkeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ifm-color-emphasis-200) 25%,
+    var(--ifm-color-emphasis-100) 50%,
+    var(--ifm-color-emphasis-200) 75%
+  );
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 8px;
+  height: 100%;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Recommendations Grid */
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.recommendationCard {
+  position: relative;
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.recommendationCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  border-color: var(--ifm-color-primary);
+}
+
+.recommendationCard:hover .cardAction {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Card Types */
+.recommendationCard.next-step {
+  border-left: 4px solid var(--ifm-color-primary);
+}
+
+.recommendationCard.related {
+  border-left: 4px solid var(--ifm-color-success);
+}
+
+.recommendationCard.popular {
+  border-left: 4px solid var(--ifm-color-warning);
+}
+
+.recommendationCard.trending {
+  border-left: 4px solid var(--ifm-color-danger);
+}
+
+.recommendationCard.beginner-friendly {
+  border-left: 4px solid var(--ifm-color-info);
+}
+
+/* Card Header */
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.cardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: var(--ifm-color-primary-light);
+  border-radius: 12px;
+  color: var(--ifm-color-primary);
+  flex-shrink: 0;
+}
+
+.cardMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
+}
+
+.cardType {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ifm-color-emphasis-600);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cardTime {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--ifm-color-emphasis-500);
+}
+
+/* Card Content */
+.cardContent {
+  flex: 1;
+}
+
+.cardTitle {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+  line-height: 1.3;
+}
+
+.cardDescription {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.4;
+}
+
+/* Card Footer */
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.cardTags {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-color-emphasis-700);
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.cardDifficulty {
+  display: flex;
+  align-items: center;
+}
+
+.difficultyBadge {
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Card Action */
+.cardAction {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  color: var(--ifm-color-primary);
+  opacity: 0;
+  transform: translateX(5px);
+  transition: all 0.3s ease;
+}
+
+/* Show More Button */
+.showMoreContainer {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.showMoreButton {
+  background: var(--ifm-color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.showMoreButton:hover {
+  background: var(--ifm-color-primary-dark);
+  transform: translateY(-1px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    margin: 1rem 0;
+    padding: 1.5rem;
+  }
+
+  .recommendationsGrid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .recommendationCard {
+    padding: 1rem;
+  }
+
+  .cardHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .cardMeta {
+    align-items: flex-start;
+  }
+
+  .cardIcon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .cardAction {
+    position: static;
+    opacity: 1;
+    transform: none;
+    align-self: flex-end;
+    margin-top: 0.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .header h2 {
+    font-size: 1.25rem;
+  }
+
+  .cardTitle {
+    font-size: 1rem;
+  }
+
+  .cardDescription {
+    font-size: 0.85rem;
+  }
+
+  .cardFooter {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+/* Dark Mode Enhancements */
+[data-theme='dark'] .container {
+  background: var(--ifm-background-surface-color);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .recommendationCard {
+  background: var(--ifm-background-color);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .recommendationCard:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .cardIcon {
+  background: var(--ifm-color-primary-dark);
+}
+
+[data-theme='dark'] .tag {
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
+}
+
+[data-theme='dark'] .loadingSkeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ifm-color-emphasis-300) 25%,
+    var(--ifm-color-emphasis-200) 50%,
+    var(--ifm-color-emphasis-300) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .recommendationCard {
+    border-width: 2px;
+  }
+
+  .cardIcon {
+    border: 2px solid var(--ifm-color-primary);
+  }
+
+  .difficultyBadge {
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Accessibility */
+.recommendationCard:focus {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+.showMoreButton:focus {
+  outline: 2px solid var(--ifm-color-primary-contrast-background);
+  outline-offset: 2px;
+}
+
+/* Animation for cards appearing */
+.recommendationCard {
+  animation: cardFadeIn 0.5s ease-out;
+}
+
+@keyframes cardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Staggered animation for multiple cards */
+.recommendationCard:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.recommendationCard:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.recommendationCard:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.recommendationCard:nth-child(4) {
+  animation-delay: 0.4s;
+}
+.recommendationCard:nth-child(5) {
+  animation-delay: 0.5s;
+}
+.recommendationCard:nth-child(6) {
+  animation-delay: 0.6s;
+}
+.recommendationCard:nth-child(7) {
+  animation-delay: 0.7s;
+}
+.recommendationCard:nth-child(8) {
+  animation-delay: 0.8s;
+}
+
+/* Smooth transitions */
+* {
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+/* Special hover effects for different card types */
+.recommendationCard.next-step:hover {
+  box-shadow: 0 8px 25px rgba(var(--ifm-color-primary-rgb), 0.15);
+}
+
+.recommendationCard.related:hover {
+  box-shadow: 0 8px 25px rgba(var(--ifm-color-success-rgb), 0.15);
+}
+
+.recommendationCard.popular:hover {
+  box-shadow: 0 8px 25px rgba(var(--ifm-color-warning-rgb), 0.15);
+}
+
+.recommendationCard.trending:hover {
+  box-shadow: 0 8px 25px rgba(var(--ifm-color-danger-rgb), 0.15);
+}
+
+.recommendationCard.beginner-friendly:hover {
+  box-shadow: 0 8px 25px rgba(var(--ifm-color-info-rgb), 0.15);
+}

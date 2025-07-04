@@ -21,6 +21,19 @@ const config = {
     defaultLocale: 'en',
     locales: ['en'],
   },
+  customFields: {
+    // AI Configuration - passed to client
+    aiEnabled: process.env.REACT_APP_AI_ENABLED !== 'false',
+    aiProvider: process.env.REACT_APP_OPENAI_API_KEY
+      ? 'openai'
+      : process.env.REACT_APP_ANTHROPIC_API_KEY
+        ? 'anthropic'
+        : process.env.REACT_APP_GROQ_API_KEY
+          ? 'groq'
+          : process.env.REACT_APP_OLLAMA_BASE_URL
+            ? 'ollama'
+            : null,
+  },
   markdown: {
     mermaid: true,
     mdx1Compat: {
@@ -180,7 +193,27 @@ const config = {
         },
       },
     ],
-    require.resolve('docusaurus-lunr-search'),
+    [
+      require.resolve('docusaurus-lunr-search'),
+      {
+        // Include docs, blog, and news in search index
+        excludeRoutes: [],
+        // Index blog content
+        indexBlog: true,
+        // Index docs content
+        indexDocs: true,
+        // Index pages
+        indexPages: true,
+        // Languages to support
+        languages: ['en'],
+        // Custom fields to index
+        fields: {
+          title: { boost: 5 },
+          content: { boost: 1 },
+          tags: { boost: 3 },
+        },
+      },
+    ],
     [
       '@docusaurus/plugin-content-docs',
       {
@@ -373,6 +406,11 @@ const config = {
             },
             {
               type: 'docSidebar',
+              sidebarId: 'customizeSidebar',
+              label: '🎨 Customize Track (Power Users)',
+            },
+            {
+              type: 'docSidebar',
               sidebarId: 'technicalSidebar',
               label: '🔧 Technical Track (Developers)',
             },
@@ -448,11 +486,11 @@ const config = {
           ],
         },
         {
-          href: '/blog',
+          type: 'dropdown',
+          label: 'RSS',
           position: 'right',
           className: 'header-rss-link',
           'aria-label': 'RSS Feed',
-          to: '/news',
           items: [
             { label: 'RSS (XML)', href: '/blog/rss.xml', target: '_blank' },
             { label: 'Atom', href: '/blog/atom.xml', target: '_blank' },

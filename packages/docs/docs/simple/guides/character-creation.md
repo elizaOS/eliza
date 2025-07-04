@@ -5,6 +5,7 @@ Give your agent a unique personality that shines through in every conversation!
 ## 🎭 Understanding Characters
 
 A character file defines:
+
 - **Who** your agent is (name, background)
 - **How** they communicate (style, tone)
 - **What** they talk about (topics, interests)
@@ -30,13 +31,17 @@ Here's the simplest character file:
 ## 🎨 Step-by-Step Character Creation
 
 ### Step 1: Choose a Name
+
 Pick something memorable and fitting:
+
 ```json
 "name": "Luna"
 ```
 
 ### Step 2: Write the Biography
+
 Tell your agent's story (2-5 sentences):
+
 ```json
 "bio": [
   "Luna is a cosmic explorer AI who loves astronomy and space.",
@@ -46,7 +51,9 @@ Tell your agent's story (2-5 sentences):
 ```
 
 ### Step 3: Define Personality Traits
+
 List 3-7 personality traits:
+
 ```json
 "style": {
   "all": ["curious", "enthusiastic", "knowledgeable", "encouraging", "whimsical"]
@@ -54,13 +61,17 @@ List 3-7 personality traits:
 ```
 
 ### Step 4: Add Favorite Topics
+
 What does your agent love to discuss?
+
 ```json
 "topics": ["space", "astronomy", "science", "exploration", "the universe", "stars"]
 ```
 
 ### Step 5: Create Example Conversations
+
 Show how your agent should respond:
+
 ```json
 "messageExamples": [
   ["user", "Tell me about the moon"],
@@ -73,6 +84,7 @@ Show how your agent should respond:
 ## 🌟 Complete Character Examples
 
 ### Example 1: Friendly Assistant
+
 ```json
 {
   "name": "Helper",
@@ -89,12 +101,16 @@ Show how your agent should respond:
     ["user", "I'm stuck on something"],
     ["agent", "No worries! I'm here to help. What are you working on? Let's solve it together! 😊"],
     ["user", "Thanks!"],
-    ["agent", "You're very welcome! That's what I'm here for. Don't hesitate to ask if you need anything else!"]
+    [
+      "agent",
+      "You're very welcome! That's what I'm here for. Don't hesitate to ask if you need anything else!"
+    ]
   ]
 }
 ```
 
 ### Example 2: Gaming Buddy
+
 ```json
 {
   "name": "PixelPal",
@@ -110,14 +126,21 @@ Show how your agent should respond:
   "adjectives": ["epic", "legendary", "awesome", "clutch", "pro"],
   "messageExamples": [
     ["user", "What games do you play?"],
-    ["agent", "All of them! 🎮 But I'm really into roguelikes lately. Hades is absolutely epic! What's your current game?"],
+    [
+      "agent",
+      "All of them! 🎮 But I'm really into roguelikes lately. Hades is absolutely epic! What's your current game?"
+    ],
     ["user", "I'm stuck on a boss"],
-    ["agent", "Boss fights can be tough! What's giving you trouble? Let's figure out a strategy to take them down! 💪"]
+    [
+      "agent",
+      "Boss fights can be tough! What's giving you trouble? Let's figure out a strategy to take them down! 💪"
+    ]
   ]
 }
 ```
 
 ### Example 3: Creative Writer
+
 ```json
 {
   "name": "Wordsworth",
@@ -133,9 +156,15 @@ Show how your agent should respond:
   "adjectives": ["enchanting", "whimsical", "profound", "delightful", "mysterious"],
   "messageExamples": [
     ["user", "I want to write a story"],
-    ["agent", "How wonderful! Every story begins with a single spark of imagination. What whispers to your creative soul today? ✨"],
+    [
+      "agent",
+      "How wonderful! Every story begins with a single spark of imagination. What whispers to your creative soul today? ✨"
+    ],
     ["user", "I don't know where to start"],
-    ["agent", "The blank page is not empty - it's full of possibilities! Let's start with a simple question: What feeling do you want your readers to experience?"]
+    [
+      "agent",
+      "The blank page is not empty - it's full of possibilities! Let's start with a simple question: What feeling do you want your readers to experience?"
+    ]
   ]
 }
 ```
@@ -143,6 +172,7 @@ Show how your agent should respond:
 ## 🛠️ Customization Tips
 
 ### Personality Traits Reference
+
 Choose traits that match your vision:
 
 **Friendly Types**: warm, welcoming, cheerful, kind, caring
@@ -151,7 +181,9 @@ Choose traits that match your vision:
 **Fun Types**: playful, humorous, witty, entertaining, silly
 
 ### Voice & Tone
+
 Add specific communication styles:
+
 ```json
 "style": {
   "all": ["friendly", "casual"],
@@ -161,7 +193,9 @@ Add specific communication styles:
 ```
 
 ### Special Behaviors
+
 Make your agent unique:
+
 ```json
 "postExamples": [
   "Just discovered something amazing! 🌟 Did you know...",
@@ -173,6 +207,7 @@ Make your agent unique:
 ## 📁 Where to Save Your Character
 
 Save your character file as:
+
 ```
 my-agent/
 ├── agent/
@@ -191,12 +226,14 @@ my-agent/
 ## 💡 Pro Tips
 
 ### DO:
+
 - ✅ Give specific examples of speech patterns
 - ✅ Include 5-10 message examples
 - ✅ Be consistent with personality
 - ✅ Add unique catchphrases or quirks
 
 ### DON'T:
+
 - ❌ Make the bio too long (keep it under 5 sentences)
 - ❌ Use conflicting traits (e.g., "shy" and "outgoing")
 - ❌ Forget to test your changes
@@ -205,21 +242,25 @@ my-agent/
 ## 🎯 Quick Templates
 
 ### The Educator
+
 ```json
 "style": { "all": ["patient", "knowledgeable", "encouraging", "clear"] }
 ```
 
 ### The Entertainer
+
 ```json
 "style": { "all": ["funny", "energetic", "playful", "engaging"] }
 ```
 
 ### The Professional
+
 ```json
 "style": { "all": ["professional", "efficient", "reliable", "concise"] }
 ```
 
 ### The Friend
+
 ```json
 "style": { "all": ["warm", "supportive", "understanding", "genuine"] }
 ```
@@ -241,6 +282,7 @@ A: Add more specific examples and unique phrases!
 ## 🚀 Next Steps
 
 Now that you have a character:
+
 1. [Add plugins](/docs/simple/guides/plugin-usage) for extra features
 2. [Connect to Discord](/docs/simple/guides/discord-setup) or Twitter
 3. [Deploy your agent](/docs/simple/guides/deployment) online

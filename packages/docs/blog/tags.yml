@@ -22,3 +22,136 @@ guide:
 community:
   label: Community
   description: Community events and announcements
+
+# Additional tags for existing blog posts
+plugins:
+  label: Plugins
+  description: ElizaOS plugin system and architecture
+
+registry:
+  label: Registry
+  description: Plugin registry and management
+
+elizaos:
+  label: ElizaOS
+  description: ElizaOS framework and ecosystem
+
+announcement:
+  label: Announcement
+  description: Official announcements and updates
+
+v2:
+  label: Version 2
+  description: Version 2 features and migration
+
+documentation:
+  label: Documentation
+  description: Documentation and guides
+
+ci-cd:
+  label: CI/CD
+  description: Continuous integration and deployment
+
+automation:
+  label: Automation
+  description: Automation tools and workflows
+
+devops:
+  label: DevOps
+  description: DevOps practices and tools
+
+open-source:
+  label: Open Source
+  description: Open source contributions
+
+ai:
+  label: AI
+  description: Artificial intelligence
+
+docs-as-code:
+  label: Docs as Code
+  description: Documentation as code practices
+
+architecture:
+  label: Architecture
+  description: System architecture and design
+
+models:
+  label: Models
+  description: AI models and integrations
+
+providers:
+  label: Providers
+  description: Service providers and integrations
+
+tools:
+  label: Tools
+  description: Development tools
+
+information:
+  label: Information
+  description: General information
+
+'AI news':
+  label: AI News
+  description: Latest AI news and updates
+
+development:
+  label: Development
+  description: Development updates
+
+progress:
+  label: Progress
+  description: Project progress updates
+
+'twitter spaces':
+  label: Twitter Spaces
+  description: Twitter Spaces recordings
+
+archive:
+  label: Archive
+  description: Archived content
+
+video:
+  label: Video
+  description: Video content
+
+features:
+  label: Features
+  description: Feature announcements
+
+upgrade:
+  label: Upgrade
+  description: Upgrade guides
+
+macos:
+  label: macOS
+  description: macOS specific content
+
+setup:
+  label: Setup
+  description: Setup guides
+
+cli:
+  label: CLI
+  description: Command line interface
+
+autofun:
+  label: AutoFun
+  description: AutoFun platform
+
+tokenomics:
+  label: Tokenomics
+  description: Token economics
+
+ai16z:
+  label: ai16z
+  description: ai16z ecosystem
+
+liquidity:
+  label: Liquidity
+  description: Liquidity and trading
+
+launchpad:
+  label: Launchpad
+  description: Project launchpad

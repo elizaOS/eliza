@@ -134,11 +134,7 @@ const sidebars = {
       type: 'category',
       label: '🎯 Simple Track',
       collapsed: true,
-      items: [
-        'simple/getting-started/quick-start',
-        'simple/templates/gallery',
-        'simple/faq',
-      ],
+      items: ['simple/getting-started/quick-start', 'simple/templates/gallery', 'simple/faq'],
     },
     {
       type: 'category',

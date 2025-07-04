@@ -196,6 +196,43 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
     },
     {
+      type: 'category',
+      label: '🎨 Design System',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'design-system/index',
+          label: '🎭 Overview',
+        },
+        {
+          type: 'doc',
+          id: 'design-system/components',
+          label: '🧩 Components',
+        },
+        {
+          type: 'doc',
+          id: 'design-system/animations',
+          label: '🎞️ Animations',
+        },
+        {
+          type: 'doc',
+          id: 'design-system/performance',
+          label: '⚡ Performance',
+        },
+        {
+          type: 'doc',
+          id: 'design-system/accessibility',
+          label: '♿ Accessibility',
+        },
+        {
+          type: 'doc',
+          id: 'design-system/implementation',
+          label: '🚀 Implementation',
+        },
+      ],
+    },
+    {
       type: 'doc',
       id: 'awesome-eliza',
       label: 'Awesome elizaOS',
@@ -206,7 +243,7 @@ const sidebars: SidebarsConfig = {
       label: 'CHANGELOG',
     },
   ],
-  
+
   // Simple track for non-technical users
   simpleSidebar: [
     {
@@ -219,16 +256,6 @@ const sidebars: SidebarsConfig = {
           id: 'simple/getting-started/quick-start',
           label: '⚡ 5-Minute Quick Start',
         },
-        {
-          type: 'doc',
-          id: 'simple/getting-started/first-agent',
-          label: '🤖 Your First Agent',
-        },
-        {
-          type: 'doc',
-          id: 'simple/getting-started/troubleshooting',
-          label: '🔧 Troubleshooting',
-        },
       ],
     },
     {
@@ -239,11 +266,6 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'simple/templates/gallery',
           label: '📚 Template Gallery',
-        },
-        {
-          type: 'doc',
-          id: 'simple/templates/customization',
-          label: '✏️ Customization Guide',
         },
       ],
     },
@@ -258,13 +280,23 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
-          id: 'simple/guides/plugin-usage',
-          label: '🧩 Using Plugins',
+          id: 'simple/guides/cli-setup',
+          label: '🔧 CLI Setup',
         },
         {
           type: 'doc',
-          id: 'simple/guides/deployment',
-          label: '🚀 Deployment',
+          id: 'simple/guides/discord-setup',
+          label: '🎮 Discord Setup',
+        },
+        {
+          type: 'doc',
+          id: 'simple/guides/telegram-setup',
+          label: '📱 Telegram Setup',
+        },
+        {
+          type: 'doc',
+          id: 'simple/guides/twitter-setup',
+          label: '🐦 Twitter Setup',
         },
       ],
     },
@@ -297,78 +329,29 @@ const sidebars: SidebarsConfig = {
           id: 'technical/architecture/state-management',
           label: '💾 State Management',
         },
-        {
-          type: 'doc',
-          id: 'technical/architecture/plugin-system',
-          label: '🔌 Plugin Architecture',
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: '💻 Development',
-      items: [
-        {
-          type: 'doc',
-          id: 'technical/development/monorepo-guide',
-          label: '📦 Monorepo Development',
-        },
-        {
-          type: 'doc',
-          id: 'technical/development/standalone-guide',
-          label: '🚀 Standalone Projects',
-        },
-        {
-          type: 'doc',
-          id: 'technical/development/plugin-development',
-          label: '🔧 Plugin Development',
-        },
-        {
-          type: 'doc',
-          id: 'technical/development/testing-guide',
-          label: '🧪 Testing Guide',
-        },
       ],
     },
     {
       type: 'category',
       label: '📚 API Reference',
+      collapsed: false,
       items: [
         {
           type: 'doc',
-          id: 'technical/api-reference/core-api',
-          label: '🔵 Core API',
-        },
-        {
-          type: 'doc',
-          id: 'technical/api-reference/plugin-api',
-          label: '🧩 Plugin API',
-        },
-        {
-          type: 'doc',
-          id: 'technical/api-reference/service-api',
-          label: '⚙️ Service API',
+          id: 'technical/api-reference/actions-api',
+          label: '⚡ Actions API',
         },
       ],
     },
     {
       type: 'category',
-      label: '🚀 Advanced Topics',
+      label: '🔗 Platform Integrations',
+      collapsed: false,
       items: [
         {
           type: 'doc',
-          id: 'technical/advanced/performance',
-          label: '⚡ Performance',
-        },
-        {
-          type: 'doc',
-          id: 'technical/advanced/scaling',
-          label: '📈 Scaling',
-        },
-        {
-          type: 'doc',
-          id: 'technical/advanced/security',
-          label: '🔐 Security',
+          id: 'technical/integrations/twitter-technical',
+          label: '🐦 Twitter Technical Integration',
         },
       ],
     },
@@ -376,6 +359,59 @@ const sidebars: SidebarsConfig = {
       type: 'doc',
       id: 'technical/faq',
       label: '❓ Technical FAQ',
+    },
+  ],
+
+  // Customize track for power users who want to personalize their agents
+  customizeSidebar: [
+    {
+      type: 'doc',
+      id: 'customize/overview',
+      label: '🎨 Customize Overview',
+    },
+    {
+      type: 'category',
+      label: '🎯 Interactive Tools',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'customize/character-builder',
+          label: '👤 Character Builder',
+        },
+        {
+          type: 'doc',
+          id: 'customize/environment-builder',
+          label: '🌍 Environment Builder',
+        },
+        {
+          type: 'doc',
+          id: 'customize/visual-lab',
+          label: '🎨 Visual Lab',
+        },
+        {
+          type: 'doc',
+          id: 'customize/feature-workshop',
+          label: '🔧 Feature Workshop',
+        },
+        {
+          type: 'doc',
+          id: 'customize/analytics',
+          label: '📊 Analytics Dashboard',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🔧 Platform Configuration',
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'customize/twitter-advanced',
+          label: '🐦 Twitter Advanced Setup',
+        },
+      ],
     },
   ],
 };

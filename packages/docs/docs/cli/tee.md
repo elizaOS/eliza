@@ -177,7 +177,7 @@ TEE deployments enable:
 ## Related Documentation
 
 - [Creating TEE Projects](./create.md#tee-projects)
-- [TEE Plugin Documentation](../packages/plugins/tee.md)
+- [TEE Plugin Documentation](/packages/plugins/tee)
 - [Phala Cloud Documentation](https://docs.phala.network/)
 
 ## Security Considerations

@@ -26,6 +26,7 @@ Plugin loading order is critical because:
 3. **Provider Precedence**: Earlier providers override later ones for the same data
 
 Loading order:
+
 ```typescript
 // 1. Core infrastructure (database)
 // 2. AI providers (text-only first, then embedding-capable)
@@ -36,11 +37,11 @@ Loading order:
 
 ### Q: What's the difference between Actions, Providers, and Evaluators?
 
-| Component | Purpose | Execution | Example |
-|-----------|---------|-----------|---------|
-| **Actions** | Perform discrete behaviors | On-demand when detected | Send email, create post |
-| **Providers** | Supply contextual information | Every message for context | Time, weather, user data |
-| **Evaluators** | Post-process interactions | After response generation | Sentiment analysis, fact extraction |
+| Component      | Purpose                       | Execution                 | Example                             |
+| -------------- | ----------------------------- | ------------------------- | ----------------------------------- |
+| **Actions**    | Perform discrete behaviors    | On-demand when detected   | Send email, create post             |
+| **Providers**  | Supply contextual information | Every message for context | Time, weather, user data            |
+| **Evaluators** | Post-process interactions     | After response generation | Sentiment analysis, fact extraction |
 
 ### Q: How does memory consolidation work?
 
@@ -55,6 +56,7 @@ Memory consolidation follows a multi-stage process:
 ```
 
 Memories are scored based on:
+
 - Emotional salience
 - Information density
 - Repetition frequency
@@ -65,12 +67,14 @@ Memories are scored based on:
 ### Q: Monorepo vs Standalone - when to use which?
 
 **Use Monorepo Development when:**
+
 - Contributing to ElizaOS core
 - Developing plugins for distribution
 - Need to modify core functionality
 - Testing against latest changes
 
 **Use Standalone Projects when:**
+
 - Building production agents
 - Creating private/proprietary features
 - Want stable, versioned dependencies
@@ -82,34 +86,34 @@ Always use proper error handling and cleanup:
 
 ```typescript
 class MyPlugin implements Plugin {
-    private cleanup: (() => Promise<void>)[] = [];
-    
-    async initialize(runtime: AgentRuntime): Promise<void> {
-        // Setup resources
-        const connection = await createConnection();
-        this.cleanup.push(() => connection.close());
-        
-        // Register handlers with error boundaries
-        runtime.on('message', this.wrapHandler(this.handleMessage));
+  private cleanup: (() => Promise<void>)[] = [];
+
+  async initialize(runtime: AgentRuntime): Promise<void> {
+    // Setup resources
+    const connection = await createConnection();
+    this.cleanup.push(() => connection.close());
+
+    // Register handlers with error boundaries
+    runtime.on('message', this.wrapHandler(this.handleMessage));
+  }
+
+  private wrapHandler(handler: Function) {
+    return async (...args: any[]) => {
+      try {
+        await handler.apply(this, args);
+      } catch (error) {
+        console.error('Handler error:', error);
+        // Don't let plugin errors crash the runtime
+      }
+    };
+  }
+
+  async shutdown(): Promise<void> {
+    // Clean up in reverse order
+    for (const cleanupFn of this.cleanup.reverse()) {
+      await cleanupFn();
     }
-    
-    private wrapHandler(handler: Function) {
-        return async (...args: any[]) => {
-            try {
-                await handler.apply(this, args);
-            } catch (error) {
-                console.error('Handler error:', error);
-                // Don't let plugin errors crash the runtime
-            }
-        };
-    }
-    
-    async shutdown(): Promise<void> {
-        // Clean up in reverse order
-        for (const cleanupFn of this.cleanup.reverse()) {
-            await cleanupFn();
-        }
-    }
+  }
 }
 ```
 
@@ -130,6 +134,7 @@ CREATE INDEX idx_my_plugin_agent ON my_plugin_data(agent_id);
 ```
 
 Then in your plugin:
+
 ```typescript
 async initialize(runtime: AgentRuntime): Promise<void> {
     const db = runtime.getService<IDatabaseService>('database');
@@ -143,22 +148,17 @@ Implement the `IModelProvider` interface:
 
 ```typescript
 class CustomModelProvider implements IModelProvider {
-    async generateText(
-        prompt: string,
-        options: ModelOptions
-    ): Promise<string> {
-        // Your implementation
-    }
-    
-    async generateEmbedding(
-        text: string
-    ): Promise<number[]> {
-        // Return embedding vector
-    }
-    
-    async isAvailable(): Promise<boolean> {
-        // Check if provider is configured
-    }
+  async generateText(prompt: string, options: ModelOptions): Promise<string> {
+    // Your implementation
+  }
+
+  async generateEmbedding(text: string): Promise<number[]> {
+    // Return embedding vector
+  }
+
+  async isAvailable(): Promise<boolean> {
+    // Check if provider is configured
+  }
 }
 
 // Register in plugin
@@ -171,23 +171,25 @@ runtime.registerModelProvider('custom', provider);
 ### Q: How can I optimize memory searches?
 
 1. **Use Embeddings Efficiently**:
+
    ```typescript
    // Cache embeddings for frequently searched queries
    const embeddingCache = new LRUCache<string, number[]>(1000);
    ```
 
 2. **Implement Pagination**:
+
    ```typescript
    // Don't load all memories at once
    const memories = await db.searchMemories(query, {
-       limit: 50,
-       offset: page * 50
+     limit: 50,
+     offset: page * 50,
    });
    ```
 
 3. **Use Indexes**:
    ```sql
-   CREATE INDEX idx_memories_embedding ON memories 
+   CREATE INDEX idx_memories_embedding ON memories
    USING ivfflat (embedding vector_cosine_ops);
    ```
 
@@ -197,27 +199,24 @@ Implement exponential backoff with jitter:
 
 ```typescript
 class RateLimiter {
-    private attempts = 0;
-    
-    async execute<T>(
-        fn: () => Promise<T>,
-        maxAttempts = 3
-    ): Promise<T> {
-        try {
-            const result = await fn();
-            this.attempts = 0;
-            return result;
-        } catch (error) {
-            if (this.isRateLimitError(error) && this.attempts < maxAttempts) {
-                this.attempts++;
-                const delay = Math.min(1000 * Math.pow(2, this.attempts), 30000);
-                const jitter = Math.random() * delay * 0.1;
-                await sleep(delay + jitter);
-                return this.execute(fn, maxAttempts);
-            }
-            throw error;
-        }
+  private attempts = 0;
+
+  async execute<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+    try {
+      const result = await fn();
+      this.attempts = 0;
+      return result;
+    } catch (error) {
+      if (this.isRateLimitError(error) && this.attempts < maxAttempts) {
+        this.attempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.attempts), 30000);
+        const jitter = Math.random() * delay * 0.1;
+        await sleep(delay + jitter);
+        return this.execute(fn, maxAttempts);
+      }
+      throw error;
     }
+  }
 }
 ```
 
@@ -228,8 +227,8 @@ Use built-in performance monitoring:
 ```typescript
 // Enable performance tracking
 runtime.enablePerfMonitoring({
-    sampleRate: 0.1, // Sample 10% of requests
-    slowThreshold: 1000 // Log requests over 1s
+  sampleRate: 0.1, // Sample 10% of requests
+  slowThreshold: 1000, // Log requests over 1s
 });
 
 // Add custom metrics
@@ -247,16 +246,16 @@ runtime.metrics.counter('custom.operation.count').increment();
 
 ```typescript
 class SecureStorage {
-    async store(key: string, value: any): Promise<void> {
-        const encrypted = await encrypt(JSON.stringify(value), this.key);
-        await this.db.set(key, encrypted);
-    }
-    
-    async retrieve(key: string): Promise<any> {
-        const encrypted = await this.db.get(key);
-        const decrypted = await decrypt(encrypted, this.key);
-        return JSON.parse(decrypted);
-    }
+  async store(key: string, value: any): Promise<void> {
+    const encrypted = await encrypt(JSON.stringify(value), this.key);
+    await this.db.set(key, encrypted);
+  }
+
+  async retrieve(key: string): Promise<any> {
+    const encrypted = await this.db.get(key);
+    const decrypted = await decrypt(encrypted, this.key);
+    return JSON.parse(decrypted);
+  }
 }
 ```
 
@@ -276,8 +275,8 @@ Enable debug logging for memory operations:
 
 ```typescript
 // Set in environment
-LOG_LEVEL=debug
-DEBUG_MEMORY=true
+LOG_LEVEL = debug;
+DEBUG_MEMORY = true;
 
 // Or programmatically
 runtime.setLogLevel('debug');
@@ -285,6 +284,7 @@ runtime.memory.enableDebugMode();
 ```
 
 Use memory inspection tools:
+
 ```typescript
 // Dump memory state
 const memoryState = await runtime.memory.debugDump();
@@ -299,6 +299,7 @@ const stats = await runtime.memory.getStatistics();
 Common issues and solutions:
 
 1. **Check Plugin Structure**:
+
    ```typescript
    // Plugin must export default
    export default {
@@ -310,6 +311,7 @@ Common issues and solutions:
    ```
 
 2. **Verify Dependencies**:
+
    ```bash
    # Check for missing dependencies
    npm ls
@@ -323,6 +325,7 @@ Common issues and solutions:
 ### Q: How do I handle plugin conflicts?
 
 1. **Namespace your actions**:
+
    ```typescript
    actions: [
        { name: 'MY_PLUGIN_ACTION', ... }
@@ -330,16 +333,17 @@ Common issues and solutions:
    ```
 
 2. **Use service discovery**:
+
    ```typescript
-   const service = runtime.hasService('myService') 
-       ? runtime.getService('myService')
-       : this.createDefaultService();
+   const service = runtime.hasService('myService')
+     ? runtime.getService('myService')
+     : this.createDefaultService();
    ```
 
 3. **Implement feature detection**:
    ```typescript
    if (runtime.supports('feature-name')) {
-       // Use feature
+     // Use feature
    }
    ```
 
@@ -355,9 +359,9 @@ Common issues and solutions:
 ```typescript
 // Example Redis configuration
 const redis = new Redis.Cluster([
-    { host: 'redis-1', port: 6379 },
-    { host: 'redis-2', port: 6379 },
-    { host: 'redis-3', port: 6379 }
+  { host: 'redis-1', port: 6379 },
+  { host: 'redis-2', port: 6379 },
+  { host: 'redis-3', port: 6379 },
 ]);
 ```
 
@@ -377,12 +381,12 @@ services:
     depends_on:
       - postgres
       - redis
-      
+
   postgres:
     image: postgres:15-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      
+
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
@@ -394,20 +398,20 @@ services:
 
 ```typescript
 class CustomConsolidator implements IMemoryConsolidator {
-    async consolidate(memories: Memory[]): Promise<Memory[]> {
-        // Group similar memories
-        const groups = this.groupBySimilarity(memories);
-        
-        // Create summary memories
-        const consolidated = groups.map(group => ({
-            type: 'consolidated',
-            content: this.summarize(group),
-            sources: group.map(m => m.id),
-            importance: Math.max(...group.map(m => m.importance))
-        }));
-        
-        return consolidated;
-    }
+  async consolidate(memories: Memory[]): Promise<Memory[]> {
+    // Group similar memories
+    const groups = this.groupBySimilarity(memories);
+
+    // Create summary memories
+    const consolidated = groups.map((group) => ({
+      type: 'consolidated',
+      content: this.summarize(group),
+      sources: group.map((m) => m.id),
+      importance: Math.max(...group.map((m) => m.importance)),
+    }));
+
+    return consolidated;
+  }
 }
 ```
 
@@ -417,13 +421,19 @@ Yes, implement the `ITransport` interface:
 
 ```typescript
 class CustomTransport implements ITransport {
-    async start(): Promise<void> { /* ... */ }
-    async stop(): Promise<void> { /* ... */ }
-    async send(message: Message): Promise<void> { /* ... */ }
-    
-    on(event: string, handler: Function): void {
-        // Handle platform events
-    }
+  async start(): Promise<void> {
+    /* ... */
+  }
+  async stop(): Promise<void> {
+    /* ... */
+  }
+  async send(message: Message): Promise<void> {
+    /* ... */
+  }
+
+  on(event: string, handler: Function): void {
+    // Handle platform events
+  }
 }
 ```
 
@@ -445,13 +455,13 @@ class CustomTransport implements ITransport {
 
 ### Common Error Codes
 
-| Code | Meaning | Solution |
-|------|---------|----------|
-| E001 | Plugin load failure | Check plugin structure |
-| E002 | Memory corruption | Rebuild memory index |
-| E003 | Service unavailable | Check service health |
-| E004 | Rate limit exceeded | Implement backoff |
-| E005 | Invalid character | Validate character.json |
+| Code | Meaning             | Solution                |
+| ---- | ------------------- | ----------------------- |
+| E001 | Plugin load failure | Check plugin structure  |
+| E002 | Memory corruption   | Rebuild memory index    |
+| E003 | Service unavailable | Check service health    |
+| E004 | Rate limit exceeded | Implement backoff       |
+| E005 | Invalid character   | Validate character.json |
 
 ---
 
