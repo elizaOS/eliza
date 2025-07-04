@@ -25,10 +25,12 @@ export interface SplitButtonProps {
   size?: 'default' | 'sm' | 'lg' | 'icon';
   disabled?: boolean;
   className?: string;
+  mainButtonClassName?: string;
+  dropdownButtonClassName?: string;
 }
 
 export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
-  ({ mainAction, actions, variant = 'default', size = 'default', disabled, className }, ref) => {
+  ({ mainAction, actions, variant = 'default', size = 'default', disabled, className, mainButtonClassName, dropdownButtonClassName  }, ref) => {
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
@@ -50,7 +52,8 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
           disabled={disabled || mainAction.disabled}
           className={cn(
             'rounded-r-none flex-1',
-            variant === 'destructive' ? 'border-r border-red-700' : 'border-r-0'
+            variant === 'destructive' ? 'border-r border-red-700' : 'border-r-0',
+            mainButtonClassName
           )}
         >
           {mainAction.icon && <span className="mr-2">{mainAction.icon}</span>}
@@ -64,7 +67,10 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
               variant={variant}
               size={size}
               disabled={disabled}
-              className="rounded-l-none px-2 flex-shrink-0"
+              className={cn(
+                'rounded-l-none px-2 flex-shrink-0',
+                dropdownButtonClassName
+              )}
             >
               <ChevronDown className="h-4 w-4" />
               <span className="sr-only">More options</span>
