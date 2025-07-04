@@ -87,7 +87,7 @@ const SidebarSection = ({
   <>
     <SectionHeader className={className}>{title}</SectionHeader>
     <SidebarGroup>
-      <SidebarGroupContent className="px-1 mt-0">
+      <SidebarGroupContent className="mt-0">
         <SidebarMenu>{children}</SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
@@ -107,7 +107,7 @@ const AgentRow = ({
     <NavLink to={`/chat/${agent.id}`}>
       <SidebarMenuButton
         isActive={active}
-        className="px-2 py-2 my-1 h-full rounded justify-between"
+        className="px-2 py-2 my-1 h-full rounded justify-between cursor-pointer"
       >
         <span className="text-base truncate max-w-36">{agent.name}</span>
         <div className="flex items-center">
@@ -158,7 +158,7 @@ const GroupRow = ({
       <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
         <SidebarMenuButton
           isActive={active}
-          className="px-2 py-2 my-1 h-full rounded justify-between"
+          className="px-2 py-2 my-1 h-full rounded justify-between cursor-pointer"
         >
           {/* Name */}
           <span className="text-base truncate max-w-36">
@@ -377,7 +377,7 @@ const ChannelsForServer = ({
             <SidebarMenuItem key={channel.id} className="h-12 group">
               <div className="flex items-center gap-1 w-full">
                 <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
-                  <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded">
+                  <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded cursor-pointer">
                     <div className="flex items-center gap-3">
                       <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
                       <span className="text-sm truncate max-w-32">
@@ -545,8 +545,11 @@ export function AppSidebar({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="w-full justify-start rounded py-5 border-white">
-            <Plus className="size-4" />
+          <Button
+            variant="ghost"
+            className="w-full bg-sidebar-accent hover:bg-sidebar-accent/80 h-10 rounded justify-start"
+          >
+            <Plus className="w-4 h-4 bg" />
             Create New
           </Button>
         </DropdownMenuTrigger>
@@ -584,7 +587,7 @@ export function AppSidebar({
                 <a
                   href="/"
                   onClick={handleLogoClick}
-                  className="px-4 py-2 h-full sidebar-logo no-underline"
+                  className="px-4 py-2 h-full sidebar-logo no-underline cursor-pointer"
                 >
                   <div className="flex flex-col pt-2 gap-1 items-start justify-center">
                     <img
@@ -609,27 +612,31 @@ export function AppSidebar({
           */}
           {agentLoadError && <div className="px-4 py-2 text-xs text-red-500">{agentLoadError}</div>}
 
-          <div className="px-4 py-6">{renderCreateNewButton()}</div>
+          <SidebarMenu className="my-2">
+            <SidebarMenuItem className="list-none">{renderCreateNewButton()}</SidebarMenuItem>
+          </SidebarMenu>
 
-          {isLoadingAgents && !agentLoadError && (
-            <SidebarSection title="Agents">
-              <SidebarMenuSkeleton />
-            </SidebarSection>
-          )}
+          <div className="pt-2">
+            {isLoadingAgents && !agentLoadError && (
+              <SidebarSection title="Agents">
+                <SidebarMenuSkeleton />
+              </SidebarSection>
+            )}
 
-          {!isLoadingAgents && !agentLoadError && (
-            <>
-              <AgentListSection
-                agents={[...onlineAgents, ...offlineAgents]}
-                activePath={location.pathname}
-              />
-              <GroupListSection
-                servers={servers}
-                isLoadingServers={isLoadingServers}
-                activePath={location.pathname}
-              />
-            </>
-          )}
+            {!isLoadingAgents && !agentLoadError && (
+              <>
+                <AgentListSection
+                  agents={[...onlineAgents, ...offlineAgents]}
+                  activePath={location.pathname}
+                />
+                <GroupListSection
+                  servers={servers}
+                  isLoadingServers={isLoadingServers}
+                  activePath={location.pathname}
+                />
+              </>
+            )}
+          </div>
         </SidebarContent>
 
         {/* ---------- footer ---------- */}
@@ -656,7 +663,7 @@ const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label:
     return (
       <SidebarMenuItem>
         <a href={to} target="_blank" rel="noopener noreferrer">
-          <SidebarMenuButton className="rounded">
+          <SidebarMenuButton className="rounded cursor-pointer">
             <Icon className="h-4 w-4 mr-3" />
             {label}
           </SidebarMenuButton>
@@ -668,7 +675,7 @@ const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label:
   return (
     <SidebarMenuItem>
       <NavLink to={to}>
-        <SidebarMenuButton className="rounded">
+        <SidebarMenuButton className="rounded cursor-pointer">
           <Icon className="h-4 w-4 mr-3" />
           {label}
         </SidebarMenuButton>
