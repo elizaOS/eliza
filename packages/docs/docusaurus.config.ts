@@ -17,14 +17,15 @@ const config = {
   onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
   
-  future: {
-    experimental_faster: {
-      swcJsLoader: true,
-      swcJsMinimizer: true,
-      swcHtmlMinimizer: true,
-      rspackBundler: true,
-    },
-  },
+  // Temporarily disabled until @docusaurus/faster is installed
+  // future: {
+  //   experimental_faster: {
+  //     swcJsLoader: true,
+  //     swcJsMinimizer: true,
+  //     swcHtmlMinimizer: true,
+  //     rspackBundler: true,
+  //   },
+  // },
 
   i18n: {
     defaultLocale: 'en',
@@ -42,6 +43,7 @@ const config = {
           : process.env.REACT_APP_OLLAMA_BASE_URL
             ? 'ollama'
             : null,
+    GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
   },
   markdown: {
     mermaid: true,
@@ -426,12 +428,12 @@ const config = {
               to: '/docs/simple/getting-started/quick-start',
             },
             {
-              label: '🎨 Customize Track (Power Users)',
-              to: '/docs/customize/overview',
-            },
-            {
               label: '🔧 Technical Track (Developers)',
               to: '/docs/technical/architecture/overview',
+            },
+            {
+              label: '🎨 Customize Track (Power Users)',
+              to: '/docs/customize/overview',
             },
           ],
         },
@@ -500,7 +502,6 @@ const config = {
             },
           ],
         },
-        // Search will be positioned via CSS - no need for explicit item
         // Right side - version, social, etc.
         {
           type: 'docsVersionDropdown',
@@ -581,9 +582,6 @@ const config = {
         },
       ],
     },
-  },
-  customFields: {
-    GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
   },
 };
 

@@ -1,126 +1,132 @@
-# Customize Your ElizaOS Experience
+---
+displayed_sidebar: customizeSidebar
+---
 
-Welcome to the Customize track! You've got your agent running and now you want to make it uniquely yours. This section provides interactive tools, visual builders, and AI-powered assistance to help you create the perfect AI agent.
+# Customize Your ElizaOS Agent
+
+Welcome to the Customize track! You've got your agent running and now you want to make it uniquely yours. This section covers the real tools and features available in ElizaOS for customizing your agent's personality, behavior, and platform integrations.
 
 ## 🎯 What You'll Accomplish
 
-By the end of this track, you'll have:
+By the end of this track, you'll know how to:
 
-- ✨ A unique agent personality that reflects your vision
-- 🎨 Custom visual appearance and branding
-- 🔧 Advanced features tailored to your use case
-- 📱 Multi-platform deployment optimized for your audience
-- 💡 AI-powered insights to improve your agent's performance
+- ✨ Create a unique agent personality using character files
+- 🔧 Configure environment variables for multiple platforms
+- 🧩 Install and configure plugins to extend functionality
+- 📱 Deploy your agent across Discord, Telegram, and other platforms
+- 🛠️ Use CLI tools for environment and character management
 
-## 🚀 Your Customization Journey
+## 🚀 Your Customization Options
 
 <div className="cards-container">
 
-### 🎭 Character Design Studio
+### 🎭 Character Configuration
 
-**Interactive personality builder with real-time preview**
+**Define your agent's personality and behavior**
 
-- Visual personality designer with drag-and-drop traits
-- AI-powered conversation style generator
-- Live chat testing with instant feedback
-- Character consistency validation
+- JSON-based character definitions
+- Personality traits, bio, and conversation style
+- Message examples and response templates
+- Knowledge topics and expertise areas
 
-[Open Character Builder →](/docs/customize/character-builder)
-
----
-
-### 🎨 Visual Customization Lab
-
-**Brand your agent with custom themes and assets**
-
-- Logo and avatar designer
-- Color scheme generator
-- Custom response templates
-- Platform-specific theming
-
-[Launch Visual Lab →](/docs/customize/visual-lab)
+[Learn Character Configuration →](/docs/customize/character-builder)
 
 ---
 
-### ⚡ Feature Enhancement Workshop
+### 🌍 Environment Configuration
 
-**Add powerful capabilities without coding**
+**Set up platform integrations and API keys**
 
-- Plugin marketplace with one-click installs
-- Custom command builder
-- Workflow automation designer
-- Integration configurator
+- Interactive CLI environment tools
+- Multi-platform credentials management
+- Database configuration (PostgreSQL/PGLite)
+- Model provider setup (OpenAI, Anthropic, etc.)
 
-[Explore Features →](/docs/customize/feature-workshop)
+[Configure Environment →](/docs/customize/environment-builder)
 
 ---
 
-### 📊 Performance Analytics
+### 🧩 Plugin System
 
-**Optimize your agent with AI insights**
+**Extend your agent with additional capabilities**
 
-- Conversation quality analysis
-- User engagement metrics
-- Performance recommendations
-- A/B testing framework
+- Core plugins: bootstrap, sql
+- Actions, providers, and evaluators
+- Plugin installation via CLI
+- Custom plugin development
 
-[View Analytics →](/docs/customize/analytics)
+[Explore Plugins →](/docs/customize/feature-workshop)
+
+---
+
+### 📊 Logging & Monitoring
+
+**Track your agent's performance**
+
+- Structured logging with multiple levels
+- In-memory log buffer
+- Sentry error tracking integration
+- Performance monitoring
+
+[Setup Monitoring →](/docs/customize/analytics)
 
 </div>
 
-## 🎨 Design Philosophy: Apple Liquid Glass
+## 🎨 ElizaOS Architecture
 
-Our customization tools embrace the **Liquid Glass design aesthetic** - combining fluidity, transparency, and depth for an intuitive user experience.
+ElizaOS is built with a modular, extensible architecture that allows deep customization:
 
-### Key Design Principles
+### Core Components
 
-- **Glassmorphic interfaces** with subtle transparency and blur effects
-- **Fluid animations** that respond to user interactions
-- **Contextual depth** through layered visual hierarchy
-- **Intelligent assistance** that guides without overwhelming
+- **Character System** - JSON/TypeScript-based personality definitions
+- **Plugin Architecture** - Modular extensions for actions, providers, and services
+- **Multi-Platform Support** - Unified runtime with platform-specific clients
+- **Environment Management** - Flexible configuration system
 
-## 🛠️ Interactive Tools Overview
+## 🛠️ Available Tools & Features
 
-### Character Builder 2.0
+### Character File System
 
-Our flagship tool for creating unique agent personalities:
+Create rich agent personalities using the character file format:
 
-**Features:**
+**Core Properties:**
 
-- 🎭 **Personality Sculptor** - Visual trait mapping with psychological frameworks
-- 💬 **Conversation Designer** - Template-based dialogue system
-- 🧠 **Knowledge Curator** - Drag-and-drop expertise areas
-- 🎯 **Goal Alignment** - Purpose-driven character development
+- 🎭 **Identity** - Name, bio, and description
+- 💬 **Communication Style** - Tone, response patterns, and quirks
+- 🧠 **Knowledge & Topics** - Areas of expertise and interests
+- 📝 **Message Examples** - Training data for consistent responses
 
-**What makes it special:**
+**Advanced Features:**
 
-- Real-time personality preview with live chat testing
-- AI suggestions based on your use case
-- Character consistency validation
-- Export to all ElizaOS platforms
+- Plugin configuration per character
+- Platform-specific settings
+- Custom secrets and environment variables
+- Response templates and post guidelines
 
-### Visual Customization Engine
+### Environment Configuration Tools
 
-Transform your agent's appearance across all platforms:
+Manage your agent's configuration with CLI tools:
 
-**Capabilities:**
+**Available Commands:**
 
-- 🎨 **Adaptive Theming** - Automatically adjusts for Discord, Telegram, Twitter
-- 🖼️ **Asset Generator** - AI-powered avatar and logo creation
-- 📱 **Responsive Design** - Optimized for all screen sizes
-- 🌈 **Color Psychology** - Science-backed color schemes for your goals
+- 🔧 **`elizaos env interactive`** - Interactive configuration wizard
+- 📋 **`elizaos env list`** - View all environment variables
+- ✏️ **`elizaos env edit-local`** - Edit local .env file
+- 🔄 **`elizaos env reset`** - Reset to defaults
 
-### Feature Workshop
+### Plugin Ecosystem
 
-Expand your agent's capabilities without writing code:
+Extend your agent with available plugins:
 
-**Available Modules:**
+**Core Plugins:**
 
-- 📅 **Calendar Integration** - Schedule management and reminders
-- 🌐 **Web Search** - Real-time information lookup
-- 🔄 **Workflow Automation** - Multi-step task execution
-- 📊 **Data Analysis** - Spreadsheet and chart generation
-- 🎵 **Media Handling** - Image, audio, and video processing
+- 📦 **@elizaos/plugin-bootstrap** - Essential actions and providers
+  - Actions: reply, followRoom, sendMessage, updateSettings
+  - Providers: time, facts, relationships, recentMessages
+  - Services: TaskService for deferred operations
+- 🗄️ **@elizaos/plugin-sql** - Database connectivity
+  - PostgreSQL and PGLite support
+  - Migration management
 
 ## 🚦 Getting Started
 
@@ -129,190 +135,219 @@ Expand your agent's capabilities without writing code:
 Before diving into customization, ensure you have:
 
 - ✅ A working ElizaOS agent (complete the [Quick Start](/docs/simple/getting-started/quick-start) first)
-- ✅ Basic understanding of your agent's purpose and audience
-- ✅ Access to any platforms where you want to deploy
+- ✅ The ElizaOS CLI installed (`bun install -g @elizaos/cli`)
+- ✅ API keys for your chosen platforms (Discord, Telegram, etc.)
+- ✅ A text editor for modifying JSON character files
 
 ### Recommended Path
 
-#### Phase 1: Character Foundation (30 minutes)
+#### Phase 1: Character Definition (20 minutes)
 
-1. **Define Your Vision** - What personality do you want?
-2. **Use Character Builder** - Create your unique personality
-3. **Test Interactions** - Validate with live chat preview
-4. **Refine Style** - Adjust based on testing
+1. **Copy a template** - Start with `packages/cli/src/characters/eliza.ts`
+2. **Customize personality** - Edit name, bio, and style properties
+3. **Add message examples** - Provide training conversations
+4. **Configure plugins** - Select which plugins to use
 
-#### Phase 2: Visual Identity (20 minutes)
+#### Phase 2: Environment Setup (15 minutes)
 
-1. **Choose Color Scheme** - Align with your brand or purpose
-2. **Create Assets** - Generate avatars and visual elements
-3. **Apply Theming** - Customize for each platform
-4. **Preview Results** - See how it looks everywhere
+1. **Run setup wizard** - `elizaos env interactive`
+2. **Add API keys** - Configure model providers (OpenAI, Anthropic)
+3. **Add platform tokens** - Set up Discord, Telegram credentials
+4. **Configure database** - Choose PostgreSQL or PGLite
 
-#### Phase 3: Feature Enhancement (45 minutes)
+#### Phase 3: Platform Deployment (30 minutes)
 
-1. **Assess Needs** - What capabilities are missing?
-2. **Browse Marketplace** - Discover relevant plugins
-3. **Configure Features** - Set up new capabilities
-4. **Test Integration** - Ensure everything works together
+1. **Choose platforms** - Add to character's `clients` array
+2. **Platform setup** - Follow platform-specific guides
+3. **Test connections** - Verify bot appears online
+4. **Fine-tune behavior** - Adjust based on platform needs
 
-#### Phase 4: Optimization (ongoing)
+#### Phase 4: Plugin Configuration (20 minutes)
 
-1. **Monitor Performance** - Use built-in analytics
-2. **Gather Feedback** - From users and stakeholders
-3. **Iterate Design** - Continuously improve
-4. **Share Learnings** - Contribute to the community
+1. **Review available plugins** - Check `packages/plugin-*`
+2. **Install needed plugins** - `elizaos plugin install <name>`
+3. **Configure in character** - Add to plugins array
+4. **Test functionality** - Verify actions work as expected
 
-## 🎯 Success Metrics
+## 🎯 Monitoring Your Agent
 
-Track your customization success with these key indicators:
+Track your agent's performance using built-in tools:
 
-### User Engagement
+### Logging System
 
-- **Response Rate** - How often users reply to your agent
-- **Session Length** - How long conversations last
-- **Repeat Users** - People coming back for more interactions
+- **Log Levels** - fatal, error, warn, info, debug, trace
+- **Custom Levels** - success, progress for specific events
+- **In-Memory Buffer** - Last 1000 log entries accessible
+- **Format Options** - JSON or pretty-printed output
 
-### Quality Metrics
+### Error Tracking
 
-- **Conversation Coherence** - AI-powered consistency scoring
-- **Goal Achievement** - Task completion rates
-- **User Satisfaction** - Built-in feedback collection
+- **Sentry Integration** - Automatic error reporting
+- **Stack Traces** - Detailed error information
+- **Performance Metrics** - Response times and throughput
 
-### Technical Performance
+### Platform-Specific Monitoring
 
-- **Response Time** - How quickly your agent replies
-- **Error Rate** - Frequency of misunderstandings
-- **Platform Optimization** - Performance across Discord, Telegram, etc.
+- **Discord** - Member count, message volume, reaction rates
+- **Telegram** - Group activity, command usage
+- **Direct API** - Request/response logging
 
 ## 🌟 Advanced Customization
 
-### For Power Users
+### Multi-Agent Configuration
 
-Once you've mastered the basics, explore advanced features:
+Run multiple agents with different personalities:
 
-#### Multi-Agent Orchestration
+#### Character Arrays
 
-- **Agent Teams** - Multiple specialized agents working together
-- **Role-Based Access** - Different personalities for different users
-- **Context Sharing** - Agents that learn from each other
+```bash
+# Run multiple agents
+elizaos start --characters="path/to/agent1.json,path/to/agent2.json"
+```
 
-#### Custom Plugin Development
+#### Namespaced Environment Variables
 
-- **No-Code Plugin Builder** - Visual programming interface
-- **API Integration Wizard** - Connect to external services
-- **Deployment Pipeline** - Push plugins to the marketplace
+```bash
+# Agent-specific credentials
+AGENT1_DISCORD_API_TOKEN=xxx
+AGENT2_TELEGRAM_BOT_TOKEN=yyy
+```
 
-#### Enterprise Features
+### Custom Plugin Development
 
-- **Brand Guidelines Enforcement** - Automatic compliance checking
-- **Multi-Tenant Management** - Separate environments for teams
-- **Advanced Analytics** - Custom dashboards and reporting
+Create your own plugins using the starter template:
 
-## 🔬 AI-Powered Assistance
+```bash
+# Use the plugin starter
+cp -r packages/plugin-starter packages/plugin-myfeature
+```
 
-Every customization tool includes intelligent assistance:
+**Plugin Structure:**
+- Actions - Define new commands and responses
+- Providers - Supply contextual information
+- Evaluators - Process interactions
+- Services - Manage state and integrations
 
-### Smart Suggestions
+## 🔬 Testing & Validation
 
-- **Personality Recommendations** - Based on your use case and industry
-- **Feature Suggestions** - Powered by community usage patterns
-- **Optimization Tips** - Real-time performance improvements
+Ensure your customizations work correctly:
 
-### Guided Workflows
+### Character Validation
 
-- **Step-by-Step Tutorials** - Interactive guidance for complex tasks
-- **Best Practice Alerts** - Notifications about potential improvements
-- **Community Insights** - Learn from successful implementations
+- **JSON Schema Validation** - Automatic checking of character files
+- **Plugin Compatibility** - Verify plugin requirements are met
+- **Environment Checks** - Validate API keys and credentials
 
-### Automated Testing
+### Testing Tools
 
-- **Conversation Simulation** - AI generates test scenarios
-- **Performance Benchmarking** - Compare against similar agents
-- **Quality Assurance** - Automated checks for common issues
+```bash
+# Test your character file
+elizaos test character path/to/character.json
 
-## 🌍 Community Integration
+# Run in development mode
+elizaos dev --character path/to/character.json
+```
 
-### Share Your Creations
+### Platform Testing
 
-- **Template Gallery** - Publish your character designs
-- **Plugin Marketplace** - Share custom features
-- **Success Stories** - Inspire others with your results
+- **Discord** - Create test server for safe experimentation
+- **Telegram** - Use test groups before production
+- **Direct API** - Test with curl or API clients
 
-### Learn from Others
+## 🌍 Community Resources
 
-- **Featured Builds** - Showcase of exceptional agents
-- **Design Patterns** - Proven approaches for common use cases
-- **Expert Interviews** - Insights from top creators
+### Example Characters
+
+Learn from existing character implementations:
+
+- **Default Eliza** - `packages/cli/src/characters/eliza.ts`
+- **Test Characters** - `packages/cli/tests/test-characters/`
+- **Community Examples** - Discord #character-showcase channel
+
+### Plugin Development
+
+- **Plugin Starter** - `packages/plugin-starter/`
+- **Core Plugins** - Study `packages/plugin-bootstrap/` for examples
+- **Documentation** - Plugin development guide in technical docs
 
 ### Get Support
 
-- **Live Help Chat** - AI assistant for immediate help
-- **Community Forums** - Peer-to-peer support
-- **Office Hours** - Regular sessions with ElizaOS experts
+- **Discord Community** - https://discord.gg/elizaos
+- **GitHub Issues** - Report bugs and request features
+- **Documentation** - Comprehensive guides and API reference
 
-## 🎬 Video Tutorials
+## 📺 Platform Setup Guides
 
-### Getting Started Series
+### Quick Setup Videos
 
-1. **"Your First Customization"** (10 min) - Introduction to the tools
-2. **"Character Builder Deep Dive"** (25 min) - Master personality creation
-3. **"Visual Branding Basics"** (15 min) - Create consistent visual identity
-4. **"Feature Workshop Tour"** (20 min) - Add powerful capabilities
+1. **Discord Bot Setup** - Create bot, get token, configure permissions
+2. **Telegram Bot Creation** - BotFather setup and group configuration  
+3. **Environment Configuration** - Using the CLI interactive setup
+4. **Character File Basics** - Structure and common patterns
 
-### Advanced Techniques
+### Advanced Topics
 
-1. **"Multi-Platform Optimization"** (30 min) - Platform-specific strategies
-2. **"Analytics-Driven Improvement"** (25 min) - Use data to optimize
-3. **"Enterprise Deployment"** (40 min) - Scale for organizations
-4. **"Plugin Development Primer"** (35 min) - Create custom features
+1. **Multi-Agent Setup** - Running multiple personalities
+2. **Plugin Development** - Creating custom actions
+3. **Database Configuration** - PostgreSQL vs PGLite
+4. **Production Deployment** - Best practices for hosting
 
 ## 📚 Quick Reference
 
-### Essential Shortcuts
+### Essential CLI Commands
 
-- **Ctrl+P** - Quick command palette
-- **Ctrl+S** - Save current configuration
-- **Ctrl+T** - Open testing interface
-- **Ctrl+Shift+A** - AI assistant
+```bash
+elizaos env interactive    # Configure environment
+elizaos start             # Start with default character
+elizaos dev              # Development mode with hot reload
+elizaos test             # Run tests
+```
 
-### Common Patterns
+### Character File Structure
 
-- **Professional Assistant** - Formal tone, business knowledge, efficiency focus
-- **Creative Companion** - Playful personality, artistic knowledge, inspiration focus
-- **Community Manager** - Friendly tone, social skills, engagement focus
-- **Technical Expert** - Precise communication, deep knowledge, problem-solving focus
+```json
+{
+  "name": "MyAgent",
+  "bio": "A helpful AI assistant",
+  "clients": ["discord", "telegram"],
+  "plugins": ["@elizaos/plugin-bootstrap"],
+  "settings": {
+    "response_length": "medium"
+  }
+}
+```
 
-### Troubleshooting
+### Common Issues
 
-- **Character seems inconsistent** → Use personality validation tool
-- **Low user engagement** → Check conversation flow analyzer
-- **Performance issues** → Review platform-specific optimizations
-- **Feature conflicts** → Use plugin compatibility checker
+- **Bot not responding** → Check API keys in .env
+- **Character not loading** → Validate JSON syntax
+- **Plugin errors** → Ensure plugin is installed
+- **Platform connection failed** → Verify credentials
 
 ---
 
 ## 🚀 Ready to Start Customizing?
 
-Choose your first step based on what you want to improve:
+Choose your first step based on what you want to achieve:
 
 <div className="action-grid">
 
-**🎭 Want a unique personality?**  
-[Start with Character Builder →](/docs/customize/character-builder)
+**🎭 Create a unique personality?**  
+[Learn Character Configuration →](/docs/customize/character-builder)
 
-**🎨 Need better visual branding?**  
-[Open Visual Lab →](/docs/customize/visual-lab)
+**🔧 Set up platform integrations?**  
+[Configure Environment →](/docs/customize/environment-builder)
 
-**⚡ Missing key features?**  
-[Browse Feature Workshop →](/docs/customize/feature-workshop)
+**🧩 Add more capabilities?**  
+[Explore Plugin System →](/docs/customize/feature-workshop)
 
-**📊 Want to optimize performance?**  
-[View Analytics Dashboard →](/docs/customize/analytics)
+**📊 Monitor performance?**  
+[Setup Logging & Analytics →](/docs/customize/analytics)
 
 </div>
 
 ---
 
-**💡 Pro Tip**: Start with character building - it forms the foundation for all other customizations. A well-defined personality makes every other decision easier and more coherent.
+**💡 Pro Tip**: Start by running `elizaos env interactive` to set up your environment variables. This interactive wizard will guide you through configuring API keys and platform credentials.
 
-**🎯 Success Story**: "I used the Character Builder to create a startup mentor personality, added calendar integration from the Feature Workshop, and now my agent books 40+ strategy sessions per week autonomously!" - Sarah K., Entrepreneur
+**🎯 Real Example**: The default Eliza character in `packages/cli/src/characters/eliza.ts` is a great starting point. Copy it, modify the personality traits, and you'll have your own unique agent in minutes!

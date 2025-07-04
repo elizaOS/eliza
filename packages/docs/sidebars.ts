@@ -367,49 +367,67 @@ const sidebars: SidebarsConfig = {
     {
       type: 'doc',
       id: 'customize/overview',
-      label: '🎨 Customize Overview',
+      label: '🎨 Customization Overview',
     },
     {
       type: 'category',
-      label: '🎯 Interactive Tools',
-      collapsed: true,
+      label: '⚙️ Configuration',
+      collapsible: true,
+      collapsed: false,
       items: [
         {
           type: 'doc',
           id: 'customize/character-builder',
-          label: '👤 Character Builder',
+          label: '🎭 Character Configuration',
         },
         {
           type: 'doc',
           id: 'customize/environment-builder',
-          label: '🌍 Environment Builder',
-        },
-        {
-          type: 'doc',
-          id: 'customize/visual-lab',
-          label: '🎨 Visual Lab',
-        },
-        {
-          type: 'doc',
-          id: 'customize/feature-workshop',
-          label: '🔧 Feature Workshop',
-        },
-        {
-          type: 'doc',
-          id: 'customize/analytics',
-          label: '📊 Analytics Dashboard',
+          label: '🔐 Environment Setup',
         },
       ],
     },
     {
       type: 'category',
-      label: '🔧 Platform Configuration',
+      label: '🧩 Extensions',
+      collapsible: true,
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'customize/feature-workshop',
+          label: '📦 Plugin System',
+        },
+        {
+          type: 'doc',
+          id: 'customize/visual-lab',
+          label: '🎨 Visual Customization',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '📊 Monitoring',
+      collapsible: true,
+      collapsed: false,
+      items: [
+        {
+          type: 'doc',
+          id: 'customize/analytics',
+          label: '📈 Logging & Analytics',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🚨 Deprecated',
+      collapsible: true,
       collapsed: true,
       items: [
         {
           type: 'doc',
           id: 'customize/twitter-advanced',
-          label: '🐦 Twitter Advanced Setup',
+          label: '🐦 Twitter Integration',
         },
       ],
     },
