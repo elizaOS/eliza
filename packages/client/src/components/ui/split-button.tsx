@@ -32,14 +32,8 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
-    React.useImperativeHandle(ref, () => {
-      if (!containerRef.current) {
-        // Return a fallback, throw, or return a dummy div as appropriate
-        throw new Error("SplitButton ref accessed before the element is mounted.");
-      }
-      return containerRef.current;
-    }, []);
-    
+    React.useImperativeHandle(ref, () => containerRef.current, []);
+
     React.useLayoutEffect(() => {
       if (containerRef.current) {
         setMenuWidth(containerRef.current.offsetWidth);
@@ -84,7 +78,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                   disabled={action.disabled}
                   className={cn(
                     action.variant === 'destructive' &&
-                      'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                    'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
                   )}
                 >
                   {action.icon}
