@@ -295,7 +295,8 @@ export async function waitForServerReady(
 
   // First, check if anything is listening on the port using a simple connection test
   let connectionAttempts = 0;
-  const maxConnectionAttempts = 3;
+  // Base max attempts on actual polling intervals rather than arbitrary time division
+  const maxConnectionAttempts = Math.max(5, Math.floor(maxWaitTime / (pollInterval * 2)));
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
