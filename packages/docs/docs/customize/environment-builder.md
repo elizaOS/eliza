@@ -1,6 +1,3 @@
----
-displayed_sidebar: customizeSidebar
----
 
 # Environment Configuration Guide
 

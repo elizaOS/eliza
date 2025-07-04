@@ -1,6 +1,3 @@
----
-displayed_sidebar: customizeSidebar
----
 
 # Customize Your ElizaOS Agent
 

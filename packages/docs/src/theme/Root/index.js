@@ -75,11 +75,6 @@ export default function Root({ children }) {
         // Map old paths to new paths - removed /docs/intro mapping
         '/docs/getting-started': '/docs/simple/getting-started/quick-start',
         '/docs/guides/character-creation': '/docs/simple/guides/character-creation',
-        '/docs/customize/character-builder': '/docs/customize/character-builder',
-        '/docs/customize/overview': '/docs/customize/overview',
-        '/docs/customize/visual-lab': '/docs/customize/visual-lab',
-        '/docs/customize/feature-workshop': '/docs/customize/feature-workshop',
-        '/docs/customize/analytics': '/docs/customize/analytics',
         '/docs/design-system': '/docs/design-system/index',
         '/docs/design-system/components': '/docs/design-system/components',
         '/docs/design-system/animations': '/docs/design-system/animations',
@@ -155,8 +150,6 @@ export default function Root({ children }) {
 
         if (path.includes('character')) {
           suggestion = '/docs/simple/guides/character-creation';
-        } else if (path.includes('customize')) {
-          suggestion = '/docs/customize/overview';
         } else if (path.includes('api')) {
           suggestion = '/api';
         } else if (path.includes('package')) {

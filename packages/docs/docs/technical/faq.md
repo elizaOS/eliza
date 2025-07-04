@@ -365,6 +365,49 @@ const redis = new Redis.Cluster([
 ]);
 ```
 
+### Q: How do I monitor agents in production?
+
+Implement comprehensive monitoring:
+
+```typescript
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    services: {
+      database: await db.ping(),
+      memory: runtime.memory.getHealth(),
+      plugins: runtime.getPluginHealth(),
+    },
+    metrics: {
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      responses: await metrics.getResponseStats(),
+    }
+  };
+  res.json(health);
+});
+```
+
+### Q: What's the best way to handle agent updates?
+
+Use blue-green deployment:
+
+```bash
+# 1. Deploy new version to staging
+docker-compose -f docker-compose.staging.yml up -d
+
+# 2. Test new version
+npm run test:e2e -- --env=staging
+
+# 3. Switch traffic gradually
+# Update load balancer to route 10%, 50%, then 100%
+
+# 4. Monitor for errors
+npm run monitor:errors
+```
+
 ### Q: What's the recommended production deployment?
 
 ```yaml
@@ -415,6 +458,75 @@ class CustomConsolidator implements IMemoryConsolidator {
 }
 ```
 
+### Q: How do I implement multi-modal agents?
+
+```typescript
+class MultiModalAgent extends BaseAgent {
+  async processMessage(message: Message): Promise<void> {
+    // Handle text
+    if (message.content.text) {
+      const textResponse = await this.generateTextResponse(message);
+      await this.send(textResponse);
+    }
+
+    // Handle images
+    if (message.content.attachments?.some(a => a.type === 'image')) {
+      const imageAnalysis = await this.analyzeImages(message.content.attachments);
+      const response = await this.generateResponseFromImage(imageAnalysis);
+      await this.send(response);
+    }
+
+    // Handle audio
+    if (message.content.attachments?.some(a => a.type === 'audio')) {
+      const transcript = await this.transcribeAudio(message.content.attachments);
+      const response = await this.generateAudioResponse(transcript);
+      await this.sendAudio(response);
+    }
+  }
+}
+```
+
+### Q: How do I implement custom conversation flows?
+
+```typescript
+class ConversationFlow {
+  private state: Map<string, any> = new Map();
+  private steps: FlowStep[] = [];
+
+  async execute(userId: string, input: any): Promise<FlowResult> {
+    const currentStep = this.getCurrentStep(userId);
+    const validation = await currentStep.validate(input);
+    
+    if (!validation.valid) {
+      return {
+        type: 'retry',
+        message: validation.error,
+        step: currentStep
+      };
+    }
+
+    // Store step data
+    this.state.set(`${userId}.${currentStep.id}`, input);
+
+    // Check if flow is complete
+    if (currentStep.isLast) {
+      return {
+        type: 'complete',
+        data: this.getFlowData(userId)
+      };
+    }
+
+    // Advance to next step
+    const nextStep = currentStep.getNext(input);
+    return {
+      type: 'continue',
+      step: nextStep,
+      message: nextStep.prompt
+    };
+  }
+}
+```
+
 ### Q: Can I implement custom transport layers?
 
 Yes, implement the `ITransport` interface:
@@ -452,6 +564,29 @@ class CustomTransport implements ITransport {
 - **Memory Analyzer**: `npm run analyze-memory`
 - **Performance Profiler**: `npm run profile`
 - **Plugin Validator**: `npm run validate-plugin`
+- **Message Tracer**: `npm run trace-messages`
+- **Database Query Analyzer**: `npm run analyze-queries`
+
+### Development Workflow Tips
+
+1. **Use TypeScript strict mode** for better error catching
+2. **Set up pre-commit hooks** to run tests and linting
+3. **Use dependency injection** for better testability
+4. **Implement circuit breakers** for external services
+5. **Use structured logging** with correlation IDs
+6. **Write integration tests** for complex workflows
+7. **Monitor memory usage** during development
+8. **Use feature flags** for gradual rollouts
+
+### Performance Benchmarks
+
+| Metric | Target | Good | Needs Improvement |
+|--------|--------|------|-------------------|
+| Response Time | Under 200ms | Under 500ms | Over 1000ms |
+| Memory Usage | Under 100MB | Under 500MB | Over 1GB |
+| Concurrent Users | 1000+ | 100+ | Under 50 |
+| Message Throughput | 100/s | 50/s | Under 10/s |
+| Plugin Load Time | Under 1s | Under 3s | Over 5s |
 
 ### Common Error Codes
 
@@ -463,6 +598,48 @@ class CustomTransport implements ITransport {
 | E004 | Rate limit exceeded | Implement backoff       |
 | E005 | Invalid character   | Validate character.json |
 
+## 🤝 Contributing & Community
+
+### Q: How do I contribute to ElizaOS core?
+
+1. **Fork the repository** and create a feature branch
+2. **Read the contributing guide** at `/CONTRIBUTING.md`
+3. **Follow the RFC process** for major changes
+4. **Write comprehensive tests** for new features
+5. **Update documentation** for any API changes
+6. **Submit a pull request** with detailed description
+
+### Q: What's the process for proposing new features?
+
+1. **Search existing RFCs** in GitHub Discussions
+2. **Create a detailed proposal** with:
+   - Problem statement
+   - Proposed solution
+   - Alternative approaches
+   - Implementation plan
+   - Breaking changes (if any)
+3. **Gather community feedback**
+4. **Implement based on consensus**
+
+### Q: How do I create a plugin for the marketplace?
+
+```typescript
+// 1. Use the plugin template
+npx create-eliza-plugin my-awesome-plugin
+
+// 2. Implement your plugin following patterns
+// 3. Add comprehensive tests
+// 4. Create documentation
+// 5. Publish to npm
+npm publish
+
+// 6. Submit to marketplace
+// Create PR to add your plugin to the registry
+```
+
 ---
 
-Still have questions? Ask in our [developer Discord channel](https://discord.gg/elizaos) or [open a GitHub issue](https://github.com/elizaOS/eliza/issues).
+🎤 **Office Hours**: Join our weekly developer Q&A every Thursday at 2 PM PST
+💬 **Discord**: Get help in [#dev-help](https://discord.gg/elizaos)
+📝 **GitHub**: [Open issues](https://github.com/elizaOS/eliza/issues) and [discussions](https://github.com/elizaOS/eliza/discussions)
+📧 **Email**: Technical questions to dev-support@elizaos.ai

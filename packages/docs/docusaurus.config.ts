@@ -431,10 +431,6 @@ const config = {
               label: '🔧 Technical Track (Developers)',
               to: '/docs/technical/architecture/overview',
             },
-            {
-              label: '🎨 Customize Track (Power Users)',
-              to: '/docs/customize/overview',
-            },
           ],
         },
         {

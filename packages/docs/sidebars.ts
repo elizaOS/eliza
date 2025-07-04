@@ -310,6 +310,11 @@ const sidebars: SidebarsConfig = {
   // Technical track for developers
   technicalSidebar: [
     {
+      type: 'doc',
+      id: 'technical/intro',
+      label: '🚀 Technical Introduction',
+    },
+    {
       type: 'category',
       label: '🏗️ Architecture',
       collapsed: true,
@@ -362,76 +367,6 @@ const sidebars: SidebarsConfig = {
     },
   ],
 
-  // Customize track for power users who want to personalize their agents
-  customizeSidebar: [
-    {
-      type: 'doc',
-      id: 'customize/overview',
-      label: '🎨 Customization Overview',
-    },
-    {
-      type: 'category',
-      label: '⚙️ Configuration',
-      collapsible: true,
-      collapsed: false,
-      items: [
-        {
-          type: 'doc',
-          id: 'customize/character-builder',
-          label: '🎭 Character Configuration',
-        },
-        {
-          type: 'doc',
-          id: 'customize/environment-builder',
-          label: '🔐 Environment Setup',
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: '🧩 Extensions',
-      collapsible: true,
-      collapsed: false,
-      items: [
-        {
-          type: 'doc',
-          id: 'customize/feature-workshop',
-          label: '📦 Plugin System',
-        },
-        {
-          type: 'doc',
-          id: 'customize/visual-lab',
-          label: '🎨 Visual Customization',
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: '📊 Monitoring',
-      collapsible: true,
-      collapsed: false,
-      items: [
-        {
-          type: 'doc',
-          id: 'customize/analytics',
-          label: '📈 Logging & Analytics',
-        },
-      ],
-    },
-    {
-      type: 'category',
-      label: '🚨 Deprecated',
-      collapsible: true,
-      collapsed: true,
-      items: [
-        {
-          type: 'doc',
-          id: 'customize/twitter-advanced',
-          label: '🐦 Twitter Integration',
-        },
-      ],
-    },
-  ],
 };
 
 export default sidebars;
