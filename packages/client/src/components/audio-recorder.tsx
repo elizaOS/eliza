@@ -225,7 +225,7 @@ export const AudioRecorder = ({ className, timerClassName, agentId, onChange }: 
         </div>
       ) : null}
 
-      <div className="flex items-center">
+      <div className="flex items-center gap-2">
         {/* ========== Delete recording button ========== */}
         {isRecording ? (
           <Tooltip>

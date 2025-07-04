@@ -34,8 +34,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const agentName = agent.name || 'Unnamed Agent';
   const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
   const description =
-    (Array.isArray(agent.bio) && agent.bio.filter(Boolean).join(' ').trim()) ||
-    'Engages with all types of questions and conversations';
+    Array.isArray(agent.bio)
+        ? agent.bio.filter(Boolean).join(' ').trim()
+        : (typeof agent.bio === 'string' && agent.bio.trim()) ||
+          'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
