@@ -1126,31 +1126,29 @@ export default function Chat({
                   Export
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {true && (
-                  <DropdownMenuItem 
-                    onClick={() => {
-                      if (targetAgentData && !isAgentStopping(targetAgentData.id)) {
-                        stopAgent(targetAgentData);
-                      }
-                    }}
-                  >
-                    <StopCircle className="h-4 w-4 mr-2" />
-                    Stop Agent
-                  </DropdownMenuItem>
-                )}
-                {true && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      if (targetAgentData && !isDeletingAgent) {
-                        onDeleteAgent();
-                      }
-                    }}
-                    className="text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50"
-                  >
-                    <Trash className="h-4 w-4 mr-2" />
-                    Delete Agent
-                  </DropdownMenuItem>
-                )}
+                
+                <DropdownMenuItem 
+                  onClick={() => {
+                    if (targetAgentData && !isAgentStopping(targetAgentData.id)) {
+                      stopAgent(targetAgentData);
+                    }
+                  }}
+                >
+                  <StopCircle className="h-4 w-4 mr-2" />
+                  Stop Agent
+                </DropdownMenuItem>
+                
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (targetAgentData && !isDeletingAgent) {
+                      onDeleteAgent();
+                    }
+                  }}
+                  className="text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50"
+                >
+                  <Trash className="h-4 w-4 mr-2" />
+                  Delete Agent
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
