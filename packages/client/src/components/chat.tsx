@@ -551,7 +551,8 @@ export default function Chat({
   useEffect(() => {
     if (
       latestChannel &&
-      !isLoadingAgentDmChannels &&
+      !isLoadingLatestChannelMessages &&
+      latestChannelMessages &&
       targetAgentData?.id && 
       shouldForceNew
     ) {
@@ -562,9 +563,10 @@ export default function Chat({
     shouldForceNew,
     setShouldForceNew, 
     handleNewDmChannel,
-    targetAgentData.id,
-    isLoadingAgentDmChannels, 
+    targetAgentData.id, 
     latestChannel,
+    latestChannelMessages,
+    isLoadingLatestChannelMessages
   ])
 
   useEffect(() => {
