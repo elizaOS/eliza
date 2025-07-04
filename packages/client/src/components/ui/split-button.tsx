@@ -32,8 +32,14 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
-    React.useImperativeHandle(ref, () => containerRef.current!, []);
-
+    React.useImperativeHandle(ref, () => {
+      if (!containerRef.current) {
+        // Return a fallback, throw, or return a dummy div as appropriate
+        throw new Error("SplitButton ref accessed before the element is mounted.");
+      }
+      return containerRef.current;
+    }, []);
+    
     React.useLayoutEffect(() => {
       if (containerRef.current) {
         setMenuWidth(containerRef.current.offsetWidth);
