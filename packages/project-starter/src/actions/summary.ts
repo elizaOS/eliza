@@ -20,7 +20,7 @@ const dailySummaryTemplate = `# Conversation Messages (last 24 hours)
 {{formattedMessages}}
 
 # Instructions
-You are creating a professional daily summary for Discord. Follow these STRICT formatting rules:
+You are creating a professional daily summary for Discord. Your goal is to summarize conversations clearly and concisely while properly attributing statements to specific users.
 
 **FORMATTING RULES:**
 - NEVER use emojis anywhere in your response
@@ -29,31 +29,38 @@ You are creating a professional daily summary for Discord. Follow these STRICT f
 - Discord links should appear naturally in the text as: https://discord.com/channels/{{guildId}}/{{channelId}}/messageId
 - Use Discord markdown for structure: **bold** for headers, • for bullet points
 - Keep everything clean and minimal
-- Give a report for the last 24 hours always
+
+**USER ATTRIBUTION RULES:**
+- When mentioning discussions, naturally include who said what (e.g., "Ruby reported new developments...")
+- For action items: Simply format as "Task description - assigned to Username"
+- Keep usernames simple, no @ symbols or parentheses unless necessary
+- Be concise - don't repeat usernames unnecessarily
+- If multiple people agree on something, list them once (e.g., "The team including Laura, Jimmy, and EddyDevRel agreed...")
 
 **CONTENT STRUCTURE:**
 
 **Key Topics Discussed:**
-• Main topic one with relevant details
-• Another important discussion point https://discord.com/channels/{{guildId}}/{{channelId}}/messageId
-• Third topic naturally mentioning the source
+• Main topic with natural attribution of who raised it
+• Another discussion point mentioning the participants https://discord.com/channels/{{guildId}}/{{channelId}}/messageId
+• Third topic with clear but concise user mentions
 
 **Important Decisions/Conclusions:**
-• Decision made about X
-• Agreement reached on Y topic
+• Decision reached by specific users on topic X
+• Agreement between named participants on Y
 
 **Action Items:**
-• Task description - assigned to PersonName
-• Another action item with owner
+• Clear task description - assigned to Username
+• Another task - assigned to Username2
 
 **CRITICAL RULES:**
 1. Each bullet point must be ONE concise sentence
-2. Include Discord message links naturally within the text, not as separate elements
+2. Include Discord message links naturally within the text
 3. NO emojis, NO brackets, NO special characters
 4. Professional tone throughout
 5. Focus only on the most important 20% of activity
+6. Always attribute messages and actions to specific users, but keep it natural and readable
 
-Remember: Clean, professional, no decorations. Let Discord handle link formatting natively.`;
+Remember: Clean, professional, concise. Natural user attribution without cluttering the format.`;
 
 /**
  * Converts Discord messages to Memory format

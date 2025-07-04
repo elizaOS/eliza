@@ -121,7 +121,7 @@ export async function initializeDailyChannelSummaryTask(runtime: IAgentRuntime):
   // Get configuration from settings
   const channelName = runtime.getSetting('DAILY_SUMMARY_CHANNEL_NAME') || 'channel';
   const messageLimit = parseInt(runtime.getSetting('DAILY_SUMMARY_MESSAGE_LIMIT') || '1000');
-  const hoursToSummarize = parseInt(runtime.getSetting('DAILY_SUMMARY_HOURS') || '03');
+  const hoursToSummarize = parseInt(runtime.getSetting('DAILY_SUMMARY_HOURS') || '24');
   const scheduledHour = parseInt(runtime.getSetting('DAILY_SUMMARY_HOUR') || '00');
   const scheduledMinute = parseInt(runtime.getSetting('DAILY_SUMMARY_MINUTE') || '00');
 
