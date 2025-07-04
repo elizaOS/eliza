@@ -563,7 +563,7 @@ export default function Chat({
     shouldForceNew,
     setShouldForceNew, 
     handleNewDmChannel,
-    targetAgentData.id, 
+    targetAgentData?.id, 
     latestChannel,
     latestChannelMessages,
     isLoadingLatestChannelMessages
