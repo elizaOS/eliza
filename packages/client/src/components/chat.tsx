@@ -1118,7 +1118,7 @@ export default function Chat({
                 </Button>
               </DropdownMenuTrigger>
 
-              <DropdownMenuContent align="start" side="bottom" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+              <DropdownMenuContent align="start" side="bottom" className="min-w-36 w-[var(--radix-dropdown-menu-trigger-width)]">
                 <DropdownMenuItem onClick={() => {
                   exportCharacterAsJson(targetAgentData, toast);
                 }}>
