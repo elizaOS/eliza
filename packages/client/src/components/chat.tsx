@@ -1,4 +1,3 @@
-import { Separator } from '@/components/ui/separator';
 import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
 import RetryButton from '@/components/retry-button';
@@ -16,7 +15,7 @@ import { AnimatedMarkdown } from '@/components/ui/chat/animated-markdown';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { SplitButton, type SplitButtonAction } from '@/components/ui/split-button';
+import { SplitButton } from '@/components/ui/split-button';
 import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
@@ -49,24 +48,22 @@ import {
   ContentType as CoreContentType,
   validateUuid,
 } from '@elizaos/core';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ChevronRight,
+  Trash,
+  StopCircle,
+  ArrowUpFromLine,
   Edit,
   Eraser,
   Clock,
   ChevronDown,
-  Info,
   Loader2,
-  MessageSquarePlus,
   PanelRight,
   PanelRightClose,
   Plus,
   Trash2,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import AIWriter from 'react-aiwriter';
 import { AgentSidebar } from './agent-sidebar';
 import { ChatInputArea } from './ChatInputArea';
 import { ChatMessageListComponent } from './ChatMessageListComponent';
@@ -86,6 +83,9 @@ import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
 import { useLocation } from 'react-router-dom';
+import { useAgentManagement } from '@/hooks/use-agent-management';
+import { useDeleteAgent } from '@/hooks/use-delete-agent';
+import { exportCharacterAsJson } from '@/lib/export-utils';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
@@ -281,6 +281,8 @@ export default function Chat({
   // Confirmation dialogs
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
 
+  const { stopAgent, isAgentStopping } = useAgentManagement();
+
   // Helper to update chat state
   const updateChatState = useCallback((updates: Partial<ChatUIState>) => {
     setChatState((prev) => ({ ...prev, ...updates }));
@@ -308,6 +310,9 @@ export default function Chat({
         updatedAt: agentDataResponse.data.updatedAt || Date.now(),
       } as Agent)
     : undefined;
+
+  const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(targetAgentData);
+
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
@@ -1054,77 +1059,102 @@ export default function Chat({
     );
   }
 
+  const onDeleteAgent = () => {
+    if (isDeletingAgent) return;
+    confirm(
+      {
+        title: 'Delete Agent',
+        description: `Are you sure you want to delete the agent "${targetAgentData.name}"? This action cannot be undone.`,
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      handleDeleteAgent
+    );
+  };
+
   // Chat header
   const renderChatHeader = () => {
     if (chatType === ChannelType.DM && targetAgentData) {
       return (
         <div className="flex items-center justify-between mb-4 p-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="relative flex-shrink-0">
-              <Avatar className="size-4 sm:size-10 border rounded-full">
-                <AvatarImage src={getAgentAvatar(targetAgentData)} />
-              </Avatar>
-              {targetAgentData?.status === AgentStatus.ACTIVE ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-green-500" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is active</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is inactive</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-lg truncate max-w-[80px] sm:max-w-none">
-                  {targetAgentData?.name || 'Agent'}
-                </h2>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 flex-shrink-0"
-                      onClick={() => updateChatState({ showProfileOverlay: true })}
-                    >
-                      <Info className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p>View agent profile</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              {targetAgentData?.bio && (
-                <p className="text-sm text-muted-foreground line-clamp-1">
-                  <span className="sm:hidden">
-                    {/* Mobile: Show only first 30 characters */}
-                    {((text) => (text.length > 30 ? `${text.substring(0, 30)}...` : text))(
-                      Array.isArray(targetAgentData?.bio)
-                        ? targetAgentData?.bio[0] || ''
-                        : targetAgentData?.bio || ''
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="py-6 px-2 flex-shrink-0"
+                >
+                  <div className="relative flex-shrink-0">
+                    <Avatar className="size-4 sm:size-10 border rounded-full">
+                      <AvatarImage src={getAgentAvatar(targetAgentData)} />
+                    </Avatar>
+                    {targetAgentData?.status === AgentStatus.ACTIVE ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-green-500" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Agent is active</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="absolute bottom-0 right-0 size-2 sm:size-[10px] rounded-full border border-white bg-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Agent is inactive</p>
+                        </TooltipContent>
+                      </Tooltip>
                     )}
-                  </span>
-                  <span className="hidden sm:inline">
-                    {/* Desktop: Show full first bio entry or full bio */}
-                    {Array.isArray(targetAgentData.bio)
-                      ? targetAgentData.bio[0]
-                      : targetAgentData.bio}
-                  </span>
-                </p>
-              )}
-            </div>
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-lg truncate max-w-[80px] sm:max-w-none">
+                      {targetAgentData?.name || 'Agent'}
+                    </h2>
+                  </div>
+                  <ChevronDown className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="start" side="bottom" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+                <DropdownMenuItem onClick={() => {
+                  exportCharacterAsJson(targetAgentData, toast);
+                }}>
+                  <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                  Export
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {true && (
+                  <DropdownMenuItem 
+                    onClick={() => {
+                      if (targetAgentData && !isAgentStopping(targetAgentData.id)) {
+                        stopAgent(targetAgentData);
+                      }
+                    }}
+                  >
+                    <StopCircle className="h-4 w-4 mr-2" />
+                    Stop Agent
+                  </DropdownMenuItem>
+                )}
+                {true && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (targetAgentData && !isDeletingAgent) {
+                        onDeleteAgent();
+                      }
+                    }}
+                    className="text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50"
+                  >
+                    <Trash className="h-4 w-4 mr-2" />
+                    Delete Agent
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+
           <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
             {chatType === ChannelType.DM && (
               <div className="flex items-center gap-2">
