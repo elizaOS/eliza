@@ -376,15 +376,16 @@ export default function Chat({
         // Mark as auto-created so the effect doesn't attempt a duplicate.
         autoCreatedDmRef.current = true;
 
-        const newChannel = await createDmChannelMutation.mutateAsync({
+        await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
         });
-        updateChatState({ currentDmChannelId: newChannel.id, input: '' });
+        updateChatState({ input: '' });
         setTimeout(() => safeScrollToBottom(), 150);
       } catch (error) {
         clientLogger.error('[Chat] Error creating new distinct DM channel:', error);
         // Toast is handled by the mutation hook
+        updateChatState({ currentDmChannelId: null, input: '' });
       } finally {
         updateChatState({ isCreatingDM: false });
       }
@@ -494,6 +495,16 @@ export default function Chat({
     }
   }, [agentDmChannels, chatState.currentDmChannelId]);
 
+  useEffect(() => {
+    if (!isLoadingAgentDmChannels && agentDmChannels.length > 0) {
+      clientLogger.info(
+        '[Chat] Selecting first available DM channel:',
+        agentDmChannels[0].id
+      );
+      updateChatState({ currentDmChannelId: agentDmChannels[0].id });
+    }
+  }, [agentDmChannels])
+
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
     if (chatType === ChannelType.DM && targetAgentData?.id) {
@@ -511,33 +522,20 @@ export default function Chat({
         return; // Exit early, let the effect run again with cleared state
       }
 
-      if (!isLoadingAgentDmChannels) {
-        // If we now have channels, ensure one is selected
-        if (agentDmChannels.length > 0) {
-          const currentValid = agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
-          if (!currentValid) {
-            clientLogger.info(
-              '[Chat] Selecting first available DM channel:',
-              agentDmChannels[0].id
-            );
-            updateChatState({ currentDmChannelId: agentDmChannels[0].id });
-            autoCreatedDmRef.current = false;
-          }
-        } else {
-          if (
-            agentDmChannels.length === 0 &&
-            !initialDmChannelId &&
-            !autoCreatedDmRef.current &&
-            !chatState.isCreatingDM &&
-            !createDmChannelMutation.isPending
-          ) {
-            // No channels at all and none expected via URL -> create exactly one
-            clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
-            autoCreatedDmRef.current = true;
-            handleNewDmChannel(targetAgentData.id);
-          }
-        }
+      if (
+        !isLoadingAgentDmChannels &&
+        agentDmChannels.length === 0 &&
+        !initialDmChannelId &&
+        !autoCreatedDmRef.current &&
+        !chatState.isCreatingDM &&
+        !createDmChannelMutation.isPending
+      ) {
+        // No channels at all and none expected via URL -> create exactly one
+        clientLogger.info('[Chat] No existing DM channels found; auto-creating a fresh one.');
+        autoCreatedDmRef.current = true;
+        handleNewDmChannel(targetAgentData.id);
       }
+      
     } else if (chatType !== ChannelType.DM && chatState.currentDmChannelId !== null) {
       // Only reset if necessary
       updateChatState({ currentDmChannelId: null });
@@ -1150,7 +1148,7 @@ export default function Chat({
                 </Tooltip>
 
                 {/* Chat Actions Split Button */}
-                {/* <SplitButton
+                <SplitButton
                   mainAction={{
                     label: chatState.isCreatingDM ? (
                       'Creating...'
@@ -1186,7 +1184,7 @@ export default function Chat({
                   variant="outline"
                   size="sm"
                   className="px-2 sm:px-3"
-                /> */}
+                />
 
                 <Tooltip>
                   <TooltipTrigger asChild>
