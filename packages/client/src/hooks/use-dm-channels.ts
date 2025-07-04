@@ -184,7 +184,7 @@ export function useCreateDmChannel() {
 
       // Navigate to the new DM chat
       // data.id is the channelId, variables.agentId is the agentId (target user for DM)
-      navigate(`/chat/${variables.agentId}/${data.id}`);
+      window.history.pushState({}, '', `/chat/${variables.agentId}/${data.id}`);
     },
     onError: (error) => {
       clientLogger.error('[useCreateDmChannel] Error creating distinct DM channel:', error);
