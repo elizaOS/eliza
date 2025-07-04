@@ -29,8 +29,19 @@ export interface SplitButtonProps {
 
 export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
   ({ mainAction, actions, variant = 'default', size = 'default', disabled, className }, ref) => {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    const [menuWidth, setMenuWidth] = React.useState<number>();
+
+    React.useImperativeHandle(ref, () => containerRef.current, []);
+
+    React.useLayoutEffect(() => {
+      if (containerRef.current) {
+        setMenuWidth(containerRef.current.offsetWidth);
+      }
+    }, [actions.length, mainAction.label]);
+
     return (
-      <div ref={ref} className={cn('flex w-full', className)}>
+      <div ref={containerRef} className={cn('flex w-full', className)}>
         <Button
           type="button"
           variant={variant}
@@ -59,7 +70,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
               <span className="sr-only">More options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" style={{ width: menuWidth }}>
             {actions.map((action, index) => (
               <React.Fragment key={index}>
                 <DropdownMenuItem
@@ -67,10 +78,10 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                   disabled={action.disabled}
                   className={cn(
                     action.variant === 'destructive' &&
-                      'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                    'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
                   )}
                 >
-                  {action.icon && <span className="mr-2">{action.icon}</span>}
+                  {action.icon}
                   {action.label}
                 </DropdownMenuItem>
                 {index < actions.length - 1 && <DropdownMenuSeparator />}
