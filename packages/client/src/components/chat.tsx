@@ -552,7 +552,7 @@ export default function Chat({
     if (
       latestChannel &&
       !isLoadingAgentDmChannels &&
-      targetAgentData.id && 
+      targetAgentData?.id && 
       shouldForceNew
     ) {
       handleNewDmChannel(targetAgentData.id)
@@ -561,6 +561,7 @@ export default function Chat({
   }, [
     shouldForceNew,
     setShouldForceNew, 
+    handleNewDmChannel,
     targetAgentData.id,
     isLoadingAgentDmChannels, 
     latestChannel,
