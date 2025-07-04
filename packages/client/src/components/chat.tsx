@@ -55,7 +55,8 @@ import {
   ChevronRight,
   Edit,
   Eraser,
-  History,
+  Clock,
+  ChevronDown,
   Info,
   Loader2,
   MessageSquarePlus,
@@ -1059,26 +1060,27 @@ export default function Chat({
           </div>
           <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
             {chatType === ChannelType.DM && (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 {agentDmChannels.length > 0 && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-8 sm:max-w-[300px] sm:w-auto"
+                        className="w-8 h-9 sm:max-w-[300px] sm:w-auto rounded-[12px]"
                       >
-                        <History className="size-4 flex-shrink-0" />
-                        <span className="hidden md:inline truncate text-xs sm:text-sm sm:ml-2">
+                        <Clock className="size-4 flex-shrink-0 text-muted-foreground" />
+                        <span className="hidden md:inline truncate text-xs sm:text-sm">
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
                         </span>
-                        <Badge
-                          variant="secondary"
-                          className="hidden md:inline-flex ml-1 sm:ml-2 text-xs"
+                        <Button
+                          variant="ghost"
+                          size={"icon"}
+                          className="hidden md:inline-flex text-xs text-muted-foreground"
                         >
-                          {agentDmChannels.length}
-                        </Badge>
+                          <ChevronDown/>
+                        </Button>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-[280px] sm:w-[320px]">
@@ -1127,8 +1129,28 @@ export default function Chat({
                   </DropdownMenu>
                 )}
 
+                
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      className='w-9 h-9 rounded-[12px]'
+                      variant={"outline"}
+                      onClick={() => {
+                        handleNewDmChannel(targetAgentData?.id)
+                      }}
+                      disabled={chatState.isCreatingDM}
+                    >
+                      <Plus className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Create new chat</p>
+                  </TooltipContent>
+                </Tooltip>
+
                 {/* Chat Actions Split Button */}
-                <SplitButton
+                {/* <SplitButton
                   mainAction={{
                     label: chatState.isCreatingDM ? (
                       'Creating...'
@@ -1164,30 +1186,29 @@ export default function Chat({
                   variant="outline"
                   size="sm"
                   className="px-2 sm:px-3"
-                />
+                /> */}
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      className='w-9 h-9 rounded-[12px]'
+                      variant={"outline"}
+                      onClick={toggleSidebar}
+                    >
+                      {showSidebar ? (
+                        <PanelRightClose className="size-4" />
+                      ) : (
+                        <PanelRight className="size-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )}
-
-            <Separator orientation="vertical" className="h-8 hidden sm:block" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="px-2 sm:px-3 h-8 w-8 sm:w-auto ml-1 sm:ml-3"
-                  onClick={toggleSidebar}
-                >
-                  {showSidebar ? (
-                    <PanelRightClose className="h-4 w-4" />
-                  ) : (
-                    <PanelRight className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p>{showSidebar ? 'Close SidePanel' : 'Open SidePanel'}</p>
-              </TooltipContent>
-            </Tooltip>
+            
           </div>
         </div>
       );
