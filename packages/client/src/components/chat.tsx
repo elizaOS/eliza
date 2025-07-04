@@ -1156,26 +1156,6 @@ export default function Chat({
                   </DropdownMenu>
                 )}
 
-                
-
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className='w-9 h-9 rounded-[12px]'
-                      variant={"outline"}
-                      onClick={() => {
-                        handleNewDmChannel(targetAgentData?.id)
-                      }}
-                      disabled={chatState.isCreatingDM}
-                    >
-                      <Plus className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p>Create new chat</p>
-                  </TooltipContent>
-                </Tooltip>
-
                 {/* Chat Actions Split Button */}
                 <SplitButton
                   mainAction={{
@@ -1197,7 +1177,7 @@ export default function Chat({
                   }}
                   actions={[
                     {
-                      label: 'Clear Messages',
+                      label: 'Clear Chat',
                       onClick: handleClearChat,
                       icon: <Eraser className="size-4" />,
                       disabled: !messages || messages.length === 0,
@@ -1212,7 +1192,6 @@ export default function Chat({
                   ]}
                   variant="outline"
                   size="sm"
-                  className="px-2 sm:px-3"
                 />
 
                 <Tooltip>
