@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server-examples",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Examples for using @elizaos/server independently",
   "type": "module",
   "scripts": {
