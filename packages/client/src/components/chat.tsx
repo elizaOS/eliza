@@ -85,6 +85,7 @@ import { useSidebarState } from '@/hooks/use-sidebar-state';
 import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
+import { useLocation } from 'react-router-dom';
 moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
@@ -106,6 +107,10 @@ interface ChatUIState {
   currentDmChannelId: UUID | null;
   isCreatingDM: boolean;
   isMobile: boolean; // Add mobile state
+}
+
+export interface ChatLocationState {
+  forceNew?: boolean;
 }
 
 // Message content component - exported for use in ChatMessageListComponent
@@ -263,6 +268,12 @@ export default function Chat({
     isCreatingDM: false,
     isMobile: false,
   });
+
+  const location = useLocation();
+  const state = location.state as ChatLocationState | null;
+  const forceNew = state?.forceNew || false;
+
+  const [shouldForceNew, setShouldForceNew] = useState(forceNew);
 
   // Determine if we should use floating mode - either from width detection OR mobile
   const isFloatingMode = isFloatingModeFromWidth || chatState.isMobile;
@@ -536,6 +547,25 @@ export default function Chat({
     queryClient,
     currentClientEntityId,
   ]);
+
+  useEffect(() => {
+    if (
+      latestChannel &&
+      !isLoadingAgentDmChannels &&
+      targetAgentData?.id && 
+      shouldForceNew
+    ) {
+      handleNewDmChannel(targetAgentData.id)
+      setShouldForceNew(false);
+    }
+  }, [
+    shouldForceNew,
+    setShouldForceNew, 
+    handleNewDmChannel,
+    targetAgentData.id,
+    isLoadingAgentDmChannels, 
+    latestChannel,
+  ])
 
   useEffect(() => {
     inputDisabledRef.current = chatState.inputDisabled;

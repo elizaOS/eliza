@@ -14,7 +14,7 @@ import clientLogger from '@/lib/logger';
 
 interface AgentCardProps {
   agent: Partial<AgentWithStatus>;
-  onChat: (agent: Partial<AgentWithStatus>) => void;
+  onChat: (forceNew: boolean) => void;
 }
 
 const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
@@ -71,8 +71,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     stopAgent(agentForMutation);
   };
 
-  const handleNewChat = () => {
-    onChat(agent);
+  const handleNewChat = (forceNew: boolean = false) => {
+    onChat(forceNew);
   };
 
   const handleSettings = () => {
@@ -90,10 +90,14 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all bg-card border border-border/50 rounded-sm',
+        'w-full transition-all bg-card border border-border/50 rounded-sm hover:bg-card/50 cursor-pointer',
         isActive ? '' : 'opacity-75'
       )}
       data-testid="agent-card"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleNewChat();
+      }}
     >
       <CardContent className="p-0 relative h-full">
         {/* Toggle Switch - positioned absolutely in top-right */}
@@ -157,7 +161,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                handleNewChat();
+                handleNewChat(true);
               }}
               className="h-8 px-2 rounded-sm bg-muted hover:bg-muted/50 cursor-pointer"
             >
