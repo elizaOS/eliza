@@ -32,11 +32,13 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
+    React.useImperativeHandle(ref, () => containerRef.current!, []);
+
     React.useLayoutEffect(() => {
       if (containerRef.current) {
         setMenuWidth(containerRef.current.offsetWidth);
       }
-    }, [containerRef.current, actions.length, mainAction.label]);
+    }, [actions.length, mainAction.label]);
 
     return (
       <div ref={containerRef} className={cn('flex w-full', className)}>
