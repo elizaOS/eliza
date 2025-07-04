@@ -6,6 +6,27 @@ export default function Root({ children }) {
   const location = useLocation();
 
   useEffect(() => {
+    // Optimize theme switching
+    const optimizeThemeSwitch = () => {
+      const themeToggle = document.querySelector('[class*="colorModeToggle"]');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          // Add switching class to disable transitions temporarily
+          document.documentElement.setAttribute('data-theme-switching', 'true');
+          
+          // Remove the attribute after theme switch completes
+          setTimeout(() => {
+            document.documentElement.removeAttribute('data-theme-switching');
+          }, 50);
+        });
+      }
+    };
+
+    // Run after a short delay to ensure toggle button is rendered
+    setTimeout(optimizeThemeSwitch, 100);
+  }, []);
+
+  useEffect(() => {
     // Fix for dropdown hover glitches - implement hover intent
     const setupHoverIntent = () => {
       const dropdowns = document.querySelectorAll('.dropdown--hoverable');
@@ -51,8 +72,7 @@ export default function Root({ children }) {
     const fixBrokenLinks = () => {
       // Common link mappings for broken links
       const linkMappings = {
-        // Map old paths to new paths
-        '/docs/intro': '/docs',
+        // Map old paths to new paths - removed /docs/intro mapping
         '/docs/getting-started': '/docs/simple/getting-started/quick-start',
         '/docs/guides/character-creation': '/docs/simple/guides/character-creation',
         '/docs/customize/character-builder': '/docs/customize/character-builder',
@@ -83,18 +103,7 @@ export default function Root({ children }) {
             window.location.href = linkMappings[pathname];
           }
 
-          // Check for common patterns
-          if (
-            pathname.includes('/docs/') &&
-            !pathname.includes('/docs/simple/') &&
-            !pathname.includes('/docs/customize/') &&
-            !pathname.includes('/docs/technical/')
-          ) {
-            // Try redirecting to simple track first
-            const simplePath = pathname.replace('/docs/', '/docs/simple/');
-            e.preventDefault();
-            window.location.href = simplePath;
-          }
+          // Removed catch-all redirect to simple track - let each page exist independently
         }
       });
     };
