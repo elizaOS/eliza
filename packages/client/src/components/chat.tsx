@@ -317,6 +317,36 @@ export default function Chat({
   const { data: agentsResponse } = useAgentsWithDetails();
   const allAgents = agentsResponse?.agents || [];
 
+
+  const latestChannel = agentDmChannels[0]; // adjust sorting if needed
+
+  // Get the final channel ID for hooks
+  const finalChannelIdForHooks: UUID | undefined =
+    chatType === ChannelType.DM
+      ? chatState.currentDmChannelId || undefined
+      : contextId || undefined;
+
+  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
+    return chatType === ChannelType.DM ? DEFAULT_SERVER_ID : serverId || undefined;
+  }, [chatType, serverId]);
+
+  const {
+    data: latestChannelMessages = [],
+    isLoading: isLoadingLatestChannelMessages,
+  } = useChannelMessages(
+    latestChannel?.id,
+    finalServerIdForHooks
+  );
+
+  const {
+    data: messages = [],
+    isLoading: isLoadingMessages,
+    addMessage,
+    updateMessage,
+    removeMessage,
+    clearMessages,
+  } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
+
   // Get agents in the current group
   const groupAgents = useMemo(() => {
     if (chatType !== ChannelType.GROUP || !participants) return [];
@@ -363,8 +393,6 @@ export default function Chat({
   const autoCreatedDmRef = useRef(false);
   const autoCreateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const latestChannel = agentDmChannels[0]; // adjust sorting if needed
-
   // Handle DM channel creation
   const handleNewDmChannel = useCallback(
     async (agentIdForNewChannel: UUID | undefined) => {
@@ -407,7 +435,15 @@ export default function Chat({
         updateChatState({ isCreatingDM: false });
       }
     },
-    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom]
+    [
+      chatType, 
+      createDmChannelMutation, 
+      updateChatState, 
+      safeScrollToBottom, 
+      latestChannel,
+      latestChannelMessages,
+      isLoadingLatestChannelMessages
+    ]
   );
 
   // Handle DM channel selection
@@ -520,7 +556,7 @@ export default function Chat({
       );
       updateChatState({ currentDmChannelId: agentDmChannels[0].id });
     }
-  }, [agentDmChannels])
+  }, [agentDmChannels, isLoadingAgentDmChannels, updateChatState])
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
@@ -606,34 +642,6 @@ export default function Chat({
     showSidebar,
     setSidebarVisible,
   ]);
-
-  // Get the final channel ID for hooks
-  const finalChannelIdForHooks: UUID | undefined =
-    chatType === ChannelType.DM
-      ? chatState.currentDmChannelId || undefined
-      : contextId || undefined;
-
-  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
-    return chatType === ChannelType.DM ? DEFAULT_SERVER_ID : serverId || undefined;
-  }, [chatType, serverId]);
-
-  const {
-    data: messages = [],
-    isLoading: isLoadingMessages,
-    addMessage,
-    updateMessage,
-    removeMessage,
-    clearMessages,
-  } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
-
-  const {
-    data: latestChannelMessages = [],
-    isLoading: isLoadingLatestChannelMessages,
-  } = useChannelMessages(
-    latestChannel?.id,
-    finalServerIdForHooks
-  );
-
 
   const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
   const { mutate: clearMessagesCentral } = useClearChannelMessages();

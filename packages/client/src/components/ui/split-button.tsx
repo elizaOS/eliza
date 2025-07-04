@@ -32,11 +32,13 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
+    React.useImperativeHandle(ref, () => containerRef.current, []);
+
     React.useLayoutEffect(() => {
       if (containerRef.current) {
         setMenuWidth(containerRef.current.offsetWidth);
       }
-    }, [containerRef.current, actions.length, mainAction.label]);
+    }, [actions.length, mainAction.label]);
 
     return (
       <div ref={containerRef} className={cn('flex w-full', className)}>
@@ -76,7 +78,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                   disabled={action.disabled}
                   className={cn(
                     action.variant === 'destructive' &&
-                      'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                    'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
                   )}
                 >
                   {action.icon}
