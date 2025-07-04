@@ -16,6 +16,14 @@ const config = {
   trailingSlash: false,
   onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
+  
+  future: {
+    experimental_faster: {
+      swcJsLoader: true,
+      swcJsMinimizer: true,
+      swcHtmlMinimizer: true,
+    },
+  },
 
   i18n: {
     defaultLocale: 'en',
@@ -158,6 +166,16 @@ const config = {
         excludeInternal: false,
         excludeNotDocumented: true,
         plugin: ['typedoc-plugin-markdown'],
+        blockTags: [
+          '@param',
+          '@returns',
+          '@throws',
+          '@example',
+          '@implements',
+          '@template',
+          '@property',
+          '@typedef'
+        ],
         hideGenerator: true,
         cleanOutputDir: true,
         categorizeByGroup: true,
@@ -226,11 +244,11 @@ const config = {
       'docusaurus-plugin-openapi-docs',
       {
         id: 'rest-api',
-        docsPluginId: 'classic',
+        docsPluginId: 'api',
         config: {
           eliza_api: {
             specPath: './src/openapi/eliza-v1.yaml',
-            outputDir: 'docs/rest',
+            outputDir: 'api/rest',
             sidebarOptions: {
               groupPathsBy: 'tag',
             },
@@ -280,7 +298,7 @@ const config = {
           path: 'news',
         },
         docs: {
-          routeBasePath: '/',
+          routeBasePath: 'docs',
           path: 'docs',
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
@@ -402,19 +420,16 @@ const config = {
           position: 'left',
           items: [
             {
-              type: 'docSidebar',
-              sidebarId: 'simpleSidebar',
               label: '🎯 Simple Track (Non-Technical)',
+              to: '/docs/simple/getting-started/quick-start',
             },
             {
-              type: 'docSidebar',
-              sidebarId: 'customizeSidebar',
               label: '🎨 Customize Track (Power Users)',
+              to: '/docs/customize/overview',
             },
             {
-              type: 'docSidebar',
-              sidebarId: 'technicalSidebar',
               label: '🔧 Technical Track (Developers)',
+              to: '/docs/technical/architecture/overview',
             },
           ],
         },

@@ -185,7 +185,8 @@ Another program is using port 3000. Either:
    ```
    PORT=3001
    ```
-   </details>
+
+</details>
 
 <details>
 <summary><b>Agent not responding</b></summary>

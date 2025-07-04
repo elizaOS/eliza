@@ -3,7 +3,69 @@
  * Performance-focused with reduced transitions and simplified selectors
  */
 
-/* Base variables - unchanged to maintain visual identity */
+/* ==========================================
+   OPTIMIZED THEME SWITCHING
+   ========================================== */
+
+/* Disable transitions during theme switch for smooth performance */
+html[data-theme-switching] * {
+  transition: none !important;
+}
+
+/* Essential theme switch transitions only */
+html {
+  transition: background-color 0.2s ease;
+}
+
+/* Optimize color-scheme for instant native UI updates */
+:root {
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* Use CSS containment for better performance */
+.navbar,
+.footer {
+  contain: layout style;
+}
+
+/* Remove gap between navbar and main content */
+.main-wrapper {
+  contain: layout style;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Fix all possible gaps in docs layout */
+.docPage__docPage,
+.docsWrapper_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-index-module,
+.docSidebarContainer_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-Sidebar-index-module,
+div[class*="docPage"],
+div[class*="docsWrapper"],
+div[class*="docSidebarContainer"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Target the layout row that contains sidebar */
+.row.docPage__docPage > div:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Base variables - enhanced with #f2f2f2 light theme */
 :root {
   --ifm-color-primary: #ffa600;
   --ifm-color-primary-dark: #e69500;
@@ -16,21 +78,27 @@
   --ifm-font-family-base:
     'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans',
     sans-serif;
+  --ifm-navbar-height: 50px;
+  
+  /* Light theme background colors using #f2f2f2 */
+  --ifm-background-color: #f2f2f2;
+  --ifm-background-surface-color: #f2f2f2;
+  --ifm-card-background-color: #f2f2f2;
 }
 
 /* Glass Design System Variables */
 :root {
   /* Glass Properties */
-  --glass-blur: 20px;
+  --glass-blur: 10px;
   --glass-opacity: 0.8;
   --glass-opacity-hover: 0.9;
   --glass-border-opacity: 0.2;
   --glass-shadow-opacity: 0.1;
 
-  /* Liquid Animation Timing */
-  --liquid-duration-fast: 0.2s;
-  --liquid-duration-medium: 0.4s;
-  --liquid-duration-slow: 0.8s;
+  /* Liquid Animation Timing - Optimized for performance */
+  --liquid-duration-fast: 0.15s;
+  --liquid-duration-medium: 0.25s;
+  --liquid-duration-slow: 0.35s;
   --liquid-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --liquid-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
@@ -41,10 +109,10 @@
   --depth-modal: 1000;
   --depth-tooltip: 1001;
 
-  /* Glass Colors - Light Mode */
-  --glass-surface: rgba(255, 255, 255, 0.1);
-  --glass-surface-hover: rgba(255, 255, 255, 0.15);
-  --glass-border: rgba(255, 255, 255, 0.2);
+  /* Glass Colors - Light Mode with #f2f2f2 base */
+  --glass-surface: rgba(242, 242, 242, 0.15);
+  --glass-surface-hover: rgba(242, 242, 242, 0.2);
+  --glass-border: rgba(242, 242, 242, 0.25);
   --glass-shadow: rgba(0, 0, 0, 0.1);
   --glass-text: rgba(0, 0, 0, 0.9);
   --glass-text-secondary: rgba(0, 0, 0, 0.7);
@@ -78,18 +146,18 @@
   --warm-accent-border: rgba(255, 149, 0, 0.3);
 
   /* Glass Colors - Dark Mode */
-  --glass-surface: rgba(0, 0, 0, 0.3);
-  --glass-surface-hover: rgba(0, 0, 0, 0.4);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-shadow: rgba(0, 0, 0, 0.3);
+  --glass-surface: rgba(0, 0, 0, 0.4);
+  --glass-surface-hover: rgba(0, 0, 0, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --glass-shadow: rgba(0, 0, 0, 0.4);
   --glass-text: rgba(255, 255, 255, 0.9);
   --glass-text-secondary: rgba(255, 255, 255, 0.6);
 }
 
-/* High contrast mode support */
+/* High contrast mode support with #f2f2f2 */
 @media (prefers-contrast: high) {
   :root {
-    --glass-surface: rgba(255, 255, 255, 0.95);
+    --glass-surface: rgba(242, 242, 242, 0.95);
     --glass-border: rgba(0, 0, 0, 0.8);
     --glass-text: rgba(0, 0, 0, 1);
   }
@@ -101,7 +169,11 @@
   }
 }
 
-/* Performance-optimized background */
+/* Performance-optimized backgrounds */
+.main-wrapper {
+  background-color: #f2f2f2;
+}
+
 [data-theme='dark'] .main-wrapper {
   background-color: #111827;
 }
@@ -364,21 +436,195 @@ html[data-theme='dark'] .header-github-link {
   background-image: url('/img/github-mark-white.svg');
 }
 
-/* RSS icon in navbar */
-.header-rss-link {
-  padding: 0;
-  width: 24px;
-  height: 36px;
-  background-image: url('/img/rss.svg');
-  background-repeat: no-repeat;
-  background-position: center;
-  position: relative;
-  display: block;
+/* GitHub icon styling */
+.header-github-link {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 4px !important;
+  border-radius: 6px;
+  transition: all 0.1s ease;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background-image: url('/img/github-mark.svg') !important;
+  background-size: 20px 20px !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  overflow: hidden !important;
 }
 
-/* Hide dropdown arrow for RSS link */
-.header-rss-link.navbar__link:after {
-  display: none;
+/* Ensure GitHub link doesn't get arrow */
+.header-github-link:after {
+  display: none !important;
+  content: none !important;
+}
+
+.header-github-link:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+/* Dark theme - use white GitHub logo */
+html[data-theme='dark'] .header-github-link {
+  background-image: url('/img/github-mark-white.svg') !important;
+}
+
+/* Ensure AI Assistant is visible */
+button[aria-label="Open AI Assistant"] {
+  position: fixed !important;
+  bottom: 2rem !important;
+  right: 2rem !important;
+  z-index: 100 !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 60px !important;
+  height: 60px !important;
+  background: var(--ifm-color-primary) !important;
+  border-radius: 50% !important;
+  border: none !important;
+  cursor: pointer !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: white !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+button[aria-label="Open AI Assistant"]:hover {
+  transform: scale(1.05) !important;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Add text fallback if icon doesn't load */
+button[aria-label="Open AI Assistant"]::after {
+  content: "AI" !important;
+  font-weight: bold !important;
+  font-size: 16px !important;
+}
+
+/* Also target the module CSS class in case it's using CSS modules */
+[class*="floatingButton"] {
+  position: fixed !important;
+  bottom: 2rem !important;
+  right: 2rem !important;
+  z-index: 100 !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* RSS icon in navbar - styled like GitHub icon */
+.header-rss-link {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 4px !important;
+  border-radius: 6px;
+  transition: all 0.1s ease;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background-image: url('/img/rss.svg') !important;
+  background-size: 20px 20px !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  overflow: hidden !important;
+}
+
+.header-rss-link:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+/* Dark mode RSS icon */
+[data-theme='dark'] .header-rss-link {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme='dark'] .header-rss-link:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Remove dropdown arrow for RSS completely */
+.header-rss-link.dropdown > a:after,
+.header-rss-link.dropdown:hover > a:after,
+.header-rss-link.dropdown--show > a:after,
+.header-rss-link.dropdown--hoverable:hover > a:after,
+.header-rss-link > a:after,
+.header-rss-link a:after,
+.header-rss-link:after,
+.navbar__item.header-rss-link:after,
+.dropdown.header-rss-link > .navbar__link:after {
+  display: none !important;
+  content: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+}
+
+/* Search bar styling - smaller and positioned on far right */
+.DocSearch-Button {
+  width: 90px !important;
+  height: 22px !important;
+  margin: 0;
+  padding: 0 0.25rem !important;
+  font-size: 0.65rem !important;
+  order: -1; /* Ensure it appears first in right group */
+}
+
+/* SmartSearch container adjustments */
+.smartSearch {
+  order: -1;
+  margin-right: 0.5rem;
+}
+
+/* Adjust search modal icon */
+.DocSearch-Button .DocSearch-Search-Icon {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+/* Adjust placeholder text */
+.DocSearch-Button-Placeholder {
+  font-size: 0.6rem !important;
+}
+
+/* Responsive navbar and search adjustments */
+@media (max-width: 1200px) {
+  .navbar__inner {
+    max-width: 100%;
+    padding: 0 1rem;
+  }
+}
+
+@media (max-width: 996px) {
+  .DocSearch-Button {
+    width: 70px !important;
+  }
+  
+  /* Reset navbar layout for mobile */
+  .navbar__items--left,
+  .navbar__items--right {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .DocSearch-Button {
+    width: 60px !important;
+  }
+  
+  .DocSearch-Button-Placeholder {
+    display: none;
+  }
+  
+  .DocSearch-Button-Keys {
+    display: none;
+  }
 }
 
 /* Mermaid diagram customization */
@@ -459,15 +705,70 @@ html[data-theme='dark'] .header-github-link {
   border-bottom: 1px solid var(--glass-border) !important;
   box-shadow: 0 4px 32px var(--glass-shadow) !important;
   transition: all var(--liquid-duration-medium) var(--liquid-easing);
+  height: var(--ifm-navbar-height) !important;
+  min-height: var(--ifm-navbar-height) !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
 }
 
 .navbar__inner {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--ifm-navbar-height);
+  padding: 0 1rem;
+}
+
+/* Left side: Logo and nav links */
+.navbar__items {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: var(--ifm-navbar-height);
+}
+
+.navbar__items--left {
+  flex: 0 1 auto;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  height: var(--ifm-navbar-height);
+}
+
+/* Right side: Search, social, version */
+.navbar__items--right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  height: var(--ifm-navbar-height);
+}
+
+
+/* Ensure search bar is positioned correctly */
+.navbar__search {
+  order: -1; /* Move search before other right items */
+  margin-right: 0.5rem;
 }
 
 .navbar__brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-width: 140px; /* Ensure enough space for full logo name */
+  margin-right: 2rem;
   transition: color var(--liquid-duration-fast) var(--liquid-easing);
+  height: 100%;
+}
+
+.navbar__title {
+  flex-shrink: 0; /* Prevent title from being truncated */
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .navbar__brand:hover {
@@ -479,7 +780,140 @@ html[data-theme='dark'] .header-github-link {
   overflow: hidden;
   border-radius: 6px;
   transition: all var(--liquid-duration-fast) var(--liquid-easing);
+  display: flex;
+  align-items: center;
+  line-height: 1.5;
+  height: 100%;
+  padding: 0 0.75rem;
 }
+
+/* Dropdown arrow styling - centered and reduced spacing */
+.dropdown > .navbar__link:after,
+.dropdown__link:after {
+  display: inline-block;
+  margin-left: 0.3rem !important; /* Reduced from default */
+  vertical-align: middle;
+  line-height: 1;
+  transform: translateY(1px); /* Move arrow down to center with text */
+}
+
+/* Hide the :after content for non-dropdown navbar items, but not for social icons */
+.navbar__item:not(.dropdown):not(.header-github-link):not(.header-rss-link) > .navbar__link:after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Specifically target Documentation and API navbar items */
+.navbar__item > a[href="/docs/intro"]:after,
+.navbar__item > a[href="/api"]:after,
+.navbar__item > a[href="/api/"]:after,
+.navbar__item > a[href="/api/index"]:after,
+a.navbar__link[href^="/api"]:after,
+a.navbar__link[href*="/docs/intro"]:after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Simple navbar item alignment */
+.navbar__item,
+.navbar__link,
+.navbar__title {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Target dropdown items */
+.dropdown .navbar__link,
+.navbar__item .navbar__link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: var(--ifm-navbar-height);
+}
+
+/* Theme-aware intro cards */
+[data-theme='light'] .card[style*='gradient'] {
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  border: 2px solid var(--ifm-color-primary) !important;
+  box-shadow: 0 8px 32px rgba(255, 149, 0, 0.1) !important;
+}
+
+[data-theme='light'] .card[style*='gradient'] h2,
+[data-theme='light'] .card[style*='gradient'] p,
+[data-theme='light'] .card[style*='gradient'] ul,
+[data-theme='light'] .card[style*='gradient'] li {
+  color: var(--ifm-font-color-base) !important;
+}
+
+[data-theme='light'] .card[style*='gradient'] .subtitle {
+  color: var(--ifm-color-secondary-darkest) !important;
+}
+
+[data-theme='light'] .card[style*='gradient'] .button {
+  background: var(--ifm-color-primary) !important;
+  color: white !important;
+  border: none !important;
+  box-shadow: 0 4px 20px rgba(255, 149, 0, 0.3) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 48px !important;
+}
+
+[data-theme='light'] .card[style*='gradient'] .button:hover {
+  background: var(--ifm-color-primary-dark) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(255, 149, 0, 0.4) !important;
+}
+
+/* Vertically center all card buttons */
+.card .button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-height: 48px !important;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ifm-color-primary);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ifm-color-primary-dark);
+  background-clip: padding-box;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ifm-color-primary) rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode scrollbar adjustments */
+[data-theme='dark'] ::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='dark'] {
+  scrollbar-color: var(--ifm-color-primary) rgba(255, 255, 255, 0.1);
+}
+
 
 .navbar__item .navbar__link::before {
   content: '';
@@ -492,13 +926,21 @@ html[data-theme='dark'] .header-github-link {
   transition: left var(--liquid-duration-medium) var(--liquid-easing);
 }
 
-.navbar__item .navbar__link:hover {
+.navbar__item .navbar__link:hover:not(.header-rss-link):not(.header-github-link) {
   background: var(--glass-surface-hover) !important;
   transform: translateY(-1px);
 }
 
 .navbar__item .navbar__link:hover::before {
   left: 100%;
+}
+
+/* Disable sliding animation for RSS and GitHub links */
+.header-rss-link .navbar__link::before,
+.header-github-link .navbar__link::before,
+.header-rss-link::before,
+.header-github-link::before {
+  display: none !important;
 }
 
 .navbar__item .navbar__link--active {
@@ -512,6 +954,163 @@ html[data-theme='dark'] .header-github-link {
   background: var(--glass-surface) !important;
   backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--glass-border) !important;
+  box-shadow: 
+    4px 0 20px rgba(0, 0, 0, 0.05),
+    2px 0 10px rgba(0, 0, 0, 0.1) !important;
+  position: sticky !important;
+  top: var(--ifm-navbar-height);
+  height: calc(100vh - var(--ifm-navbar-height));
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Remove redundant overlay - main container already has glass effect */
+
+/* Ensure the parent container has correct height */
+@media (min-width: 997px) {
+  .docPage__docPage {
+    display: flex;
+    width: 100%;
+    min-height: calc(100vh - var(--ifm-navbar-height));
+  }
+  
+  /* Main doc wrapper */
+  .docsWrapper_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-index-module {
+    display: flex;
+    flex: 1;
+  }
+  
+  /* Sidebar column */
+  aside.theme-doc-sidebar-container {
+    position: sticky !important;
+    top: var(--ifm-navbar-height) !important;
+    height: calc(100vh - var(--ifm-navbar-height)) !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+  
+  /* Fix gap by resetting layout containers */
+  .docMainContainer_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-Main-index-module,
+  .docPage__docPage > div:first-child {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+  
+  /* Ensure sidebar background extends to navbar */
+  .docSidebarContainer_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-Sidebar-index-module {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    background: var(--glass-surface);
+    position: relative;
+  }
+  
+  /* Add a background extension to fill any gap */
+  .docSidebarContainer_node_modules-\@docusaurus-theme-classic-lib-theme-DocPage-Layout-Sidebar-index-module::before,
+  div[class*="docSidebarContainer"]::before {
+    content: '';
+    position: absolute;
+    top: calc(-1 * var(--ifm-navbar-height));
+    left: 0;
+    right: 0;
+    height: var(--ifm-navbar-height);
+    background: var(--glass-surface);
+    border-right: 1px solid var(--glass-border);
+  }
+}
+
+/* Add subtle gradient overlay for depth */
+.theme-doc-sidebar-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 149, 0, 0.05),
+    transparent
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+/* Sidebar menu styling with depth */
+.theme-doc-sidebar-menu {
+  position: relative;
+  z-index: 1;
+  padding: 1rem 0.5rem;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: transparent;
+}
+
+/* Ensure all menu items have proper glass effect */
+.menu__list-item:not(:last-child) {
+  margin-bottom: 0.125rem;
+}
+
+/* Simplified menu links - glass background is handled by container */
+.menu__link,
+.menu__link--sublist,
+.menu__list-item a {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-left: 3px solid transparent !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* Make the menu nav take full height */
+nav.theme-doc-sidebar-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Ensure menu lists are properly positioned */
+.menu__list {
+  position: relative;
+  z-index: 1;
+}
+
+/* Sidebar scrollbar styling */
+.theme-doc-sidebar-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.theme-doc-sidebar-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.theme-doc-sidebar-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 149, 0, 0.3);
+  border-radius: 4px;
+}
+
+.theme-doc-sidebar-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 149, 0, 0.5);
+}
+
+/* Simplified subcategory styling */
+.menu__list .menu__list {
+  background: transparent;
+  border-radius: 8px;
+  margin: 0.25rem 0;
+  padding: 0.25rem;
+  border: 1px solid transparent;
+}
+
+[data-theme='dark'] .menu__list .menu__list {
+  background: transparent;
+  border: 1px solid transparent;
 }
 
 .menu__link {
@@ -520,40 +1119,93 @@ html[data-theme='dark'] .header-github-link {
   border-left: 3px solid transparent !important;
   position: relative;
   overflow: hidden;
+  margin: 0.125rem 0.5rem;
+  padding: 0.5rem 0.75rem !important;
+  display: block;
+  width: calc(100% - 1rem);
+  background: transparent;
 }
 
-.menu__link::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 100%;
-  background: var(--ifm-color-primary);
-  transition: width var(--liquid-duration-fast) var(--liquid-easing);
-  opacity: 0.1;
-}
-
+/* Enhanced hover effect with glass morphism */
 .menu__link:hover {
-  background: var(--glass-surface-hover) !important;
+  background: linear-gradient(
+    to right,
+    rgba(255, 149, 0, 0.15),
+    rgba(255, 149, 0, 0.08)
+  ) !important;
   border-left-color: var(--ifm-color-primary) !important;
-  transform: translateX(4px);
+  transform: translateX(2px);
+  box-shadow: 
+    0 2px 8px rgba(255, 149, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
-.menu__link:hover::before {
-  width: 3px;
-}
-
+/* Active state with glass effect */
 .menu__link--active {
-  background: var(--accent-primary-glass) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 149, 0, 0.15),
+    rgba(255, 149, 0, 0.1)
+  ) !important;
   color: var(--ifm-color-primary) !important;
   border-left-color: var(--ifm-color-primary) !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
+  box-shadow: 
+    0 2px 12px rgba(255, 149, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
 }
 
-.menu__link--active::before {
-  width: 3px;
-  opacity: 1;
+/* Category labels with enhanced styling */
+.menu__list-item-collapsible {
+  background: transparent;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  transition: all var(--liquid-duration-fast) var(--liquid-easing);
+  border: 1px solid transparent;
+}
+
+.menu__list-item-collapsible:hover {
+  background: rgba(255, 149, 0, 0.05);
+  border-color: rgba(255, 149, 0, 0.2);
+}
+
+/* Enhanced category toggle */
+.menu__link--sublist {
+  font-weight: 600;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  margin-bottom: 0.25rem;
+  width: calc(100% - 1rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.menu__link--sublist:hover {
+  background: linear-gradient(
+    to right,
+    rgba(255, 149, 0, 0.1),
+    rgba(255, 149, 0, 0.05)
+  ) !important;
+}
+
+/* Fix chevron positioning */
+.menu__link--sublist::after {
+  margin-left: auto;
+}
+
+/* Add depth to expanded categories */
+.menu__list-item-collapsible--active > .menu__list {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 0 0 8px 8px;
+  padding: 0.5rem 0;
+}
+
+[data-theme='dark'] .menu__list-item-collapsible--active > .menu__list {
+  background: rgba(0, 0, 0, 0.2);
 }
 
 /* Glass Cards */
@@ -566,6 +1218,58 @@ html[data-theme='dark'] .header-github-link {
   transition: all var(--liquid-duration-medium) var(--liquid-easing);
   position: relative;
   overflow: hidden;
+}
+
+/* Orange border for light theme cards and boxes */
+[data-theme='light'] .card:not([style*='gradient']),
+[data-theme='light'] .alert,
+[data-theme='light'] .admonition,
+[data-theme='light'] .theme-code-block,
+[data-theme='light'] .docusaurus-highlight-code-line,
+[data-theme='light'] blockquote,
+[data-theme='light'] .pagination-nav__item {
+  border-color: var(--ifm-color-primary) !important;
+  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.08) !important;
+}
+
+/* Stronger orange border on hover for interactive elements */
+[data-theme='light'] .card:hover,
+[data-theme='light'] .pagination-nav__item:hover {
+  border-color: var(--ifm-color-primary-dark) !important;
+  box-shadow: 0 4px 16px rgba(255, 149, 0, 0.15) !important;
+}
+
+/* Orange border for dark theme with glass effect preserved */
+[data-theme='dark'] .card:not([style*='gradient']),
+[data-theme='dark'] .alert,
+[data-theme='dark'] .admonition,
+[data-theme='dark'] .theme-code-block,
+[data-theme='dark'] .docusaurus-highlight-code-line,
+[data-theme='dark'] blockquote,
+[data-theme='dark'] .pagination-nav__item {
+  border: 1px solid var(--ifm-color-primary) !important;
+  box-shadow: 
+    0 2px 8px rgba(255, 149, 0, 0.15),
+    0 8px 32px var(--glass-shadow) !important;
+  background: var(--glass-surface) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+}
+
+/* Gradient cards in dark theme keep their custom styling with orange accent */
+[data-theme='dark'] .card[style*='gradient'] {
+  border: 1px solid rgba(255, 149, 0, 0.5) !important;
+  box-shadow: 
+    0 4px 16px rgba(255, 149, 0, 0.2),
+    0 8px 32px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Stronger glow on hover for dark theme */
+[data-theme='dark'] .card:hover,
+[data-theme='dark'] .pagination-nav__item:hover {
+  border-color: var(--ifm-color-primary-light) !important;
+  box-shadow: 
+    0 4px 16px rgba(255, 149, 0, 0.25),
+    0 12px 48px var(--glass-shadow) !important;
 }
 
 .card::before {
@@ -585,15 +1289,17 @@ html[data-theme='dark'] .header-github-link {
   border-color: var(--ifm-color-primary) !important;
 }
 
-/* Enhanced Buttons */
+/* Enhanced Buttons - Optimized for theme switching */
 .button {
   background: var(--glass-surface) !important;
-  backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(5px);
   border: 1px solid var(--glass-border) !important;
   border-radius: 8px !important;
-  transition: all var(--liquid-duration-fast) var(--liquid-easing);
+  transition: transform var(--liquid-duration-fast) var(--liquid-easing),
+              box-shadow var(--liquid-duration-fast) var(--liquid-easing);
   position: relative;
   overflow: hidden;
+  will-change: transform;
 }
 
 .button::before {
@@ -831,12 +1537,103 @@ html[data-theme='dark'] .header-github-link {
   position: relative;
 }
 
-/* Ensure proper flex behavior for navbar items */
+/* Reduce navbar height */
+:root {
+  --ifm-navbar-height: 3.5rem !important; /* Reduced from default 4rem */
+}
+
+/* Fix navbar height to contain all content */
+.navbar {
+  height: var(--ifm-navbar-height) !important;
+  padding: 0.25rem 0 !important;
+}
+
+/* Navbar layout - logo and nav left, search and social right */
+.navbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 100%;
+  padding: 0 1rem;
+}
+
+/* Logo styling - ensure full name shows */
+.navbar__logo {
+  height: 1.75rem !important;
+  width: auto;
+  margin-right: 0.5rem;
+}
+
+.navbar__title {
+  font-size: 1.1rem !important;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Left side - logo and navigation */
+.navbar__brand {
+  margin-right: 2rem;
+}
+
+.navbar__items--left {
+  justify-content: flex-start;
+  flex: 0 1 auto;
+}
+
+/* Right side - search, version, social */
+.navbar__items--right {
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: 1rem;
+}
+
+/* Center dropdown arrows and reduce spacing */
+.navbar__link:after,
+.dropdown > .navbar__link:after {
+  border-style: solid;
+  border-width: 0.4em 0.4em 0;
+  content: '';
+  margin-left: 0.3em;
+  position: relative;
+  top: -0.05em;
+  transform: translateY(-50%);
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Ensure all navbar items have same height */
+.navbar__item {
+  height: 32px !important;
+  display: flex;
+  align-items: center;
+}
+
+.navbar__link {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 0.5rem !important;
+  font-size: 0.9rem !important;
+}
+
+/* Ensure proper flex behavior for navbar items with better spacing */
 .navbar__items {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1.25rem;
   flex-wrap: nowrap;
+}
+
+/* Add padding to navbar links for better click targets */
+.navbar__link {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  transition: all var(--liquid-duration-fast) var(--liquid-easing);
+}
+
+.navbar__link:hover {
+  background: var(--glass-surface-hover);
+  color: var(--ifm-color-primary);
 }
 
 .navbar__items--left {
@@ -882,6 +1679,7 @@ html[data-theme='dark'] .header-github-link {
     transform 200ms ease-out,
     visibility 0s linear 200ms;
   pointer-events: none;
+  overflow: hidden; /* Prevent content overflow */
 }
 
 /* Show dropdown on hover with UX best practice delay */
@@ -932,7 +1730,7 @@ html[data-theme='dark'] .header-github-link {
 .dropdown__link:hover {
   background: var(--glass-surface-hover, rgba(0, 0, 0, 0.05));
   color: var(--ifm-color-primary);
-  transform: translateX(4px);
+  padding-left: 1.25rem; /* Add padding instead of transform */
 }
 
 /* Dark mode dropdown styling */
@@ -980,24 +1778,56 @@ html[data-theme='dark'] .header-github-link {
   left: auto;
 }
 
-/* Navbar brand and logo */
-.navbar__brand {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  margin-right: 1rem;
-}
-
+/* Navbar brand and logo - Updated for full visibility */
 .navbar__logo {
   height: 2rem;
   width: auto;
   margin-right: 0.5rem;
+  flex-shrink: 0;
 }
 
 .navbar__title {
-  flex: 1 1 auto;
   font-weight: 600;
   color: var(--ifm-navbar-link-color);
+  white-space: nowrap;
+  overflow: visible !important;
+  text-overflow: unset !important;
+}
+
+/* Dropdown specific adjustments */
+.dropdown > .navbar__link:after {
+  content: '\25BC'; /* Downward triangle */
+  font-size: 0.5rem;
+  margin-left: 0.25rem;
+  vertical-align: middle;
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+  display: inline-block;
+  line-height: 0;
+  position: relative;
+  top: -1px; /* Fine-tune vertical position */
+}
+
+/* Version dropdown arrow - same as other dropdowns */
+.navbar__item--version > button:after,
+.navbar__item.docsVersionDropdown button:after,
+button.navbar__link:after {
+  content: '\25BC' !important; /* Downward triangle */
+  font-size: 0.5rem !important;
+  margin-left: 0.25rem !important;
+  vertical-align: middle !important;
+  opacity: 0.6 !important;
+  transition: transform 0.2s ease !important;
+  display: inline-block !important;
+  line-height: 0 !important;
+  position: relative !important;
+  top: -1px !important; /* Fine-tune vertical position */
+}
+
+.dropdown--hoverable:hover > .navbar__link:after,
+.dropdown--show > .navbar__link:after,
+.navbar__item--version:hover > button:after {
+  transform: rotate(180deg);
 }
 
 /* Z-index management */
