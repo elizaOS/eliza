@@ -2,7 +2,7 @@
   "info": {
     "name": "Eliza AI Framework API Collection",
     "description": "Complete Postman collection for the Eliza AI Framework REST API endpoints. Updated to match actual API implementation.",
-    "version": "1.0.15",
+    "version": "1.0.16",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -541,7 +541,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "messaging", "submit"]
             },
-            "description": "Submit a message to the central messaging bus"
+            "description": "Submit a message from an agent or system (already processed messages)"
           }
         },
         {
@@ -556,14 +556,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"messageId\": \"{{messageId}}\",\n  \"status\": \"completed\"\n}"
+              "raw": "{\n  \"channel_id\": \"{{channelId}}\",\n  \"server_id\": \"{{serverId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/complete",
               "host": ["{{baseUrl}}"],
               "path": ["api", "messaging", "complete"]
             },
-            "description": "Notify message completion"
+            "description": "Notify that message processing is complete"
           }
         },
         {
@@ -578,14 +578,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"External message\",\n  \"source\": \"external_system\"\n}"
+              "raw": "{\n  \"channel_id\": \"{{channelId}}\",\n  \"server_id\": \"{{serverId}}\",\n  \"author_id\": \"{{userId}}\",\n  \"author_display_name\": \"External User\",\n  \"content\": \"Message from external system\",\n  \"source_id\": \"external-msg-123\",\n  \"source_type\": \"discord\",\n  \"raw_message\": {\n    \"text\": \"Message from external system\"\n  },\n  \"metadata\": {\n    \"platform\": \"discord\"\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/ingest-external",
               "host": ["{{baseUrl}}"],
               "path": ["api", "messaging", "ingest-external"]
             },
-            "description": "Ingest a message from an external source"
+            "description": "Ingest a message from an external source for agent processing"
           }
         },
         {

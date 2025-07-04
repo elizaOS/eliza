@@ -33,9 +33,11 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const agentIdForNav = agent.id;
   const agentName = agent.name || 'Unnamed Agent';
   const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
-  const description = (
-      Array.isArray(agent.bio) && agent.bio.filter(Boolean).join(' ').trim()
-  ) || 'Engages with all types of questions and conversations';
+  const description =
+    Array.isArray(agent.bio)
+        ? agent.bio.filter(Boolean).join(' ').trim()
+        : (typeof agent.bio === 'string' && agent.bio.trim()) ||
+          'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -108,7 +110,9 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
             aria-label={`Toggle ${agentName}`}
             disabled={isStarting || isStopping}
             className={cn(
-              isActive ? 'data-[state=checked]:!bg-green-600' : 'data-[state=unchecked]:!bg-gray-500/80'
+              isActive
+                ? 'data-[state=checked]:!bg-green-600'
+                : 'data-[state=unchecked]:!bg-gray-500/80'
             )}
           />
         </div>
