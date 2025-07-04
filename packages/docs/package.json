@@ -8,7 +8,7 @@
     "start": "docusaurus start --no-open --port 3002",
     "dev": "docusaurus start --port 3002 --no-open",
     "update-registry": "node scripts/update-registry.js",
-    "build": "NODE_OPTIONS=\"--max-old-space-size=4096\" docusaurus build",
+    "build": "NODE_OPTIONS=\"--max-old-space-size=8192\" docusaurus build",
     "swizzle": "docusaurus swizzle",
     "postbuild": "mkdir -p build && echo eliza.how > build/CNAME",
     "deploy": "docusaurus deploy",

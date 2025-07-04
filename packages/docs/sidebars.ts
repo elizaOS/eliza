@@ -28,12 +28,12 @@ const sidebars: SidebarsConfig = {
           label: '👥 Contributing',
         },
       ],
-      collapsed: false,
+      collapsed: true,
     },
     {
       type: 'category',
       label: '🧠 Core Concepts',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -120,7 +120,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🖥️ CLI',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -242,9 +242,14 @@ const sidebars: SidebarsConfig = {
   // Simple track for non-technical users
   simpleSidebar: [
     {
+      type: 'doc',
+      id: 'simple/intro',
+      label: '🚀 Introduction',
+    },
+    {
       type: 'category',
       label: '🎯 Getting Started',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -307,7 +312,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🏗️ Architecture',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -329,7 +334,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '📚 API Reference',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -341,7 +346,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🔗 Platform Integrations',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -367,7 +372,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🎯 Interactive Tools',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -399,7 +404,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🔧 Platform Configuration',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',

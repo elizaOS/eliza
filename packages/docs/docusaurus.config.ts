@@ -22,6 +22,7 @@ const config = {
       swcJsLoader: true,
       swcJsMinimizer: true,
       swcHtmlMinimizer: true,
+      rspackBundler: true,
     },
   },
 
@@ -408,9 +409,10 @@ const config = {
         srcDark: 'img/icon.png',
       },
       items: [
+        // Left side - main navigation links
         {
-          type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          type: 'doc',
+          docId: 'intro',
           position: 'left',
           label: 'Documentation',
         },
@@ -432,10 +434,6 @@ const config = {
               to: '/docs/technical/architecture/overview',
             },
           ],
-        },
-        {
-          type: 'docsVersionDropdown',
-          position: 'right',
         },
         {
           type: 'doc',
@@ -502,9 +500,14 @@ const config = {
             },
           ],
         },
+        // Search will be positioned via CSS - no need for explicit item
+        // Right side - version, social, etc.
+        {
+          type: 'docsVersionDropdown',
+          position: 'right',
+        },
         {
           type: 'dropdown',
-          label: 'RSS',
           position: 'right',
           className: 'header-rss-link',
           'aria-label': 'RSS Feed',
