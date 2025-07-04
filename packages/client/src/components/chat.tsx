@@ -563,7 +563,7 @@ export default function Chat({
     shouldForceNew,
     setShouldForceNew, 
     handleNewDmChannel,
-    targetAgentData.id, 
+    targetAgentData?.id, 
     latestChannel,
     latestChannelMessages,
     isLoadingLatestChannelMessages
@@ -1232,6 +1232,8 @@ export default function Chat({
                   ]}
                   variant="outline"
                   size="sm"
+                  mainButtonClassName="rounded-l-[12px] h-9"
+                  dropdownButtonClassName="rounded-r-[12px] h-9"
                 />
 
                 <Tooltip>
