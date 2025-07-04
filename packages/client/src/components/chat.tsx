@@ -363,10 +363,23 @@ export default function Chat({
   const autoCreatedDmRef = useRef(false);
   const autoCreateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const latestChannel = agentDmChannels[0]; // adjust sorting if needed
+
   // Handle DM channel creation
   const handleNewDmChannel = useCallback(
     async (agentIdForNewChannel: UUID | undefined) => {
       if (!agentIdForNewChannel || chatType !== 'DM') return;
+
+      if (
+        latestChannel &&
+        !isLoadingLatestChannelMessages &&
+        latestChannelMessages.length === 0
+      ) {
+        clientLogger.info('[Chat] Latest DM channel is empty, reusing instead of creating.');
+        updateChatState({ currentDmChannelId: latestChannel.id });
+        return;
+      }
+      
       const newChatName = `Chat - ${moment().format('MMM D, HH:mm:ss')}`;
       clientLogger.info(
         `[Chat] Creating new distinct DM channel with agent ${agentIdForNewChannel}, name: "${newChatName}"`
@@ -608,6 +621,15 @@ export default function Chat({
     removeMessage,
     clearMessages,
   } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
+
+  const {
+    data: latestChannelMessages = [],
+    isLoading: isLoadingLatestChannelMessages,
+  } = useChannelMessages(
+    latestChannel?.id,
+    finalServerIdForHooks
+  );
+
 
   const { mutate: deleteMessageCentral } = useDeleteChannelMessage();
   const { mutate: clearMessagesCentral } = useClearChannelMessages();
