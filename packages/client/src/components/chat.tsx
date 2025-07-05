@@ -431,7 +431,6 @@ export default function Chat({
           }
         } catch (error) {
           clientLogger.error('[Chat] Failed to fetch latest DM channel messages:', error);
-          // Optionally handle fallback behavior here
         }
       }
       
