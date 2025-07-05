@@ -24,23 +24,18 @@ export default function NotFound() {
         path: '/docs/simple/templates/gallery',
         description: 'Ready-to-use character templates',
       });
-      suggestedLinks.push({
-        title: 'Character Builder Tool',
-        path: '/docs/customize/character-builder',
-        description: 'Interactive character design studio',
-      });
     }
 
     if (brokenPath.includes('customize')) {
       suggestedLinks.push({
-        title: 'Customization Overview',
-        path: '/docs/customize/overview',
-        description: 'Start customizing your ElizaOS experience',
+        title: 'Simple Track - Character Creation',
+        path: '/docs/simple/guides/character-creation',
+        description: 'Learn how to create and customize your agent',
       });
       suggestedLinks.push({
-        title: 'Visual Customization Lab',
-        path: '/docs/customize/visual-lab',
-        description: "Design your agent's visual identity",
+        title: 'Technical Track - Plugin Development',
+        path: '/docs/technical/development/plugin-development',
+        description: 'Build custom functionality for your agent',
       });
     }
 

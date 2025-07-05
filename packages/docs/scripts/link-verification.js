@@ -161,7 +161,6 @@ class LinkVerificationTool {
       '/blog',
       '/news',
       '/docs/simple',
-      '/docs/customize',
       '/docs/technical',
     ];
 

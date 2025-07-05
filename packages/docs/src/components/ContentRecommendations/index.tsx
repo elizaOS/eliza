@@ -229,18 +229,6 @@ export default function ContentRecommendations(): JSX.Element {
         relevanceScore: 0.8,
       },
       {
-        id: 'customize-track',
-        title: 'Customize Track Guide',
-        description: 'Power user customization and configuration',
-        url: '/docs/customize',
-        type: 'related',
-        difficulty: 'intermediate',
-        estimatedTime: '25 min',
-        tags: ['customize', 'configuration', 'power-user'],
-        icon: <Code size={20} />,
-        relevanceScore: 0.75,
-      },
-      {
         id: 'technical-track',
         title: 'Technical Track Deep Dive',
         description: 'Complete developer documentation and guides',

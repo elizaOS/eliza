@@ -16,7 +16,6 @@ class PerformanceTestSuite {
       { name: 'Homepage', url: 'http://localhost:3002' },
       { name: 'Documentation Home', url: 'http://localhost:3002/docs' },
       { name: 'Simple Track', url: 'http://localhost:3002/docs/simple' },
-      { name: 'Customize Track', url: 'http://localhost:3002/docs/customize' },
       { name: 'Technical Track', url: 'http://localhost:3002/docs/technical' },
       { name: 'API Reference', url: 'http://localhost:3002/api' },
       { name: 'Packages', url: 'http://localhost:3002/packages' },

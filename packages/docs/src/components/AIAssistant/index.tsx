@@ -315,11 +315,6 @@ export const myPlugin: Plugin = {
         links: [
           { title: 'Simple Track', url: '/docs/simple', description: 'Non-technical user guide' },
           {
-            title: 'Customize Track',
-            url: '/docs/customize',
-            description: 'Power user customization',
-          },
-          {
             title: 'Technical Track',
             url: '/docs/technical',
             description: 'Developer documentation',
