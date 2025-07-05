@@ -68,8 +68,7 @@ Configure your character file for Telegram:
 ```json
 {
   "name": "TelegramAssistant",
-  "clients": ["telegram"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-telegram"],
   "settings": {
     "allowDirectMessages": true,
     "shouldOnlyJoinInAllowedGroups": false,
@@ -357,7 +356,7 @@ Add interactive buttons:
 - Check that bot token hasn't been revoked
 - Ensure ElizaOS is running without errors
 - Check logs for authentication errors
-- Verify character file has `"clients": ["telegram"]`
+- Verify character file has `@elizaos/plugin-telegram` in the `"plugins"` array
 
 ### Group Permission Issues
 

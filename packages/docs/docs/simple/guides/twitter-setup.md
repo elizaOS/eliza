@@ -95,7 +95,6 @@ Update your character file to enable Twitter:
 ```json
 {
   "name": "YourAgent",
-  "clients": ["twitter"],
   "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-twitter"],
   "settings": {
     "secrets": {},

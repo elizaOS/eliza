@@ -119,7 +119,6 @@ Create `characters/cli-agent.json`:
 ````json
 {
   "name": "CLIAssistant",
-  "clients": [],
   "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
   "settings": {
     "secrets": {},

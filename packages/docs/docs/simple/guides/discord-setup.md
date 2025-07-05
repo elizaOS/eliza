@@ -105,8 +105,7 @@ Configure your character file for Discord:
 ```json
 {
   "name": "DiscordAssistant",
-  "clients": ["discord"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-discord"],
   "settings": {
     "secrets": {},
     "voice": {
