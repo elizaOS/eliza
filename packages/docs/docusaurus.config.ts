@@ -1,6 +1,9 @@
 // Environment variables are handled by the deployment platform
 
-const config = {
+import type { Config } from '@docusaurus/types';
+import type * as Preset from '@docusaurus/preset-classic';
+
+const config: Config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
@@ -28,23 +31,6 @@ const config = {
     locales: ['en'],
   },
   customFields: {
-    // AI Configuration
-    aiEnabled: process.env.REACT_APP_AI_ENABLED !== 'false',
-    aiProvider: process.env.REACT_APP_OPENAI_API_KEY
-      ? 'openai'
-      : process.env.REACT_APP_ANTHROPIC_API_KEY
-        ? 'anthropic'
-        : process.env.REACT_APP_GROQ_API_KEY
-          ? 'groq'
-          : process.env.REACT_APP_OLLAMA_BASE_URL
-            ? 'ollama'
-            : null,
-    // Pass API key based on provider (only in production with proper security)
-    aiApiKey: process.env.REACT_APP_OPENAI_API_KEY ||
-              process.env.REACT_APP_ANTHROPIC_API_KEY ||
-              process.env.REACT_APP_GROQ_API_KEY ||
-              undefined,
-    ollamaBaseUrl: process.env.REACT_APP_OLLAMA_BASE_URL,
     GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
   },
   markdown: {
@@ -274,25 +260,6 @@ const config = {
         routeBasePath: 'blog',
       },
     ],
-    // Custom webpack configuration for environment variables
-    function (context, options) {
-      return {
-        name: 'custom-webpack-config',
-        configureWebpack(config, isServer, utils) {
-          return {
-            resolve: {
-              fallback: {
-                // Disable Node.js modules for browser
-                os: false,
-                crypto: false,
-                path: false,
-                fs: false,
-              },
-            },
-          };
-        },
-      };
-    },
   ],
   presets: [
     [
