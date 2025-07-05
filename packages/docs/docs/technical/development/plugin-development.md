@@ -574,7 +574,7 @@ describe('Plugin Integration', () => {
   "scripts": {
     "build": "tsc",
     "test": "bun test",
-    "prepare": "npm run build"
+    "prepare": "bun run build"
   },
   "keywords": ["elizaos", "plugin", "ai", "agent"],
   "peerDependencies": {
@@ -597,14 +597,14 @@ describe('Plugin Integration', () => {
 1. **Build your plugin**:
 
    ```bash
-   npm run build
-   npm run test
+   bun run build
+   bun run test
    ```
 
 2. **Publish to npm**:
 
    ```bash
-   npm publish
+   bun publish
    ```
 
 3. **Document usage**:
@@ -612,7 +612,7 @@ describe('Plugin Integration', () => {
    ````markdown
    # Installation
 
-   npm install @your-org/elizaos-plugin-custom
+   bun add @your-org/elizaos-plugin-custom
 
    # Usage
 

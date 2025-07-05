@@ -219,7 +219,7 @@ my-agent/
 ## 🔄 Testing Your Character
 
 1. Save your changes
-2. Restart your agent: `npm start`
+2. Restart your agent: `bun start`
 3. Have a conversation
 4. Adjust based on responses
 

@@ -306,7 +306,7 @@ bun --version
 # For GitHub authentication problems
 git config --global credential.helper store
 
-# For npm registry issues
+# For registry issues
 bun config set registry https://registry.npmjs.org/
 elizaos plugins add plugin-name
 ```

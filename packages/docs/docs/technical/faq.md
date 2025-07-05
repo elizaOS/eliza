@@ -314,12 +314,12 @@ Common issues and solutions:
 
    ```bash
    # Check for missing dependencies
-   npm ls
+   bun pm ls
    ```
 
 3. **Enable Plugin Debug Logging**:
    ```typescript
-   DEBUG_PLUGINS=true npm start
+   DEBUG_PLUGINS=true bun start
    ```
 
 ### Q: How do I handle plugin conflicts?
@@ -399,13 +399,13 @@ Use blue-green deployment:
 docker-compose -f docker-compose.staging.yml up -d
 
 # 2. Test new version
-npm run test:e2e -- --env=staging
+bun run test:e2e -- --env=staging
 
 # 3. Switch traffic gradually
 # Update load balancer to route 10%, 50%, then 100%
 
 # 4. Monitor for errors
-npm run monitor:errors
+bun run monitor:errors
 ```
 
 ### Q: What's the recommended production deployment?
@@ -560,12 +560,12 @@ class CustomTransport implements ITransport {
 
 ### Debugging Tools
 
-- **Runtime Inspector**: `npm run inspect`
-- **Memory Analyzer**: `npm run analyze-memory`
-- **Performance Profiler**: `npm run profile`
-- **Plugin Validator**: `npm run validate-plugin`
-- **Message Tracer**: `npm run trace-messages`
-- **Database Query Analyzer**: `npm run analyze-queries`
+- **Runtime Inspector**: `bun run inspect`
+- **Memory Analyzer**: `bun run analyze-memory`
+- **Performance Profiler**: `bun run profile`
+- **Plugin Validator**: `bun run validate-plugin`
+- **Message Tracer**: `bun run trace-messages`
+- **Database Query Analyzer**: `bun run analyze-queries`
 
 ### Development Workflow Tips
 
@@ -625,13 +625,13 @@ class CustomTransport implements ITransport {
 
 ```typescript
 // 1. Use the plugin template
-npx create-eliza-plugin my-awesome-plugin
+bunx create-eliza-plugin my-awesome-plugin
 
 // 2. Implement your plugin following patterns
 // 3. Add comprehensive tests
 // 4. Create documentation
 // 5. Publish to npm
-npm publish
+bun publish
 
 // 6. Submit to marketplace
 // Create PR to add your plugin to the registry

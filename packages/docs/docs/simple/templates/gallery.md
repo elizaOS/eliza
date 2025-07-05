@@ -15,7 +15,6 @@ Ready-to-use character files that work out of the box. Copy any character JSON d
 ````json
 {
   "name": "DevAssistant",
-  "clients": [],
   "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
   "settings": {
     "secrets": {},
@@ -45,7 +44,7 @@ Ready-to-use character files that work out of the box. Copy any character JSON d
       {
         "name": "DevAssistant",
         "content": {
-          "text": "I'll help you create a REST API in Node.js! Here's a complete example:\n\n```javascript\nconst express = require('express');\nconst app = express();\nconst PORT = process.env.PORT || 3000;\n\n// Middleware\napp.use(express.json());\n\n// Routes\napp.get('/api/users', (req, res) => {\n  res.json([{ id: 1, name: 'John Doe' }]);\n});\n\napp.post('/api/users', (req, res) => {\n  const { name } = req.body;\n  const newUser = { id: Date.now(), name };\n  res.status(201).json(newUser);\n});\n\napp.listen(PORT, () => {\n  console.log(`Server running on port ${PORT}`);\n});\n```\n\nTo get started:\n1. `npm init -y`\n2. `npm install express`\n3. Save the code as `server.js`\n4. Run with `node server.js`\n\nWant me to explain any specific part?"
+          "text": "I'll help you create a REST API in Node.js! Here's a complete example:\n\n```javascript\nconst express = require('express');\nconst app = express();\nconst PORT = process.env.PORT || 3000;\n\n// Middleware\napp.use(express.json());\n\n// Routes\napp.get('/api/users', (req, res) => {\n  res.json([{ id: 1, name: 'John Doe' }]);\n});\n\napp.post('/api/users', (req, res) => {\n  const { name } = req.body;\n  const newUser = { id: Date.now(), name };\n  res.status(201).json(newUser);\n});\n\napp.listen(PORT, () => {\n  console.log(`Server running on port ${PORT}`);\n});\n```\n\nTo get started:\n1. `bun init -y`\n2. `bun add express`\n3. Save the code as `server.js`\n4. Run with `bun run server.js`\n\nWant me to explain any specific part?"
         }
       }
     ]
@@ -102,8 +101,7 @@ bun start --character characters/cli-assistant.json
 ```json
 {
   "name": "CommunityHelper",
-  "clients": ["discord"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-discord"],
   "settings": {
     "secrets": {},
     "voice": {
@@ -206,8 +204,7 @@ bun start --character characters/discord-community.json
 ```json
 {
   "name": "PersonalAI",
-  "clients": ["telegram"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-telegram"],
   "settings": {
     "allowDirectMessages": true,
     "shouldOnlyJoinInAllowedGroups": false,
@@ -314,8 +311,7 @@ bun start --character characters/telegram-assistant.json
 ```json
 {
   "name": "SocialAI",
-  "clients": ["twitter"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-twitter"],
   "settings": {
     "secrets": {},
     "voice": {
@@ -421,8 +417,7 @@ bun start --character characters/twitter-social.json
 ```json
 {
   "name": "StartupMentor",
-  "clients": ["discord", "telegram"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-discord", "@elizaos/plugin-telegram"],
   "settings": {
     "allowDirectMessages": true,
     "shouldOnlyJoinInAllowedGroups": false,
@@ -502,8 +497,7 @@ bun start --character characters/twitter-social.json
 ```json
 {
   "name": "GameMaster",
-  "clients": ["discord"],
-  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql"],
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-sql", "@elizaos/plugin-discord"],
   "settings": {
     "secrets": {},
     "voice": {
@@ -700,7 +694,12 @@ Add specialized capabilities:
 Run the same character across platforms:
 
 ```json
-"clients": ["discord", "telegram", "twitter"]
+"plugins": [
+  "@elizaos/plugin-bootstrap",
+  "@elizaos/plugin-discord", 
+  "@elizaos/plugin-telegram",
+  "@elizaos/plugin-twitter"
+]
 ```
 
 ### Voice Configuration
@@ -728,7 +727,7 @@ Enable voice responses:
 2. **Platform connection fails**
 
    - Double-check API keys in `.env`
-   - Verify client is included in `"clients"` array
+   - Verify platform plugin is included in `"plugins"` array
    - Check platform-specific requirements
 
 3. **Agent doesn't respond as expected**

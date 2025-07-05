@@ -8,12 +8,12 @@ This comprehensive guide walks you through implementing the ElizaOS Apple Liquid
 
 ```bash
 # Install required packages
-npm install --save-dev sass postcss autoprefixer
-npm install --save @docusaurus/theme-classic
+bun add --dev sass postcss autoprefixer
+bun add @docusaurus/theme-classic
 
 # Optional: For advanced features
-npm install --save-dev @docusaurus/plugin-content-docs
-npm install --save framer-motion # For advanced animations
+bun add --dev @docusaurus/plugin-content-docs
+bun add framer-motion # For advanced animations
 ```
 
 ### Step 2: Basic CSS Setup

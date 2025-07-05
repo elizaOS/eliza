@@ -15,7 +15,7 @@ Before starting, make sure you have:
 Open your terminal (Command Prompt on Windows, Terminal on Mac/Linux) and run:
 
 ```bash
-npx @elizaos/cli create my-first-agent
+bunx @elizaos/cli create my-first-agent
 ```
 
 When prompted, select:
@@ -103,7 +103,7 @@ Change the name, bio, and style to create your unique agent!
 Run this command:
 
 ```bash
-npm start
+bun start
 ```
 
 Your agent is now running! You'll see:
@@ -193,7 +193,7 @@ Check that:
 1. Your API key is valid and has credits
 2. You have internet connection
 3. The terminal shows no error messages
-4. Try restarting with `npm start`
+4. Try restarting with `bun start`
 </details>
 
 ### Get Support

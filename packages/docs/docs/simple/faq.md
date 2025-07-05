@@ -259,7 +259,7 @@ Yes! Once deployed:
 ### How do I update my agent?
 
 ```bash
-npm update @elizaos/cli
+bun update @elizaos/cli
 ```
 
 Then restart your agent!
