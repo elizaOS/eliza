@@ -224,11 +224,32 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🎨 Templates & Examples',
+      collapsed: true,
       items: [
         {
           type: 'doc',
-          id: 'simple/templates/gallery',
-          label: '📚 Template Gallery',
+          id: 'simple/templates/quick-start',
+          label: '⚡ Quick Start',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/discord-agent',
+          label: '🎮 Discord Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/twitter-agent',
+          label: '🐦 Twitter Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/telegram-agent',
+          label: '📱 Telegram Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/multi-platform-agent',
+          label: '🌐 Multi-Platform Agent',
         },
       ],
     },
@@ -243,23 +264,24 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'doc',
-          id: 'simple/guides/cli-setup',
-          label: '🔧 CLI Setup',
+          id: 'simple/guides/plugin-requirements',
+          label: '🔌 Plugin Requirements',
         },
         {
-          type: 'doc',
-          id: 'simple/guides/discord-setup',
-          label: '🎮 Discord Setup',
-        },
-        {
-          type: 'doc',
-          id: 'simple/guides/telegram-setup',
-          label: '📱 Telegram Setup',
-        },
-        {
-          type: 'doc',
-          id: 'simple/guides/twitter-setup',
-          label: '🐦 Twitter Setup',
+          type: 'category',
+          label: '🚀 Deployment',
+          items: [
+            {
+              type: 'doc',
+              id: 'simple/guides/deployment-railway',
+              label: '🚂 Railway',
+            },
+            {
+              type: 'doc',
+              id: 'simple/guides/deployment-render',
+              label: '🎨 Render',
+            },
+          ],
         },
       ],
     },
@@ -297,6 +319,16 @@ const sidebars: SidebarsConfig = {
           id: 'technical/architecture/state-management',
           label: '💾 State Management',
         },
+        {
+          type: 'doc',
+          id: 'technical/architecture/memory-system',
+          label: '🧩 Memory System',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/plugin-system',
+          label: '🔌 Plugin System',
+        },
       ],
     },
     {
@@ -309,6 +341,23 @@ const sidebars: SidebarsConfig = {
           id: 'technical/api-reference/actions-api',
           label: '⚡ Actions API',
         },
+        {
+          type: 'doc',
+          id: 'technical/api-reference/core-api',
+          label: '🎯 Core API',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🛠️ Development',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/development/plugin-development',
+          label: '🔧 Build a Plugin',
+        },
       ],
     },
     {
@@ -318,8 +367,35 @@ const sidebars: SidebarsConfig = {
       items: [
         {
           type: 'doc',
+          id: 'technical/integrations/discord-technical',
+          label: '🎮 Discord Technical Integration',
+        },
+        {
+          type: 'doc',
+          id: 'technical/integrations/telegram-technical',
+          label: '📱 Telegram Technical Integration',
+        },
+        {
+          type: 'doc',
           id: 'technical/integrations/twitter-technical',
           label: '🐦 Twitter Technical Integration',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🚀 Advanced Topics',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/advanced/best-practices',
+          label: '✨ Best Practices',
+        },
+        {
+          type: 'doc',
+          id: 'technical/advanced/performance',
+          label: '⚡ Performance Optimization',
         },
       ],
     },

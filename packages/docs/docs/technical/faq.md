@@ -188,6 +188,7 @@ runtime.registerModelProvider('custom', provider);
    ```
 
 3. **Use Indexes**:
+
    ```sql
    CREATE INDEX idx_memories_embedding ON memories
    USING ivfflat (embedding vector_cosine_ops);
@@ -318,6 +319,7 @@ Common issues and solutions:
    ```
 
 3. **Enable Plugin Debug Logging**:
+
    ```typescript
    DEBUG_PLUGINS=true bun start
    ```
@@ -341,6 +343,7 @@ Common issues and solutions:
    ```
 
 3. **Implement feature detection**:
+
    ```typescript
    if (runtime.supports('feature-name')) {
      // Use feature
@@ -553,7 +556,8 @@ class CustomTransport implements ITransport {
 
 ### Technical Resources
 
-- **[API Documentation](/docs/technical/api-reference)** - Complete API reference
+- **[Core API Documentation](/docs/technical/api-reference/core-api)** - Core API reference
+- **[Actions API Documentation](/docs/technical/api-reference/actions-api)** - Actions API reference
 - **[GitHub Discussions](https://github.com/elizaOS/eliza/discussions)** - Technical discussions
 - **[Discord #dev Channel](https://discord.gg/elizaos)** - Developer chat
 - **[Example Plugins](https://github.com/elizaOS/eliza/tree/main/packages)** - Reference implementations
@@ -642,4 +646,4 @@ bun publish
 🎤 **Office Hours**: Join our weekly developer Q&A every Thursday at 2 PM PST
 💬 **Discord**: Get help in [#dev-help](https://discord.gg/elizaos)
 📝 **GitHub**: [Open issues](https://github.com/elizaOS/eliza/issues) and [discussions](https://github.com/elizaOS/eliza/discussions)
-📧 **Email**: Technical questions to dev-support@elizaos.ai
+📧 **Email**: Technical questions to [dev-support@elizaos.ai](mailto:dev-support@elizaos.ai)

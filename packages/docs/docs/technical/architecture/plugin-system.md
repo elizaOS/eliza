@@ -415,7 +415,7 @@ export const sentimentEvaluator: Evaluator = {
 
     // Track sentiment over time
     await runtime.getService('analytics').track('sentiment', {
-      userId: message.userId,
+      entityId: message.entityId,
       sentiment: sentiment.score,
       timestamp: new Date(),
     });

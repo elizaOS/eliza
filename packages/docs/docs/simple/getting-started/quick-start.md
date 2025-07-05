@@ -12,10 +12,18 @@ Before starting, make sure you have:
 
 ## 🚀 Step 1: Install ElizaOS (2 minutes)
 
-Open your terminal (Command Prompt on Windows, Terminal on Mac/Linux) and run:
+Open your terminal (Command Prompt on Windows, Terminal on Mac/Linux) and follow these steps:
+
+### Install the ElizaOS CLI globally
 
 ```bash
-bunx @elizaos/cli create my-first-agent
+bun install -g @elizaos/cli
+```
+
+### Create your first agent
+
+```bash
+elizaos create my-first-agent
 ```
 
 When prompted, select:
@@ -61,7 +69,7 @@ Your agent needs an AI service to think and respond. Choose one:
 
 3. Add your API key:
 
-   ```
+   ```env
    # For OpenAI
    OPENAI_API_KEY=your-key-here
 
@@ -81,9 +89,13 @@ Open `agent/eliza.character.json` to customize your agent's personality:
 {
   "name": "Eliza",
   "description": "A helpful AI assistant",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-bootstrap"
+  ],
   "settings": {
-    "voice": "alloy",
-    "model": "gpt-4o-mini"
+    "voice": "alloy"
   },
   "bio": [
     "I'm here to help you with anything you need!",
@@ -94,6 +106,12 @@ Open `agent/eliza.character.json` to customize your agent's personality:
   }
 }
 ```
+
+> **Note:** The plugins must be in this exact order:
+>
+> 1. `@elizaos/plugin-sql` - Database (always first!)
+> 2. `@elizaos/plugin-openai` - AI provider (or use `@elizaos/plugin-anthropic`)
+> 3. `@elizaos/plugin-bootstrap` - Core functionality
 
 Change the name, bio, and style to create your unique agent!
 
@@ -107,7 +125,7 @@ bun start
 
 Your agent is now running! You'll see:
 
-```
+```text
 🤖 Agent "Eliza" is starting...
 ✅ Connected to OpenAI
 🌐 Chat interface available at: http://localhost:3000
@@ -127,7 +145,7 @@ Your agent is now running! You'll see:
 
 Type messages directly in the terminal where you started the agent.
 
-## 🎉 Congratulations!
+## 🎉 Congratulations
 
 You've successfully created and launched your first ElizaOS agent!
 
@@ -143,9 +161,7 @@ Now that your agent is running, explore these options:
 
 ### 🔌 Connect to Platforms
 
-- **[Discord Setup](../guides/discord-setup.md)** - Connect to Discord servers
-- **[Twitter Setup](../guides/twitter-setup.md)** - Tweet and reply automatically
-- **[Telegram Setup](../guides/telegram-setup.md)** - Create a Telegram bot
+To connect your agent to platforms like Discord, Twitter, or Telegram, check out the platform-specific templates in our [Templates section](../templates/quick-start.md).
 
 ### 🚀 Advanced Features
 
@@ -160,8 +176,7 @@ For more advanced configuration and monitoring options, check out our [Technical
 
 ### Common Issues
 
-<details>
-<summary><b>Error: "API key not found"</b></summary>
+**Error: "API key not found"**
 
 Make sure you:
 
@@ -169,23 +184,19 @@ Make sure you:
 2. Saved the file
 3. Used the correct format (no extra spaces or quotes)
 4. Restarted the agent after adding the key
-</details>
 
-<details>
-<summary><b>Error: "Port 3000 already in use"</b></summary>
+**Error: "Port 3000 already in use"**
 
 Another program is using port 3000. Either:
 
 1. Stop the other program, or
 2. Change the port in your `.env` file:
-   ```
+
+   ```env
    PORT=3001
    ```
 
-</details>
-
-<details>
-<summary><b>Agent not responding</b></summary>
+**Agent not responding**
 
 Check that:
 
@@ -193,13 +204,12 @@ Check that:
 2. You have internet connection
 3. The terminal shows no error messages
 4. Try restarting with `bun start`
-</details>
 
 ### Get Support
 
 - 💬 [Join our Discord](https://discord.gg/elizaos)
 - 📖 [Read the FAQ](/docs/simple/faq)
-- 🎥 [Watch video tutorials](https://youtube.com/@elizaos)
+- 🎥 [Watch video tutorials](https://www.youtube.com/@elizaOSDeveloper)
 
 ---
 

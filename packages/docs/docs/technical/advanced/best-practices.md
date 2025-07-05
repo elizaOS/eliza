@@ -3,7 +3,7 @@ title: Best Practices
 description: Best practices for developing with ElizaOS
 ---
 
-# Best Practices
+## Best Practices
 
 This guide covers best practices for developing robust, scalable, and maintainable ElizaOS applications.
 
@@ -11,7 +11,7 @@ This guide covers best practices for developing robust, scalable, and maintainab
 
 ### 1. Component Design
 
-**✅ DO: Keep Components Small and Focused**
+#### ✅ DO: Keep Components Small and Focused
 
 ```typescript
 // Good: Single responsibility
@@ -24,7 +24,7 @@ export const greetingAction: Action = {
 };
 ```
 
-**❌ DON'T: Create Monolithic Components**
+#### ❌ DON'T: Create Monolithic Components
 
 ```typescript
 // Bad: Multiple responsibilities
@@ -39,7 +39,7 @@ export const everythingAction: Action = {
 
 ### 2. State Management
 
-**✅ DO: Use Immutable State Updates**
+#### ✅ DO: Use Immutable State Updates
 
 ```typescript
 // Good: Immutable update
@@ -48,7 +48,7 @@ const updateState = (state: State, update: Partial<State>): State => {
 };
 ```
 
-**❌ DON'T: Mutate State Directly**
+#### ❌ DON'T: Mutate State Directly
 
 ```typescript
 // Bad: Direct mutation
@@ -60,7 +60,7 @@ const updateState = (state: State, update: Partial<State>): State => {
 
 ### 3. Error Handling
 
-**✅ DO: Implement Comprehensive Error Handling**
+#### ✅ DO: Implement Comprehensive Error Handling
 
 ```typescript
 export const robustAction: Action = {
@@ -81,7 +81,7 @@ export const robustAction: Action = {
 };
 ```
 
-**❌ DON'T: Let Errors Propagate Unhandled**
+#### ❌ DON'T: Let Errors Propagate Unhandled
 
 ```typescript
 // Bad: No error handling
@@ -124,7 +124,7 @@ export const myPlugin: Plugin = {
 
 ### 2. Resource Management
 
-**✅ DO: Clean Up Resources**
+#### ✅ DO: Clean Up Resources
 
 ```typescript
 export class ConnectionManager {
@@ -148,7 +148,7 @@ export class ConnectionManager {
 
 ### 3. Configuration Validation
 
-**✅ DO: Validate Configuration**
+#### ✅ DO: Validate Configuration
 
 ```typescript
 export function validateConfig(config: unknown): PluginConfig {
@@ -167,7 +167,7 @@ export function validateConfig(config: unknown): PluginConfig {
 
 ### 1. Memory Management
 
-**✅ DO: Implement Memory Limits**
+#### ✅ DO: Implement Memory Limits
 
 ```typescript
 export class MemoryManager {
@@ -189,7 +189,7 @@ export class MemoryManager {
 
 ### 2. Caching Strategies
 
-**✅ DO: Cache Expensive Operations**
+#### ✅ DO: Cache Expensive Operations**
 
 ```typescript
 export class CachedProvider implements Provider {
@@ -212,7 +212,7 @@ export class CachedProvider implements Provider {
 
 ### 3. Async Operations
 
-**✅ DO: Use Concurrent Processing**
+#### ✅ DO: Use Concurrent Processing
 
 ```typescript
 // Good: Parallel processing
@@ -221,7 +221,7 @@ export async function processMessages(messages: Message[]): Promise<Result[]> {
 }
 ```
 
-**❌ DON'T: Process Sequentially When Unnecessary**
+#### ❌ DON'T: Process Sequentially When Unnecessary
 
 ```typescript
 // Bad: Sequential processing
@@ -238,7 +238,7 @@ export async function processMessages(messages: Message[]): Promise<Result[]> {
 
 ### 1. API Key Management
 
-**✅ DO: Use Environment Variables**
+#### ✅ DO: Use Environment Variables
 
 ```typescript
 export const config = {
@@ -252,7 +252,7 @@ if (!config.apiKey) {
 }
 ```
 
-**❌ DON'T: Hardcode Secrets**
+#### ❌ DON'T: Hardcode Secrets
 
 ```typescript
 // Bad: Never do this!
@@ -264,7 +264,7 @@ export const config = {
 
 ### 2. Input Validation
 
-**✅ DO: Validate All External Input**
+#### ✅ DO: Validate All External Input
 
 ```typescript
 export const validateMessage: Evaluator = {
@@ -291,7 +291,7 @@ export const validateMessage: Evaluator = {
 
 ### 3. Rate Limiting
 
-**✅ DO: Implement Rate Limiting**
+#### ✅ DO: Implement Rate Limiting
 
 ```typescript
 export class RateLimiter {
@@ -498,7 +498,7 @@ export class MetricsCollector {
 
 ### 1. Memory Leaks
 
-**❌ Avoid: Unbounded Collections**
+#### ❌ Avoid: Unbounded Collections**
 
 ```typescript
 // Bad: Grows forever
@@ -511,7 +511,7 @@ class MessageHistory {
 }
 ```
 
-**✅ Fix: Implement Bounds**
+#### ✅ Fix: Implement Bounds
 
 ```typescript
 // Good: Bounded collection
@@ -530,7 +530,7 @@ class MessageHistory {
 
 ### 2. Blocking Operations
 
-**❌ Avoid: Synchronous I/O**
+#### ❌ Avoid: Synchronous I/O
 
 ```typescript
 // Bad: Blocks event loop
@@ -542,7 +542,7 @@ export function loadConfig(): Config {
 }
 ```
 
-**✅ Fix: Use Async Operations**
+#### ✅ Fix: Use Async Operations
 
 ```typescript
 // Good: Non-blocking
@@ -556,14 +556,14 @@ export async function loadConfig(): Promise<Config> {
 
 ### 3. Poor Error Messages
 
-**❌ Avoid: Generic Errors**
+#### ❌ Avoid: Generic Errors
 
 ```typescript
 // Bad: Not helpful
 throw new Error('Operation failed');
 ```
 
-**✅ Fix: Descriptive Errors**
+#### ✅ Fix: Descriptive Errors
 
 ```typescript
 // Good: Informative
@@ -584,4 +584,4 @@ For more specific guidance, see:
 
 - [Architecture Overview](../architecture/overview.md)
 - [Core Concepts](../architecture/core-concepts.md)
-- [Plugin Development Guide](/docs/development/plugin-guide)
+- [Plugin Development Guide](/docs/technical/development/plugin-development)

@@ -17,6 +17,11 @@ Here's the simplest character file:
 ```json
 {
   "name": "Your Agent Name",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-bootstrap"
+  ],
   "bio": [
     "A brief description of who your agent is",
     "Their background or story",
@@ -27,6 +32,12 @@ Here's the simplest character file:
   }
 }
 ```
+
+> **Important:** The `plugins` array must include these three plugins in this exact order:
+>
+> 1. `@elizaos/plugin-sql` - Provides database functionality (must be first!)
+> 2. A model provider plugin (e.g., `@elizaos/plugin-openai`, `@elizaos/plugin-anthropic`, or `@elizaos/plugin-ollama`)
+> 3. `@elizaos/plugin-bootstrap` - Provides core messaging and interaction capabilities
 
 ## 🎨 Step-by-Step Character Creation
 
@@ -88,6 +99,11 @@ Show how your agent should respond:
 ```json
 {
   "name": "Helper",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-bootstrap"
+  ],
   "bio": [
     "I'm Helper, your friendly AI assistant!",
     "I love solving problems and making people's day easier.",
@@ -114,6 +130,11 @@ Show how your agent should respond:
 ```json
 {
   "name": "PixelPal",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-bootstrap"
+  ],
   "bio": [
     "Level 99 gamer and your ultimate gaming companion!",
     "From retro arcade to cutting-edge VR, I've played them all.",
@@ -144,6 +165,11 @@ Show how your agent should respond:
 ```json
 {
   "name": "Wordsworth",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-anthropic",
+    "@elizaos/plugin-bootstrap"
+  ],
   "bio": [
     "A lover of language and weaver of words.",
     "I find poetry in the mundane and stories in silence.",
@@ -283,8 +309,8 @@ A: Add more specific examples and unique phrases!
 
 Now that you have a character:
 
-1. [Add plugins](/docs/simple/guides/plugin-usage) for extra features
+1. [Browse available plugins](/packages) for extra features
 2. [Connect to Discord](/docs/simple/guides/discord-setup) or Twitter
-3. [Deploy your agent](/docs/simple/guides/deployment) online
+3. [Deploy your agent](/docs/simple/guides/deployment-railway) online
 
 Remember: The best characters feel real and consistent. Have fun creating your unique AI personality! 🎉

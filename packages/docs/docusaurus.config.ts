@@ -1,8 +1,4 @@
-import dotenv from 'dotenv';
-import * as Plugin from '@docusaurus/types/src/plugin';
-import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
-
-dotenv.config();
+// Environment variables are handled by the deployment platform
 
 const config = {
   title: 'eliza',
@@ -278,6 +274,25 @@ const config = {
         routeBasePath: 'blog',
       },
     ],
+    // Custom webpack configuration for environment variables
+    function (context, options) {
+      return {
+        name: 'custom-webpack-config',
+        configureWebpack(config, isServer, utils) {
+          return {
+            resolve: {
+              fallback: {
+                // Disable Node.js modules for browser
+                os: false,
+                crypto: false,
+                path: false,
+                fs: false,
+              },
+            },
+          };
+        },
+      };
+    },
   ],
   presets: [
     [

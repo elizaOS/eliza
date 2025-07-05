@@ -3,7 +3,7 @@ title: Simple Track Introduction
 description: Get started with ElizaOS the easy way - no coding required
 ---
 
-# 🚀 Welcome to the Simple Track
+## 🚀 Welcome to the Simple Track
 
 Welcome to the easiest way to get started with ElizaOS! This track is designed for creators, business users, and anyone who wants to deploy AI agents without writing code.
 
@@ -59,36 +59,45 @@ graph TD
 ## 📚 Track Contents
 
 ### 1. [Getting Started](/docs/simple/getting-started/quick-start) ⏱️ 5 minutes
+
 Your first agent up and running - no setup headaches!
 
-### 2. Platform Guides ⏱️ 15 minutes each
-- [Discord Setup](/docs/simple/guides/discord-setup) - Perfect for communities
-- [Telegram Setup](/docs/simple/guides/telegram-setup) - Great for mobile users
-- [Twitter Setup](/docs/simple/guides/twitter-setup) - Build your social presence
+### 2. Platform Templates ⏱️ 15 minutes each
+
+Check out our ready-to-use templates for different platforms:
+
+- [Discord Agent](/docs/simple/templates/discord-agent) - Perfect for communities
+- [Telegram Agent](/docs/simple/templates/telegram-agent) - Great for mobile users
+- [Twitter Agent](/docs/simple/templates/twitter-agent) - Build your social presence
 
 ### 3. [Character Creation](/docs/simple/guides/character-creation) ⏱️ 30 minutes
+
 Design engaging personalities that users love
 
-### 4. [Template Gallery](/docs/simple/templates/gallery) ⏱️ Browse anytime
-Pre-built agents ready to customize:
-- 🎮 Gaming Assistant
-- 📚 Study Buddy
-- 🏋️ Fitness Coach
-- 🎨 Creative Companion
-- And many more!
+### 4. [Template Collection](/docs/simple/templates/quick-start) ⏱️ Browse anytime
 
-### 5. Deployment & Management (Coming Soon)
-- **Easy Deployment Guide** - Host your agent on Railway/Render
-- **Cost Calculator** - Estimate monthly expenses
-- **Plugin Browser** - Add features with one click
-- **Performance Dashboard** - Monitor your agent's activity
+Pre-built agents ready to customize:
+
+- 🎮 Discord Gaming Assistant
+- 📱 Telegram Study Buddy
+- 🐦 Twitter News Bot
+- 🤖 Multi-Platform Assistant
+- And more!
+
+### 5. Deployment & Management
+
+- [Plugin Requirements](/docs/simple/guides/plugin-requirements) - Critical plugin information
+- [Deployment Guides](/docs/simple/guides/deployment-railway) - Host your agent online
+- [Cost Overview](/docs/simple/faq#how-much-does-it-cost) - Understand pricing
+- [Plugin Documentation](/packages) - Browse available plugins
+- [FAQ](/docs/simple/faq) - Common questions and troubleshooting
 
 ## 🆘 Getting Help
 
 - **[FAQ Section](/docs/simple/faq)** - Quick answers to common questions
 - **[Community Discord](https://discord.gg/elizaos)** - Get help from other users
-- **Video Tutorials** - Step-by-step visual guides (Coming Soon)
-- **Office Hours** - Weekly Q&A sessions with the team
+- **[GitHub Issues](https://github.com/elizaOS/eliza/issues)** - Report bugs or get help
+- **[Twitter/X](https://twitter.com/elizaos)** - Follow for updates
 
 ## 🎯 Success Tips
 
@@ -104,15 +113,9 @@ Ready to create your first AI agent? Let's begin with our [5-Minute Quick Start]
 
 ---
 
-<div style={{textAlign: 'center', marginTop: '2rem'}}>
-  <a href="/docs/simple/getting-started/quick-start" className="button button--primary button--lg">
-    ⚡ Start Your 5-Minute Setup
-  </a>
-  <a href="/docs/simple/templates/gallery" className="button button--secondary button--lg" style={{marginLeft: '1rem'}}>
-    📚 Browse Templates First
-  </a>
-</div>
+**Next Steps:**
 
-<div style={{textAlign: 'center', marginTop: '1rem', fontSize: '0.9em', color: '#666'}}>
-  No credit card required • Free tier available • Cancel anytime
-</div>
+- [⚡ Start Your 5-Minute Setup](/docs/simple/getting-started/quick-start)
+- [📚 Browse Templates First](/docs/simple/templates/quick-start)
+
+No credit card required • Free tier available • Cancel anytime

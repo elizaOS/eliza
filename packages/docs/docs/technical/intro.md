@@ -3,7 +3,7 @@ title: Technical Track Introduction
 description: Build sophisticated AI agents with ElizaOS - comprehensive developer documentation
 ---
 
-# 🔧 Welcome to the Technical Track
+## 🔧 Welcome to the Technical Track
 
 Welcome to the comprehensive developer documentation for ElizaOS! This track provides in-depth technical knowledge for building sophisticated, production-ready AI agents.
 
@@ -89,6 +89,7 @@ graph TB
 ## 📚 Track Contents
 
 ### 1. Architecture Deep Dive
+
 - [System Overview](/docs/technical/architecture/overview) - Complete architectural guide
 - [Core Concepts](/docs/technical/architecture/core-concepts) - Fundamental building blocks
 - [Memory System](/docs/technical/architecture/memory-system) - How agents remember
@@ -96,30 +97,35 @@ graph TB
 - [State Management](/docs/technical/architecture/state-management) - Managing agent state
 
 ### 2. Development Guides
+
 - [Plugin Development](/docs/technical/development/plugin-development) - Build custom plugins
 - **Testing Strategies** (Coming Soon) - Unit, integration, and E2E testing
 - **Debugging Techniques** (Coming Soon) - Advanced troubleshooting
 - **Contributing Guide** (Coming Soon) - Contribute to ElizaOS core
 
 ### 3. API Reference
+
 - [Core API](/docs/technical/api-reference/core-api) - Core interfaces and types
 - [Actions API](/docs/technical/api-reference/actions-api) - Building agent actions
 - **REST API** (Coming Soon) - Complete endpoint documentation
 - **WebSocket Events** (Coming Soon) - Real-time communication
 
 ### 4. Platform Integrations
+
 - [Twitter Technical](/docs/technical/integrations/twitter-technical) - Deep dive into Twitter
 - **Discord Advanced** (Coming Soon) - Advanced Discord features
 - **Telegram Advanced** (Coming Soon) - Telegram bot capabilities
 - **Custom Services** (Coming Soon) - Build your own integrations
 
 ### 5. Advanced Topics
+
 - [Performance Optimization](/docs/technical/advanced/performance) - Scale to millions
 - [Best Practices](/docs/technical/advanced/best-practices) - Production guidelines
 - **Security Hardening** (Coming Soon) - Protect your agents
 - **Deployment Strategies** (Coming Soon) - K8s, Docker, serverless
 
 ### 6. [Technical FAQ](/docs/technical/faq)
+
 In-depth answers to complex technical questions
 
 ## 🛠️ Development Workflow
@@ -141,6 +147,24 @@ graph LR
 ```
 
 ## 🚀 Quick Start for Developers
+
+### Using the CLI (Recommended)
+
+```bash
+# Install ElizaOS CLI globally
+bun install -g @elizaos/cli
+
+# Create a new project
+elizaos create my-agent-project
+
+# Navigate to project
+cd my-agent-project
+
+# Start development
+elizaos dev
+```
+
+### From Source (Advanced)
 
 ```bash
 # Clone the repository
@@ -173,7 +197,7 @@ bun run dev
 - **[TypeScript API Docs](/api)** - Complete API reference
 - **[GitHub Repository](https://github.com/elizaos/eliza)** - Source code
 - **[Plugin Examples](https://github.com/elizaos/eliza/tree/main/packages)** - Reference implementations
-- **[Architecture Diagrams](/docs/technical/architecture/overview#diagrams)** - Visual guides
+- **[Architecture Overview](/docs/technical/architecture/overview)** - Visual architecture guides
 - **[RFC Process](https://github.com/elizaos/eliza/discussions)** - Propose changes
 
 ## 💡 Developer Tips
@@ -191,15 +215,9 @@ Ready to dive deep? Start with our comprehensive [System Overview](/docs/technic
 
 ---
 
-<div style={{textAlign: 'center', marginTop: '2rem'}}>
-  <a href="/docs/technical/architecture/overview" className="button button--primary button--lg">
-    📐 Explore Architecture
-  </a>
-  <a href="/docs/technical/development/plugin-development" className="button button--secondary button--lg" style={{marginLeft: '1rem'}}>
-    🔌 Build a Plugin
-  </a>
-</div>
+## Next Steps
 
-<div style={{textAlign: 'center', marginTop: '1rem', fontSize: '0.9em', color: '#666'}}>
-  Full source code • Active community • MIT licensed
-</div>
+- [📐 Explore Architecture](/docs/technical/architecture/overview)
+- [🔌 Build a Plugin](/docs/technical/development/plugin-development)
+
+Full source code • Active community • MIT licensed

@@ -4,399 +4,111 @@ import {
   X,
   Send,
   Sparkles,
-  BookOpen,
-  Code,
-  Lightbulb,
-  ExternalLink,
-  Copy,
-  Check,
+  Settings,
+  Key,
+  AlertCircle,
 } from 'lucide-react';
-import { useHistory, useLocation } from '@docusaurus/router';
-import styles from './styles.module.css';
+import ElizaAssistant from '../../services/elizaAssistant';
 
 interface Message {
   id: string;
-  type: 'user' | 'assistant';
+  role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  suggestions?: string[];
-  links?: Array<{ title: string; url: string; description: string }>;
-  codeSnippets?: Array<{ language: string; code: string; description: string }>;
+  error?: boolean;
 }
 
-interface DocumentationContext {
-  currentPage: string;
-  pageTitle: string;
-  pageContent: string;
-  userTrack: 'simple' | 'customize' | 'technical' | 'general';
-  previousPages: string[];
-}
-
-export default function AIAssistant(): JSX.Element {
+export default function AIAssistant(): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [context, setContext] = useState<DocumentationContext>({
-    currentPage: '',
-    pageTitle: '',
-    pageContent: '',
-    userTrack: 'general',
-    previousPages: [],
-  });
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-
+  const [assistant, setAssistant] = useState<ElizaAssistant | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const history = useHistory();
-  const location = useLocation();
 
-  // Initialize with welcome message
-  useEffect(() => {
-    if (messages.length === 0) {
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        type: 'assistant',
-        content:
-          "👋 Hi! I'm your ElizaOS documentation assistant. I can help you find information, explain concepts, and guide you through setup. What would you like to know?",
-        timestamp: new Date(),
-        suggestions: [
-          'How do I get started with ElizaOS?',
-          "What's the difference between the documentation tracks?",
-          'How do I create my first agent?',
-          'Show me the API reference',
-          'Help me troubleshoot an issue',
-        ],
-      };
-      setMessages([welcomeMessage]);
-    }
-  }, [messages.length]);
-
-  // Update context when page changes
-  useEffect(() => {
-    const currentPath = location.pathname;
-    const pageTitle = document.title;
-
-    // Determine user track based on current path
-    let userTrack: 'simple' | 'customize' | 'technical' | 'general' = 'general';
-    if (currentPath.includes('/simple/')) userTrack = 'simple';
-    else if (currentPath.includes('/customize/')) userTrack = 'customize';
-    else if (currentPath.includes('/technical/')) userTrack = 'technical';
-
-    setContext((prev) => ({
-      ...prev,
-      currentPage: currentPath,
-      pageTitle,
-      userTrack,
-      previousPages: [...prev.previousPages, currentPath].slice(-5), // Keep last 5 pages
-    }));
-  }, [location]);
-
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Focus input when opened
+  // Initial welcome message
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+    if (messages.length === 0) {
+      setMessages([
+        {
+          id: '1',
+          role: 'assistant',
+          content: "Hi! I'm Eliza, your ElizaOS documentation assistant. I can help you understand the framework, explain concepts, provide code examples, and guide you through implementation. What would you like to learn about?",
+          timestamp: new Date(),
+        },
+      ]);
     }
-  }, [isOpen]);
+  }, []);
 
-  // AI-powered response generation
-  const generateResponse = async (userMessage: string): Promise<Message> => {
-    const messageId = Date.now().toString();
-
-    // Simulate AI processing delay
-    await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000));
-
-    // Context-aware response generation
-    const responses = getContextualResponse(userMessage, context);
-
-    return {
-      id: messageId,
-      type: 'assistant',
-      content: responses.content,
-      timestamp: new Date(),
-      suggestions: responses.suggestions,
-      links: responses.links,
-      codeSnippets: responses.codeSnippets,
-    };
-  };
-
-  // Context-aware response logic
-  const getContextualResponse = (userMessage: string, context: DocumentationContext) => {
-    const lowerMessage = userMessage.toLowerCase();
-
-    // Getting started queries
-    if (
-      lowerMessage.includes('get started') ||
-      lowerMessage.includes('begin') ||
-      lowerMessage.includes('start')
-    ) {
-      return {
-        content: `Great! I'll help you get started with ElizaOS. Based on your current location, I recommend starting with the ${context.userTrack} track. Here's what you need to know:`,
-        suggestions: [
-          'Show me installation instructions',
-          'What are the system requirements?',
-          'How do I create my first agent?',
-          "What's the difference between tracks?",
-        ],
-        links: [
-          {
-            title: 'Quick Start Guide',
-            url: '/docs/quickstart',
-            description: 'Get up and running in 5 minutes',
-          },
-          {
-            title: 'Installation',
-            url: '/docs/installation',
-            description: 'Detailed installation instructions',
-          },
-          {
-            title: 'Your First Agent',
-            url: '/docs/tutorials/first-agent',
-            description: 'Step-by-step agent creation',
-          },
-        ],
-      };
+  // Instantiate assistant once on mount
+  useEffect(() => {
+    try {
+      setAssistant(new ElizaAssistant());
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Server misconfiguration: OPENAI_API_KEY is missing. Please contact the administrator.',
+        timestamp: new Date(),
+        error: true,
+      }]);
     }
-
-    // Agent creation queries
-    if (lowerMessage.includes('agent') || lowerMessage.includes('create')) {
-      return {
-        content:
-          "Creating an agent in ElizaOS is straightforward! Here's a basic example to get you started:",
-        suggestions: [
-          'How do I configure agent memory?',
-          'What are agent personalities?',
-          'How do I add custom actions?',
-          'Show me advanced agent features',
-        ],
-        links: [
-          {
-            title: 'Agent Configuration',
-            url: '/docs/core/agents',
-            description: 'Complete agent configuration guide',
-          },
-          {
-            title: 'Agent Templates',
-            url: '/docs/guides/agent-templates',
-            description: 'Pre-built agent templates',
-          },
-        ],
-        codeSnippets: [
-          {
-            language: 'javascript',
-            code: `import { createAgent } from "@elizaos/core";
-
-const agent = await createAgent({
-  name: "MyAgent",
-  personality: "helpful and friendly",
-  knowledge: ["general", "tech"],
-  actions: ["chat", "search", "help"]
-});
-
-await agent.start();`,
-            description: 'Basic agent creation',
-          },
-        ],
-      };
-    }
-
-    // Plugin development queries
-    if (lowerMessage.includes('plugin') || lowerMessage.includes('extend')) {
-      return {
-        content:
-          "Plugins are a powerful way to extend ElizaOS! Here's how to create your first plugin:",
-        suggestions: [
-          'What types of plugins can I create?',
-          'How do I register a plugin?',
-          'Show me plugin examples',
-          'Plugin development best practices',
-        ],
-        links: [
-          {
-            title: 'Plugin Development',
-            url: '/docs/plugins/development',
-            description: 'Complete plugin development guide',
-          },
-          { title: 'Plugin API', url: '/api/plugins', description: 'Plugin API reference' },
-        ],
-        codeSnippets: [
-          {
-            language: 'typescript',
-            code: `import { Plugin } from "@elizaos/core";
-
-export const myPlugin: Plugin = {
-  name: "my-plugin",
-  description: "A custom plugin",
-  actions: [
-    {
-      name: "customAction",
-      description: "Does something awesome",
-      handler: async (context) => {
-        // Your custom logic here
-        return { success: true };
-      }
-    }
-  ]
-};`,
-            description: 'Basic plugin structure',
-          },
-        ],
-      };
-    }
-
-    // API queries
-    if (lowerMessage.includes('api') || lowerMessage.includes('reference')) {
-      return {
-        content:
-          'The ElizaOS API is comprehensive and well-documented. Here are the main API categories:',
-        suggestions: [
-          'Show me agent API methods',
-          'How do I authenticate API requests?',
-          'What are the rate limits?',
-          'API examples and tutorials',
-        ],
-        links: [
-          { title: 'API Reference', url: '/api', description: 'Complete API documentation' },
-          { title: 'REST API', url: '/api/rest', description: 'REST API endpoints' },
-          { title: 'Authentication', url: '/api/auth', description: 'API authentication guide' },
-        ],
-      };
-    }
-
-    // Troubleshooting queries
-    if (
-      lowerMessage.includes('error') ||
-      lowerMessage.includes('problem') ||
-      lowerMessage.includes('help')
-    ) {
-      return {
-        content:
-          "I'm here to help troubleshoot! Can you tell me more about the specific issue you're experiencing?",
-        suggestions: [
-          "Agent won't start",
-          'Installation problems',
-          'Configuration issues',
-          'Plugin not loading',
-        ],
-        links: [
-          {
-            title: 'Troubleshooting Guide',
-            url: '/docs/troubleshooting',
-            description: 'Common issues and solutions',
-          },
-          {
-            title: 'Community Support',
-            url: '/community',
-            description: 'Get help from the community',
-          },
-        ],
-      };
-    }
-
-    // Track-specific guidance
-    if (lowerMessage.includes('track') || lowerMessage.includes('path')) {
-      return {
-        content: `You're currently viewing the ${context.userTrack} track. Here's what each track offers:
-
-**🎯 Simple Track**: Perfect for non-technical users who want to use ElizaOS without coding
-**🎨 Customize Track**: For power users who want to customize and configure agents
-**🔧 Technical Track**: For developers who want to build and extend ElizaOS`,
-        suggestions: [
-          'Switch to Simple track',
-          'Switch to Customize track',
-          'Switch to Technical track',
-          "What's best for my use case?",
-        ],
-        links: [
-          { title: 'Simple Track', url: '/docs/simple', description: 'Non-technical user guide' },
-          {
-            title: 'Technical Track',
-            url: '/docs/technical',
-            description: 'Developer documentation',
-          },
-        ],
-      };
-    }
-
-    // Default response
-    return {
-      content:
-        "I understand you're looking for information about ElizaOS. Could you be more specific about what you'd like to know? I can help with setup, configuration, development, or troubleshooting.",
-      suggestions: [
-        'Getting started guide',
-        'Agent creation',
-        'Plugin development',
-        'API reference',
-        'Troubleshooting',
-      ],
-      links: [
-        { title: 'Documentation Home', url: '/docs', description: 'Main documentation' },
-        { title: 'Community', url: '/community', description: 'Community resources' },
-      ],
-    };
-  };
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
+    if (!assistant) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'AI assistant is not available. Please contact the administrator.',
+        timestamp: new Date(),
+        error: true,
+      }]);
+      return;
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
-      type: 'user',
-      content: inputValue.trim(),
+      role: 'user',
+      content: inputValue,
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsTyping(true);
 
     try {
-      const assistantMessage = await generateResponse(inputValue.trim());
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        type: 'assistant',
-        content:
-          "I apologize, but I'm having trouble processing your request right now. Please try again or check our documentation directly.",
+      const response = await assistant.getQuickResponse(inputValue);
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.message,
         timestamp: new Date(),
-        links: [
-          { title: 'Documentation', url: '/docs', description: 'Browse the full documentation' },
-          {
-            title: 'Community Support',
-            url: '/community',
-            description: 'Get help from the community',
-          },
-        ],
+        error: !!response.error,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error getting response:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please contact the administrator.',
+        timestamp: new Date(),
+        error: true,
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
-    }
-  };
-
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputValue(suggestion);
-    setTimeout(() => handleSendMessage(), 100);
-  };
-
-  const handleLinkClick = (url: string) => {
-    history.push(url);
-    setIsOpen(false);
-  };
-
-  const handleCopyCode = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(null), 2000);
-    } catch (error) {
-      console.error('Failed to copy code:', error);
     }
   };
 
@@ -408,121 +120,144 @@ export const myPlugin: Plugin = {
   };
 
   return (
-    <>
-      {/* Floating Button */}
+    <div className="ai-assistant-container">
+      {/* Floating button */}
       <button
-        className={`${styles.floatingButton} ${isOpen ? styles.hidden : ''}`}
         onClick={() => setIsOpen(true)}
-        aria-label="Open AI Assistant"
+        className="ai-assistant-button"
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          backgroundColor: '#3b82f6',
+          color: 'white',
+          border: 'none',
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          zIndex: 1000,
+          display: isOpen ? 'none' : 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.3s ease',
+        }}
+        title="Ask Eliza"
       >
         <Sparkles size={24} />
       </button>
 
-      {/* Assistant Panel */}
+      {/* Chat interface */}
       {isOpen && (
-        <div className={styles.assistantPanel}>
-          <div className={styles.header}>
-            <div className={styles.headerContent}>
-              <Sparkles size={20} />
-              <h3>ElizaOS Assistant</h3>
+        <div
+          className="ai-assistant-chat"
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            width: '400px',
+            height: '600px',
+            backgroundColor: 'var(--ifm-background-color)',
+            borderRadius: '12px',
+            boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
+            zIndex: 1001,
+            display: 'flex',
+            flexDirection: 'column',
+            border: '1px solid var(--ifm-color-emphasis-200)',
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              padding: '16px',
+              borderBottom: '1px solid var(--ifm-color-emphasis-200)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: 'var(--ifm-color-emphasis-100)',
+              borderRadius: '12px 12px 0 0',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles size={20} color="#3b82f6" />
+              <span style={{ fontWeight: 'bold', color: 'var(--ifm-color-content)' }}>
+                Eliza Assistant
+              </span>
             </div>
-            <button
-              className={styles.closeButton}
-              onClick={() => setIsOpen(false)}
-              aria-label="Close Assistant"
-            >
-              <X size={20} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setIsOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  color: 'var(--ifm-color-content-secondary)',
+                }}
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
-          <div className={styles.messagesContainer}>
+          {/* Messages */}
+          <div
+            style={{
+              flex: 1,
+              padding: '16px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
             {messages.map((message) => (
-              <div key={message.id} className={`${styles.message} ${styles[message.type]}`}>
-                <div className={styles.messageContent}>
-                  {message.type === 'assistant' && (
-                    <div className={styles.messageIcon}>
-                      <Sparkles size={16} />
-                    </div>
+              <div
+                key={message.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+                }}
+              >
+                <div
+                  style={{
+                    maxWidth: '80%',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    backgroundColor: message.role === 'user'
+                      ? '#3b82f6'
+                      : message.error
+                        ? '#ef4444'
+                        : 'var(--ifm-color-emphasis-200)',
+                    color: message.role === 'user' || message.error ? 'white' : 'var(--ifm-color-content)',
+                    fontSize: '14px',
+                    lineHeight: '1.4',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {message.error && (
+                    <AlertCircle size={16} style={{ display: 'inline', marginRight: '8px' }} />
                   )}
-                  <div className={styles.messageText}>{message.content}</div>
+                  {message.content}
                 </div>
-
-                {/* Suggestions */}
-                {message.suggestions && (
-                  <div className={styles.suggestions}>
-                    {message.suggestions.map((suggestion, index) => (
-                      <button
-                        key={index}
-                        className={styles.suggestionButton}
-                        onClick={() => handleSuggestionClick(suggestion)}
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Links */}
-                {message.links && (
-                  <div className={styles.links}>
-                    {message.links.map((link, index) => (
-                      <button
-                        key={index}
-                        className={styles.linkButton}
-                        onClick={() => handleLinkClick(link.url)}
-                      >
-                        <div className={styles.linkContent}>
-                          <div className={styles.linkTitle}>
-                            <BookOpen size={16} />
-                            {link.title}
-                          </div>
-                          <div className={styles.linkDescription}>{link.description}</div>
-                        </div>
-                        <ExternalLink size={16} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Code Snippets */}
-                {message.codeSnippets && (
-                  <div className={styles.codeSnippets}>
-                    {message.codeSnippets.map((snippet, index) => (
-                      <div key={index} className={styles.codeSnippet}>
-                        <div className={styles.codeHeader}>
-                          <span className={styles.codeLanguage}>
-                            <Code size={16} />
-                            {snippet.language}
-                          </span>
-                          <span className={styles.codeDescription}>{snippet.description}</span>
-                          <button
-                            className={styles.copyButton}
-                            onClick={() => handleCopyCode(snippet.code)}
-                          >
-                            {copiedCode === snippet.code ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
-                        </div>
-                        <pre className={styles.codeBlock}>
-                          <code>{snippet.code}</code>
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
 
             {isTyping && (
-              <div className={`${styles.message} ${styles.assistant}`}>
-                <div className={styles.messageContent}>
-                  <div className={styles.messageIcon}>
-                    <Sparkles size={16} />
-                  </div>
-                  <div className={styles.typingIndicator}>
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '12px',
+                    backgroundColor: 'var(--ifm-color-emphasis-200)',
+                    color: 'var(--ifm-color-content)',
+                    fontSize: '14px',
+                  }}
+                >
+                  <span>Eliza is typing...</span>
                 </div>
               </div>
             )}
@@ -530,28 +265,59 @@ export const myPlugin: Plugin = {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={styles.inputContainer}>
-            <input
-              ref={inputRef}
-              type="text"
+          {/* Input */}
+          <div
+            style={{
+              padding: '16px',
+              borderTop: '1px solid var(--ifm-color-emphasis-200)',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'flex-end',
+            }}
+          >
+            <textarea
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask me anything about ElizaOS..."
-              className={styles.input}
+              placeholder="Ask me about ElizaOS..."
               disabled={isTyping}
+              rows={1}
+              style={{
+                flex: 1,
+                padding: '8px',
+                border: '1px solid var(--ifm-color-emphasis-300)',
+                borderRadius: '8px',
+                fontSize: '14px',
+                resize: 'none',
+                backgroundColor: 'var(--ifm-background-color)',
+                color: 'var(--ifm-color-content)',
+                minHeight: '36px',
+                maxHeight: '100px',
+              }}
             />
             <button
-              className={styles.sendButton}
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isTyping}
-              aria-label="Send message"
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                padding: '8px',
+                borderRadius: '8px',
+                cursor: inputValue.trim() && !isTyping ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '36px',
+                height: '36px',
+                opacity: inputValue.trim() && !isTyping ? 1 : 0.6,
+              }}
             >
-              <Send size={20} />
+              <Send size={16} />
             </button>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

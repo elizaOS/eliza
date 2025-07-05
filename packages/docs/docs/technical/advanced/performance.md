@@ -285,7 +285,7 @@ class OptimizedDatabase {
     // Bad: N+1 queries
     // for (const id of messageIds) {
     //   const message = await this.query('SELECT * FROM messages WHERE id = ?', [id]);
-    //   const user = await this.query('SELECT * FROM users WHERE id = ?', [message.userId]);
+    //   const user = await this.query('SELECT * FROM users WHERE id = ?', [message.entityId]);
     // }
 
     // Good: Single query with JOIN

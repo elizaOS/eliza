@@ -229,7 +229,7 @@ class MemoryIngestion {
       features,
       importance,
       metadata: {
-        userId: message.userId,
+        entityId: message.entityId,
         timestamp: new Date(),
         roomId: message.roomId,
       },

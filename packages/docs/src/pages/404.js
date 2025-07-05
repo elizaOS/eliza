@@ -71,19 +71,19 @@ export default function NotFound() {
       brokenPath.includes('twitter')
     ) {
       suggestedLinks.push({
-        title: 'Discord Setup Guide',
-        path: '/docs/simple/guides/discord-setup',
-        description: 'Set up your Discord bot',
+        title: 'Platform Templates',
+        path: '/docs/simple/templates/quick-start',
+        description: 'Ready-to-use agent templates for Discord, Twitter, and Telegram',
       });
       suggestedLinks.push({
-        title: 'Telegram Setup Guide',
-        path: '/docs/simple/guides/telegram-setup',
-        description: 'Configure Telegram integration',
+        title: 'Discord Agent Template',
+        path: '/docs/simple/templates/discord-agent',
+        description: 'Create a Discord bot with Eliza',
       });
       suggestedLinks.push({
-        title: 'Twitter Setup Guide',
-        path: '/docs/simple/guides/twitter-setup',
-        description: 'Create a Twitter bot',
+        title: 'Twitter Agent Template',
+        path: '/docs/simple/templates/twitter-agent',
+        description: 'Build a Twitter bot',
       });
     }
 

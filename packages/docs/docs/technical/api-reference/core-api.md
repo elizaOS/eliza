@@ -12,46 +12,73 @@ This document provides a comprehensive reference for the ElizaOS Core API, inclu
 The main runtime interface that provides access to all agent functionality.
 
 ```typescript
-interface IAgentRuntime {
-  // Agent Information
-  agentId: string;
+interface IAgentRuntime extends IDatabaseAdapter {
+  // Properties
+  agentId: UUID;
   character: Character;
-
-  // Managers
-  databaseAdapter: IDatabaseAdapter;
-  messageManager: IMemoryManager;
-  documentsManager: IMemoryManager;
-  descriptionManager: IMemoryManager;
-
-  // State Management
-  state: State | null;
-
-  // Plugin Management
-  plugins: string[];
+  providers: Provider[];
   actions: Action[];
   evaluators: Evaluator[];
-  providers: Provider[];
+  plugins: Plugin[];
+  services: Map<ServiceTypeName, Service>;
+  events: Map<string, ((params: any) => Promise<void>)[]>;
+  fetch?: typeof fetch | null;
+  routes: Route[];
+
+  // Plugin Management
+  registerPlugin(plugin: Plugin): Promise<void>;
+  initialize(): Promise<void>;
+
+  // Database
+  getConnection(): Promise<any>;
 
   // Services
-  services: Map<string, Service>;
-  getService<T extends Service>(name: string): T | null;
-  registerService(name: string, service: Service): void;
+  getService<T extends Service>(service: ServiceTypeName | string): T | null;
+  getAllServices(): Map<ServiceTypeName, Service>;
+  registerService(service: typeof Service): Promise<void>;
 
-  // Settings
+  // Settings (additional methods from runtime)
   getSetting(key: string): any;
   setSetting(key: string, value: any): void;
 
-  // Memory Operations
-  processActions(message: Memory, messages: Memory[], state?: State): Promise<Memory[]>;
-  evaluate(message: Memory, state?: State): Promise<string[]>;
-  ensureParticipantInRoom(userId: string, roomId: string): Promise<void>;
-
-  // Utility Methods
+  // Model Operations
   completion(params: CompletionParams): Promise<string>;
   embed(text: string): Promise<number[]>;
 
-  // Logging
-  logger: ILogger;
+  // Memory Operations (implemented in runtime)
+  processActions(message: Memory, messages: Memory[], state?: State): Promise<Memory[]>;
+  evaluate(message: Memory, state?: State): Promise<string[]>;
+  ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
+  
+  // Task Worker Management
+  registerTaskWorker(taskHandler: TaskWorker): void;
+  getTaskWorker(name: string): TaskWorker | undefined;
+  
+  // Agent Lifecycle
+  stop(): Promise<void>;
+  
+  // Memory Management
+  addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+  getAllMemories(): Promise<Memory[]>;
+  clearAllAgentMemories(): Promise<void>;
+  
+  // Run Tracking
+  createRunId(): UUID;
+  startRun(): UUID;
+  endRun(): void;
+  getCurrentRunId(): UUID;
+  
+  // Entity & Room Management (convenience wrappers)
+  getEntityById(entityId: UUID): Promise<Entity | null>;
+  getRoom(roomId: UUID): Promise<Room | null>;
+  createEntity(entity: Entity): Promise<boolean>;
+  createRoom(room: Room): Promise<UUID>;
+  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getRooms(worldId: UUID): Promise<Room[]>;
+  
+  // Messaging
+  registerSendHandler(source: string, handler: SendHandlerFunction): void;
+  sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
 }
 ```
 
@@ -110,17 +137,20 @@ The core data structure for messages and memories.
 
 ```typescript
 interface Memory {
-  id?: string;
-  userId: string;
-  agentId: string;
-  roomId: string;
+  id?: UUID;
+  entityId: UUID;
+  agentId?: UUID;
+  roomId: UUID;
 
   content: Content;
 
-  createdAt?: string;
+  createdAt?: number;
   embedding?: number[];
-
-  [key: string]: any; // Additional metadata
+  
+  worldId?: UUID;
+  unique?: boolean;
+  similarity?: number;
+  metadata?: MemoryMetadata;
 }
 
 interface Content {
@@ -166,6 +196,11 @@ interface State {
   /** String representation of current context, often a summary or concatenated history */
   text: string;
 }
+
+// Note: State is NOT a Map object. It's a plain object with specific properties.
+// To store data in state, use state.data or state.values:
+// state.data.myKey = myValue;  // ✓ Correct
+// state.set('myKey', myValue); // ✗ Incorrect - State is not a Map
 
 interface Goal {
   id: string;
@@ -238,7 +273,7 @@ const CONTINUE_ACTION: Action = {
     });
 
     return {
-      userId: runtime.agentId,
+      entityId: runtime.agentId,
       roomId: message.roomId,
       content: { text: response },
     };
@@ -257,7 +292,7 @@ const FOLLOW_ROOM_ACTION: Action = {
     await runtime.databaseAdapter.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
 
     return {
-      userId: runtime.agentId,
+      entityId: runtime.agentId,
       roomId: message.roomId,
       content: { text: `Now following room ${roomId}` },
     };
@@ -365,9 +400,8 @@ const goalEvaluator: Evaluator = {
     const advances = await checkGoalProgress(message, state.currentGoal, runtime);
 
     if (advances) {
-      // Update goal progress
-      await runtime.databaseAdapter.updateGoal({
-        ...state.currentGoal,
+      // Update goal progress (goals are managed through tasks)
+      await runtime.databaseAdapter.updateTask(state.currentGoal.id, {
         updatedAt: new Date().toISOString(),
       });
     }
@@ -388,7 +422,7 @@ const factEvaluator: Evaluator = {
 
     for (const fact of facts) {
       await runtime.documentsManager.createMemory({
-        userId: message.userId,
+        entityId: message.entityId,
         agentId: runtime.agentId,
         roomId: message.roomId,
         content: {
@@ -549,69 +583,95 @@ interface IDatabaseAdapter {
   init(): Promise<void>;
   close(): Promise<void>;
 
-  // User Management
-  getAccountById(userId: string): Promise<Account | null>;
-  createAccount(account: Account): Promise<boolean>;
-  getAccounts(): Promise<Account[]>;
+  // Agent Management
+  getAgent(agentId: UUID): Promise<Agent | null>;
+  getAgents(): Promise<Partial<Agent>[]>;
+  createAgent(agent: Partial<Agent>): Promise<boolean>;
+  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>;
+  deleteAgent(agentId: UUID): Promise<boolean>;
 
   // Room Management
-  getRoom(roomId: string): Promise<string | null>;
-  createRoom(roomId: string): Promise<boolean>;
-  removeRoom(roomId: string): Promise<boolean>;
-  getRoomsForParticipant(userId: string): Promise<string[]>;
-  getRoomsForParticipants(userIds: string[]): Promise<string[]>;
+  getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null>;
+  createRooms(rooms: Room[]): Promise<UUID[]>;
+  deleteRoom(roomId: UUID): Promise<void>;
+  deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+  updateRoom(room: Room): Promise<void>;
+  getRoomsForParticipant(entityId: UUID): Promise<UUID[]>;
+  getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]>;
+  getRoomsByWorld(worldId: UUID): Promise<Room[]>;
 
   // Participant Management
-  addParticipant(userId: string, roomId: string): Promise<boolean>;
-  removeParticipant(userId: string, roomId: string): Promise<boolean>;
-  getParticipantsForRoom(roomId: string): Promise<string[]>;
+  addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
+  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
+  getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
+  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 
   // Participant State
-  getParticipantUserState(roomId: string, userId: string): Promise<'FOLLOWED' | 'MUTED' | null>;
+  getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;
 
   setParticipantUserState(
-    roomId: string,
-    userId: string,
+    roomId: UUID,
+    entityId: UUID,
     state: 'FOLLOWED' | 'MUTED' | null
   ): Promise<void>;
 
   // Memory Management
-  createMemory(memory: Memory, tableName: string): Promise<void>;
+  createMemory(memory: Memory, tableName?: string, unique?: boolean): Promise<void>;
   getMemories(params: {
-    roomId: string;
+    roomId: UUID;
     count?: number;
     unique?: boolean;
-    tableName: string;
+    tableName?: string;
     start?: number;
     end?: number;
+    agentId?: UUID;
   }): Promise<Memory[]>;
 
-  searchMemories(params: {
-    tableName: string;
-    roomId: string;
-    embedding: number[];
-    match_threshold?: number;
-    match_count?: number;
-    unique?: boolean;
-  }): Promise<Memory[]>;
+  searchMemoriesByEmbedding(
+    embedding: number[],
+    params: {
+      match_threshold?: number;
+      count?: number;
+      roomId?: UUID;
+      unique?: boolean;
+      tableName?: string;
+    }
+  ): Promise<Memory[]>;
 
-  // Goal Management
-  createGoal(goal: Goal): Promise<void>;
-  getGoals(params: {
-    roomId: string;
-    userId?: string;
-    onlyInProgress?: boolean;
-    count?: number;
-  }): Promise<Goal[]>;
-  updateGoal(goal: Goal): Promise<void>;
-  removeGoal(goalId: string): Promise<void>;
+  getCachedEmbeddings(content: string): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
+
+  updateGoalStatus(params: { goalId: UUID; status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS' }): Promise<void>;
+
+  log(params: any): Promise<void>;
+
+  getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]>;
+
+  getMemoryById(memoryId: UUID, tableName?: string): Promise<Memory | null>;
+
+  removeMemory(memoryId: UUID, tableName?: string): Promise<void>;
+
+  removeAllMemories(roomId: UUID, tableName?: string): Promise<void>;
+
+  countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number>;
+
+  // Task Management (Note: Goals are managed through tasks)
+  createTask(task: Task): Promise<void>;
+  getTasks(entityId: UUID): Promise<Task[]>;
+  updateTask(task: Task): Promise<void>;
+  deleteTask(taskId: UUID): Promise<void>;
 
   // Relationship Management
-  createRelationship(params: { userA: string; userB: string }): Promise<boolean>;
+  createRelationship(params: {
+    entityIdA: UUID;
+    entityIdB: UUID;
+    world?: World | null;
+  }): Promise<boolean>;
 
-  getRelationship(params: { userA: string; userB: string }): Promise<Relationship | null>;
+  updateRelationship(relationship: Relationship): Promise<void>;
 
-  getRelationships(params: { userId: string }): Promise<Relationship[]>;
+  getRelationships(params: { entityId: UUID; world?: World }): Promise<Relationship[]>;
+
+  getRelationship(params: { entityIdA: UUID; entityIdB: UUID }): Promise<Relationship | null>;
 
   // Raw Query
   query(sql: string, params?: any[]): Promise<any[]>;
@@ -792,7 +852,7 @@ const safeAction: Action = {
 
       // Return graceful fallback
       return {
-        userId: runtime.agentId,
+        entityId: runtime.agentId,
         roomId: message.roomId,
         content: {
           text: 'I encountered an error processing that request.',
@@ -856,7 +916,7 @@ interface Result<T> {
 function isValidActionResult(result: any): result is Memory {
   return (
     result &&
-    typeof result.userId === 'string' &&
+    typeof result.entityId === 'string' &&
     typeof result.roomId === 'string' &&
     result.content &&
     typeof result.content.text === 'string'

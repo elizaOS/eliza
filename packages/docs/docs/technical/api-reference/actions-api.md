@@ -134,11 +134,11 @@ export const statefulAction: Action = {
 
   handler: async (runtime, message, state, options, callback) => {
     // Read from state
-    const currentCount = state.get('actionCount') || 0;
+    const currentCount = state.data.actionCount || 0;
 
     // Modify state
-    state.set('actionCount', currentCount + 1);
-    state.set('lastActionTime', Date.now());
+    state.data.actionCount = currentCount + 1;
+    state.data.lastActionTime = Date.now();
 
     // Use state in logic
     const response = `This action has been called ${currentCount + 1} times`;
@@ -175,7 +175,7 @@ export const contextAwareAction: Action = {
     // Get user profile
     const userProfile = await runtime.databaseAdapter.getParticipantUserState(
       message.roomId,
-      message.userId
+      message.entityId
     );
 
     // Generate contextual response
@@ -328,7 +328,7 @@ validate: async (runtime, message) => {
   }
 
   // Check user permissions
-  const userRole = await getUserRole(runtime, message.userId);
+  const userRole = await getUserRole(runtime, message.entityId);
   if (userRole !== 'admin') {
     return false;
   }
@@ -387,7 +387,7 @@ handler: async (runtime, message, state, options, callback) => {
     runtime.logger.error('Action failed', {
       action: 'MY_CUSTOM_ACTION',
       messageId: message.id,
-      userId: message.userId,
+      entityId: message.entityId,
       error: error.message,
       stack: error.stack,
     });
@@ -412,7 +412,7 @@ handler: async (runtime, message, state, options, callback) => {
   runtime.logger.debug('Action starting', {
     action: 'MY_CUSTOM_ACTION',
     messageText: message.content.text,
-    userId: message.userId,
+    entityId: message.entityId,
     roomId: message.roomId,
   });
 
@@ -448,7 +448,7 @@ handler: async (runtime, message, state, options, callback) => {
 handler: async (runtime, message, state, options, callback) => {
   // Perform multiple operations concurrently
   const [userData, externalData, contextData] = await Promise.all([
-    getUserData(message.userId),
+    getUserData(message.entityId),
     fetchExternalData(message.content.text),
     getContextData(message.roomId),
   ]);
@@ -524,7 +524,7 @@ describe('MyCustomAction', () => {
 
   it('should execute handler successfully', async () => {
     const callback = jest.fn();
-    const result = await myCustomAction.handler(runtime, message, new Map(), {}, callback);
+    const result = await myCustomAction.handler(runtime, message, { values: {}, data: {}, text: '' }, {}, callback);
 
     expect(result).toBe(true);
     expect(callback).toHaveBeenCalledWith({
@@ -545,7 +545,7 @@ describe('Action Integration', () => {
 
     const response = await agent.processMessage({
       text: 'help me with something custom',
-      userId: 'test-user',
+      entityId: 'test-user',
       roomId: 'test-room',
     });
 
@@ -631,7 +631,7 @@ const withRateLimiting = (action: Action, limit: number): Action => ({
     if (!isValid) return false;
 
     // Check rate limit
-    const key = `ratelimit_${action.name}_${message.userId}`;
+    const key = `ratelimit_${action.name}_${message.entityId}`;
     const count = (await runtime.cache.get(key)) || 0;
     if (count >= limit) return false;
 

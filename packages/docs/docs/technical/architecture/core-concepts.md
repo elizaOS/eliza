@@ -50,7 +50,6 @@ interface Character {
   postExamples: string[];
 
   // Configuration
-  modelProvider: ModelProvider;
   settings: {
     model: string;
     temperature?: number;

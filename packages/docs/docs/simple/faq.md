@@ -73,7 +73,7 @@ Your agent can:
 3. Click "API Keys" → "Create Key"
 4. Copy the key
 
-### My agent won't start - help!
+### My agent won't start - help
 
 Try these steps in order:
 
@@ -90,6 +90,11 @@ Edit the `character.json` file:
 ```json
 {
   "name": "Your Agent Name",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-bootstrap"
+  ],
   "bio": ["Write your agent's background here", "Add more personality details"],
   "style": {
     "all": ["friendly", "helpful", "creative"]
@@ -135,14 +140,18 @@ Press `Ctrl+C` (or `Cmd+C` on Mac) in the terminal where it's running.
 
 ### How do I add Discord to my agent?
 
-1. Get a Discord bot token (see our [Discord guide](/docs/simple/guides/discord-setup))
+1. Get a Discord bot token from the Discord Developer Portal
 2. Add to your `.env` file:
-   ```
+
+   ```env
    DISCORD_API_TOKEN=your-bot-token
    DISCORD_APPLICATION_ID=your-app-id
    ```
+
 3. Restart your agent
 4. Invite the bot to your server
+
+For a complete Discord agent example, see our [Discord Agent Template](templates/discord-agent.md).
 
 ### Can my agent post on Twitter?
 
@@ -151,7 +160,8 @@ Yes! You need:
 - Twitter API access (requires approval)
 - Four API keys from Twitter
 - Add them to your `.env` file
-- See our [Twitter guide](/docs/simple/guides/twitter-setup)
+
+For a complete Twitter agent example, see our [Twitter Agent Template](templates/twitter-agent.md).
 
 ### What plugins are available?
 
@@ -191,7 +201,8 @@ Another program is using port 3000. Either:
 
 - Stop the other program, OR
 - Change port in `.env`:
-  ```
+
+  ```env
   PORT=3001
   ```
 
@@ -221,28 +232,24 @@ Options:
 
 1. **Cloud Hosting** (Easiest) - Use services like:
 
-   - **Railway.app** 
+   - **Railway.app**
      - ✅ One-click deploy
      - ✅ ~$5/month
      - ✅ No server knowledge needed
-     - [Deploy Guide →](/docs/simple/guides/railway-deploy)
-   
+     - [Deploy Guide →](/docs/simple/guides/deployment-railway)
    - **Render.com**
      - ✅ Free tier available
      - ✅ Auto-deploy from GitHub
      - ✅ Great for beginners
-     - [Deploy Guide →](/docs/simple/guides/render-deploy)
-   
+     - [Deploy Guide →](/docs/simple/guides/deployment-render)
    - **Heroku**
      - ✅ Well-documented
      - ✅ ~$7/month
      - ✅ Lots of tutorials
-
 2. **Home Server** - Use an old computer
    - ✅ Free (just electricity)
    - ❌ Need stable internet
    - ❌ Computer must stay on
-
 3. **Raspberry Pi** - Low power, always on
    - ✅ ~$50 one-time cost
    - ✅ Very low power usage
@@ -259,7 +266,7 @@ Yes! Once deployed:
 ### How do I update my agent?
 
 ```bash
-bun update @elizaos/cli
+bun install -g @elizaos/cli@latest
 ```
 
 Then restart your agent!
@@ -283,7 +290,7 @@ Then restart your agent!
 ### Getting help
 
 - 💬 [Join our Discord](https://discord.gg/elizaos)
-- 📺 [Watch tutorials](https://youtube.com/@elizaos)
+- 📺 [Watch tutorials](https://www.youtube.com/@elizaOSDeveloper)
 - 📖 Read guides in this documentation
 - 🐛 [Report bugs](https://github.com/elizaOS/eliza/issues)
 
@@ -303,7 +310,7 @@ New to ElizaOS? Follow this order:
 
 ## 🆘 Emergency Help
 
-### Nothing is working!
+### Nothing is working
 
 **Reset everything:**
 
@@ -316,9 +323,9 @@ cd your-agent-name
 # Follow setup again carefully
 ```
 
-### I'm completely lost!
+### I'm completely lost
 
-1. **Watch a video walkthrough**: [YouTube Tutorial](https://youtube.com/@elizaos)
+1. **Watch a video walkthrough**: [YouTube Tutorial](https://www.youtube.com/@elizaOSDeveloper)
 2. **Join Discord**: Get live help in #beginner-help
 3. **Book office hours**: Free 15-min help sessions weekly
 
@@ -328,8 +335,8 @@ Can't find your answer here?
 
 - Check our [detailed guides](/docs/simple/guides)
 - Ask in [Discord](https://discord.gg/elizaos) - #beginner-help channel
-- Watch [video tutorials](https://youtube.com/@elizaos)
-- Email support: support@elizaos.ai
+- Watch [video tutorials](https://www.youtube.com/@elizaOSDeveloper)
+- Email support: [support@elizaos.ai](mailto:support@elizaos.ai)
 
 Remember: There are no stupid questions! We're here to help you succeed with your AI agent. 🚀
 

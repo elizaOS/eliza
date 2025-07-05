@@ -44,8 +44,6 @@ const sidebars = {
       items: [
         'simple/guides/character-creation',
         'simple/guides/plugin-usage',
-        'simple/guides/discord-setup',
-        'simple/guides/twitter-setup',
         'simple/guides/deployment',
       ],
     },

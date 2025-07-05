@@ -139,7 +139,7 @@ export const advancedAction: Action = {
     const customService = runtime.getService('custom-service');
 
     // Check permissions
-    const hasPermission = await customService.checkPermission(message.userId);
+    const hasPermission = await customService.checkPermission(message.entityId);
 
     // Complex validation logic
     return hasPermission && isValidCommand(message.content.text);
@@ -163,7 +163,7 @@ export const advancedAction: Action = {
 
     // Store action result in state
     if (state) {
-      state.lastAction = {
+      state.data.lastAction = {
         type: 'ADVANCED_ACTION',
         timestamp: Date.now(),
         result: response,
