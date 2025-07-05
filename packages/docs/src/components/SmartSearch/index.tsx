@@ -319,12 +319,17 @@ export default function SmartSearch(): JSX.Element {
 
       if (aiSearchService && aiConfig.enabled) {
         try {
+          console.log('AI Search enabled - Provider:', aiConfig.provider);
+          console.log('Making AI-enhanced search for:', searchTerm);
+          
           // Use real AI service for enhanced search
           const aiResponse = await aiSearchService.search({
             query: searchTerm,
             context: `Searching ElizaOS documentation for: ${searchTerm}`,
             maxResults: 10,
           });
+
+          console.log('AI Search response received:', aiResponse);
 
           // Merge AI suggestions with generated suggestions
           const allSuggestions = [

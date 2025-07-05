@@ -5,6 +5,15 @@
 
 import type { SearchResult } from '../components/SmartSearch';
 
+// Extend window object for search index
+declare global {
+  interface Window {
+    lunr?: any;
+    searchIndex?: any;
+    searchDocuments?: Record<string, any>;
+  }
+}
+
 interface AISearchRequest {
   query: string;
   context?: string;
@@ -151,6 +160,8 @@ export class AISearchService {
       return this.parseAIResponse(response, regularResults);
     } catch (error) {
       console.error('AI enhancement error:', error);
+      console.error('Provider:', this.provider);
+      console.error('Has API Key:', !!this.apiKey);
       return {
         results: regularResults,
         suggestions: [],
@@ -221,6 +232,9 @@ Respond in JSON format:
     }
 
     const data = await response.json();
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('Invalid OpenAI response format');
+    }
     return data.choices[0].message.content;
   }
 
@@ -250,6 +264,9 @@ Respond in JSON format:
     }
 
     const data = await response.json();
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      throw new Error('Invalid Anthropic response format');
+    }
     return data.content[0].text;
   }
 
