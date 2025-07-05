@@ -32,7 +32,7 @@ const config = {
     locales: ['en'],
   },
   customFields: {
-    // AI Configuration - passed to client
+    // AI Configuration
     aiEnabled: process.env.REACT_APP_AI_ENABLED !== 'false',
     aiProvider: process.env.REACT_APP_OPENAI_API_KEY
       ? 'openai'
@@ -43,6 +43,12 @@ const config = {
           : process.env.REACT_APP_OLLAMA_BASE_URL
             ? 'ollama'
             : null,
+    // Pass API key based on provider (only in production with proper security)
+    aiApiKey: process.env.REACT_APP_OPENAI_API_KEY ||
+              process.env.REACT_APP_ANTHROPIC_API_KEY ||
+              process.env.REACT_APP_GROQ_API_KEY ||
+              undefined,
+    ollamaBaseUrl: process.env.REACT_APP_OLLAMA_BASE_URL,
     GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
   },
   markdown: {

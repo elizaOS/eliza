@@ -3,7 +3,8 @@ import { debounce } from 'lodash';
 import { Search, Filter, Code, BookOpen, Zap, X, ArrowRight, Sparkles } from 'lucide-react';
 import { useHistory } from '@docusaurus/router';
 import { usePluginData } from '@docusaurus/useGlobalData';
-import { useAIConfig, getAIProviderName } from '@site/src/utils/aiConfig';
+import { useAIConfig, getAIProviderName } from '../../utils/aiConfig';
+import { getAISearchService } from '../../services/aiSearchService';
 import styles from './styles.module.css';
 
 // Extend window object for search index
@@ -309,7 +310,43 @@ export default function SmartSearch(): JSX.Element {
   // AI-enhanced semantic search function
   const performAISearch = useCallback(
     async (searchTerm: string, regularResults: SearchResult[]) => {
-      // Enhance results with semantic analysis
+      // Use AI search service if configured
+      const aiSearchService = getAISearchService(
+        aiConfig.provider,
+        aiConfig.apiKey,
+        window.searchIndex
+      );
+
+      if (aiSearchService && aiConfig.enabled) {
+        try {
+          // Use real AI service for enhanced search
+          const aiResponse = await aiSearchService.search({
+            query: searchTerm,
+            context: `Searching ElizaOS documentation for: ${searchTerm}`,
+            maxResults: 10,
+          });
+
+          // Merge AI suggestions with generated suggestions
+          const allSuggestions = [
+            ...generateSuggestions(searchTerm),
+            ...aiResponse.suggestions.map((text, idx) => ({
+              id: `ai-suggestion-${idx}`,
+              text,
+              type: 'query' as const,
+              icon: <Sparkles size={14} />,
+            })),
+          ];
+
+          return {
+            results: aiResponse.results,
+            suggestions: allSuggestions.slice(0, 8),
+          };
+        } catch (error) {
+          console.error('AI search failed, falling back to enhanced search:', error);
+        }
+      }
+
+      // Fallback to client-side enhancement if AI service not available
       const enhancedResults = regularResults.map((result) => {
         // Calculate semantic relevance based on content analysis
         const semanticScore = calculateSemanticRelevance(result, searchTerm);
@@ -340,7 +377,7 @@ export default function SmartSearch(): JSX.Element {
         suggestions: aiSuggestions,
       };
     },
-    []
+    [aiConfig, generateSuggestions]
   );
 
   // Calculate semantic relevance score

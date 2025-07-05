@@ -21,9 +21,21 @@ export function useAIConfig(): AIConfig {
   const { siteConfig } = useDocusaurusContext();
   const customFields = siteConfig.customFields as any;
 
+  // Get API key from custom fields (passed through webpack config)
+  let apiKey: string | undefined;
+  const provider = customFields?.aiProvider;
+  
+  // The API key would be injected during build time based on environment
+  if (provider && typeof window !== 'undefined') {
+    // Check if API key was provided through custom fields
+    apiKey = customFields?.aiApiKey;
+  }
+
   return {
     enabled: customFields?.aiEnabled || false,
     provider: customFields?.aiProvider || undefined,
+    apiKey,
+    baseUrl: provider === 'ollama' ? customFields?.ollamaBaseUrl : undefined,
   };
 }
 
