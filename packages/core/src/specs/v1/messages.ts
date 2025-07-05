@@ -32,8 +32,9 @@ export function formatActors({ actors }: { actors: Actor[] }) {
 
 /**
  * Format messages into a string
- * @param messages - list of messages
- * @param actors - list of actors
+ * @param {Object} params - The parameters object
+ * @param {Memory[]} params.messages - list of messages
+ * @param {Actor[]} params.actors - list of actors
  * @returns string
  */
 export const formatMessages = ({ messages, actors }: { messages: Memory[]; actors: Actor[] }) => {
