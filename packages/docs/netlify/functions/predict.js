@@ -89,11 +89,12 @@ Always provide helpful, accurate, and concise answers based on the ElizaOS docum
     const data = await response.json();
     const aiResponse = data.choices[0].message.content;
 
-    // Return response in the format expected by docusaurus-ai
+    // Return response in the format expected by the AI widget
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
+        result: aiResponse,
         response: aiResponse,
         context: docContext || [],
         timestamp: new Date().toISOString()

@@ -355,8 +355,13 @@ const sidebars: SidebarsConfig = {
       items: [
         {
           type: 'doc',
+          id: 'technical/development/creating-plugins',
+          label: '🚀 Creating Plugins',
+        },
+        {
+          type: 'doc',
           id: 'technical/development/plugin-development',
-          label: '🔧 Build a Plugin',
+          label: '🔧 Plugin Development',
         },
       ],
     },
