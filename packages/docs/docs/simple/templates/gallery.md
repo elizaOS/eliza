@@ -626,7 +626,7 @@ bun start --character characters/your-character.json
 "name": "YourAgentName"
 ```
 
-2. **Bio**: Core personality and purpose
+1. **Bio**: Core personality and purpose
 
 ```json
 "bio": [
@@ -636,7 +636,7 @@ bun start --character characters/your-character.json
 ]
 ```
 
-3. **Style**: Communication patterns
+1. **Style**: Communication patterns
 
 ```json
 "style": {
@@ -645,13 +645,13 @@ bun start --character characters/your-character.json
 }
 ```
 
-4. **Topics**: Areas of expertise
+1. **Topics**: Areas of expertise
 
 ```json
 "topics": ["topic1", "topic2", "topic3"]
 ```
 
-5. **Knowledge**: Specific domains
+1. **Knowledge**: Specific domains
 
 ```json
 "knowledge": [
