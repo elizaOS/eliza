@@ -25,6 +25,7 @@
     "qa:full": "npm run build && npm run serve & sleep 5 && npm run test:qa; kill %1"
   },
   "dependencies": {
+    "@ahelmy/docusaurus-ai": "^0.0.1-beta",
     "@ai-sdk/openai": "^1.0.18",
     "@ai-sdk/react": "^1.1.4",
     "@docusaurus/core": "3.8.1",

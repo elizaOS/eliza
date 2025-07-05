@@ -31,6 +31,11 @@ const config: Config = {
   },
   customFields: {
     GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
+    // AI Service Configuration
+    REACT_APP_AI_ENABLED: process.env.REACT_APP_AI_ENABLED || 'true',
+    REACT_APP_OPENAI_API_KEY: process.env.REACT_APP_OPENAI_API_KEY,
+    REACT_APP_ANTHROPIC_API_KEY: process.env.REACT_APP_ANTHROPIC_API_KEY,
+    REACT_APP_GROQ_API_KEY: process.env.REACT_APP_GROQ_API_KEY,
   },
   markdown: {
     mermaid: true,
@@ -40,7 +45,16 @@ const config: Config = {
       headingIds: false,
     },
   },
-  themes: ['@docusaurus/theme-mermaid', 'docusaurus-theme-openapi-docs'],
+  themes: [
+    '@docusaurus/theme-mermaid', 
+    'docusaurus-theme-openapi-docs',
+    [
+      '@ahelmy/docusaurus-ai',
+      {
+        chatUrl: '/api/predict',  // Will automatically use the correct domain
+      },
+    ],
+  ],
   plugins: [
     [
       '@docusaurus/plugin-content-docs',
@@ -196,27 +210,7 @@ const config: Config = {
         },
       },
     ],
-    [
-      require.resolve('docusaurus-lunr-search'),
-      {
-        // Include docs, blog, and news in search index
-        excludeRoutes: [],
-        // Index blog content
-        indexBlog: true,
-        // Index docs content
-        indexDocs: true,
-        // Index pages
-        indexPages: true,
-        // Languages to support
-        languages: ['en'],
-        // Custom fields to index
-        fields: {
-          title: { boost: 5 },
-          content: { boost: 1 },
-          tags: { boost: 3 },
-        },
-      },
-    ],
+    require.resolve('docusaurus-lunr-search'),
     [
       '@docusaurus/plugin-content-docs',
       {

@@ -709,6 +709,34 @@ summary {
   margin: 0 1rem;
 }
 
+/* Fix search input to ensure it's interactive */
+.navbar__search-input {
+  pointer-events: auto !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  cursor: text !important;
+}
+
+/* Ensure search bar is not covered by other elements */
+.navbarSearchContainer_bmvg {
+  position: relative;
+  z-index: 10;
+}
+
+/* Fix for disabled search input */
+.navbar__search-input:not([disabled]) {
+  opacity: 1 !important;
+  cursor: text !important;
+}
+
+/* Override any pointer-events: none that might be applied */
+.navbar__search,
+.navbar__search * {
+  pointer-events: auto !important;
+}
+
 /* Breadcrumb spacing */
 .theme-doc-breadcrumbs {
   margin-bottom: 1.5rem;
