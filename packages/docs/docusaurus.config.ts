@@ -1,7 +1,6 @@
 // Environment variables are handled by the deployment platform
 
 import type { Config } from '@docusaurus/types';
-import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'eliza',
@@ -52,13 +51,13 @@ const config: Config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item) => {
+            .map((item: any) => {
               if (item.type === 'category') {
                 item.label = '🤝 ' + item.label;
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -77,7 +76,7 @@ const config: Config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item) => {
+            .map((item: any) => {
               if (item.type === 'category') {
                 switch (item.label.toLowerCase()) {
                   case 'streams':
@@ -95,7 +94,7 @@ const config: Config = {
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -116,20 +115,20 @@ const config: Config = {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           // Filter out adapters and clients, only keep plugins
           return sidebarItems
-            .filter((item) => {
+            .filter((item: any) => {
               if (item.type === 'category') {
                 const label = item.label.toLowerCase();
                 return label !== 'adapters' && label !== 'clients';
               }
               return true;
             })
-            .map((item) => {
+            .map((item: any) => {
               if (item.type === 'category' && item.label.toLowerCase() === 'plugins') {
                 item.label = '🧩 ' + item.label;
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -313,13 +312,13 @@ const config: Config = {
           changefreq: 'weekly',
           ignorePatterns: ['/tags/**'],
           filename: 'sitemap.xml',
-          createSitemapItems: async (params) => {
+          createSitemapItems: async (params: any) => {
             const { defaultCreateSitemapItems, ...rest } = params;
             const items = await defaultCreateSitemapItems(rest);
 
             return items
-              .filter((item) => !item.url.includes('/page/'))
-              .map((item) => {
+              .filter((item: any) => !item.url.includes('/page/'))
+              .map((item: any) => {
                 let priority = 0.5;
 
                 if (item.url === '/') {
