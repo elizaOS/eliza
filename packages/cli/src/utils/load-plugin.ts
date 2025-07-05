@@ -1,6 +1,8 @@
 import { logger } from '@elizaos/core';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+// Glob is used only for Windows pnpm fallback strategy
+import { glob } from 'glob';
 import {
   detectPluginContext,
   ensurePluginBuilt,
@@ -37,9 +39,10 @@ function getGlobalNodeModulesPath(): string {
 
 /**
  * Helper function to resolve a path within node_modules
+ * Ensures path is normalized for cross-platform compatibility
  */
 function resolveNodeModulesPath(repository: string, ...segments: string[]): string {
-  return path.resolve(process.cwd(), 'node_modules', repository, ...segments);
+  return path.normalize(path.resolve(process.cwd(), 'node_modules', repository, ...segments));
 }
 
 /**
@@ -172,6 +175,76 @@ const importStrategies: ImportStrategy[] = [
         'common dist pattern',
         repository
       );
+    },
+  },
+  {
+    name: 'pnpm windows fallback',
+    tryImport: async (repository: string) => {
+      // Only apply this strategy on Windows
+      if (process.platform !== 'win32') return null;
+      
+      // For pnpm on Windows, the package might be in .pnpm directory with a different structure
+      // We need to try both standard package name format and the scope+name format used by pnpm
+      let pnpmPath;
+      
+      // Handle scoped packages (@namespace/package)
+      if (repository.includes('/')) {
+        const [scope, name] = repository.split('/');
+        // pnpm uses + instead of / in directory names
+        const pnpmPackageDir = `${scope.substring(1)}+${name}`;
+        pnpmPath = path.normalize(path.resolve(
+          process.cwd(),
+          'node_modules',
+          '.pnpm',
+          `${pnpmPackageDir}@*`,
+          'node_modules',
+          repository
+        ));
+      } else {
+        // For non-scoped packages
+        pnpmPath = path.normalize(path.resolve(
+          process.cwd(),
+          'node_modules',
+          '.pnpm',
+          `${repository}@*`,
+          'node_modules',
+          repository
+        ));
+      }
+      
+      // First try with the exact path
+      if (existsSync(pnpmPath)) {
+        return tryImporting(pnpmPath, 'pnpm windows fallback (exact)', repository);
+      }
+      
+      // If exact path doesn't exist, try to find a matching directory with glob pattern
+      try {
+        const basePath = path.normalize(path.resolve(process.cwd(), 'node_modules', '.pnpm'));
+        
+        if (existsSync(basePath)) {
+          let pattern;
+          if (repository.includes('/')) {
+            const [scope, name] = repository.split('/');
+            pattern = `${basePath}/${scope.substring(1)}+${name}@*`;
+          } else {
+            pattern = `${basePath}/${repository}@*`;
+          }
+          
+          // Use the synchronous version of glob
+          const matches = glob.sync(pattern);
+          
+          for (const match of matches) {
+            const fullPath = path.normalize(path.join(match, 'node_modules', repository));
+            if (existsSync(fullPath)) {
+              return tryImporting(fullPath, 'pnpm windows fallback (glob)', repository);
+            }
+          }
+        }
+      } catch (error) {
+        logger.debug(`Failed to use glob pattern for pnpm windows fallback:`, error);
+      }
+      
+      return null;
     },
   },
 ];
