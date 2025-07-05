@@ -26,7 +26,7 @@ This creates a fully functional plugin with example implementations and tests.
 
 A typical plugin follows this directory structure:
 
-```
+```text
 plugin-name/
 ├── src/
 │   ├── index.ts          # Main plugin export
