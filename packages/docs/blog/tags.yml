@@ -15,6 +15,10 @@ feature:
   label: Feature
   description: New feature announcements
 
+features:
+  label: Features
+  description: Multiple features and capabilities
+
 guide:
   label: Guide
   description: How-to guides and tutorials
