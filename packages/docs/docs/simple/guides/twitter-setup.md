@@ -254,7 +254,6 @@ Create different posting styles for various times or contexts:
 
 Once you have basic Twitter functionality working, explore these advanced features:
 
-- **[Advanced Twitter Configuration](../../customize/twitter-advanced.md)** - Personalization, automation strategies, and sophisticated posting behavior
 - **[Twitter Technical Integration](../../technical/integrations/twitter-technical.md)** - Technical implementation details, API usage, and development patterns
 
 ## Support and Resources

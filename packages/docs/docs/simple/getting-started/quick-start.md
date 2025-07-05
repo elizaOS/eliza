@@ -150,10 +150,7 @@ Now that your agent is running, explore these options:
 
 ### 🚀 Advanced Features
 
-- **[Character Builder](../../customize/character-builder.md)** - Interactive character designer
-- **[Environment Builder](../../customize/environment-builder.md)** - Advanced configuration
-- **[Twitter Advanced](../../customize/twitter-advanced.md)** - Sophisticated Twitter automation
-- **[Analytics Dashboard](../../customize/analytics.md)** - Monitor agent performance
+For more advanced configuration and monitoring options, check out our [Technical Documentation](../../technical/architecture/overview.md).
 
 ### 🛠️ For Developers
 
