@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Zod schema for create command options validation
  */
 export const initOptionsSchema = z.object({
-  dir: z.string().default('.'),
+  dir: z.string().min(1, 'Directory path cannot be empty').default('.'),
   yes: z.boolean().default(false),
   type: z.enum(['project', 'plugin', 'agent', 'tee']).default('project'),
 });

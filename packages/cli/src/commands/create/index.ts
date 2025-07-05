@@ -2,7 +2,6 @@ import { displayBanner, handleError } from '@/src/utils';
 import { Command } from 'commander';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
 import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
@@ -51,9 +50,13 @@ export const create = new Command('create')
       projectType = options.type;
       let projectName = name;
 
+      // Check if type was explicitly provided in command line arguments
+      const typeWasProvided = process.argv.some(arg => arg === '--type' || arg.startsWith('--type='));
+
       // If no name provided, prompt for type first then name
       if (!projectName) {
-        if (!isNonInteractive) {
+        // Only prompt for type if it wasn't explicitly provided
+        if (!isNonInteractive && !typeWasProvided) {
           const selectedType = await clack.select({
             message: 'What would you like to create?',
             options: [
@@ -217,8 +220,6 @@ export const create = new Command('create')
         const errorType = formatProjectType(projectType || 'project');
         clack.cancel(`Failed to create ${errorType}.`);
       }
-      logger.error('Create command failed:', error);
       handleError(error);
-      process.exit(1);
     }
   });
