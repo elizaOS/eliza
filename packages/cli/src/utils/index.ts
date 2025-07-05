@@ -1,5 +1,6 @@
 // Core utilities
 export * from './build-project';
+export * from './cleanup-on-interrupt';
 export * from './cli-bun-migration';
 export * from './cli-prompts';
 export * from './config-manager';

@@ -93,17 +93,13 @@ bun i && bun run build            # Install dependencies and build
 
 ```bash
 # Start development server
-bun run dev
+elizaos dev
 
 # Run tests
-bun test
+elizaos test
 
 # Build all packages
 bun run build
-
-# Start a specific package
-cd packages/client-web
-bun dev
 ```
 
 ## Monorepo Structure
