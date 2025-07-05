@@ -79,7 +79,7 @@ Try these steps in order:
 
 1. **Check your API key** - Make sure it's in the `.env` file
 2. **Check for typos** - No extra spaces or quotes around the key
-3. **Restart** - Stop (Ctrl+C) and run `npm start` again
+3. **Restart** - Stop (Ctrl+C) and run `bun start` again
 4. **Check credits** - Make sure your API account has credits
 5. **Try Local AI** - Remove API keys to use free local mode
 
@@ -169,7 +169,7 @@ Popular plugins:
 Simple command:
 
 ```bash
-npm install @elizaos/plugin-name
+bun add @elizaos/plugin-name
 ```
 
 Then add to your agent configuration!
@@ -311,7 +311,7 @@ New to ElizaOS? Follow this order:
 # Stop your agent (Ctrl+C)
 # Delete and re-download
 rm -rf your-agent-folder
-npx create-eliza-app your-agent-name
+bunx create-eliza-app your-agent-name
 cd your-agent-name
 # Follow setup again carefully
 ```

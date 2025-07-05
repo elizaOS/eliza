@@ -152,7 +152,7 @@ First, make sure your plugin is built and ready for distribution:
 cd my-eliza-plugin
 
 # Build your plugin
-npm run build
+bun run build
 ```
 
 <Tabs>
@@ -186,7 +186,7 @@ npm run build
     This allows users to install your plugin using standard npm commands:
 
     ```bash
-    npm install @your-scope/plugin-name
+    bun add @your-scope/plugin-name
     ```
 
     npm publishing is useful when you want to:
@@ -641,7 +641,7 @@ Create a plugin when you need custom functionality not available in existing plu
 
 ### How do I manage plugin dependencies?
 
-Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using npm or the ElizaOS CLI, and they will be automatically loaded when your project starts.
+Plugin dependencies are managed through your project's `package.json`. You can add plugins directly using bun or the ElizaOS CLI, and they will be automatically loaded when your project starts.
 
 ### Can I use a plugin in development before publishing?
 

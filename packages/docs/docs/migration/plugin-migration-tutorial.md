@@ -1089,7 +1089,7 @@ TypeScript is your friend in this migration. The new type system is more sophist
 
 ### Use the Autoupgrader
 
-You can auto-upgrade your plugin with the CLI! Just run `elizaos plugin upgrade <path>` (you will need the CLI installed, or append `npx` to the front of the command like `npx elizaos ...`)
+You can auto-upgrade your plugin with the CLI! Just run `elizaos plugin upgrade <path>` (you will need the CLI installed, or append `bunx` to the front of the command like `bunx elizaos ...`)
 
 This is experimental and not guaranteed, especially with complex plugins, but it may get you most of the way there. We suggest reading through and understanding the migration fundamentals in detail while the auto upgrader is running so you can help it get to completion.
 

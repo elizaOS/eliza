@@ -132,23 +132,18 @@ const config = {
         includeCurrentVersion: true,
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
-          // Add icons to categories
+          // Filter out adapters and clients, only keep plugins
           return sidebarItems
-            .map((item) => {
+            .filter((item) => {
               if (item.type === 'category') {
-                switch (item.label.toLowerCase()) {
-                  case 'adapters':
-                    item.label = '🔌 ' + item.label;
-                    break;
-                  case 'clients':
-                    item.label = '🔗 ' + item.label;
-                    break;
-                  case 'plugins':
-                    item.label = '🧩 ' + item.label;
-                    break;
-                  default:
-                    item.label = '📦 ' + item.label;
-                }
+                const label = item.label.toLowerCase();
+                return label !== 'adapters' && label !== 'clients';
+              }
+              return true;
+            })
+            .map((item) => {
+              if (item.type === 'category' && item.label.toLowerCase() === 'plugins') {
+                item.label = '🧩 ' + item.label;
               }
               return item;
             })
@@ -447,24 +442,9 @@ const config = {
           docId: 'index',
         },
         {
-          type: 'dropdown',
-          label: 'Packages',
-          position: 'left',
           to: '/packages',
-          items: [
-            {
-              label: 'Adapters',
-              to: '/packages?tags=adapter',
-            },
-            {
-              label: 'Clients',
-              to: '/packages?tags=client',
-            },
-            {
-              label: 'Plugins',
-              to: '/packages?tags=plugin',
-            },
-          ],
+          label: 'Plugins',
+          position: 'left',
         },
         {
           type: 'dropdown',

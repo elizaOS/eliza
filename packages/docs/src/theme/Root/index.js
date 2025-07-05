@@ -75,12 +75,6 @@ export default function Root({ children }) {
         // Map old paths to new paths - removed /docs/intro mapping
         '/docs/getting-started': '/docs/simple/getting-started/quick-start',
         '/docs/guides/character-creation': '/docs/simple/guides/character-creation',
-        '/docs/design-system': '/docs/design-system/index',
-        '/docs/design-system/components': '/docs/design-system/components',
-        '/docs/design-system/animations': '/docs/design-system/animations',
-        '/docs/design-system/performance': '/docs/design-system/performance',
-        '/docs/design-system/accessibility': '/docs/design-system/accessibility',
-        '/docs/design-system/implementation': '/docs/design-system/implementation',
         // Add more mappings as needed
       };
 

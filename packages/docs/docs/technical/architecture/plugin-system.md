@@ -872,7 +872,7 @@ describe('MyPlugin', () => {
   "scripts": {
     "build": "tsc",
     "test": "bun test",
-    "prepublish": "npm run build && npm run test"
+    "prepublish": "bun run build && bun run test"
   },
   "peerDependencies": {
     "@elizaos/core": "^1.0.0"

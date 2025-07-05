@@ -81,7 +81,6 @@ Open `agent/eliza.character.json` to customize your agent's personality:
 {
   "name": "Eliza",
   "description": "A helpful AI assistant",
-  "modelProvider": "openai",
   "settings": {
     "voice": "alloy",
     "model": "gpt-4o-mini"

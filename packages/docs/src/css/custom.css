@@ -426,3 +426,14 @@ button[aria-label="Open AI Assistant"]:hover {
 .navbar__inner {
   align-items: center;
 }
+
+/* Track page padding */
+article[class*="intro"] {
+  padding: 2rem 3rem;
+}
+
+@media (max-width: 768px) {
+  article[class*="intro"] {
+    padding: 1.5rem 1rem;
+  }
+}

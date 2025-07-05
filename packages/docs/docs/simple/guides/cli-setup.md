@@ -353,7 +353,6 @@ Create a dedicated config file `config/cli.json`:
 ```json
 {
   "character": "./characters/cli-agent.json",
-  "modelProvider": "openai",
   "logLevel": "info",
   "features": {
     "autoSave": true,

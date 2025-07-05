@@ -191,43 +191,6 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
     },
     {
-      type: 'category',
-      label: '🎨 Design System',
-      collapsed: true,
-      items: [
-        {
-          type: 'doc',
-          id: 'design-system/index',
-          label: '🎭 Overview',
-        },
-        {
-          type: 'doc',
-          id: 'design-system/components',
-          label: '🧩 Components',
-        },
-        {
-          type: 'doc',
-          id: 'design-system/animations',
-          label: '🎞️ Animations',
-        },
-        {
-          type: 'doc',
-          id: 'design-system/performance',
-          label: '⚡ Performance',
-        },
-        {
-          type: 'doc',
-          id: 'design-system/accessibility',
-          label: '♿ Accessibility',
-        },
-        {
-          type: 'doc',
-          id: 'design-system/implementation',
-          label: '🚀 Implementation',
-        },
-      ],
-    },
-    {
       type: 'doc',
       id: 'awesome-eliza',
       label: 'Awesome elizaOS',

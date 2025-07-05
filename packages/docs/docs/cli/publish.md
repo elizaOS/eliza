@@ -127,7 +127,7 @@ A typical plugin development and publishing lifecycle looks like this:
 3.  **Publish Plugin**
     ```bash
     # Login to npm
-    bunx npm login
+    bun x npm login
     # Publish to GitHub + registry (recommended)
     elizaos publish
     ```
@@ -150,7 +150,7 @@ Publishing requires authentication for both npm and GitHub.
 
 ### npm Authentication
 
-You must be logged into npm. Run `bunx npm login` if you are not.
+You must be logged into npm. Run `bun x npm login` if you are not.
 
 ### GitHub Authentication
 
@@ -194,8 +194,8 @@ For details on getting your plugin into the official registry, review the [Eliza
 
 ```bash
 # npm login problems
-bunx npm logout
-bunx npm login
+bun x npm logout
+bun x npm login
 
 # GitHub token issues
 # Set environment variable:
