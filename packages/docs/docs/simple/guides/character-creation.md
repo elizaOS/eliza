@@ -208,7 +208,7 @@ Make your agent unique:
 
 Save your character file as:
 
-```
+```text
 my-agent/
 ├── agent/
 │   └── character.json  ← Your character file
@@ -225,14 +225,14 @@ my-agent/
 
 ## 💡 Pro Tips
 
-### DO:
+### DO
 
 - ✅ Give specific examples of speech patterns
 - ✅ Include 5-10 message examples
 - ✅ Be consistent with personality
 - ✅ Add unique catchphrases or quirks
 
-### DON'T:
+### DON'T
 
 - ❌ Make the bio too long (keep it under 5 sentences)
 - ❌ Use conflicting traits (e.g., "shy" and "outgoing")

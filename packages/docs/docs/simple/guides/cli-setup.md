@@ -34,7 +34,7 @@ bun run build
 
 Ensure you have the correct ElizaOS structure:
 
-```
+```text
 eliza/
 ├── packages/
 │   ├── core/
@@ -62,7 +62,7 @@ Edit your `.env` file with these minimal settings:
 
 ```bash
 # Model Provider (choose one)
-OPENAI_API_KEY=sk-your-openai-key-here
+OPENAI_API_KEY=your-openai-key-here
 # OR
 ANTHROPIC_API_KEY=your-anthropic-key-here
 # OR
@@ -81,7 +81,7 @@ ELIZA_UI_ENABLE=false              # Disable web UI for CLI-only usage
 
 1. Go to [OpenAI Platform](https://platform.openai.com/api-keys)
 2. Create new API key
-3. Add to `.env`: `OPENAI_API_KEY=sk-...`
+3. Add to `.env`: `OPENAI_API_KEY=your-key...`
 
 #### Anthropic Setup
 
@@ -276,7 +276,7 @@ bun start
 
 You should see output like:
 
-```
+```text
 🚀 ElizaOS CLI Agent Starting...
 📝 Loading character: CLIAssistant
 🤖 Model provider: OpenAI (gpt-4o)
@@ -292,7 +292,7 @@ CLIAssistant: Hello! I'm your CLI assistant. How can I help you today?
 
 Once started, you can type messages directly:
 
-```
+```text
 You: Hello, can you help me with git commands?
 
 CLIAssistant: Hello! Absolutely, I'd be happy to help with git commands. Here are some common ones:

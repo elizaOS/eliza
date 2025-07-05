@@ -64,7 +64,7 @@ Your agent can:
 1. Go to [platform.openai.com](https://platform.openai.com)
 2. Sign up or log in
 3. Click "API Keys" → "Create new secret key"
-4. Copy the key (starts with `sk-`)
+4. Copy the key (starts with `sk-` prefix)
 
 **For Claude (Anthropic):**
 

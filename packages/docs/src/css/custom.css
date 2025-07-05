@@ -416,10 +416,10 @@ button[aria-label="Open AI Assistant"]:hover {
   filter: invert(1) hue-rotate(180deg);
 }
 
-/* Simple fix - version badge/pill text should be white on dark theme */
+/* Version badge/pill text should be black on dark theme for better readability */
 [data-theme='dark'] .badge,
 [data-theme='dark'] .badge--secondary {
-  color: #ffffff !important;
+  color: #000000 !important;
 }
 
 /* Navbar alignment fixes */

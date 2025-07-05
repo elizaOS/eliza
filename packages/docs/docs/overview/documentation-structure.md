@@ -20,7 +20,7 @@ ElizaOS documentation is organized into two distinct tracks:
 
 ### Simple Track Structure
 
-```
+```text
 docs/simple/
 ├── getting-started/
 │   ├── quick-start.md          # 5-minute setup guide
@@ -39,7 +39,7 @@ docs/simple/
 
 ### Technical Track Structure
 
-```
+```text
 docs/technical/
 ├── architecture/
 │   ├── overview.md             # System architecture

@@ -116,10 +116,6 @@ video:
   label: Video
   description: Video content
 
-features:
-  label: Features
-  description: Feature announcements
-
 upgrade:
   label: Upgrade
   description: Upgrade guides

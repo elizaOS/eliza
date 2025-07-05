@@ -21,7 +21,7 @@ Edit the `.env` file and add your preferred AI provider's API key:
 # Choose one AI provider:
 
 # Option 1: OpenAI (Recommended)
-OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_API_KEY=your-openai-api-key-here
 
 # Option 2: Anthropic Claude
 ANTHROPIC_API_KEY=your-anthropic-api-key-here
@@ -191,10 +191,10 @@ The documentation will be available at `http://localhost:3002` with AI features 
 
 ```bash
 # Good: Secure environment variable
-OPENAI_API_KEY=sk-proj-...
+OPENAI_API_KEY=your-project-key
 
 # Bad: Hardcoded in code
-const apiKey = "sk-proj-..."  // Never do this!
+const apiKey = "your-key-here"  // Never do this!
 ```
 
 ## 📊 Monitoring Usage

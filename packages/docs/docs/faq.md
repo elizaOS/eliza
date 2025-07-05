@@ -79,7 +79,7 @@ If you see an error related to a "Missing API Key" or "401 Unauthorized" when yo
     Your file should contain a line like this:
 
     ```
-    OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    OPENAI_API_KEY=your-openai-api-key-here
     ```
 
 3.  **Restart the Agent**: After saving your changes, restart the agent for the new environment variables to take effect.

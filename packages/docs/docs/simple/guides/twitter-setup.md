@@ -32,9 +32,11 @@ Create or update your `.env` file with the following Twitter-specific variables:
 # Twitter/X Configuration
 TWITTER_DRY_RUN=false               # Set to true for testing without posting
 TWITTER_USERNAME=your_username      # Your Twitter username (without @)
-TWITTER_PASSWORD=your_password      # Your Twitter account password
+TWITTER_PASSWORD=your_password      # Your Twitter account password (⚠️ Store securely)
 TWITTER_EMAIL=your_email@domain.com # Your Twitter account email
 ```
+
+> ⚠️ **Security Note**: Store credentials securely in environment variables only. Never commit `.env` files with real passwords to version control. Consider using OAuth tokens instead of passwords when possible.
 
 ### Two-Factor Authentication (Recommended)
 
@@ -56,7 +58,7 @@ To get your 2FA secret:
 # Interaction Configuration
 TWITTER_POLL_INTERVAL=120           # Check for mentions/replies every 120 seconds
 TWITTER_TARGET_USERS=user1,user2    # Specific users to interact with (optional)
-TWITTER_SEARCH_ENABLE=FALSE         # WARNING: Increases ban risk, keep FALSE
+TWITTER_SEARCH_ENABLE=false         # WARNING: Increases ban risk, keep false
 TWITTER_SPACES_ENABLE=false         # Enable Twitter Spaces features
 TWITTER_RETRY_LIMIT=3               # Maximum login retry attempts
 ```

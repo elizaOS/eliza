@@ -579,7 +579,7 @@ Create a `.env` file with the required variables for your chosen platforms:
 
 ```bash
 # Model Provider (required - choose one)
-OPENAI_API_KEY=sk-your-openai-key
+OPENAI_API_KEY=your-openai-key-here
 # OR
 ANTHROPIC_API_KEY=your-anthropic-key
 
