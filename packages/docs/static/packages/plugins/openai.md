@@ -12,7 +12,7 @@ A plugin for OpenAI integration, providing automated text generation capabilitie
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-openai
+bun install @elizaos/plugin-openai
 ```
 
 ## Configuration

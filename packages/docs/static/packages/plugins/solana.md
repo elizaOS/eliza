@@ -15,7 +15,7 @@ Core Solana blockchain plugin for Eliza OS that provides essential services and 
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-solana
+bun install @elizaos/plugin-solana
 ```
 
 ## Configuration

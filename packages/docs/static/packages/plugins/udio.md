@@ -13,7 +13,7 @@ A Udio AI music generation plugin for ElizaOS that enables AI-powered music crea
 ## Installation
 
 ```
-npm install @elizaos/plugin-udio
+bun install @elizaos/plugin-udio
 ```
 
 ## Configuration

@@ -14,7 +14,7 @@ Foundation plugin that enables advanced agent interactions, data verification, a
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-attps
+bun install @elizaos/plugin-attps
 ```
 
 ## Configuration
