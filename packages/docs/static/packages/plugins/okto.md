@@ -16,7 +16,7 @@ A comprehensive integration plugin for ElizaOS that provides access to Okto's AP
 ## Installation
 
 ```bash
-npm install @okto_web3/eliza-plugin
+bun install @okto_web3/eliza-plugin
 ```
 
 ## Configuration

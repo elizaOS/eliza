@@ -10,12 +10,12 @@
 
 .newsSectionWrapper {
   background: var(--ifm-background-surface-color);
-  padding: 2rem 0 5rem;
+  padding: 4rem 0 0;
   position: relative;
 }
 
 [data-theme='dark'] .newsSectionWrapper {
-  background: linear-gradient(to bottom, rgba(30, 41, 59, 0.5) 0%, rgba(17, 24, 39, 0.7) 100%);
+  background: transparent;
 }
 
 /* Add a subtle wave divider between sections */

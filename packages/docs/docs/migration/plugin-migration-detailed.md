@@ -1430,10 +1430,10 @@ describe('OpenAI Plugin', () => {
 1. **Update Dependencies**
 
    ```bash
-   npm uninstall @elizaos/core@0.x
-   npm install @elizaos/core@1.x
-   npm install -D vitest prettier eslint
-   npm uninstall @biomejs/biome jest
+   bun remove @elizaos/core@0.x
+   bun add @elizaos/core@1.x
+   bun add -d vitest prettier eslint
+   bun remove @biomejs/biome jest
    ```
 
 2. **Update Imports**

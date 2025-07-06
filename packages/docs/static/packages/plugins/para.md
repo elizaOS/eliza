@@ -21,7 +21,7 @@ A seamless integration between Para wallet infrastructure and Eliza OS, enabling
 
 ```bash
 # npm
-npm install @elizaos/plugin-para
+bun install @elizaos/plugin-para
 
 # bun
 bun add @elizaos/plugin-para

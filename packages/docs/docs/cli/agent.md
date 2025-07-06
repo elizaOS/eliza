@@ -242,7 +242,6 @@ When using `--path` or `--remote-character`, the character file should follow th
   "system": "You are a friendly and knowledgeable AI assistant named Eliza.",
   "bio": ["Helpful and engaging conversationalist", "Knowledgeable about a wide range of topics"],
   "plugins": ["@elizaos/plugin-openai", "@elizaos/plugin-discord"],
-  "modelProvider": "openai",
   "settings": {
     "voice": {
       "model": "en_US-female-medium"

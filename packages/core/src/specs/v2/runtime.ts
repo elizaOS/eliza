@@ -55,7 +55,7 @@ export class Semaphore {
 /**
  * Represents the runtime environment for an agent.
  * @class
- * @implements { IAgentRuntime }
+ * @implements {IAgentRuntime}
  * @property { number } #conversationLength - The maximum length of a conversation.
  * @property { UUID } agentId - The unique identifier for the agent.
  * @property { Character } character - The character associated with the agent.

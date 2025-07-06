@@ -12,7 +12,7 @@ Core Viction blockchain plugin for Eliza OS that provides essential services and
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-viction
+bun install @elizaos/plugin-viction
 ```
 
 ## Configuration

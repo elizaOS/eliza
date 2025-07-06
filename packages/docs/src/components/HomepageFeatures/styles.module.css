@@ -1,18 +1,18 @@
 /* src/components/HomepageFeatures/styles.module.css */
 .features {
-  padding: var(--ifm-spacing-vertical) 0;
+  padding: 4rem 0;
   width: 100%;
 }
 
 .container {
   max-width: var(--ifm-container-width);
   margin: 0 auto;
-  padding: 0 var(--ifm-spacing-horizontal);
+  padding: 0 2rem;
 }
 
 .sectionHeader {
   text-align: center;
-  margin-bottom: var(--ifm-spacing-vertical);
+  margin-bottom: 3rem;
 }
 
 .sectionTitle {

@@ -17,7 +17,7 @@ Browser automation plugin for Eliza OS that provides web scraping and browser au
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-browser
+bun install @elizaos/plugin-browser
 ```
 
 ## Configuration

@@ -157,7 +157,7 @@ Verify that the README.md file includes:
 
 Before committing and publishing:
 
-1. [ ] Run `npm run build` or `bun run build` to ensure the project builds successfully
+1. [ ] Run `bun run build` to ensure the project builds successfully
 2. [ ] Run tests to verify functionality
 3. [ ] Ensure all environment variables are documented
 4. [ ] Remove any sensitive information or API keys

@@ -14,7 +14,7 @@ Core Sui blockchain plugin for Eliza OS that provides essential services and act
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-sui
+bun install @elizaos/plugin-sui
 ```
 
 ## Configuration

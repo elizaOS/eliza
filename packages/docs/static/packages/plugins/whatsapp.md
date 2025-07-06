@@ -15,7 +15,7 @@ A plugin for integrating WhatsApp Cloud API with your application, providing com
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-whatsapp
+bun install @elizaos/plugin-whatsapp
 ```
 
 ## Configuration

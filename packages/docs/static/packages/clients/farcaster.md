@@ -16,7 +16,7 @@ A plugin for ElizaOS that enables agent integration with the Farcaster social ne
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-farcaster
+bun install @elizaos-plugins/client-farcaster
 ```
 
 ## Configuration

@@ -1,0 +1,588 @@
+/* QA Test Runner Component Styles */
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: var(--ifm-background-color);
+  min-height: 100vh;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+  padding: 2rem;
+  background: var(--ifm-background-surface-color);
+  border-radius: 16px;
+  border: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.header h1 {
+  margin: 0 0 0.5rem 0;
+  color: var(--ifm-color-primary);
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.header p {
+  margin: 0 0 2rem 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 1.1rem;
+}
+
+.overallScore {
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+}
+
+.scoreCircle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  border: 4px solid;
+  border-radius: 50%;
+  background: var(--ifm-background-color);
+  position: relative;
+}
+
+.scoreNumber {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ifm-font-color-base);
+}
+
+.scoreLabel {
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-600);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.runButton,
+.downloadButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.runButton {
+  background: var(--ifm-color-primary);
+  color: white;
+}
+
+.runButton:hover:not(:disabled) {
+  background: var(--ifm-color-primary-dark);
+  transform: translateY(-1px);
+}
+
+.runButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.downloadButton {
+  background: var(--ifm-color-success);
+  color: white;
+}
+
+.downloadButton:hover {
+  background: var(--ifm-color-success-dark);
+  transform: translateY(-1px);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progressContainer {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 12px;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--ifm-color-emphasis-200);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--ifm-color-primary);
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  text-align: center;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.5rem;
+}
+
+.currentTest {
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* Test Suites */
+.testSuites {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.testSuite {
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.suiteHeader {
+  padding: 2rem;
+  background: var(--ifm-color-emphasis-100);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.suiteTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.suiteTitle h2 {
+  margin: 0;
+  flex: 1;
+  color: var(--ifm-font-color-base);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.suiteScore {
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 0.5rem 1rem;
+  background: var(--ifm-background-color);
+  border-radius: 8px;
+}
+
+.suiteDescription {
+  margin: 0 0 1rem 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 1rem;
+}
+
+.suiteStats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.statPassed,
+.statWarning,
+.statFailed {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.statPassed {
+  color: var(--ifm-color-success);
+}
+
+.statWarning {
+  color: var(--ifm-color-warning);
+}
+
+.statFailed {
+  color: var(--ifm-color-danger);
+}
+
+/* Test List */
+.testList {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.testItem {
+  padding: 1rem;
+  background: var(--ifm-background-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.testItem.running {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--ifm-color-primary-rgb), 0.1);
+}
+
+.testItem.passed {
+  border-left: 4px solid var(--ifm-color-success);
+}
+
+.testItem.failed {
+  border-left: 4px solid var(--ifm-color-danger);
+}
+
+.testItem.warning {
+  border-left: 4px solid var(--ifm-color-warning);
+}
+
+.testInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.testHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.testName {
+  flex: 1;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+}
+
+.testScore {
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 4px;
+}
+
+.testDetails {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.testDuration {
+  color: var(--ifm-color-emphasis-500);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+/* Status Icons */
+.statusPassed {
+  color: var(--ifm-color-success);
+}
+
+.statusFailed {
+  color: var(--ifm-color-danger);
+}
+
+.statusWarning {
+  color: var(--ifm-color-warning);
+}
+
+.statusRunning {
+  color: var(--ifm-color-primary);
+  animation: spin 1s linear infinite;
+}
+
+.statusPending {
+  color: var(--ifm-color-emphasis-400);
+}
+
+/* Test Recommendations */
+.testRecommendations {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.toggleDetails {
+  background: var(--ifm-color-emphasis-100);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+}
+
+.toggleDetails:hover {
+  background: var(--ifm-color-emphasis-200);
+}
+
+.recommendationsList {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 6px;
+}
+
+.recommendation {
+  margin-bottom: 0.5rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.recommendation:last-child {
+  margin-bottom: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .header {
+    padding: 1.5rem;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .header p {
+    font-size: 1rem;
+  }
+
+  .scoreCircle {
+    width: 100px;
+    height: 100px;
+  }
+
+  .scoreNumber {
+    font-size: 1.75rem;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .runButton,
+  .downloadButton {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+
+  .suiteHeader {
+    padding: 1.5rem;
+  }
+
+  .suiteTitle {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .suiteTitle h2 {
+    font-size: 1.25rem;
+  }
+
+  .testHeader {
+    flex-wrap: wrap;
+  }
+
+  .testName {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .suiteStats {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .testItem {
+    padding: 0.75rem;
+  }
+
+  .testHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+/* Dark Mode Enhancements */
+[data-theme='dark'] .container {
+  background: var(--ifm-background-color);
+}
+
+[data-theme='dark'] .header {
+  background: var(--ifm-background-surface-color);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .testSuite {
+  background: var(--ifm-background-surface-color);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .suiteHeader {
+  background: var(--ifm-color-emphasis-200);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .testItem {
+  background: var(--ifm-background-color);
+  border-color: var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .progressContainer {
+  background: var(--ifm-color-emphasis-200);
+}
+
+[data-theme='dark'] .recommendationsList {
+  background: var(--ifm-color-emphasis-200);
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .testItem {
+    border-width: 2px;
+  }
+
+  .scoreCircle {
+    border-width: 3px;
+  }
+
+  .runButton,
+  .downloadButton {
+    border: 2px solid transparent;
+  }
+
+  .runButton {
+    border-color: var(--ifm-color-primary-contrast-background);
+  }
+
+  .downloadButton {
+    border-color: var(--ifm-color-success-contrast-background);
+  }
+}
+
+/* Accessibility */
+.runButton:focus,
+.downloadButton:focus,
+.toggleDetails:focus {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+/* Animation for test items */
+.testItem {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Success animations */
+.testItem.passed {
+  animation: successPulse 0.5s ease-out;
+}
+
+@keyframes successPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--ifm-color-success-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--ifm-color-success-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--ifm-color-success-rgb), 0);
+  }
+}
+
+/* Error animations */
+.testItem.failed {
+  animation: errorShake 0.5s ease-out;
+}
+
+@keyframes errorShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-2px);
+  }
+  40%,
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+/* Progress bar animation */
+.progressFill {
+  background: linear-gradient(
+    90deg,
+    var(--ifm-color-primary),
+    var(--ifm-color-primary-light),
+    var(--ifm-color-primary)
+  );
+  background-size: 200% 100%;
+  animation: progressShimmer 2s linear infinite;
+}
+
+@keyframes progressShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}

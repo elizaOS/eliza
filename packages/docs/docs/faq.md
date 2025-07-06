@@ -79,7 +79,7 @@ If you see an error related to a "Missing API Key" or "401 Unauthorized" when yo
     Your file should contain a line like this:
 
     ```
-    OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    OPENAI_API_KEY=your-openai-api-key-here
     ```
 
 3.  **Restart the Agent**: After saving your changes, restart the agent for the new environment variables to take effect.
@@ -454,6 +454,7 @@ The bootstrap plugin provides critical event handlers that enable your agent to:
 - **Handle platform events** - World joins, entity management, and lifecycle events
 
 **When you can skip it:**
+
 - You're building a completely custom event handling system
 - You're creating specialized agents that don't need standard communication
 - You're implementing your own message processing pipeline from scratch

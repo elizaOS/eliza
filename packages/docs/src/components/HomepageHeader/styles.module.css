@@ -1,6 +1,6 @@
 /* src/components/HomepageHeader/styles.module.css */
 .heroBanner {
-  padding: 5rem 0 0;
+  padding: 6rem 0 2rem;
   position: relative;
   overflow: visible;
 }
@@ -8,9 +8,9 @@
 .heroSection {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2rem;
+  gap: 3rem;
   position: relative;
-  padding-bottom: 2rem;
+  padding-bottom: 3rem;
 }
 
 .heroLeft {

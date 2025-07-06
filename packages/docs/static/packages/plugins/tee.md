@@ -15,7 +15,7 @@ A plugin for handling Trusted Execution Environment (TEE) operations, providing 
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-tee
+bun install @elizaos/plugin-tee
 ```
 
 ## Configuration

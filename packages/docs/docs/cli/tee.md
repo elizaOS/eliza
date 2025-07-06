@@ -35,7 +35,7 @@ The `phala` subcommand provides a wrapper for the official Phala Cloud CLI, allo
 elizaos tee phala [phala-cli-commands]
 ```
 
-The Phala CLI will be automatically downloaded via npx if not already installed.
+The Phala CLI will be automatically downloaded via bunx if not already installed.
 
 ## Usage Examples
 
@@ -99,7 +99,7 @@ For deploying ElizaOS agents to TEE environments:
 
 ### Prerequisites
 
-- Node.js and npm/npx installed (required for automatic Phala CLI installation)
+- Bun installed (required for automatic Phala CLI installation)
 - Phala Cloud account and API key (for deployment operations)
 - Docker compose file for CVM deployments
 
@@ -135,17 +135,17 @@ elizaos tee phala help
 Or visit the official Phala CLI documentation:
 
 ```bash
-npx phala help
+bunx phala help
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **npx not found**: Install Node.js and npm from [nodejs.org](https://nodejs.org) or use a version manager like nvm:
+1. **bunx not found**: Install Bun from [bun.sh](https://bun.sh):
 
    ```bash
-   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+   curl -fsSL https://bun.sh/install | bash
    ```
 
 2. **Authentication failures**: Ensure your API key is valid and you're logged in:
@@ -177,7 +177,7 @@ TEE deployments enable:
 ## Related Documentation
 
 - [Creating TEE Projects](./create.md#tee-projects)
-- [TEE Plugin Documentation](../packages/plugins/tee.md)
+- [TEE Plugin Documentation](/packages/plugins/tee)
 - [Phala Cloud Documentation](https://docs.phala.network/)
 
 ## Security Considerations

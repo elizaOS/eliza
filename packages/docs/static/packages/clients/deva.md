@@ -15,7 +15,7 @@ A client plugin for ElizaOS that enables AI characters to seamlessly post conten
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-deva
+bun install @elizaos-plugins/client-deva
 ```
 
 ## Configuration

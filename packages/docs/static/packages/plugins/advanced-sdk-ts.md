@@ -7,7 +7,7 @@ A TypeScript SDK that allows developers to easily integrate with the Coinbase Ad
 ## Installation
 
 ```bash
-npm install
+bun install
 ```
 
 ## Build and Use

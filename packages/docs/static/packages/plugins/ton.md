@@ -21,7 +21,7 @@ A plugin for handling TON (Telegram Open Network) blockchain operations, providi
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-ton
+bun install @elizaos/plugin-ton
 ```
 
 ## Configuration

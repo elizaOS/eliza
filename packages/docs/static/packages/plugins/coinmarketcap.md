@@ -15,7 +15,7 @@ A plugin for Eliza that enables cryptocurrency price checking using the CoinMark
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-coinmarketcap
+bun install @elizaos/plugin-coinmarketcap
 ```
 
 ## Configuration

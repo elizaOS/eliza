@@ -15,7 +15,7 @@ A plugin for AI-powered video generation using Luma AI, providing automated vide
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-video-generation
+bun install @elizaos/plugin-video-generation
 ```
 
 ## Configuration

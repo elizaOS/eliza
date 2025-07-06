@@ -19,7 +19,7 @@ A comprehensive plugin for interacting with the Injective chain through ElizaOS.
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-injective
+bun install @elizaos/plugin-injective
 ```
 
 ## Integration

@@ -12,7 +12,7 @@ A plugin for Eliza that allows users to fetch portfolio data using the Zapper AP
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-zapper
+bun install @elizaos/plugin-zapper
 ```
 
 ## Configuration

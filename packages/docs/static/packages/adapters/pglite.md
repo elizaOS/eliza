@@ -17,7 +17,7 @@ A lightweight PostgreSQL-compatible database adapter for ElizaOS, providing vect
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-pglite
+bun install @elizaos-plugins/adapter-pglite
 ```
 
 ## Configuration

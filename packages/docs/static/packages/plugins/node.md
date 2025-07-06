@@ -18,7 +18,7 @@ Core Node.js plugin for Eliza OS that provides essential services and actions fo
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-node
+bun install @elizaos/plugin-node
 ```
 
 ## Configuration

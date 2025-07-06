@@ -14,7 +14,7 @@ An Obsidian plugin for ELIZA OS that provides seamless integration with Obsidian
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-obsidian
+bun install @elizaos/plugin-obsidian
 # or
 yarn add @elizaos/plugin-obsidian
 # or

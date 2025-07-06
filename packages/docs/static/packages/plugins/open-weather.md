@@ -12,7 +12,7 @@ A plugin for Eliza that enables weather checking using the OpenWeather API.
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-open-weather
+bun install @elizaos/plugin-open-weather
 ```
 
 ## Configuration

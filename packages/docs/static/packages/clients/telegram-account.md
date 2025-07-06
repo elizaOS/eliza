@@ -23,7 +23,7 @@ The Telegram Account Plugin allows ElizaOS agents to connect and operate through
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/client-telegram-account
+bun install @elizaos-plugins/client-telegram-account
 ```
 
 ## Configuration

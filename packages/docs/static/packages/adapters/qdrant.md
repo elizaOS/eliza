@@ -17,7 +17,7 @@ A vector database adapter for ElizaOS that provides efficient similarity search 
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-qdrant
+bun install @elizaos-plugins/adapter-qdrant
 ```
 
 ## Configuration

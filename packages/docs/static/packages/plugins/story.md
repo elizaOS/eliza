@@ -17,7 +17,7 @@ A plugin for ElizaOS that enables interaction with Story Protocol - a comprehens
 Install via npm:
 
 ```bash
-npm install @elizaos-plugins/plugin-story
+bun install @elizaos-plugins/plugin-story
 ```
 
 Or using bun:
