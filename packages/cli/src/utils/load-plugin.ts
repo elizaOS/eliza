@@ -29,13 +29,19 @@ function getGlobalNodeModulesPath(): string {
   if (process.platform === 'win32') {
     if (isBun) {
       // For Bun on Windows, check common installation paths
-      const bunPaths = [
-        path.join(execDir, 'node_modules'),
-        path.join(process.env.APPDATA || '', 'bun', 'node_modules'),
-        path.join(process.env.LOCALAPPDATA || '', 'bun', 'node_modules'),
-        path.join(process.env.USERPROFILE || '', '.bun', 'node_modules'),
-      ];
-      
+      const bunPaths = [path.join(execDir, 'node_modules')];
+
+      // Only add paths that have valid environment variables
+      if (process.env.APPDATA) {
+        bunPaths.push(path.join(process.env.APPDATA, 'bun', 'node_modules'));
+      }
+      if (process.env.LOCALAPPDATA) {
+        bunPaths.push(path.join(process.env.LOCALAPPDATA, 'bun', 'node_modules'));
+      }
+      if (process.env.USERPROFILE) {
+        bunPaths.push(path.join(process.env.USERPROFILE, '.bun', 'node_modules'));
+      }
+
       // Return the first path that exists
       for (const potentialPath of bunPaths) {
         if (existsSync(potentialPath)) {
@@ -43,27 +49,30 @@ function getGlobalNodeModulesPath(): string {
         }
       }
     }
-    
+
     // Default for Windows
     return path.join(execDir, 'node_modules');
   } else {
     // On Unix systems
     if (isBun) {
       // Check common locations for Bun on Unix
-      const homeDir = process.env.HOME || '';
       const bunUnixPaths = [
-        path.join(homeDir, '.bun', 'node_modules'),
         path.join(execDir, 'node_modules'),
         path.join(execDir, '..', 'lib', 'node_modules'),
       ];
-      
+
+      // Only add home directory path if HOME is defined
+      if (process.env.HOME) {
+        bunUnixPaths.unshift(path.join(process.env.HOME, '.bun', 'node_modules'));
+      }
+
       for (const potentialPath of bunUnixPaths) {
         if (existsSync(potentialPath)) {
           return potentialPath;
         }
       }
     }
-    
+
     // Default for Unix
     return path.join(execDir, '..', 'lib', 'node_modules');
   }
@@ -92,6 +101,23 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
 }
 
 /**
+ * Normalizes import paths for cross-platform compatibility.
+ * On Windows with Bun, converts backslashes to forward slashes for dynamic imports.
+ */
+function normalizeImportPath(importPath: string): string {
+  // First normalize the path using Node's built-in function
+  const normalized = path.normalize(importPath);
+
+  // On Windows with Bun, convert backslashes to forward slashes for import()
+  const isBun = typeof Bun !== 'undefined';
+  if (process.platform === 'win32' && isBun) {
+    return normalized.replace(/\\/g, '/');
+  }
+
+  return normalized;
+}
+
+/**
  * Attempts to import a module from a given path and logs the outcome.
  */
 async function tryImporting(
@@ -100,9 +126,7 @@ async function tryImporting(
   repository: string
 ): Promise<any | null> {
   try {
-    // On Windows, normalize paths for Bun compatibility
-    const pathToImport = process.platform === 'win32' ? importPath.replace(/\\/g, '/') : importPath;
-    
+    const pathToImport = normalizeImportPath(importPath);
     const module = await import(pathToImport);
     logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
     return module;
@@ -190,13 +214,7 @@ const importStrategies: ImportStrategy[] = [
       const packageJson = await readPackageJson(repository);
       if (!packageJson) return null;
 
-      let entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
-      
-      // Ensure entryPoint uses normalized path separators for Windows/Bun compatibility
-      if (process.platform === 'win32') {
-        entryPoint = entryPoint.replace(/\\/g, '/');
-      }
-      
+      const entryPoint = packageJson.module || packageJson.main || DEFAULT_ENTRY_POINT;
       return tryImporting(
         resolveNodeModulesPath(repository, entryPoint),
         `package.json entry (${entryPoint})`,
@@ -209,13 +227,9 @@ const importStrategies: ImportStrategy[] = [
     tryImport: async (repository: string) => {
       const packageJson = await readPackageJson(repository);
       if (packageJson?.main === DEFAULT_ENTRY_POINT) return null;
-      
-      // Ensure consistent path normalization with other strategies
-      // All paths should use forward slashes as tryImporting will normalize them anyway
-      const entryPoint = DEFAULT_ENTRY_POINT;
 
       return tryImporting(
-        resolveNodeModulesPath(repository, entryPoint),
+        resolveNodeModulesPath(repository, DEFAULT_ENTRY_POINT),
         'common dist pattern',
         repository
       );

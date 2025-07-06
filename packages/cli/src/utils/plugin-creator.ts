@@ -48,32 +48,37 @@ export interface CreatorOptions {
 export class PluginCreator {
   private git: SimpleGit;
   private pluginPath: string | null = null;
-  
+
   private handleCancellation(value: any): void {
     if (clack.isCancel(value)) {
       clack.cancel('Operation cancelled.');
       process.exit(0);
     }
   }
-  
-  private async getCommaSeparatedInput(message: string, required: boolean = false): Promise<string[]> {
+
+  private async getCommaSeparatedInput(
+    message: string,
+    required: boolean = false
+  ): Promise<string[]> {
     const input = await clack.text({
       message,
-      validate: required ? (value) => {
-        if (!value || value.trim() === '') {
-          return 'At least one item is required';
-        }
-        return undefined;
-      } : undefined,
+      validate: required
+        ? (value) => {
+            if (!value || value.trim() === '') {
+              return 'At least one item is required';
+            }
+            return undefined;
+          }
+        : undefined,
     });
-    
+
     this.handleCancellation(input);
-    
+
     // Return empty array if no input provided (for optional fields)
     if (!input || input.trim() === '') {
       return [];
     }
-    
+
     return input
       .split(',')
       .map((item: string) => item.trim())
@@ -227,7 +232,7 @@ export class PluginCreator {
     });
 
     this.handleCancellation(description);
-    
+
     const pluginDescription = description as string;
 
     // Features input
@@ -271,11 +276,17 @@ export class PluginCreator {
     }
 
     if (answers.components.includes('providers')) {
-      spec.providers = await this.getCommaSeparatedInput('Provider names (comma-separated):', false);
+      spec.providers = await this.getCommaSeparatedInput(
+        'Provider names (comma-separated):',
+        false
+      );
     }
 
     if (answers.components.includes('evaluators')) {
-      spec.evaluators = await this.getCommaSeparatedInput('Evaluator names (comma-separated):', false);
+      spec.evaluators = await this.getCommaSeparatedInput(
+        'Evaluator names (comma-separated):',
+        false
+      );
     }
 
     if (answers.components.includes('services')) {
