@@ -51,7 +51,7 @@ const config: Config = {
     [
       '@ahelmy/docusaurus-ai',
       {
-        chatUrl: '/api/predict',  // Will automatically use the correct domain
+        chatUrl: '/.netlify/functions/predict',  // Netlify function endpoint
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

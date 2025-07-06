@@ -27,16 +27,28 @@ html {
 }
 
 /* Use CSS containment for better performance */
-.navbar,
 .footer {
   contain: layout style;
 }
 
+/* Only apply containment to navbar on desktop to avoid mobile sidebar issues */
+@media (min-width: 997px) {
+  .navbar {
+    contain: layout style;
+  }
+}
+
 /* Remove gap between navbar and main content */
 .main-wrapper {
-  contain: layout style;
   margin-top: 0 !important;
   padding-top: 0 !important;
+}
+
+/* Only apply containment to main-wrapper on desktop */
+@media (min-width: 997px) {
+  .main-wrapper {
+    contain: layout style;
+  }
 }
 
 /* Reduce motion for users who prefer it */
@@ -762,4 +774,40 @@ section:first-child {
 
 section:last-child {
   margin-bottom: 0;
+}
+
+/* ==========================================
+   MOBILE NAVBAR FIXES
+   ========================================== */
+
+/* Hide GitHub and RSS icons on mobile */
+@media (max-width: 996px) {
+  .header-github-link,
+  .header-rss-link {
+    display: none !important;
+  }
+}
+
+/* ==========================================
+   MOBILE SIDEBAR Z-INDEX FIXES
+   ========================================== */
+
+/* Fix mobile sidebar z-index to appear above content */
+@media (max-width: 996px) {
+  /* Mobile sidebar backdrop */
+  .navbar-sidebar__backdrop {
+    z-index: 999 !important;
+  }
+  
+  /* Mobile sidebar container */
+  .navbar-sidebar {
+    z-index: 1000 !important;
+  }
+  
+  /* Ensure sidebar content is above everything */
+  .navbar-sidebar__brand,
+  .navbar-sidebar__items {
+    z-index: 1001 !important;
+    position: relative;
+  }
 }
