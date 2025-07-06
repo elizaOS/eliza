@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { safeChangeDirectory, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 
+const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
+
 describe('ElizaOS Plugin Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
@@ -147,7 +149,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   it(
@@ -172,7 +174,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   it(
@@ -211,7 +213,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   // installed-plugins list tests
@@ -257,7 +259,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   it(
@@ -300,7 +302,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   // Negative case tests
@@ -320,7 +322,7 @@ describe('ElizaOS Plugin Commands', () => {
         expect(output).toMatch(/not found in registry/);
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   it(
@@ -345,6 +347,6 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 });
