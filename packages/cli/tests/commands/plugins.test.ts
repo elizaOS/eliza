@@ -122,7 +122,7 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   it(
