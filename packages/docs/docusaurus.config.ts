@@ -6,19 +6,19 @@ import type { Config } from '@docusaurus/types';
 interface SidebarItem {
   type: string;
   label: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Type definitions for sitemap
 interface SitemapItem {
   url: string;
   priority?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface SitemapParams {
-  defaultCreateSitemapItems: (args: any) => Promise<SitemapItem[]>;
-  [key: string]: any;
+  defaultCreateSitemapItems: (args: Record<string, unknown>) => Promise<SitemapItem[]>;
+  [key: string]: unknown;
 }
 
 const config: Config = {
