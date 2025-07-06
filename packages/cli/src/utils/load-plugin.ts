@@ -210,10 +210,9 @@ const importStrategies: ImportStrategy[] = [
       const packageJson = await readPackageJson(repository);
       if (packageJson?.main === DEFAULT_ENTRY_POINT) return null;
       
-      // Use Windows-compatible default entry point path
-      const entryPoint = process.platform === 'win32' ? 
-        DEFAULT_ENTRY_POINT.replace(/\//g, path.sep) : 
-        DEFAULT_ENTRY_POINT;
+      // Ensure consistent path normalization with other strategies
+      // All paths should use forward slashes as tryImporting will normalize them anyway
+      const entryPoint = DEFAULT_ENTRY_POINT;
 
       return tryImporting(
         resolveNodeModulesPath(repository, entryPoint),
