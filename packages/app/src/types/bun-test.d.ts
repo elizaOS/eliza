@@ -44,5 +44,8 @@ declare module 'bun:test' {
   export function afterAll(fn: () => void | Promise<void>): void;
 
   export function mock<T extends (...args: any[]) => any>(implementation?: T): T;
-  export function spyOn<T extends object, K extends keyof T>(object: T, method: K): jest.SpyInstance;
+  export function spyOn<T extends object, K extends keyof T>(
+    object: T,
+    method: K
+  ): jest.SpyInstance;
 }

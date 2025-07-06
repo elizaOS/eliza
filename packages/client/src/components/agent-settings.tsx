@@ -206,7 +206,6 @@ export default function AgentSettings({
     );
   };
 
-
   return (
     <>
       <CharacterForm
