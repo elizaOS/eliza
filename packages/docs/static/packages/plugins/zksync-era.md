@@ -15,7 +15,7 @@ A plugin for integrating ZKSync Era blockchain operations with your application,
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-zksync-era
+bun install @elizaos/plugin-zksync-era
 ```
 
 ## Configuration

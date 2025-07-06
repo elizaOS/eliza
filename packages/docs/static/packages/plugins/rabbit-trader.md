@@ -18,7 +18,7 @@ An automated cryptocurrency trading plugin for Solana tokens with integrated tru
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-rabbi-trader
+bun install @elizaos/plugin-rabbi-trader
 ```
 
 ## Prerequisites

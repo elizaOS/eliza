@@ -95,8 +95,8 @@ When you run the `publish` command, ElizaOS performs the following steps:
 2. **Validate plugin structure** and `package.json` requirements.
 3. **Update `package.json`** with actual values, replacing placeholders.
 4. **Get authentication credentials** for npm and GitHub.
-5. **Build the package** by running `npm run build`.
-6. **Publish to npm** via `npm publish --ignore-scripts`.
+5. **Build the package** by running `bun run build`.
+6. **Publish to npm** via `bun publish`.
 7. **Create GitHub repository** (unless `--npm` flag is used).
 8. **Submit to registry** (unless `--npm` or `--skip-registry` flags are used).
 
@@ -127,16 +127,16 @@ A typical plugin development and publishing lifecycle looks like this:
 3.  **Publish Plugin**
     ```bash
     # Login to npm
-    npm login
+    bun x npm login
     # Publish to GitHub + registry (recommended)
     elizaos publish
     ```
 
 ## Post-Publishing Updates
 
-**Important**: The `elizaos publish` command is designed for **initial plugin publishing only**. After your plugin is in the registry, use standard `npm` and `git` workflows for updates.
+**Important**: The `elizaos publish` command is designed for **initial plugin publishing only**. After your plugin is in the registry, use standard `bun` and `git` workflows for updates.
 
-- **Direct updates**: `npm publish` directly updates your package on npm.
+- **Direct updates**: `bun publish` directly updates your package on npm.
 - **Version control**: Standard `git` workflows maintain proper version history.
 - **Tool compatibility**: Works with all standard development tools and CI/CD pipelines.
 - **Registry sync**: The ElizaOS registry automatically syncs with npm for version updates.
@@ -150,7 +150,7 @@ Publishing requires authentication for both npm and GitHub.
 
 ### npm Authentication
 
-You must be logged into npm. Run `npm login` if you are not.
+You must be logged into npm. Run `bun x npm login` if you are not.
 
 ### GitHub Authentication
 
@@ -194,8 +194,8 @@ For details on getting your plugin into the official registry, review the [Eliza
 
 ```bash
 # npm login problems
-npm logout
-npm login
+bun x npm logout
+bun x npm login
 
 # GitHub token issues
 # Set environment variable:
@@ -222,7 +222,7 @@ elizaos publish --test
 
 ```bash
 # Check build process
-npm run build
+bun run build
 
 # Install missing dependencies
 bun install

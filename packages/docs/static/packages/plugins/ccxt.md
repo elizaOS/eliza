@@ -13,7 +13,7 @@ A plugin for Eliza OS that enables cryptocurrency trading and arbitrage using th
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-ccxt
+bun install @elizaos/plugin-ccxt
 ```
 
 ## Configuration

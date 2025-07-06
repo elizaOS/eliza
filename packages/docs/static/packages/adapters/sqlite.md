@@ -16,7 +16,7 @@ A SQLite database adapter for ElizaOS that provides persistent storage capabilit
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-sqlite
+bun install @elizaos-plugins/adapter-sqlite
 ```
 
 ## Configuration

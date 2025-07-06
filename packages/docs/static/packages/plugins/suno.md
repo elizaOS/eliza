@@ -13,7 +13,7 @@ A Suno AI music generation plugin for ElizaOS that enables AI-powered music crea
 ## Installation
 
 ```
-npm install @elizaos/plugin-suno
+bun install @elizaos/plugin-suno
 ```
 
 ## Configuration

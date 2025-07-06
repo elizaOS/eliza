@@ -15,7 +15,7 @@ A plugin for managing trust scores and performance metrics in a secure database,
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-trustdb
+bun install @elizaos/plugin-trustdb
 ```
 
 ## Configuration
