@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload test artifacts
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-artifacts-${{ matrix.node-version }}
           path: |
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload visual regression results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: visual-regression-results
           path: packages/client/cypress/screenshots/visual-regression
