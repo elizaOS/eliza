@@ -96,10 +96,9 @@ information:
   label: Information
   description: General information
 
-'AI news':
+ai-news:
   label: AI News
   description: Latest AI news and updates
-
 development:
   label: Development
   description: Development updates
