@@ -7,7 +7,7 @@ A plugin for Twitter/X integration using the official Twitter API v2, providing 
 This plugin provides comprehensive Twitter/X integration for Eliza agents:
 
 - 📝 Post tweets and replies
-- 📖 Read home timeline and mentions  
+- 📖 Read home timeline and mentions
 - 🔍 Search tweets and users
 - ❤️ Like and retweet posts
 - 🤝 Follow/unfollow users
@@ -73,9 +73,9 @@ Enable automatic posting to maintain an active Twitter presence:
 
 ```typescript
 // Enable in .env
-TWITTER_POST_ENABLE=true
-TWITTER_POST_INTERVAL_MIN=90   // minimum minutes between posts
-TWITTER_POST_INTERVAL_MAX=180  // maximum minutes between posts
+TWITTER_POST_ENABLE = true;
+TWITTER_POST_INTERVAL_MIN = 90; // minimum minutes between posts
+TWITTER_POST_INTERVAL_MAX = 180; // maximum minutes between posts
 ```
 
 The agent will automatically generate and post contextually relevant tweets based on its character and recent interactions.
@@ -86,16 +86,16 @@ The plugin provides several actions that can be triggered through conversation:
 
 ```typescript
 // Post a tweet
-"Can you tweet about the importance of open source?"
+'Can you tweet about the importance of open source?';
 
-// Reply to a tweet  
-"Reply to the latest tweet from @user"
+// Reply to a tweet
+'Reply to the latest tweet from @user';
 
 // Search tweets
-"Search for tweets about AI agents"
+'Search for tweets about AI agents';
 
 // Timeline reading
-"What are people saying on Twitter?"
+'What are people saying on Twitter?';
 ```
 
 ### Tweet Composition
@@ -109,6 +109,7 @@ The plugin uses sophisticated templates to generate character-aware tweets:
 - Uses `postExamples` from character configuration as style references
 
 The tweet generation process references your character's `postExamples` to maintain consistent voice and style. When composing tweets, the AI analyzes these examples to understand:
+
 - Your typical tweet structure and length
 - Common themes and topics you discuss
 - Your writing style and tone
@@ -117,6 +118,7 @@ The tweet generation process references your character's `postExamples` to maint
 ### API Rate Limit Management
 
 The plugin automatically handles Twitter API rate limits:
+
 - Configurable polling intervals
 - Automatic retry with backoff
 - Rate limit status monitoring
@@ -152,15 +154,15 @@ The `postExamples` array provides sample tweets that demonstrate your agent's vo
 
 The plugin provides these core actions:
 
-| Action | Description | Trigger Example |
-|--------|-------------|-----------------|
-| `POST_TWEET` | Post a new tweet | "Tweet about X" |
-| `REPLY_TO_TWEET` | Reply to a specific tweet | "Reply to tweet [URL]" |
-| `LIKE_TWEET` | Like a tweet | "Like the latest tweet from @user" |
-| `RETWEET` | Retweet a post | "Retweet [URL]" |
-| `FOLLOW_USER` | Follow a user | "Follow @username" |
-| `UNFOLLOW_USER` | Unfollow a user | "Unfollow @username" |
-| `SEARCH_TWEETS` | Search for tweets | "Search tweets about AI" |
+| Action           | Description               | Trigger Example                    |
+| ---------------- | ------------------------- | ---------------------------------- |
+| `POST_TWEET`     | Post a new tweet          | "Tweet about X"                    |
+| `REPLY_TO_TWEET` | Reply to a specific tweet | "Reply to tweet [URL]"             |
+| `LIKE_TWEET`     | Like a tweet              | "Like the latest tweet from @user" |
+| `RETWEET`        | Retweet a post            | "Retweet [URL]"                    |
+| `FOLLOW_USER`    | Follow a user             | "Follow @username"                 |
+| `UNFOLLOW_USER`  | Unfollow a user           | "Unfollow @username"               |
+| `SEARCH_TWEETS`  | Search for tweets         | "Search tweets about AI"           |
 
 ## Common Issues & Troubleshooting
 
@@ -169,6 +171,7 @@ The plugin provides these core actions:
 **Problem**: Getting 403 errors when trying to post tweets.
 
 **Solution**:
+
 1. Your app needs "Read and write" permissions
 2. Go to Twitter Developer Portal → Your app → Settings
 3. Under "App permissions", select "Read and write"
@@ -180,6 +183,7 @@ The plugin provides these core actions:
 **Problem**: Unsure which credentials to use.
 
 **Solution**: You need OAuth 1.0a credentials (4 values):
+
 ```
 ✅ Use these from "Keys and tokens":
 - API Key & Secret (Consumer Keys section)
@@ -187,7 +191,7 @@ The plugin provides these core actions:
 
 ❌ Don't use OAuth 2.0:
 - Client ID
-- Client Secret  
+- Client Secret
 - Bearer Token
 ```
 
@@ -200,6 +204,7 @@ The plugin provides these core actions:
 ### Testing Without Posting
 
 Use dry run mode to test without actually posting:
+
 ```bash
 TWITTER_DRY_RUN=true
 ```
@@ -250,15 +255,15 @@ const client = new TwitterClient({
 });
 
 // Post a tweet
-await client.postTweet({ text: "Hello world!" });
+await client.postTweet({ text: 'Hello world!' });
 
 // Get home timeline
 const timeline = await client.getHomeTimeline({ limit: 10 });
 
 // Search tweets
-const results = await client.searchTweets({ 
-  query: "AI agents", 
-  limit: 20 
+const results = await client.searchTweets({
+  query: 'AI agents',
+  limit: 20,
 });
 ```
 

@@ -100,10 +100,10 @@ class WhisperTranscriptionService implements TranscriptionService {
     try {
       // Convert audio buffer to format expected by Whisper
       const audioFile = await this.prepareAudioFile(audioBuffer);
-      
+
       // Call Whisper API or local model
       const response = await this.callWhisperAPI(audioFile, options);
-      
+
       return response.text;
     } catch (error) {
       console.error('Transcription failed:', error);
@@ -138,14 +138,14 @@ interface BrowserService extends Service {
 class PuppeteerBrowserService implements BrowserService {
   name = 'puppeteer-browser';
   description = 'Puppeteer-based web browsing service';
-  
+
   private browser: Browser | null = null;
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
     // Launch browser instance
     this.browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   }
 
@@ -155,7 +155,7 @@ class PuppeteerBrowserService implements BrowserService {
     }
 
     const page = await this.browser.newPage();
-    
+
     try {
       // Configure page settings
       await page.setViewport({ width: 1920, height: 1080 });
@@ -164,7 +164,7 @@ class PuppeteerBrowserService implements BrowserService {
       // Navigate to URL
       const response = await page.goto(url, {
         waitUntil: options.waitUntil || 'domcontentloaded',
-        timeout: options.timeout || 30000
+        timeout: options.timeout || 30000,
       });
 
       // Extract content based on options
@@ -175,7 +175,7 @@ class PuppeteerBrowserService implements BrowserService {
         html: options.includeHtml ? await page.content() : undefined,
         screenshot: options.screenshot ? await page.screenshot() : undefined,
         statusCode: response?.status(),
-        links: options.extractLinks ? await this.extractLinks(page) : undefined
+        links: options.extractLinks ? await this.extractLinks(page) : undefined,
       };
 
       return result;
@@ -209,28 +209,28 @@ interface SpeechService extends Service {
 class ElevenLabsSpeechService implements SpeechService {
   name = 'elevenlabs-speech';
   description = 'ElevenLabs text-to-speech service';
-  
+
   private selectedVoice: string = 'default';
 
   async speak(text: string, options: SpeechOptions = {}): Promise<Buffer> {
     const voice = options.voice || this.selectedVoice;
-    
+
     try {
       const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
         method: 'POST',
         headers: {
-          'Accept': 'audio/mpeg',
+          Accept: 'audio/mpeg',
           'Content-Type': 'application/json',
-          'xi-api-key': process.env.ELEVENLABS_API_KEY!
+          'xi-api-key': process.env.ELEVENLABS_API_KEY!,
         },
         body: JSON.stringify({
           text,
           model_id: options.model || 'eleven_monolingual_v1',
           voice_settings: {
             stability: options.stability || 0.5,
-            similarity_boost: options.similarity_boost || 0.5
-          }
-        })
+            similarity_boost: options.similarity_boost || 0.5,
+          },
+        }),
       });
 
       if (!response.ok) {
@@ -247,8 +247,8 @@ class ElevenLabsSpeechService implements SpeechService {
   async getVoices(): Promise<Voice[]> {
     const response = await fetch('https://api.elevenlabs.io/v1/voices', {
       headers: {
-        'xi-api-key': process.env.ELEVENLABS_API_KEY!
-      }
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+      },
     });
 
     const data = await response.json();
@@ -256,7 +256,7 @@ class ElevenLabsSpeechService implements SpeechService {
       id: voice.voice_id,
       name: voice.name,
       category: voice.category,
-      description: voice.description
+      description: voice.description,
     }));
   }
 }
@@ -318,7 +318,7 @@ function createService(type: ServiceType): ServiceBuilder {
         throw new Error('Service name is required');
       }
       return service as Service;
-    }
+    },
   };
 }
 
@@ -347,7 +347,7 @@ Services are initialized in a specific order during runtime startup:
 class AgentRuntime {
   async initializeServices(): Promise<void> {
     const services = Array.from(this.services.entries());
-    
+
     // Initialize services sequentially to handle dependencies
     for (const [serviceType, service] of services) {
       try {
@@ -367,7 +367,7 @@ class AgentRuntime {
 
   async startServices(): Promise<void> {
     const services = Array.from(this.services.values());
-    
+
     // Start services in parallel since they should be independent
     await Promise.allSettled(
       services.map(async (service) => {
@@ -385,7 +385,7 @@ class AgentRuntime {
 
   async stopServices(): Promise<void> {
     const services = Array.from(this.services.values());
-    
+
     // Stop services in parallel for faster shutdown
     await Promise.allSettled(
       services.map(async (service) => {
@@ -428,7 +428,7 @@ class ServiceHealthMonitor {
 
   async checkAllServices(): Promise<ServiceHealth[]> {
     const results: ServiceHealth[] = [];
-    
+
     for (const [serviceName, check] of this.healthChecks) {
       try {
         const health = await check();
@@ -438,7 +438,7 @@ class ServiceHealthMonitor {
           name: serviceName,
           status: 'unhealthy',
           lastCheck: new Date(),
-          error: error.message
+          error: error.message,
         });
       }
     }
@@ -457,7 +457,7 @@ class ServiceHealthMonitor {
         name: serviceName,
         status: 'unhealthy',
         lastCheck: new Date(),
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -476,13 +476,11 @@ const transcribeAction: Action = {
   name: 'TRANSCRIBE_AUDIO',
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     // Check if message has audio attachment
-    const hasAudio = message.content.attachments?.some(
-      att => att.type === 'audio'
-    );
-    
+    const hasAudio = message.content.attachments?.some((att) => att.type === 'audio');
+
     // Check if transcription service is available
     const transcriptionService = runtime.getService<TranscriptionService>('transcription');
-    
+
     return hasAudio && transcriptionService?.isConfigured();
   },
 
@@ -493,9 +491,7 @@ const transcribeAction: Action = {
     }
 
     // Find audio attachment
-    const audioAttachment = message.content.attachments?.find(
-      att => att.type === 'audio'
-    );
+    const audioAttachment = message.content.attachments?.find((att) => att.type === 'audio');
 
     if (!audioAttachment) {
       return false;
@@ -503,10 +499,9 @@ const transcribeAction: Action = {
 
     try {
       // Transcribe audio
-      const transcription = await transcriptionService.transcribe(
-        audioAttachment.data,
-        { language: 'en' }
-      );
+      const transcription = await transcriptionService.transcribe(audioAttachment.data, {
+        language: 'en',
+      });
 
       // Store transcription as memory
       await runtime.memory.create({
@@ -515,9 +510,9 @@ const transcribeAction: Action = {
           text: transcription,
           metadata: {
             source: 'transcription',
-            originalAudio: audioAttachment.id
-          }
-        }
+            originalAudio: audioAttachment.id,
+          },
+        },
       });
 
       return true;
@@ -525,7 +520,7 @@ const transcribeAction: Action = {
       console.error('Transcription failed:', error);
       return false;
     }
-  }
+  },
 };
 ```
 
@@ -552,7 +547,7 @@ const webContentProvider: Provider = {
       // Browse first URL and extract content
       const result = await browserService.browse(urls[0], {
         extractText: true,
-        timeout: 10000
+        timeout: 10000,
       });
 
       return {
@@ -561,15 +556,15 @@ const webContentProvider: Provider = {
           webContent: {
             url: result.url,
             title: result.title,
-            text: result.text
-          }
-        }
+            text: result.text,
+          },
+        },
       };
     } catch (error) {
       console.error('Failed to browse URL:', error);
       return null;
     }
-  }
+  },
 };
 ```
 
@@ -588,12 +583,12 @@ interface DatabaseCleanupService extends Service {
 class DatabaseCleanupServiceImpl implements DatabaseCleanupService {
   name = 'database-cleanup';
   description = 'Automated database maintenance and cleanup';
-  
+
   private cleanupInterval: NodeJS.Timeout | null = null;
   private stats: CleanupStats = {
     lastRun: null,
     recordsDeleted: 0,
-    spaceSaved: 0
+    spaceSaved: 0,
   };
 
   async initialize(runtime: IAgentRuntime): Promise<void> {
@@ -647,10 +642,12 @@ class DatabaseCleanupServiceImpl implements DatabaseCleanupService {
       this.stats = {
         lastRun: new Date(),
         recordsDeleted: this.stats.recordsDeleted + deletedRecords,
-        spaceSaved: this.estimateSpaceSaved(deletedRecords)
+        spaceSaved: this.estimateSpaceSaved(deletedRecords),
       };
 
-      console.log(`Cleanup completed: ${deletedRecords} records deleted in ${Date.now() - startTime}ms`);
+      console.log(
+        `Cleanup completed: ${deletedRecords} records deleted in ${Date.now() - startTime}ms`
+      );
     } catch (error) {
       console.error('Database cleanup failed:', error);
       throw error;
@@ -689,17 +686,17 @@ class DatabaseCleanupServiceImpl implements DatabaseCleanupService {
 const cleanupPlugin: Plugin = {
   name: 'database-cleanup',
   description: 'Provides automated database maintenance',
-  
+
   services: [
     {
       name: 'database-cleanup',
-      service: new DatabaseCleanupServiceImpl()
-    }
+      service: new DatabaseCleanupServiceImpl(),
+    },
   ],
 
   actions: [],
   evaluators: [],
-  providers: []
+  providers: [],
 };
 
 // Register plugin with runtime
@@ -780,12 +777,13 @@ class ServiceRetryHandler {
         }
 
         // Calculate delay
-        const delay = backoff === 'exponential' 
-          ? baseDelay * Math.pow(2, attempt)
-          : baseDelay * (attempt + 1);
+        const delay =
+          backoff === 'exponential' ? baseDelay * Math.pow(2, attempt) : baseDelay * (attempt + 1);
 
-        console.log(`Operation failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(
+          `Operation failed, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
 

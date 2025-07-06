@@ -41,12 +41,14 @@ REACT_APP_OLLAMA_BASE_URL=http://localhost:11434  # For Ollama
 
 ## How It Works
 
-1. **Regular Search**: 
+1. **Regular Search**:
+
    - Uses Lunr.js index for fast text matching
    - Supports fuzzy search, wildcards, and phrase search
    - Categorizes results by type (docs, API, packages, blog)
 
 2. **AI Enhancement** (when enabled):
+
    - Currently simulates AI features for demo purposes
    - In production, would call a secure server-side endpoint
    - Enhances results with semantic relevance scoring
@@ -66,7 +68,8 @@ REACT_APP_OLLAMA_BASE_URL=http://localhost:11434  # For Ollama
 
 ## Future Enhancements
 
-1. **Server-side AI Integration**: 
+1. **Server-side AI Integration**:
+
    - Create a secure API endpoint for AI search
    - Implement proper authentication and rate limiting
    - Cache AI responses for performance

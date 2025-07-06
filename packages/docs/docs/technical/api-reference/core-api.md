@@ -49,25 +49,25 @@ interface IAgentRuntime extends IDatabaseAdapter {
   processActions(message: Memory, messages: Memory[], state?: State): Promise<Memory[]>;
   evaluate(message: Memory, state?: State): Promise<string[]>;
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
-  
+
   // Task Worker Management
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
-  
+
   // Agent Lifecycle
   stop(): Promise<void>;
-  
+
   // Memory Management
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
   getAllMemories(): Promise<Memory[]>;
   clearAllAgentMemories(): Promise<void>;
-  
+
   // Run Tracking
   createRunId(): UUID;
   startRun(): UUID;
   endRun(): void;
   getCurrentRunId(): UUID;
-  
+
   // Entity & Room Management (convenience wrappers)
   getEntityById(entityId: UUID): Promise<Entity | null>;
   getRoom(roomId: UUID): Promise<Room | null>;
@@ -75,7 +75,7 @@ interface IAgentRuntime extends IDatabaseAdapter {
   createRoom(room: Room): Promise<UUID>;
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
-  
+
   // Messaging
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
@@ -146,7 +146,7 @@ interface Memory {
 
   createdAt?: number;
   embedding?: number[];
-  
+
   worldId?: UUID;
   unique?: boolean;
   similarity?: number;
@@ -182,17 +182,17 @@ Conversation state management.
 interface State {
   /** Additional dynamic properties */
   [key: string]: any;
-  
+
   /** Key-value store for general state variables, often populated by providers */
   values: {
     [key: string]: any;
   };
-  
+
   /** Key-value store for more structured or internal data */
   data: {
     [key: string]: any;
   };
-  
+
   /** String representation of current context, often a summary or concatenated history */
   text: string;
 }
@@ -249,11 +249,7 @@ type Handler = (
   responses?: Memory[]
 ) => Promise<unknown>;
 
-type Validator = (
-  runtime: IAgentRuntime,
-  message: Memory,
-  state?: State
-) => Promise<boolean>;
+type Validator = (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
 
 type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
 ```
@@ -311,11 +307,7 @@ interface Provider {
   dynamic?: boolean;
   position?: number;
   private?: boolean;
-  get: (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State
-  ) => Promise<string>;
+  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<string>;
 }
 ```
 
@@ -638,9 +630,14 @@ interface IDatabaseAdapter {
     }
   ): Promise<Memory[]>;
 
-  getCachedEmbeddings(content: string): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
+  getCachedEmbeddings(
+    content: string
+  ): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
 
-  updateGoalStatus(params: { goalId: UUID; status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS' }): Promise<void>;
+  updateGoalStatus(params: {
+    goalId: UUID;
+    status: 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+  }): Promise<void>;
 
   log(params: any): Promise<void>;
 

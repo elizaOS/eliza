@@ -13,7 +13,7 @@ export default function Root({ children }) {
         themeToggle.addEventListener('click', () => {
           // Add switching class to disable transitions temporarily
           document.documentElement.setAttribute('data-theme-switching', 'true');
-          
+
           // Remove the attribute after theme switch completes
           setTimeout(() => {
             document.documentElement.removeAttribute('data-theme-switching');

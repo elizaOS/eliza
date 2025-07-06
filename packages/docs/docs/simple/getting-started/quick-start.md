@@ -89,11 +89,7 @@ Open `agent/eliza.character.json` to customize your agent's personality:
 {
   "name": "Eliza",
   "description": "A helpful AI assistant",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
   "settings": {
     "voice": "alloy"
   },

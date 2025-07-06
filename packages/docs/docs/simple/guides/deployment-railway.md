@@ -197,6 +197,7 @@ Add health endpoint for monitoring:
 ### Agent Won't Start
 
 **Check logs for errors:**
+
 ```
 "Cannot find module" → Missing dependency
 "API key not found" → Check environment variables
@@ -263,12 +264,12 @@ Use Railway environments for staging/production:
 ```javascript
 const config = {
   production: {
-    logLevel: "info"
+    logLevel: 'info',
   },
   staging: {
-    logLevel: "debug"
-  }
-}
+    logLevel: 'debug',
+  },
+};
 ```
 
 ### Backup Strategy

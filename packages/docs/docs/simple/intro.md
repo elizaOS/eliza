@@ -12,7 +12,7 @@ Welcome to the easiest way to get started with ElizaOS! This track is designed f
 In this simple track, you'll discover how to:
 
 - **Deploy your first AI agent** in just 5 minutes
-- **Use ready-made templates** for common use cases  
+- **Use ready-made templates** for common use cases
 - **Set up on popular platforms** like Discord, Telegram, and Twitter
 - **Create custom agent personalities** with our visual tools
 - **Monitor and manage** your agents through simple interfaces
@@ -51,7 +51,7 @@ graph TD
     D --> E[🧪 Test Locally<br/>Chat with your agent]
     E --> F[☁️ Deploy Online<br/>Go live 24/7]
     F --> G[📊 Monitor & Improve<br/>Track usage]
-    
+
     style A fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style F fill:#fff3e0,stroke:#f57c00,stroke-width:2px
 ```

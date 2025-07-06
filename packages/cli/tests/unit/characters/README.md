@@ -16,21 +16,26 @@ ElizaOS uses a sophisticated plugin loading system that automatically detects av
 ## Plugin Categories
 
 ### 🗄️ Core Plugins
+
 - `@elizaos/plugin-sql` - Always loaded first, provides database functionality
 
 ### 📝 Text-Only AI Plugins (No Embedding Support)
+
 - `@elizaos/plugin-anthropic` - Claude models (text generation only)
 - `@elizaos/plugin-openrouter` - Multiple AI models (no embeddings endpoint)
 
 ### 🌐 Platform Plugins
+
 - `@elizaos/plugin-discord` - Discord integration
 - `@elizaos/plugin-twitter` - Twitter integration (requires 4 API tokens)
 - `@elizaos/plugin-telegram` - Telegram bot integration
 
 ### 🚀 Bootstrap Plugin
+
 - `@elizaos/plugin-bootstrap` - Default event handlers, actions, and providers
 
 ### 🧠 Embedding-Capable AI Plugins (Always Last)
+
 - `@elizaos/plugin-openai` - GPT models + embeddings
 - `@elizaos/plugin-ollama` - Local models + embeddings
 - `@elizaos/plugin-google-genai` - Gemini models + embeddings
@@ -51,6 +56,7 @@ The system loads plugins in this strict order:
 ## Environment Detection Logic
 
 ### AI Provider Detection
+
 ```typescript
 // Text-only providers (loaded first)
 ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
@@ -71,6 +77,7 @@ The system loads plugins in this strict order:
 ```
 
 ### Platform Plugin Detection
+
 ```typescript
 ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
 ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
@@ -87,7 +94,9 @@ The system loads plugins in this strict order:
 ## Test Files
 
 ### `character-plugin-ordering.test.ts`
+
 Comprehensive test suite covering:
+
 - Core plugin ordering
 - Local-AI fallback behavior
 - Embedding plugin priority
@@ -95,7 +104,9 @@ Comprehensive test suite covering:
 - Edge cases and validation
 
 ### `plugin-ordering-demo.ts`
+
 Interactive demonstration script showing:
+
 - 9 different environment scenarios
 - Visual plugin ordering output
 - Automatic validation of ordering rules
@@ -104,6 +115,7 @@ Interactive demonstration script showing:
 ## Running Tests
 
 ### Run Plugin Ordering Tests
+
 ```bash
 # CLI package tests
 cd packages/cli
@@ -115,6 +127,7 @@ bun test src/__tests__/character-plugin-ordering.test.ts
 ```
 
 ### Run Interactive Demo
+
 ```bash
 cd packages/cli
 bun run src/__tests__/plugin-ordering-demo.ts
@@ -123,36 +136,43 @@ bun run src/__tests__/plugin-ordering-demo.ts
 ## Test Scenarios Covered
 
 ### 1. No AI Providers
+
 - **Environment**: Clean (no API keys)
 - **Result**: SQL → Bootstrap → Local-AI
 - **Validation**: Local-AI serves as fallback
 
 ### 2. Anthropic Only
+
 - **Environment**: `ANTHROPIC_API_KEY`
 - **Result**: SQL → Anthropic → Bootstrap
 - **Validation**: No embedding plugin needed (Anthropic handles text only)
 
 ### 3. OpenAI Only
+
 - **Environment**: `OPENAI_API_KEY`
 - **Result**: SQL → Bootstrap → OpenAI
 - **Validation**: OpenAI handles both text and embeddings
 
 ### 4. Mixed Providers
+
 - **Environment**: `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`
 - **Result**: SQL → Anthropic → Bootstrap → OpenAI
 - **Validation**: Text-only first, embedding-capable last
 
 ### 5. All Providers
+
 - **Environment**: All AI provider keys
 - **Result**: SQL → Anthropic → OpenRouter → Bootstrap → OpenAI → Ollama → Google
 - **Validation**: No Local-AI fallback needed
 
 ### 6. Platform Integration
+
 - **Environment**: AI providers + Discord/Twitter/Telegram
 - **Result**: Core → AI Text → Platforms → Bootstrap → AI Embedding
 - **Validation**: Platform plugins properly positioned
 
 ### 7. Bootstrap Disabled
+
 - **Environment**: `IGNORE_BOOTSTRAP=true`
 - **Result**: Only core and AI plugins loaded
 - **Validation**: Bootstrap correctly excluded
@@ -172,32 +192,37 @@ The test suite validates these critical rules:
 ## Why This Matters
 
 ### Embedding Fallback Strategy
+
 When a primary AI provider (like Anthropic/Claude) doesn't support embeddings:
+
 1. The text-only plugin handles chat/generation
 2. An embedding-capable plugin provides embeddings
 3. Plugin order ensures the right plugin handles each request type
 
 ### Example: Anthropic + OpenAI Setup
+
 ```typescript
 plugins: [
-  '@elizaos/plugin-sql',        // Database
-  '@elizaos/plugin-anthropic',  // Primary AI (text only)
-  '@elizaos/plugin-openai',     // Embedding fallback
-  '@elizaos/plugin-bootstrap'   // Default handlers
-]
+  '@elizaos/plugin-sql', // Database
+  '@elizaos/plugin-anthropic', // Primary AI (text only)
+  '@elizaos/plugin-openai', // Embedding fallback
+  '@elizaos/plugin-bootstrap', // Default handlers
+];
 ```
 
 When ElizaOS needs:
+
 - **Text generation**: Anthropic handles it (higher priority)
 - **Embeddings**: OpenAI handles it (only embedding provider)
 
 ### Example: OpenAI Only Setup
+
 ```typescript
 plugins: [
-  '@elizaos/plugin-sql',        // Database
-  '@elizaos/plugin-openai',     // Handles both text and embeddings
-  '@elizaos/plugin-bootstrap'   // Default handlers
-]
+  '@elizaos/plugin-sql', // Database
+  '@elizaos/plugin-openai', // Handles both text and embeddings
+  '@elizaos/plugin-bootstrap', // Default handlers
+];
 ```
 
 OpenAI handles both text generation and embeddings since it's the only AI provider.
@@ -238,6 +263,7 @@ A: Twitter requires ALL 4 environment variables: API key, secret, access token, 
 
 **Q: Plugin order seems wrong?**
 A: Run the demo script to see actual ordering and validation results:
+
 ```bash
 bun run src/__tests__/plugin-ordering-demo.ts
 ```

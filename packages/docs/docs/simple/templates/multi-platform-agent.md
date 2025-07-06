@@ -139,9 +139,7 @@ Deploy Eliza across multiple platforms simultaneously - one personality, everywh
     "discord": [
       "Love how Discord brings communities together! The voice channels, the shared experiences, the inside jokes that develop over time. What's your favorite thing about this server?"
     ],
-    "telegram": [
-      "Telegram's perfect for these quick check-ins! How's your day shaping up? ☕"
-    ],
+    "telegram": ["Telegram's perfect for these quick check-ins! How's your day shaping up? ☕"],
     "twitter": [
       "Observation: Every platform has its own time zone. Twitter is always awake, Discord has peak hours, Telegram follows the sun. Where do you spend your digital time?"
     ]
@@ -195,7 +193,7 @@ OPENAI_API_KEY=your-openai-key
 DISCORD_APPLICATION_ID=your_app_id
 DISCORD_API_TOKEN=your_bot_token
 
-# Telegram  
+# Telegram
 TELEGRAM_BOT_TOKEN=your_bot_token
 
 # Twitter
@@ -220,52 +218,58 @@ bun start --character characters/multi-eliza.json
 ### Discord Behavior
 
 In Discord, Eliza:
+
 - Engages in longer conversations
 - Participates in voice channels (if configured)
 - Uses rich embeds for special content
 - Remembers server-specific context
 
 Example:
+
 ```
 User: What do you think about our game night idea?
-Eliza: Game night sounds amazing! 🎮 I love how this server brings 
-people together. What games are we thinking? I vote for something 
-everyone can jump into easily - maybe Jackbox or Among Us? The best 
+Eliza: Game night sounds amazing! 🎮 I love how this server brings
+people together. What games are we thinking? I vote for something
+everyone can jump into easily - maybe Jackbox or Among Us? The best
 part of game nights is the chaos in voice chat 😄
 ```
 
 ### Telegram Behavior
 
 In Telegram, Eliza:
+
 - Responds more personally and directly
 - Handles media and stickers naturally
 - Adapts to chat pace
 - Works well in both DMs and groups
 
 Example:
+
 ```
 User: [sends photo of lunch]
-Eliza: That looks delicious! 😋 Is that homemade? I'm always 
-impressed by people who can make food look that good. What's 
+Eliza: That looks delicious! 😋 Is that homemade? I'm always
+impressed by people who can make food look that good. What's
 the recipe?
 ```
 
 ### Twitter Behavior
 
 On Twitter, Eliza:
+
 - Crafts concise, engaging tweets
 - Creates thoughtful threads
 - Engages authentically with mentions
 - Balances posting and responding
 
 Example:
+
 ```
-Tweet: "The internet is just humans being human at scale. 
-All our quirks, kindness, and chaos - amplified and 
+Tweet: "The internet is just humans being human at scale.
+All our quirks, kindness, and chaos - amplified and
 accelerated. What a time to be alive ✨"
 
-Reply: "This resonates! It's like we're all in this massive 
-ongoing conversation. What's been your favorite unexpected 
+Reply: "This resonates! It's like we're all in this massive
+ongoing conversation. What's been your favorite unexpected
 internet moment lately?"
 ```
 
@@ -277,7 +281,7 @@ Eliza remembers interactions across platforms:
 
 ```
 Discord: "I mentioned on Twitter I'm learning guitar"
-Eliza: "Yes! How's the guitar journey going? I remember you 
+Eliza: "Yes! How's the guitar journey going? I remember you
 were working on chord transitions. Have you tried any songs yet?"
 ```
 
@@ -350,6 +354,7 @@ a typo. How's everyone else's coding going today?"
 ### Cross-Platform Commands
 
 Enable unified commands:
+
 ```json
 "crossPlatformCommands": {
   "status": "Show Eliza's current status",
@@ -365,15 +370,16 @@ Enable unified commands:
 ```javascript
 // Platform priority queue
 const platformPriority = {
-  'discord': { weight: 0.4, maxConcurrent: 10 },
-  'telegram': { weight: 0.3, maxConcurrent: 20 },
-  'twitter': { weight: 0.3, maxConcurrent: 5 }
+  discord: { weight: 0.4, maxConcurrent: 10 },
+  telegram: { weight: 0.3, maxConcurrent: 20 },
+  twitter: { weight: 0.3, maxConcurrent: 5 },
 };
 ```
 
 ### Rate Limiting
 
 Platform-specific limits:
+
 - Discord: 5 messages per 5 seconds per channel
 - Telegram: 30 messages per second total
 - Twitter: 300 tweets per 3 hours
@@ -383,6 +389,7 @@ Platform-specific limits:
 ### Unified Dashboard
 
 Track across platforms:
+
 - Total interactions
 - Platform distribution
 - Response times
@@ -405,6 +412,7 @@ Track across platforms:
 ## Best Practices
 
 ### DO:
+
 - Maintain consistent personality
 - Reference cross-platform interactions
 - Adapt to platform cultures
@@ -412,6 +420,7 @@ Track across platforms:
 - Monitor all platforms equally
 
 ### DON'T:
+
 - Copy-paste between platforms
 - Ignore platform norms
 - Overwhelm any single platform
@@ -421,18 +430,21 @@ Track across platforms:
 ## Troubleshooting
 
 ### Platform Sync Issues
+
 - Check database connectivity
 - Verify timezone settings
 - Review message queuing
 - Monitor rate limits
 
 ### Personality Inconsistency
+
 - Review character file
 - Check platform handlers
 - Verify context passing
 - Audit response generation
 
 ### Performance Problems
+
 - Balance platform weights
 - Implement caching
 - Optimize database queries
@@ -441,12 +453,14 @@ Track across platforms:
 ## Scaling Strategies
 
 ### Horizontal Scaling
+
 - Separate workers per platform
 - Load balancing
 - Queue distribution
 - Database replication
 
 ### Community Growth
+
 - Gradual platform addition
 - Community moderators
 - Automated onboarding
@@ -455,6 +469,7 @@ Track across platforms:
 ## Future Expansion
 
 Ready to add:
+
 - Slack integration
 - Reddit participation
 - Discord Stage events
@@ -464,6 +479,7 @@ Ready to add:
 ## Success Metrics
 
 Track these KPIs:
+
 1. Cross-platform user retention
 2. Conversation continuity
 3. Platform-specific engagement
