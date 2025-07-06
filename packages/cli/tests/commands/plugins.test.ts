@@ -224,7 +224,7 @@ describe('ElizaOS Plugin Commands', () => {
       // Should show previously installed plugins from other tests
       expect(result).toMatch(/@elizaos\/plugin-|github:/);
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + 30000 // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
   );
 
   // remove / aliases tests
