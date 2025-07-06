@@ -15,7 +15,7 @@ Core LLaMA plugin for Eliza OS that provides local Large Language Model capabili
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-llama
+bun install @elizaos/plugin-llama
 ```
 
 ## Configuration

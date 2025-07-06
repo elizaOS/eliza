@@ -7,11 +7,13 @@ ElizaOS uses Socket.IO for real-time bidirectional communication between clients
 ## Connection
 
 ### Base URL
+
 ```
 ws://localhost:3000
 ```
 
 ### Connection Example
+
 ```javascript
 import { io } from 'socket.io-client';
 
@@ -28,12 +30,15 @@ const socket = io('http://localhost:3000', {
 ### Connection Events
 
 #### `connection` (server-side)
+
 Emitted when a client connects to the server.
 
 #### `connection_established` (server → client)
+
 Sent immediately after successful connection.
 
 **Payload:**
+
 ```typescript
 {
   message: string;      // "Connected to Eliza Socket.IO server"
@@ -43,14 +48,17 @@ Sent immediately after successful connection.
 ```
 
 #### `disconnect` (bidirectional)
+
 Emitted when the connection is terminated.
 
 ### Channel/Room Management
 
 #### `join_channel` (client → server)
+
 Join a specific channel for receiving messages. Supports both `channelId` and `roomId` for backward compatibility.
 
 **Payload:**
+
 ```typescript
 {
   channelId: string;           // Required: Channel UUID to join
@@ -67,21 +75,24 @@ Join a specific channel for receiving messages. Supports both `channelId` and `r
 ```
 
 **Example:**
+
 ```javascript
 socket.emit('join_channel', {
   channelId: '123e4567-e89b-12d3-a456-426614174000',
   agentId: '987fcdeb-51a2-43f1-b012-123456789abc',
   entityId: 'user-123',
   metadata: {
-    isDm: true
-  }
+    isDm: true,
+  },
 });
 ```
 
 #### `channel_joined` (server → client)
+
 Confirmation that the client has successfully joined a channel.
 
 **Payload:**
+
 ```typescript
 {
   message: string;      // Success message
@@ -92,14 +103,17 @@ Confirmation that the client has successfully joined a channel.
 ```
 
 #### `room_joined` (server → client)
+
 **Deprecated**: Use `channel_joined` instead. Kept for backward compatibility.
 
 ### Message Events
 
 #### `send_message` (client → server)
+
 Send a message to a channel.
 
 **Payload:**
+
 ```typescript
 {
   channelId: string;           // Required: Target channel UUID
@@ -121,6 +135,7 @@ Send a message to a channel.
 ```
 
 **Example:**
+
 ```javascript
 socket.emit('send_message', {
   channelId: '123e4567-e89b-12d3-a456-426614174000',
@@ -128,14 +143,16 @@ socket.emit('send_message', {
   text: 'Hello, how can I help you?',
   entityId: 'user-123',
   entityName: 'John Doe',
-  messageId: 'client-msg-456'
+  messageId: 'client-msg-456',
 });
 ```
 
 #### `messageBroadcast` (server → client)
+
 Broadcast when a new message is sent to a channel. All clients in the channel receive this event.
 
 **Payload:**
+
 ```typescript
 {
   id: string;                  // Server-assigned message UUID
@@ -154,9 +171,11 @@ Broadcast when a new message is sent to a channel. All clients in the channel re
 ```
 
 #### `messageAck` (server → client)
+
 Acknowledgment sent only to the message sender confirming message was processed.
 
 **Payload:**
+
 ```typescript
 {
   clientMessageId?: string;    // Original client-side message ID
@@ -166,9 +185,11 @@ Acknowledgment sent only to the message sender confirming message was processed.
 ```
 
 #### `messageError` (server → client)
+
 Sent when there's an error processing a message.
 
 **Payload:**
+
 ```typescript
 {
   error: string;               // Error message
@@ -177,45 +198,53 @@ Sent when there's an error processing a message.
 ```
 
 #### `messageComplete` (server → client)
+
 Emitted when an agent finishes processing and responding to a message.
 
 **Payload:**
+
 ```typescript
 {
-  channelId: string;           // Channel UUID
-  serverId: string;            // Server UUID
+  channelId: string; // Channel UUID
+  serverId: string; // Server UUID
 }
 ```
 
 ### Message Management Events
 
 #### `messageDeleted` (server → client)
+
 Broadcast when a message is deleted from a channel.
 
 **Payload:**
+
 ```typescript
 {
-  messageId: string;           // Deleted message UUID
-  channelId: string;           // Channel UUID
+  messageId: string; // Deleted message UUID
+  channelId: string; // Channel UUID
 }
 ```
 
 #### `channelCleared` (server → client)
+
 Broadcast when all messages in a channel are cleared.
 
 **Payload:**
+
 ```typescript
 {
-  channelId: string;           // Cleared channel UUID
+  channelId: string; // Cleared channel UUID
 }
 ```
 
 ### Channel Management Events
 
 #### `channelUpdated` (server → client)
+
 Broadcast when channel properties are updated.
 
 **Payload:**
+
 ```typescript
 {
   channelId: string;           // Updated channel UUID
@@ -229,43 +258,52 @@ Broadcast when channel properties are updated.
 ```
 
 #### `channelDeleted` (server → client)
+
 Broadcast when a channel is deleted.
 
 **Payload:**
+
 ```typescript
 {
-  channelId: string;           // Deleted channel UUID
+  channelId: string; // Deleted channel UUID
 }
 ```
 
 ### Log Streaming Events
 
 #### `subscribe_logs` (client → server)
+
 Subscribe to real-time log updates.
 
 **Example:**
+
 ```javascript
 socket.emit('subscribe_logs');
 ```
 
 #### `log_subscription_confirmed` (server → client)
+
 Confirmation of log subscription.
 
 **Payload:**
+
 ```typescript
 {
-  subscribed: boolean;         // true
-  message: string;             // "Successfully subscribed to log stream"
+  subscribed: boolean; // true
+  message: string; // "Successfully subscribed to log stream"
 }
 ```
 
 #### `unsubscribe_logs` (client → server)
+
 Unsubscribe from log updates.
 
 #### `set_log_filter` (client → server)
+
 Filter which logs to receive.
 
 **Payload:**
+
 ```typescript
 {
   level?: 'debug' | 'info' | 'warn' | 'error';  // Minimum log level
@@ -275,9 +313,11 @@ Filter which logs to receive.
 ```
 
 #### `log_update` (server → client)
+
 Real-time log entry.
 
 **Payload:**
+
 ```typescript
 {
   id: string;                  // Log entry ID
@@ -295,6 +335,7 @@ Real-time log entry.
 All client-to-server events may result in a `messageError` event if validation fails or an error occurs.
 
 Common error scenarios:
+
 - Missing required fields
 - Invalid UUID formats
 - Agent not found
@@ -310,26 +351,26 @@ const socket = io('http://localhost:3000');
 // 2. Wait for connection
 socket.on('connection_established', (data) => {
   console.log('Connected:', data);
-  
+
   // 3. Join a channel
   socket.emit('join_channel', {
     channelId: 'channel-uuid',
     agentId: 'agent-uuid',
-    entityId: 'user-123'
+    entityId: 'user-123',
   });
 });
 
 // 4. Handle channel joined
 socket.on('channel_joined', (data) => {
   console.log('Joined channel:', data);
-  
+
   // 5. Send a message
   socket.emit('send_message', {
     channelId: data.channelId,
     serverId: 'server-uuid',
     text: 'Hello!',
     entityId: 'user-123',
-    entityName: 'User'
+    entityName: 'User',
   });
 });
 
@@ -347,11 +388,14 @@ socket.on('messageError', (error) => {
 ## Migration Notes
 
 ### Deprecated Events
+
 - `room_joined` → Use `channel_joined`
 - `roomId` parameter → Use `channelId`
 
 ### Backward Compatibility
+
 The system maintains backward compatibility by:
+
 1. Accepting both `roomId` and `channelId` parameters (channelId preferred)
 2. Emitting both `room_joined` and `channel_joined` events
 3. Including `roomId` in responses (same value as `channelId`)
@@ -368,5 +412,6 @@ The system maintains backward compatibility by:
 ## Rate Limits
 
 Socket.IO connections are subject to the same rate limits as HTTP API endpoints:
+
 - Default: 60 requests per minute per IP
 - Configurable via environment variables

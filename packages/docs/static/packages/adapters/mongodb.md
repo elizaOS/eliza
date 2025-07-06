@@ -19,7 +19,7 @@ A robust MongoDB adapter for ElizaOS that provides persistence, vector search ca
 ## Installation
 
 ```bash
-npm install @elizaos-plugins/adapter-mongodb
+bun install @elizaos-plugins/adapter-mongodb
 ```
 
 ## Configuration

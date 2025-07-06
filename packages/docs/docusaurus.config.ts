@@ -1,10 +1,8 @@
-import dotenv from 'dotenv';
-import * as Plugin from '@docusaurus/types/src/plugin';
-import type * as OpenApiPlugin from 'docusaurus-plugin-openapi-docs';
+// Environment variables are handled by the deployment platform
 
-dotenv.config();
+import type { Config } from '@docusaurus/types';
 
-const config = {
+const config: Config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
@@ -17,9 +15,27 @@ const config = {
   onBrokenLinks: 'ignore',
   onBrokenMarkdownLinks: 'warn',
 
+  // Temporarily disabled until @docusaurus/faster is installed
+  // future: {
+  //   experimental_faster: {
+  //     swcJsLoader: true,
+  //     swcJsMinimizer: true,
+  //     swcHtmlMinimizer: true,
+  //     rspackBundler: true,
+  //   },
+  // },
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
+  },
+  customFields: {
+    GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
+    // AI Service Configuration
+    REACT_APP_AI_ENABLED: process.env.REACT_APP_AI_ENABLED || 'true',
+    REACT_APP_OPENAI_API_KEY: process.env.REACT_APP_OPENAI_API_KEY,
+    REACT_APP_ANTHROPIC_API_KEY: process.env.REACT_APP_ANTHROPIC_API_KEY,
+    REACT_APP_GROQ_API_KEY: process.env.REACT_APP_GROQ_API_KEY,
   },
   markdown: {
     mermaid: true,
@@ -29,7 +45,20 @@ const config = {
       headingIds: false,
     },
   },
-  themes: ['@docusaurus/theme-mermaid', 'docusaurus-theme-openapi-docs'],
+  themes: [
+    '@docusaurus/theme-mermaid', 
+    'docusaurus-theme-openapi-docs',
+    [
+      '@ahelmy/docusaurus-ai',
+      {
+        chatUrl: '/.netlify/functions/predict',  // Netlify function endpoint
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      },
+    ],
+  ],
   plugins: [
     [
       '@docusaurus/plugin-content-docs',
@@ -40,13 +69,13 @@ const config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item) => {
+            .map((item: any) => {
               if (item.type === 'category') {
                 item.label = '🤝 ' + item.label;
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -65,7 +94,7 @@ const config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item) => {
+            .map((item: any) => {
               if (item.type === 'category') {
                 switch (item.label.toLowerCase()) {
                   case 'streams':
@@ -83,7 +112,7 @@ const config = {
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -102,27 +131,22 @@ const config = {
         includeCurrentVersion: true,
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
-          // Add icons to categories
+          // Filter out adapters and clients, only keep plugins
           return sidebarItems
-            .map((item) => {
+            .filter((item: any) => {
               if (item.type === 'category') {
-                switch (item.label.toLowerCase()) {
-                  case 'adapters':
-                    item.label = '🔌 ' + item.label;
-                    break;
-                  case 'clients':
-                    item.label = '🔗 ' + item.label;
-                    break;
-                  case 'plugins':
-                    item.label = '🧩 ' + item.label;
-                    break;
-                  default:
-                    item.label = '📦 ' + item.label;
-                }
+                const label = item.label.toLowerCase();
+                return label !== 'adapters' && label !== 'clients';
+              }
+              return true;
+            })
+            .map((item: any) => {
+              if (item.type === 'category' && item.label.toLowerCase() === 'plugins') {
+                item.label = '🧩 ' + item.label;
               }
               return item;
             })
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -145,6 +169,16 @@ const config = {
         excludeInternal: false,
         excludeNotDocumented: true,
         plugin: ['typedoc-plugin-markdown'],
+        blockTags: [
+          '@param',
+          '@returns',
+          '@throws',
+          '@example',
+          '@implements',
+          '@template',
+          '@property',
+          '@typedef'
+        ],
         hideGenerator: true,
         cleanOutputDir: true,
         categorizeByGroup: true,
@@ -193,11 +227,11 @@ const config = {
       'docusaurus-plugin-openapi-docs',
       {
         id: 'rest-api',
-        docsPluginId: 'classic',
+        docsPluginId: 'api',
         config: {
           eliza_api: {
             specPath: './src/openapi/eliza-v1.yaml',
-            outputDir: 'docs/rest',
+            outputDir: 'api/rest',
             sidebarOptions: {
               groupPathsBy: 'tag',
             },
@@ -247,6 +281,8 @@ const config = {
           path: 'news',
         },
         docs: {
+          routeBasePath: 'docs',
+          path: 'docs',
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
           editUrl: 'https://github.com/elizaos/eliza/tree/develop/packages/docs/',
@@ -274,13 +310,13 @@ const config = {
           changefreq: 'weekly',
           ignorePatterns: ['/tags/**'],
           filename: 'sitemap.xml',
-          createSitemapItems: async (params) => {
+          createSitemapItems: async (params: any) => {
             const { defaultCreateSitemapItems, ...rest } = params;
             const items = await defaultCreateSitemapItems(rest);
 
             return items
-              .filter((item) => !item.url.includes('/page/'))
-              .map((item) => {
+              .filter((item: any) => !item.url.includes('/page/'))
+              .map((item: any) => {
                 let priority = 0.5;
 
                 if (item.url === '/') {
@@ -312,7 +348,7 @@ const config = {
       id: 'llms_full_feature',
       content:
         '🔥 Interact with our full documentation using your favorite LLM! <a href="/llms-full.txt" target="_blank" rel="noopener noreferrer">Copy <code>llms-full.txt</code></a> to get started. ✨',
-      backgroundColor: 'var(--ifm-color-warning-light)',
+      backgroundColor: 'var(--ifm-color-primary-light)',
       textColor: '#1f1f1f',
       isCloseable: true,
     },
@@ -355,15 +391,27 @@ const config = {
         srcDark: 'img/icon.png',
       },
       items: [
+        // Left side - main navigation links
         {
-          type: 'docSidebar',
-          sidebarId: 'tutorialSidebar',
+          type: 'doc',
+          docId: 'intro',
           position: 'left',
           label: 'Documentation',
         },
         {
-          type: 'docsVersionDropdown',
-          position: 'right',
+          type: 'dropdown',
+          label: 'Learn',
+          position: 'left',
+          items: [
+            {
+              label: '🎯 Simple Track (Non-Technical)',
+              to: '/docs/simple/getting-started/quick-start',
+            },
+            {
+              label: '🔧 Technical Track (Developers)',
+              to: '/docs/technical/architecture/overview',
+            },
+          ],
         },
         {
           type: 'doc',
@@ -373,24 +421,9 @@ const config = {
           docId: 'index',
         },
         {
-          type: 'dropdown',
-          label: 'Packages',
-          position: 'left',
           to: '/packages',
-          items: [
-            {
-              label: 'Adapters',
-              to: '/packages?tags=adapter',
-            },
-            {
-              label: 'Clients',
-              to: '/packages?tags=client',
-            },
-            {
-              label: 'Plugins',
-              to: '/packages?tags=plugin',
-            },
-          ],
+          label: 'Plugins',
+          position: 'left',
         },
         {
           type: 'dropdown',
@@ -430,12 +463,16 @@ const config = {
             },
           ],
         },
+        // Right side - version, social, etc.
         {
-          href: '/blog',
+          type: 'docsVersionDropdown',
+          position: 'right',
+        },
+        {
+          type: 'dropdown',
           position: 'right',
           className: 'header-rss-link',
           'aria-label': 'RSS Feed',
-          to: '/news',
           items: [
             { label: 'RSS (XML)', href: '/blog/rss.xml', target: '_blank' },
             { label: 'Atom', href: '/blog/atom.xml', target: '_blank' },
@@ -506,9 +543,6 @@ const config = {
         },
       ],
     },
-  },
-  customFields: {
-    GITHUB_ACCESS_TOKEN: process.env.GITHUB_ACCESS_TOKEN,
   },
 };
 

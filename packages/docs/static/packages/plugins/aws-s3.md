@@ -11,7 +11,7 @@ Core Node.js plugin for Eliza OS that provides AWS S3 integration for file opera
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-node
+bun install @elizaos/plugin-node
 ```
 
 ## Configuration

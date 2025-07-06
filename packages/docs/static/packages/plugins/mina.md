@@ -17,7 +17,7 @@ Core Mina blockchain plugin for Eliza OS that provides essential services and ac
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-mina
+bun install @elizaos/plugin-mina
 ```
 
 ## Configuration

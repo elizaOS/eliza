@@ -19,7 +19,7 @@ A database adapter plugin for ElizaOS that provides PostgreSQL connectivity with
 Install the adapter via npm:
 
 ```bash
-npm install @elizaos-plugins/adapter-postgres
+bun install @elizaos-plugins/adapter-postgres
 ```
 
 Or using bun:

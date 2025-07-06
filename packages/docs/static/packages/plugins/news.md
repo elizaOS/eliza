@@ -14,7 +14,7 @@ A plugin for fetching and handling real-time news data through NewsAPI integrati
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-news
+bun install @elizaos/plugin-news
 ```
 
 ## Configuration

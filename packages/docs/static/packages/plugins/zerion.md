@@ -16,7 +16,7 @@ A plugin for Eliza that enables fetching wallet portfolio and position data usin
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-zerion
+bun install @elizaos/plugin-zerion
 ```
 
 ## Configuration

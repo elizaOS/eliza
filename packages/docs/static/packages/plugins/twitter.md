@@ -27,7 +27,7 @@ TWITTER_POST_INTERVAL_MAX=180                   # Maximum minutes between posts
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-twitter
+bun install @elizaos/plugin-twitter
 ```
 
 ## Integration

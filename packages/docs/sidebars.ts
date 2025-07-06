@@ -28,12 +28,12 @@ const sidebars: SidebarsConfig = {
           label: '👥 Contributing',
         },
       ],
-      collapsed: false,
+      collapsed: true,
     },
     {
       type: 'category',
       label: '🧠 Core Concepts',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -120,7 +120,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: '🖥️ CLI',
-      collapsed: false,
+      collapsed: true,
       items: [
         {
           type: 'doc',
@@ -201,6 +201,216 @@ const sidebars: SidebarsConfig = {
       label: 'CHANGELOG',
     },
   ],
+
+  // Simple track for non-technical users
+  simpleSidebar: [
+    {
+      type: 'doc',
+      id: 'simple/intro',
+      label: '🚀 Introduction',
+    },
+    {
+      type: 'category',
+      label: '🎯 Getting Started',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/getting-started/quick-start',
+          label: '⚡ 5-Minute Quick Start',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🎨 Templates & Examples',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/templates/quick-start',
+          label: '⚡ Quick Start',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/discord-agent',
+          label: '🎮 Discord Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/twitter-agent',
+          label: '🐦 Twitter Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/telegram-agent',
+          label: '📱 Telegram Agent',
+        },
+        {
+          type: 'doc',
+          id: 'simple/templates/multi-platform-agent',
+          label: '🌐 Multi-Platform Agent',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '📖 Guides',
+      items: [
+        {
+          type: 'doc',
+          id: 'simple/guides/character-creation',
+          label: '👤 Character Creation',
+        },
+        {
+          type: 'doc',
+          id: 'simple/guides/plugin-requirements',
+          label: '🔌 Plugin Requirements',
+        },
+        {
+          type: 'category',
+          label: '🚀 Deployment',
+          items: [
+            {
+              type: 'doc',
+              id: 'simple/guides/deployment-railway',
+              label: '🚂 Railway',
+            },
+            {
+              type: 'doc',
+              id: 'simple/guides/deployment-render',
+              label: '🎨 Render',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      id: 'simple/faq',
+      label: '❓ FAQ',
+    },
+  ],
+
+  // Technical track for developers
+  technicalSidebar: [
+    {
+      type: 'doc',
+      id: 'technical/intro',
+      label: '🚀 Technical Introduction',
+    },
+    {
+      type: 'category',
+      label: '🏗️ Architecture',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/architecture/overview',
+          label: '📐 System Overview',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/core-concepts',
+          label: '🧠 Core Concepts',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/state-management',
+          label: '💾 State Management',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/memory-system',
+          label: '🧩 Memory System',
+        },
+        {
+          type: 'doc',
+          id: 'technical/architecture/plugin-system',
+          label: '🔌 Plugin System',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '📚 API Reference',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/api-reference/actions-api',
+          label: '⚡ Actions API',
+        },
+        {
+          type: 'doc',
+          id: 'technical/api-reference/core-api',
+          label: '🎯 Core API',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🛠️ Development',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/development/creating-plugins',
+          label: '🚀 Creating Plugins',
+        },
+        {
+          type: 'doc',
+          id: 'technical/development/plugin-development',
+          label: '🔧 Plugin Development',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🔗 Platform Integrations',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/integrations/discord-technical',
+          label: '🎮 Discord Technical Integration',
+        },
+        {
+          type: 'doc',
+          id: 'technical/integrations/telegram-technical',
+          label: '📱 Telegram Technical Integration',
+        },
+        {
+          type: 'doc',
+          id: 'technical/integrations/twitter-technical',
+          label: '🐦 Twitter Technical Integration',
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: '🚀 Advanced Topics',
+      collapsed: true,
+      items: [
+        {
+          type: 'doc',
+          id: 'technical/advanced/best-practices',
+          label: '✨ Best Practices',
+        },
+        {
+          type: 'doc',
+          id: 'technical/advanced/performance',
+          label: '⚡ Performance Optimization',
+        },
+      ],
+    },
+    {
+      type: 'doc',
+      id: 'technical/faq',
+      label: '❓ Technical FAQ',
+    },
+  ],
+
 };
 
 export default sidebars;

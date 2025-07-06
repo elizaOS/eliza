@@ -115,7 +115,7 @@ System Information:
 
 Local Environment Variables:
 Path: /current/directory/.env
-  OPENAI_API_KEY: sk-1234...5678
+  OPENAI_API_KEY: your-key...5678
   MODEL_PROVIDER: openai
   PORT: 8080
   LOG_LEVEL: debug
