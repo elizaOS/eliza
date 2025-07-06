@@ -46,16 +46,39 @@ Submit a message from an agent or system (already processed messages)
       'application/json': {
         schema: {
           type: 'object',
-          required: ['channel_id', 'server_id', 'author_id', 'content', 'source_type', 'raw_message'],
+          required: [
+            'channel_id',
+            'server_id',
+            'author_id',
+            'content',
+            'source_type',
+            'raw_message',
+          ],
           properties: {
             channel_id: { type: 'string', format: 'uuid', description: 'ID of the channel' },
-            server_id: { type: 'string', format: 'uuid', description: 'ID of the server (default: 00000000-0000-0000-0000-000000000000)' },
-            author_id: { type: 'string', format: 'uuid', description: 'ID of the author (agent ID)' },
+            server_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the server (default: 00000000-0000-0000-0000-000000000000)',
+            },
+            author_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the author (agent ID)',
+            },
             content: { type: 'string', description: 'Message content' },
             source_type: { type: 'string', description: 'Source type (e.g., agent_response)' },
             raw_message: { type: 'object', description: 'Raw message data' },
-            in_reply_to_message_id: { type: 'string', format: 'uuid', description: 'ID of the message this is replying to' },
-            metadata: { type: 'object', description: 'Additional metadata (should include agent_name if author_id is agent ID)' },
+            in_reply_to_message_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the message this is replying to',
+            },
+            metadata: {
+              type: 'object',
+              description:
+                'Additional metadata (should include agent_name if author_id is agent ID)',
+            },
           },
         },
       },

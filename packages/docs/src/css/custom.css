@@ -407,7 +407,6 @@ html[data-theme='dark'] .header-github-link {
   background-image: url('/img/github-mark-white.svg');
 }
 
-
 /* RSS button styling - simplified */
 .header-rss-link {
   width: 32px;
@@ -430,7 +429,7 @@ html[data-theme='dark'] .header-github-link {
 }
 
 /* Ensure AI Assistant is visible */
-button[aria-label="Open AI Assistant"] {
+button[aria-label='Open AI Assistant'] {
   position: fixed !important;
   bottom: 2rem !important;
   right: 2rem !important;
@@ -452,7 +451,7 @@ button[aria-label="Open AI Assistant"] {
   transition: all 0.2s ease !important;
 }
 
-button[aria-label="Open AI Assistant"]:hover {
+button[aria-label='Open AI Assistant']:hover {
   transform: translateY(-2px) scale(1.05) !important;
   box-shadow: 0 6px 25px rgba(255, 149, 0, 0.4) !important;
 }
@@ -486,7 +485,7 @@ article {
 }
 
 /* Specific intro pages get extra padding */
-article[class*="intro"] {
+article[class*='intro'] {
   padding: 3rem 4rem;
 }
 
@@ -584,19 +583,19 @@ article[class*="intro"] {
   article {
     padding: 1.5rem 1.5rem;
   }
-  
-  article[class*="intro"] {
+
+  article[class*='intro'] {
     padding: 2rem 1.5rem;
   }
-  
+
   .markdown h2 {
     margin-top: 2rem;
   }
-  
+
   .markdown h3 {
     margin-top: 1.75rem;
   }
-  
+
   .markdown ul,
   .markdown ol {
     padding-left: 1.5rem;
@@ -607,15 +606,14 @@ article[class*="intro"] {
   article {
     padding: 1rem;
   }
-  
-  article[class*="intro"] {
+
+  article[class*='intro'] {
     padding: 1.5rem 1rem;
   }
 }
 
 /* Additional component spacing improvements */
 /* Sidebar spacing */
-
 
 .menu__list {
   padding: 0;
@@ -798,12 +796,12 @@ section:last-child {
   .navbar-sidebar__backdrop {
     z-index: 999 !important;
   }
-  
+
   /* Mobile sidebar container */
   .navbar-sidebar {
     z-index: 1000 !important;
   }
-  
+
   /* Ensure sidebar content is above everything */
   .navbar-sidebar__brand,
   .navbar-sidebar__items {

@@ -30,6 +30,7 @@ That's it! Your agent is now running at http://localhost:3000
 When you created your project, ElizaOS generated this character file:
 
 **`agent/eliza.character.json`**
+
 ```json
 {
   "name": "Eliza",
@@ -39,6 +40,7 @@ When you created your project, ElizaOS generated this character file:
 ```
 
 This minimal configuration:
+
 - **name** - Your agent's identity
 - **bio** - Personality description
 - **plugins** - Core functionality (pgvector for memory, bootstrap for basic chat)
@@ -48,6 +50,7 @@ This minimal configuration:
 ### Add Personality
 
 Edit `agent/eliza.character.json`:
+
 ```json
 {
   "name": "Eliza",
@@ -64,6 +67,7 @@ Edit `agent/eliza.character.json`:
 ### Configure AI Model
 
 Create `.env` file in your project root:
+
 ```
 # Choose your AI provider:
 
@@ -79,29 +83,30 @@ ANTHROPIC_API_KEY=sk-ant-...
 ### Connect to Discord
 
 1. Update your character file:
+
 ```json
 {
   "name": "Eliza",
   "bio": "A friendly Discord community member",
-  "plugins": [
-    "@elizaos/plugin-bootstrap",
-    "@elizaos/plugin-discord"
-  ]
+  "plugins": ["@elizaos/plugin-bootstrap", "@elizaos/plugin-discord"]
 }
 ```
 
 2. Add Discord credentials to `.env`:
+
 ```
 DISCORD_API_TOKEN=your-bot-token
 DISCORD_APPLICATION_ID=your-app-id
 ```
 
 3. Install the Discord plugin:
+
 ```bash
 bun add @elizaos/plugin-discord
 ```
 
 4. Restart your agent:
+
 ```bash
 elizaos start
 ```
@@ -139,7 +144,7 @@ my-agent/
 ## Next Steps
 
 - **[Discord Agent →](./discord-agent)** - Full Discord integration
-- **[Twitter Agent →](./twitter-agent)** - Social media presence  
+- **[Twitter Agent →](./twitter-agent)** - Social media presence
 - **[Telegram Agent →](./telegram-agent)** - Chat companion
 - **[Multi-Platform →](./multi-platform-agent)** - Deploy everywhere
 

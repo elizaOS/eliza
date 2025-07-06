@@ -52,21 +52,21 @@ graph TB
         State[State Management]
         Services[Service Layer]
     end
-    
+
     subgraph "Extensions"
         Plugins[Plugins]
         Actions[Actions]
         Providers[Providers]
         Evaluators[Evaluators]
     end
-    
+
     subgraph "Integrations"
         Discord[Discord]
         Telegram[Telegram]
         API[REST API]
         Custom[Custom Services]
     end
-    
+
     Runtime --> Memory
     Runtime --> State
     Runtime --> Services
@@ -80,7 +80,7 @@ graph TB
     Actions --> Runtime
     Providers --> Runtime
     Evaluators --> Runtime
-    
+
     style Runtime fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style Plugins fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     style Services fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
@@ -140,7 +140,7 @@ graph LR
     F --> G[Security Review]
     G --> H[Deploy to Production]
     H --> I[Monitor & Optimize]
-    
+
     style A fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     style C fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     style H fill:#e8f5e9,stroke:#388e3c,stroke-width:2px

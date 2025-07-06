@@ -524,7 +524,13 @@ describe('MyCustomAction', () => {
 
   it('should execute handler successfully', async () => {
     const callback = jest.fn();
-    const result = await myCustomAction.handler(runtime, message, { values: {}, data: {}, text: '' }, {}, callback);
+    const result = await myCustomAction.handler(
+      runtime,
+      message,
+      { values: {}, data: {}, text: '' },
+      {},
+      callback
+    );
 
     expect(result).toBe(true);
     expect(callback).toHaveBeenCalledWith({

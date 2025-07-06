@@ -387,7 +387,7 @@ app.get('/health', async (req, res) => {
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       responses: await metrics.getResponseStats(),
-    }
+    },
   };
   res.json(health);
 });
@@ -473,14 +473,14 @@ class MultiModalAgent extends BaseAgent {
     }
 
     // Handle images
-    if (message.content.attachments?.some(a => a.type === 'image')) {
+    if (message.content.attachments?.some((a) => a.type === 'image')) {
       const imageAnalysis = await this.analyzeImages(message.content.attachments);
       const response = await this.generateResponseFromImage(imageAnalysis);
       await this.send(response);
     }
 
     // Handle audio
-    if (message.content.attachments?.some(a => a.type === 'audio')) {
+    if (message.content.attachments?.some((a) => a.type === 'audio')) {
       const transcript = await this.transcribeAudio(message.content.attachments);
       const response = await this.generateAudioResponse(transcript);
       await this.sendAudio(response);
@@ -499,12 +499,12 @@ class ConversationFlow {
   async execute(userId: string, input: any): Promise<FlowResult> {
     const currentStep = this.getCurrentStep(userId);
     const validation = await currentStep.validate(input);
-    
+
     if (!validation.valid) {
       return {
         type: 'retry',
         message: validation.error,
-        step: currentStep
+        step: currentStep,
       };
     }
 
@@ -515,7 +515,7 @@ class ConversationFlow {
     if (currentStep.isLast) {
       return {
         type: 'complete',
-        data: this.getFlowData(userId)
+        data: this.getFlowData(userId),
       };
     }
 
@@ -524,7 +524,7 @@ class ConversationFlow {
     return {
       type: 'continue',
       step: nextStep,
-      message: nextStep.prompt
+      message: nextStep.prompt,
     };
   }
 }
@@ -584,13 +584,13 @@ class CustomTransport implements ITransport {
 
 ### Performance Benchmarks
 
-| Metric | Target | Good | Needs Improvement |
-|--------|--------|------|-------------------|
-| Response Time | Under 200ms | Under 500ms | Over 1000ms |
-| Memory Usage | Under 100MB | Under 500MB | Over 1GB |
-| Concurrent Users | 1000+ | 100+ | Under 50 |
-| Message Throughput | 100/s | 50/s | Under 10/s |
-| Plugin Load Time | Under 1s | Under 3s | Over 5s |
+| Metric             | Target      | Good        | Needs Improvement |
+| ------------------ | ----------- | ----------- | ----------------- |
+| Response Time      | Under 200ms | Under 500ms | Over 1000ms       |
+| Memory Usage       | Under 100MB | Under 500MB | Over 1GB          |
+| Concurrent Users   | 1000+       | 100+        | Under 50          |
+| Message Throughput | 100/s       | 50/s        | Under 10/s        |
+| Plugin Load Time   | Under 1s    | Under 3s    | Over 5s           |
 
 ### Common Error Codes
 

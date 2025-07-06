@@ -22,9 +22,10 @@ export async function processAIQuery(query, context = []) {
     
     Always provide helpful, accurate, and concise answers based on the documentation.`;
 
-    const userPrompt = context.length > 0 
-      ? `Context from documentation:\n${context.join('\n')}\n\nUser question: ${query}`
-      : `User question: ${query}`;
+    const userPrompt =
+      context.length > 0
+        ? `Context from documentation:\n${context.join('\n')}\n\nUser question: ${query}`
+        : `User question: ${query}`;
 
     // Use OpenAI if available
     if (openAiKey) {
@@ -46,15 +47,15 @@ export async function processAIQuery(query, context = []) {
 
     // Fallback response
     return {
-      message: "AI service is not configured. Please set up your AI API keys to enable intelligent responses.",
-      context
+      message:
+        'AI service is not configured. Please set up your AI API keys to enable intelligent responses.',
+      context,
     };
-
   } catch (error) {
     console.error('AI Search Service Error:', error);
     return {
-      message: "I encountered an error processing your request. Please try again.",
-      context
+      message: 'I encountered an error processing your request. Please try again.',
+      context,
     };
   }
 }
@@ -65,17 +66,17 @@ async function callOpenAI(systemPrompt, userPrompt, apiKey) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4-turbo-preview',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 500
-      })
+        max_tokens: 500,
+      }),
     });
 
     const data = await response.json();
@@ -93,15 +94,13 @@ async function callAnthropic(systemPrompt, userPrompt, apiKey) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: 'claude-3-haiku-20240307',
         max_tokens: 500,
-        messages: [
-          { role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }
-        ]
-      })
+        messages: [{ role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }],
+      }),
     });
 
     const data = await response.json();
@@ -118,17 +117,17 @@ async function callGroq(systemPrompt, userPrompt, apiKey) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'mixtral-8x7b-32768',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'user', content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 500
-      })
+        max_tokens: 500,
+      }),
     });
 
     const data = await response.json();

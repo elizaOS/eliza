@@ -15,7 +15,7 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers,
-      body: ''
+      body: '',
     };
   }
 
@@ -24,24 +24,24 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify({ error: 'Method not allowed' })
+      body: JSON.stringify({ error: 'Method not allowed' }),
     };
   }
 
   try {
     const { message, context: docContext } = JSON.parse(event.body);
-    
+
     // Get OpenAI API key from environment
     const openAiKey = process.env.OPENAI_API_KEY;
-    
+
     if (!openAiKey) {
       return {
         statusCode: 500,
         headers,
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           error: 'OpenAI API key not configured',
-          response: 'Please configure OPENAI_API_KEY in your environment variables.' 
-        })
+          response: 'Please configure OPENAI_API_KEY in your environment variables.',
+        }),
       };
     }
 
@@ -58,26 +58,27 @@ Key features include:
 
 Always provide helpful, accurate, and concise answers based on the ElizaOS documentation. If you're unsure about something, say so rather than guessing.`;
 
-    const userMessage = docContext && docContext.length > 0 
-      ? `Context from documentation:\n${docContext.join('\n')}\n\nUser question: ${message}`
-      : message;
+    const userMessage =
+      docContext && docContext.length > 0
+        ? `Context from documentation:\n${docContext.join('\n')}\n\nUser question: ${message}`
+        : message;
 
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAiKey}`
+        Authorization: `Bearer ${openAiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
+          { role: 'user', content: userMessage },
         ],
         temperature: 0.7,
-        max_tokens: 500
-      })
+        max_tokens: 500,
+      }),
     });
 
     if (!response.ok) {
@@ -97,19 +98,18 @@ Always provide helpful, accurate, and concise answers based on the ElizaOS docum
         result: aiResponse,
         response: aiResponse,
         context: docContext || [],
-        timestamp: new Date().toISOString()
-      })
+        timestamp: new Date().toISOString(),
+      }),
     };
-
   } catch (error) {
     console.error('Chat API error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'Internal server error',
-        response: 'I encountered an error processing your request. Please try again.' 
-      })
+        response: 'I encountered an error processing your request. Please try again.',
+      }),
     };
   }
 };
