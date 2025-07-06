@@ -35,7 +35,10 @@ export default defineConfig(({ mode }): CustomUserConfig => {
     plugins: [
       tailwindcss(),
       react() as unknown as Plugin,
-      nodePolyfills() as unknown as Plugin,
+      nodePolyfills({
+        // Minimal configuration for v0.21.0
+        protocolImports: false,
+      }) as unknown as Plugin,
       viteCompression({
         algorithm: 'brotliCompress',
         ext: '.br',
@@ -95,6 +98,8 @@ export default defineConfig(({ mode }): CustomUserConfig => {
       'import.meta.env.VITE_SERVER_PORT': JSON.stringify(env.SERVER_PORT || '3000'),
       // Add empty shims for Node.js globals
       global: 'globalThis',
+      'process.env': JSON.stringify({}),
+      'process.browser': true,
     },
     optimizeDeps: {
       esbuildOptions: {
@@ -102,6 +107,13 @@ export default defineConfig(({ mode }): CustomUserConfig => {
           global: 'globalThis',
         },
       },
+      include: [
+        'buffer',
+        'process',
+        'crypto-browserify',
+        'stream-browserify',
+        'util',
+      ],
     },
     build: {
       target: 'esnext',
@@ -126,6 +138,7 @@ export default defineConfig(({ mode }): CustomUserConfig => {
             (typeof warning.message === 'string' &&
               (warning.message.includes('has been externalized for browser compatibility') ||
                 warning.message.includes("The 'this' keyword is equivalent to 'undefined'") ||
+                warning.message.includes('unenv') ||
                 /node:|fs|path|crypto|stream|tty|worker_threads|assert/.test(warning.message)))
           ) {
             return;
