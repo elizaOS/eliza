@@ -56,7 +56,10 @@ export class PluginCreator {
     }
   }
 
-  private async getCommaSeparatedInput(message: string, required: boolean = false): Promise<string[]> {
+  private async getCommaSeparatedInput(
+    message: string,
+    required: boolean = false
+  ): Promise<string[]> {
     const input = await clack.text({
       message,
       validate: required
