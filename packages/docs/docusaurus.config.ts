@@ -52,6 +52,10 @@ const config: Config = {
       '@ahelmy/docusaurus-ai',
       {
         chatUrl: '/api/predict',  // Will automatically use the correct domain
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       },
     ],
   ],
