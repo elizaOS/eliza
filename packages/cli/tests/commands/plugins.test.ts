@@ -105,7 +105,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         execSync(
-          `${elizaosCmd} plugins add @elizaos/plugin-xmtp --skip-env-prompt`,
+          `${elizaosCmd} plugins add @elizaos/plugin-xmtp --skip-env-prompt --skip-verification`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
