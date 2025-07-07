@@ -2,6 +2,25 @@
 
 import type { Config } from '@docusaurus/types';
 
+// Type definitions for sidebar items
+interface SidebarItem {
+  type: string;
+  label: string;
+  [key: string]: unknown;
+}
+
+// Type definitions for sitemap
+interface SitemapItem {
+  url: string;
+  priority?: number;
+  [key: string]: unknown;
+}
+
+interface SitemapParams {
+  defaultCreateSitemapItems: (args: Record<string, unknown>) => Promise<SitemapItem[]>;
+  [key: string]: unknown;
+}
+
 const config: Config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
@@ -46,16 +65,16 @@ const config: Config = {
     },
   },
   themes: [
-    '@docusaurus/theme-mermaid', 
+    '@docusaurus/theme-mermaid',
     'docusaurus-theme-openapi-docs',
     [
       '@ahelmy/docusaurus-ai',
       {
-        chatUrl: '/.netlify/functions/predict',  // Netlify function endpoint
+        chatUrl: '/.netlify/functions/predict', // Netlify function endpoint
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       },
     ],
   ],
@@ -69,13 +88,13 @@ const config: Config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item: any) => {
+            .map((item: SidebarItem) => {
               if (item.type === 'category') {
                 item.label = '🤝 ' + item.label;
               }
               return item;
             })
-            .sort((a: any, b: any) => {
+            .sort((a: SidebarItem, b: SidebarItem) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -94,7 +113,7 @@ const config: Config = {
         sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           return sidebarItems
-            .map((item: any) => {
+            .map((item: SidebarItem) => {
               if (item.type === 'category') {
                 switch (item.label.toLowerCase()) {
                   case 'streams':
@@ -112,7 +131,7 @@ const config: Config = {
               }
               return item;
             })
-            .sort((a: any, b: any) => {
+            .sort((a: SidebarItem, b: SidebarItem) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -133,20 +152,20 @@ const config: Config = {
           const sidebarItems = await defaultSidebarItemsGenerator(args);
           // Filter out adapters and clients, only keep plugins
           return sidebarItems
-            .filter((item: any) => {
+            .filter((item: SidebarItem) => {
               if (item.type === 'category') {
                 const label = item.label.toLowerCase();
                 return label !== 'adapters' && label !== 'clients';
               }
               return true;
             })
-            .map((item: any) => {
+            .map((item: SidebarItem) => {
               if (item.type === 'category' && item.label.toLowerCase() === 'plugins') {
                 item.label = '🧩 ' + item.label;
               }
               return item;
             })
-            .sort((a: any, b: any) => {
+            .sort((a: SidebarItem, b: SidebarItem) => {
               const labelA = a.label || '';
               const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
@@ -177,7 +196,7 @@ const config: Config = {
           '@implements',
           '@template',
           '@property',
-          '@typedef'
+          '@typedef',
         ],
         hideGenerator: true,
         cleanOutputDir: true,
@@ -310,13 +329,13 @@ const config: Config = {
           changefreq: 'weekly',
           ignorePatterns: ['/tags/**'],
           filename: 'sitemap.xml',
-          createSitemapItems: async (params: any) => {
+          createSitemapItems: async (params: SitemapParams) => {
             const { defaultCreateSitemapItems, ...rest } = params;
             const items = await defaultCreateSitemapItems(rest);
 
             return items
-              .filter((item: any) => !item.url.includes('/page/'))
-              .map((item: any) => {
+              .filter((item: SitemapItem) => !item.url.includes('/page/'))
+              .map((item: SitemapItem) => {
                 let priority = 0.5;
 
                 if (item.url === '/') {

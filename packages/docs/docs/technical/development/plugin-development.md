@@ -63,14 +63,14 @@ const myPlugin: Plugin = {
 
   // Optional configuration
   config: {
-    apiKey: 'your-api-key-here'
+    apiKey: 'your-api-key-here',
   },
 
   // Lifecycle hooks
   async init(config: Record<string, string>, runtime: IAgentRuntime) {
     console.log('My plugin initialized!');
     // Initialize plugin resources
-  }
+  },
 };
 
 export default myPlugin;
@@ -323,41 +323,41 @@ import { Service, IAgentRuntime } from '@elizaos/core';
 export class MyService extends Service {
   static serviceType = 'my-service';
   capabilityDescription = 'Provides custom service functionality';
-  
+
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
-  
+
   static async start(runtime: IAgentRuntime): Promise<MyService> {
     const service = new MyService(runtime);
     await service.initialize();
     return service;
   }
-  
+
   async stop(): Promise<void> {
     // Cleanup resources
     await this.closeConnections();
   }
-  
+
   private async initialize(): Promise<void> {
     // Initialize service resources
     await this.setupConnections();
   }
-  
+
   // Service methods
   async performOperation(data: any): Promise<any> {
     // Service logic
     return this.processData(data);
   }
-  
+
   private async setupConnections(): Promise<void> {
     // Setup logic
   }
-  
+
   private async closeConnections(): Promise<void> {
     // Cleanup logic
   }
-  
+
   private processData(data: any): any {
     // Data processing logic
     return data;

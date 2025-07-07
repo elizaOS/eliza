@@ -144,7 +144,7 @@ describe('No Content Response Fix Integration', () => {
         ok: true,
         status: 200,
         headers: {
-          get: (name: string) => name === 'content-length' ? '0' : null,
+          get: (name: string) => (name === 'content-length' ? '0' : null),
         },
         json: async () => {
           throw new Error('No content');
@@ -164,7 +164,7 @@ describe('No Content Response Fix Integration', () => {
         ok: true,
         status: 200,
         headers: {
-          get: (name: string) => name === 'content-length' ? '50' : null,
+          get: (name: string) => (name === 'content-length' ? '50' : null),
         },
         json: async () => {
           throw new Error('Malformed JSON');
@@ -179,16 +179,17 @@ describe('No Content Response Fix Integration', () => {
   });
 
   it('should demonstrate the fix prevents runtime property access errors', async () => {
-    global.fetch = async () => ({
-      ok: true,
-      status: 204,
-      headers: {
-        get: () => null,
-      },
-      json: async () => {
-        throw new Error('No content');
-      },
-    }) as Response;
+    global.fetch = async () =>
+      ({
+        ok: true,
+        status: 204,
+        headers: {
+          get: () => null,
+        },
+        json: async () => {
+          throw new Error('No content');
+        },
+      }) as Response;
 
     const result = await agentsService.deleteAgent('test-agent-id' as any);
 

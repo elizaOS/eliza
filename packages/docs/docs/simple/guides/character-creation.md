@@ -17,11 +17,7 @@ Here's the simplest character file:
 ```json
 {
   "name": "Your Agent Name",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
   "bio": [
     "A brief description of who your agent is",
     "Their background or story",
@@ -99,11 +95,7 @@ Show how your agent should respond:
 ```json
 {
   "name": "Helper",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
   "bio": [
     "I'm Helper, your friendly AI assistant!",
     "I love solving problems and making people's day easier.",
@@ -130,11 +122,7 @@ Show how your agent should respond:
 ```json
 {
   "name": "PixelPal",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
   "bio": [
     "Level 99 gamer and your ultimate gaming companion!",
     "From retro arcade to cutting-edge VR, I've played them all.",
@@ -165,11 +153,7 @@ Show how your agent should respond:
 ```json
 {
   "name": "Wordsworth",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-anthropic",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-anthropic", "@elizaos/plugin-bootstrap"],
   "bio": [
     "A lover of language and weaver of words.",
     "I find poetry in the mundane and stories in silence.",

@@ -24,24 +24,24 @@ import { Server as SocketIOServer } from 'socket.io';
 export const setupSocketIO = (server: any, runtime: IAgentRuntime) => {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
+      origin: '*',
+      methods: ['GET', 'POST'],
+    },
   });
 
   // Message type definitions
   enum MessageType {
     ROOM_JOINING = 'room_joining',
-    SEND_MESSAGE = 'send_message', 
+    SEND_MESSAGE = 'send_message',
     MESSAGE = 'message',
     ACK = 'ack',
     THINKING = 'thinking',
-    CONTROL = 'control'
+    CONTROL = 'control',
   }
 
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
-    
+
     // Handle message sending
     socket.on(MessageType.SEND_MESSAGE, async (data) => {
       await handleIncomingMessage(socket, data, runtime);
@@ -65,15 +65,11 @@ export const setupSocketIO = (server: any, runtime: IAgentRuntime) => {
 #### Message Processing Pipeline
 
 ```typescript
-async function handleIncomingMessage(
-  socket: Socket, 
-  data: MessageData, 
-  runtime: IAgentRuntime
-) {
+async function handleIncomingMessage(socket: Socket, data: MessageData, runtime: IAgentRuntime) {
   try {
     // 1. Validate message data
     const validatedData = validateMessageData(data);
-    
+
     // 2. Create memory object
     const memory: Memory = {
       id: stringToUuid(Date.now().toString()),
@@ -83,9 +79,9 @@ async function handleIncomingMessage(
       content: {
         text: validatedData.text,
         source: 'websocket-api',
-        metadata: validatedData.metadata || {}
+        metadata: validatedData.metadata || {},
       },
-      type: MemoryType.MESSAGE
+      type: MemoryType.MESSAGE,
     };
 
     // 3. Store message in database
@@ -96,25 +92,24 @@ async function handleIncomingMessage(
       id: memory.id,
       userId: memory.entityId,
       text: memory.content.text,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     // 5. Process with agent runtime
     const response = await runtime.processMessage(memory);
-    
+
     // 6. Send agent response back to room
     if (response) {
       socket.to(validatedData.roomId).emit(MessageType.MESSAGE, {
         id: response.id,
         userId: runtime.agentId,
         text: response.content.text,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
 
     // 7. Send acknowledgment
     socket.emit(MessageType.ACK, { success: true, messageId: memory.id });
-
   } catch (error) {
     console.error('Message processing error:', error);
     socket.emit(MessageType.ACK, { success: false, error: error.message });
@@ -153,7 +148,7 @@ export class SocketIOManager {
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
     });
 
     this.setupEventHandlers();
@@ -205,13 +200,13 @@ export class SocketIOManager {
       roomId: channelId,
       text: message,
       userId: this.getUserId(),
-      metadata
+      metadata,
     });
   }
 
   // Event subscription interface
   on<T extends keyof SocketEventMap>(
-    event: T, 
+    event: T,
     handler: (data: SocketEventMap[T]) => void
   ): () => void {
     const ctx = this.eventBus.attach(event, handler);
@@ -255,8 +250,8 @@ export function useSocket(serverUrl?: string) {
     socket,
     isConnected,
     joinChannel: (channelId: string) => socket.joinChannel(channelId),
-    sendMessage: (channelId: string, message: string, metadata?: any) => 
-      socket.sendMessage(channelId, message, metadata)
+    sendMessage: (channelId: string, message: string, metadata?: any) =>
+      socket.sendMessage(channelId, message, metadata),
   };
 }
 ```
@@ -275,14 +270,14 @@ interface SocketMessage {
 
 enum MessageType {
   // User actions
-  ROOM_JOINING = 'room_joining',     // User joins a channel
-  SEND_MESSAGE = 'send_message',     // User sends a message
-  
-  // Server responses  
-  MESSAGE = 'message',               // Broadcast message to room
-  ACK = 'ack',                       // Acknowledgment of received message
-  THINKING = 'thinking',             // Agent is processing (typing indicator)
-  CONTROL = 'control'                // System control messages
+  ROOM_JOINING = 'room_joining', // User joins a channel
+  SEND_MESSAGE = 'send_message', // User sends a message
+
+  // Server responses
+  MESSAGE = 'message', // Broadcast message to room
+  ACK = 'ack', // Acknowledgment of received message
+  THINKING = 'thinking', // Agent is processing (typing indicator)
+  CONTROL = 'control', // System control messages
 }
 ```
 
@@ -292,7 +287,7 @@ enum MessageType {
 // Auto-creation of channels for message flow
 class ChannelManager {
   private channels = new Map<string, ChannelInfo>();
-  
+
   async ensureChannel(channelId: string): Promise<ChannelInfo> {
     if (!this.channels.has(channelId)) {
       // Create new channel
@@ -300,14 +295,14 @@ class ChannelManager {
         id: channelId,
         participants: new Set(),
         createdAt: Date.now(),
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
       };
-      
+
       // Store in database
       await this.saveChannel(channel);
       this.channels.set(channelId, channel);
     }
-    
+
     return this.channels.get(channelId)!;
   }
 
@@ -323,7 +318,7 @@ class ChannelManager {
     const channel = this.channels.get(channelId);
     if (channel) {
       channel.participants.delete(userId);
-      
+
       // Cleanup empty channels
       if (channel.participants.size === 0) {
         this.scheduleChannelCleanup(channelId);
@@ -344,7 +339,7 @@ class EventBroadcaster {
     this.io.to(roomId).emit(event, {
       ...data,
       timestamp: Date.now(),
-      roomId
+      roomId,
     });
   }
 
@@ -352,7 +347,7 @@ class EventBroadcaster {
   broadcastGlobally(event: string, data: any): void {
     this.io.emit(event, {
       ...data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
@@ -360,7 +355,7 @@ class EventBroadcaster {
   sendToSocket(socketId: string, event: string, data: any): void {
     this.io.to(socketId).emit(event, {
       ...data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 }
@@ -375,7 +370,7 @@ class EventBroadcaster {
 export default {
   name: 'bootstrap',
   description: 'Core event handlers and message routing',
-  
+
   services: [
     {
       name: 'websocket',
@@ -389,29 +384,29 @@ export default {
         runtime.on('MESSAGE_RECEIVED', async (data) => {
           await handleSocketMessage(runtime, data);
         });
-      }
-    }
-  ]
+      },
+    },
+  ],
 };
 
 async function handleEntityJoined(runtime: IAgentRuntime, data: EntityJoinedEvent) {
   // Ensure world exists
   await runtime.ensureWorldExists({
     id: data.worldId,
-    name: data.worldName || 'Socket World'
+    name: data.worldName || 'Socket World',
   });
 
-  // Ensure entity exists  
+  // Ensure entity exists
   await runtime.ensureEntityExists({
     id: data.entityId,
-    name: data.entityName || 'Socket User'
+    name: data.entityName || 'Socket User',
   });
 
   // Create or update room
   await runtime.ensureRoomExists({
     id: data.roomId,
     worldId: data.worldId,
-    name: data.roomName || 'Socket Channel'
+    name: data.roomName || 'Socket Channel',
   });
 }
 ```
@@ -420,30 +415,25 @@ async function handleEntityJoined(runtime: IAgentRuntime, data: EntityJoinedEven
 
 ```typescript
 // Register WebSocket send handler
-runtime.sendHandlers.set('websocket-api', async (
-  runtime: IAgentRuntime,
-  target: TargetInfo,
-  content: Content
-) => {
-  const socketManager = SocketIOManager.getInstance();
-  
-  // Send message through WebSocket
-  socketManager.sendMessage(
-    target.roomId,
-    content.text,
-    content.metadata
-  );
-  
-  // Also broadcast to room participants
-  const io = getSocketIOInstance();
-  io.to(target.roomId).emit('message', {
-    id: stringToUuid(Date.now().toString()),
-    userId: runtime.agentId,
-    text: content.text,
-    timestamp: Date.now(),
-    source: 'agent'
-  });
-});
+runtime.sendHandlers.set(
+  'websocket-api',
+  async (runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
+    const socketManager = SocketIOManager.getInstance();
+
+    // Send message through WebSocket
+    socketManager.sendMessage(target.roomId, content.text, content.metadata);
+
+    // Also broadcast to room participants
+    const io = getSocketIOInstance();
+    io.to(target.roomId).emit('message', {
+      id: stringToUuid(Date.now().toString()),
+      userId: runtime.agentId,
+      text: content.text,
+      timestamp: Date.now(),
+      source: 'agent',
+    });
+  }
+);
 ```
 
 ## Connection Management
@@ -458,7 +448,7 @@ class ConnectionManager {
     this.connections.set(socketId, {
       ...info,
       connectedAt: Date.now(),
-      lastSeen: Date.now()
+      lastSeen: Date.now(),
     });
   }
 
@@ -475,14 +465,13 @@ class ConnectionManager {
 
   // Get active connections for a room
   getActiveConnections(roomId: string): ConnectionInfo[] {
-    return Array.from(this.connections.values())
-      .filter(conn => conn.roomIds.includes(roomId));
+    return Array.from(this.connections.values()).filter((conn) => conn.roomIds.includes(roomId));
   }
 
   // Cleanup stale connections
   cleanupStaleConnections(maxAge: number = 5 * 60 * 1000): void {
     const cutoff = Date.now() - maxAge;
-    
+
     for (const [socketId, connection] of this.connections) {
       if (connection.lastSeen < cutoff) {
         this.removeConnection(socketId);
@@ -518,10 +507,13 @@ class ReconnectionManager {
       return;
     }
 
-    setTimeout(() => {
-      this.reconnectAttempts++;
-      this.attemptReconnection();
-    }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
+    setTimeout(
+      () => {
+        this.reconnectAttempts++;
+        this.attemptReconnection();
+      },
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts)
+    );
   }
 
   private resetReconnectionState(): void {
@@ -530,7 +522,7 @@ class ReconnectionManager {
 
   private restoreActiveChannels(): void {
     const socketManager = SocketIOManager.getInstance();
-    
+
     // Rejoin all previously active channels
     for (const channelId of socketManager.getActiveChannels()) {
       socketManager.joinChannel(channelId);
@@ -577,7 +569,7 @@ class MessageBatcher {
   private processBatch(messages: SocketMessage[]): void {
     // Process batch of messages efficiently
     const grouped = this.groupMessagesByRoom(messages);
-    
+
     for (const [roomId, roomMessages] of grouped) {
       this.broadcastBatchToRoom(roomId, roomMessages);
     }
@@ -594,7 +586,7 @@ class SocketPool {
 
   getConnection(roomId: string): Socket | null {
     const pool = this.pools.get(roomId) || [];
-    return pool.find(socket => socket.connected) || null;
+    return pool.find((socket) => socket.connected) || null;
   }
 
   addConnection(roomId: string, socket: Socket): void {
@@ -603,7 +595,7 @@ class SocketPool {
     }
 
     const pool = this.pools.get(roomId)!;
-    
+
     if (pool.length < this.maxPoolSize) {
       pool.push(socket);
     }
@@ -615,7 +607,7 @@ class SocketPool {
   private cleanupPool(roomId: string): void {
     const pool = this.pools.get(roomId);
     if (pool) {
-      const active = pool.filter(socket => socket.connected);
+      const active = pool.filter((socket) => socket.connected);
       this.pools.set(roomId, active);
     }
   }
@@ -651,15 +643,10 @@ class SocketErrorHandler {
   }
 
   private isRecoverableError(error: Error): boolean {
-    const recoverableErrors = [
-      'ECONNRESET',
-      'ENOTFOUND',
-      'TIMEOUT',
-      'NETWORK_ERROR'
-    ];
+    const recoverableErrors = ['ECONNRESET', 'ENOTFOUND', 'TIMEOUT', 'NETWORK_ERROR'];
 
-    return recoverableErrors.some(errType => 
-      error.message.includes(errType) || error.name.includes(errType)
+    return recoverableErrors.some(
+      (errType) => error.message.includes(errType) || error.name.includes(errType)
     );
   }
 }
@@ -700,7 +687,7 @@ class SocketCircuitBreaker {
 
   private onFailure(): void {
     this.failureCount++;
-    
+
     if (this.failureCount >= this.failureThreshold) {
       this.state = 'OPEN';
       this.nextAttempt = Date.now() + this.resetTimeout;
@@ -717,7 +704,7 @@ class SocketCircuitBreaker {
 // JWT-based socket authentication
 const authenticateSocket = (socket: Socket, next: (err?: Error) => void) => {
   const token = socket.handshake.auth.token;
-  
+
   if (!token) {
     return next(new Error('Authentication required'));
   }
@@ -736,12 +723,12 @@ const authenticateSocket = (socket: Socket, next: (err?: Error) => void) => {
 const authorizeRoomAccess = async (socket: Socket, roomId: string): Promise<boolean> => {
   // Check if user has permission to access room
   const hasAccess = await checkRoomPermissions(socket.userId, roomId);
-  
+
   if (!hasAccess) {
     socket.emit('error', { message: 'Access denied to room' });
     return false;
   }
-  
+
   return true;
 };
 ```
@@ -758,7 +745,7 @@ class SocketRateLimiter {
     const now = Date.now();
     const userLimit = this.userLimits.get(userId) || {
       requests: 0,
-      resetTime: now + this.windowMs
+      resetTime: now + this.windowMs,
     };
 
     if (now > userLimit.resetTime) {

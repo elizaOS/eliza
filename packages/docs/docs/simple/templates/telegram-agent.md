@@ -244,6 +244,7 @@ Eliza: You have an amazing view! Having a balcony with sunset views must be so p
 ### Language & Cultural Focus
 
 For multilingual communities:
+
 ```json
 "bio": [
   "I'm Eliza, comfortable chatting in multiple languages!",
@@ -260,6 +261,7 @@ For multilingual communities:
 ### Topic Specialization
 
 Tech-focused Eliza:
+
 ```json
 "topics": [
   "programming and development",
@@ -276,7 +278,7 @@ Tech-focused Eliza:
     },
     {
       "name": "Eliza",
-      "content": { 
+      "content": {
         "text": "Oh, I know that feeling! The debugging zone where time stops existing 😅 What kind of bug are you hunting? Sometimes explaining it out loud helps!"
       }
     }
@@ -285,6 +287,7 @@ Tech-focused Eliza:
 ```
 
 Wellness-focused Eliza:
+
 ```json
 "topics": [
   "mindfulness and meditation",
@@ -308,6 +311,7 @@ Wellness-focused Eliza:
 ### Smart Engagement
 
 Eliza knows when to engage in groups:
+
 - When mentioned directly
 - When asked a question
 - When the conversation relates to her interests
@@ -329,6 +333,7 @@ Eliza knows when to engage in groups:
 ### Media Understanding
 
 With image vision enabled, Eliza can:
+
 - Comment on shared photos
 - Understand memes and reactions
 - Discuss visual content
@@ -337,6 +342,7 @@ With image vision enabled, Eliza can:
 ### Voice Messages
 
 Eliza can:
+
 - Send voice responses (if configured)
 - Understand voice message context
 - Adapt to voice-heavy conversations
@@ -344,6 +350,7 @@ Eliza can:
 ### Inline Queries
 
 Support for Telegram's inline mode:
+
 ```
 @ElizaBot What do you think about...
 ```
@@ -351,6 +358,7 @@ Support for Telegram's inline mode:
 ## Best Practices
 
 ### DO:
+
 - Respond naturally and conversationally
 - Adapt to the user's language style
 - Remember conversation context
@@ -358,6 +366,7 @@ Support for Telegram's inline mode:
 - Respect group chat etiquette
 
 ### DON'T:
+
 - Spam or overwhelm with messages
 - Use excessive formatting
 - Ignore cultural context
@@ -367,6 +376,7 @@ Support for Telegram's inline mode:
 ## Privacy & Groups
 
 ### Private Chat Settings
+
 ```json
 "settings": {
   "allowDirectMessages": true,
@@ -376,6 +386,7 @@ Support for Telegram's inline mode:
 ```
 
 ### Group Settings
+
 ```json
 "settings": {
   "shouldOnlyJoinInAllowedGroups": true,
@@ -387,12 +398,14 @@ Support for Telegram's inline mode:
 ## Performance Tips
 
 ### Message Handling
+
 - Process messages asynchronously
 - Implement typing indicators
 - Handle media efficiently
 - Cache frequent responses
 
 ### Rate Limiting
+
 - Respect Telegram's limits
 - Implement cooldowns
 - Queue messages appropriately
@@ -401,18 +414,21 @@ Support for Telegram's inline mode:
 ## Troubleshooting
 
 ### Bot Not Responding
+
 - Verify bot token is correct
 - Check bot is not blocked
 - Ensure proper permissions
 - Review error logs
 
 ### Slow Responses
+
 - Check API rate limits
 - Optimize character file
 - Review hosting performance
 - Consider caching
 
 ### Group Issues
+
 - Verify group permissions
 - Check privacy settings
 - Ensure bot is admin (if needed)
@@ -421,6 +437,7 @@ Support for Telegram's inline mode:
 ## Monitoring
 
 Track these metrics:
+
 - Response time
 - Conversation quality
 - User engagement

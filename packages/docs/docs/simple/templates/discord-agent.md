@@ -149,6 +149,7 @@ A conversational Discord agent that naturally engages with your community, built
 ### 2. Set Bot Permissions
 
 In the Bot section:
+
 - ✅ Message Content Intent (required)
 - ✅ Server Members Intent (recommended)
 
@@ -193,6 +194,7 @@ bun start --character characters/discord-eliza.json
 ## Natural Conversation Examples
 
 ### Community Welcome
+
 ```
 New Member: Hi everyone!
 Eliza: Hey there! Welcome to the community! 🌟 I'm Eliza, been here for a while and absolutely love this place. What interests brought you here?
@@ -201,6 +203,7 @@ Eliza: That's awesome! We have quite a few developers here. Have you been coding
 ```
 
 ### Casual Chat
+
 ```
 User: Anyone up for some gaming tonight?
 Eliza: Count me interested! What are you thinking of playing? I've been really into co-op games lately - there's something special about teaming up with friends!
@@ -209,6 +212,7 @@ Eliza: Minecraft is perfect for hanging out! Building together is so relaxing. D
 ```
 
 ### Support Conversation
+
 ```
 User: Having a rough day today
 Eliza: I'm sorry you're going through a tough time. Want to talk about it? Sometimes sharing helps, but no pressure if you'd rather just have some distraction! Either way, we're here for you 💙
@@ -221,6 +225,7 @@ Eliza: I'm sorry you're going through a tough time. Want to talk about it? Somet
 #### Change Personality Traits
 
 For a more energetic personality:
+
 ```json
 "style": {
   "all": [
@@ -233,6 +238,7 @@ For a more energetic personality:
 ```
 
 For a chill, laid-back vibe:
+
 ```json
 "style": {
   "all": [
@@ -247,6 +253,7 @@ For a chill, laid-back vibe:
 #### Specialized Interests
 
 Gaming-focused Eliza:
+
 ```json
 "topics": [
   "video games and esports",
@@ -262,6 +269,7 @@ Gaming-focused Eliza:
 ```
 
 Creative Community Eliza:
+
 ```json
 "topics": [
   "art and illustration",
@@ -281,6 +289,7 @@ Creative Community Eliza:
 ### Multi-Channel Awareness
 
 Eliza can adapt to different channels:
+
 - General chat: Casual and friendly
 - Help channels: More focused and supportive
 - Gaming channels: Enthusiastic about games
@@ -289,6 +298,7 @@ Eliza can adapt to different channels:
 ### Memory and Context
 
 Eliza remembers:
+
 - Previous conversations
 - User preferences
 - Community inside jokes
@@ -297,6 +307,7 @@ Eliza remembers:
 ### Natural Reactions
 
 Eliza uses reactions appropriately:
+
 - 👍 for agreement
 - ❤️ for support
 - 🎉 for celebrations
@@ -305,12 +316,14 @@ Eliza uses reactions appropriately:
 ## Best Practices
 
 ### DO:
+
 - Let Eliza be conversational, not robotic
 - Allow natural flow of conversation
 - Share opinions and experiences
 - Use Discord features naturally
 
 ### DON'T:
+
 - Make every response about helping
 - Use excessive formatting
 - Respond to every single message
@@ -319,20 +332,24 @@ Eliza uses reactions appropriately:
 ## Community Integration Tips
 
 ### 1. Introduce Eliza Naturally
+
 ```
-"Hey everyone! I'm Eliza, just joined the server and excited to be here! 
-I love chatting about pretty much everything. Looking forward to getting 
+"Hey everyone! I'm Eliza, just joined the server and excited to be here!
+I love chatting about pretty much everything. Looking forward to getting
 to know you all!"
 ```
 
 ### 2. Set Expectations
+
 Let your community know:
+
 - Eliza is an AI community member
 - She's here for conversations
 - She won't moderate or enforce rules
 - She's part of the community experience
 
 ### 3. Channel Guidelines
+
 - **General**: Active and engaged
 - **Support**: Thoughtful and helpful
 - **Off-topic**: Fun and relaxed
@@ -341,18 +358,21 @@ Let your community know:
 ## Troubleshooting
 
 ### Eliza Not Responding
+
 - Check bot is online in member list
 - Verify Message Content Intent is enabled
 - Ensure bot has permission in channel
 - Check logs for errors
 
 ### Responses Feel Generic
+
 - Add more personality to bio
 - Include specific examples
 - Customize topics and knowledge
 - Add community-specific lore
 
 ### Too Many Responses
+
 - Adjust response frequency in code
 - Set up cooldowns between messages
 - Configure specific active channels

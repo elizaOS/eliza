@@ -65,27 +65,27 @@ import { MyService } from './services/myService';
 export default {
   name: 'my-plugin',
   description: 'Adds awesome functionality to ElizaOS',
-  
+
   // Optional initialization
   init: async (config, runtime) => {
     console.log('Plugin initializing with config:', config);
     // Perform any setup needed
   },
-  
+
   // Register components
   actions: [myAction],
   providers: [myProvider],
   evaluators: [myEvaluator],
   services: [MyService], // Note: Services are class constructors
-  
+
   // Optional configuration schema
   config: {
     apiKey: {
       type: 'string',
       description: 'API key for external service',
-      required: true
-    }
-  }
+      required: true,
+    },
+  },
 } satisfies Plugin;
 ```
 
@@ -101,57 +101,57 @@ export const myAction: Action = {
   name: 'MY_AWESOME_ACTION',
   similes: ['AWESOME_ACTION', 'DO_AWESOME'], // Alternative names
   description: 'Performs an awesome action',
-  
+
   // Validate if this action should handle the message
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     const text = message.content.text.toLowerCase();
     return text.includes('do something awesome');
   },
-  
+
   // Handle the action
   handler: async (runtime, message, state, options, callback) => {
     try {
       // Perform your action logic
       const result = await performAwesomeTask(message.content.text);
-      
+
       // Generate response
       const response = {
         text: `I did something awesome: ${result}`,
         action: 'MY_AWESOME_ACTION',
-        data: { result }
+        data: { result },
       };
-      
+
       // Call callback if provided
       if (callback) {
         await callback(response);
       }
-      
+
       return response;
     } catch (error) {
       console.error('Action failed:', error);
-      return { 
-        text: 'Sorry, I encountered an error.', 
-        error: error.message 
+      return {
+        text: 'Sorry, I encountered an error.',
+        error: error.message,
       };
     }
   },
-  
+
   // Provide examples for the AI
   examples: [
     [
       {
         user: '{{user1}}',
-        content: { text: 'Can you do something awesome?' }
+        content: { text: 'Can you do something awesome?' },
       },
       {
         user: '{{agent}}',
-        content: { 
+        content: {
           text: "I'll do something awesome for you!",
-          action: 'MY_AWESOME_ACTION'
-        }
-      }
-    ]
-  ]
+          action: 'MY_AWESOME_ACTION',
+        },
+      },
+    ],
+  ],
 };
 ```
 
@@ -166,24 +166,24 @@ import { Provider, IAgentRuntime, State, Memory } from '@elizaos/core';
 export const myProvider: Provider = {
   name: 'MY_DATA_PROVIDER',
   description: 'Provides awesome contextual data',
-  
+
   get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     try {
       // Fetch or compute relevant data
       const data = await fetchRelevantData(message.userId);
-      
+
       return {
         text: `User data: ${JSON.stringify(data)}`,
         values: {
           userData: data,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       };
     } catch (error) {
       console.error('Provider error:', error);
       return { text: 'Unable to fetch data' };
     }
-  }
+  },
 };
 ```
 
@@ -198,29 +198,29 @@ import { Evaluator, IAgentRuntime, Memory } from '@elizaos/core';
 export const myEvaluator: Evaluator = {
   name: 'SENTIMENT_EVALUATOR',
   description: 'Analyzes message sentiment',
-  
+
   // Only evaluate messages that meet criteria
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     return message.content.text.length > 10;
   },
-  
+
   // Perform evaluation
   handler: async (runtime, message) => {
     const sentiment = analyzeSentiment(message.content.text);
-    
+
     // Store evaluation result
     await runtime.createMemory({
       ...message,
       content: {
         ...message.content,
         evaluations: {
-          sentiment: sentiment
-        }
-      }
+          sentiment: sentiment,
+        },
+      },
     });
-    
+
     return sentiment;
-  }
+  },
 };
 ```
 
@@ -235,23 +235,23 @@ import { Service, IAgentRuntime } from '@elizaos/core';
 export class MyService extends Service {
   static serviceType = 'my-awesome-service';
   capabilityDescription = 'Provides awesome background functionality';
-  
+
   private interval: NodeJS.Timer | null = null;
-  
+
   // Factory method to create service
   static async start(runtime: IAgentRuntime): Promise<MyService> {
     const service = new MyService(runtime);
     await service.initialize();
     return service;
   }
-  
+
   private async initialize(): Promise<void> {
     // Set up background tasks
     this.interval = setInterval(() => {
       this.performBackgroundTask();
     }, 60000); // Every minute
   }
-  
+
   async stop(): Promise<void> {
     // Clean up resources
     if (this.interval) {
@@ -259,12 +259,12 @@ export class MyService extends Service {
       this.interval = null;
     }
   }
-  
+
   private async performBackgroundTask(): Promise<void> {
     // Do something in the background
     console.log('Performing background task...');
   }
-  
+
   // Public methods for other components to use
   async getData(key: string): Promise<any> {
     // Return data from service
@@ -365,31 +365,25 @@ describe('myAction', () => {
       content: { text: 'Please do something awesome' },
       userId: 'test-user',
       roomId: 'test-room',
-      agentId: 'test-agent'
+      agentId: 'test-agent',
     };
-    
+
     const isValid = await myAction.validate(runtime, message);
     expect(isValid).toBe(true);
   });
-  
+
   it('should handle action successfully', async () => {
     const runtime = createMockRuntime();
     const message = {
       content: { text: 'Do something awesome now!' },
       userId: 'test-user',
       roomId: 'test-room',
-      agentId: 'test-agent'
+      agentId: 'test-agent',
     };
-    
+
     const callback = vi.fn();
-    const result = await myAction.handler(
-      runtime, 
-      message, 
-      {}, 
-      {}, 
-      callback
-    );
-    
+    const result = await myAction.handler(runtime, message, {}, {}, callback);
+
     expect(result.text).toContain('awesome');
     expect(callback).toHaveBeenCalled();
   });
@@ -416,28 +410,28 @@ export const e2eTestSuite: TestSuite = {
         const response = await runtime.processMessage({
           content: { text: 'Do something awesome please' },
           userId: 'e2e-test-user',
-          roomId: 'e2e-test-room'
+          roomId: 'e2e-test-room',
         });
-        
+
         // Verify the response
         if (!response.includes('awesome')) {
           throw new Error('Expected awesome response');
         }
-        
+
         // Verify service is running
         const service = runtime.getService('my-awesome-service');
         if (!service) {
           throw new Error('Service not initialized');
         }
-      }
-    }
-  ]
+      },
+    },
+  ],
 };
 
 // Add to plugin definition
 export default {
   // ... other plugin config
-  tests: [e2eTestSuite]
+  tests: [e2eTestSuite],
 };
 ```
 
@@ -468,28 +462,32 @@ elizaos test -t e2e        # E2E tests only
 ### Publishing Steps
 
 1. **Authenticate with npm**:
+
    ```bash
    npm login
    ```
 
 2. **Add GitHub topic**:
+
    - Go to your GitHub repository
    - Add the topic `elizaos-plugins`
 
 3. **Test your plugin**:
+
    ```bash
    # Run all tests
    npm test
-   
+
    # Test the publish process
    elizaos publish --test
    ```
 
 4. **Publish**:
+
    ```bash
    # First time publishing
    elizaos publish
-   
+
    # Updates (after initial publish)
    npm version patch
    npm publish
@@ -499,6 +497,7 @@ elizaos test -t e2e        # E2E tests only
 ### Post-Publishing
 
 Your plugin will appear in:
+
 - npm registry: `https://www.npmjs.com/package/@yourorg/plugin-name`
 - ElizaOS Plugin Directory: Automatically indexed from GitHub
 - Agent configurations can reference it: `"plugins": ["@yourorg/plugin-name"]`
@@ -543,18 +542,18 @@ Access plugin configuration in your components:
 ```typescript
 export const configuredAction: Action = {
   name: 'CONFIGURED_ACTION',
-  
+
   handler: async (runtime, message, state, options) => {
     // Access plugin config
     const apiKey = runtime.getSetting('API_KEY');
     if (!apiKey) {
       throw new Error('API_KEY not configured');
     }
-    
+
     // Use the configuration
     const result = await callExternalAPI(apiKey, message.content.text);
     return { text: result };
-  }
+  },
 };
 ```
 
@@ -571,7 +570,7 @@ const cachedData = await myService.getData('user-preferences');
 const myService = runtime.getService('my-awesome-service') as MyService;
 return {
   text: 'User preferences loaded',
-  values: await myService.getData('user-preferences')
+  values: await myService.getData('user-preferences'),
 };
 ```
 
@@ -582,16 +581,16 @@ React to agent events:
 ```typescript
 export default {
   name: 'event-plugin',
-  
+
   events: {
     onMessageReceived: async (runtime, message) => {
       console.log('Message received:', message);
     },
-    
+
     onActionComplete: async (runtime, action, result) => {
       console.log('Action completed:', action, result);
-    }
-  }
+    },
+  },
 } satisfies Plugin;
 ```
 
@@ -600,16 +599,19 @@ export default {
 ### Common Issues
 
 1. **Plugin not loading**:
+
    - Check `package.json` has correct `packageType: "plugin"`
    - Verify main export is default
    - Check for circular dependencies
 
 2. **Actions not triggering**:
+
    - Verify `validate` returns true for test messages
    - Check action name is unique
    - Enable debug logging: `DEBUG=eliza:*`
 
 3. **Service errors**:
+
    - Ensure `static serviceType` is defined
    - Implement `start()` factory method
    - Check service is in plugin's `services` array

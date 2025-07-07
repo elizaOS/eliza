@@ -410,7 +410,6 @@ const sidebars: SidebarsConfig = {
       label: '❓ Technical FAQ',
     },
   ],
-
 };
 
 export default sidebars;

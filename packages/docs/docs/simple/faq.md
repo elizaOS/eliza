@@ -26,12 +26,12 @@ ElizaOS itself is **free and open source**! However, you'll need:
 
 **Cost Breakdown Example (Monthly):**
 
-| Usage Level | AI API Cost | Hosting | Total |
-|-------------|-------------|---------|-------|
-| Testing/Learning | $0-5 (free tier) | $0 (local) | $0-5 |
-| Personal Bot | $5-15 | $0 (local) | $5-15 |
-| Community Bot | $15-50 | $5-20 | $20-70 |
-| Business Bot | $50-200 | $20-100 | $70-300 |
+| Usage Level      | AI API Cost      | Hosting    | Total   |
+| ---------------- | ---------------- | ---------- | ------- |
+| Testing/Learning | $0-5 (free tier) | $0 (local) | $0-5    |
+| Personal Bot     | $5-15            | $0 (local) | $5-15   |
+| Community Bot    | $15-50           | $5-20      | $20-70  |
+| Business Bot     | $50-200          | $20-100    | $70-300 |
 
 💡 **Tip**: Start with free local AI to learn, then upgrade when ready!
 
@@ -90,11 +90,7 @@ Edit the `character.json` file:
 ```json
 {
   "name": "Your Agent Name",
-  "plugins": [
-    "@elizaos/plugin-sql",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-bootstrap"
-  ],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-openai", "@elizaos/plugin-bootstrap"],
   "bio": ["Write your agent's background here", "Add more personality details"],
   "style": {
     "all": ["friendly", "helpful", "creative"]
@@ -246,6 +242,7 @@ Options:
      - ✅ Well-documented
      - ✅ ~$7/month
      - ✅ Lots of tutorials
+
 2. **Home Server** - Use an old computer
    - ✅ Free (just electricity)
    - ❌ Need stable internet

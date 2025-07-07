@@ -18,11 +18,11 @@ The order you list plugins in your character file is **extremely important**. El
 ```json
 {
   "plugins": [
-    "@elizaos/plugin-sql",          // 1. Database MUST be first
-    "@elizaos/plugin-openai",       // 2. AI provider second
-    "@elizaos/plugin-bootstrap",    // 3. Core functionality
-    "@elizaos/plugin-discord",      // 4. Platform plugins after
-    "@elizaos/plugin-twitter"       // 5. Additional features last
+    "@elizaos/plugin-sql", // 1. Database MUST be first
+    "@elizaos/plugin-openai", // 2. AI provider second
+    "@elizaos/plugin-bootstrap", // 3. Core functionality
+    "@elizaos/plugin-discord", // 4. Platform plugins after
+    "@elizaos/plugin-twitter" // 5. Additional features last
   ]
 }
 ```
@@ -44,7 +44,10 @@ These three plugins are required for every ElizaOS agent:
 #### 1. Database Plugin (Choose One)
 
 ```json
-"@elizaos/plugin-sql"      // Recommended - PostgreSQL/PGLite support
+"@elizaos/plugin-sql"
+
+
+// Recommended - PostgreSQL/PGLite support
 ```
 
 **Purpose**: Stores conversations, memory, and agent state
@@ -66,7 +69,10 @@ These three plugins are required for every ElizaOS agent:
 #### 3. Bootstrap Plugin
 
 ```json
-"@elizaos/plugin-bootstrap" // Always required
+"@elizaos/plugin-bootstrap"
+
+
+// Always required
 ```
 
 **Purpose**: Core agent functionality, actions, and evaluators

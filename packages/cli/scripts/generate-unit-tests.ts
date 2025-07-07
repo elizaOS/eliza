@@ -167,7 +167,7 @@ async function main() {
 
   const shouldGenerateTests = await clack.confirm({
     message: 'Generate test skeletons for all untested files?',
-    initialValue: true
+    initialValue: true,
   });
 
   if (clack.isCancel(shouldGenerateTests)) {

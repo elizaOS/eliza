@@ -18,14 +18,15 @@ describe('display-banner utils', () => {
   beforeEach(() => {
     // Save original methods
     originalGetInstance = UserEnvironment.getInstance;
-    
+
     // Create mocks
     mockFindMonorepoRoot = mock(() => null);
-    
+
     // Override UserEnvironment.getInstance
-    UserEnvironment.getInstance = () => ({
-      findMonorepoRoot: mockFindMonorepoRoot
-    } as any);
+    UserEnvironment.getInstance = () =>
+      ({
+        findMonorepoRoot: mockFindMonorepoRoot,
+      }) as any;
   });
 
   afterEach(() => {
@@ -40,7 +41,7 @@ describe('display-banner utils', () => {
       mockFindMonorepoRoot.mockReturnValue('/path/to/monorepo');
 
       const version = displayBanner.getVersion();
-      
+
       expect(version).toBe('monorepo');
       expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
     });
@@ -48,12 +49,15 @@ describe('display-banner utils', () => {
     it('should return "monorepo" when not running from node_modules', () => {
       // Mock no monorepo
       mockFindMonorepoRoot.mockReturnValue(null);
-      
+
       // Mock isRunningFromNodeModules to return false
-      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(false);
+      isRunningFromNodeModulesSpy = spyOn(
+        displayBanner,
+        'isRunningFromNodeModules'
+      ).mockReturnValue(false);
 
       const version = displayBanner.getVersion();
-      
+
       expect(version).toBe('monorepo');
       expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
     });
@@ -61,18 +65,23 @@ describe('display-banner utils', () => {
     it('should return package version when running from node_modules', () => {
       // Mock no monorepo
       mockFindMonorepoRoot.mockReturnValue(null);
-      
+
       // Mock isRunningFromNodeModules to return true
-      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
-      
+      isRunningFromNodeModulesSpy = spyOn(
+        displayBanner,
+        'isRunningFromNodeModules'
+      ).mockReturnValue(true);
+
       // Mock fs methods
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
-      fsReadFileSyncSpy = spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({
-        version: '1.2.3'
-      }));
+      fsReadFileSyncSpy = spyOn(fs, 'readFileSync').mockReturnValue(
+        JSON.stringify({
+          version: '1.2.3',
+        })
+      );
 
       const version = displayBanner.getVersion();
-      
+
       expect(version).not.toBe('monorepo');
       expect(version).toContain('1.');
       expect(mockFindMonorepoRoot).toHaveBeenCalledWith(process.cwd());
@@ -81,10 +90,13 @@ describe('display-banner utils', () => {
     it('should return fallback version when package.json is not found', () => {
       // Mock no monorepo
       mockFindMonorepoRoot.mockReturnValue(null);
-      
+
       // Mock isRunningFromNodeModules to return true
-      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
-      
+      isRunningFromNodeModulesSpy = spyOn(
+        displayBanner,
+        'isRunningFromNodeModules'
+      ).mockReturnValue(true);
+
       // Mock fs.existsSync to return false
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(false);
 
@@ -92,7 +104,7 @@ describe('display-banner utils', () => {
       const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
       const version = displayBanner.getVersion();
-      
+
       expect(version).toBe('0.0.0');
       expect(consoleErrorSpy).toHaveBeenCalled();
     });
@@ -100,10 +112,13 @@ describe('display-banner utils', () => {
     it('should handle JSON parse errors gracefully', () => {
       // Mock no monorepo
       mockFindMonorepoRoot.mockReturnValue(null);
-      
+
       // Mock isRunningFromNodeModules to return true
-      isRunningFromNodeModulesSpy = spyOn(displayBanner, 'isRunningFromNodeModules').mockReturnValue(true);
-      
+      isRunningFromNodeModulesSpy = spyOn(
+        displayBanner,
+        'isRunningFromNodeModules'
+      ).mockReturnValue(true);
+
       // Mock fs methods
       fsExistsSyncSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
       fsReadFileSyncSpy = spyOn(fs, 'readFileSync').mockReturnValue('invalid json');
@@ -112,7 +127,7 @@ describe('display-banner utils', () => {
       const consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
       const version = displayBanner.getVersion();
-      
+
       expect(version).toBe('0.0.0');
       expect(consoleErrorSpy).toHaveBeenCalled();
     });
@@ -121,7 +136,7 @@ describe('display-banner utils', () => {
   describe('getLatestCliVersion', () => {
     it('should skip version check for monorepo version', async () => {
       const result = await displayBanner.getLatestCliVersion('monorepo');
-      
+
       expect(result).toBeNull();
     });
 
@@ -132,7 +147,7 @@ describe('display-banner utils', () => {
   describe('checkAndShowUpdateNotification', () => {
     it('should skip update check for monorepo version', async () => {
       const result = await displayBanner.checkAndShowUpdateNotification('monorepo');
-      
+
       expect(result).toBe(false);
     });
 

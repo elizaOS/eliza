@@ -7,7 +7,7 @@ ElizaOS implements a sophisticated state management system that handles dynamic 
 The state management system is built around three core concepts:
 
 1. **State Composition** - Dynamic aggregation of context from multiple providers
-2. **Memory System** - Persistent storage with semantic search capabilities  
+2. **Memory System** - Persistent storage with semantic search capabilities
 3. **Caching Layer** - Efficient state retrieval and composition optimization
 
 ## State Architecture
@@ -16,10 +16,10 @@ The state management system is built around three core concepts:
 
 ```typescript
 interface State {
-  values: { [key: string]: any };  // Direct state values
-  data: { [key: string]: any };    // Structured/provider data
-  text: string;                    // Textual context summary
-  [key: string]: any;             // Dynamic properties
+  values: { [key: string]: any }; // Direct state values
+  data: { [key: string]: any }; // Structured/provider data
+  text: string; // Textual context summary
+  [key: string]: any; // Dynamic properties
 }
 ```
 
@@ -90,11 +90,11 @@ ElizaOS supports multiple memory types for different use cases:
 
 ```typescript
 enum MemoryType {
-  DOCUMENT = 'document',     // Complete documents or large text chunks
-  FRAGMENT = 'fragment',     // Document segments for embedding/search
-  MESSAGE = 'message',       // Conversational messages
+  DOCUMENT = 'document', // Complete documents or large text chunks
+  FRAGMENT = 'fragment', // Document segments for embedding/search
+  MESSAGE = 'message', // Conversational messages
   DESCRIPTION = 'description', // Descriptive information about entities
-  CUSTOM = 'custom'          // Extension point for custom types
+  CUSTOM = 'custom', // Extension point for custom types
 }
 ```
 
@@ -103,17 +103,17 @@ enum MemoryType {
 ```typescript
 interface Memory {
   id: UUID;
-  entityId: UUID;        // User/agent who created this memory
-  worldId?: UUID;        // World/server context
-  roomId?: UUID;         // Room/channel context
-  content: Content;      // Text content with metadata
+  entityId: UUID; // User/agent who created this memory
+  worldId?: UUID; // World/server context
+  roomId?: UUID; // Room/channel context
+  content: Content; // Text content with metadata
   type: MemoryType;
   metadata?: {
     scope: 'shared' | 'private' | 'room';
-    source?: string;     // Origin platform/service
+    source?: string; // Origin platform/service
     timestamp: number;
-    sequence?: number;   // Ordering within conversation
-    [key: string]: any;  // Custom metadata
+    sequence?: number; // Ordering within conversation
+    [key: string]: any; // Custom metadata
   };
 }
 ```
@@ -129,15 +129,15 @@ await runtime.memory.create({
   worldId: message.worldId,
   roomId: message.roomId,
   content: {
-    text: "Important information to remember",
-    metadata: { type: "fact" }
+    text: 'Important information to remember',
+    metadata: { type: 'fact' },
   },
   type: MemoryType.DESCRIPTION,
   metadata: {
     scope: 'shared',
     source: 'discord',
-    timestamp: Date.now()
-  }
+    timestamp: Date.now(),
+  },
 });
 ```
 
@@ -145,22 +145,19 @@ await runtime.memory.create({
 
 ```typescript
 // Search memories by content similarity
-const memories = await runtime.memory.searchMemoriesByEmbedding(
-  embedding,
-  {
-    match_threshold: 0.8,
-    count: 10,
-    tableName: 'memories',
-    worldId: message.worldId,
-    roomId: message.roomId
-  }
-);
+const memories = await runtime.memory.searchMemoriesByEmbedding(embedding, {
+  match_threshold: 0.8,
+  count: 10,
+  tableName: 'memories',
+  worldId: message.worldId,
+  roomId: message.roomId,
+});
 
 // Get recent memories in a room
 const recent = await runtime.memory.getMemories({
   roomId: message.roomId,
   count: 20,
-  unique: false
+  unique: false,
 });
 ```
 
@@ -233,15 +230,15 @@ interface IDatabaseAdapter {
   createMemory(memory: Memory, tableName: string): Promise<void>;
   getMemories(params: GetMemoriesParams): Promise<Memory[]>;
   searchMemoriesByEmbedding(embedding: number[], options: SearchOptions): Promise<Memory[]>;
-  
+
   // Entity operations
   createEntity(entity: Entity): Promise<boolean>;
   getEntity(params: { id: UUID }): Promise<Entity | null>;
-  
+
   // World operations
   createWorld(world: World): Promise<boolean>;
   getWorlds(params: { entityId: UUID }): Promise<World[]>;
-  
+
   // Room operations
   createRoom(room: Room): Promise<boolean>;
   getRoom(params: { id: UUID }): Promise<Room | null>;
@@ -290,7 +287,7 @@ try {
   return {
     values: {},
     data: {},
-    text: message.content.text || ''
+    text: message.content.text || '',
   };
 }
 ```
@@ -319,13 +316,13 @@ const customProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
     // Fetch relevant context data
     const context = await fetchCustomContext(message);
-    
+
     return {
       text: `Custom context: ${context.summary}`,
       data: { customData: context },
-      values: { hasCustomContext: true }
+      values: { hasCustomContext: true },
     };
-  }
+  },
 };
 
 // Register provider
@@ -344,15 +341,15 @@ const memoryProvider: Provider = {
         match_threshold: 0.7,
         count: 5,
         tableName: 'memories',
-        roomId: message.roomId
+        roomId: message.roomId,
       }
     );
-    
+
     return {
-      text: memories.map(m => m.content.text).join('\n'),
-      data: { relevantMemories: memories }
+      text: memories.map((m) => m.content.text).join('\n'),
+      data: { relevantMemories: memories },
     };
-  }
+  },
 };
 ```
 

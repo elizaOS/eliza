@@ -196,29 +196,32 @@ export default function SmartSearch(): JSX.Element {
       // Try to use Lunr search if available
       if (window.lunr && window.searchIndex) {
         const idx = window.lunr.Index.load(window.searchIndex);
-        
+
         // Perform multiple search strategies for better semantic matching
         let searchResults = [];
-        
+
         // 1. Exact phrase search
         try {
           searchResults = idx.search(`"${searchTerm}"`);
         } catch (e) {
           // If exact phrase fails, continue with other strategies
         }
-        
+
         // 2. Fuzzy search with wildcards
         if (searchResults.length === 0) {
-          const fuzzyTerm = searchTerm.split(' ').map(term => `${term}~1 ${term}*`).join(' ');
+          const fuzzyTerm = searchTerm
+            .split(' ')
+            .map((term) => `${term}~1 ${term}*`)
+            .join(' ');
           searchResults = idx.search(fuzzyTerm);
         }
-        
+
         // 3. Individual word search with OR
         if (searchResults.length === 0) {
           const orTerm = searchTerm.split(' ').join(' OR ');
           searchResults = idx.search(orTerm);
         }
-        
+
         // 4. Broad match with stemming
         if (searchResults.length === 0) {
           searchResults = idx.search(searchTerm);
@@ -321,7 +324,7 @@ export default function SmartSearch(): JSX.Element {
         try {
           console.log('AI Search enabled - Provider:', aiConfig.provider);
           console.log('Making AI-enhanced search for:', searchTerm);
-          
+
           // Use real AI service for enhanced search
           const aiResponse = await aiSearchService.search({
             query: searchTerm,
@@ -355,13 +358,13 @@ export default function SmartSearch(): JSX.Element {
       const enhancedResults = regularResults.map((result) => {
         // Calculate semantic relevance based on content analysis
         const semanticScore = calculateSemanticRelevance(result, searchTerm);
-        
+
         // Extract contextual highlights showing where terms appear
         const contextualHighlights = extractSemanticHighlights(result.content, searchTerm);
-        
+
         // Determine if this is a conceptual match even without exact terms
         const isConceptualMatch = detectConceptualMatch(result, searchTerm);
-        
+
         return {
           ...result,
           relevance: result.relevance * semanticScore,
@@ -390,21 +393,21 @@ export default function SmartSearch(): JSX.Element {
     let score = 1.0;
     const terms = searchTerm.toLowerCase().split(' ');
     const content = (result.title + ' ' + result.content).toLowerCase();
-    
+
     // Boost for title matches
-    terms.forEach(term => {
+    terms.forEach((term) => {
       if (result.title.toLowerCase().includes(term)) score *= 1.5;
     });
-    
+
     // Boost for multiple term matches
-    const matchCount = terms.filter(term => content.includes(term)).length;
-    score *= (1 + matchCount * 0.2);
-    
+    const matchCount = terms.filter((term) => content.includes(term)).length;
+    score *= 1 + matchCount * 0.2;
+
     // Boost for semantic category matches
     if (searchTerm.includes('api') && result.type === 'api') score *= 1.3;
     if (searchTerm.includes('guide') && result.category.includes('Guide')) score *= 1.3;
     if (searchTerm.includes('example') && result.content.includes('example')) score *= 1.2;
-    
+
     return Math.min(score, 2.0); // Cap at 2x boost
   };
 
@@ -413,24 +416,24 @@ export default function SmartSearch(): JSX.Element {
     const words = searchTerm.toLowerCase().split(' ');
     const highlights: string[] = [];
     const sentences = content.split(/[.!?]+/);
-    
+
     // Find sentences containing search terms
-    sentences.forEach(sentence => {
+    sentences.forEach((sentence) => {
       const lowerSentence = sentence.toLowerCase();
-      if (words.some(word => lowerSentence.includes(word))) {
+      if (words.some((word) => lowerSentence.includes(word))) {
         highlights.push(sentence.trim());
       }
     });
-    
+
     // Also find paragraphs with high keyword density
     const paragraphs = content.split('\n\n');
-    paragraphs.forEach(para => {
-      const matchCount = words.filter(word => para.toLowerCase().includes(word)).length;
+    paragraphs.forEach((para) => {
+      const matchCount = words.filter((word) => para.toLowerCase().includes(word)).length;
       if (matchCount >= Math.ceil(words.length / 2) && para.length < 300) {
         highlights.push(para.trim());
       }
     });
-    
+
     return [...new Set(highlights)].slice(0, 3);
   };
 
@@ -438,30 +441,30 @@ export default function SmartSearch(): JSX.Element {
   const detectConceptualMatch = (result: SearchResult, searchTerm: string): boolean => {
     const concepts = {
       'getting started': ['quickstart', 'installation', 'setup', 'begin', 'first'],
-      'authentication': ['auth', 'login', 'security', 'token', 'api key'],
-      'deployment': ['deploy', 'production', 'hosting', 'server', 'docker'],
-      'troubleshooting': ['error', 'problem', 'issue', 'fix', 'debug'],
-      'performance': ['speed', 'optimize', 'fast', 'slow', 'cache'],
+      authentication: ['auth', 'login', 'security', 'token', 'api key'],
+      deployment: ['deploy', 'production', 'hosting', 'server', 'docker'],
+      troubleshooting: ['error', 'problem', 'issue', 'fix', 'debug'],
+      performance: ['speed', 'optimize', 'fast', 'slow', 'cache'],
     };
-    
+
     const searchLower = searchTerm.toLowerCase();
     const contentLower = (result.title + ' ' + result.content).toLowerCase();
-    
+
     for (const [concept, keywords] of Object.entries(concepts)) {
-      if (searchLower.includes(concept) || keywords.some(kw => searchLower.includes(kw))) {
-        if (keywords.some(kw => contentLower.includes(kw))) {
+      if (searchLower.includes(concept) || keywords.some((kw) => searchLower.includes(kw))) {
+        if (keywords.some((kw) => contentLower.includes(kw))) {
           return true;
         }
       }
     }
-    
+
     return false;
   };
 
   // Extract semantic tags
   const extractSemanticTags = (result: SearchResult, searchTerm: string): string[] => {
     const tags = [...result.tags];
-    
+
     // Add inferred tags based on content
     if (result.content.includes('npm install') || result.content.includes('bun add')) {
       tags.push('installation');
@@ -472,14 +475,17 @@ export default function SmartSearch(): JSX.Element {
     if (result.type === 'api') {
       tags.push('reference');
     }
-    
+
     return [...new Set(tags)];
   };
 
   // Generate semantic suggestions
-  const generateSemanticSuggestions = (searchTerm: string, results: SearchResult[]): SearchSuggestion[] => {
+  const generateSemanticSuggestions = (
+    searchTerm: string,
+    results: SearchResult[]
+  ): SearchSuggestion[] => {
     const suggestions: SearchSuggestion[] = [];
-    
+
     // Suggest related concepts
     if (searchTerm.includes('install')) {
       suggestions.push({
@@ -489,7 +495,7 @@ export default function SmartSearch(): JSX.Element {
         icon: <BookOpen size={14} />,
       });
     }
-    
+
     // Suggest based on result patterns
     if (results.length > 0 && results[0].type === 'api') {
       suggestions.push({
@@ -499,7 +505,7 @@ export default function SmartSearch(): JSX.Element {
         icon: <Code size={14} />,
       });
     }
-    
+
     // Suggest clarifications
     if (searchTerm.split(' ').length === 1) {
       suggestions.push({
@@ -509,7 +515,7 @@ export default function SmartSearch(): JSX.Element {
         icon: <BookOpen size={14} />,
       });
     }
-    
+
     return suggestions.slice(0, 5);
   };
 

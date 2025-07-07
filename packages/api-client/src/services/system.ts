@@ -74,7 +74,7 @@ export class SystemService extends BaseApiClient {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json() as {
+    const data = (await response.json()) as {
       logs?: Array<{
         level: number;
         time: number;
@@ -87,7 +87,7 @@ export class SystemService extends BaseApiClient {
       level?: string;
       levels?: string[];
     };
-    
+
     // The logs endpoint returns data directly, not wrapped in { success, data }
     // Map the response to expected format
     return {
@@ -95,7 +95,7 @@ export class SystemService extends BaseApiClient {
       count: data.count || 0,
       total: data.total || 0,
       level: data.requestedLevel || data.level || 'all',
-      levels: data.levels || []
+      levels: data.levels || [],
     };
   }
 
@@ -124,6 +124,8 @@ export class SystemService extends BaseApiClient {
   async deleteLog(logId: string): Promise<void> {
     // Note: Individual log deletion is not supported by the server
     // The server only supports bulk deletion via deleteGlobalLogs()
-    throw new Error('Individual log deletion is not supported. Use deleteGlobalLogs() to clear all logs.');
+    throw new Error(
+      'Individual log deletion is not supported. Use deleteGlobalLogs() to clear all logs.'
+    );
   }
 }

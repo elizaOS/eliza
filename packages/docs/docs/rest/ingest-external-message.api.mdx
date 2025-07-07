@@ -50,13 +50,21 @@ Ingest a message from an external source for agent processing
           properties: {
             channel_id: { type: 'string', format: 'uuid', description: 'ID of the channel' },
             server_id: { type: 'string', format: 'uuid', description: 'ID of the server' },
-            author_id: { type: 'string', format: 'uuid', description: 'ID of the original author from the platform' },
+            author_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the original author from the platform',
+            },
             author_display_name: { type: 'string', description: 'Display name of the author' },
             content: { type: 'string', description: 'Message content' },
             source_id: { type: 'string', description: 'Original platform message ID' },
             source_type: { type: 'string', description: 'Source platform type' },
             raw_message: { type: 'object', description: 'Raw message data from platform' },
-            in_reply_to_message_id: { type: 'string', format: 'uuid', description: 'ID of the message this is replying to' },
+            in_reply_to_message_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the message this is replying to',
+            },
             metadata: { type: 'object', description: 'Additional metadata' },
           },
         },

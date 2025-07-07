@@ -34,45 +34,45 @@ interface World {
   name: string;
   description?: string;
   metadata: {
-    platform?: string;        // 'discord', 'telegram', etc.
-    platformId?: string;      // Original platform ID
-    owner?: UUID;             // World owner entity
+    platform?: string; // 'discord', 'telegram', etc.
+    platformId?: string; // Original platform ID
+    owner?: UUID; // World owner entity
     permissions?: Permission[];
     settings?: WorldSettings;
   };
-  entities: UUID[];           // Entities with access to this world
-  rooms: UUID[];              // Rooms within this world
+  entities: UUID[]; // Entities with access to this world
+  rooms: UUID[]; // Rooms within this world
   createdAt: Date;
   updatedAt: Date;
 }
 
 interface Room {
   id: UUID;
-  worldId: UUID;              // Parent world
+  worldId: UUID; // Parent world
   name: string;
   description?: string;
-  type: ChannelType;          // Channel classification
+  type: ChannelType; // Channel classification
   metadata: {
-    platform?: string;        // Origin platform
-    platformId?: string;      // Original platform room ID
+    platform?: string; // Origin platform
+    platformId?: string; // Original platform room ID
     permissions?: Permission[];
     settings?: RoomSettings;
   };
-  participants: UUID[];       // Active participants
+  participants: UUID[]; // Active participants
   createdAt: Date;
   updatedAt: Date;
 }
 
 enum ChannelType {
-  SELF = 'SELF',              // Agent's private channel
-  DM = 'DM',                  // Direct message
-  GROUP = 'GROUP',            // Group chat
-  VOICE_DM = 'VOICE_DM',      // Voice direct message
+  SELF = 'SELF', // Agent's private channel
+  DM = 'DM', // Direct message
+  GROUP = 'GROUP', // Group chat
+  VOICE_DM = 'VOICE_DM', // Voice direct message
   VOICE_GROUP = 'VOICE_GROUP', // Voice group chat
-  FEED = 'FEED',              // Social media feed
-  THREAD = 'THREAD',          // Threaded conversation
-  WORLD = 'WORLD',            // World-level channel
-  FORUM = 'FORUM'             // Forum-style discussion
+  FEED = 'FEED', // Social media feed
+  THREAD = 'THREAD', // Threaded conversation
+  WORLD = 'WORLD', // World-level channel
+  FORUM = 'FORUM', // Forum-style discussion
 }
 
 interface Entity {
@@ -80,14 +80,14 @@ interface Entity {
   name: string;
   username?: string;
   metadata: {
-    platform?: string;        // Origin platform
-    platformId?: string;      // Original platform user ID
+    platform?: string; // Origin platform
+    platformId?: string; // Original platform user ID
     avatar?: string;
     bio?: string;
     roles?: string[];
     settings?: EntitySettings;
   };
-  components: Component[];    // Extensible entity properties
+  components: Component[]; // Extensible entity properties
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,14 +105,14 @@ The UUID system ensures each agent has a unique perspective on the same entities
 function stringToUuid(target: string): UUID {
   // Generate deterministic UUID from string using SHA1
   const hash = crypto.createHash('sha1').update(target).digest('hex');
-  
+
   // Convert to UUID v4 format
   return [
     hash.substring(0, 8),
     hash.substring(8, 12),
-    '4' + hash.substring(13, 16),  // Version 4 identifier
+    '4' + hash.substring(13, 16), // Version 4 identifier
     ((parseInt(hash.substring(16, 17), 16) & 0x3) | 0x8).toString(16) + hash.substring(17, 20),
-    hash.substring(20, 32)
+    hash.substring(20, 32),
   ].join('-') as UUID;
 }
 
@@ -149,7 +149,7 @@ class EntityManager {
     metadata?: any;
   }): Promise<Entity> {
     const entityId = await this.getEntityId(entityData.platformId, entityData.platform);
-    
+
     // Check if entity already exists
     const existing = await this.runtime.databaseAdapter.getEntity({ id: entityId });
     if (existing) {
@@ -164,11 +164,11 @@ class EntityManager {
       metadata: {
         platform: entityData.platform,
         platformId: entityData.platformId,
-        ...entityData.metadata
+        ...entityData.metadata,
       },
       components: [],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.runtime.databaseAdapter.createEntity(entity);
@@ -187,7 +187,7 @@ class EntityManager {
 class DiscordEnvironmentManager {
   async mapDiscordToWorld(guild: Guild): Promise<World> {
     const worldId = stringToUuid(`discord:guild:${guild.id}`);
-    
+
     return {
       id: worldId,
       name: guild.name,
@@ -200,19 +200,19 @@ class DiscordEnvironmentManager {
         settings: {
           memberCount: guild.memberCount,
           features: guild.features,
-          verificationLevel: guild.verificationLevel
-        }
+          verificationLevel: guild.verificationLevel,
+        },
       },
       entities: await this.getGuildMemberEntityIds(guild),
       rooms: await this.getGuildChannelRoomIds(guild),
       createdAt: guild.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
   }
 
   async mapDiscordToRoom(channel: GuildChannel | DMChannel, worldId?: UUID): Promise<Room> {
     const roomId = stringToUuid(`discord:channel:${channel.id}`);
-    
+
     return {
       id: roomId,
       worldId: worldId || stringToUuid(`discord:guild:${channel.guild?.id || 'dm'}`),
@@ -225,12 +225,12 @@ class DiscordEnvironmentManager {
         permissions: await this.mapChannelPermissions(channel),
         settings: {
           nsfw: 'nsfw' in channel ? channel.nsfw : false,
-          rateLimitPerUser: 'rateLimitPerUser' in channel ? channel.rateLimitPerUser : 0
-        }
+          rateLimitPerUser: 'rateLimitPerUser' in channel ? channel.rateLimitPerUser : 0,
+        },
       },
       participants: await this.getChannelParticipantEntityIds(channel),
       createdAt: channel.createdAt,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
   }
 
@@ -253,7 +253,7 @@ class DiscordEnvironmentManager {
 class TelegramEnvironmentManager {
   async mapTelegramToWorld(chat: Chat): Promise<World> {
     const worldId = stringToUuid(`telegram:chat:${chat.id}`);
-    
+
     return {
       id: worldId,
       name: chat.title || `Chat ${chat.id}`,
@@ -263,21 +263,23 @@ class TelegramEnvironmentManager {
         platformId: chat.id.toString(),
         settings: {
           type: chat.type,
-          memberCount: 'all_members_are_administrators' in chat ? 
-            chat.all_members_are_administrators : undefined,
-          inviteLink: 'invite_link' in chat ? chat.invite_link : undefined
-        }
+          memberCount:
+            'all_members_are_administrators' in chat
+              ? chat.all_members_are_administrators
+              : undefined,
+          inviteLink: 'invite_link' in chat ? chat.invite_link : undefined,
+        },
       },
       entities: await this.getChatMemberEntityIds(chat),
       rooms: [worldId], // Telegram chats are typically single-room
       createdAt: new Date(), // Telegram doesn't provide creation time
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
   }
 
   async mapTelegramToRoom(chat: Chat, worldId?: UUID): Promise<Room> {
     const roomId = stringToUuid(`telegram:chat:${chat.id}`);
-    
+
     return {
       id: roomId,
       worldId: worldId || roomId, // Self-contained for Telegram
@@ -289,22 +291,27 @@ class TelegramEnvironmentManager {
         platformId: chat.id.toString(),
         settings: {
           type: chat.type,
-          username: 'username' in chat ? chat.username : undefined
-        }
+          username: 'username' in chat ? chat.username : undefined,
+        },
       },
       participants: await this.getChatMemberEntityIds(chat),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
   }
 
   private mapChatType(chat: Chat): ChannelType {
     switch (chat.type) {
-      case 'private': return ChannelType.DM;
-      case 'group': return ChannelType.GROUP;
-      case 'supergroup': return ChannelType.GROUP;
-      case 'channel': return ChannelType.FEED;
-      default: return ChannelType.GROUP;
+      case 'private':
+        return ChannelType.DM;
+      case 'group':
+        return ChannelType.GROUP;
+      case 'supergroup':
+        return ChannelType.GROUP;
+      case 'channel':
+        return ChannelType.FEED;
+      default:
+        return ChannelType.GROUP;
     }
   }
 }
@@ -328,7 +335,7 @@ class WorldManager {
     metadata?: any;
   }): Promise<World> {
     const worldId = stringToUuid(`${worldData.platform}:world:${worldData.platformId}`);
-    
+
     // Check if world already exists
     const existing = await this.runtime.databaseAdapter.getWorld({ id: worldId });
     if (existing) {
@@ -343,12 +350,12 @@ class WorldManager {
       metadata: {
         platform: worldData.platform,
         platformId: worldData.platformId,
-        ...worldData.metadata
+        ...worldData.metadata,
       },
       entities: [],
       rooms: [],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.runtime.databaseAdapter.createWorld(world);
@@ -390,7 +397,7 @@ class RoomManager {
     metadata?: any;
   }): Promise<Room> {
     const roomId = stringToUuid(`${roomData.platform}:room:${roomData.platformId}`);
-    
+
     const existing = await this.runtime.databaseAdapter.getRoom({ id: roomId });
     if (existing) {
       return existing;
@@ -404,15 +411,15 @@ class RoomManager {
       metadata: {
         platform: roomData.platform,
         platformId: roomData.platformId,
-        ...roomData.metadata
+        ...roomData.metadata,
       },
       participants: [],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
     };
 
     await this.runtime.databaseAdapter.createRoom(room);
-    
+
     // Add room to world
     const worldManager = new WorldManager(this.runtime);
     await worldManager.addRoomToWorld(roomData.worldId, roomId);
@@ -432,7 +439,7 @@ class RoomManager {
   async removeParticipantFromRoom(roomId: UUID, entityId: UUID): Promise<void> {
     const room = await this.runtime.databaseAdapter.getRoom({ id: roomId });
     if (room) {
-      room.participants = room.participants.filter(id => id !== entityId);
+      room.participants = room.participants.filter((id) => id !== entityId);
       room.updatedAt = new Date();
       await this.runtime.databaseAdapter.updateRoom(room);
     }
@@ -461,28 +468,31 @@ interface Component {
 }
 
 enum ComponentType {
-  PROFILE = 'profile',          // User profile data
-  PERMISSIONS = 'permissions',  // Access permissions
-  PREFERENCES = 'preferences',  // User preferences
-  ACTIVITY = 'activity',        // Activity tracking
+  PROFILE = 'profile', // User profile data
+  PERMISSIONS = 'permissions', // Access permissions
+  PREFERENCES = 'preferences', // User preferences
+  ACTIVITY = 'activity', // Activity tracking
   RELATIONSHIPS = 'relationships', // Social connections
-  CUSTOM = 'custom'             // Custom component types
+  CUSTOM = 'custom', // Custom component types
 }
 
 class ComponentManager {
   constructor(private runtime: IAgentRuntime) {}
 
-  async addComponent(entityId: UUID, component: Omit<Component, 'id' | 'entityId'>): Promise<Component> {
+  async addComponent(
+    entityId: UUID,
+    component: Omit<Component, 'id' | 'entityId'>
+  ): Promise<Component> {
     const componentId = stringToUuid(`${entityId}:${component.type}:${Date.now()}`);
-    
+
     const fullComponent: Component = {
       id: componentId,
       entityId,
       ...component,
       metadata: {
         ...component.metadata,
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     };
 
     await this.runtime.databaseAdapter.createComponent(fullComponent);
@@ -492,7 +502,7 @@ class ComponentManager {
   async getEntityComponents(entityId: UUID, type?: ComponentType): Promise<Component[]> {
     return this.runtime.databaseAdapter.getComponents({
       entityId,
-      type
+      type,
     });
   }
 
@@ -502,7 +512,7 @@ class ComponentManager {
       component.data = { ...component.data, ...data };
       component.metadata = {
         ...component.metadata,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
       await this.runtime.databaseAdapter.updateComponent(component);
     }
@@ -538,13 +548,13 @@ class ContextualMemoryManager {
       metadata: {
         scope: context.scope,
         source: content.source || 'unknown',
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     };
 
     // Apply agent-specific UUID swizzling for agent's perspective
     const agentMemory = this.swizzleMemoryForAgent(memory);
-    
+
     await this.runtime.memory.create(agentMemory);
     return agentMemory;
   }
@@ -556,7 +566,7 @@ class ContextualMemoryManager {
       id: createUniqueUuid(this.runtime, memory.id),
       entityId: createUniqueUuid(this.runtime, memory.entityId),
       worldId: memory.worldId ? createUniqueUuid(this.runtime, memory.worldId) : undefined,
-      roomId: memory.roomId ? createUniqueUuid(this.runtime, memory.roomId) : undefined
+      roomId: memory.roomId ? createUniqueUuid(this.runtime, memory.roomId) : undefined,
     };
   }
 
@@ -569,13 +579,13 @@ class ContextualMemoryManager {
     }
   ): Promise<Memory[]> {
     const embedding = await this.runtime.embed(query);
-    
+
     return this.runtime.memory.searchMemoriesByEmbedding(embedding, {
       match_threshold: 0.7,
       count: 10,
       tableName: 'memories',
       worldId: context.worldId,
-      roomId: context.roomId
+      roomId: context.roomId,
     });
   }
 }
@@ -610,12 +620,12 @@ class EntityLinkingManager {
         linkedEntity: toEntityId,
         linkType,
         strength: 1.0,
-        verified: false
+        verified: false,
       },
       metadata: {
         source: 'entity_linking',
-        updatedAt: new Date()
-      }
+        updatedAt: new Date(),
+      },
     };
 
     const componentManager = new ComponentManager(this.runtime);
@@ -630,8 +640,8 @@ class EntityLinkingManager {
     );
 
     return relationships
-      .filter(comp => comp.data.linkType === 'alias' || comp.data.linkType === 'same_person')
-      .map(comp => comp.data.linkedEntity);
+      .filter((comp) => comp.data.linkType === 'alias' || comp.data.linkType === 'same_person')
+      .map((comp) => comp.data.linkedEntity);
   }
 }
 ```
@@ -651,7 +661,7 @@ class UUIDCache {
     }
 
     const uuid = generator();
-    
+
     // Manage cache size
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
@@ -680,7 +690,7 @@ class BatchEntityManager {
 
   async createEntitiesBatch(entities: Omit<Entity, 'id'>[]): Promise<Entity[]> {
     const created: Entity[] = [];
-    
+
     // Process in batches to avoid overwhelming the database
     const batchSize = 50;
     for (let i = 0; i < entities.length; i += batchSize) {
@@ -699,7 +709,7 @@ class BatchEntityManager {
         id: entityId,
         ...entityData,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       };
 
       await this.runtime.databaseAdapter.createEntity(entity);

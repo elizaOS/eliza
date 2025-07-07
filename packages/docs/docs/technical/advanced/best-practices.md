@@ -189,7 +189,7 @@ export class MemoryManager {
 
 ### 2. Caching Strategies
 
-#### ✅ DO: Cache Expensive Operations**
+#### ✅ DO: Cache Expensive Operations\*\*
 
 ```typescript
 export class CachedProvider implements Provider {
@@ -498,7 +498,7 @@ export class MetricsCollector {
 
 ### 1. Memory Leaks
 
-#### ❌ Avoid: Unbounded Collections**
+#### ❌ Avoid: Unbounded Collections\*\*
 
 ```typescript
 // Bad: Grows forever

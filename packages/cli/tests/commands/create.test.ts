@@ -337,7 +337,7 @@ describe('ElizaOS Create Commands', () => {
         // this test verifies that when you press ctrl-c during 'bun install'
         // the partially created directory gets cleaned up automatically
         // fixing the bug where abandoned directories were left behind
-        
+
         const pluginName = 'test-cleanup-plugin';
         const pluginDir = `plugin-${pluginName}`;
 
@@ -351,10 +351,14 @@ describe('ElizaOS Create Commands', () => {
         // elizaosCmd is like: bun "/path/to/index.js" or bun /path/to/index.js
         const match = elizaosCmd.match(/^bun\s+(?:"([^"]+)"|(\S+))$/);
         const scriptPath = match?.[1] || match?.[2] || elizaosCmd.replace('bun ', '');
-        const createProcess = spawn('bun', [scriptPath, 'create', pluginName, '--type', 'plugin', '--yes'], {
-          stdio: 'ignore',
-          detached: false
-        });
+        const createProcess = spawn(
+          'bun',
+          [scriptPath, 'create', pluginName, '--type', 'plugin', '--yes'],
+          {
+            stdio: 'ignore',
+            detached: false,
+          }
+        );
 
         // give process time to start creating the directory
         await new Promise((resolve) => setTimeout(resolve, 1500));
