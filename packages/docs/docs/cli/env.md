@@ -176,6 +176,7 @@ If no local `.env` file exists:
 | `SQLITE_DATA_DIR`    | Directory for PGLite database files          |
 | `MODEL_PROVIDER`     | Default model provider to use                |
 | `LOG_LEVEL`          | Logging verbosity (debug, info, warn, error) |
+| `LOG_TIMESTAMPS`     | Show timestamps in logs (default: true)       |
 | `PORT`               | HTTP API port number                         |
 
 ## Database Configuration Detection

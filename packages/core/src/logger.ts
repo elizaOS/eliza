@@ -157,11 +157,16 @@ const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
 const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
 
+// Check if user wants timestamps in logs (default: true)
+const showTimestamps = process?.env?.LOG_TIMESTAMPS !== undefined 
+  ? parseBooleanFromText(process?.env?.LOG_TIMESTAMPS) 
+  : true;
+
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
   colorize: true,
-  translateTime: 'yyyy-mm-dd HH:MM:ss',
-  ignore: 'pid,hostname',
+  translateTime: showTimestamps ? 'yyyy-mm-dd HH:MM:ss' : false,
+  ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
   levelColors: {
     60: 'red', // fatal
     50: 'red', // error
@@ -290,8 +295,8 @@ const createLogger = (bindings: any | boolean = false) => {
       target: 'pino-pretty', // this is just a string, not a dynamic import
       options: {
         colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname',
+        translateTime: showTimestamps ? 'SYS:standard' : false,
+        ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
       },
     };
   }
