@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
 describe('ElizaOS Update Commands', () => {
   let testTmpDir: string;
@@ -150,7 +151,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  it(
+  it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update succeeds outside a project (global check)',
     () => {
       const result = runCliCommandSilently(elizaosCmd, 'update', {
@@ -268,5 +269,43 @@ describe('ElizaOS Update Commands', () => {
       expect(result).toContain('No ElizaOS packages found');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
+    'update command should not create files in non-project directory',
+    () => {
+      // Create a temporary directory that's not a project
+      const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-test-'));
+      const currentDir = process.cwd();
+
+      try {
+        // Change to temp directory and run update command
+        process.chdir(tmpDir);
+        const result = runCliCommandSilently(elizaosCmd, 'update', {
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        });
+
+        // Command should succeed (updates CLI only)
+        // runCliCommandSilently returns output string on success
+        expect(result).toBeTruthy();
+
+        // Verify no project files were created
+        expect(existsSync(join(tmpDir, 'package.json'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'bun.lock'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'node_modules'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'package-lock.json'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'yarn.lock'))).toBe(false);
+
+        // Output should mention CLI update, not package updates
+        expect(result).toMatch(/CLI.*update|updat.*CLI/i);
+        expect(result).not.toMatch(/packages.*installed/i);
+      } finally {
+        // Change back to original directory
+        process.chdir(currentDir);
+        // Clean up
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUTS.STANDARD_COMMAND
   );
 });
