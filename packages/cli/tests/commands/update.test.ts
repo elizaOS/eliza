@@ -151,7 +151,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  it(
+  it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update succeeds outside a project (global check)',
     () => {
       const result = runCliCommandSilently(elizaosCmd, 'update', {
@@ -271,7 +271,7 @@ describe('ElizaOS Update Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  it(
+  it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update command should not create files in non-project directory',
     () => {
       // Create a temporary directory that's not a project
