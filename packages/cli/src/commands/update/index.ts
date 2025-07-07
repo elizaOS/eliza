@@ -25,9 +25,14 @@ export const update = new Command()
   })
   .action(async (options) => {
     try {
-      // Determine what to update
+      // Early directory detection for better flow control
+      const cwd = process.cwd();
+      const directoryInfo = detectDirectoryType(cwd);
+      const isInProject = directoryInfo && isValidForUpdates(directoryInfo);
+
+      // Determine what to update based on flags and context
       const updateCli = options.cli || (!options.cli && !options.packages);
-      const updatePackages = options.packages || (!options.cli && !options.packages);
+      const updatePackages = options.packages || (!options.cli && !options.packages && isInProject);
 
       // Handle CLI update
       if (updateCli) {
@@ -53,9 +58,7 @@ export const update = new Command()
 
       // Handle package updates
       if (updatePackages) {
-        const cwd = process.cwd();
-        const directoryInfo = detectDirectoryType(cwd);
-
+        // If explicitly requested to update packages but not in a valid directory
         if (!directoryInfo) {
           console.error('Cannot update packages in this directory.');
           console.info('This directory is not accessible or does not exist.');
@@ -65,7 +68,7 @@ export const update = new Command()
 
         logger.debug(`Detected ${directoryInfo.type}`);
 
-        if (!isValidForUpdates(directoryInfo)) {
+        if (!isInProject) {
           handleInvalidDirectory(directoryInfo);
           return;
         }

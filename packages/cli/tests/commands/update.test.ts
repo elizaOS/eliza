@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
 describe('ElizaOS Update Commands', () => {
   let testTmpDir: string;
@@ -268,5 +269,39 @@ describe('ElizaOS Update Commands', () => {
       expect(result).toContain('No ElizaOS packages found');
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it(
+    'update command should not create files in non-project directory',
+    () => {
+      // Create a temporary directory that's not a project
+      const tmpDir = mkdtempSync(path.join(tmpdir(), 'eliza-test-'));
+
+      try {
+        // Run update command in empty directory
+        const result = runCliCommandSilently(elizaosCmd, 'update', {
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          cwd: tmpDir,
+        });
+
+        // Command should succeed (updates CLI only)
+        expect(result.exitCode).toBe(0);
+
+        // Verify no project files were created
+        expect(existsSync(path.join(tmpDir, 'package.json'))).toBe(false);
+        expect(existsSync(path.join(tmpDir, 'bun.lock'))).toBe(false);
+        expect(existsSync(path.join(tmpDir, 'node_modules'))).toBe(false);
+        expect(existsSync(path.join(tmpDir, 'package-lock.json'))).toBe(false);
+        expect(existsSync(path.join(tmpDir, 'yarn.lock'))).toBe(false);
+
+        // Output should mention CLI update, not package updates
+        expect(result.stdout).toMatch(/CLI.*update|updat.*CLI/i);
+        expect(result.stdout).not.toMatch(/packages.*installed/i);
+      } finally {
+        // Clean up
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUTS.STANDARD_COMMAND
   );
 });

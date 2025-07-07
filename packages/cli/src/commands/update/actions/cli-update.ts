@@ -1,4 +1,3 @@
-import { executeInstallation } from '@/src/utils';
 import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
@@ -66,9 +65,18 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
     }
 
     // Standard bun installation (no npm installation detected or migration skipped)
-    await executeInstallation('@elizaos/cli', latestVersion, process.cwd());
-    console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
-    return true;
+    try {
+      await execa('bun', ['add', '-g', `@elizaos/cli@${latestVersion}`], { stdio: 'inherit' });
+      console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
+      return true;
+    } catch (bunError) {
+      console.error('Bun installation not found. Please install bun first:');
+      console.error('  curl -fsSL https://bun.sh/install | bash');
+      console.error('  # or');
+      console.error('  npm install -g bun');
+      logger.debug('Bun error:', bunError instanceof Error ? bunError.message : String(bunError));
+      return false;
+    }
   } catch (error) {
     console.error(`CLI update failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
