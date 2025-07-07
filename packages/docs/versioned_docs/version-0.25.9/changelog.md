@@ -2316,7 +2316,7 @@ Complete changelog:
 * Groq api integration by @juke in https://github.com/ai16z/eliza/pull/194
 * Updated documentation by @atvonsc in https://github.com/ai16z/eliza/pull/195
 * Major documentation updates by @madjin in https://github.com/ai16z/eliza/pull/199
-* swap Dao action initital by @MarcoMandar in https://github.com/ai16z/eliza/pull/196
+* swap Dao action initial by @MarcoMandar in https://github.com/ai16z/eliza/pull/196
 * Swap functionality by @lalalune in https://github.com/ai16z/eliza/pull/197
 * Add RedPill API Support by @HashWarlock in https://github.com/ai16z/eliza/pull/198
 * Fix Discord Voice and DMs by @lalalune in https://github.com/ai16z/eliza/pull/203
@@ -2324,7 +2324,7 @@ Complete changelog:
 * Implement grok beta by @MeDott29 in https://github.com/ai16z/eliza/pull/216
 * add the template overrides by @lalalune in https://github.com/ai16z/eliza/pull/207
 * lazy load llama by @lalalune in https://github.com/ai16z/eliza/pull/220
-* Abstracts Eliza into a Package to enble publishing onto NPM along with plugin system by @ponderingdemocritus in https://github.com/ai16z/eliza/pull/214
+* Abstracts Eliza into a Package to enable publishing onto NPM along with plugin system by @ponderingdemocritus in https://github.com/ai16z/eliza/pull/214
 * Add OLLAMA as Model Provider  by @o-on-x in https://github.com/ai16z/eliza/pull/221
 * models.gguf stored in models file, & tsconfig changes for ref @eliza/core & other things by @o-on-x in https://github.com/ai16z/eliza/pull/224
 * plugin-image-generation tsconfig.json fix & ollama error handling by @o-on-x in https://github.com/ai16z/eliza/pull/228
