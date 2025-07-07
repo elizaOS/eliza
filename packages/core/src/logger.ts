@@ -157,8 +157,10 @@ const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
 const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
 
-// Check if user wants timestamps in logs
-const showTimestamps = parseBooleanFromText(process?.env?.LOG_TIMESTAMPS) || false;
+// Check if user wants timestamps in logs (default: true)
+const showTimestamps = process?.env?.LOG_TIMESTAMPS !== undefined 
+  ? parseBooleanFromText(process?.env?.LOG_TIMESTAMPS) 
+  : true;
 
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
