@@ -50,7 +50,7 @@ function displayBasicSteps(cdPath: string): void {
 
   // Step 4: Start ElizaOS
   console.log('\n4. Start ElizaOS:');
-  console.log('   bun run start or bun run dev');
+  console.log('   elizaos start or elizaos dev');
 }
 
 /**
