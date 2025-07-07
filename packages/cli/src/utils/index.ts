@@ -19,6 +19,7 @@ export * from './port-handling';
 export * from './publisher';
 export * from './resolve-import';
 export * from './resolve-utils';
+export * from './spinner-utils';
 export * from './run-bun';
 export * from './test-runner';
 export * from './user-environment';

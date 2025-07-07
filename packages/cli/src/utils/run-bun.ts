@@ -7,7 +7,7 @@ import { displayBunInstallationTipCompact } from './bun-installation-helper';
  * @param {string} cwd - The current working directory in which to run the command.
  * @returns {Promise<void>} A Promise that resolves when the command has finished running.
  */
-export async function runBunCommand(args: string[], cwd: string): Promise<void> {
+export async function runBunCommand(args: string[], cwd: string, silent = false): Promise<void> {
   const finalArgs = [...args];
 
   // In CI environments, optimize bun install with appropriate flags
@@ -23,7 +23,17 @@ export async function runBunCommand(args: string[], cwd: string): Promise<void> 
   }
 
   try {
-    await execa('bun', finalArgs, { cwd, stdio: 'inherit' });
+    const result = await execa('bun', finalArgs, {
+      cwd,
+      stdio: silent ? 'pipe' : 'inherit',
+      reject: false,
+    });
+
+    if (silent && result.exitCode !== 0) {
+      throw new Error(
+        `Bun command failed with exit code ${result.exitCode}: ${result.stderr || result.stdout}`
+      );
+    }
   } catch (error: any) {
     if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
       throw new Error(`Bun command not found. ${displayBunInstallationTipCompact()}`);
@@ -36,7 +46,17 @@ export async function runBunCommand(args: string[], cwd: string): Promise<void> 
       (error.message?.includes('frozen-lockfile') || error.message?.includes('install'))
     ) {
       console.warn('CI-optimized install failed, retrying with basic args...');
-      await execa('bun', args, { cwd, stdio: 'inherit' });
+      const retryResult = await execa('bun', args, {
+        cwd,
+        stdio: silent ? 'pipe' : 'inherit',
+        reject: false,
+      });
+
+      if (silent && retryResult.exitCode !== 0) {
+        throw new Error(
+          `Bun command failed with exit code ${retryResult.exitCode}: ${retryResult.stderr || retryResult.stdout}`
+        );
+      }
     } else {
       throw error;
     }

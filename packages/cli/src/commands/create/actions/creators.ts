@@ -1,11 +1,17 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { copyTemplate as copyTemplateUtil, buildProject } from '@/src/utils';
+import { copyTemplate as copyTemplateUtil } from '@/src/utils';
 import { join } from 'path';
 import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
-import { installDependencies, setupProjectEnvironment } from './setup';
+import { setupProjectEnvironment } from './setup';
+import {
+  installDependenciesWithSpinner,
+  buildProjectWithSpinner,
+  createTask,
+  runTasks,
+} from '@/src/utils/spinner-utils';
 import { existsSync, rmSync } from 'node:fs';
 import { getDisplayDirectory } from '@/src/utils/helpers';
 
@@ -117,11 +123,10 @@ export async function createPlugin(
   }
 
   await withCleanupOnInterrupt(pluginTargetDir, pluginDirName, async () => {
-    // Copy plugin template
-    await copyTemplateUtil('plugin', pluginTargetDir);
-
-    // Install dependencies
-    await installDependencies(pluginTargetDir);
+    await runTasks([
+      createTask('Copying plugin template', () => copyTemplateUtil('plugin', pluginTargetDir)),
+      createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
+    ]);
 
     console.info(`\n${colors.green('✓')} Plugin "${pluginDirName}" created successfully!`);
     console.info(`\nNext steps:`);
@@ -178,10 +183,10 @@ export async function createAgent(
 
   if (!isNonInteractive) {
     console.info(`\n${colors.green('✓')} Agent "${agentName}" created successfully!`);
+    console.info(`Agent character created successfully at: ${agentFilePath}`);
+    console.info(`\nTo use this agent:`);
+    console.info(`  elizaos agent start --path ${agentFilePath}\n`);
   }
-  console.info(`Agent character created successfully at: ${agentFilePath}`);
-  console.info(`\nTo use this agent:`);
-  console.info(`  elizaos agent start --path ${agentFilePath}\n`);
 }
 
 /**
@@ -216,23 +221,16 @@ export async function createTEEProject(
   }
 
   await withCleanupOnInterrupt(teeTargetDir, projectName, async () => {
-    // Copy TEE template
-    await copyTemplateUtil('project-tee-starter', teeTargetDir);
-
-    // Set up project environment
-    await setupProjectEnvironment(
-      teeTargetDir,
-      database,
-      aiModel,
-      embeddingModel,
-      isNonInteractive
-    );
-
-    // Install dependencies
-    await installDependencies(teeTargetDir);
-
-    // Build the project
-    await buildProject(teeTargetDir, false);
+    await runTasks([
+      createTask('Copying TEE template', () =>
+        copyTemplateUtil('project-tee-starter', teeTargetDir)
+      ),
+      createTask('Setting up project environment', () =>
+        setupProjectEnvironment(teeTargetDir, database, aiModel, embeddingModel, isNonInteractive)
+      ),
+      createTask('Installing dependencies', () => installDependenciesWithSpinner(teeTargetDir)),
+      createTask('Building project', () => buildProjectWithSpinner(teeTargetDir, false)),
+    ]);
 
     console.info(`\n${colors.green('✓')} TEE project "${projectName}" created successfully!`);
     console.info(`\nNext steps:`);
@@ -276,23 +274,22 @@ export async function createProject(
 
   // only use cleanup wrapper for new directories, not current directory
   const createFn = async () => {
-    // Copy project template
-    await copyTemplateUtil('project-starter', projectTargetDir);
-
-    // Set up project environment
-    await setupProjectEnvironment(
-      projectTargetDir,
-      database,
-      aiModel,
-      embeddingModel,
-      isNonInteractive
-    );
-
-    // Install dependencies
-    await installDependencies(projectTargetDir);
-
-    // Build the project
-    await buildProject(projectTargetDir, false);
+    await runTasks([
+      createTask('Copying project template', () =>
+        copyTemplateUtil('project-starter', projectTargetDir)
+      ),
+      createTask('Setting up project environment', () =>
+        setupProjectEnvironment(
+          projectTargetDir,
+          database,
+          aiModel,
+          embeddingModel,
+          isNonInteractive
+        )
+      ),
+      createTask('Installing dependencies', () => installDependenciesWithSpinner(projectTargetDir)),
+      createTask('Building project', () => buildProjectWithSpinner(projectTargetDir, false)),
+    ]);
 
     const displayName = projectName === '.' ? 'Project' : `Project "${projectName}"`;
     console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);

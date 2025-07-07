@@ -10,9 +10,8 @@ import {
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
   setupPgLite,
-  installPlugin,
 } from '@/src/utils';
-import { execa } from 'execa';
+import { installPluginWithSpinner } from '@/src/utils/spinner-utils';
 
 /**
  * Creates necessary project directories.
@@ -54,7 +53,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://platform.openai.com/api-keys\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] OpenAI placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for OpenAI API key
           await promptAndStoreOpenAIKey(envFilePath);
@@ -80,7 +78,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://console.anthropic.com/\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Anthropic API placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for Anthropic API key
           await promptAndStoreAnthropicKey(envFilePath);
@@ -106,7 +103,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://openrouter.ai/keys\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] OpenRouter placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for OpenRouter API key
           await promptAndStoreOpenRouterKey(envFilePath);
@@ -134,7 +130,6 @@ export async function setupAIModelConfig(
           content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Ollama placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for Ollama configuration
           await promptAndStoreOllamaConfig(envFilePath);
@@ -160,7 +155,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://aistudio.google.com/apikey\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Google Generative AI placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for Google API key
           await promptAndStoreGoogleKey(envFilePath);
@@ -220,7 +214,6 @@ export async function setupEmbeddingModelConfig(
         content += '\n# Embedding Model Configuration (Fallback)\n';
         content += '# Using local embeddings - no additional configuration needed\n';
         await fs.writeFile(envFilePath, content, 'utf8');
-        console.info('[√] Using Local embeddings - no additional configuration needed');
         break;
       }
 
@@ -236,14 +229,10 @@ export async function setupEmbeddingModelConfig(
               content += '# Get your API key from: https://platform.openai.com/api-keys\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] OpenAI embeddings placeholder configuration added to .env file');
           } else {
             // Interactive mode - prompt for OpenAI API key
-            console.info('\n[!] OpenAI API key is required for embeddings');
             await promptAndStoreOpenAIKey(envFilePath);
           }
-        } else {
-          console.info('[√] OpenAI API key already configured - will use for embeddings');
         }
         break;
       }
@@ -262,10 +251,8 @@ export async function setupEmbeddingModelConfig(
               content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Ollama embeddings placeholder configuration added to .env file');
           } else {
             // Interactive mode - prompt for Ollama embedding model configuration
-            console.info('\n[!] Ollama embedding model configuration is required');
             await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         } else {
@@ -279,10 +266,8 @@ export async function setupEmbeddingModelConfig(
               content += 'USE_OLLAMA_EMBEDDINGS=true\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Ollama embedding model configuration added to .env file');
           } else {
             // Interactive mode - always prompt for embedding model selection
-            console.info('\n[!] Please select an Ollama embedding model');
             await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         }
@@ -301,14 +286,10 @@ export async function setupEmbeddingModelConfig(
               content += '# Get your API key from: https://aistudio.google.com/apikey\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Google embeddings placeholder configuration added to .env file');
           } else {
             // Interactive mode - prompt for Google API key
-            console.info('\n[!] Google Generative AI API key is required for embeddings');
             await promptAndStoreGoogleKey(envFilePath);
           }
-        } else {
-          console.info('[√] Google API key already configured - will use for embeddings');
         }
         break;
       }
@@ -349,57 +330,13 @@ async function installModelPlugin(
 ): Promise<void> {
   const pluginName = resolveModelToPlugin(modelName);
   if (!pluginName) {
-    console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
     return;
   }
 
-  const purposeText = purpose ? ` ${purpose}` : '';
-
-  try {
-    console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
-    await installPlugin(pluginName, targetDir);
-    console.info(`✅ Installed plugin successfully!`);
-  } catch (error) {
-    console.warn(
-      `⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-    console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
-  }
+  await installPluginWithSpinner(pluginName, targetDir, purpose);
 }
 
-/**
- * Installs dependencies for the specified target directory.
- *
- * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
- * we use stdio: 'inherit' here so the user sees the install progress in real-time
- */
-export async function installDependencies(targetDir: string): Promise<void> {
-  // Skip dependency installation in CI/test environments to save memory and time
-  if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
-    console.info('Skipping dependency installation in CI/test environment...');
-    return;
-  }
-
-  console.info('Installing dependencies...');
-
-  // run bun install and let it inherit our stdio so user sees progress
-  const subprocess = await execa('bun', ['install'], {
-    cwd: targetDir,
-    stdio: 'inherit',
-    reject: false,
-  });
-
-  // Handle various signal termination scenarios:
-  // - exitCode can be null/undefined when process is killed by signal
-  // - exitCode >= 128 indicates signal termination (128 + signal number)
-  // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
-  const exitCode = subprocess.exitCode;
-  const isSignalTermination = exitCode == null || exitCode >= 128;
-
-  if (exitCode !== 0 && !isSignalTermination) {
-    throw new Error(`Dependency installation failed with exit code ${exitCode}`);
-  }
-}
+// installDependencies is now imported from spinner-utils and handles this automatically
 
 /**
  * Sets up the project environment including database and AI model configuration.
