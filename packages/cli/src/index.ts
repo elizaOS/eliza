@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 process.env.NODE_OPTIONS = '--no-deprecation';
 process.env.NODE_NO_WARNINGS = '1';
+process.env.QUIET_MODE = process.env.QUIET_MODE || 'true';
 
 import { agent } from '@/src/commands/agent';
 import { create } from '@/src/commands/create';

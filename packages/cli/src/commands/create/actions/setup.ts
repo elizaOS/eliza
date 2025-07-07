@@ -31,7 +31,6 @@ export async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
-        console.info('[√] Using Local AI - no additional configuration needed');
         break;
       }
 

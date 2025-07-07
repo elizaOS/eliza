@@ -1,4 +1,5 @@
 import { logger } from '@elizaos/core';
+import { isQuietMode } from './spinner-utils';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { UserEnvironment } from './user-environment';
@@ -199,7 +200,9 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
       // Create the file with template variables
       await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
 
-      logger.info(`[Config] Created .env file with template variables at: ${envFilePath}`);
+      if (!isQuietMode()) {
+        logger.info(`[Config] Created .env file with template variables at: ${envFilePath}`);
+      }
     } else {
       // File exists, check if it's empty
       const content = await fs.readFile(envFilePath, 'utf8');

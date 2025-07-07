@@ -1,7 +1,14 @@
 import { execa } from 'execa';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { logger } from '@elizaos/core';
+import { logger, parseBooleanFromText } from '@elizaos/core';
+
+/**
+ * Check if quiet mode is enabled
+ */
+export function isQuietMode(): boolean {
+  return parseBooleanFromText(process.env.QUIET_MODE);
+}
 
 interface SpinnerCommandOptions {
   cwd?: string;
