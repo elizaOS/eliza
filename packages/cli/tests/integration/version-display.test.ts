@@ -16,7 +16,7 @@ describe('CLI version display integration tests', () => {
   describe('version flag behavior', () => {
     it('should display "monorepo" when run from within the monorepo', async () => {
       const result = await runCLI(['--version'], { cwd: MONOREPO_ROOT });
-      
+
       expect(result.stdout.trim()).toBe('monorepo');
       expect(result.stderr).toBe('');
       expect(result.code).toBe(0);
@@ -24,7 +24,7 @@ describe('CLI version display integration tests', () => {
 
     it('should display "monorepo" in banner when run without args from monorepo', async () => {
       const result = await runCLI([], { cwd: MONOREPO_ROOT });
-      
+
       // Check that the output contains the version line with "monorepo"
       expect(result.stdout).toContain('Version: monorepo');
       // Exit code is 1 when no command is provided (shows help)
@@ -34,7 +34,7 @@ describe('CLI version display integration tests', () => {
     it('should not show update notification when in monorepo context', async () => {
       // Run a command that would normally trigger update check
       const result = await runCLI(['--help'], { cwd: MONOREPO_ROOT });
-      
+
       // Should not contain update notification text
       expect(result.stdout).not.toContain('Update available');
       expect(result.stdout).not.toContain('bun i -g @elizaos/cli@latest');
@@ -48,15 +48,19 @@ describe('CLI version display integration tests', () => {
     beforeEach(async () => {
       // Create a temporary directory outside the monorepo
       tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-test-'));
-      
+
       // Create a minimal package.json
       await fs.promises.writeFile(
         path.join(tempDir, 'package.json'),
-        JSON.stringify({
-          name: 'test-project',
-          version: '1.0.0',
-          type: 'module'
-        }, null, 2)
+        JSON.stringify(
+          {
+            name: 'test-project',
+            version: '1.0.0',
+            type: 'module',
+          },
+          null,
+          2
+        )
       );
     });
 
@@ -76,23 +80,23 @@ describe('CLI version display integration tests', () => {
       // When the CLI is built and copied to a location outside the monorepo,
       // it should display "monorepo" if not in node_modules
       const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-dist-test-'));
-      
+
       try {
         // Copy the entire dist folder to the temp directory
         const distFolderPath = path.resolve(__dirname, '../../dist');
         const tempDistPath = path.join(tempDir, 'dist');
         await fs.promises.cp(distFolderPath, tempDistPath, { recursive: true });
-        
+
         // Also copy package.json to avoid errors
         const cliPackageJson = path.resolve(__dirname, '../../package.json');
         const tempPackageJson = path.join(tempDir, 'package.json');
         await fs.promises.copyFile(cliPackageJson, tempPackageJson);
-        
-        const result = await runCLI(['--version'], { 
+
+        const result = await runCLI(['--version'], {
           cwd: tempDir,
-          cliPath: tempCliPath 
+          cliPath: tempCliPath,
         });
-        
+
         expect(result.stdout.trim()).toBe('monorepo');
         expect(result.stderr).toBe('');
         expect(result.code).toBe(0);
@@ -107,7 +111,10 @@ describe('CLI version display integration tests', () => {
 /**
  * Helper function to run the CLI and capture output
  */
-function runCLI(args: string[], options: { cwd?: string; cliPath?: string } = {}): Promise<{
+function runCLI(
+  args: string[],
+  options: { cwd?: string; cliPath?: string } = {}
+): Promise<{
   stdout: string;
   stderr: string;
   code: number | null;
@@ -120,8 +127,8 @@ function runCLI(args: string[], options: { cwd?: string; cliPath?: string } = {}
         ...process.env,
         NODE_ENV: 'test',
         // Disable auto-install to avoid side effects
-        ELIZA_NO_AUTO_INSTALL: 'true'
-      }
+        ELIZA_NO_AUTO_INSTALL: 'true',
+      },
     });
 
     let stdout = '';

@@ -121,7 +121,7 @@ elizaos plugins upgrade https://github.com/user/plugin-v0
 elizaos plugins upgrade ./path/to/old-plugin
 
 # Provide API key directly
-elizaos plugins upgrade ./my-plugin --api-key sk-ant-...
+elizaos plugins upgrade ./my-plugin --api-key your-api-key
 
 # Skip test validation
 elizaos plugins upgrade ./my-plugin --skip-tests
@@ -140,7 +140,7 @@ elizaos plugins upgrade ./my-plugin --skip-tests --skip-validation
 elizaos plugins generate
 
 # Generate with API key directly
-elizaos plugins generate --api-key sk-ant-...
+elizaos plugins generate --api-key your-api-key
 
 # Generate from specification file (non-interactive)
 elizaos plugins generate --spec-file ./plugin-spec.json --skip-prompts
@@ -261,8 +261,8 @@ The `upgrade` command helps migrate v0.x plugins to v1.x format:
 
 Both AI features require an Anthropic API key:
 
-- Set via environment: `export ANTHROPIC_API_KEY=sk-ant-...`
-- Or pass directly: `--api-key sk-ant-...`
+- Set via environment: `export ANTHROPIC_API_KEY=your-api-key`
+- Or pass directly: `--api-key your-api-key`
 
 </TabItem>
 <TabItem value="troubleshooting" label="Troubleshooting">
@@ -306,7 +306,7 @@ bun --version
 # For GitHub authentication problems
 git config --global credential.helper store
 
-# For npm registry issues
+# For registry issues
 bun config set registry https://registry.npmjs.org/
 elizaos plugins add plugin-name
 ```
@@ -366,10 +366,10 @@ elizaos plugins add plugin-name --tag v1.0.0
 
 ```bash
 # Missing API key error
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
+export ANTHROPIC_API_KEY=your-anthropic-key-here
 
 # Or pass directly to command
-elizaos plugins generate --api-key sk-ant-your-key-here
+elizaos plugins generate --api-key your-anthropic-key-here
 
 # Invalid specification file
 # Ensure spec file is valid JSON

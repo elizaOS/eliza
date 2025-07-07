@@ -25,12 +25,37 @@ export interface SplitButtonProps {
   size?: 'default' | 'sm' | 'lg' | 'icon';
   disabled?: boolean;
   className?: string;
+  mainButtonClassName?: string;
+  dropdownButtonClassName?: string;
 }
 
 export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
-  ({ mainAction, actions, variant = 'default', size = 'default', disabled, className }, ref) => {
+  (
+    {
+      mainAction,
+      actions,
+      variant = 'default',
+      size = 'default',
+      disabled,
+      className,
+      mainButtonClassName,
+      dropdownButtonClassName,
+    },
+    ref
+  ) => {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    const [menuWidth, setMenuWidth] = React.useState<number>();
+
+    React.useImperativeHandle(ref, () => containerRef.current, []);
+
+    React.useLayoutEffect(() => {
+      if (containerRef.current) {
+        setMenuWidth(containerRef.current.offsetWidth);
+      }
+    }, [actions.length, mainAction.label]);
+
     return (
-      <div ref={ref} className={cn('flex w-full', className)}>
+      <div ref={containerRef} className={cn('flex w-full', className)}>
         <Button
           type="button"
           variant={variant}
@@ -39,7 +64,8 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
           disabled={disabled || mainAction.disabled}
           className={cn(
             'rounded-r-none flex-1',
-            variant === 'destructive' ? 'border-r border-red-700' : 'border-r-0'
+            variant === 'destructive' ? 'border-r border-red-700' : 'border-r-0',
+            mainButtonClassName
           )}
         >
           {mainAction.icon && <span className="mr-2">{mainAction.icon}</span>}
@@ -53,13 +79,13 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
               variant={variant}
               size={size}
               disabled={disabled}
-              className="rounded-l-none px-2 flex-shrink-0"
+              className={cn('rounded-l-none px-2 flex-shrink-0', dropdownButtonClassName)}
             >
               <ChevronDown className="h-4 w-4" />
               <span className="sr-only">More options</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" style={{ width: menuWidth }}>
             {actions.map((action, index) => (
               <React.Fragment key={index}>
                 <DropdownMenuItem
@@ -70,7 +96,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                       'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
                   )}
                 >
-                  {action.icon && <span className="mr-2">{action.icon}</span>}
+                  {action.icon}
                   {action.label}
                 </DropdownMenuItem>
                 {index < actions.length - 1 && <DropdownMenuSeparator />}

@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { formatAgentName, cn } from '@/lib/utils';
+import { formatAgentName, cn, getAgentAvatar } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
 import { Settings } from 'lucide-react';
@@ -14,7 +14,7 @@ import clientLogger from '@/lib/logger';
 
 interface AgentCardProps {
   agent: Partial<AgentWithStatus>;
-  onChat: (agent: Partial<AgentWithStatus>) => void;
+  onChat: (forceNew: boolean) => void;
 }
 
 const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
@@ -32,10 +32,11 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
 
   const agentIdForNav = agent.id;
   const agentName = agent.name || 'Unnamed Agent';
-  const avatarUrl = typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : undefined;
-  const description =
-    (Array.isArray(agent.bio) && agent.bio.filter(Boolean).join(' ').trim()) ||
-    'Engages with all types of questions and conversations';
+
+  const description = Array.isArray(agent.bio)
+    ? agent.bio.filter(Boolean).join(' ').trim()
+    : (typeof agent.bio === 'string' && agent.bio.trim()) ||
+      'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -70,8 +71,8 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
     stopAgent(agentForMutation);
   };
 
-  const handleNewChat = () => {
-    onChat(agent);
+  const handleNewChat = (forceNew: boolean = false) => {
+    onChat(forceNew);
   };
 
   const handleSettings = () => {
@@ -89,10 +90,14 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   return (
     <Card
       className={cn(
-        'w-full transition-all bg-card border border-border/50 rounded-sm',
+        'w-full transition-all bg-card border border-border/50 rounded-sm hover:bg-card/50 cursor-pointer',
         isActive ? '' : 'opacity-75'
       )}
       data-testid="agent-card"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleNewChat();
+      }}
     >
       <CardContent className="p-0 relative h-full">
         {/* Toggle Switch - positioned absolutely in top-right */}
@@ -119,7 +124,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
           <div className="flex items-center gap-4 p-2 h-[90%]">
             {/* Avatar */}
             <Avatar className="h-16 w-16 flex-shrink-0 rounded-sm">
-              <AvatarImage src={avatarUrl} alt={agentName} />
+              <AvatarImage src={getAgentAvatar(agent)} alt={agentName} />
               <AvatarFallback className="text-lg font-medium rounded-sm">
                 {formatAgentName(agentName)}
               </AvatarFallback>
@@ -156,7 +161,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                handleNewChat();
+                handleNewChat(true);
               }}
               className="h-8 px-2 rounded-sm bg-muted hover:bg-muted/50 cursor-pointer"
             >

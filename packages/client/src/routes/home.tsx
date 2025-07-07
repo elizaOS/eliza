@@ -42,10 +42,10 @@ export default function Home() {
     setOverlayOpen(false);
   };
 
-  const handleNavigateToDm = async (agent: Partial<Agent>) => {
+  const handleNavigateToDm = async (agent: Partial<Agent>, forceNew: boolean) => {
     if (!agent.id) return;
     // Navigate directly to agent chat - DM channel will be created automatically with default server
-    navigate(`/chat/${agent.id}`);
+    navigate(`/chat/${agent.id}`, { state: { forceNew } });
   };
 
   const handleCreateGroup = () => {
@@ -144,7 +144,7 @@ export default function Home() {
                           <AgentCard
                             key={agent.id}
                             agent={agent}
-                            onChat={() => handleNavigateToDm(agent as Agent)}
+                            onChat={(forceNew) => handleNavigateToDm(agent as Agent, forceNew)}
                           />
                         );
                       })}

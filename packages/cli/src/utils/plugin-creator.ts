@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import * as fs from 'fs-extra';
-import inquirer from 'inquirer';
+import * as clack from '@clack/prompts';
 import ora from 'ora';
 import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
@@ -48,6 +48,42 @@ export interface CreatorOptions {
 export class PluginCreator {
   private git: SimpleGit;
   private pluginPath: string | null = null;
+
+  private handleCancellation(value: any): void {
+    if (clack.isCancel(value)) {
+      clack.cancel('Operation cancelled.');
+      process.exit(0);
+    }
+  }
+
+  private async getCommaSeparatedInput(
+    message: string,
+    required: boolean = false
+  ): Promise<string[]> {
+    const input = await clack.text({
+      message,
+      validate: required
+        ? (value) => {
+            if (!value || value.trim() === '') {
+              return 'At least one item is required';
+            }
+            return undefined;
+          }
+        : undefined,
+    });
+
+    this.handleCancellation(input);
+
+    // Return empty array if no input provided (for optional fields)
+    if (!input || input.trim() === '') {
+      return [];
+    }
+
+    return input
+      .split(',')
+      .map((item: string) => item.trim())
+      .filter((item: string) => item);
+  }
   private anthropic: Anthropic | null = null;
   private activeClaudeProcess: any = null;
   private options: CreatorOptions;
@@ -174,48 +210,59 @@ export class PluginCreator {
       throw new Error('Plugin specification required when skipping prompts');
     }
 
-    const answers = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'name',
-        message: 'Plugin name (without "plugin-" prefix):',
-        validate: (input: string) => {
-          if (!input || input.trim() === '') {
-            return 'Plugin name is required';
-          }
-          return true;
-        },
-        filter: (input: string) => input.toLowerCase().replace(/\s+/g, '-'),
+    // Plugin name input
+    const name = await clack.text({
+      message: 'Plugin name (without "plugin-" prefix):',
+      validate: (input) => {
+        if (!input || input.trim() === '') {
+          return 'Plugin name is required';
+        }
+        return undefined;
       },
-      {
-        type: 'input',
-        name: 'description',
-        message: 'Plugin description:',
-        validate: (input: string) => input.length > 0 || 'Description is required',
-      },
-      {
-        type: 'input',
-        name: 'features',
-        message: 'Main features (comma-separated):',
-        filter: (input: string) =>
-          input
-            .split(',')
-            .map((f: string) => f.trim())
-            .filter((f: string) => f),
-      },
-      {
-        type: 'checkbox',
-        name: 'components',
-        message: 'Which components will this plugin include?',
-        choices: [
-          { name: 'Actions', value: 'actions' },
-          { name: 'Providers', value: 'providers' },
-          { name: 'Evaluators', value: 'evaluators' },
-          { name: 'Services', value: 'services' },
-        ],
-        default: ['actions', 'providers'],
-      },
-    ]);
+    });
+
+    this.handleCancellation(name);
+
+    const pluginName = (name as string).toLowerCase().replace(/\s+/g, '-');
+
+    // Plugin description input
+    const description = await clack.text({
+      message: 'Plugin description:',
+      validate: (input) => (input.length > 0 ? undefined : 'Description is required'),
+    });
+
+    this.handleCancellation(description);
+
+    const pluginDescription = description as string;
+
+    // Features input
+    const features = await this.getCommaSeparatedInput(
+      'Main features (comma-separated):',
+      true // Required
+    );
+
+    // Component selection
+    const components = await clack.multiselect({
+      message: 'Which components will this plugin include?',
+      options: [
+        { value: 'actions', label: 'Actions' },
+        { value: 'providers', label: 'Providers' },
+        { value: 'evaluators', label: 'Evaluators' },
+        { value: 'services', label: 'Services' },
+      ],
+      initialValues: ['actions', 'providers'],
+    });
+
+    this.handleCancellation(components);
+
+    const selectedComponents = components as string[];
+
+    const answers = {
+      name: pluginName,
+      description: pluginDescription,
+      features,
+      components: selectedComponents,
+    };
 
     // Collect specific component details
     const spec: PluginSpecification = {
@@ -225,67 +272,25 @@ export class PluginCreator {
     };
 
     if (answers.components.includes('actions')) {
-      const actionAnswers = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'actions',
-          message: 'Action names (comma-separated):',
-          filter: (input: string) =>
-            input
-              .split(',')
-              .map((a: string) => a.trim())
-              .filter((a: string) => a),
-        },
-      ]);
-      spec.actions = actionAnswers.actions;
+      spec.actions = await this.getCommaSeparatedInput('Action names (comma-separated):', false);
     }
 
     if (answers.components.includes('providers')) {
-      const providerAnswers = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'providers',
-          message: 'Provider names (comma-separated):',
-          filter: (input: string) =>
-            input
-              .split(',')
-              .map((p: string) => p.trim())
-              .filter((p: string) => p),
-        },
-      ]);
-      spec.providers = providerAnswers.providers;
+      spec.providers = await this.getCommaSeparatedInput(
+        'Provider names (comma-separated):',
+        false
+      );
     }
 
     if (answers.components.includes('evaluators')) {
-      const evaluatorAnswers = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'evaluators',
-          message: 'Evaluator names (comma-separated):',
-          filter: (input: string) =>
-            input
-              .split(',')
-              .map((e: string) => e.trim())
-              .filter((e: string) => e),
-        },
-      ]);
-      spec.evaluators = evaluatorAnswers.evaluators;
+      spec.evaluators = await this.getCommaSeparatedInput(
+        'Evaluator names (comma-separated):',
+        false
+      );
     }
 
     if (answers.components.includes('services')) {
-      const serviceAnswers = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'services',
-          message: 'Service names (comma-separated):',
-          filter: (input: string) =>
-            input
-              .split(',')
-              .map((s: string) => s.trim())
-              .filter((s: string) => s),
-        },
-      ]);
-      spec.services = serviceAnswers.services;
+      spec.services = await this.getCommaSeparatedInput('Service names (comma-separated):', false);
     }
 
     return spec;

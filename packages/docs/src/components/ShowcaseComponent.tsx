@@ -16,9 +16,15 @@ function ShowcaseHeader() {
     <section className="margin-top--lg margin-bottom--lg text--center">
       <h1>{TITLE}</h1>
       <p>{DESCRIPTION}</p>
-      <div className={styles.submitButton}>
+      <div
+        className={styles.submitButton}
+        style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}
+      >
+        <Link className="button button--primary" to="/docs/technical/development/creating-plugins">
+          🚀 Build a Plugin
+        </Link>
         <Link className="button button--primary" to={GITHUB_LINK}>
-          Submit your plugin
+          📤 Submit your plugin
         </Link>
       </div>
       <br></br>

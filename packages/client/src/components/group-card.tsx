@@ -142,7 +142,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                 }}
                 className="h-8 px-2 rounded-sm bg-muted hover:bg-muted/50 cursor-pointer"
               >
-                New Chat
+                Chat
               </Button>
             </div>
           </div>
