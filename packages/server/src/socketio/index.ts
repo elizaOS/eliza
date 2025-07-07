@@ -281,8 +281,7 @@ export class SocketIORouter {
           // Determine if this is likely a DM based on the context
           const isDmChannel =
             metadata?.isDm ||
-            metadata?.channelType === ChannelType.DM ||
-            senderName?.includes('DM');
+            metadata?.channelType === ChannelType.DM;
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
