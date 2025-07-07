@@ -308,6 +308,10 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
   if (!url) return;
 
   try {
+    // Ensure parent directory exists
+    const envDir = path.dirname(envFilePath);
+    await fs.mkdir(envDir, { recursive: true });
+
     // Read existing content first to avoid duplicates
     let content = '';
     if (existsSync(envFilePath)) {

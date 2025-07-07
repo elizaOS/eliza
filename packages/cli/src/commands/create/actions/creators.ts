@@ -221,6 +221,9 @@ export async function createTEEProject(
   }
 
   await withCleanupOnInterrupt(teeTargetDir, projectName, async () => {
+    // Create project directory first
+    await fs.mkdir(teeTargetDir, { recursive: true });
+
     // Handle interactive configuration before spinner tasks
     if (!isNonInteractive) {
       const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
@@ -296,6 +299,11 @@ export async function createProject(
 
   // only use cleanup wrapper for new directories, not current directory
   const createFn = async () => {
+    // Create project directory first if it's not current directory
+    if (projectName !== '.') {
+      await fs.mkdir(projectTargetDir, { recursive: true });
+    }
+
     // Handle interactive configuration before spinner tasks
     if (!isNonInteractive) {
       const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
