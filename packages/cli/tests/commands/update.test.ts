@@ -275,7 +275,7 @@ describe('ElizaOS Update Commands', () => {
     'update command should not create files in non-project directory',
     () => {
       // Create a temporary directory that's not a project
-      const tmpDir = mkdtempSync(path.join(tmpdir(), 'eliza-test-'));
+      const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-test-'));
 
       try {
         // Run update command in empty directory
@@ -288,11 +288,11 @@ describe('ElizaOS Update Commands', () => {
         expect(result.exitCode).toBe(0);
 
         // Verify no project files were created
-        expect(existsSync(path.join(tmpDir, 'package.json'))).toBe(false);
-        expect(existsSync(path.join(tmpDir, 'bun.lock'))).toBe(false);
-        expect(existsSync(path.join(tmpDir, 'node_modules'))).toBe(false);
-        expect(existsSync(path.join(tmpDir, 'package-lock.json'))).toBe(false);
-        expect(existsSync(path.join(tmpDir, 'yarn.lock'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'package.json'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'bun.lock'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'node_modules'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'package-lock.json'))).toBe(false);
+        expect(existsSync(join(tmpDir, 'yarn.lock'))).toBe(false);
 
         // Output should mention CLI update, not package updates
         expect(result.stdout).toMatch(/CLI.*update|updat.*CLI/i);
