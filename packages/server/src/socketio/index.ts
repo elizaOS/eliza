@@ -282,7 +282,6 @@ export class SocketIORouter {
           const isDmChannel =
             metadata?.isDm ||
             metadata?.channelType === ChannelType.DM;
-            // Removed check for senderName?.includes('DM') which caused false positives
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
