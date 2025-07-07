@@ -358,12 +358,14 @@ export async function setupProjectEnvironment(
     await setupPgLite(undefined, `${targetDir}/.env`, targetDir);
   }
 
-  // Set up AI model configuration
-  await setupAIModelConfig(aiModel, envFilePath, isNonInteractive);
+  // Set up AI model configuration (skip if non-interactive, handled before spinner tasks)
+  if (!isNonInteractive) {
+    await setupAIModelConfig(aiModel, envFilePath, isNonInteractive);
 
-  // Set up embedding model configuration if needed
-  if (embeddingModel) {
-    await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+    // Set up embedding model configuration if needed
+    if (embeddingModel) {
+      await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+    }
   }
 
   // Install AI model plugin (skip for local AI)

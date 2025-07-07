@@ -221,12 +221,25 @@ export async function createTEEProject(
   }
 
   await withCleanupOnInterrupt(teeTargetDir, projectName, async () => {
+    // Handle interactive AI model configuration before spinner tasks
+    if (!isNonInteractive && (aiModel !== 'local' || embeddingModel)) {
+      const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
+      const envFilePath = `${teeTargetDir}/.env`;
+
+      if (aiModel !== 'local') {
+        await setupAIModelConfig(aiModel, envFilePath, false);
+      }
+      if (embeddingModel) {
+        await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+      }
+    }
+
     await runTasks([
       createTask('Copying TEE template', () =>
         copyTemplateUtil('project-tee-starter', teeTargetDir)
       ),
       createTask('Setting up project environment', () =>
-        setupProjectEnvironment(teeTargetDir, database, aiModel, embeddingModel, isNonInteractive)
+        setupProjectEnvironment(teeTargetDir, database, aiModel, embeddingModel, true)
       ),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(teeTargetDir)),
       createTask('Building project', () => buildProjectWithSpinner(teeTargetDir, false)),
@@ -274,18 +287,25 @@ export async function createProject(
 
   // only use cleanup wrapper for new directories, not current directory
   const createFn = async () => {
+    // Handle interactive AI model configuration before spinner tasks
+    if (!isNonInteractive && (aiModel !== 'local' || embeddingModel)) {
+      const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
+      const envFilePath = `${projectTargetDir}/.env`;
+
+      if (aiModel !== 'local') {
+        await setupAIModelConfig(aiModel, envFilePath, false);
+      }
+      if (embeddingModel) {
+        await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+      }
+    }
+
     await runTasks([
       createTask('Copying project template', () =>
         copyTemplateUtil('project-starter', projectTargetDir)
       ),
       createTask('Setting up project environment', () =>
-        setupProjectEnvironment(
-          projectTargetDir,
-          database,
-          aiModel,
-          embeddingModel,
-          isNonInteractive
-        )
+        setupProjectEnvironment(projectTargetDir, database, aiModel, embeddingModel, true)
       ),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(projectTargetDir)),
       createTask('Building project', () => buildProjectWithSpinner(projectTargetDir, false)),
