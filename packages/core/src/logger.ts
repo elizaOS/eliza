@@ -160,8 +160,8 @@ const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVE
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
   colorize: true,
-  translateTime: 'yyyy-mm-dd HH:MM:ss',
-  ignore: 'pid,hostname',
+  translateTime: false,
+  ignore: 'pid,hostname,time', // Remove timestamps entirely for CLI logging
   levelColors: {
     60: 'red', // fatal
     50: 'red', // error
