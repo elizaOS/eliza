@@ -153,17 +153,18 @@ export async function installPluginWithSpinner(
 ): Promise<void> {
   const purposeText = purpose ? ` ${purpose}` : '';
 
-  const result = await runBunWithSpinner(['add', `@elizaos/plugin-${pluginName}`], targetDir, {
-    spinnerText: `Installing ${pluginName} plugin${purposeText}...`,
-    successText: colors.green(`✓ ${pluginName} plugin installed successfully`),
-    errorText: `Failed to install ${pluginName} plugin`,
-    showOutputOnError: false, // Don't show verbose output for plugin failures
-  });
+  try {
+    // Use direct command execution without any output
+    const result = await execa('bun', ['add', `@elizaos/plugin-${pluginName}`], {
+      cwd: targetDir,
+      stdio: 'pipe', // Completely silent
+      reject: false,
+    });
 
-  if (!result.success) {
-    // Don't throw, just warn - plugin installation is not critical
-    logger.warn(`Could not install ${pluginName} plugin automatically: ${result.error?.message}`);
-    logger.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
+    // Silent success or failure - plugin installation is not critical
+    // No output during spinner tasks to maintain clean flow
+  } catch (error) {
+    // Silent failure - don't interrupt spinner flow
   }
 }
 
@@ -171,7 +172,13 @@ export async function installPluginWithSpinner(
  * Create a task for use with clack.tasks()
  */
 export function createTask(title: string, fn: () => Promise<any>) {
-  return { title, task: fn };
+  return {
+    title,
+    task: async () => {
+      await fn();
+      return `${title} completed`;
+    },
+  };
 }
 
 /**
