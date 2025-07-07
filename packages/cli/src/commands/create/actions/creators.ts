@@ -221,16 +221,25 @@ export async function createTEEProject(
   }
 
   await withCleanupOnInterrupt(teeTargetDir, projectName, async () => {
-    // Handle interactive AI model configuration before spinner tasks
-    if (!isNonInteractive && (aiModel !== 'local' || embeddingModel)) {
+    // Handle interactive configuration before spinner tasks
+    if (!isNonInteractive) {
       const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
+      const { promptAndStorePostgresUrl } = await import('@/src/utils');
       const envFilePath = `${teeTargetDir}/.env`;
 
-      if (aiModel !== 'local') {
-        await setupAIModelConfig(aiModel, envFilePath, false);
+      // Handle PostgreSQL configuration
+      if (database === 'postgres') {
+        await promptAndStorePostgresUrl(envFilePath);
       }
-      if (embeddingModel) {
-        await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+
+      // Handle AI model configuration
+      if (aiModel !== 'local' || embeddingModel) {
+        if (aiModel !== 'local') {
+          await setupAIModelConfig(aiModel, envFilePath, false);
+        }
+        if (embeddingModel) {
+          await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+        }
       }
     }
 
@@ -287,16 +296,25 @@ export async function createProject(
 
   // only use cleanup wrapper for new directories, not current directory
   const createFn = async () => {
-    // Handle interactive AI model configuration before spinner tasks
-    if (!isNonInteractive && (aiModel !== 'local' || embeddingModel)) {
+    // Handle interactive configuration before spinner tasks
+    if (!isNonInteractive) {
       const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
+      const { promptAndStorePostgresUrl } = await import('@/src/utils');
       const envFilePath = `${projectTargetDir}/.env`;
 
-      if (aiModel !== 'local') {
-        await setupAIModelConfig(aiModel, envFilePath, false);
+      // Handle PostgreSQL configuration
+      if (database === 'postgres') {
+        await promptAndStorePostgresUrl(envFilePath);
       }
-      if (embeddingModel) {
-        await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+
+      // Handle AI model configuration
+      if (aiModel !== 'local' || embeddingModel) {
+        if (aiModel !== 'local') {
+          await setupAIModelConfig(aiModel, envFilePath, false);
+        }
+        if (embeddingModel) {
+          await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+        }
       }
     }
 

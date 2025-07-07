@@ -352,8 +352,12 @@ export async function setupProjectEnvironment(
 
   // Set up database configuration
   const envFilePath = `${targetDir}/.env`;
-  if (database === 'postgres' && !isNonInteractive) {
-    await promptAndStorePostgresUrl(envFilePath);
+  if (database === 'postgres') {
+    // PostgreSQL configuration is handled before spinner tasks in interactive mode
+    // Skip configuration here when called from spinner tasks (isNonInteractive=true)
+    if (!isNonInteractive) {
+      await promptAndStorePostgresUrl(envFilePath);
+    }
   } else if (database === 'pglite') {
     await setupPgLite(undefined, `${targetDir}/.env`, targetDir);
   }
