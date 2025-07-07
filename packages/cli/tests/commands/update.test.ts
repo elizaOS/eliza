@@ -276,16 +276,18 @@ describe('ElizaOS Update Commands', () => {
     () => {
       // Create a temporary directory that's not a project
       const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-test-'));
+      const currentDir = process.cwd();
 
       try {
-        // Run update command in empty directory
+        // Change to temp directory and run update command
+        process.chdir(tmpDir);
         const result = runCliCommandSilently(elizaosCmd, 'update', {
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-          cwd: tmpDir,
         });
 
         // Command should succeed (updates CLI only)
-        expect(result.exitCode).toBe(0);
+        // runCliCommandSilently returns output string on success
+        expect(result).toBeTruthy();
 
         // Verify no project files were created
         expect(existsSync(join(tmpDir, 'package.json'))).toBe(false);
@@ -295,9 +297,11 @@ describe('ElizaOS Update Commands', () => {
         expect(existsSync(join(tmpDir, 'yarn.lock'))).toBe(false);
 
         // Output should mention CLI update, not package updates
-        expect(result.stdout).toMatch(/CLI.*update|updat.*CLI/i);
-        expect(result.stdout).not.toMatch(/packages.*installed/i);
+        expect(result).toMatch(/CLI.*update|updat.*CLI/i);
+        expect(result).not.toMatch(/packages.*installed/i);
       } finally {
+        // Change back to original directory
+        process.chdir(currentDir);
         // Clean up
         rmSync(tmpDir, { recursive: true, force: true });
       }
