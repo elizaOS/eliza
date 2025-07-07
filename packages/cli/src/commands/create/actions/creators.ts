@@ -181,12 +181,12 @@ export async function createAgent(
 
   await fs.writeFile(agentFilePath, JSON.stringify(agentCharacter, null, 2));
 
-  if (!isNonInteractive) {
-    console.info(`\n${colors.green('✓')} Agent "${agentName}" created successfully!`);
-    console.info(`Agent character created successfully at: ${agentFilePath}`);
-    console.info(`\nTo use this agent:`);
-    console.info(`  elizaos agent start --path ${agentFilePath}\n`);
-  }
+  // Always show success message and usage instructions - this is critical information
+  // that users need regardless of interactive/non-interactive mode
+  console.info(`\n${colors.green('✓')} Agent "${agentName}" created successfully!`);
+  console.info(`Agent character created successfully at: ${agentFilePath}`);
+  console.info(`\nTo use this agent:`);
+  console.info(`  elizaos agent start --path ${agentFilePath}\n`);
 }
 
 /**

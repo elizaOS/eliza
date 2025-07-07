@@ -152,19 +152,41 @@ export async function installPluginWithSpinner(
   purpose = ''
 ): Promise<void> {
   const purposeText = purpose ? ` ${purpose}` : '';
+  const packageName = `@elizaos/plugin-${pluginName}`;
+
+  // Skip in test environments
+  if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
+    return;
+  }
+
+  const spinner = clack.spinner();
+  spinner.start(`Installing ${packageName}${purposeText}...`);
 
   try {
-    // Use direct command execution without any output
-    const result = await execa('bun', ['add', `@elizaos/plugin-${pluginName}`], {
+    const result = await execa('bun', ['add', packageName], {
       cwd: targetDir,
-      stdio: 'pipe', // Completely silent
+      stdio: 'pipe',
       reject: false,
     });
 
-    // Silent success or failure - plugin installation is not critical
-    // No output during spinner tasks to maintain clean flow
+    if (result.exitCode === 0) {
+      spinner.stop(colors.green(`✓ ${packageName} installed successfully`));
+    } else {
+      // Log warning but don't throw - plugin installation is non-critical
+      spinner.stop(colors.yellow(`⚠ Failed to install ${packageName} (optional)`));
+
+      // Log to debug for troubleshooting
+      logger.debug(`Plugin installation failed: ${packageName}`, {
+        exitCode: result.exitCode,
+        stderr: result.stderr,
+        stdout: result.stdout,
+      });
+    }
   } catch (error) {
-    // Silent failure - don't interrupt spinner flow
+    // Log warning but don't throw - plugin installation is non-critical
+    spinner.stop(colors.yellow(`⚠ Failed to install ${packageName} (optional)`));
+
+    logger.debug(`Plugin installation error: ${packageName}`, error);
   }
 }
 
