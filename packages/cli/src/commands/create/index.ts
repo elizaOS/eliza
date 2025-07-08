@@ -165,7 +165,7 @@ export const create = new Command('create')
 
           await createTEEProject(
             projectName!,
-            '.',
+            process.cwd(),
             database,
             aiModel,
             embeddingModel,
