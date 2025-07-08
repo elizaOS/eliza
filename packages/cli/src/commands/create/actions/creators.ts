@@ -139,7 +139,6 @@ export async function createPlugin(
     console.info(`  cd ${pluginDirName}`);
     console.info(`  bun run build   # Build the plugin`);
     console.info(`\n  Common commands:`);
-    console.info(`  elizaos test   # Run tests`);
     console.info(`  elizaos dev    # Start development mode with hot reloading`);
     console.info(`  elizaos start  # Start in production mode\n`);
   });
@@ -273,7 +272,6 @@ export async function createTEEProject(
     console.info(`\nNext steps:`);
     console.info(`  cd ${projectName}`);
     console.info(`\n  Common commands:`);
-    console.info(`  elizaos test   # Run tests`);
     console.info(`  elizaos dev    # Start development mode with hot reloading`);
     console.info(`  elizaos start  # Start in production mode\n`);
   });
@@ -359,7 +357,6 @@ export async function createProject(
       console.info(`  cd ${projectName}`);
     }
     console.info(`\n  Common commands:`);
-    console.info(`  elizaos test   # Run tests`);
     console.info(`  elizaos dev    # Start development mode with hot reloading`);
     console.info(`  elizaos start  # Start in production mode\n`);
   };
