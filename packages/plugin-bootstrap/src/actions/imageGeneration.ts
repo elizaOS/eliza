@@ -111,8 +111,8 @@ import { v4 } from 'uuid';
         {
           name: '{{name2}}',
           content: {
-            image: '<image_url_or_reference>',
-            actions: ['GENERATE_IMAGE'],
+            text: "Sure, I'll create a futuristic city image for you. One moment...",
+            actions: ['GENERATE_IMAGE']
           },
         },
       ],
@@ -126,8 +126,8 @@ import { v4 } from 'uuid';
         {
           name: '{{name2}}',
           content: {
-            image: '<image_url_or_reference>',
-            actions: ['GENERATE_IMAGE'],
+            text: "I’ll create a visualization of a neural network for you, one sec...",
+            actions: ['GENERATE_IMAGE']
           },
         },
       ],
@@ -141,8 +141,23 @@ import { v4 } from 'uuid';
         {
           name: '{{name2}}',
           content: {
-            image: '<image_url_or_reference>',
-            actions: ['GENERATE_IMAGE'],
+            text: "Creating an image to capture calmness for you, please wait a moment...",
+            actions: ['GENERATE_IMAGE']
+          },
+        },
+      ],
+      [
+        {
+          name: '{{name1}}',
+          content: {
+            text: 'What does excitement look like as an image?',
+          },
+        },
+        {
+          name: '{{name2}}',
+          content: {
+            text: "Let me generate an image that represents excitement for you, give me a second...",
+            actions: ['GENERATE_IMAGE']
           },
         },
       ],
