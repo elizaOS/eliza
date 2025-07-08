@@ -2,6 +2,7 @@ import { logger } from '@elizaos/core';
 import { getAgentRuntimeUrl } from '../commands/agent';
 import { OptionValues } from 'commander';
 import colors from 'yoctocolors';
+import { z } from 'zod';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -11,6 +12,14 @@ import colors from 'yoctocolors';
  * @param {unknown} error - The error to be handled.
  */
 export function handleError(error: unknown) {
+  // Check for ZodError and show clean validation message
+  if (error instanceof z.ZodError) {
+    const firstError = error.errors[0];
+    const field = firstError.path.join('.');
+    console.error(`error: ${field ? `Invalid ${field}: ` : ''}${firstError.message}`);
+    process.exit(1);
+  }
+
   // Check for ENOSPC / "no space left on device" and print in red
   const isNoSpace =
     (error instanceof Error &&
@@ -29,13 +38,20 @@ export function handleError(error: unknown) {
       logger.error(colors.red(String(error)));
     }
   } else {
-    logger.error('An error occurred:', error);
+    // For general errors, show a clean message without excessive detail
     if (error instanceof Error) {
-      logger.error('Error details:', error.message);
-      logger.error('Stack trace:', error.stack);
+      console.error(`error: ${error.message}`);
+      // Only show stack trace if LOG_LEVEL is debug
+      if (process.env.LOG_LEVEL === 'debug' || process.env.DEBUG) {
+        console.error('Stack trace:', error.stack);
+      }
+    } else if (typeof error === 'string') {
+      console.error(`error: ${error}`);
     } else {
-      logger.error('Unknown error type:', typeof error);
-      logger.error('Error value:', error);
+      console.error('error: An unexpected error occurred');
+      if (process.env.LOG_LEVEL === 'debug' || process.env.DEBUG) {
+        console.error('Error details:', error);
+      }
     }
   }
   process.exit(1);

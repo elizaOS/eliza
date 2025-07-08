@@ -102,6 +102,13 @@ export async function createPlugin(
   const pluginDirName = processedName.startsWith('plugin-')
     ? processedName
     : `plugin-${processedName}`;
+  
+  // Show warning if the final name differs from what the user entered
+  if (pluginDirName !== pluginName) {
+    console.info(colors.yellow(`\nwarn: changing "${pluginName}" to "${pluginDirName}" to conform to plugin naming conventions`));
+    console.info('');
+  }
+  
   const pluginTargetDir = join(targetDir, pluginDirName);
 
   // Validate target directory
@@ -131,8 +138,10 @@ export async function createPlugin(
     console.info(`\n${colors.green('✓')} Plugin "${pluginDirName}" created successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${pluginDirName}`);
-    console.info(`  bun run build`);
-    console.info(`  bun run test\n`);
+    console.info(`\n  Common commands:`);
+    console.info(`  elizaos test   # Run tests`);
+    console.info(`  elizaos dev    # Start development mode with hot reloading`);
+    console.info(`  elizaos start  # Start in production mode\n`);
   });
 }
 
@@ -186,7 +195,13 @@ export async function createAgent(
   console.info(`\n${colors.green('✓')} Agent "${agentName}" created successfully!`);
   console.info(`Agent character created successfully at: ${agentFilePath}`);
   console.info(`\nTo use this agent:`);
-  console.info(`  elizaos agent start --path ${agentFilePath}\n`);
+  console.info(`  1. Make sure you're in an ElizaOS project directory`);
+  console.info(`  2. Start the server using one of these commands:`);
+  console.info(`     elizaos dev    # Development mode`);
+  console.info(`     elizaos start  # Production mode`);
+  console.info(`  3. In another terminal, run:`);
+  console.info(`     elizaos agent start --path ${agentFilePath}\n`);
+  console.info(`Note: The agent requires a connection to a running ElizaOS server.\n`);
 }
 
 /**
@@ -260,7 +275,10 @@ export async function createTEEProject(
     console.info(`\n${colors.green('✓')} TEE project "${projectName}" created successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${projectName}`);
-    console.info(`  bun run dev\n`);
+    console.info(`\n  Common commands:`);
+    console.info(`  elizaos test   # Run tests`);
+    console.info(`  elizaos dev    # Start development mode with hot reloading`);
+    console.info(`  elizaos start  # Start in production mode\n`);
   });
 }
 
@@ -340,8 +358,13 @@ export async function createProject(
     const displayName = projectName === '.' ? 'Project' : `Project "${projectName}"`;
     console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);
     console.info(`\nNext steps:`);
-    console.info(`  cd ${projectName}`);
-    console.info(`  bun run dev\n`);
+    if (projectName !== '.') {
+      console.info(`  cd ${projectName}`);
+    }
+    console.info(`\n  Common commands:`);
+    console.info(`  elizaos test   # Run tests`);
+    console.info(`  elizaos dev    # Start development mode with hot reloading`);
+    console.info(`  elizaos start  # Start in production mode\n`);
   };
 
   if (projectName === '.') {
