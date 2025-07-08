@@ -168,6 +168,9 @@ export class AgentServer {
       // Initialize character loading functions
       this.loadCharacterTryPath = loadCharacterTryPath;
       this.jsonToCharacter = jsonToCharacter;
+
+      // Register signal handlers once in constructor to prevent accumulation
+      this.registerSignalHandlers();
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -828,122 +831,88 @@ export class AgentServer {
    * Starts the server on the specified port.
    *
    * @param {number} port - The port number on which the server should listen.
+   * @returns {Promise<void>} A promise that resolves when the server is listening.
    * @throws {Error} If the port is invalid or if there is an error while starting the server.
    */
-  public start(port: number) {
-    try {
-      if (!port || typeof port !== 'number') {
-        throw new Error(`Invalid port number: ${port}`);
-      }
+  public start(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!port || typeof port !== 'number') {
+          throw new Error(`Invalid port number: ${port}`);
+        }
 
-      logger.debug(`Starting server on port ${port}...`);
-      logger.debug(`Current agents count: ${this.agents.size}`);
-      logger.debug(`Environment: ${process.env.NODE_ENV}`);
+        logger.debug(`Starting server on port ${port}...`);
+        logger.debug(`Current agents count: ${this.agents.size}`);
+        logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      // Use http server instead of app.listen with explicit host binding and error handling
-      // For tests and macOS compatibility, prefer 127.0.0.1 when specified
-      const host = process.env.SERVER_HOST || '0.0.0.0';
+        // Use http server instead of app.listen with explicit host binding and error handling
+        // For tests and macOS compatibility, prefer 127.0.0.1 when specified
+        const host = process.env.SERVER_HOST || '0.0.0.0';
 
-      this.server
-        .listen(port, host, () => {
-          // Only show the dashboard URL if UI is enabled
-          if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
-            // Display the dashboard URL with the correct port after the server is actually listening
-            console.log(
-              `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+        this.server
+          .listen(port, host, () => {
+            // Only show the dashboard URL if UI is enabled
+            if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
+              // Display the dashboard URL with the correct port after the server is actually listening
+              console.log(
+                `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+              );
+            } else if (!this.isWebUIEnabled) {
+              // Use actual host or localhost
+              const actualHost = host === '0.0.0.0' ? 'localhost' : host;
+              const baseUrl = `http://${actualHost}:${port}`;
+
+              console.log(
+                `\x1b[32mStartup successful!\x1b[0m\n` +
+                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+              );
+            }
+
+            // Add log for test readiness
+            console.log(`AgentServer is listening on port ${port}`);
+
+            logger.success(
+              `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
             );
-          } else if (!this.isWebUIEnabled) {
-            // Use actual host or localhost
-            const actualHost = host === '0.0.0.0' ? 'localhost' : host;
-            const baseUrl = `http://${actualHost}:${port}`;
+            logger.debug(`Active agents: ${this.agents.size}`);
+            this.agents.forEach((agent, id) => {
+              logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            });
 
-            console.log(
-              `\x1b[32mStartup successful!\x1b[0m\n` +
-                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
-            );
-          }
+            // Resolve the promise now that the server is actually listening
+            resolve();
+          })
+          .on('error', (error: any) => {
+            logger.error(`Failed to bind server to ${host}:${port}:`, error);
 
-          // Add log for test readiness
-          console.log(`AgentServer is listening on port ${port}`);
+            // Provide helpful error messages for common issues
+            if (error.code === 'EADDRINUSE') {
+              logger.error(
+                `Port ${port} is already in use. Please try a different port or stop the process using that port.`
+              );
+            } else if (error.code === 'EACCES') {
+              logger.error(
+                `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
+              );
+            } else if (error.code === 'EADDRNOTAVAIL') {
+              logger.error(
+                `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
+              );
+            }
 
-          logger.success(
-            `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
-          );
-          logger.debug(`Active agents: ${this.agents.size}`);
-          this.agents.forEach((agent, id) => {
-            logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            // Reject the promise on error
+            reject(error);
           });
-        })
-        .on('error', (error: any) => {
-          logger.error(`Failed to bind server to ${host}:${port}:`, error);
 
-          // Provide helpful error messages for common issues
-          if (error.code === 'EADDRINUSE') {
-            logger.error(
-              `Port ${port} is already in use. Please try a different port or stop the process using that port.`
-            );
-          } else if (error.code === 'EACCES') {
-            logger.error(
-              `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
-            );
-          } else if (error.code === 'EADDRNOTAVAIL') {
-            logger.error(
-              `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
-            );
-          }
-
-          throw error;
-        });
-
-      // Enhanced graceful shutdown
-      const gracefulShutdown = async () => {
-        logger.info('Received shutdown signal, initiating graceful shutdown...');
-
-        // Stop all agents first
-        logger.debug('Stopping all agents...');
-        for (const [id, agent] of this.agents.entries()) {
-          try {
-            await agent.stop();
-            logger.debug(`Stopped agent ${id}`);
-          } catch (error) {
-            logger.error(`Error stopping agent ${id}:`, error);
-          }
-        }
-
-        // Close database
-        if (this.database) {
-          try {
-            await this.database.close();
-            logger.info('Database closed.');
-          } catch (error) {
-            logger.error('Error closing database:', error);
-          }
-        }
-
-        // Close server
-        this.server.close(() => {
-          logger.success('Server closed successfully');
-          process.exit(0);
-        });
-
-        // Force close after timeout
-        setTimeout(() => {
-          logger.error('Could not close connections in time, forcing shutdown');
-          process.exit(1);
-        }, 5000);
-      };
-
-      process.on('SIGTERM', gracefulShutdown);
-      process.on('SIGINT', gracefulShutdown);
-
-      logger.debug('Shutdown handlers registered');
-    } catch (error) {
-      logger.error('Failed to start server:', error);
-      throw error;
-    }
+        // Server is now listening successfully
+      } catch (error) {
+        logger.error('Failed to start server:', error);
+        reject(error);
+      }
+    });
   }
 
   /**
@@ -1133,6 +1102,57 @@ export class AgentServer {
       }
     }
     return serverIds;
+  }
+
+  /**
+   * Registers signal handlers for graceful shutdown.
+   * This is called once in the constructor to prevent handler accumulation.
+   */
+  private registerSignalHandlers(): void {
+    const gracefulShutdown = async () => {
+      logger.info('Received shutdown signal, initiating graceful shutdown...');
+
+      // Stop all agents first
+      logger.debug('Stopping all agents...');
+      for (const [id, agent] of this.agents.entries()) {
+        try {
+          await agent.stop();
+          logger.debug(`Stopped agent ${id}`);
+        } catch (error) {
+          logger.error(`Error stopping agent ${id}:`, error);
+        }
+      }
+
+      // Close database
+      if (this.database) {
+        try {
+          await this.database.close();
+          logger.info('Database closed.');
+        } catch (error) {
+          logger.error('Error closing database:', error);
+        }
+      }
+
+      // Close server
+      if (this.server) {
+        this.server.close(() => {
+          logger.success('Server closed successfully');
+          process.exit(0);
+        });
+
+        // Force close after timeout
+        setTimeout(() => {
+          logger.error('Could not close connections in time, forcing shutdown');
+          process.exit(1);
+        }, 5000);
+      } else {
+        process.exit(0);
+      }
+    };
+
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+    logger.debug('Shutdown handlers registered');
   }
 }
 
