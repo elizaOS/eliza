@@ -421,8 +421,7 @@ export default function Chat({
           const isEmpty = (latestMessages?.messages?.length ?? 0) === 0;
 
           if (hasAutoName && isEmpty) {
-            const isAlreadyInLatest =
-            chatState.currentDmChannelId === latestChannel.id;
+            const isAlreadyInLatest = chatState.currentDmChannelId === latestChannel.id;
 
             if (isAlreadyInLatest) {
               toast({
@@ -436,7 +435,7 @@ export default function Chat({
                 description: `You can now start chatting with ${targetAgentData?.name || 'the agent'}.`,
               });
             }
-            
+
             updateChatState({ currentDmChannelId: latestChannel.id });
             return;
           } else {
