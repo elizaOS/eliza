@@ -608,8 +608,36 @@ export class AgentServer {
       // Conditionally serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
       if (this.isWebUIEnabled) {
-        const clientPath = path.resolve(__dirname, '../../cli/dist');
-        this.app.use(express.static(clientPath, staticOptions));
+        // Try multiple locations to find the client dist files
+        const possiblePaths = [
+          // Development: relative to server package
+          path.resolve(__dirname, '../../cli/dist'),
+          // Production: using require.resolve to find CLI package
+          (() => {
+            try {
+              return path.resolve(
+                path.dirname(require.resolve('@elizaos/cli/package.json')),
+                'dist'
+              );
+            } catch {
+              return null;
+            }
+          })(),
+        ].filter(Boolean);
+
+        let clientPath: string | null = null;
+        for (const possiblePath of possiblePaths) {
+          if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {
+            clientPath = possiblePath;
+            break;
+          }
+        }
+
+        if (clientPath) {
+          this.app.use(express.static(clientPath, staticOptions));
+        } else {
+          logger.warn('[STATIC] Client dist path not found');
+        }
       }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
@@ -683,14 +711,42 @@ export class AgentServer {
           }
 
           // For all other routes, serve the SPA's index.html
-          // Client files are built into the CLI package's dist directory
-          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-          res.sendFile(path.join(cliDistPath, 'index.html'), (err) => {
-            if (err) {
-              logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
-              res.status(404).send('Client application not found');
+          // Try multiple locations to find the client dist files
+          const possiblePaths = [
+            // Development: relative to server package
+            path.resolve(__dirname, '../../cli/dist'),
+            // Production: using require.resolve to find CLI package
+            (() => {
+              try {
+                return path.resolve(
+                  path.dirname(require.resolve('@elizaos/cli/package.json')),
+                  'dist'
+                );
+              } catch {
+                return null;
+              }
+            })(),
+          ].filter(Boolean);
+
+          let indexPath: string | null = null;
+          for (const possiblePath of possiblePaths) {
+            const testPath = path.join(possiblePath, 'index.html');
+            if (possiblePath && existsSync(testPath)) {
+              indexPath = testPath;
+              break;
             }
-          });
+          }
+
+          if (indexPath) {
+            res.sendFile(indexPath, (err) => {
+              if (err) {
+                logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
+                res.status(404).send('Client application not found');
+              }
+            });
+          } else {
+            res.status(404).send('Client application not found');
+          }
         });
       } else {
         // Return 403 Forbidden for non-API routes when UI is disabled
