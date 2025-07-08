@@ -106,7 +106,7 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
  */
 function normalizeImportPath(importPath: string): string {
   const normalized = path.normalize(importPath);
-  
+
   // On Windows, convert absolute paths to file:// URLs for dynamic imports
   if (process.platform === 'win32' && path.isAbsolute(normalized)) {
     // Handle UNC paths (\\server\share) differently
@@ -118,7 +118,7 @@ function normalizeImportPath(importPath: string): string {
       return `file:///${encodeURI(normalized.replace(/\\/g, '/'))}`;
     }
   }
-  
+
   return normalized;
 }
 

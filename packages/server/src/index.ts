@@ -851,63 +851,63 @@ export class AgentServer {
 
         this.server
           .listen(port, host, () => {
-          // Only show the dashboard URL if UI is enabled
-          if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
-            // Display the dashboard URL with the correct port after the server is actually listening
-            console.log(
-              `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+            // Only show the dashboard URL if UI is enabled
+            if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
+              // Display the dashboard URL with the correct port after the server is actually listening
+              console.log(
+                `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+              );
+            } else if (!this.isWebUIEnabled) {
+              // Use actual host or localhost
+              const actualHost = host === '0.0.0.0' ? 'localhost' : host;
+              const baseUrl = `http://${actualHost}:${port}`;
+
+              console.log(
+                `\x1b[32mStartup successful!\x1b[0m\n` +
+                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+              );
+            }
+
+            // Add log for test readiness
+            console.log(`AgentServer is listening on port ${port}`);
+
+            logger.success(
+              `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
             );
-          } else if (!this.isWebUIEnabled) {
-            // Use actual host or localhost
-            const actualHost = host === '0.0.0.0' ? 'localhost' : host;
-            const baseUrl = `http://${actualHost}:${port}`;
+            logger.debug(`Active agents: ${this.agents.size}`);
+            this.agents.forEach((agent, id) => {
+              logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            });
 
-            console.log(
-              `\x1b[32mStartup successful!\x1b[0m\n` +
-                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
-            );
-          }
+            // Resolve the promise now that the server is actually listening
+            resolve();
+          })
+          .on('error', (error: any) => {
+            logger.error(`Failed to bind server to ${host}:${port}:`, error);
 
-          // Add log for test readiness
-          console.log(`AgentServer is listening on port ${port}`);
+            // Provide helpful error messages for common issues
+            if (error.code === 'EADDRINUSE') {
+              logger.error(
+                `Port ${port} is already in use. Please try a different port or stop the process using that port.`
+              );
+            } else if (error.code === 'EACCES') {
+              logger.error(
+                `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
+              );
+            } else if (error.code === 'EADDRNOTAVAIL') {
+              logger.error(
+                `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
+              );
+            }
 
-          logger.success(
-            `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
-          );
-          logger.debug(`Active agents: ${this.agents.size}`);
-          this.agents.forEach((agent, id) => {
-            logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            // Reject the promise on error
+            reject(error);
           });
 
-          // Resolve the promise now that the server is actually listening
-          resolve();
-        })
-        .on('error', (error: any) => {
-          logger.error(`Failed to bind server to ${host}:${port}:`, error);
-
-          // Provide helpful error messages for common issues
-          if (error.code === 'EADDRINUSE') {
-            logger.error(
-              `Port ${port} is already in use. Please try a different port or stop the process using that port.`
-            );
-          } else if (error.code === 'EACCES') {
-            logger.error(
-              `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
-            );
-          } else if (error.code === 'EADDRNOTAVAIL') {
-            logger.error(
-              `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
-            );
-          }
-
-          // Reject the promise on error
-          reject(error);
-        });
-
-      // Server is now listening successfully
+        // Server is now listening successfully
       } catch (error) {
         logger.error('Failed to start server:', error);
         reject(error);
