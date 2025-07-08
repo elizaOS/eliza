@@ -585,6 +585,7 @@ export class AgentServer {
       const staticOptions = {
         etag: true,
         lastModified: true,
+        fallthrough: true, // Allow non-existent files to pass through to the catch-all route
         setHeaders: (res: express.Response, filePath: string) => {
           // Set the correct content type for different file extensions
           const ext = extname(filePath).toLowerCase();
@@ -684,7 +685,12 @@ export class AgentServer {
           // For all other routes, serve the SPA's index.html
           // Client files are built into the CLI package's dist directory
           const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-          res.sendFile(path.join(cliDistPath, 'index.html'));
+          res.sendFile(path.join(cliDistPath, 'index.html'), (err) => {
+            if (err) {
+              logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
+              res.status(404).send('Client application not found');
+            }
+          });
         });
       } else {
         // Return 403 Forbidden for non-API routes when UI is disabled
