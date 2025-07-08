@@ -30,7 +30,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   events: Map<string, ((params: any) => Promise<void>)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
-  isInitialized: boolean;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;

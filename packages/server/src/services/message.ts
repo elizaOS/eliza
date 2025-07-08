@@ -68,9 +68,11 @@ export class MessageBusService extends Service {
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
-    // Small delay to ensure server HTTP endpoints are ready on Windows
-    // This prevents immediate connection failures when the process tries to connect to itself
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // On Windows, add a small delay to ensure the server is ready to handle HTTP requests
+    // This prevents "fetch failed" errors during agent initialization
+    if (process.platform === 'win32') {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
 
     // Initialize by fetching servers this agent belongs to
     await this.fetchAgentServers();
@@ -79,29 +81,6 @@ export class MessageBusService extends Service {
   }
 
   private validChannelIds: Set<UUID> = new Set();
-
-  private async retryFetch(url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response | null> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(url, options);
-        return response;
-      } catch (error) {
-        logger.warn(
-          `[${this.runtime.character.name}] MessageBusService: Fetch attempt ${attempt}/${maxRetries} failed for ${url}:`,
-          error
-        );
-        if (attempt === maxRetries) {
-          logger.error(
-            `[${this.runtime.character.name}] MessageBusService: All ${maxRetries} fetch attempts failed for ${url}`
-          );
-          return null;
-        }
-        // Wait before retrying, with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, delay * attempt));
-      }
-    }
-    return null;
-  }
 
   private async fetchValidChannelIds(): Promise<void> {
     try {
@@ -123,10 +102,10 @@ export class MessageBusService extends Service {
             `/api/messaging/central-servers/${encodeURIComponent(serverId)}/channels`,
             serverApiUrl
           );
-          const response = await this.retryFetch(channelsUrl.toString(), {
+          const response = await fetch(channelsUrl.toString(), {
             headers: this.getAuthHeaders(),
           });
-          if (response && response.ok) {
+          if (response.ok) {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
               // Add channel IDs to the set
@@ -139,13 +118,9 @@ export class MessageBusService extends Service {
                 `[${this.runtime.character.name}] MessageBusService: Fetched ${data.data.channels.length} channels from server ${serverId}`
               );
             }
-          } else if (response) {
-            logger.warn(
-              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: ${response.status} ${response.statusText}`
-            );
           } else {
             logger.warn(
-              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: No response received`
+              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: ${response.status} ${response.statusText}`
             );
           }
         } catch (serverError) {
@@ -186,11 +161,11 @@ export class MessageBusService extends Service {
           `/api/messaging/central-channels/${encodeURIComponent(channelId)}/details`,
           serverApiUrl
         );
-        const detailsResponse = await this.retryFetch(detailsUrl.toString(), {
+        const detailsResponse = await fetch(detailsUrl.toString(), {
           headers: this.getAuthHeaders(),
         });
 
-        if (detailsResponse && detailsResponse.ok) {
+        if (detailsResponse.ok) {
           // Channel exists, add it to our valid set for future use
           this.validChannelIds.add(channelId);
           logger.info(
@@ -210,11 +185,11 @@ export class MessageBusService extends Service {
         `/api/messaging/central-channels/${encodeURIComponent(channelId)}/participants`,
         serverApiUrl
       );
-      const response = await this.retryFetch(participantsUrl.toString(), {
+      const response = await fetch(participantsUrl.toString(), {
         headers: this.getAuthHeaders(),
       });
 
-      if (response && response.ok) {
+      if (response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
           return data.data;
@@ -238,11 +213,11 @@ export class MessageBusService extends Service {
         `/api/messaging/agents/${encodeURIComponent(this.runtime.agentId)}/servers`,
         serverApiUrl
       );
-      const response = await this.retryFetch(agentServersUrl.toString(), {
+      const response = await fetch(agentServersUrl.toString(), {
         headers: this.getAuthHeaders(),
       });
 
-      if (response && response.ok) {
+      if (response.ok) {
         const data = await response.json();
         if (data.success && data.data?.servers) {
           this.subscribedServers = new Set(data.data.servers);
@@ -673,13 +648,13 @@ export class MessageBusService extends Service {
       // Use URL constructor for safe URL building
       const submitUrl = new URL('/api/messaging/submit', baseUrl);
       const serverApiUrl = submitUrl.toString();
-      const response = await this.retryFetch(serverApiUrl, {
+      const response = await fetch(serverApiUrl, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
 
-      if (response && !response.ok) {
+      if (!response.ok) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
         );
@@ -697,7 +672,7 @@ export class MessageBusService extends Service {
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());
-      await this.retryFetch(completeUrl.toString(), {
+      await fetch(completeUrl.toString(), {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ channel_id: channelId, server_id: serverId }),

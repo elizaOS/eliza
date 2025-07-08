@@ -79,7 +79,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  public isInitialized = false;
+  private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -338,10 +338,6 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.info('Running plugin migrations...');
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
-      
-      // Mark as initialized after migrations complete but before continuing
-      // This ensures MessageBusService registration happens after migrations
-      this.isInitialized = true;
 
       const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
       if (!existingAgent) {
@@ -413,6 +409,7 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+    this.isInitialized = true;
   }
 
   async runPluginMigrations(): Promise<void> {
