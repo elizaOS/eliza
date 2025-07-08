@@ -68,12 +68,9 @@ export class MessageBusService extends Service {
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
-    // Wait for server to be fully ready before making HTTP calls
-    // This prevents Windows-specific timing issues where the process can't immediately connect to itself
-    logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Waiting for server to be fully ready...`
-    );
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Small delay to ensure server HTTP endpoints are ready on Windows
+    // This prevents immediate connection failures when the process tries to connect to itself
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // Initialize by fetching servers this agent belongs to
     await this.fetchAgentServers();
