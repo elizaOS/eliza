@@ -41,29 +41,20 @@ jobs:
       - name: Run lint
         run: bun run lint
 
-      - name: Update Package Versions
-        id: version
+      - name: Build packages
+        run: bun run build && bun run build:docs
+
+      - name: Publish Packages
+        id: publish
         run: |
           # Get version from the release tag that triggered the workflow
           LATEST_TAG=${{ github.ref_name }}
           VERSION=${LATEST_TAG#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          echo "Updating all packages to version: $VERSION"
-          # Update versions in all package.json files WITHOUT publishing
-          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
-
-      - name: Build packages
-        run: |
-          echo "Building packages with version: ${{ env.VERSION }}"
-          bun run build && bun run build:docs
-
-      - name: Publish Packages
-        id: publish
-        run: |
-          echo "Publishing version: ${{ env.VERSION }}"
-          # Publish the already-built packages
-          npx lerna publish from-package --yes --dist-tag latest --no-private
+          echo "Publishing version: $VERSION"
+          # Lerna will update versions in package.json files but not commit or tag
+          npx lerna publish $VERSION --exact --yes --dist-tag latest --no-private --force-publish --no-git-tag-version --no-push
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -71,7 +62,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add **/package.json lerna.json
+          git add **/package.json
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No version changes to commit."
