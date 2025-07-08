@@ -76,6 +76,7 @@ import {
           imageResponse,
           imagePrompt,
         });
+        return;
       }
 
       const imageUrl = imageResponse[0].url;
