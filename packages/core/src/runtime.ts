@@ -79,7 +79,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  private isInitialized = false;
+  public isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -334,10 +334,16 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       await this.adapter.init();
 
+      // Emit event that database is ready
+      this.emit('DATABASE_READY', { runtime: this });
+
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
+
+      // Emit event that migrations are complete
+      this.emit('MIGRATIONS_COMPLETE', { runtime: this });
 
       const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
       if (!existingAgent) {
@@ -410,6 +416,9 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
+
+    // Emit event that runtime is fully ready
+    this.emit('RUNTIME_READY', { runtime: this });
   }
 
   async runPluginMigrations(): Promise<void> {

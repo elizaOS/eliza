@@ -878,7 +878,7 @@ export class AgentServer {
           this.agents.forEach((agent, id) => {
             logger.debug(`- Agent ${id}: ${agent.character.name}`);
           });
-          
+
           // Resolve the promise now that the server is actually listening
           resolve();
         })
