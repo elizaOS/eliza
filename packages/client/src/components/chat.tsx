@@ -82,7 +82,7 @@ import { useSidebarState } from '@/hooks/use-sidebar-state';
 import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { useDeleteAgent } from '@/hooks/use-delete-agent';
 import { exportCharacterAsJson } from '@/lib/export-utils';
@@ -273,6 +273,8 @@ export default function Chat({
   const state = location.state as ChatLocationState | null;
   const forceNew = state?.forceNew || false;
 
+  const navigate = useNavigate();
+
   const [shouldForceNew, setShouldForceNew] = useState(forceNew);
 
   // Determine if we should use floating mode - either from width detection OR mobile
@@ -419,9 +421,21 @@ export default function Chat({
           const isEmpty = (latestMessages?.messages?.length ?? 0) === 0;
 
           if (hasAutoName && isEmpty) {
-            clientLogger.info(
-              '[Chat] Latest DM channel is empty with auto-generated name or has no messages, reusing instead of creating.'
-            );
+            const isAlreadyInLatest = chatState.currentDmChannelId === latestChannel.id;
+
+            if (isAlreadyInLatest) {
+              toast({
+                title: `Already in a fresh chat`,
+                description: `You're already in a new chat with ${targetAgentData?.name || 'the agent'}.`,
+              });
+            } else {
+              updateChatState({ currentDmChannelId: latestChannel.id });
+              toast({
+                title: `Chat opened`,
+                description: `You can now start chatting with ${targetAgentData?.name || 'the agent'}.`,
+              });
+            }
+
             updateChatState({ currentDmChannelId: latestChannel.id });
             return;
           } else {
@@ -455,6 +469,10 @@ export default function Chat({
         updateChatState({ currentDmChannelId: null, input: '' });
       } finally {
         updateChatState({ isCreatingDM: false });
+        toast({
+          title: `Chat opened`,
+          description: `You can now start chatting with ${targetAgentData?.name || 'the agent'}.`,
+        });
       }
     },
     [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel]
@@ -561,6 +579,8 @@ export default function Chat({
     ) {
       handleNewDmChannel(targetAgentData.id);
       setShouldForceNew(false);
+
+      navigate(location.pathname, { replace: true });
     }
   }, [
     shouldForceNew,
