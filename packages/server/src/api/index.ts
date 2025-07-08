@@ -1,6 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { logger, validateUuid } from '@elizaos/core';
-import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -397,19 +396,6 @@ export function createApiRouter(
 
   // Content type validation for write operations (applied after media routes)
   router.use(validateContentTypeMiddleware());
-
-  // Body parsing middleware - applied to all routes EXCEPT media uploads
-  router.use(
-    bodyParser.json({
-      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-    })
-  );
-  router.use(
-    bodyParser.urlencoded({
-      extended: true,
-      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
-    })
-  );
 
   // Setup new domain-based routes
   // Mount agents router at /agents - handles agent creation, management, and interactions
