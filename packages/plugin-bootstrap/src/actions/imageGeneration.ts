@@ -7,6 +7,7 @@ import {
     type Memory,
     ModelType,
     type State,
+    ContentType,
   } from '@elizaos/core';
   
   /**
@@ -85,6 +86,7 @@ import {
             id: crypto.randomUUID(),
             url: imageUrl,
             title: "Generated Image",
+            contentType: ContentType.IMAGE
           },
         ],
         thought: `Generated an image based on: "${imagePrompt}"`,
