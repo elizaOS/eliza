@@ -151,14 +151,30 @@ jobs:
         id: publish
         run: |
           echo "Publishing version: ${{ env.VERSION }}"
+
+          # Configure git for commits
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create a temporary commit to satisfy Lerna's clean working tree requirement
+          # This commit will be amended later with the proper message
+          git add lerna.json package.json packages/*/package.json
+          git commit -m "temp: version bump for publishing"
+
+          # Store the commit SHA so we can reset if needed
+          TEMP_COMMIT=$(git rev-parse HEAD)
+          echo "temp_commit=$TEMP_COMMIT" >> $GITHUB_OUTPUT
+
           # Publish the already-built packages
           # Store the result to check if publishing succeeded
-          if npx lerna publish from-package --yes --dist-tag latest --no-private; then
+          if npx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
             echo "publish_success=true" >> $GITHUB_OUTPUT
             echo "✅ Successfully published all packages"
           else
             echo "publish_success=false" >> $GITHUB_OUTPUT
             echo "❌ Failed to publish some packages"
+            # Reset to before the temporary commit since publishing failed
+            git reset --hard HEAD~1
             exit 1
           fi
         env:
@@ -167,6 +183,9 @@ jobs:
       - name: Commit and Push Version Bump
         if: success() && steps.publish.outputs.publish_success == 'true'
         run: |
+          # Reset to before temporary commit
+          git reset --soft HEAD~1
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
