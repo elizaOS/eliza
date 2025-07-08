@@ -109,7 +109,14 @@ function normalizeImportPath(importPath: string): string {
   
   // On Windows, convert absolute paths to file:// URLs for dynamic imports
   if (process.platform === 'win32' && path.isAbsolute(normalized)) {
-    return `file:///${normalized.replace(/\\/g, '/')}`;
+    // Handle UNC paths (\\server\share) differently
+    if (normalized.startsWith('\\\\')) {
+      // UNC paths: \\server\share -> file://server/share
+      return `file://${normalized.substring(2).replace(/\\/g, '/')}`;
+    } else {
+      // Regular paths: C:\path -> file:///C:/path
+      return `file:///${normalized.replace(/\\/g, '/')}`;
+    }
   }
   
   return normalized;
