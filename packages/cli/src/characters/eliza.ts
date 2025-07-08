@@ -197,13 +197,13 @@ export function getElizaCharacter(): Character {
     '@elizaos/plugin-sql',
 
     // Text-only plugins (no embedding support)
-    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+    ...(!!process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(!!process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 
     // Embedding-capable plugins last (lowest priority for embedding fallback)
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
+    ...(!!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(!!process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
+    ...(!!process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
     ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
     !process.env.OLLAMA_API_ENDPOINT &&
     !process.env.OPENAI_API_KEY

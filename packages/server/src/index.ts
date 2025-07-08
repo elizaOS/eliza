@@ -468,7 +468,6 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/agents/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
         (req: express.Request, res: express.Response) => {
           const agentId = req.params.agentId as string;
           const filename = req.params.filename as string;
@@ -504,7 +503,6 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
         (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
