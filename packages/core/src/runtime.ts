@@ -334,16 +334,25 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       await this.adapter.init();
 
-      // Emit event that database is ready
-      this.emit('DATABASE_READY', { runtime: this });
-
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
-
+      
+      // Register any pending MessageBusService plugin after migrations
+      const pendingPlugin = (this as any).__pendingMessageBusPlugin;
+      if (pendingPlugin) {
+        try {
+          await this.registerPlugin(pendingPlugin);
+          this.logger.info(`MessageBusService plugin registered after migrations completed for ${this.character.name}`);
+          delete (this as any).__pendingMessageBusPlugin;
+        } catch (error) {
+          this.logger.error(`Failed to register pending MessageBusService plugin:`, error);
+        }
+      }
+      
       // Emit event that migrations are complete
-      this.emit('MIGRATIONS_COMPLETE', { runtime: this });
+      this.emit('MIGRATIONS_COMPLETE', { agentId: this.agentId });
 
       const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
       if (!existingAgent) {
@@ -416,9 +425,6 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
-
-    // Emit event that runtime is fully ready
-    this.emit('RUNTIME_READY', { runtime: this });
   }
 
   async runPluginMigrations(): Promise<void> {

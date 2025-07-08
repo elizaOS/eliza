@@ -38,7 +38,6 @@ export class MessageBusService extends Service {
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
-  private migrationsCompletePromise: Promise<void>;
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -46,33 +45,11 @@ export class MessageBusService extends Service {
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
     this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
     this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
-    
-    // Create a promise that resolves when migrations are complete
-    this.migrationsCompletePromise = this.waitForMigrations();
-    
     // Don't connect here - let start() handle it
-  }
-
-  private waitForMigrations(): Promise<void> {
-    return new Promise((resolve) => {
-      // Check if runtime is already initialized
-      if (this.runtime.isInitialized) {
-        resolve();
-        return;
-      }
-      
-      const handler = () => {
-        this.runtime.off('MIGRATIONS_COMPLETE', handler);
-        resolve();
-      };
-      this.runtime.on('MIGRATIONS_COMPLETE', handler);
-    });
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new MessageBusService(runtime);
-    // Wait for migrations to complete before connecting
-    await service.migrationsCompletePromise;
     await service.connectToMessageBus();
     return service;
   }
@@ -100,9 +77,6 @@ export class MessageBusService extends Service {
   private validChannelIds: Set<UUID> = new Set();
 
   private async fetchValidChannelIds(): Promise<void> {
-    // Wait for migrations to complete before making HTTP requests
-    await this.migrationsCompletePromise;
-    
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
 
@@ -226,9 +200,6 @@ export class MessageBusService extends Service {
   }
 
   private async fetchAgentServers() {
-    // Wait for migrations to complete before making HTTP requests
-    await this.migrationsCompletePromise;
-    
     try {
       const serverApiUrl = this.getCentralMessageServerUrl();
       // Use URL constructor for safe URL building
