@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-tee-starter",
   "description": "Project starter for elizaOS with TEE capabilities",
-  "version": "1.0.19",
+  "version": "1.1.1",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -43,8 +43,8 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
-    "tsup": "8.5.0",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "tsup": "8.5.0"
   },
   "scripts": {
     "start": "elizaos start",
