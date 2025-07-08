@@ -140,11 +140,11 @@ export const create = new Command('create')
       // Handle different project types
       switch (projectType) {
         case 'plugin':
-          await createPlugin(projectName!, '.', isNonInteractive);
+          await createPlugin(projectName!, process.cwd(), isNonInteractive);
           break;
 
         case 'agent':
-          await createAgent(projectName!, '.', isNonInteractive);
+          await createAgent(projectName!, process.cwd(), isNonInteractive);
           break;
 
         case 'tee': {
@@ -193,7 +193,7 @@ export const create = new Command('create')
 
           await createProject(
             projectName!,
-            '.',
+            process.cwd(),
             database,
             aiModel,
             embeddingModel,
