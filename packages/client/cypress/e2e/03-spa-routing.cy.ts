@@ -116,7 +116,11 @@ describe('SPA Routing', () => {
   });
 
   it('handles deep links with query parameters', () => {
-    const deepLinks = ['/create?template=basic', '/settings/?tab=preferences', '/logs?filter=error'];
+    const deepLinks = [
+      '/create?template=basic',
+      '/settings/?tab=preferences',
+      '/logs?filter=error',
+    ];
 
     deepLinks.forEach((link) => {
       cy.visit(link);
