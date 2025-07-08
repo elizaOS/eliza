@@ -145,7 +145,7 @@ jobs:
       - name: Build packages
         run: |
           echo "Building packages with version: ${{ env.VERSION }}"
-          bun run build && bun run build:docs
+          bun run build
 
       - name: Publish Packages
         id: publish
@@ -208,13 +208,16 @@ jobs:
             git push origin main
           fi
 
-      - name: Create Pull Request to develop
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Merge main to develop
         run: |
-          gh pr create \
-            --base "develop" \
-            --head "main" \
-            --title "Release: Sync main to develop for v${{ env.VERSION }}" \
-            --body "Syncs version bump from main to develop." \
-            --label "1.x"
+          # Fetch the latest develop branch
+          git fetch origin develop:develop
+
+          # Checkout develop branch
+          git checkout develop
+
+          # Merge main into develop
+          git merge main --no-ff -m "chore: merge main to develop for v${{ env.VERSION }} release"
+
+          # Push the updated develop branch
+          git push origin develop
