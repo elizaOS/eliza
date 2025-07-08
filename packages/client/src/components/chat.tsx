@@ -82,7 +82,7 @@ import { useSidebarState } from '@/hooks/use-sidebar-state';
 import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { MessageChannel } from '@/types';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { useDeleteAgent } from '@/hooks/use-delete-agent';
 import { exportCharacterAsJson } from '@/lib/export-utils';
@@ -272,6 +272,8 @@ export default function Chat({
   const location = useLocation();
   const state = location.state as ChatLocationState | null;
   const forceNew = state?.forceNew || false;
+
+  const navigate = useNavigate();
 
   const [shouldForceNew, setShouldForceNew] = useState(forceNew);
 
@@ -561,6 +563,8 @@ export default function Chat({
     ) {
       handleNewDmChannel(targetAgentData.id);
       setShouldForceNew(false);
+
+      navigate(location.pathname, { replace: true });
     }
   }, [
     shouldForceNew,
