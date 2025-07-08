@@ -68,12 +68,6 @@ export class MessageBusService extends Service {
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
-    // On Windows, add a small delay to ensure the server is ready to handle HTTP requests
-    // This prevents "fetch failed" errors during agent initialization
-    if (process.platform === 'win32') {
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-
     // Initialize by fetching servers this agent belongs to
     await this.fetchAgentServers();
     // Then fetch valid channels for those servers

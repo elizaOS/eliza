@@ -828,24 +828,26 @@ export class AgentServer {
    * Starts the server on the specified port.
    *
    * @param {number} port - The port number on which the server should listen.
+   * @returns {Promise<void>} A promise that resolves when the server is listening.
    * @throws {Error} If the port is invalid or if there is an error while starting the server.
    */
-  public start(port: number) {
-    try {
-      if (!port || typeof port !== 'number') {
-        throw new Error(`Invalid port number: ${port}`);
-      }
+  public start(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!port || typeof port !== 'number') {
+          throw new Error(`Invalid port number: ${port}`);
+        }
 
-      logger.debug(`Starting server on port ${port}...`);
-      logger.debug(`Current agents count: ${this.agents.size}`);
-      logger.debug(`Environment: ${process.env.NODE_ENV}`);
+        logger.debug(`Starting server on port ${port}...`);
+        logger.debug(`Current agents count: ${this.agents.size}`);
+        logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      // Use http server instead of app.listen with explicit host binding and error handling
-      // For tests and macOS compatibility, prefer 127.0.0.1 when specified
-      const host = process.env.SERVER_HOST || '0.0.0.0';
+        // Use http server instead of app.listen with explicit host binding and error handling
+        // For tests and macOS compatibility, prefer 127.0.0.1 when specified
+        const host = process.env.SERVER_HOST || '0.0.0.0';
 
-      this.server
-        .listen(port, host, () => {
+        this.server
+          .listen(port, host, () => {
           // Only show the dashboard URL if UI is enabled
           if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
             // Display the dashboard URL with the correct port after the server is actually listening
@@ -876,6 +878,9 @@ export class AgentServer {
           this.agents.forEach((agent, id) => {
             logger.debug(`- Agent ${id}: ${agent.character.name}`);
           });
+          
+          // Resolve the promise now that the server is actually listening
+          resolve();
         })
         .on('error', (error: any) => {
           logger.error(`Failed to bind server to ${host}:${port}:`, error);
@@ -895,7 +900,8 @@ export class AgentServer {
             );
           }
 
-          throw error;
+          // Reject the promise on error
+          reject(error);
         });
 
       // Enhanced graceful shutdown
@@ -936,14 +942,15 @@ export class AgentServer {
         }, 5000);
       };
 
-      process.on('SIGTERM', gracefulShutdown);
-      process.on('SIGINT', gracefulShutdown);
+        process.on('SIGTERM', gracefulShutdown);
+        process.on('SIGINT', gracefulShutdown);
 
-      logger.debug('Shutdown handlers registered');
-    } catch (error) {
-      logger.error('Failed to start server:', error);
-      throw error;
-    }
+        logger.debug('Shutdown handlers registered');
+      } catch (error) {
+        logger.error('Failed to start server:', error);
+        reject(error);
+      }
+    });
   }
 
   /**

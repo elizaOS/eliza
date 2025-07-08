@@ -39,7 +39,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
     logger.warn(`Port ${desiredPort} is in use, using port ${serverPort} instead`);
   }
   process.env.SERVER_PORT = serverPort.toString();
-  server.start(serverPort);
+  await server.start(serverPort);
 
   // If we have project agents, start them with their init functions
   if (options.projectAgents && options.projectAgents.length > 0) {
