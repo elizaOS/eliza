@@ -168,6 +168,9 @@ export class AgentServer {
       // Initialize character loading functions
       this.loadCharacterTryPath = loadCharacterTryPath;
       this.jsonToCharacter = jsonToCharacter;
+
+      // Register signal handlers once in constructor to prevent accumulation
+      this.registerSignalHandlers();
     } catch (error) {
       logger.error('Failed to initialize AgentServer (constructor):', error);
       throw error;
@@ -904,48 +907,7 @@ export class AgentServer {
           reject(error);
         });
 
-      // Enhanced graceful shutdown
-      const gracefulShutdown = async () => {
-        logger.info('Received shutdown signal, initiating graceful shutdown...');
-
-        // Stop all agents first
-        logger.debug('Stopping all agents...');
-        for (const [id, agent] of this.agents.entries()) {
-          try {
-            await agent.stop();
-            logger.debug(`Stopped agent ${id}`);
-          } catch (error) {
-            logger.error(`Error stopping agent ${id}:`, error);
-          }
-        }
-
-        // Close database
-        if (this.database) {
-          try {
-            await this.database.close();
-            logger.info('Database closed.');
-          } catch (error) {
-            logger.error('Error closing database:', error);
-          }
-        }
-
-        // Close server
-        this.server.close(() => {
-          logger.success('Server closed successfully');
-          process.exit(0);
-        });
-
-        // Force close after timeout
-        setTimeout(() => {
-          logger.error('Could not close connections in time, forcing shutdown');
-          process.exit(1);
-        }, 5000);
-      };
-
-        process.on('SIGTERM', gracefulShutdown);
-        process.on('SIGINT', gracefulShutdown);
-
-        logger.debug('Shutdown handlers registered');
+      // Server is now listening successfully
       } catch (error) {
         logger.error('Failed to start server:', error);
         reject(error);
@@ -1140,6 +1102,57 @@ export class AgentServer {
       }
     }
     return serverIds;
+  }
+
+  /**
+   * Registers signal handlers for graceful shutdown.
+   * This is called once in the constructor to prevent handler accumulation.
+   */
+  private registerSignalHandlers(): void {
+    const gracefulShutdown = async () => {
+      logger.info('Received shutdown signal, initiating graceful shutdown...');
+
+      // Stop all agents first
+      logger.debug('Stopping all agents...');
+      for (const [id, agent] of this.agents.entries()) {
+        try {
+          await agent.stop();
+          logger.debug(`Stopped agent ${id}`);
+        } catch (error) {
+          logger.error(`Error stopping agent ${id}:`, error);
+        }
+      }
+
+      // Close database
+      if (this.database) {
+        try {
+          await this.database.close();
+          logger.info('Database closed.');
+        } catch (error) {
+          logger.error('Error closing database:', error);
+        }
+      }
+
+      // Close server
+      if (this.server) {
+        this.server.close(() => {
+          logger.success('Server closed successfully');
+          process.exit(0);
+        });
+
+        // Force close after timeout
+        setTimeout(() => {
+          logger.error('Could not close connections in time, forcing shutdown');
+          process.exit(1);
+        }, 5000);
+      } else {
+        process.exit(0);
+      }
+    };
+
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+    logger.debug('Shutdown handlers registered');
   }
 }
 
