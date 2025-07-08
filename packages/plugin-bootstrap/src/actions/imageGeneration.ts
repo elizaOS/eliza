@@ -71,7 +71,10 @@ import {
       });
 
       if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
-        throw new Error('Image generation failed - no valid response received');
+        console.error('generateImageAction: Image generation failed - no valid response received', {
+          imageResponse,
+          imagePrompt,
+        });
       }
 
       const imageUrl = imageResponse[0].url;
