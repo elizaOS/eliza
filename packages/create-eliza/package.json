@@ -1,6 +1,6 @@
 {
   "name": "create-eliza",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Initialize an Eliza project",
   "type": "module",
   "private": true,
@@ -20,7 +20,7 @@
     "url": "https://twitter.com/eliza_OS"
   },
   "dependencies": {
-    "@elizaos/cli": "1.1.1"
+    "@elizaos/cli": "1.1.2"
   },
   "repository": {
     "type": "git",
