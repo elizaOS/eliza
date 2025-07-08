@@ -9,6 +9,7 @@ import {
     type State,
     ContentType,
   } from '@elizaos/core';
+import { v4 } from 'uuid';
   
   /**
    * Template for generating an image for the character using a prompt.
@@ -84,7 +85,7 @@ import {
       const responseContent = {
         attachments: [
           {
-            id: crypto.randomUUID(),
+            id: v4(),
             url: imageUrl,
             title: "Generated Image",
             contentType: ContentType.IMAGE
