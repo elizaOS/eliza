@@ -6,25 +6,7 @@ import { executeInstallation, executeInstallationWithFallback } from './package-
 import { fetchPluginRegistry } from './plugin-discovery';
 import { normalizePluginName } from './registry';
 import { detectPluginContext } from './plugin-context';
-
-/**
- * Detects if the CLI is running from a global installation
- * @returns {boolean} - Whether the CLI is running globally
- */
-function isCliRunningGlobally(): boolean {
-  try {
-    // Get the path to the running CLI script
-    const cliPath = process.argv[1];
-
-    // For global installations, this will be something like:
-    // /usr/local/lib/node_modules/@elizaos/cli/dist/index.js
-
-    return cliPath.includes('node_modules/@elizaos/cli');
-  } catch (error) {
-    logger.error('Failed to determine CLI installation type:', error);
-    return false;
-  }
-}
+import { isGlobalInstallation } from './package-manager';
 
 /**
  * Verifies if a plugin can be imported
@@ -125,7 +107,7 @@ export async function installPlugin(
   }
 
   // Check if CLI is running globally and warn the user
-  if (isCliRunningGlobally()) {
+  if (await isGlobalInstallation()) {
     logger.warn(
       'CLI is running from a global installation. Plugins will be installed to the local directory.'
     );
