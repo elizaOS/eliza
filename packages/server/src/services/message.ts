@@ -708,9 +708,11 @@ export class MessageBusService extends Service {
       }
     }
 
+    // On Windows, use 127.0.0.1 instead of localhost to avoid resolution issues
+    const host = process.platform === 'win32' ? '127.0.0.1' : 'localhost';
     const defaultUrl = validatedPort
-      ? `http://localhost:${validatedPort}`
-      : 'http://localhost:3000';
+      ? `http://${host}:${validatedPort}`
+      : `http://${host}:3000`;
     const baseUrl = envUrl ?? defaultUrl;
 
     // Strict validation to prevent SSRF attacks
