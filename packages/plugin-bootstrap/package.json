@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,8 +26,8 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "1.1.5",
-    "@elizaos/plugin-sql": "1.1.5"
+    "@elizaos/core": "1.1.6",
+    "@elizaos/plugin-sql": "1.1.6"
   },
   "devDependencies": {
     "@types/bun": "^1.2.16",
@@ -53,5 +53,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "0e840205db9f212b2b5568b26b669a9860256099"
+  "gitHead": "1ef5379a22a2007dd0ddee7ed06243263c82c225"
 }
