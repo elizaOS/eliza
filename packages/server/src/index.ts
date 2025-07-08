@@ -727,28 +727,19 @@ export class AgentServer {
       this.agents.set(runtime.agentId, runtime);
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
 
-      // Store MessageBusConnector registration for after migrations
+      // Auto-register the MessageBusConnector plugin
       try {
         if (messageBusConnectorPlugin) {
-          if (runtime.isInitialized) {
-            // Runtime already initialized, register immediately
-            await runtime.registerPlugin(messageBusConnectorPlugin);
-            logger.info(
-              `[AgentServer] MessageBusConnector registered immediately for already-initialized agent ${runtime.character.name}`
-            );
-          } else {
-            // Store the plugin for later registration after migrations
-            (runtime as any).__pendingMessageBusPlugin = messageBusConnectorPlugin;
-            logger.info(
-              `[AgentServer] MessageBusConnector registration deferred until after migrations for agent ${runtime.character.name}`
-            );
-          }
+          await runtime.registerPlugin(messageBusConnectorPlugin);
+          logger.info(
+            `[AgentServer] Automatically registered MessageBusConnector for agent ${runtime.character.name}`
+          );
         } else {
           logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
         }
       } catch (e) {
         logger.error(
-          `[AgentServer] CRITICAL: Failed to setup MessageBusConnector for agent ${runtime.character.name}`,
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
           e
         );
         // Decide if this is a fatal error for the agent.

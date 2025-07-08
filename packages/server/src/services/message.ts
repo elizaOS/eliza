@@ -68,6 +68,13 @@ export class MessageBusService extends Service {
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
 
+    // Wait for server to be fully ready before making HTTP calls
+    // This prevents Windows-specific timing issues where the process can't immediately connect to itself
+    logger.info(
+      `[${this.runtime.character.name}] MessageBusService: Waiting for server to be fully ready...`
+    );
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     // Initialize by fetching servers this agent belongs to
     await this.fetchAgentServers();
     // Then fetch valid channels for those servers
@@ -75,6 +82,29 @@ export class MessageBusService extends Service {
   }
 
   private validChannelIds: Set<UUID> = new Set();
+
+  private async retryFetch(url: string, options: RequestInit, maxRetries: number = 3, delay: number = 1000): Promise<Response | null> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        return response;
+      } catch (error) {
+        logger.warn(
+          `[${this.runtime.character.name}] MessageBusService: Fetch attempt ${attempt}/${maxRetries} failed for ${url}:`,
+          error
+        );
+        if (attempt === maxRetries) {
+          logger.error(
+            `[${this.runtime.character.name}] MessageBusService: All ${maxRetries} fetch attempts failed for ${url}`
+          );
+          return null;
+        }
+        // Wait before retrying, with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay * attempt));
+      }
+    }
+    return null;
+  }
 
   private async fetchValidChannelIds(): Promise<void> {
     try {
@@ -96,10 +126,10 @@ export class MessageBusService extends Service {
             `/api/messaging/central-servers/${encodeURIComponent(serverId)}/channels`,
             serverApiUrl
           );
-          const response = await fetch(channelsUrl.toString(), {
+          const response = await this.retryFetch(channelsUrl.toString(), {
             headers: this.getAuthHeaders(),
           });
-          if (response.ok) {
+          if (response && response.ok) {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
               // Add channel IDs to the set
@@ -112,9 +142,13 @@ export class MessageBusService extends Service {
                 `[${this.runtime.character.name}] MessageBusService: Fetched ${data.data.channels.length} channels from server ${serverId}`
               );
             }
-          } else {
+          } else if (response) {
             logger.warn(
               `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: ${response.status} ${response.statusText}`
+            );
+          } else {
+            logger.warn(
+              `[${this.runtime.character.name}] MessageBusService: Failed to fetch channels for server ${serverId}: No response received`
             );
           }
         } catch (serverError) {
@@ -155,11 +189,11 @@ export class MessageBusService extends Service {
           `/api/messaging/central-channels/${encodeURIComponent(channelId)}/details`,
           serverApiUrl
         );
-        const detailsResponse = await fetch(detailsUrl.toString(), {
+        const detailsResponse = await this.retryFetch(detailsUrl.toString(), {
           headers: this.getAuthHeaders(),
         });
 
-        if (detailsResponse.ok) {
+        if (detailsResponse && detailsResponse.ok) {
           // Channel exists, add it to our valid set for future use
           this.validChannelIds.add(channelId);
           logger.info(
@@ -179,11 +213,11 @@ export class MessageBusService extends Service {
         `/api/messaging/central-channels/${encodeURIComponent(channelId)}/participants`,
         serverApiUrl
       );
-      const response = await fetch(participantsUrl.toString(), {
+      const response = await this.retryFetch(participantsUrl.toString(), {
         headers: this.getAuthHeaders(),
       });
 
-      if (response.ok) {
+      if (response && response.ok) {
         const data = await response.json();
         if (data.success && data.data) {
           return data.data;
@@ -207,11 +241,11 @@ export class MessageBusService extends Service {
         `/api/messaging/agents/${encodeURIComponent(this.runtime.agentId)}/servers`,
         serverApiUrl
       );
-      const response = await fetch(agentServersUrl.toString(), {
+      const response = await this.retryFetch(agentServersUrl.toString(), {
         headers: this.getAuthHeaders(),
       });
 
-      if (response.ok) {
+      if (response && response.ok) {
         const data = await response.json();
         if (data.success && data.data?.servers) {
           this.subscribedServers = new Set(data.data.servers);
@@ -642,13 +676,13 @@ export class MessageBusService extends Service {
       // Use URL constructor for safe URL building
       const submitUrl = new URL('/api/messaging/submit', baseUrl);
       const serverApiUrl = submitUrl.toString();
-      const response = await fetch(serverApiUrl, {
+      const response = await this.retryFetch(serverApiUrl, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(payloadToServer),
       });
 
-      if (!response.ok) {
+      if (response && !response.ok) {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
         );
@@ -666,7 +700,7 @@ export class MessageBusService extends Service {
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());
-      await fetch(completeUrl.toString(), {
+      await this.retryFetch(completeUrl.toString(), {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ channel_id: channelId, server_id: serverId }),
