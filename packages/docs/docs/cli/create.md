@@ -37,7 +37,6 @@ elizaos create --help
 
 | Option              | Description                                                      |
 | ------------------- | ---------------------------------------------------------------- |
-| `-d, --dir <dir>`   | Installation directory (default: `.`)                            |
 | `-y, --yes`         | Skip confirmation and use defaults (default: `false`)            |
 | `-t, --type <type>` | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
 | `--template <name>` | Use a specific template by name (e.g., `default`, `minimal`)     |

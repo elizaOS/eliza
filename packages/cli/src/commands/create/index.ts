@@ -19,7 +19,6 @@ function formatProjectType(type: string): string {
 export const create = new Command('create')
   .description('Create a new ElizaOS project, plugin, agent, or TEE project')
   .argument('[name]', 'name of the project/plugin/agent to create')
-  .option('--dir <dir>', 'directory to create the project in', '.')
   .option('--yes, -y', 'skip prompts and use defaults')
   .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
@@ -138,16 +137,14 @@ export const create = new Command('create')
         clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
-      const targetDir = options.dir;
-
       // Handle different project types
       switch (projectType) {
         case 'plugin':
-          await createPlugin(projectName!, targetDir, isNonInteractive);
+          await createPlugin(projectName!, '.', isNonInteractive);
           break;
 
         case 'agent':
-          await createAgent(projectName!, targetDir, isNonInteractive);
+          await createAgent(projectName!, '.', isNonInteractive);
           break;
 
         case 'tee': {
@@ -168,7 +165,7 @@ export const create = new Command('create')
 
           await createTEEProject(
             projectName!,
-            targetDir,
+            '.',
             database,
             aiModel,
             embeddingModel,
@@ -196,7 +193,7 @@ export const create = new Command('create')
 
           await createProject(
             projectName!,
-            targetDir,
+            '.',
             database,
             aiModel,
             embeddingModel,

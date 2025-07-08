@@ -61,7 +61,6 @@ Initialize a new project, plugin, or agent.
 - **Arguments:**
   - `[name]`: Name for the project, plugin, or agent (optional)
 - **Options:**
-  - `-d, --dir <dir>`: Installation directory (default: `.`)
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
   - `-t, --type <type>`: Type to create: 'project', 'plugin', 'agent', or 'tee' (default: 'project')
 
