@@ -240,7 +240,7 @@ export const updateRoleAction: Action = {
     for (const assignment of result) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        logger.error('Could not find an ID ot assign to');
+        logger.error('Could not find an ID to assign to');
         failedUpdates.push({
           entityId: assignment.entityId,
           reason: 'Entity not found',
