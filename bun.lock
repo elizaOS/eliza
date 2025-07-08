@@ -20,9 +20,9 @@
     },
     "packages/api-client": {
       "name": "@elizaos/api-client",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/core": "1.1.4",
+        "@elizaos/core": "1.1.5",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -34,10 +34,10 @@
     },
     "packages/app": {
       "name": "@elizaos/app",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/api-client": "1.1.4",
-        "@elizaos/cli": "1.1.4",
+        "@elizaos/api-client": "1.1.5",
+        "@elizaos/cli": "1.1.5",
         "@tauri-apps/api": "^2.3.0",
         "@tauri-apps/plugin-opener": "^2",
         "@tauri-apps/plugin-shell": "^2",
@@ -56,7 +56,7 @@
     },
     "packages/autodoc": {
       "name": "@elizaos/autodoc",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@langchain/openai": "^0.3.16",
         "@octokit/rest": "^21.0.2",
@@ -82,7 +82,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -90,9 +90,9 @@
         "@anthropic-ai/claude-code": "^1.0.35",
         "@anthropic-ai/sdk": "^0.54.0",
         "@clack/prompts": "^0.11.0",
-        "@elizaos/core": "1.1.4",
-        "@elizaos/plugin-sql": "1.1.4",
-        "@elizaos/server": "1.1.4",
+        "@elizaos/core": "1.1.5",
+        "@elizaos/plugin-sql": "1.1.5",
+        "@elizaos/server": "1.1.5",
         "bun": "^1.2.17",
         "chalk": "^5.3.0",
         "chokidar": "^4.0.3",
@@ -132,7 +132,7 @@
     },
     "packages/client": {
       "name": "@elizaos/client",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -259,7 +259,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@sentry/browser": "^9.22.0",
         "buffer": "^6.0.3",
@@ -288,12 +288,12 @@
     },
     "packages/create-eliza": {
       "name": "create-eliza",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "bin": {
         "create-eliza": "index.mjs",
       },
       "dependencies": {
-        "@elizaos/cli": "1.1.4",
+        "@elizaos/cli": "1.1.5",
       },
       "devDependencies": {
         "prettier": "3.5.3",
@@ -301,7 +301,7 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@ahelmy/docusaurus-ai": "^0.0.1-beta",
         "@ai-sdk/openai": "^1.0.18",
@@ -342,10 +342,10 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/core": "1.1.4",
-        "@elizaos/plugin-sql": "1.1.4",
+        "@elizaos/core": "1.1.5",
+        "@elizaos/plugin-sql": "1.1.5",
       },
       "devDependencies": {
         "@types/bun": "^1.2.16",
@@ -360,9 +360,9 @@
     },
     "packages/plugin-dummy-services": {
       "name": "@elizaos/plugin-dummy-services",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/core": "1.1.4",
+        "@elizaos/core": "1.1.5",
         "uuid": "^9.0.0",
       },
       "devDependencies": {
@@ -376,10 +376,10 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
-        "@elizaos/core": "1.1.4",
+        "@elizaos/core": "1.1.5",
         "drizzle-kit": "^0.31.1",
         "drizzle-orm": "^0.44.2",
         "pg": "^8.13.3",
@@ -397,9 +397,9 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/core": "1.1.4",
+        "@elizaos/core": "1.1.5",
         "@tanstack/react-query": "^5.80.7",
         "clsx": "^2.1.1",
         "tailwind-merge": "^3.3.1",
@@ -408,7 +408,7 @@
         "zod": "3.24.2",
       },
       "devDependencies": {
-        "@elizaos/cli": "1.1.4",
+        "@elizaos/cli": "1.1.5",
         "@tailwindcss/vite": "^4.1.10",
         "@vitejs/plugin-react-swc": "^3.10.2",
         "dotenv": "16.4.5",
@@ -420,7 +420,7 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -446,7 +446,7 @@
     },
     "packages/project-tee-starter": {
       "name": "@elizaos/project-tee-starter",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -464,10 +464,10 @@
     },
     "packages/server": {
       "name": "@elizaos/server",
-      "version": "1.1.4",
+      "version": "1.1.5",
       "dependencies": {
-        "@elizaos/core": "1.1.4",
-        "@elizaos/plugin-sql": "1.1.4",
+        "@elizaos/core": "1.1.5",
+        "@elizaos/plugin-sql": "1.1.5",
         "@types/express": "^5.0.2",
         "@types/helmet": "^4.0.0",
         "@types/multer": "^1.4.13",
