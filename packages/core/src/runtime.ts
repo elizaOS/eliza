@@ -1585,7 +1585,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
         type: `useModel:${modelKey}`,
       });
-      
+
       return response as R;
     } catch (error: any) {
       throw error;
