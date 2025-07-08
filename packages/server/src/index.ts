@@ -730,7 +730,10 @@ export class AgentServer {
         }
 
         if (clientPath) {
+          // Store the resolved client path on the instance for use in the SPA fallback
+          this.clientPath = clientPath;
           this.app.use(express.static(clientPath, staticOptions));
+          logger.info(`[STATIC] Serving static files from: ${clientPath}`);
         } else {
           logger.warn('[STATIC] Client dist path not found. Searched locations:');
           possiblePaths.forEach((p) => {
@@ -814,17 +817,38 @@ export class AgentServer {
           }
 
           // For all other routes, serve the SPA's index.html
-          // Use the same clientPath that was resolved for static serving
-          if (clientPath) {
-            const indexFilePath = path.join(clientPath, 'index.html');
-            res.sendFile(indexFilePath, (err) => {
+          // Use the resolved clientPath (prefer local variable, fallback to instance variable)
+          const resolvedClientPath = clientPath || this.clientPath;
+          
+          if (resolvedClientPath) {
+            const indexFilePath = path.join(resolvedClientPath, 'index.html');
+            
+            // Verify the file exists before attempting to serve it
+            if (!existsSync(indexFilePath)) {
+              logger.error(`[STATIC] index.html not found at expected path: ${indexFilePath}`);
+              logger.error(`[STATIC] Client path was: ${resolvedClientPath}`);
+              res.status(404).send('Client application not found');
+              return;
+            }
+            
+            // Use sendFile with the directory as root and filename separately
+            // This approach is more reliable for Express
+            res.sendFile('index.html', { root: resolvedClientPath }, (err) => {
               if (err) {
                 logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
-                res.status(404).send('Client application not found');
+                logger.warn(`[STATIC] Attempted root: ${resolvedClientPath}`);
+                logger.warn(`[STATIC] Full path was: ${indexFilePath}`);
+                logger.warn(`[STATIC] Error code: ${(err as any).code || 'unknown'}`);
+                if (!res.headersSent) {
+                  res.status(404).send('Client application not found');
+                }
+              } else {
+                logger.debug(`[STATIC] Successfully served index.html for route: ${req.path}`);
               }
             });
           } else {
             logger.warn('[STATIC] Client dist path not found in SPA fallback');
+            logger.warn('[STATIC] Neither local nor instance clientPath variables are set');
             res.status(404).send('Client application not found');
           }
         });
