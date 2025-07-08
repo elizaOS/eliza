@@ -406,7 +406,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Model Usage', () => {
     it('should call registered model handler', async () => {
-      const modelHandler = mock().mockResolvedValue({ result: 'success' });
+      const modelHandler = mock().mockResolvedValue('success');
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler, 'test-provider');
@@ -420,7 +420,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         expect.objectContaining({ ...params, runtime: runtime })
       );
-      expect(result).toEqual({ result: 'success' });
+      expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({ type: `useModel:${modelType}` })
@@ -471,7 +471,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {}, // options
+        expect.objectContaining({
+          context: expect.objectContaining({
+            previousResults: expect.any(Array),
+            getPreviousResult: expect.any(Function),
+          }),
+        }), // options now contains context
         undefined, // callback
         [responseMemory] // responses array
       );

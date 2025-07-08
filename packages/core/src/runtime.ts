@@ -38,6 +38,8 @@ import {
   type RuntimeSettings,
   type Component,
   IAgentRuntime,
+  type ActionResult,
+  type ActionContext,
 } from './types';
 
 import { BM25 } from './search';
@@ -520,34 +522,94 @@ export class AgentRuntime implements IAgentRuntime {
     state?: State,
     callback?: HandlerCallback
   ): Promise<void> {
+    // Determine if we have multiple actions to execute
+    const allActions: string[] = [];
+    for (const response of responses) {
+      if (response.content?.actions && response.content.actions.length > 0) {
+        allActions.push(...response.content.actions);
+      }
+    }
+
+    const hasMultipleActions = allActions.length > 1;
+    const runId = this.createRunId();
+
+    // Create action plan if multiple actions
+    let actionPlan: {
+      runId: UUID;
+      totalSteps: number;
+      currentStep: number;
+      steps: Array<{
+        action: string;
+        status: 'pending' | 'completed' | 'failed';
+        result?: ActionResult;
+        error?: string;
+      }>;
+      thought: string;
+      startTime: number;
+    } | null = null;
+
+    if (hasMultipleActions) {
+      // Extract thought from response content
+      const thought =
+        responses[0]?.content?.thought ||
+        `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
+
+      actionPlan = {
+        runId,
+        totalSteps: allActions.length,
+        currentStep: 0,
+        steps: allActions.map((action) => ({
+          action,
+          status: 'pending' as const,
+        })),
+        thought,
+        startTime: Date.now(),
+      };
+    }
+
+    let actionIndex = 0;
+
     for (const response of responses) {
       if (!response.content?.actions || response.content.actions.length === 0) {
         this.logger.warn('No action found in the response content.');
         continue;
       }
       const actions = response.content.actions;
+
+      // Initialize action results array for this run
+      const actionResults: ActionResult[] = [];
+      let accumulatedState = state;
+
       function normalizeAction(actionString: string) {
         return actionString.toLowerCase().replace('_', '');
       }
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
       for (const responseAction of actions) {
-        state = await this.composeState(message, ['RECENT_MESSAGES']);
+        // Update current step in plan
+        if (actionPlan) {
+          actionPlan.currentStep = actionIndex + 1;
+        }
+
+        // Compose state with previous action results and plan
+        accumulatedState = await this.composeState(message, [
+          'RECENT_MESSAGES',
+          'ACTION_STATE', // This will include the action plan
+        ]);
+
+        // Add action plan to state if it exists
+        if (actionPlan && accumulatedState.data) {
+          accumulatedState.data.actionPlan = actionPlan;
+          accumulatedState.data.actionResults = actionResults;
+        }
 
         this.logger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
-        // try exact first
         let action = this.actions.find(
-          (a: { name: string }) => normalizeAction(a.name) === normalizedResponseAction
+          (a: { name: string }) =>
+            normalizeAction(a.name).includes(normalizedResponseAction) ||
+            normalizedResponseAction.includes(normalizeAction(a.name))
         );
-        if (!action) {
-          // try relaxed
-          action = this.actions.find(
-            (a: { name: string }) =>
-              normalizeAction(a.name).includes(normalizedResponseAction) ||
-              normalizedResponseAction.includes(normalizeAction(a.name))
-          );
-        }
         if (action) {
           this.logger.debug(`Success: Found action: ${action?.name}`);
         } else {
@@ -569,6 +631,12 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMsg = `No action found for: ${responseAction}`;
           this.logger.error(errorMsg);
 
+          // Update plan with error
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan.steps[actionIndex].status = 'failed';
+            actionPlan.steps[actionIndex].error = errorMsg;
+          }
+
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
             entityId: message.entityId,
@@ -577,13 +645,26 @@ export class AgentRuntime implements IAgentRuntime {
             content: {
               thought: errorMsg,
               source: 'auto',
+              type: 'action_result',
+              actionName: responseAction,
+              actionStatus: 'failed',
+              runId,
             },
           };
           await this.createMemory(actionMemory, 'messages');
+          actionIndex++;
           continue;
         }
         if (!action.handler) {
           this.logger.error(`Action ${action.name} has no handler.`);
+
+          // Update plan with error
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan.steps[actionIndex].status = 'failed';
+            actionPlan.steps[actionIndex].error = 'No handler';
+          }
+
+          actionIndex++;
           continue;
         }
         try {
@@ -593,27 +674,156 @@ export class AgentRuntime implements IAgentRuntime {
           const actionId = uuidv4() as UUID;
           this.currentActionContext = {
             actionName: action.name,
-            actionId: actionId,
+            actionId,
             prompts: [],
           };
 
-          await action.handler(this, message, state, {}, callback, responses);
-          this.logger.debug(`Success: Action ${action.name} executed successfully.`);
+          // Create action context with plan information
+          const actionContext: ActionContext = {
+            previousResults: actionResults,
+            getPreviousResult: (actionName: string) => {
+              return actionResults.find((r) => r.data?.actionName === actionName);
+            },
+          };
+
+          // Add plan information to options if multiple actions
+          const options: { [key: string]: unknown } = {
+            context: actionContext,
+          };
+
+          if (actionPlan) {
+            options.actionPlan = {
+              totalSteps: actionPlan.totalSteps,
+              currentStep: actionPlan.currentStep,
+              steps: actionPlan.steps,
+              thought: actionPlan.thought,
+            };
+          }
+
+          // Execute action with context
+          const result = await action.handler(
+            this,
+            message,
+            accumulatedState,
+            options,
+            callback,
+            responses
+          );
+
+          // Handle backward compatibility for void, null, true, false returns
+          const isLegacyReturn =
+            result === undefined || result === null || typeof result === 'boolean';
+
+          // Only create ActionResult if we have a proper result
+          let actionResult: ActionResult | null = null;
+
+          if (!isLegacyReturn) {
+            // Ensure we have an ActionResult
+            actionResult =
+              typeof result === 'object' &&
+              result !== null &&
+              ('values' in result || 'data' in result || 'text' in result)
+                ? (result as ActionResult)
+                : {
+                    data: {
+                      actionName: action.name,
+                      legacyResult: result,
+                    },
+                  };
+
+            actionResults.push(actionResult);
+
+            // Merge returned values into state
+            if (actionResult.values) {
+              accumulatedState = {
+                ...accumulatedState,
+                values: { ...accumulatedState.values, ...actionResult.values },
+                data: {
+                  ...accumulatedState.data,
+                  actionResults: [...(accumulatedState.data?.actionResults || []), actionResult],
+                  actionPlan,
+                },
+              };
+            }
+
+            // Store in working memory (in state data)
+            if (actionResult && accumulatedState.data) {
+              if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
+              accumulatedState.data.workingMemory[`action_${responseAction}_${Date.now()}`] = {
+                actionName: action.name,
+                result: actionResult,
+                timestamp: Date.now(),
+              };
+            }
+
+            // Update plan with success
+            if (actionPlan && actionPlan.steps[actionIndex]) {
+              actionPlan.steps[actionIndex].status = 'completed';
+              actionPlan.steps[actionIndex].result = actionResult;
+            }
+          }
+
+          // Store action result as memory
+          const actionMemory: Memory = {
+            id: actionId,
+            entityId: this.agentId,
+            roomId: message.roomId,
+            worldId: message.worldId,
+            content: {
+              text: actionResult?.text || `Executed action: ${action.name}`,
+              source: 'action',
+              type: 'action_result',
+              actionName: action.name,
+              actionStatus: actionResult?.success ? 'completed' : 'failed',
+              actionResult: isLegacyReturn ? { legacy: result } : actionResult,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
+            },
+            metadata: {
+              type: 'action_result',
+              actionName: action.name,
+              runId,
+              actionId,
+              ...(actionPlan && {
+                totalSteps: actionPlan.totalSteps,
+                currentStep: actionPlan.currentStep,
+              }),
+            },
+          };
+          await this.createMemory(actionMemory, 'messages');
+
+          this.logger.debug(`Action ${action.name} completed`, {
+            isLegacyReturn,
+            result: isLegacyReturn ? result : undefined,
+            hasValues: actionResult ? !!actionResult.values : false,
+            hasData: actionResult ? !!actionResult.data : false,
+            hasText: actionResult ? !!actionResult.text : false,
+          });
 
           // log to database with collected prompts
-          this.adapter.log({
+          await this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: 'action',
             body: {
               action: action.name,
-              actionId: actionId,
+              actionId,
               message: message.content.text,
               messageId: message.id,
-              state,
+              state: accumulatedState,
               responses,
+              result: isLegacyReturn ? { legacy: result } : actionResult,
+              isLegacyReturn,
               prompts: this.currentActionContext?.prompts || [],
               promptCount: this.currentActionContext?.prompts.length || 0,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
             },
           });
 
@@ -623,22 +833,73 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
 
+          // Update plan with error
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan.steps[actionIndex].status = 'failed';
+            actionPlan.steps[actionIndex].error = errorMessage;
+          }
+
           // Clear action context on error
           this.currentActionContext = undefined;
+
+          // Create error result
+          const errorResult: ActionResult = {
+            data: {
+              actionName: action.name,
+              error: errorMessage,
+              errorObject: error,
+            },
+          };
+          actionResults.push(errorResult);
 
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
             content: {
               thought: errorMessage,
               source: 'auto',
+              type: 'action_result',
+              actionName: action.name,
+              actionStatus: 'failed',
+              error: errorMessage,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
             },
-            entityId: message.entityId,
+            entityId: this.agentId,
             roomId: message.roomId,
             worldId: message.worldId,
+            metadata: {
+              type: 'action_result',
+              actionName: action.name,
+              runId,
+              error: true,
+              ...(actionPlan && {
+                totalSteps: actionPlan.totalSteps,
+                currentStep: actionPlan.currentStep,
+              }),
+            },
           };
           await this.createMemory(actionMemory, 'messages');
-          throw error;
+
+          // Decide whether to continue or abort
+          // For now, only abort on critical errors
+          if (error?.critical || error?.code === 'CRITICAL_ERROR') {
+            throw error;
+          }
         }
+
+        actionIndex++;
+      }
+
+      // Store accumulated results for evaluators and providers
+      if (message.id) {
+        this.stateCache.set(`${message.id}_action_results`, {
+          values: { actionResults },
+          data: { actionResults, actionPlan },
+          text: JSON.stringify(actionResults),
+        });
       }
     }
   }

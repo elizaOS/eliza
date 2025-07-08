@@ -19,6 +19,7 @@ import {
   ModelType,
   type State,
   type UUID,
+  type ActionResult,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -153,26 +154,74 @@ export const updateEntityAction: Action = {
     _options?: any,
     callback?: HandlerCallback,
     responses?: Memory[]
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         logger.error('State is required for the updateEntity action');
-        throw new Error('State is required for the updateEntity action');
+        return {
+          text: 'State is required for updateEntity action',
+          values: {
+            success: false,
+            error: 'STATE_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: 'State is required',
+          },
+          success: false,
+          error: new Error('State is required for the updateEntity action'),
+        };
       }
 
       if (!callback) {
-        logger.error('State is required for the updateEntity action');
-        throw new Error('Callback is required for the updateEntity action');
+        logger.error('Callback is required for the updateEntity action');
+        return {
+          text: 'Callback is required for updateEntity action',
+          values: {
+            success: false,
+            error: 'CALLBACK_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: 'Callback is required',
+          },
+          success: false,
+          error: new Error('Callback is required for the updateEntity action'),
+        };
       }
 
       if (!responses) {
         logger.error('Responses are required for the updateEntity action');
-        throw new Error('Responses are required for the updateEntity action');
+        return {
+          text: 'Responses are required for updateEntity action',
+          values: {
+            success: false,
+            error: 'RESPONSES_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: 'Responses are required',
+          },
+          success: false,
+          error: new Error('Responses are required for the updateEntity action'),
+        };
       }
 
       if (!message) {
         logger.error('Message is required for the updateEntity action');
-        throw new Error('Message is required for the updateEntity action');
+        return {
+          text: 'Message is required for updateEntity action',
+          values: {
+            success: false,
+            error: 'MESSAGE_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: 'Message is required',
+          },
+          success: false,
+          error: new Error('Message is required for the updateEntity action'),
+        };
       }
 
       // Handle initial responses
@@ -194,7 +243,18 @@ export const updateEntityAction: Action = {
           actions: ['UPDATE_ENTITY_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: 'Entity not found',
+          values: {
+            success: false,
+            error: 'ENTITY_NOT_FOUND',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: 'Could not find entity to update',
+          },
+          success: false,
+        };
       }
 
       // Get existing component if it exists - we'll get this after the LLM identifies the source
@@ -231,7 +291,19 @@ export const updateEntityAction: Action = {
           actions: ['UPDATE_ENTITY_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: 'Failed to parse component data',
+          values: {
+            success: false,
+            error: 'PARSE_ERROR',
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            error: error.message,
+          },
+          success: false,
+          error: error,
+        };
       }
 
       const componentType = parsedResult.source.toLowerCase();
@@ -264,9 +336,31 @@ export const updateEntityAction: Action = {
           actions: ['UPDATE_ENTITY'],
           source: message.content.source,
         });
+
+        return {
+          text: `Updated ${componentType} information`,
+          values: {
+            success: true,
+            entityId: entity.id,
+            entityName: entity.names[0],
+            componentType,
+            componentUpdated: true,
+            isNewComponent: false,
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            entityId: entity.id,
+            entityName: entity.names[0],
+            componentType,
+            componentData,
+            existingComponentId: existingComponent.id,
+          },
+          success: true,
+        };
       } else {
+        const newComponentId = uuidv4() as UUID;
         await runtime.createComponent({
-          id: uuidv4() as UUID,
+          id: newComponentId,
           entityId: entity.id!,
           worldId,
           type: componentType,
@@ -282,6 +376,27 @@ export const updateEntityAction: Action = {
           actions: ['UPDATE_ENTITY'],
           source: message.content.source,
         });
+
+        return {
+          text: `Added new ${componentType} information`,
+          values: {
+            success: true,
+            entityId: entity.id,
+            entityName: entity.names[0],
+            componentType,
+            componentCreated: true,
+            isNewComponent: true,
+          },
+          data: {
+            actionName: 'UPDATE_CONTACT',
+            entityId: entity.id,
+            entityName: entity.names[0],
+            componentType,
+            componentData,
+            newComponentId,
+          },
+          success: true,
+        };
       }
     } catch (error) {
       logger.error(`Error in updateEntity handler: ${error}`);
@@ -290,6 +405,19 @@ export const updateEntityAction: Action = {
         actions: ['UPDATE_ENTITY_ERROR'],
         source: message.content.source,
       });
+      return {
+        text: 'Error processing entity information',
+        values: {
+          success: false,
+          error: 'HANDLER_ERROR',
+        },
+        data: {
+          actionName: 'UPDATE_CONTACT',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

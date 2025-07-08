@@ -29,7 +29,7 @@ export type Handler = (
   options?: { [key: string]: unknown },
   callback?: HandlerCallback,
   responses?: Memory[]
-) => Promise<unknown>;
+) => Promise<ActionResult | void>;
 
 /**
  * Validator function type for actions/evaluators
@@ -138,4 +138,37 @@ export interface Provider {
 
   /** Data retrieval function */
   get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
+}
+
+/**
+ * Result returned by an action after execution
+ * Used for action chaining and state management
+ */
+export interface ActionResult {
+  /** Optional text description of the result */
+  text?: string;
+
+  /** Values to merge into the state */
+  values?: Record<string, any>;
+
+  /** Data payload containing action-specific results */
+  data?: Record<string, any>;
+
+  /** Whether the action succeeded */
+  success?: boolean;
+
+  /** Error information if the action failed */
+  error?: string | Error;
+}
+
+/**
+ * Context provided to actions during execution
+ * Allows actions to access previous results and update state
+ */
+export interface ActionContext {
+  /** Results from previously executed actions in this run */
+  previousResults: ActionResult[];
+
+  /** Get a specific previous result by action name */
+  getPreviousResult?: (actionName: string) => ActionResult | undefined;
 }
