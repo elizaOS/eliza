@@ -116,6 +116,15 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
       return next();
     }
 
+    // Skip client-side routes that should be handled by the SPA
+    // These include /chat, /settings, /agents, etc.
+    const clientRoutePattern =
+      /^\/(chat|settings|agents|profile|dashboard|login|register|admin|home|about)\b/i;
+    if (clientRoutePattern.test(req.path)) {
+      logger.debug(`Skipping client-side route in plugin handler: ${req.path}`);
+      return next();
+    }
+
     // Debug output for JavaScript requests
     if (
       req.path.endsWith('.js') ||
@@ -239,27 +248,37 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
         logger.warn(
           `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}.`
         );
-        // Return a specific error instead of passing to next middleware
-        res.status(404).json({
-          success: false,
-          error: {
-            message: 'Agent not found',
-            code: 'AGENT_NOT_FOUND',
-          },
-        });
-        return;
+        // For API routes, return error. For other routes, pass to next middleware
+        if (reqPath.startsWith('/api/')) {
+          res.status(404).json({
+            success: false,
+            error: {
+              message: 'Agent not found',
+              code: 'AGENT_NOT_FOUND',
+            },
+          });
+          return;
+        } else {
+          // Non-API route, let it pass through to SPA fallback
+          return next();
+        }
       }
     } else if (agentIdFromQuery && !validateUuid(agentIdFromQuery)) {
       logger.warn(`Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}.`);
-      // Return a specific error for invalid UUID format
-      res.status(400).json({
-        success: false,
-        error: {
-          message: 'Invalid agent ID format',
-          code: 'INVALID_AGENT_ID',
-        },
-      });
-      return;
+      // For API routes, return error. For other routes, pass to next middleware
+      if (reqPath.startsWith('/api/')) {
+        res.status(400).json({
+          success: false,
+          error: {
+            message: 'Invalid agent ID format',
+            code: 'INVALID_AGENT_ID',
+          },
+        });
+        return;
+      } else {
+        // Non-API route, let it pass through to SPA fallback
+        return next();
+      }
     } else {
       // No agentId in query, or it was invalid. Try matching globally for any agent that might have this route.
       // This allows for non-agent-specific plugin routes if any plugin defines them.
