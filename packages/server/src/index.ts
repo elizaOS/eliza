@@ -116,6 +116,7 @@ export interface ServerOptions {
   middlewares?: ServerMiddleware[];
   dataDir?: string;
   postgresUrl?: string;
+  clientPath?: string;
 }
 
 /**
@@ -148,6 +149,7 @@ export class AgentServer {
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
+  private clientPath?: string; // Optional path to client dist files
 
   public database!: DatabaseAdapter;
 
@@ -330,6 +332,11 @@ export class AgentServer {
    */
   private async initializeServer(options?: ServerOptions) {
     try {
+      // Store the client path if provided
+      if (options?.clientPath) {
+        this.clientPath = options.clientPath;
+      }
+
       // Initialize middleware and database
       this.app = express();
 
@@ -614,6 +621,8 @@ export class AgentServer {
       if (this.isWebUIEnabled) {
         // Try multiple locations to find the client dist files
         const possiblePaths = [
+          // First priority: explicitly provided client path
+          this.clientPath,
           // Development: relative to server package (monorepo)
           path.resolve(__dirname, '../../cli/dist'),
           // Production: using require.resolve to find CLI package (if installed as dependency)
@@ -626,6 +635,28 @@ export class AgentServer {
             } catch {
               return null;
             }
+          })(),
+          // Check if running from global CLI - look for client files in the same directory as the running process
+          (() => {
+            try {
+              // When elizaos CLI is run globally, process.argv[1] contains the path to the CLI entry point
+              if (process.argv[1]) {
+                const cliPath = path.dirname(process.argv[1]);
+                const possibleDistPath = path.join(cliPath, 'index.html');
+                if (existsSync(possibleDistPath)) {
+                  return cliPath;
+                }
+                // Also check one level up (in case we're in a subdirectory)
+                const parentPath = path.dirname(cliPath);
+                const possibleParentDistPath = path.join(parentPath, 'index.html');
+                if (existsSync(possibleParentDistPath)) {
+                  return parentPath;
+                }
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
           })(),
           // Global bun install: check global node_modules locations
           (() => {
@@ -684,6 +715,11 @@ export class AgentServer {
             })(),
           ].filter(Boolean),
         ].filter(Boolean);
+
+        // Log process information for debugging
+        logger.debug(`[STATIC] process.argv[0]: ${process.argv[0]}`);
+        logger.debug(`[STATIC] process.argv[1]: ${process.argv[1]}`);
+        logger.debug(`[STATIC] __dirname: ${__dirname}`);
 
         for (const possiblePath of possiblePaths) {
           if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {

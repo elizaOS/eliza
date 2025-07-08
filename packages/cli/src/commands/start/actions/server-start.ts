@@ -3,6 +3,8 @@ import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/ser
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Server start options
@@ -25,8 +27,17 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
 
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
 
+  // Get the directory where the CLI is installed to find client files
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const cliDistPath = path.resolve(__dirname, '../../../');
+
   const server = new AgentServer();
-  await server.initialize({ dataDir: pgliteDataDir, postgresUrl: postgresUrl || undefined });
+  await server.initialize({
+    dataDir: pgliteDataDir,
+    postgresUrl: postgresUrl || undefined,
+    clientPath: cliDistPath,
+  });
 
   server.startAgent = (character) => startAgent(character, server);
   server.stopAgent = (runtime) => stopAgent(runtime, server);
