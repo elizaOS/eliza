@@ -132,7 +132,7 @@ export async function createPlugin(
     console.info(`\nNext steps:`);
     console.info(`  cd ${pluginDirName}`);
     console.info(`  bun run build`);
-    console.info(`  bun run test\n`);
+    console.info(`  elizaos dev or bun run dev\n`);
   });
 }
 
@@ -260,7 +260,7 @@ export async function createTEEProject(
     console.info(`\n${colors.green('✓')} TEE project "${projectName}" created successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${projectName}`);
-    console.info(`  bun run dev\n`);
+    console.info(`  elizaos dev or bun run dev\n`);
   });
 }
 
@@ -341,7 +341,7 @@ export async function createProject(
     console.info(`\n${colors.green('✓')} ${displayName} initialized successfully!`);
     console.info(`\nNext steps:`);
     console.info(`  cd ${projectName}`);
-    console.info(`  bun run dev\n`);
+    console.info(`  elizaos dev or bun run dev\n`);
   };
 
   if (projectName === '.') {
