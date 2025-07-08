@@ -11,6 +11,7 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
@@ -605,14 +606,17 @@ export class AgentServer {
         },
       };
 
+      // Resolve client path for both static serving and SPA fallback
+      let clientPath: string | null = null;
+
       // Conditionally serve static assets from the client dist path
       // Client files are built into the CLI package's dist directory
       if (this.isWebUIEnabled) {
         // Try multiple locations to find the client dist files
         const possiblePaths = [
-          // Development: relative to server package
+          // Development: relative to server package (monorepo)
           path.resolve(__dirname, '../../cli/dist'),
-          // Production: using require.resolve to find CLI package
+          // Production: using require.resolve to find CLI package (if installed as dependency)
           (() => {
             try {
               return path.resolve(
@@ -623,12 +627,68 @@ export class AgentServer {
               return null;
             }
           })(),
+          // Global bun install: check global node_modules locations
+          (() => {
+            try {
+              // Try to find the global elizaos installation via bun
+              const { execSync } = require('child_process');
+              // Bun stores global packages in ~/.bun/install/global/node_modules
+              const bunGlobalPath = path.join(
+                os.homedir(),
+                '.bun/install/global/node_modules/@elizaos/cli/dist'
+              );
+              if (existsSync(path.join(bunGlobalPath, 'index.html'))) {
+                return bunGlobalPath;
+              }
+              // Also try npm root as fallback (some users might use npm)
+              try {
+                const npmRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+                const globalCliPath = path.join(npmRoot, '@elizaos/cli/dist');
+                if (existsSync(path.join(globalCliPath, 'index.html'))) {
+                  return globalCliPath;
+                }
+              } catch {
+                // npm might not be installed
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
+          })(),
+          // Alternative global locations (common paths)
+          ...[
+            '/usr/local/lib/node_modules/@elizaos/cli/dist',
+            '/usr/lib/node_modules/@elizaos/cli/dist',
+            path.join(os.homedir(), '.npm-global/lib/node_modules/@elizaos/cli/dist'),
+            // Check nvm installations
+            (() => {
+              try {
+                const nvmPath = path.join(os.homedir(), '.nvm/versions/node');
+                if (existsSync(nvmPath)) {
+                  const versions = fs.readdirSync(nvmPath);
+                  for (const version of versions) {
+                    const cliPath = path.join(
+                      nvmPath,
+                      version,
+                      'lib/node_modules/@elizaos/cli/dist'
+                    );
+                    if (existsSync(path.join(cliPath, 'index.html'))) {
+                      return cliPath;
+                    }
+                  }
+                }
+              } catch {
+                // Ignore errors
+              }
+              return null;
+            })(),
+          ].filter(Boolean),
         ].filter(Boolean);
 
-        let clientPath: string | null = null;
         for (const possiblePath of possiblePaths) {
           if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {
             clientPath = possiblePath;
+            logger.info(`[STATIC] Found client files at: ${clientPath}`);
             break;
           }
         }
@@ -636,7 +696,14 @@ export class AgentServer {
         if (clientPath) {
           this.app.use(express.static(clientPath, staticOptions));
         } else {
-          logger.warn('[STATIC] Client dist path not found');
+          logger.warn('[STATIC] Client dist path not found. Searched locations:');
+          possiblePaths.forEach((p) => {
+            if (p) logger.warn(`[STATIC]   - ${p}`);
+          });
+          logger.warn('[STATIC] The web UI will not be available.');
+          logger.warn(
+            '[STATIC] To fix this, ensure @elizaos/cli is installed globally: bun install -g @elizaos/cli'
+          );
         }
       }
 
@@ -711,34 +778,9 @@ export class AgentServer {
           }
 
           // For all other routes, serve the SPA's index.html
-          // Try multiple locations to find the client dist files
-          const possiblePaths = [
-            // Development: relative to server package
-            path.resolve(__dirname, '../../cli/dist'),
-            // Production: using require.resolve to find CLI package
-            (() => {
-              try {
-                return path.resolve(
-                  path.dirname(require.resolve('@elizaos/cli/package.json')),
-                  'dist'
-                );
-              } catch {
-                return null;
-              }
-            })(),
-          ].filter((p): p is string => p !== null);
-
-          let indexPath: string | null = null;
-          for (const possiblePath of possiblePaths) {
-            const testPath = path.join(possiblePath, 'index.html');
-            if (possiblePath && existsSync(testPath)) {
-              indexPath = testPath;
-              break;
-            }
-          }
-
-          if (indexPath) {
-            const indexFilePath: string = indexPath;
+          // Use the same clientPath that was resolved for static serving
+          if (clientPath) {
+            const indexFilePath = path.join(clientPath, 'index.html');
             res.sendFile(indexFilePath, (err) => {
               if (err) {
                 logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
@@ -746,6 +788,7 @@ export class AgentServer {
               }
             });
           } else {
+            logger.warn('[STATIC] Client dist path not found in SPA fallback');
             res.status(404).send('Client application not found');
           }
         });
