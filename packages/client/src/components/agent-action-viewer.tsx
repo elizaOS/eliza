@@ -703,18 +703,18 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
 
   const handleDelete = (logId: string) => {
     confirm(
-        {
-            title: 'Delete Log Entry',
-            description: 'Are you sure you want to permanently delete this log entry? This action cannot be undone.',
-            confirmText: 'Delete',
-            variant: 'destructive',
-        },
-        () => {
-            deleteLog({ agentId, logId });
-        }
+      {
+        title: 'Delete Log Entry',
+        description:
+          'Are you sure you want to permanently delete this log entry? This action cannot be undone.',
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      () => {
+        deleteLog({ agentId, logId });
+      }
     );
   };
-
 
   const handleLoadMore = () => {
     setVisibleItems((prev) => prev + ITEMS_PER_PAGE);
@@ -812,7 +812,11 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
                   </div>
                   <div className="space-y-3">
                     {actions.map((action, index) => (
-                      <ActionCard key={action.id || index} action={action} onDelete={handleDelete} />
+                      <ActionCard
+                        key={action.id || index}
+                        action={action}
+                        onDelete={handleDelete}
+                      />
                     ))}
                   </div>
                 </div>
@@ -837,6 +841,5 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
         onConfirm={onConfirm}
       />
     </>
-    
   );
 }
