@@ -112,7 +112,7 @@ function normalizeImportPath(importPath: string): string {
     // Handle UNC paths (\\server\share) differently
     if (normalized.startsWith('\\\\')) {
       // UNC paths: \\server\share -> file://server/share
-      return `file://${normalized.substring(2).replace(/\\/g, '/')}`;
+      return `file:${normalized.replace(/\\/g, '/')}`;
     } else {
       // Regular paths: C:\path -> file:///C:/path
       return `file:///${normalized.replace(/\\/g, '/')}`;
