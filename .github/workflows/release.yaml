@@ -106,6 +106,23 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Reset temporary commits before versioning
+        run: |
+          # If we made any temporary commits, reset them but keep the changes
+          # This gives Lerna a clean git state to work with
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          INITIAL_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          
+          # Check if we have a temporary commit (contains "temporary commit for install changes")
+          if git log --oneline -1 | grep -q "temporary commit for install changes"; then
+            echo "Resetting temporary commit but keeping changes..."
+            git reset --soft HEAD~1
+          fi
+          
+          # Show status for debugging
+          echo "Git status before Lerna version:"
+          git status --porcelain
+
       - name: Update Package Versions
         id: version
         run: |
@@ -116,9 +133,12 @@ jobs:
 
           echo "Updating all packages to version: $VERSION"
           # Update versions in all package.json files WITHOUT publishing
-          # Using --no-commit to have more control over what gets committed
-          # Note: Any temporary commits from earlier steps will be preserved
-          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish --no-commit
+          # --no-git-tag-version: Don't create a git tag
+          # --no-push: Don't push to git remote
+          # --allow-branch main: Allow versioning on main branch
+          # --ignore-changes: Ignore uncommitted changes (for CI)
+          # Note: Lerna will create a commit with the version changes
+          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish --allow-branch main --ignore-changes='*'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -167,27 +187,19 @@ jobs:
       - name: Commit and Push Version Bump
         if: success() && steps.publish.outputs.publish_success == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Note: Lerna already created a commit during the version step
+          # We just need to amend it if necessary and push
           
-          # Add only the files that should have version changes
-          git add lerna.json
-          git add package.json
-          git add packages/*/package.json
-          
-          # Also add lock file if it has meaningful changes
+          # Check if we need to add any additional files to the existing commit
           if git status --porcelain | grep -q "bun.lock"; then
-            echo "Adding bun.lock to commit"
+            echo "Adding bun.lock to the version commit"
             git add bun.lock
+            git commit --amend --no-edit
           fi
           
-          # Check if there are changes to commit
-          if git diff --staged --quiet; then
-            echo "No version changes to commit."
-          else
-            git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
-            git push origin main
-          fi
+          # Push the version bump commit
+          echo "Pushing version bump commit to main"
+          git push origin main
 
       - name: Create Pull Request to develop
         env:
