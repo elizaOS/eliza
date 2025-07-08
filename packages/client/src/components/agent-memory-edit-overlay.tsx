@@ -39,7 +39,6 @@ export default function MemoryEditOverlay({
 
   const { confirm, isOpen: confirmOpen, onOpenChange, onConfirm, options } = useConfirmation();
 
-
   // Initialize content when component opens
   useEffect(() => {
     if (isOpen) {
@@ -81,7 +80,8 @@ export default function MemoryEditOverlay({
           confirm(
             {
               title: 'Discard Unsaved Changes?',
-              description: 'You have unsaved changes. Are you sure you want to close without saving?',
+              description:
+                'You have unsaved changes. Are you sure you want to close without saving?',
               confirmText: 'Discard',
               variant: 'destructive',
             },
@@ -188,7 +188,6 @@ export default function MemoryEditOverlay({
         );
       }
     );
-    
   }, [deleteMemory, agentId, memory.id, onClose, toast]);
 
   const handlePrettyFormat = useCallback(() => {
@@ -219,7 +218,7 @@ export default function MemoryEditOverlay({
       () => {
         setEditedContent(originalContent);
       }
-    );    
+    );
   }, [originalContent]);
 
   const handleCopyToClipboard = useCallback(async () => {
@@ -258,7 +257,7 @@ export default function MemoryEditOverlay({
         );
       } else {
         onClose();
-      }      
+      }
     }
   };
 
@@ -400,7 +399,9 @@ export default function MemoryEditOverlay({
               {isPreviewMode ? (
                 <div className="flex-1 border rounded-md p-3 bg-muted/50 overflow-auto">
                   <pre className="text-sm whitespace-pre-wrap">
-                    {isValidJson ? JSON.stringify(JSON.parse(editedContent), null, 2) : editedContent}
+                    {isValidJson
+                      ? JSON.stringify(JSON.parse(editedContent), null, 2)
+                      : editedContent}
                   </pre>
                 </div>
               ) : (
