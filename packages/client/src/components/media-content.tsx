@@ -159,7 +159,6 @@ export default function MediaContent({
             className="w-full h-auto object-contain"
             onLoad={handleLoad}
             onError={handleError}
-            crossOrigin="anonymous"
           />
         )}
       </div>

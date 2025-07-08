@@ -1554,27 +1554,6 @@ export class AgentRuntime implements IAgentRuntime {
             timestamp: Date.now(),
           });
         }
-
-        await this.adapter.log({
-          entityId: this.agentId,
-          roomId: this.agentId,
-          body: {
-            modelType,
-            modelKey,
-            prompt: promptContent,
-            runId: this.getCurrentRunId(),
-            timestamp: Date.now(),
-            executionTime: elapsedTime,
-            provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-            actionContext: this.currentActionContext
-              ? {
-                  actionName: this.currentActionContext.actionName,
-                  actionId: this.currentActionContext.actionId,
-                }
-              : undefined,
-          },
-          type: `prompt:${modelKey}`,
-        });
       }
 
       // Keep the existing model logging for backward compatibility
@@ -1588,6 +1567,17 @@ export class AgentRuntime implements IAgentRuntime {
             ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
             prompt: promptContent,
           },
+          prompt: promptContent,
+          runId: this.getCurrentRunId(),
+          timestamp: Date.now(),
+          executionTime: elapsedTime,
+          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+          actionContext: this.currentActionContext
+            ? {
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
+            : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
               ? '[array]'
@@ -1595,6 +1585,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
         type: `useModel:${modelKey}`,
       });
+      
       return response as R;
     } catch (error: any) {
       throw error;
