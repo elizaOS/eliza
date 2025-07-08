@@ -29,6 +29,8 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { useConfirmation } from '@/hooks/use-confirmation';
+import ConfirmationDialog from './confirmation-dialog';
 
 // Constants
 const ITEMS_PER_PAGE = 15;
@@ -615,6 +617,8 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId, excludeTypes);
   const { mutate: deleteLog } = useDeleteLog();
 
+  const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
+
   // Filter and search actions
   const filteredActions = actions.filter((action: AgentLog) => {
     // Type filter
@@ -698,9 +702,18 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   const actionGroups = groupActionsByDate(visibleActions);
 
   const handleDelete = (logId: string) => {
-    if (window.confirm('Are you sure you want to delete this log entry?')) {
-      deleteLog({ agentId, logId });
-    }
+    confirm(
+      {
+        title: 'Delete Log Entry',
+        description:
+          'Are you sure you want to permanently delete this log entry? This action cannot be undone.',
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      () => {
+        deleteLog({ agentId, logId });
+      }
+    );
   };
 
   const handleLoadMore = () => {
@@ -742,75 +755,91 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-medium"> Actions</h3>
-          {!isLoading && (
-            <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
-              {filteredActions.length}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search actions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
-          {/* Filter */}
-          <Select
-            value={selectedType}
-            onValueChange={(value) => setSelectedType(value as ActionType)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Filter actions" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ActionType.all}>All Actions</SelectItem>
-              <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
-              <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
-              <SelectItem value={ActionType.image}>Image Operations</SelectItem>
-              <SelectItem value={ActionType.other}>Other</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4">
-        {filteredActions.length === 0 ? (
-          <EmptyState selectedType={selectedType} searchQuery={searchQuery} />
-        ) : (
-          <div className="space-y-4">
-            {Object.entries(actionGroups).map(([date, actions]) => (
-              <div key={date} className="space-y-3">
-                <div className="flex items-center gap-3 py-2">
-                  <Separator className="flex-1" />
-                  <span className="text-sm font-medium text-muted-foreground px-2">{date}</span>
-                  <Separator className="flex-1" />
-                </div>
-                <div className="space-y-3">
-                  {actions.map((action, index) => (
-                    <ActionCard key={action.id || index} action={action} onDelete={handleDelete} />
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Load more */}
-            {hasMoreToLoad && (
-              <LoadingIndicator loadingMore={loadingMore} onLoadMore={handleLoadMore} />
+    <>
+      <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-medium"> Actions</h3>
+            {!isLoading && (
+              <span className="ml-2 text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
+                {filteredActions.length}
+              </span>
             )}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search actions..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-64"
+              />
+            </div>
+            {/* Filter */}
+            <Select
+              value={selectedType}
+              onValueChange={(value) => setSelectedType(value as ActionType)}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Filter actions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ActionType.all}>All Actions</SelectItem>
+                <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
+                <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
+                <SelectItem value={ActionType.image}>Image Operations</SelectItem>
+                <SelectItem value={ActionType.other}>Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4">
+          {filteredActions.length === 0 ? (
+            <EmptyState selectedType={selectedType} searchQuery={searchQuery} />
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(actionGroups).map(([date, actions]) => (
+                <div key={date} className="space-y-3">
+                  <div className="flex items-center gap-3 py-2">
+                    <Separator className="flex-1" />
+                    <span className="text-sm font-medium text-muted-foreground px-2">{date}</span>
+                    <Separator className="flex-1" />
+                  </div>
+                  <div className="space-y-3">
+                    {actions.map((action, index) => (
+                      <ActionCard
+                        key={action.id || index}
+                        action={action}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Load more */}
+              {hasMoreToLoad && (
+                <LoadingIndicator loadingMore={loadingMore} onLoadMore={handleLoadMore} />
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+      <ConfirmationDialog
+        open={isOpen}
+        onOpenChange={onOpenChange}
+        title={options?.title || ''}
+        description={options?.description || ''}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        variant={options?.variant}
+        onConfirm={onConfirm}
+      />
+    </>
   );
 }

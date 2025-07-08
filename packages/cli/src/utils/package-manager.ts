@@ -108,7 +108,8 @@ export async function executeInstallation(
 
   try {
     const args = [...installCommand, finalSpecifier];
-    await runBunCommand(args, directory);
+    // Run silently to suppress bun's timestamped output
+    await runBunCommand(args, directory, true);
 
     const installedIdentifier = packageName.startsWith('github:')
       ? (() => {

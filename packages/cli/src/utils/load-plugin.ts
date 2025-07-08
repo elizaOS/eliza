@@ -102,16 +102,21 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
 
 /**
  * Normalizes import paths for cross-platform compatibility.
- * On Windows with Bun, converts backslashes to forward slashes for dynamic imports.
+ * On Windows, converts absolute paths to file:// URLs for dynamic imports.
  */
 function normalizeImportPath(importPath: string): string {
-  // First normalize the path using Node's built-in function
   const normalized = path.normalize(importPath);
 
-  // On Windows with Bun, convert backslashes to forward slashes for import()
-  const isBun = typeof Bun !== 'undefined';
-  if (process.platform === 'win32' && isBun) {
-    return normalized.replace(/\\/g, '/');
+  // On Windows, convert absolute paths to file:// URLs for dynamic imports
+  if (process.platform === 'win32' && path.isAbsolute(normalized)) {
+    // Handle UNC paths (\\server\share) differently
+    if (normalized.startsWith('\\\\')) {
+      // UNC paths: \\server\share -> file://server/share
+      return `file:${encodeURI(normalized.replace(/\\/g, '/'))}`;
+    } else {
+      // Regular paths: C:\path -> file:///C:/path
+      return `file:///${encodeURI(normalized.replace(/\\/g, '/'))}`;
+    }
   }
 
   return normalized;

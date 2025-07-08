@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
+import { isQuietMode } from './spinner-utils';
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -184,7 +185,9 @@ export async function copyTemplate(
     if (packageJson.dependencies) {
       for (const depName of Object.keys(packageJson.dependencies)) {
         if (depName.startsWith('@elizaos/')) {
-          logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
+          if (!isQuietMode()) {
+            logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
+          }
           packageJson.dependencies[depName] = 'latest';
         }
       }
@@ -193,7 +196,9 @@ export async function copyTemplate(
     if (packageJson.devDependencies) {
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
-          logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
+          if (!isQuietMode()) {
+            logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
+          }
           packageJson.devDependencies[depName] = 'latest';
         }
       }
@@ -204,7 +209,9 @@ export async function copyTemplate(
 
     if (packageJson.name !== projectNameFromPath) {
       packageJson.name = projectNameFromPath;
-      logger.info(`Setting package name to ${projectNameFromPath}`);
+      if (!isQuietMode()) {
+        logger.info(`Setting package name to ${projectNameFromPath}`);
+      }
     }
 
     // Write the updated package.json (dependency versions and plugin name changed)
