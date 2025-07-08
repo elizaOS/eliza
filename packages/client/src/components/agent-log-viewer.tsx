@@ -382,7 +382,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     confirm(
       {
         title: 'Clear All Logs',
-        description: 'Are you sure you want to permanently delete all system logs? This action cannot be undone.',
+        description:
+          'Are you sure you want to permanently delete all system logs? This action cannot be undone.',
         confirmText: 'Delete',
         variant: 'destructive',
       },
@@ -392,7 +393,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
           const elizaClient = createElizaClient();
           await elizaClient.system.deleteGlobalLogs();
           queryClient.invalidateQueries({ queryKey: ['logs'] });
-  
+
           // Also clear WebSocket logs if in WebSocket mode
           if (useWebSocket) {
             setWsLogs([]);
@@ -405,7 +406,6 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
       }
     );
   };
-  
 
   const handleRefresh = () => {
     if (useWebSocket && isLive) {

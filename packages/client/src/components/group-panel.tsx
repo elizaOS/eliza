@@ -377,21 +377,21 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         (selectedAgents.length > 0
           ? selectedAgents.map((agent) => agent.name).join(', ')
           : 'Empty Group');
-    
+
       if (!channelId) {
         createGroupMutation.mutate({ name: finalName, participantIds });
       } else {
         updateGroupMutation.mutate({ name: finalName, participantIds });
       }
     };
-    
 
     // For edit mode, warn if removing all agents but allow it
     if (channelId && selectedAgents.length === 0) {
       confirm(
         {
           title: 'Remove All Agents?',
-          description: 'Are you sure you want to remove all agents from this group? This will leave the group with no participants.',
+          description:
+            'Are you sure you want to remove all agents from this group? This will leave the group with no participants.',
           confirmText: 'Remove All',
           variant: 'destructive',
         },
@@ -401,7 +401,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       );
       return;
     }
-    
+
     proceed();
   }, [channelId, chatName, selectedAgents, createGroupMutation, updateGroupMutation, toast]);
 
