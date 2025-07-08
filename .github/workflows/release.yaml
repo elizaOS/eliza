@@ -1,7 +1,7 @@
 name: Release
 
 # This workflow handles version bumping and publishing for new releases
-# 
+#
 # Rollback Strategy:
 # - If publishing fails after version update, the version files are NOT committed
 # - This prevents version drift between git and npm
@@ -62,7 +62,7 @@ jobs:
           # Show current git status for debugging
           echo "Git status after install:"
           git status --porcelain
-          
+
           # Check if bun.lock has meaningful changes (not just timestamp updates)
           if git diff --name-only | grep -q "bun.lock"; then
             echo "bun.lock has changes, checking if they're significant..."
@@ -79,19 +79,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # Check if there are any changes to commit
           if ! git diff --quiet || ! git diff --cached --quiet; then
             echo "Committing changes from install step..."
             # Only add specific files that might be modified by install
             git add package.json packages/*/package.json .npmrc 2>/dev/null || true
-            
+
             # If bun.lock has real changes (preserved from earlier step), add it
             if git status --porcelain | grep -q "M bun.lock"; then
               echo "Adding preserved bun.lock changes"
               git add bun.lock
             fi
-            
+
             # Commit only if there are staged changes
             if ! git diff --cached --quiet; then
               git commit -m "chore: temporary commit for install changes" || true
@@ -116,9 +116,9 @@ jobs:
 
           echo "Updating all packages to version: $VERSION"
           # Update versions in all package.json files WITHOUT publishing
-          # Using --no-commit to have more control over what gets committed
+          # Using --no-git-tag-version to prevent automatic git operations
           # Note: Any temporary commits from earlier steps will be preserved
-          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish --no-commit
+          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -130,7 +130,7 @@ jobs:
             echo "❌ Version mismatch in lerna.json: expected ${{ env.VERSION }}, got $LERNA_VERSION"
             exit 1
           fi
-          
+
           # Check a few package.json files to ensure they were updated
           for pkg in core server cli client; do
             PKG_VERSION=$(cat packages/$pkg/package.json | grep '"version"' | head -1 | cut -d'"' -f4)
@@ -139,7 +139,7 @@ jobs:
               exit 1
             fi
           done
-          
+
           echo "✅ All versions updated correctly to ${{ env.VERSION }}"
 
       - name: Build packages
@@ -169,18 +169,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           # Add only the files that should have version changes
           git add lerna.json
           git add package.json
           git add packages/*/package.json
-          
+
           # Also add lock file if it has meaningful changes
           if git status --porcelain | grep -q "bun.lock"; then
             echo "Adding bun.lock to commit"
             git add bun.lock
           fi
-          
+
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No version changes to commit."
