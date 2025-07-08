@@ -196,7 +196,7 @@ export async function createAgent(
   console.info(`Agent character created successfully at: ${agentFilePath}`);
   console.info(`\nTo use this agent:`);
   console.info(`  1. Start ElizaOS server with this character:`);
-  console.info(`     elizaos start --character ${agentFilePath}`);
+  console.info(`     elizaos start --character ${agentName}`);
   console.info(`\n  OR if a server is already running:`);
   console.info(`     elizaos agent start --name ${agentName}`);
 }
