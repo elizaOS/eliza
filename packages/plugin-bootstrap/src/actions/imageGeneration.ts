@@ -62,11 +62,17 @@ import {
         prompt,
       });
 
-      const imagePrompt = (promptResponse.prompt as string) ?? 'A visually descriptive prompt missing.';
-  
+      const imagePrompt = typeof promptResponse === 'object' && promptResponse && 'prompt' in promptResponse 
+        ? String(promptResponse.prompt) 
+        : 'Unable to generate descriptive prompt for image';
+
       const imageResponse = await runtime.useModel(ModelType.IMAGE, {
         prompt: imagePrompt,
       });
+
+      if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
+        throw new Error('Image generation failed - no valid response received');
+      }
 
       const imageUrl = imageResponse[0].url;
 
