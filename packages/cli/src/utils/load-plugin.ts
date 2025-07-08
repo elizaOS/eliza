@@ -109,22 +109,13 @@ function normalizeImportPath(importPath: string): string {
   
   // On Windows, convert absolute paths to file:// URLs for dynamic imports
   if (process.platform === 'win32' && path.isAbsolute(normalized)) {
-    try {
-      // Use the URL constructor to properly encode special characters and spaces
-      const url = new URL(normalized, 'file:///');
-      return url.href;
-    } catch (error) {
-      // Fallback to manual conversion if URL constructor fails
-      logger.debug(`URL constructor failed for path: ${normalized}, using fallback`);
-      
-      // Handle UNC paths (\\server\share) differently
-      if (normalized.startsWith('\\\\')) {
-        // UNC paths: \\server\share -> file://server/share
-        return `file:${encodeURI(normalized.replace(/\\/g, '/'))}`;
-      } else {
-        // Regular paths: C:\path -> file:///C:/path
-        return `file:///${encodeURI(normalized.replace(/\\/g, '/'))}`;
-      }
+    // Handle UNC paths (\\server\share) differently
+    if (normalized.startsWith('\\\\')) {
+      // UNC paths: \\server\share -> file://server/share
+      return `file:${encodeURI(normalized.replace(/\\/g, '/'))}`;
+    } else {
+      // Regular paths: C:\path -> file:///C:/path
+      return `file:///${encodeURI(normalized.replace(/\\/g, '/'))}`;
     }
   }
   
