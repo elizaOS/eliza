@@ -179,3 +179,4 @@ tasks/
 **/.taskmaster/
 **/.windsurfrules/
 .roomodes
+bun.lock

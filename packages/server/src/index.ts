@@ -726,7 +726,7 @@ export class AgentServer {
                 return null;
               }
             })(),
-          ].filter(Boolean);
+          ].filter((p): p is string => p !== null);
 
           let indexPath: string | null = null;
           for (const possiblePath of possiblePaths) {
@@ -738,7 +738,8 @@ export class AgentServer {
           }
 
           if (indexPath) {
-            res.sendFile(indexPath, (err) => {
+            const indexFilePath: string = indexPath;
+            res.sendFile(indexFilePath, (err) => {
               if (err) {
                 logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
                 res.status(404).send('Client application not found');
