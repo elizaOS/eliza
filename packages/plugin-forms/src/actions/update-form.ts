@@ -4,7 +4,7 @@ import {
   Memory,
   State,
   HandlerCallback,
-  elizaLogger,
+  logger,
   type UUID,
 } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
@@ -92,7 +92,7 @@ export const updateFormAction: Action = {
 
       const formId = targetForm.id as UUID;
 
-      elizaLogger.debug(`Updating form ${formId} with user message`);
+      logger.debug(`Updating form ${formId} with user message`);
 
       // Update the form with the message
       const result = await formsService.updateForm(formId, message);
@@ -102,7 +102,10 @@ export const updateFormAction: Action = {
           text: result.message || 'Failed to update form.',
           actions: [],
         });
-        return;
+        return {
+          success: false,
+          error: result.message || 'Failed to update form.',
+        };
       }
 
       // Prepare response based on update result
@@ -161,7 +164,7 @@ export const updateFormAction: Action = {
         },
       };
     } catch (error) {
-      elizaLogger.error('Error in UPDATE_FORM action:', error);
+      logger.error('Error in UPDATE_FORM action:', error);
       await callback?.({
         text: 'An error occurred while updating the form. Please try again.',
         actions: [],

@@ -1,4 +1,4 @@
-import { Action, IAgentRuntime, Memory, State, HandlerCallback, elizaLogger } from '@elizaos/core';
+import { Action, IAgentRuntime, Memory, State, HandlerCallback, logger } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
 
 /**
@@ -48,7 +48,7 @@ export const createFormAction: Action = {
       const text = message.content.text?.toLowerCase() || '';
       const templateName = (options?.template as string) || extractFormType(text) || 'contact'; // Default to contact form
 
-      elizaLogger.debug(`Creating form with template: ${templateName}`);
+      logger.debug(`Creating form with template: ${templateName}`);
 
       // Create the form
       const form = await formsService.createForm(templateName, {
@@ -97,7 +97,7 @@ export const createFormAction: Action = {
         },
       };
     } catch (error) {
-      elizaLogger.error('Error in CREATE_FORM action:', error);
+      logger.error('Error in CREATE_FORM action:', error);
       await callback?.({
         text: 'I encountered an error while creating the form. Please try again.',
         actions: [],
