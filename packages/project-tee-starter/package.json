@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-tee-starter",
   "description": "Project starter for elizaOS with TEE capabilities",
-  "version": "1.1.6",
+  "version": "1.1.7-beta.2",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
