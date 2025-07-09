@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { execSync } from 'node:child_process';
-import { mkdtemp, rm, readFile, mkdir, writeFile, rmdir } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import {
@@ -540,13 +541,16 @@ describe('ElizaOS Create Commands', () => {
         const pgliteDataDir = pgliteMatch![1];
 
         // Verify it points to the project's .eliza/.elizadb, not parent's
-        expect(pgliteDataDir).toContain('test-no-hoist/.eliza/.elizadb');
+        expect(pgliteDataDir).toContain(join('test-no-hoist', '.eliza', '.elizadb'));
         // Ensure it's not pointing to parent's .eliza directory (without the project name)
-        expect(pgliteDataDir).not.toMatch(/eliza-parent-[^\/]+\/.eliza\/.elizadb$/);
+        const sep = path.sep.replace(/\\/g, '\\\\'); // Escape backslashes for regex
+        expect(pgliteDataDir).not.toMatch(
+          new RegExp(`eliza-parent-[^${sep}]+${sep}\\.eliza${sep}\\.elizadb$`)
+        );
       } finally {
         process.chdir(originalDir);
         // Cleanup
-        await rmdir(parentDir, { recursive: true });
+        await rm(parentDir, { recursive: true });
       }
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
