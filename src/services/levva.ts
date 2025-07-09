@@ -8,10 +8,14 @@ import assert from "node:assert";
 import { LEVVA_SERVICE } from "../constants/enum.ts";
 import { ILevvaService } from "../types/service.ts";
 import { BrowserService } from "./browser.ts";
-import { blockexplorers } from "../util";
+import { blockexplorers, getChain, getToken } from "../util";
 import { CacheEntry } from "src/types/core.ts";
 import { CalldataWithDescription } from "src/types/tx.ts";
 import { sha256, toHex } from "viem";
+import {
+  getActiveMarkets,
+  PendleActiveMarkets,
+} from "src/api/market/pendle.ts";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -50,7 +54,29 @@ export class LevvaService extends Service implements ILevvaService {
     logger.info("*** Stopping levva service instance ***");
   }
 
-  formatToken(token: { symbol: string; name: string; address?: string; decimals: number; info?: Record<string, any>; }) {
+  async getAvailableTokens(params: { chainId: number }) {
+    const chain = getChain(params.chainId);
+    const tokens = await getToken(this.runtime, { chainId: params.chainId });
+
+    tokens.push({
+      symbol: chain.nativeCurrency.symbol,
+      name: chain.nativeCurrency.name,
+      decimals: chain.nativeCurrency.decimals,
+      address: undefined,
+      info: undefined,
+      chainId: params.chainId,
+    });
+
+    return tokens;
+  }
+
+  formatToken(token: {
+    symbol: string;
+    name: string;
+    address?: string;
+    decimals: number;
+    info?: Record<string, any>;
+  }) {
     return `${token.symbol}(${token.name}) - ${token.address ? `Deployed as ${token.address}` : "Native token"}. Decimals: ${token.decimals}.${token.info ? ` Additional Info: ${JSON.stringify(token.info)}` : ""}`;
   }
 
@@ -211,6 +237,33 @@ Your response should include the valid JSON block and nothing else.
     return feed?.topics ?? [];
   }
   // -- End of Crypto news --
+
+  async getPendleMarkets(params: { chainId: number }) {
+    const ttl = 3600000;
+    const cacheKey = `pendle:markets:${params.chainId}`;
+    const cached =
+      await this.runtime.getCache<CacheEntry<PendleActiveMarkets>>(cacheKey);
+
+    if (cached?.timestamp && Date.now() - cached.timestamp < ttl) {
+      return cached.value;
+    }
+
+    const markets = await getActiveMarkets(params.chainId);
+
+    if (!markets.success) {
+      console.error("Failed to get pendle markets", markets.error);
+      throw new Error("Failed to get pendle markets");
+    }
+
+    const value = markets.data.markets;
+
+    await this.runtime.setCache(cacheKey, {
+      timestamp: Date.now(),
+      value,
+    });
+
+    return value;
+  }
 
   async createCalldata(
     calls: CalldataWithDescription[]

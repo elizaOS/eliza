@@ -238,6 +238,8 @@ export class BrowserService extends Service {
         throw new Error("Failed to load the page");
       }
 
+      logger.info(`Url: ${url}\nStatus: ${response.status()}\nContent: ${await response.text()}`);
+
       const content =
         type === "html"
           ? // @ts-expect-error accesses dom

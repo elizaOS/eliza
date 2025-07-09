@@ -46,23 +46,14 @@ export const levvaProvider: Provider = {
     const service = runtime.getService<ILevvaService>(
       LEVVA_SERVICE.LEVVA_COMMON
     );
-    const chain = getChain(chainId);
-    const tokens = await getToken(runtime, { chainId });
 
-    tokens.push({
-      symbol: chain.nativeCurrency.symbol,
-      name: chain.nativeCurrency.name,
-      decimals: chain.nativeCurrency.decimals,
-      address: undefined,
-      info: undefined,
-      chainId,
-    });
-
+    const tokens = await service.getAvailableTokens({ chainId });
     const tokenSymbols = tokens.map((token) => token.symbol);
     const addressText = `Found levva user with address ${user.address}.`;
 
     return {
-      text: `${addressText} ${prompts}
+      text: `${prompts}
+${addressText}
 Known token symbols: ${tokenSymbols.join(", ")}.`,
       data: {
         chainId,
@@ -70,6 +61,7 @@ Known token symbols: ${tokenSymbols.join(", ")}.`,
         tokens
       },
       values: {
+        user: addressText,
         tokens: tokenSymbols,
       },
     };
