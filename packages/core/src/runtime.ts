@@ -516,6 +516,20 @@ export class AgentRuntime implements IAgentRuntime {
     this.evaluators.push(evaluator);
   }
 
+  // Helper functions for immutable action plan updates
+  private updateActionPlan(plan: any, updates: Partial<any>): any {
+    return { ...plan, ...updates };
+  }
+
+  private updateActionStep(plan: any, index: number, stepUpdates: Partial<any>): any {
+    return {
+      ...plan,
+      steps: plan.steps.map((step: any, i: number) => 
+        i === index ? { ...step, ...stepUpdates } : step
+      )
+    };
+  }
+
   async processActions(
     message: Memory,
     responses: Memory[],
@@ -586,9 +600,9 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
       for (const responseAction of actions) {
-        // Update current step in plan
+        // Update current step in plan immutably
         if (actionPlan) {
-          actionPlan.currentStep = actionIndex + 1;
+          actionPlan = this.updateActionPlan(actionPlan, { currentStep: actionIndex + 1 });
         }
 
         // Compose state with previous action results and plan
@@ -654,10 +668,12 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMsg = `No action found for: ${responseAction}`;
           this.logger.error(errorMsg);
 
-          // Update plan with error
+          // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = errorMsg;
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMsg
+            });
           }
 
           const actionMemory: Memory = {
@@ -681,10 +697,12 @@ export class AgentRuntime implements IAgentRuntime {
         if (!action.handler) {
           this.logger.error(`Action ${action.name} has no handler.`);
 
-          // Update plan with error
+          // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = 'No handler';
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: 'No handler'
+            });
           }
 
           actionIndex++;
@@ -741,18 +759,26 @@ export class AgentRuntime implements IAgentRuntime {
           let actionResult: ActionResult | null = null;
 
           if (!isLegacyReturn) {
-            // Ensure we have an ActionResult
-            actionResult =
+            // Ensure we have an ActionResult with required success field
+            if (
               typeof result === 'object' &&
               result !== null &&
               ('values' in result || 'data' in result || 'text' in result)
-                ? (result as ActionResult)
-                : {
-                    data: {
-                      actionName: action.name,
-                      legacyResult: result,
-                    },
-                  };
+            ) {
+              // Ensure success field exists with default true
+              actionResult = {
+                success: true, // Default to true if not specified
+                ...result
+              } as ActionResult;
+            } else {
+              actionResult = {
+                success: true, // Default success for legacy results
+                data: {
+                  actionName: action.name,
+                  legacyResult: result,
+                },
+              };
+            }
 
             actionResults.push(actionResult);
 
@@ -769,9 +795,26 @@ export class AgentRuntime implements IAgentRuntime {
               };
             }
 
-            // Store in working memory (in state data)
+            // Store in working memory (in state data) with cleanup
             if (actionResult && accumulatedState.data) {
               if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
+              
+              // Clean up old entries if we're at the limit
+              const MAX_WORKING_MEMORY_ENTRIES = 50;
+              const entries = Object.entries(accumulatedState.data.workingMemory);
+              if (entries.length >= MAX_WORKING_MEMORY_ENTRIES) {
+                // Sort by timestamp (newest first) and keep only the most recent entries
+                const sorted = entries.sort((a, b) => {
+                  const timestampA = (a[1] as any).timestamp || 0;
+                  const timestampB = (b[1] as any).timestamp || 0;
+                  return timestampB - timestampA;
+                });
+                // Keep the most recent MAX_WORKING_MEMORY_ENTRIES - 1 to make room for the new entry
+                accumulatedState.data.workingMemory = Object.fromEntries(
+                  sorted.slice(0, MAX_WORKING_MEMORY_ENTRIES - 1)
+                );
+              }
+              
               accumulatedState.data.workingMemory[`action_${responseAction}_${Date.now()}`] = {
                 actionName: action.name,
                 result: actionResult,
@@ -779,10 +822,12 @@ export class AgentRuntime implements IAgentRuntime {
               };
             }
 
-            // Update plan with success
+            // Update plan with success immutably
             if (actionPlan && actionPlan.steps[actionIndex]) {
-              actionPlan.steps[actionIndex].status = 'completed';
-              actionPlan.steps[actionIndex].result = actionResult;
+              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+                status: 'completed',
+                result: actionResult
+              });
             }
           }
 
@@ -867,6 +912,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Create error result
           const errorResult: ActionResult = {
+            success: false, // Required field
             data: {
               actionName: action.name,
               error: errorMessage,

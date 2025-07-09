@@ -154,8 +154,8 @@ export interface ActionResult {
   /** Data payload containing action-specific results */
   data?: Record<string, any>;
 
-  /** Whether the action succeeded */
-  success?: boolean;
+  /** Whether the action succeeded - defaults to true */
+  success: boolean;
 
   /** Error information if the action failed */
   error?: string | Error;
@@ -171,4 +171,14 @@ export interface ActionContext {
 
   /** Get a specific previous result by action name */
   getPreviousResult?: (actionName: string) => ActionResult | undefined;
+}
+
+/**
+ * Helper function to create ActionResult with proper defaults
+ */
+export function createActionResult(partial: Partial<ActionResult> = {}): ActionResult {
+  return {
+    success: true, // Default to success
+    ...partial
+  };
 }
