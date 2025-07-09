@@ -73,7 +73,7 @@ export const actionStateProvider: Provider = {
       const formattedResults = actionResults
         .map((result: any, index: number) => {
           const actionName = result.data?.actionName || 'Unknown Action';
-          const success = result.success !== false;
+          const success = result.success; // Now required field
           const status = success ? 'Success' : 'Failed';
 
           let resultText = `**${index + 1}. ${actionName}** - ${status}`;
@@ -200,8 +200,8 @@ export const actionStateProvider: Provider = {
         hasActionPlan: !!actionPlan,
         currentActionStep: actionPlan?.currentStep || 0,
         totalActionSteps: actionPlan?.totalSteps || 0,
-        completedActions: actionResults.filter((r: any) => r.success !== false).length,
-        failedActions: actionResults.filter((r: any) => r.success === false).length,
+        completedActions: actionResults.filter((r: any) => r.success).length,
+        failedActions: actionResults.filter((r: any) => !r.success).length,
       },
       text: allText || 'No action state available',
     };

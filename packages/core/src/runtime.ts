@@ -1,4 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
+
+// Interface for working memory entries
+interface WorkingMemoryEntry {
+  actionName: string;
+  result: ActionResult;
+  timestamp: number;
+}
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
@@ -119,6 +126,7 @@ export class AgentRuntime implements IAgentRuntime {
       timestamp: number;
     }>;
   };
+  private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
 
   constructor(opts: {
     conversationLength?: number;
@@ -164,6 +172,13 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
     this.currentRunId = undefined; // Initialize run ID tracker
+    
+    // Set max working memory entries from settings or environment
+    if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    }
   }
 
   /**
@@ -516,6 +531,25 @@ export class AgentRuntime implements IAgentRuntime {
     this.evaluators.push(evaluator);
   }
 
+  // Helper functions for immutable action plan updates
+  private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
+    return { ...plan, ...updates };
+  }
+
+  private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T & { steps: S[] } {
+    // Add bounds checking
+    if (!plan.steps || index < 0 || index >= plan.steps.length) {
+      this.logger.warn(`Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`);
+      return plan;
+    }
+    return {
+      ...plan,
+      steps: plan.steps.map((step: S, i: number) => 
+        i === index ? { ...step, ...stepUpdates } : step
+      )
+    };
+  }
+
   async processActions(
     message: Memory,
     responses: Memory[],
@@ -586,9 +620,9 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
       for (const responseAction of actions) {
-        // Update current step in plan
+        // Update current step in plan immutably
         if (actionPlan) {
-          actionPlan.currentStep = actionIndex + 1;
+          actionPlan = this.updateActionPlan(actionPlan, { currentStep: actionIndex + 1 });
         }
 
         // Compose state with previous action results and plan
@@ -654,10 +688,12 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMsg = `No action found for: ${responseAction}`;
           this.logger.error(errorMsg);
 
-          // Update plan with error
+          // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = errorMsg;
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMsg
+            });
           }
 
           const actionMemory: Memory = {
@@ -681,10 +717,12 @@ export class AgentRuntime implements IAgentRuntime {
         if (!action.handler) {
           this.logger.error(`Action ${action.name} has no handler.`);
 
-          // Update plan with error
+          // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = 'No handler';
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: 'No handler'
+            });
           }
 
           actionIndex++;
@@ -741,18 +779,26 @@ export class AgentRuntime implements IAgentRuntime {
           let actionResult: ActionResult | null = null;
 
           if (!isLegacyReturn) {
-            // Ensure we have an ActionResult
-            actionResult =
+            // Ensure we have an ActionResult with required success field
+            if (
               typeof result === 'object' &&
               result !== null &&
               ('values' in result || 'data' in result || 'text' in result)
-                ? (result as ActionResult)
-                : {
-                    data: {
-                      actionName: action.name,
-                      legacyResult: result,
-                    },
-                  };
+            ) {
+              // Ensure success field exists with default true
+              actionResult = {
+                success: true, // Default to true if not specified
+                ...result
+              } as ActionResult;
+            } else {
+              actionResult = {
+                success: true, // Default success for legacy results
+                data: {
+                  actionName: action.name,
+                  legacyResult: result,
+                },
+              };
+            }
 
             actionResults.push(actionResult);
 
@@ -769,20 +815,43 @@ export class AgentRuntime implements IAgentRuntime {
               };
             }
 
-            // Store in working memory (in state data)
+            // Store in working memory (in state data) with cleanup
             if (actionResult && accumulatedState.data) {
               if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
-              accumulatedState.data.workingMemory[`action_${responseAction}_${Date.now()}`] = {
+              
+              // Clean up old entries if we're at the limit
+              const entries = Object.entries(accumulatedState.data.workingMemory);
+              if (entries.length >= this.maxWorkingMemoryEntries) {
+                // Sort by timestamp (newest first) and keep only the most recent entries
+                const sorted = entries.sort((a, b) => {
+                  const entryA = a[1] as WorkingMemoryEntry | null;
+                  const entryB = b[1] as WorkingMemoryEntry | null;
+                  const timestampA = entryA?.timestamp ?? 0;
+                  const timestampB = entryB?.timestamp ?? 0;
+                  return timestampB - timestampA;
+                });
+                // Keep the most recent entries - 1 to make room for the new entry
+                accumulatedState.data.workingMemory = Object.fromEntries(
+                  sorted.slice(0, this.maxWorkingMemoryEntries - 1)
+                );
+              }
+              
+              // Store in working memory with UUID to prevent collisions
+              const memoryKey = `action_${responseAction}_${uuidv4()}`;
+              const memoryEntry: WorkingMemoryEntry = {
                 actionName: action.name,
                 result: actionResult,
-                timestamp: Date.now(),
+                timestamp: Date.now()
               };
+              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
             }
 
-            // Update plan with success
+            // Update plan with success immutably
             if (actionPlan && actionPlan.steps[actionIndex]) {
-              actionPlan.steps[actionIndex].status = 'completed';
-              actionPlan.steps[actionIndex].result = actionResult;
+              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+                status: 'completed',
+                result: actionResult
+              });
             }
           }
 
@@ -856,10 +925,12 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
 
-          // Update plan with error
+          // Update plan with error using immutable pattern
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = errorMessage;
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMessage
+            });
           }
 
           // Clear action context on error
@@ -867,6 +938,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Create error result
           const errorResult: ActionResult = {
+            success: false, // Required field
             data: {
               actionName: action.name,
               error: errorMessage,
