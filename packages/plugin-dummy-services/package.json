@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-dummy-services",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.1.7",
+    "@elizaos/core": "1.1.8",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
@@ -45,7 +45,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "1ef5379a22a2007dd0ddee7ed06243263c82c225",
+  "gitHead": "9cead39b49d63ad57bcdb25cb730656b8948a84b",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
