@@ -90,9 +90,10 @@ type PageContent = {
  */
 export class BrowserService extends Service {
   private browser: Browser | undefined;
-  private context: BrowserContext | undefined;
+  private contexts: Record<string, BrowserContext> = {};
   // private captchaSolver: CaptchaSolver;
   private cacheKey = "content/browser";
+  private userAgent: string = "";
 
   static serviceType: ServiceTypeName = ServiceType.BROWSER;
   capabilityDescription =
@@ -106,7 +107,6 @@ export class BrowserService extends Service {
     super();
     this.runtime = runtime;
     this.browser = undefined;
-    this.context = undefined;
     // this.captchaSolver = new CaptchaSolver(runtime.getSetting('CAPSOLVER_API_KEY') || '');
   }
 
@@ -149,42 +149,80 @@ export class BrowserService extends Service {
       });
 
       const platform = process.platform;
-      let userAgent = "";
 
       // Change the user agent to match the platform to reduce bot detection
       switch (platform) {
         case "darwin":
-          userAgent =
+          this.userAgent =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
           break;
         case "win32":
-          userAgent =
+          this.userAgent =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
           break;
         case "linux":
-          userAgent =
+          this.userAgent =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
           break;
         default:
-          userAgent =
+          this.userAgent =
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
       }
 
+      /*
       this.context = await this.browser.newContext({
         userAgent,
         acceptDownloads: false,
       });
+      */
     }
+  }
+
+  private async getContext(proxy?: {
+    ip: string;
+    port: string;
+    username?: string;
+    password?: string;
+  }) {
+    let key = "default";
+    let proxyOptions:
+      | { server: string; username?: string; password?: string }
+      | undefined;
+
+    if (proxy) {
+      key = `${proxy.ip}:${proxy.port}`;
+      console.log("using proxy", key);
+
+      proxyOptions = {
+        server: `http://${proxy.ip}:${proxy.port}`,
+        username: proxy.username,
+        password: proxy.password,
+      };
+    }
+
+    if (this.contexts[key]) {
+      return this.contexts[key];
+    }
+
+    const context = await this.browser.newContext({
+      userAgent: this.userAgent,
+      acceptDownloads: false,
+      proxy: proxyOptions,
+    });
+
+    this.contexts[key] = context;
+    return context;
   }
 
   /**
    * Asynchronously stops the browser and context if they are currently running.
    */
   async stop() {
-    if (this.context) {
-      await this.context.close();
-      this.context = undefined;
+    for (const context in this.contexts) {
+      await this.contexts[context].close();
+      delete this.contexts[context];
     }
+
     if (this.browser) {
       await this.browser.close();
       this.browser = undefined;
@@ -210,35 +248,58 @@ export class BrowserService extends Service {
   async processPageContent(
     url: string,
     getPrompt: (content: string) => Promise<string>,
-    type: "html" | "text" = "html"
+    type: "html" | "text" = "html",
+    proxies: {
+      ip: string;
+      port: string;
+      login?: string;
+      password?: string;
+    }[] = []
   ) {
     await this.initializeBrowser();
 
     let page: Page | undefined;
 
+    for (let i = 0; i < proxies.length; i++) {
+      const context = await this.getContext(proxies[i]);
+
+      try {
+        if (!context) {
+          logger.log(
+            "Browser context not initialized. Call initializeBrowser() first."
+          );
+          throw new Error("Browser context not initialized");
+        }
+
+        page = await context.newPage();
+
+        // Enable stealth mode
+        await page.setExtraHTTPHeaders({
+          "Accept-Language": "en-US,en;q=0.9",
+        });
+
+        const response = await page.goto(url, { waitUntil: "networkidle" });
+
+        if (!response) {
+          logger.error("Failed to load the page");
+          throw new Error("Failed to load the page");
+        }
+
+        if (response.status() === 200) {
+          break;
+        }
+
+        await page.close();
+        page = undefined;
+      } catch (error) {
+        logger.error("Error fetching page content", error);
+      }
+    }
+
     try {
-      if (!this.context) {
-        logger.log(
-          "Browser context not initialized. Call initializeBrowser() first."
-        );
-        throw new Error("Browser context not initialized");
+      if (!page) {
+        throw new Error("Page not initialized");
       }
-
-      page = await this.context.newPage();
-
-      // Enable stealth mode
-      await page.setExtraHTTPHeaders({
-        "Accept-Language": "en-US,en;q=0.9",
-      });
-
-      const response = await page.goto(url, { waitUntil: "networkidle" });
-
-      if (!response) {
-        logger.error("Failed to load the page");
-        throw new Error("Failed to load the page");
-      }
-
-      logger.info(`Url: ${url}\nStatus: ${response.status()}\nContent: ${await response.text()}`);
 
       const content =
         type === "html"
@@ -248,6 +309,7 @@ export class BrowserService extends Service {
             await page.evaluate(() => document.body.innerText);
 
       const prompt = await getPrompt(content);
+
       return this.runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt,
       });
@@ -294,14 +356,16 @@ export class BrowserService extends Service {
     let page: Page | undefined;
 
     try {
-      if (!this.context) {
+      const context = await this.getContext();
+
+      if (!context) {
         logger.log(
           "Browser context not initialized. Call initializeBrowser() first."
         );
         throw new Error("Browser context not initialized");
       }
 
-      page = await this.context.newPage();
+      page = await context.newPage();
 
       // Enable stealth mode
       await page.setExtraHTTPHeaders({

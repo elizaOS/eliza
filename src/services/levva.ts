@@ -9,15 +9,18 @@ import { LEVVA_SERVICE } from "../constants/enum.ts";
 import { ILevvaService } from "../types/service.ts";
 import { BrowserService } from "./browser.ts";
 import { blockexplorers, getChain, getToken } from "../util";
-import { CacheEntry } from "src/types/core.ts";
-import { CalldataWithDescription } from "src/types/tx.ts";
+import { CacheEntry } from "../types/core.ts";
+import { CalldataWithDescription } from "../types/tx.ts";
 import { sha256, toHex } from "viem";
-import {
-  getActiveMarkets,
-  PendleActiveMarkets,
-} from "src/api/market/pendle.ts";
+import { getActiveMarkets, PendleActiveMarkets } from "../api/market/pendle.ts";
 
 const REQUIRED_PLUGINS = ["levva"];
+
+// todo config
+const PROXIES = [
+  { ip: "46.8.5.131", port: "8000", username: "FCCWKQ", password: "a7CxRa" },
+  { ip: "45.83.9.114", port: "8000", username: "FCCWKQ", password: "a7CxRa" },
+];
 
 function checkPlugins(runtime: IAgentRuntime) {
   const set = new Set(runtime.plugins.map((plugin) => plugin.name));
@@ -86,6 +89,7 @@ export class LevvaService extends Service implements ILevvaService {
     const browser = await this.runtime.getService<BrowserService>(
       ServiceType.BROWSER
     );
+
     const explorer = blockexplorers.get(params.chainId);
 
     if (!explorer) {
@@ -111,10 +115,12 @@ export class LevvaService extends Service implements ILevvaService {
       return cached.value;
     }
 
-    const portfolio = await browser.processPageContent(url, async (html) => {
-      const begin = html.indexOf("<!-- Content");
-      const end = html.indexOf("<!-- End Content");
-      return `<task>analyze given html and extract the wallet assets</task>
+    const portfolio = await browser.processPageContent(
+      url,
+      async (html) => {
+        const begin = html.indexOf("<!-- Content");
+        const end = html.indexOf("<!-- End Content");
+        return `<task>analyze given html and extract the wallet assets</task>
         <html>
           ${html.slice(begin, end)}
         </html>
@@ -148,7 +154,10 @@ export class LevvaService extends Service implements ILevvaService {
           }
         </output>
         `;
-    });
+      },
+      "html",
+      PROXIES
+    );
 
     // todo type check
     const assets: {
