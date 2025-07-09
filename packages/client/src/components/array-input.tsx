@@ -80,14 +80,18 @@ type ArrayInputProps = {
 export default function ArrayInput({ title, data, onChange }: ArrayInputProps) {
   const [inputValue, setInputValue] = useState('');
 
+  const addTag = () => {
+    const trimmedValue = inputValue.trim();
+    if (trimmedValue && !data.includes(trimmedValue)) {
+      onChange([...data, trimmedValue]);
+      setInputValue('');
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      const trimmedValue = inputValue.trim();
-      if (trimmedValue && !data.includes(trimmedValue)) {
-        onChange([...data, trimmedValue]);
-        setInputValue('');
-      }
+      addTag();
     }
   };
 
@@ -104,13 +108,7 @@ export default function ArrayInput({ title, data, onChange }: ArrayInputProps) {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          onAdd={() => {
-            const trimmedValue = inputValue.trim();
-            if (trimmedValue && !data.includes(trimmedValue)) {
-              onChange([...data, trimmedValue]);
-              setInputValue('');
-            }
-          }}
+          onAdd={addTag}
         />
       </div>
     </div>
