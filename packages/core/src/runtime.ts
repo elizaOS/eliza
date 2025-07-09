@@ -1,4 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
+
+// Interface for working memory entries
+interface WorkingMemoryEntry {
+  actionName: string;
+  result: ActionResult;
+  timestamp: number;
+}
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
@@ -119,6 +126,7 @@ export class AgentRuntime implements IAgentRuntime {
       timestamp: number;
     }>;
   };
+  private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
 
   constructor(opts: {
     conversationLength?: number;
@@ -164,6 +172,13 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
     this.currentRunId = undefined; // Initialize run ID tracker
+    
+    // Set max working memory entries from settings or environment
+    if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    }
   }
 
   /**
@@ -522,6 +537,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T & { steps: S[] } {
+    // Add bounds checking
+    if (!plan.steps || index < 0 || index >= plan.steps.length) {
+      this.logger.warn(`Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`);
+      return plan;
+    }
     return {
       ...plan,
       steps: plan.steps.map((step: S, i: number) => 
@@ -800,26 +820,30 @@ export class AgentRuntime implements IAgentRuntime {
               if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
               
               // Clean up old entries if we're at the limit
-              const MAX_WORKING_MEMORY_ENTRIES = 50;
               const entries = Object.entries(accumulatedState.data.workingMemory);
-              if (entries.length >= MAX_WORKING_MEMORY_ENTRIES) {
+              if (entries.length >= this.maxWorkingMemoryEntries) {
                 // Sort by timestamp (newest first) and keep only the most recent entries
                 const sorted = entries.sort((a, b) => {
-                  const timestampA = (a[1] as any).timestamp || 0;
-                  const timestampB = (b[1] as any).timestamp || 0;
+                  const entryA = a[1] as WorkingMemoryEntry | null;
+                  const entryB = b[1] as WorkingMemoryEntry | null;
+                  const timestampA = entryA?.timestamp ?? 0;
+                  const timestampB = entryB?.timestamp ?? 0;
                   return timestampB - timestampA;
                 });
-                // Keep the most recent MAX_WORKING_MEMORY_ENTRIES - 1 to make room for the new entry
+                // Keep the most recent entries - 1 to make room for the new entry
                 accumulatedState.data.workingMemory = Object.fromEntries(
-                  sorted.slice(0, MAX_WORKING_MEMORY_ENTRIES - 1)
+                  sorted.slice(0, this.maxWorkingMemoryEntries - 1)
                 );
               }
               
-              accumulatedState.data.workingMemory[`action_${responseAction}_${Date.now()}`] = {
+              // Store in working memory with UUID to prevent collisions
+              const memoryKey = `action_${responseAction}_${uuidv4()}`;
+              const memoryEntry: WorkingMemoryEntry = {
                 actionName: action.name,
                 result: actionResult,
-                timestamp: Date.now(),
+                timestamp: Date.now()
               };
+              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
             }
 
             // Update plan with success immutably

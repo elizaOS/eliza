@@ -113,10 +113,12 @@ describe('Action Chaining Fixes', () => {
       const entries = Object.entries(workingMemory);
       expect(entries.length).toBe(60);
 
-      // Sort by timestamp (newest first)
+      // Sort by timestamp (newest first) with proper type safety
       const sorted = entries.sort((a, b) => {
-        const timestampA = (a[1] as any).timestamp || 0;
-        const timestampB = (b[1] as any).timestamp || 0;
+        const entryA = a[1] as { timestamp?: number } | null;
+        const entryB = b[1] as { timestamp?: number } | null;
+        const timestampA = entryA?.timestamp ?? 0;
+        const timestampB = entryB?.timestamp ?? 0;
         return timestampB - timestampA;
       });
 
@@ -132,6 +134,68 @@ describe('Action Chaining Fixes', () => {
       expect(cleanedKeys).toContain('action_59');
       expect(cleanedKeys).toContain('action_50');
       expect(cleanedKeys).not.toContain('action_9'); // Old entry should be removed
+    });
+  });
+  
+  describe('Bounds Checking', () => {
+    it('should handle updateActionStep with invalid indices', () => {
+      // Mock logger
+      const warnCalls: string[] = [];
+      const mockLogger = { 
+        warn: (msg: string) => { warnCalls.push(msg); }
+      };
+      
+      // Helper function that mimics the runtime's updateActionStep
+      const updateActionStep = <T, S>(
+        plan: T & { steps: S[] }, 
+        index: number, 
+        stepUpdates: Partial<S>,
+        logger: typeof mockLogger
+      ): T & { steps: S[] } => {
+        if (!plan.steps || index < 0 || index >= plan.steps.length) {
+          logger.warn(`Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`);
+          return plan;
+        }
+        return {
+          ...plan,
+          steps: plan.steps.map((step: S, i: number) => 
+            i === index ? { ...step, ...stepUpdates } : step
+          )
+        };
+      };
+      
+      // Test data
+      const plan = {
+        name: 'test-plan',
+        steps: [
+          { status: 'pending', action: 'step1' },
+          { status: 'pending', action: 'step2' },
+          { status: 'pending', action: 'step3' }
+        ]
+      };
+      
+      // Test valid index
+      const updated1 = updateActionStep(plan, 1, { status: 'completed' }, mockLogger);
+      expect(updated1.steps[1].status).toBe('completed');
+      expect(warnCalls.length).toBe(0);
+      
+      // Test negative index
+      const updated2 = updateActionStep(plan, -1, { status: 'failed' }, mockLogger);
+      expect(updated2).toBe(plan); // Should return original plan
+      expect(warnCalls[0]).toBe('Invalid step index: -1 for plan with 3 steps');
+      
+      // Test index out of bounds
+      warnCalls.length = 0; // Clear warnings
+      const updated3 = updateActionStep(plan, 5, { status: 'failed' }, mockLogger);
+      expect(updated3).toBe(plan); // Should return original plan
+      expect(warnCalls[0]).toBe('Invalid step index: 5 for plan with 3 steps');
+      
+      // Test with null steps
+      warnCalls.length = 0; // Clear warnings
+      const planWithNullSteps = { name: 'test', steps: null as any };
+      const updated4 = updateActionStep(planWithNullSteps, 0, { status: 'completed' }, mockLogger);
+      expect(updated4).toBe(planWithNullSteps);
+      expect(warnCalls[0]).toBe('Invalid step index: 0 for plan with 0 steps');
     });
   });
 });
