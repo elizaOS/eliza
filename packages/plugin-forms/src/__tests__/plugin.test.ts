@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'bun:test';
 import formsPlugin from '../index';
 import { createFormAction } from '../actions/create-form';
 import { updateFormAction } from '../actions/update-form';
