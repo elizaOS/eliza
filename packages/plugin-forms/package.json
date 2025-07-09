@@ -52,8 +52,6 @@
   "peerDependencies": {},
   "devDependencies": {
     "@elizaos/cli": "workspace:*",
-    "@elizaos/plugin-e2b": "workspace:*",
-    "@elizaos/plugin-github": "workspace:*",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "typescript": "5.8.3",
