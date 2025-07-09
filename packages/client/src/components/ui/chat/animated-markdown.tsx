@@ -23,10 +23,12 @@ export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
   const [visibleText, setVisibleText] = React.useState(shouldAnimate ? '' : children);
 
   React.useEffect(() => {
-    if (!shouldAnimate) {
+    if (!shouldAnimate || children.length === 0 || maxDurationMs <= 0) {
       setVisibleText(children);
       return;
     }
+
+    setVisibleText('');
 
     const TYPING_INTERVAL = 20;
     const totalChars = children.length;
