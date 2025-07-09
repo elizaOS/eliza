@@ -62,13 +62,10 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
     }
   }
 
-  logger.debug(`[CLI] Resolved client dist path: ${cliDistPath}`);
-
   const server = new AgentServer();
   await server.initialize({
     dataDir: pgliteDataDir,
     postgresUrl: postgresUrl || undefined,
-    clientPath: cliDistPath,
   });
 
   server.startAgent = (character) => startAgent(character, server);
