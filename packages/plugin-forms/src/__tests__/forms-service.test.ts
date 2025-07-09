@@ -1,6 +1,6 @@
 import { asUUID, IAgentRuntime, type Memory } from '@elizaos/core';
+import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { v4 as uuidv4 } from 'uuid';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FormsService } from '../services/forms-service';
 import type { Form, FormTemplate } from '../types';
 
@@ -43,29 +43,29 @@ const createTypedMockRuntime = (): IAgentRuntime => {
     imageVisionModelProvider: 'openai',
     character: { name: 'Test Agent', modelProvider: 'openai' },
     cacheManager: {
-      get: vi.fn(),
-      set: vi.fn(),
-      delete: vi.fn(),
+      get: mock(),
+      set: mock(),
+      delete: mock(),
     },
     fetch: null,
-    initialize: vi.fn().mockResolvedValue(undefined),
-    registerMemoryManager: vi.fn(),
-    getMemoryManager: vi.fn(),
-    getService: vi.fn(),
-    registerService: vi.fn(),
-    getSetting: vi.fn(),
-    getConversationLength: vi.fn().mockReturnValue(0),
-    processActions: vi.fn().mockResolvedValue(undefined),
-    evaluate: vi.fn().mockResolvedValue(null),
-    ensureParticipantExists: vi.fn().mockResolvedValue(undefined),
-    ensureUserExists: vi.fn().mockResolvedValue(undefined),
-    registerAction: vi.fn(),
-    ensureConnection: vi.fn().mockResolvedValue(undefined),
-    ensureParticipantInRoom: vi.fn().mockResolvedValue(undefined),
-    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-    composeState: vi.fn().mockResolvedValue({}),
-    updateRecentMessageState: vi.fn().mockResolvedValue({}),
-    useModel: vi.fn().mockResolvedValue('Mock response'),
+    initialize: mock().mockResolvedValue(undefined),
+    registerMemoryManager: mock(),
+    getMemoryManager: mock(),
+    getService: mock(),
+    registerService: mock(),
+    getSetting: mock(),
+    getConversationLength: mock().mockReturnValue(0),
+    processActions: mock().mockResolvedValue(undefined),
+    evaluate: mock().mockResolvedValue(null),
+    ensureParticipantExists: mock().mockResolvedValue(undefined),
+    ensureUserExists: mock().mockResolvedValue(undefined),
+    registerAction: mock(),
+    ensureConnection: mock().mockResolvedValue(undefined),
+    ensureParticipantInRoom: mock().mockResolvedValue(undefined),
+    ensureRoomExists: mock().mockResolvedValue(undefined),
+    composeState: mock().mockResolvedValue({}),
+    updateRecentMessageState: mock().mockResolvedValue({}),
+    useModel: mock().mockResolvedValue('Mock response'),
   };
 
   return runtime as unknown as IAgentRuntime;
@@ -161,7 +161,7 @@ describe('FormsService', () => {
       const message = createMockMemory('My name is John Doe');
 
       // Mock the LLM to return specific values
-      (mockRuntime.useModel as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"name": "John Doe"}'
       );
 
@@ -207,7 +207,7 @@ describe('FormsService', () => {
       });
 
       // Update first step field
-      (mockRuntime.useModel as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"field1": "value1"}'
       );
       const result = await service.updateForm(multiStepForm.id, createMockMemory('value1'));
@@ -222,7 +222,7 @@ describe('FormsService', () => {
 
     it('should mark form as completed when all steps are done', async () => {
       // Fill all fields of contact form
-      (mockRuntime.useModel as ReturnType<typeof vi.fn>)
+      (mockRuntime.useModel as ReturnType<typeof mock>)
         .mockResolvedValueOnce('{"name": "John Doe"}')
         .mockResolvedValueOnce('{"email": "john@example.com"}');
 
@@ -396,7 +396,7 @@ describe('FormsService', () => {
 
       // The service should still set the value even for secret fields
       // but it would be masked in the provider
-      (mockRuntime.useModel as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      (mockRuntime.useModel as ReturnType<typeof mock>).mockResolvedValueOnce(
         '{"apiKey": "sk-12345"}'
       );
 
