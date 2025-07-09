@@ -23,31 +23,29 @@ export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
   const [visibleText, setVisibleText] = React.useState(shouldAnimate ? '' : children);
 
   React.useEffect(() => {
-    if (
-      !shouldAnimate || 
-      !children || 
-      children.length === 0 ||
-      maxDurationMs <= 0
-    ) {
+    if (!shouldAnimate || !children.trim()) {
       setVisibleText(children);
       return;
     }
+  
+    const safeDuration = Math.max(1000, maxDurationMs);
 
     setVisibleText('');
 
     const TYPING_INTERVAL = 20;
     const totalChars = children.length;
-    const totalSteps = Math.ceil(maxDurationMs / TYPING_INTERVAL);
+    const totalSteps = Math.ceil(safeDuration / TYPING_INTERVAL);
     const charsPerStep = Math.max(1, Math.ceil(totalChars / totalSteps));
 
-    let i = 0;
+
+    let visibleCharCount = 0;
     const interval = setInterval(() => {
-      i += charsPerStep;
-      if (i >= totalChars) {
+      visibleCharCount += charsPerStep;
+      if (visibleCharCount >= totalChars) {
         setVisibleText(children);
         clearInterval(interval);
       } else {
-        setVisibleText(children.slice(0, i));
+        setVisibleText(children.slice(0, visibleCharCount));
       }
     }, TYPING_INTERVAL);
 
