@@ -1,6 +1,8 @@
 {
-  "version": "1.1.7",
-  "packages": ["packages/*"],
+  "version": "1.1.8",
+  "packages": [
+    "packages/*"
+  ],
   "npmClient": "bun",
   "command": {
     "publish": {
