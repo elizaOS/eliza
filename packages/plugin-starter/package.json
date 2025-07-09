@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.19",
+  "version": "1.2.0",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -40,17 +40,16 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0",
+    "@elizaos/core": "1.1.6",
     "@tanstack/react-query": "^5.80.7",
     "clsx": "^2.1.1",
-    "tailwindcss": "^4.1.10",
     "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^4.1.10",
     "vite": "^6.3.5",
     "zod": "3.24.2"
   },
-  "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.0.0",
+    "@elizaos/cli": "1.1.6",
     "@tailwindcss/vite": "^4.1.10",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "dotenv": "16.4.5",

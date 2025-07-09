@@ -1185,13 +1185,7 @@ export default function Chat({
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
                         </span>
-                        <Button
-                          variant="ghost"
-                          size={'icon'}
-                          className="hidden md:inline-flex text-xs text-muted-foreground"
-                        >
-                          <ChevronDown />
-                        </Button>
+                        <ChevronDown className="hidden md:inline-flex size-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-[280px] sm:w-[320px]">

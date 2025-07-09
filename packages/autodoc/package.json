@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@elizaos/autodoc",
-  "version": "1.0.19",
+  "version": "1.2.0",
   "private": true,
   "description": "",
   "main": "dist/index.js",
@@ -29,17 +29,17 @@
     "@typescript-eslint/typescript-estree": "8.26.0",
     "dotenv": "^16.4.7",
     "langchain": "^0.3.7",
-    "yaml": "^2.3.4",
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
     "tsup": "8.5.0",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "yaml": "^2.3.4"
   },
   "devDependencies": {
-    "tsup": "8.5.0",
     "prettier": "3.5.3",
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
+    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"

@@ -6,7 +6,37 @@ import { executeInstallation, executeInstallationWithFallback } from './package-
 import { fetchPluginRegistry } from './plugin-discovery';
 import { normalizePluginName } from './registry';
 import { detectPluginContext } from './plugin-context';
-import { isGlobalInstallation } from './package-manager';
+
+/**
+ * Get the CLI's installation directory when running globally
+ * @returns {string|null} - The path to the CLI's directory or null if not found
+ */
+function getCliDirectory(): string | null {
+  try {
+    // Get the path to the running CLI script
+    const cliPath = process.argv[1];
+
+    // For global installations, this will be something like:
+    // /usr/local/lib/node_modules/@elizaos/cli/dist/index.js
+
+    if (cliPath.includes('node_modules/@elizaos/cli')) {
+      // Go up to the CLI package root
+      const cliDir = path.dirname(
+        cliPath.split('node_modules/@elizaos/cli')[0] + 'node_modules/@elizaos/cli'
+      );
+
+      // Verify this is actually the CLI directory
+      if (existsSync(path.join(cliDir, 'package.json'))) {
+        return cliDir;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.error('Failed to determine CLI directory:', error);
+    return null;
+  }
+}
 
 /**
  * Verifies if a plugin can be imported
@@ -106,12 +136,7 @@ export async function installPlugin(
     return false;
   }
 
-  // Check if CLI is running globally and warn the user
-  if (await isGlobalInstallation()) {
-    logger.warn(
-      'CLI is running from a global installation. Plugins will be installed to the local directory.'
-    );
-  }
+  const cliDir = getCliDirectory();
 
   // Direct GitHub installation
   if (packageName.startsWith('github:')) {
@@ -214,10 +239,10 @@ export async function installPlugin(
     }
   }
 
-  // If both npm approaches failed, try direct GitHub installation in the local directory
-  if (info.git?.repo) {
+  // If both npm approaches failed, try direct GitHub installation as final fallback
+  if (info.git?.repo && cliDir) {
     const spec = `github:${info.git.repo}${githubVersion ? `#${githubVersion}` : ''}`;
-    return await attemptInstallation(spec, '', cwd, 'in local directory', skipVerification);
+    return await attemptInstallation(spec, '', cliDir, 'in CLI directory', skipVerification);
   }
 
   logger.error(`Failed to install plugin ${packageName}`);
