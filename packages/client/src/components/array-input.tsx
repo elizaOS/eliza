@@ -61,7 +61,6 @@ const TagInput = ({ value, onChange, onKeyDown, onAdd }: TagInputProps) => (
     />
     {value.trim() && (
       <Button
-        variant="outline"
         size="sm"
         onClick={onAdd}
         className="absolute top-1/2 -translate-y-1/2 right-2 h-7 px-3"
