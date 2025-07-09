@@ -47,16 +47,29 @@ type TagInputProps = {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onAdd: () => void
 };
 
-const TagInput = ({ value, onChange, onKeyDown }: TagInputProps) => (
-  <Input
-    value={value}
-    onChange={onChange}
-    onKeyDown={onKeyDown}
-    placeholder="Type and press Enter to add..."
-    className={cn('bg-background', !value && 'text-muted-foreground')}
-  />
+const TagInput = ({ value, onChange, onKeyDown, onAdd }: TagInputProps) => (
+  <div className="relative">
+    <Input
+      value={value}
+      onChange={onChange}
+      onKeyDown={onKeyDown}
+      placeholder="Type and press Enter or click Add..."
+      className={cn('bg-background pr-16', !value && 'text-muted-foreground')}
+    />
+    {value.trim() && (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onAdd}
+        className="absolute top-1/2 -translate-y-1/2 right-2 h-7 px-3"
+      >
+        Add
+      </Button>
+    )}
+  </div>
 );
 
 type ArrayInputProps = {
@@ -92,6 +105,13 @@ export default function ArrayInput({ title, data, onChange }: ArrayInputProps) {
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onAdd={() => {
+            const trimmedValue = inputValue.trim();
+            if (trimmedValue && !data.includes(trimmedValue)) {
+              onChange([...data, trimmedValue]);
+              setInputValue('');
+            }
+          }}
         />
       </div>
     </div>
