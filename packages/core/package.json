@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.19",
+  "version": "1.2.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -75,5 +75,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "ebaf4b24102aa4c17c6d42108be13bf2cc1348f3"
 }

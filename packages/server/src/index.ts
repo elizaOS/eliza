@@ -11,6 +11,7 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
@@ -115,6 +116,7 @@ export interface ServerOptions {
   middlewares?: ServerMiddleware[];
   dataDir?: string;
   postgresUrl?: string;
+  clientPath?: string;
 }
 
 /**
@@ -147,6 +149,7 @@ export class AgentServer {
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
+  private clientPath?: string; // Optional path to client dist files
 
   public database!: DatabaseAdapter;
 
@@ -329,6 +332,11 @@ export class AgentServer {
    */
   private async initializeServer(options?: ServerOptions) {
     try {
+      // Store the client path if provided
+      if (options?.clientPath) {
+        this.clientPath = options.clientPath;
+      }
+
       // Initialize middleware and database
       this.app = express();
 
@@ -468,7 +476,6 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/agents/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
         (req: express.Request, res: express.Response) => {
           const agentId = req.params.agentId as string;
           const filename = req.params.filename as string;
@@ -504,7 +511,6 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
         (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
@@ -587,6 +593,7 @@ export class AgentServer {
       const staticOptions = {
         etag: true,
         lastModified: true,
+        fallthrough: true, // Allow non-existent files to pass through to the catch-all route
         setHeaders: (res: express.Response, filePath: string) => {
           // Set the correct content type for different file extensions
           const ext = extname(filePath).toLowerCase();
@@ -606,11 +613,138 @@ export class AgentServer {
         },
       };
 
+      // Resolve client path for both static serving and SPA fallback
+      let clientPath: string | null = null;
+
       // Conditionally serve static assets from the client dist path
-      // Client files are built into the CLI package's dist directory
+      // Client files are built into the server package's dist/client directory
       if (this.isWebUIEnabled) {
-        const clientPath = path.resolve(__dirname, '../../cli/dist');
-        this.app.use(express.static(clientPath, staticOptions));
+        // Try multiple locations to find the client dist files
+        const possiblePaths = [
+          // First priority: explicitly provided client path
+          this.clientPath,
+          // Primary location: server's own dist/client directory
+          path.resolve(__dirname, 'client'),
+          // Development: relative to server package (monorepo) - direct client build
+          path.resolve(__dirname, '../../client/dist'),
+          // Fallback: using require.resolve to find client package (if installed as dependency)
+          (() => {
+            try {
+              return path.resolve(
+                path.dirname(require.resolve('@elizaos/client/package.json')),
+                'dist'
+              );
+            } catch {
+              return null;
+            }
+          })(),
+          // Check if running from global CLI - look for client files in the same directory as the running process
+          (() => {
+            try {
+              // When running from server, check for client files relative to the server dist
+              if (process.argv[1]) {
+                const serverPath = path.dirname(process.argv[1]);
+                const possibleClientPath = path.join(serverPath, 'client');
+                if (existsSync(path.join(possibleClientPath, 'index.html'))) {
+                  return possibleClientPath;
+                }
+                // Also check in the same directory (for backwards compatibility)
+                if (existsSync(path.join(serverPath, 'index.html'))) {
+                  return serverPath;
+                }
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
+          })(),
+          // Global bun install: check global node_modules locations
+          (() => {
+            try {
+              // Try to find the global server installation via bun
+              const { execSync } = require('child_process');
+              // Bun stores global packages in ~/.bun/install/global/node_modules
+              const bunGlobalPath = path.join(
+                os.homedir(),
+                '.bun/install/global/node_modules/@elizaos/server/dist/client'
+              );
+              if (existsSync(path.join(bunGlobalPath, 'index.html'))) {
+                return bunGlobalPath;
+              }
+              // Also try npm root as fallback (some users might use npm)
+              try {
+                const npmRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+                const globalServerPath = path.join(npmRoot, '@elizaos/server/dist/client');
+                if (existsSync(path.join(globalServerPath, 'index.html'))) {
+                  return globalServerPath;
+                }
+              } catch {
+                // npm might not be installed
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
+          })(),
+          // Alternative global locations (common paths)
+          ...[
+            '/usr/local/lib/node_modules/@elizaos/server/dist/client',
+            '/usr/lib/node_modules/@elizaos/server/dist/client',
+            path.join(os.homedir(), '.npm-global/lib/node_modules/@elizaos/server/dist/client'),
+            // Check nvm installations
+            (() => {
+              try {
+                const nvmPath = path.join(os.homedir(), '.nvm/versions/node');
+                if (existsSync(nvmPath)) {
+                  const versions = fs.readdirSync(nvmPath);
+                  for (const version of versions) {
+                    const cliPath = path.join(
+                      nvmPath,
+                      version,
+                      'lib/node_modules/@elizaos/server/dist/client'
+                    );
+                    if (existsSync(path.join(cliPath, 'index.html'))) {
+                      return cliPath;
+                    }
+                  }
+                }
+              } catch {
+                // Ignore errors
+              }
+              return null;
+            })(),
+          ].filter(Boolean),
+        ].filter(Boolean);
+
+        // Log process information for debugging
+        logger.debug(`[STATIC] process.argv[0]: ${process.argv[0]}`);
+        logger.debug(`[STATIC] process.argv[1]: ${process.argv[1]}`);
+        logger.debug(`[STATIC] __dirname: ${__dirname}`);
+
+        for (const possiblePath of possiblePaths) {
+          if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {
+            clientPath = possiblePath;
+            logger.info(`[STATIC] Found client files at: ${clientPath}`);
+            break;
+          }
+        }
+
+        if (clientPath) {
+          // Store the resolved client path on the instance for use in the SPA fallback
+          this.clientPath = clientPath;
+          this.app.use(express.static(clientPath, staticOptions));
+          logger.info(`[STATIC] Serving static files from: ${clientPath}`);
+        } else {
+          logger.warn('[STATIC] Client dist path not found. Searched locations:');
+          possiblePaths.forEach((p) => {
+            if (p) logger.warn(`[STATIC]   - ${p}`);
+          });
+          logger.warn('[STATIC] The web UI will not be available.');
+          logger.warn(
+            '[STATIC] To fix this, ensure the client is built: cd packages/client && bun run build'
+          );
+          logger.warn('[STATIC] Then rebuild the server: cd packages/server && bun run build');
+        }
       }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
@@ -684,9 +818,40 @@ export class AgentServer {
           }
 
           // For all other routes, serve the SPA's index.html
-          // Client files are built into the CLI package's dist directory
-          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-          res.sendFile(path.join(cliDistPath, 'index.html'));
+          // Use the resolved clientPath (prefer local variable, fallback to instance variable)
+          const resolvedClientPath = clientPath || this.clientPath;
+
+          if (resolvedClientPath) {
+            const indexFilePath = path.join(resolvedClientPath, 'index.html');
+
+            // Verify the file exists before attempting to serve it
+            if (!existsSync(indexFilePath)) {
+              logger.error(`[STATIC] index.html not found at expected path: ${indexFilePath}`);
+              logger.error(`[STATIC] Client path was: ${resolvedClientPath}`);
+              res.status(404).send('Client application not found');
+              return;
+            }
+
+            // Use sendFile with the directory as root and filename separately
+            // This approach is more reliable for Express
+            res.sendFile('index.html', { root: resolvedClientPath }, (err) => {
+              if (err) {
+                logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
+                logger.warn(`[STATIC] Attempted root: ${resolvedClientPath}`);
+                logger.warn(`[STATIC] Full path was: ${indexFilePath}`);
+                logger.warn(`[STATIC] Error code: ${(err as any).code || 'unknown'}`);
+                if (!res.headersSent) {
+                  res.status(404).send('Client application not found');
+                }
+              } else {
+                logger.debug(`[STATIC] Successfully served index.html for route: ${req.path}`);
+              }
+            });
+          } else {
+            logger.warn('[STATIC] Client dist path not found in SPA fallback');
+            logger.warn('[STATIC] Neither local nor instance clientPath variables are set');
+            res.status(404).send('Client application not found');
+          }
         });
       } else {
         // Return 403 Forbidden for non-API routes when UI is disabled

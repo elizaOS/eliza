@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.19",
+  "version": "1.2.0",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -33,7 +33,7 @@
   },
   "scripts": {
     "start": "bun run build && node dist/index.js start",
-    "build": "bun run src/scripts/copy-templates.ts && bun x tsup && bun run src/scripts/copy-client-dist.ts",
+    "build": "bun run src/scripts/copy-templates.ts && bun x tsup",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -69,7 +69,7 @@
     "typescript": "5.8.3",
     "vite": "^6.3.5"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "gitHead": "ebaf4b24102aa4c17c6d42108be13bf2cc1348f3",
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.35",
     "@anthropic-ai/sdk": "^0.54.0",
