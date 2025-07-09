@@ -322,7 +322,7 @@ describe('Forms Plugin Integration Tests', () => {
       await updateFormAction.handler(mockRuntime, message, state, {}, callback);
 
       // Should handle the error gracefully
-      expect(responseText).toContain('Updated');
+      expect(responseText).toContain('No active forms to update');
     });
   });
 
