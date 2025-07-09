@@ -9,7 +9,7 @@ on:
     #   - "src/**/*.tsx"
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
-  
+
   # Allow manual triggering for when you specifically want a review
   workflow_dispatch:
 

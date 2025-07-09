@@ -37,7 +37,6 @@ elizaos create --help
 
 | Option              | Description                                                      |
 | ------------------- | ---------------------------------------------------------------- |
-| `-d, --dir <dir>`   | Installation directory (default: `.`)                            |
 | `-y, --yes`         | Skip confirmation and use defaults (default: `false`)            |
 | `-t, --type <type>` | Type of template to use (`project`, `plugin`, `agent`, or `tee`) |
 | `--template <name>` | Use a specific template by name (e.g., `default`, `minimal`)     |
@@ -123,14 +122,18 @@ elizaos create my-lean-project --no-install
 elizaos create my-repo-less-project --no-git
 ```
 
-### Custom Directory
+### Creating in a Specific Directory
+
+To create a project in a specific directory, navigate to that directory first:
 
 ```bash
-# Create in specific directory
-elizaos create -d ./my-projects/new-agent
+# Navigate to your desired directory
+cd ./my-projects
+elizaos create new-agent
 
-# Create plugin in specific directory
-elizaos create -t plugin -d ./plugins/my-plugin
+# For plugins
+cd ./plugins
+elizaos create -t plugin my-plugin
 ```
 
 </TabItem>

@@ -381,4 +381,111 @@ describe('ElizaOS Create Commands', () => {
       TEST_TIMEOUTS.INDIVIDUAL_TEST
     );
   });
+
+  describe('--dir Flag Removal (Breaking Change)', () => {
+    it('rejects --dir flag with helpful error message', async () => {
+      const result = expectCliCommandToFail(elizaosCmd, 'create my-project --dir /some/path');
+
+      expect(result.status).not.toBe(0);
+      // Check for various error patterns since the exact message might vary
+      const errorPatterns = [
+        '--dir flag is no longer supported',
+        'Unknown option',
+        'unknown option',
+        'Invalid option',
+        'dir',
+      ];
+
+      const hasError = errorPatterns.some((pattern) =>
+        result.output.toLowerCase().includes(pattern.toLowerCase())
+      );
+      expect(hasError).toBe(true);
+    });
+
+    it('rejects -d shorthand flag', async () => {
+      const result = expectCliCommandToFail(elizaosCmd, 'create my-project -d /some/path');
+
+      expect(result.status).not.toBe(0);
+      const errorPatterns = [
+        '-d flag is no longer supported',
+        'Unknown option',
+        'unknown option',
+        'Invalid option',
+      ];
+
+      const hasError = errorPatterns.some((pattern) =>
+        result.output.toLowerCase().includes(pattern.toLowerCase())
+      );
+      expect(hasError).toBe(true);
+    });
+
+    it(
+      'creates project in current directory without --dir flag',
+      async () => {
+        // Create a test subdirectory and navigate to it
+        const testSubDir = 'test-subdir';
+        crossPlatform.removeDir(testSubDir);
+        execSync(`mkdir ${testSubDir}`, getPlatformOptions({ stdio: 'ignore' }));
+
+        const originalDir = process.cwd();
+        process.chdir(testSubDir);
+
+        try {
+          const result = runCliCommandSilently(elizaosCmd, 'create my-current-dir-project --yes', {
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          });
+
+          // Check for success patterns
+          const successPatterns = [
+            'Project initialized successfully!',
+            'successfully initialized',
+            'Project created',
+            'created successfully',
+          ];
+
+          const hasSuccess = successPatterns.some((pattern) => result.includes(pattern));
+          expect(hasSuccess || existsSync('my-current-dir-project')).toBe(true);
+
+          // Verify project was created in current directory
+          expect(existsSync('my-current-dir-project')).toBe(true);
+          expect(existsSync('my-current-dir-project/package.json')).toBe(true);
+        } finally {
+          // Restore original directory
+          process.chdir(originalDir);
+        }
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+
+    it(
+      'migration guide: shows how to create in specific directory',
+      async () => {
+        // This test documents the migration path for users
+        // Before: elizaos create my-project --dir /path/to/directory
+        // After: cd /path/to/directory && elizaos create my-project
+
+        const testDir = 'migration-test-dir';
+        crossPlatform.removeDir(testDir);
+        execSync(`mkdir ${testDir}`, getPlatformOptions({ stdio: 'ignore' }));
+
+        const originalDir = process.cwd();
+
+        try {
+          // Navigate to desired directory first (migration approach)
+          process.chdir(testDir);
+
+          // Then create the project
+          const result = runCliCommandSilently(elizaosCmd, 'create migrated-project --yes', {
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          });
+
+          expect(existsSync('migrated-project')).toBe(true);
+          expect(existsSync('migrated-project/package.json')).toBe(true);
+        } finally {
+          process.chdir(originalDir);
+        }
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+  });
 });

@@ -14,6 +14,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import clientLogger from '@/lib/logger';
+import { useConfirmation } from '@/hooks/use-confirmation';
+import ConfirmationDialog from './confirmation-dialog';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -73,6 +75,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const { confirm, isOpen: confirmOpen, onOpenChange, onConfirm, options } = useConfirmation();
 
   // Force fetch participants immediately when component mounts with channelId
   useEffect(() => {
@@ -330,11 +334,17 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const handleDeleteGroup = useCallback(async () => {
     if (!channelId) return;
     const channel = channelsData?.data?.channels.find((ch) => ch.id === channelId);
-    const confirmDelete = window.confirm(
-      `Are you sure you want to permanently delete the group chat "${channel?.name || chatName || 'this group'}"? This action cannot be undone.`
+    confirm(
+      {
+        title: 'Delete Group',
+        description: `Are you sure you want to permanently delete the group chat "${channel?.name || chatName || 'this group'}"? This action cannot be undone.`,
+        confirmText: 'Delete',
+        variant: 'destructive',
+      },
+      () => {
+        deleteGroupMutation.mutate();
+      }
     );
-    if (!confirmDelete) return;
-    deleteGroupMutation.mutate();
   }, [channelId, chatName, channelsData, deleteGroupMutation]);
 
   // Check if form has changed
@@ -360,27 +370,39 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       return;
     }
 
+    const proceed = () => {
+      const participantIds = selectedAgents.map((agent) => agent.id);
+      const finalName =
+        chatName.trim() ||
+        (selectedAgents.length > 0
+          ? selectedAgents.map((agent) => agent.name).join(', ')
+          : 'Empty Group');
+
+      if (!channelId) {
+        createGroupMutation.mutate({ name: finalName, participantIds });
+      } else {
+        updateGroupMutation.mutate({ name: finalName, participantIds });
+      }
+    };
+
     // For edit mode, warn if removing all agents but allow it
     if (channelId && selectedAgents.length === 0) {
-      const confirmRemoveAll = window.confirm(
-        'Are you sure you want to remove all agents from this group? This will leave the group with no participants.'
+      confirm(
+        {
+          title: 'Remove All Agents?',
+          description:
+            'Are you sure you want to remove all agents from this group? This will leave the group with no participants.',
+          confirmText: 'Remove All',
+          variant: 'destructive',
+        },
+        () => {
+          proceed();
+        }
       );
-      if (!confirmRemoveAll) return;
+      return;
     }
 
-    const participantIds = selectedAgents.map((agent) => agent.id);
-    // Generate name if empty - for groups with no agents, use the chat name or a default
-    const finalName =
-      chatName.trim() ||
-      (selectedAgents.length > 0
-        ? selectedAgents.map((agent) => agent.name).join(', ')
-        : 'Empty Group');
-
-    if (!channelId) {
-      createGroupMutation.mutate({ name: finalName, participantIds });
-    } else {
-      updateGroupMutation.mutate({ name: finalName, participantIds });
-    }
+    proceed();
   }, [channelId, chatName, selectedAgents, createGroupMutation, updateGroupMutation, toast]);
 
   // Use the exact same logic as "unsaved changes" detection for update button
@@ -397,111 +419,123 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       deleteGroupMutation.isPending;
 
   return (
-    <div
-      className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
-      onClick={onClose}
-    >
-      <Card className="w-[80%] max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-xl font-semibold">
-            {channelId ? 'Edit Group Chat' : 'Create Group Chat'}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardHeader>
+    <>
+      <div
+        className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
+        onClick={onClose}
+      >
+        <Card className="w-[80%] max-w-2xl" onClick={(e) => e.stopPropagation()}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xl font-semibold">
+              {channelId ? 'Edit Group Chat' : 'Create Group Chat'}
+            </CardTitle>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
 
-        <Separator />
+          <Separator />
 
-        <CardContent className="pt-4">
-          <div className="flex flex-col gap-4 w-full">
-            <div className="flex flex-col gap-2 w-full">
-              <label htmlFor="chat-name" className="text-sm font-medium">
-                Chat Name (Optional)
-              </label>
-              <Input
-                id="chat-name"
-                value={chatName}
-                onChange={(e) => setChatName(e.target.value)}
-                className="w-full bg-background text-foreground"
-                placeholder="Leave blank to auto-generate from participants"
+          <CardContent className="pt-4">
+            <div className="flex flex-col gap-4 w-full">
+              <div className="flex flex-col gap-2 w-full">
+                <label htmlFor="chat-name" className="text-sm font-medium">
+                  Chat Name (Optional)
+                </label>
+                <Input
+                  id="chat-name"
+                  value={chatName}
+                  onChange={(e) => setChatName(e.target.value)}
+                  className="w-full bg-background text-foreground"
+                  placeholder="Leave blank to auto-generate from participants"
+                  disabled={
+                    createGroupMutation.isPending ||
+                    updateGroupMutation.isPending ||
+                    deleteGroupMutation.isPending
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 w-full">
+                <label htmlFor="invite-agents" className="text-sm font-medium">
+                  Select Agents{' '}
+                  {!channelId && <span className="text-muted-foreground">(Required)</span>}
+                </label>
+                {isLoadingAgents ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground">Loading agents...</span>
+                  </div>
+                ) : isErrorAgents ? (
+                  <div className="flex items-center justify-center p-4 text-red-500">
+                    Error loading agents. Please try again later.
+                  </div>
+                ) : (
+                  <MultiSelectCombobox
+                    options={comboboxOptions}
+                    onSelect={handleSelectAgents}
+                    className="w-full"
+                    initialSelected={initialSelectedComboboxOptions}
+                    key={`group-panel-combobox-${channelId || 'create'}-${allAvailableSelectableAgents.length}`}
+                  />
+                )}
+                {selectedAgents.length > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAgents.length} agent{selectedAgents.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
+                {channelId && hasFormChanged && (
+                  <div className="text-sm text-blue-500 mt-1">You have unsaved changes</div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+
+          <CardFooter className="flex justify-between pt-4">
+            {channelId && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteGroup}
                 disabled={
+                  deleteGroupMutation.isPending ||
                   createGroupMutation.isPending ||
                   updateGroupMutation.isPending ||
-                  deleteGroupMutation.isPending
+                  isLoadingAgents
                 }
-              />
-            </div>
-
-            <div className="flex flex-col gap-2 w-full">
-              <label htmlFor="invite-agents" className="text-sm font-medium">
-                Select Agents{' '}
-                {!channelId && <span className="text-muted-foreground">(Required)</span>}
-              </label>
-              {isLoadingAgents ? (
-                <div className="flex items-center justify-center p-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-muted-foreground">Loading agents...</span>
-                </div>
-              ) : isErrorAgents ? (
-                <div className="flex items-center justify-center p-4 text-red-500">
-                  Error loading agents. Please try again later.
-                </div>
-              ) : (
-                <MultiSelectCombobox
-                  options={comboboxOptions}
-                  onSelect={handleSelectAgents}
-                  className="w-full"
-                  initialSelected={initialSelectedComboboxOptions}
-                  key={`group-panel-combobox-${channelId || 'create'}-${allAvailableSelectableAgents.length}`}
-                />
-              )}
-              {selectedAgents.length > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {selectedAgents.length} agent{selectedAgents.length > 1 ? 's' : ''} selected
-                </p>
-              )}
-              {channelId && hasFormChanged && (
-                <div className="text-sm text-blue-500 mt-1">You have unsaved changes</div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-
-        <CardFooter className="flex justify-between pt-4">
-          {channelId && (
-            <Button
-              variant="destructive"
-              onClick={handleDeleteGroup}
-              disabled={
-                deleteGroupMutation.isPending ||
-                createGroupMutation.isPending ||
-                updateGroupMutation.isPending ||
-                isLoadingAgents
-              }
-            >
-              {deleteGroupMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Trash className="mr-2 h-4 w-4" />
-              )}
-              Delete Group
-            </Button>
-          )}
-
-          <Button
-            variant="default"
-            className={channelId ? '' : 'w-full'}
-            onClick={handleCreateOrUpdateGroup}
-            disabled={isSubmitDisabled}
-          >
-            {(createGroupMutation.isPending || updateGroupMutation.isPending) && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              >
+                {deleteGroupMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash className="mr-2 h-4 w-4" />
+                )}
+                Delete Group
+              </Button>
             )}
-            {channelId ? 'Update Group' : 'Create Group'}
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
+
+            <Button
+              variant="default"
+              className={channelId ? '' : 'w-full'}
+              onClick={handleCreateOrUpdateGroup}
+              disabled={isSubmitDisabled}
+            >
+              {(createGroupMutation.isPending || updateGroupMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {channelId ? 'Update Group' : 'Create Group'}
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+      <ConfirmationDialog
+        open={confirmOpen}
+        onOpenChange={onOpenChange}
+        title={options?.title || ''}
+        description={options?.description || ''}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        variant={options?.variant}
+        onConfirm={onConfirm}
+      />
+    </>
   );
 }

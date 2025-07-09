@@ -76,12 +76,6 @@ export default defineConfig({
         global: 'globalThis',
       },
     },
-    include: [
-      'buffer',
-      'process',
-      'crypto-browserify',
-      'stream-browserify',
-      'util',
-    ],
+    include: ['buffer', 'process', 'crypto-browserify', 'stream-browserify', 'util'],
   },
 });
