@@ -279,6 +279,7 @@ bun run build
 ```
 
 The server looks for client files in these locations (in order):
+
 1. `dist/client` - Bundled client files (production)
 2. `../client/dist` - Direct client build (development)
 3. Via `@elizaos/client` package resolution

@@ -46,7 +46,7 @@ describe('SPA Routing Fix', () => {
     it('should resolve absolute paths correctly', () => {
       const clientPath = path.join(tempDir, 'dist');
       const indexPath = path.join(clientPath, 'index.html');
-      
+
       // Verify path is absolute
       expect(path.isAbsolute(indexPath)).toBe(true);
     });
@@ -58,10 +58,10 @@ describe('SPA Routing Fix', () => {
       const cliRoot = path.join(tempDir, 'cli');
       const commandsDir = path.join(cliRoot, 'dist', 'commands', 'start', 'actions');
       mkdirSync(commandsDir, { recursive: true });
-      
+
       // Create index.html in dist
       writeFileSync(path.join(cliRoot, 'dist', 'index.html'), '<html></html>');
-      
+
       // Simulate path resolution
       const resolvedPath = path.resolve(commandsDir, '../../../');
       expect(resolvedPath).toBe(path.join(cliRoot, 'dist'));
@@ -73,16 +73,19 @@ describe('SPA Routing Fix', () => {
       const pkgRoot = path.join(tempDir, 'node_modules', '@elizaos', 'cli');
       const distDir = path.join(pkgRoot, 'dist');
       mkdirSync(distDir, { recursive: true });
-      
+
       // Create package.json
-      writeFileSync(path.join(pkgRoot, 'package.json'), JSON.stringify({
-        name: '@elizaos/cli',
-        version: '1.0.0'
-      }));
-      
+      writeFileSync(
+        path.join(pkgRoot, 'package.json'),
+        JSON.stringify({
+          name: '@elizaos/cli',
+          version: '1.0.0',
+        })
+      );
+
       // Create index.html
       writeFileSync(path.join(distDir, 'index.html'), '<html></html>');
-      
+
       // Verify structure
       expect(existsSync(path.join(pkgRoot, 'package.json'))).toBe(true);
       expect(existsSync(path.join(distDir, 'index.html'))).toBe(true);

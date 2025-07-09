@@ -31,12 +31,12 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   // Get the directory where the CLI is installed to find client files
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  
+
   // Calculate the CLI dist path more reliably
   // In development/monorepo: packages/cli/dist/commands/start/actions -> packages/cli/dist
   // In production/global: node_modules/@elizaos/cli/dist/commands/start/actions -> node_modules/@elizaos/cli/dist
   let cliDistPath = path.resolve(__dirname, '../../../');
-  
+
   // Verify the path contains index.html, if not try alternative resolution
   const indexPath = path.join(cliDistPath, 'index.html');
   if (!existsSync(indexPath)) {
@@ -61,7 +61,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
       currentDir = path.dirname(currentDir);
     }
   }
-  
+
   logger.debug(`[CLI] Resolved client dist path: ${cliDistPath}`);
 
   const server = new AgentServer();
