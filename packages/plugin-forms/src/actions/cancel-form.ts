@@ -5,7 +5,6 @@ import {
   State,
   HandlerCallback,
   logger,
-  type UUID,
 } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
 
