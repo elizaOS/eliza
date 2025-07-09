@@ -1,0 +1,81 @@
+{
+  "name": "@elizaos/plugin-forms",
+  "description": "Forms plugin for ElizaOS - structured conversational data collection",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "ElizaOS Contributors",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "forms",
+    "data-collection",
+    "conversational-forms",
+    "multi-step-forms"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/elizaos/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".npmignore",
+    "package.json",
+    "build.ts"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-discord": "1.0.10",
+    "@elizaos/plugin-telegram": "1.0.4",
+    "uuid": "^11.0.2"
+  },
+  "peerDependencies": {},
+  "devDependencies": {
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/plugin-e2b": "workspace:*",
+    "@elizaos/plugin-github": "workspace:*",
+    "dotenv": "16.4.5",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3",
+    "@types/uuid": "^10.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist && rm -rf .turbo",
+    "lint": "eslint src --fix && prettier --write ./src",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test && elizaos test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.25.67"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {},
+    "description": "Forms management plugin for structured conversational data collection"
+  }
+}
