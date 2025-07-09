@@ -4,7 +4,7 @@ import {
   Memory,
   State,
   HandlerCallback,
-  elizaLogger,
+  logger,
   type UUID,
 } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
@@ -91,7 +91,7 @@ export const cancelFormAction: Action = {
 
       const formId = targetForm.id;
 
-      elizaLogger.debug(`Cancelling form ${formId}`);
+      logger.debug(`Cancelling form ${formId}`);
 
       // Cancel the form
       const success = await formsService.cancelForm(formId);
@@ -123,7 +123,7 @@ export const cancelFormAction: Action = {
         };
       }
     } catch (error) {
-      elizaLogger.error('Error in CANCEL_FORM action:', error);
+      logger.error('Error in CANCEL_FORM action:', error);
       await callback?.({
         text: 'An error occurred while cancelling the form.',
         actions: [],

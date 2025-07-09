@@ -1,15 +1,19 @@
 import {
   asUUID,
-  elizaLogger,
+  logger,
   IAgentRuntime,
   ModelType,
   Service,
   ServiceType,
   type Memory,
   type UUID,
+  type IDatabaseAdapter,
+  encryptStringValue,
+  decryptStringValue,
+  getSalt,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import type { Form, FormField, FormStatus, FormTemplate, FormUpdateResult } from '../types';
+import type { Form, FormField, FormFieldType, FormStatus, FormTemplate, FormUpdateResult } from '../types';
 
 const FORMS_STORAGE_KEY = 'forms:state';
 const FORMS_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
@@ -47,12 +51,12 @@ export class FormsService extends Service {
 
     // Set up auto-persistence
     this.persistenceTimer = setInterval(() => {
-      this.persistForms().catch((err) => elizaLogger.error('Failed to persist forms:', err));
+      this.persistForms().catch((err) => logger.error('Failed to persist forms:', err));
     }, 30000); // Every 30 seconds
 
     // Set up cleanup of completed/expired forms
     this.cleanupTimer = setInterval(() => {
-      this.cleanupOldForms().catch((err) => elizaLogger.error('Failed to cleanup forms:', err));
+      this.cleanupOldForms().catch((err) => logger.error('Failed to cleanup forms:', err));
     }, FORMS_CLEANUP_INTERVAL);
   }
 
@@ -143,7 +147,7 @@ export class FormsService extends Service {
     }
 
     this.forms.set(form.id, form);
-    elizaLogger.debug(`Created form ${form.id} (${form.name})`);
+    logger.debug(`Created form ${form.id} (${form.name})`);
 
     return form;
   }
@@ -179,9 +183,24 @@ export class FormsService extends Service {
     const extractionResult = await this.extractFormValues(
       message.content.text || '',
       currentStep.fields.filter(
-        (f) =>
-          !f.value &&
-          (!f.optional || message.content.text?.toLowerCase().includes(f.label.toLowerCase()))
+        (f) => {
+          // Check if field already has a valid value
+          const hasValue = f.value !== undefined && f.value !== null && f.value !== '';
+          if (hasValue) return false;
+          
+          // For optional fields, only process if mentioned in message
+          if (f.optional) {
+            const messageText = message.content.text?.toLowerCase() || '';
+            const fieldLabel = f.label.toLowerCase();
+            // More flexible matching for optional fields
+            return messageText.includes(fieldLabel) || 
+                   messageText.includes(fieldLabel.replace(/\s+/g, '')) ||
+                   messageText.includes(fieldLabel.replace(/\s+/g, '_'));
+          }
+          
+          // Required fields should always be processed
+          return true;
+        }
       )
     );
 
@@ -192,11 +211,26 @@ export class FormsService extends Service {
     for (const [fieldId, value] of Object.entries(extractionResult.values)) {
       const field = currentStep.fields.find((f) => f.id === fieldId);
       if (field) {
-        if (value !== null && value !== undefined && value !== '') {
-          field.value = value;
-          field.error = undefined;
-          updatedFields.push(fieldId);
-          elizaLogger.debug(`Updated field ${fieldId} with value:`, value);
+        // Accept all values including falsy ones (false, 0, empty string)
+        if (value !== null && value !== undefined) {
+          // Additional type validation
+          const validatedValue = this.validateFieldValue(value, field);
+          if (validatedValue.isValid) {
+            // Encrypt secret fields before storing
+            if (field.secret && typeof validatedValue.value === 'string') {
+              const salt = getSalt();
+              field.value = encryptStringValue(validatedValue.value, salt);
+            } else {
+              field.value = validatedValue.value;
+            }
+            field.error = undefined;
+            updatedFields.push(fieldId);
+            logger.debug(`Updated field ${fieldId} with value:`, field.secret ? '[REDACTED]' : validatedValue.value);
+          } else {
+            field.error = validatedValue.error;
+            errors.push({ fieldId, message: validatedValue.error || 'Invalid value' });
+            logger.warn(`Invalid value for field ${fieldId}: ${validatedValue.error}`);
+          }
         }
       }
     }
@@ -204,7 +238,7 @@ export class FormsService extends Service {
     // Check if all required fields in current step are filled
     const requiredFields = currentStep.fields.filter((f) => !f.optional);
     const filledRequiredFields = requiredFields.filter(
-      (f) => f.value !== undefined && f.value !== null && f.value !== ''
+      (f) => f.value !== undefined && f.value !== null
     );
     const stepCompleted = filledRequiredFields.length === requiredFields.length;
 
@@ -219,7 +253,7 @@ export class FormsService extends Service {
         try {
           await currentStep.onComplete(form, currentStep.id);
         } catch (error) {
-          elizaLogger.error(`Error in step callback for ${currentStep.id}:`, error);
+          logger.error(`Error in step callback for ${currentStep.id}:`, error);
         }
       }
 
@@ -238,7 +272,7 @@ export class FormsService extends Service {
           try {
             await form.onComplete(form);
           } catch (error) {
-            elizaLogger.error('Error in form completion callback:', error);
+            logger.error('Error in form completion callback:', error);
           }
         }
       }
@@ -312,12 +346,93 @@ Return only valid JSON with extracted values. Be precise and extract only what i
         jsonStr = jsonMatch[0];
       }
 
-      const values = JSON.parse(jsonStr);
-      elizaLogger.debug('Extracted form values:', values);
+      // Validate JSON parsing
+      let values: Record<string, any> = {};
+      try {
+        const parsed = JSON.parse(jsonStr);
+        
+        // Validate that parsed result is an object
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          logger.warn('LLM response is not a valid object');
+          return { values: {} };
+        }
+        
+        // Validate and sanitize each field
+        for (const [fieldId, value] of Object.entries(parsed)) {
+          // Check if fieldId is one of the expected fields
+          const expectedField = fields.find(f => f.id === fieldId);
+          if (!expectedField) {
+            logger.warn(`Unexpected field ID in LLM response: ${fieldId}`);
+            continue;
+          }
+          
+          // Validate value type based on field type
+          if (value !== null && value !== undefined) {
+            switch (expectedField.type) {
+              case 'number':
+                // Try to convert to number
+                const numValue = Number(value);
+                if (!isNaN(numValue)) {
+                  values[fieldId] = numValue;
+                } else {
+                  logger.warn(`Invalid number value for field ${fieldId}: ${value}`);
+                }
+                break;
+                
+              case 'checkbox':
+                // Convert to boolean
+                values[fieldId] = value === true || value === 'true' || value === 1 || value === '1';
+                break;
+                
+              case 'email':
+                // Basic email validation
+                if (typeof value === 'string' && value.includes('@')) {
+                  values[fieldId] = value.trim();
+                } else {
+                  logger.warn(`Invalid email value for field ${fieldId}: ${value}`);
+                }
+                break;
+                
+              case 'url':
+                // Basic URL validation
+                if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+                  values[fieldId] = value.trim();
+                } else {
+                  logger.warn(`Invalid URL value for field ${fieldId}: ${value}`);
+                }
+                break;
+                
+              case 'date':
+              case 'time':
+              case 'datetime':
+                // Accept string dates/times
+                if (typeof value === 'string' && value.length > 0) {
+                  values[fieldId] = value.trim();
+                } else {
+                  logger.warn(`Invalid date/time value for field ${fieldId}: ${value}`);
+                }
+                break;
+                
+              default:
+                // For text, textarea, tel, and other string types
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                  values[fieldId] = String(value).trim();
+                } else {
+                  logger.warn(`Invalid value type for field ${fieldId}: ${typeof value}`);
+                }
+            }
+          }
+        }
+        
+      } catch (parseError) {
+        logger.error('Failed to parse LLM JSON response:', parseError);
+        return { values: {} };
+      }
 
+      logger.debug('Validated and extracted form values:', values);
       return { values };
     } catch (error) {
-      elizaLogger.error('Error extracting form values:', error);
+      logger.error('Error extracting form values:', error);
       return { values: {} };
     }
   }
@@ -326,12 +441,15 @@ Return only valid JSON with extracted values. Be precise and extract only what i
    * List all forms
    */
   async listForms(status?: FormStatus): Promise<Form[]> {
-    const forms = Array.from(this.forms.values()).filter(
-      (form) => form.agentId === this.runtime.agentId
-    );
-
-    if (status) {
-      return forms.filter((f) => f.status === status);
+    const forms: Form[] = [];
+    
+    // Directly iterate over the Map instead of converting to array first
+    for (const form of this.forms.values()) {
+      if (form.agentId === this.runtime.agentId) {
+        if (!status || form.status === status) {
+          forms.push(form);
+        }
+      }
     }
 
     return forms;
@@ -342,10 +460,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
    */
   async getForm(formId: UUID): Promise<Form | null> {
     const form = this.forms.get(formId);
-    if (form && form.agentId === this.runtime.agentId) {
-      return form;
-    }
-    return null;
+    return (form && form.agentId === this.runtime.agentId) ? form : null;
   }
 
   /**
@@ -359,7 +474,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
 
     form.status = 'cancelled';
     form.updatedAt = Date.now();
-    elizaLogger.debug(`Cancelled form ${formId}`);
+    logger.debug(`Cancelled form ${formId}`);
 
     return true;
   }
@@ -369,7 +484,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
    */
   registerTemplate(template: FormTemplate): void {
     this.templates.set(template.name, template);
-    elizaLogger.debug(`Registered form template: ${template.name}`);
+    logger.debug(`Registered form template: ${template.name}`);
   }
 
   /**
@@ -387,17 +502,25 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     let removed = 0;
 
     for (const [id, form] of this.forms.entries()) {
-      if (
-        (form.status === 'completed' || form.status === 'cancelled') &&
-        now - form.updatedAt > olderThanMs
-      ) {
+      const age = now - form.updatedAt;
+      
+      // Remove completed forms older than 1 hour
+      if (form.status === 'completed' && age > 60 * 60 * 1000) {
         this.forms.delete(id);
         removed++;
+        logger.info(`Cleaned up completed form ${id}`);
+      }
+      // Remove cancelled or other non-active forms older than specified time
+      else if (form.status !== 'active' && age > olderThanMs) {
+        this.forms.delete(id);
+        removed++;
+        logger.info(`Cleaned up old form ${id}`);
       }
     }
 
     if (removed > 0) {
-      elizaLogger.debug(`Cleaned up ${removed} old forms`);
+      logger.debug(`Cleaned up ${removed} old forms`);
+      await this.persistForms();
     }
 
     return removed;
@@ -410,29 +533,262 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     // Clear timers
     if (this.persistenceTimer) {
       clearInterval(this.persistenceTimer);
+      this.persistenceTimer = undefined;
     }
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
     }
   }
 
   private async persistForms(): Promise<void> {
     try {
-      // For now, we'll keep using in-memory storage
-      // TODO: Implement database persistence using formsTable and formFieldsTable
-      elizaLogger.debug('Forms persistence is currently in-memory only');
+      const db = this.runtime as IDatabaseAdapter;
+      if (!db.getDatabase) {
+        logger.warn('Database adapter not available for form persistence');
+        return;
+      }
+
+      const database = await db.getDatabase();
+      if (!database) {
+        logger.warn('Database not available for form persistence');
+        return;
+      }
+
+      // Persist each form to the database
+      for (const [formId, form] of this.forms.entries()) {
+        if (form.agentId !== this.runtime.agentId) continue;
+        
+        try {
+          // Serialize form data for database storage
+          const formData = {
+            id: form.id,
+            agentId: form.agentId,
+            name: form.name,
+            description: form.description || null,
+            status: form.status,
+            currentStepIndex: form.currentStepIndex,
+            steps: JSON.stringify(form.steps.map(step => ({
+              id: step.id,
+              name: step.name,
+              completed: step.completed,
+              // Don't serialize callbacks
+            }))),
+            createdAt: new Date(form.createdAt),
+            updatedAt: new Date(form.updatedAt),
+            completedAt: form.completedAt ? new Date(form.completedAt) : null,
+            metadata: JSON.stringify(form.metadata || {}),
+          };
+
+          // Use raw SQL for compatibility with different database adapters
+          await database.run(`
+            INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              status = EXCLUDED.status,
+              current_step_index = EXCLUDED.current_step_index,
+              steps = EXCLUDED.steps,
+              updated_at = EXCLUDED.updated_at,
+              completed_at = EXCLUDED.completed_at,
+              metadata = EXCLUDED.metadata
+          `, [formData.id, formData.agentId, formData.name, formData.description, formData.status, 
+              formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt, 
+              formData.completedAt, formData.metadata]);
+
+          // Persist form fields
+          for (const step of form.steps) {
+            for (const field of step.fields) {
+              const fieldData = {
+                formId: form.id,
+                stepId: step.id,
+                fieldId: field.id,
+                label: field.label,
+                type: field.type,
+                value: field.value !== undefined && field.value !== null ? String(field.value) : null,
+                isSecret: field.secret || false,
+                isOptional: field.optional || false,
+                description: field.description || null,
+                criteria: field.criteria || null,
+                error: field.error || null,
+                metadata: JSON.stringify(field.metadata || {}),
+              };
+
+              await database.run(`
+                INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
+                  value = EXCLUDED.value,
+                  error = EXCLUDED.error,
+                  updated_at = datetime('now')
+              `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label, 
+                  fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional, 
+                  fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
+            }
+          }
+        } catch (error) {
+          logger.error(`Error persisting form ${formId}:`, error);
+        }
+      }
+
+      logger.debug(`Persisted ${this.forms.size} forms to database`);
     } catch (error) {
-      elizaLogger.error('Error persisting forms:', error);
+      logger.error('Error persisting forms:', error);
     }
   }
 
   private async restorePersistedForms(): Promise<void> {
     try {
-      // For now, we'll keep using in-memory storage
-      // TODO: Implement database restoration using formsTable and formFieldsTable
-      elizaLogger.debug('Forms restoration from database not yet implemented');
+      const db = this.runtime as IDatabaseAdapter;
+      if (!db.getDatabase) {
+        logger.warn('Database adapter not available for form restoration');
+        return;
+      }
+
+      const database = await db.getDatabase();
+      if (!database) {
+        logger.warn('Database not available for form restoration');
+        return;
+      }
+
+      // Restore forms from database
+      const formsResult = await database.all(`
+        SELECT * FROM forms 
+        WHERE agent_id = ? AND status != 'completed'
+        ORDER BY updated_at DESC
+      `, [this.runtime.agentId]);
+
+      if (!formsResult || formsResult.length === 0) {
+        logger.debug('No forms to restore from database');
+        return;
+      }
+
+      for (const formRow of formsResult) {
+        try {
+          // Parse steps
+          const steps = JSON.parse(formRow.steps);
+          
+          // Restore form fields
+          const fieldsResult = await database.all(`
+            SELECT * FROM form_fields 
+            WHERE form_id = ?
+            ORDER BY step_id, field_id
+          `, [formRow.id]);
+
+          // Group fields by step
+          const fieldsByStep = new Map<string, typeof fieldsResult>();
+          for (const fieldRow of fieldsResult) {
+            if (!fieldsByStep.has(fieldRow.step_id)) {
+              fieldsByStep.set(fieldRow.step_id, []);
+            }
+            fieldsByStep.get(fieldRow.step_id)!.push(fieldRow);
+          }
+
+          // Reconstruct form with fields
+          const form: Form = {
+            id: formRow.id as UUID,
+            agentId: formRow.agent_id as UUID,
+            name: formRow.name,
+            description: formRow.description || undefined,
+            status: formRow.status as FormStatus,
+            currentStepIndex: formRow.current_step_index,
+            steps: steps.map((step: any) => ({
+              id: step.id,
+              name: step.name,
+              completed: step.completed || false,
+              fields: (fieldsByStep.get(step.id) || []).map((fieldRow: any) => ({
+                id: fieldRow.field_id,
+                label: fieldRow.label,
+                type: fieldRow.type as FormFieldType,
+                description: fieldRow.description || undefined,
+                criteria: fieldRow.criteria || undefined,
+                optional: fieldRow.is_optional,
+                secret: fieldRow.is_secret,
+                value: fieldRow.value !== null ? this.parseFieldValue(fieldRow.value, fieldRow.type, fieldRow.is_secret) : undefined,
+                error: fieldRow.error || undefined,
+                metadata: fieldRow.metadata ? JSON.parse(fieldRow.metadata) : undefined,
+              })),
+            })),
+            createdAt: new Date(formRow.created_at).getTime(),
+            updatedAt: new Date(formRow.updated_at).getTime(),
+            completedAt: formRow.completed_at ? new Date(formRow.completed_at).getTime() : undefined,
+            metadata: formRow.metadata ? JSON.parse(formRow.metadata) : {},
+          };
+
+          this.forms.set(form.id, form);
+          logger.debug(`Restored form ${form.id} (${form.name}) from database`);
+        } catch (error) {
+          logger.error(`Error restoring form ${formRow.id}:`, error);
+        }
+      }
+
+      logger.info(`Restored ${this.forms.size} forms from database`);
     } catch (error) {
-      elizaLogger.error('Error restoring forms:', error);
+      logger.error('Error restoring forms:', error);
+    }
+  }
+
+  private parseFieldValue(value: string, type: string, isSecret: boolean = false): string | number | boolean {
+    // Decrypt secret values first
+    let processedValue = value;
+    if (isSecret && type !== 'number' && type !== 'checkbox') {
+      const salt = getSalt();
+      processedValue = decryptStringValue(value, salt);
+    }
+    
+    switch (type) {
+      case 'number':
+        return Number(processedValue);
+      case 'checkbox':
+        return processedValue === 'true';
+      default:
+        return processedValue;
+    }
+  }
+
+  private validateFieldValue(value: any, field: FormField): { isValid: boolean; value?: any; error?: string } {
+    switch (field.type) {
+      case 'number':
+        const num = Number(value);
+        if (isNaN(num)) {
+          return { isValid: false, error: 'Must be a valid number' };
+        }
+        return { isValid: true, value: num };
+        
+      case 'email':
+        if (typeof value !== 'string' || !value.includes('@') || !value.includes('.')) {
+          return { isValid: false, error: 'Must be a valid email address' };
+        }
+        return { isValid: true, value: value.trim() };
+        
+      case 'url':
+        if (typeof value !== 'string' || (!value.startsWith('http://') && !value.startsWith('https://'))) {
+          return { isValid: false, error: 'Must be a valid URL starting with http:// or https://' };
+        }
+        return { isValid: true, value: value.trim() };
+        
+      case 'tel':
+        if (typeof value !== 'string' || value.length < 7) {
+          return { isValid: false, error: 'Must be a valid phone number' };
+        }
+        return { isValid: true, value: value.trim() };
+        
+      case 'date':
+      case 'time':
+      case 'datetime':
+        if (typeof value !== 'string' || !value) {
+          return { isValid: false, error: `Must be a valid ${field.type}` };
+        }
+        return { isValid: true, value: value.trim() };
+        
+      case 'checkbox':
+        return { isValid: true, value: Boolean(value) };
+        
+      default:
+        // For text, textarea, choice - accept strings
+        if (value === null || value === undefined) {
+          return { isValid: false, error: 'Value is required' };
+        }
+        return { isValid: true, value: String(value) };
     }
   }
 
@@ -459,24 +815,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
   }
 
   private async cleanupOldForms(): Promise<void> {
-    const now = Date.now();
-    const expirationTime = 24 * 60 * 60 * 1000; // 24 hours
-
-    for (const [id, form] of this.forms.entries()) {
-      const age = now - form.updatedAt;
-
-      // Remove completed forms older than 1 hour
-      if (form.status === 'completed' && age > 60 * 60 * 1000) {
-        this.forms.delete(id);
-        elizaLogger.info(`Cleaned up completed form ${id}`);
-      }
-      // Remove cancelled or inactive forms older than 24 hours
-      else if (form.status !== 'active' && age > expirationTime) {
-        this.forms.delete(id);
-        elizaLogger.info(`Cleaned up old form ${id}`);
-      }
-    }
-
-    await this.persistForms();
+    // Use the public cleanup method with default 24 hour expiration
+    await this.cleanup(24 * 60 * 60 * 1000);
   }
 }
