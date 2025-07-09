@@ -1406,7 +1406,7 @@ export const bootstrapPlugin: Plugin = {
     providers.attachmentsProvider,
     providers.providersProvider,
     providers.actionsProvider,
-    providers.actionStateProvider, // Add this provider
+    providers.actionStateProvider,
     providers.characterProvider,
     providers.recentMessagesProvider,
     providers.worldProvider,

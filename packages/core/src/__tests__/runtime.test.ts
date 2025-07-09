@@ -497,6 +497,52 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect.objectContaining({ type: 'action' })
       );
     });
+
+    it('should prioritize exact action name matches over fuzzy matches', async () => {
+      // Create two actions where one name is a substring of another
+      const replyHandler = mock().mockResolvedValue(undefined);
+      const replyWithImageHandler = mock().mockResolvedValue(undefined);
+
+      const replyAction: Action = {
+        name: 'REPLY',
+        description: 'Simple reply action',
+        similes: [],
+        examples: [],
+        handler: replyHandler,
+        validate: mock().mockImplementation(async () => true),
+      };
+
+      const replyWithImageAction: Action = {
+        name: 'REPLY_WITH_IMAGE',
+        description: 'Reply with image action',
+        similes: [],
+        examples: [],
+        handler: replyWithImageHandler,
+        validate: mock().mockImplementation(async () => true),
+      };
+
+      // Register both actions
+      runtime.registerAction(replyAction);
+      runtime.registerAction(replyWithImageAction);
+
+      // Test 1: When asking for 'REPLY', it should match REPLY exactly, not REPLY_WITH_IMAGE
+      responseMemory.content.actions = ['REPLY'];
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(replyHandler).toHaveBeenCalledTimes(1);
+      expect(replyWithImageHandler).not.toHaveBeenCalled();
+
+      // Reset mocks
+      replyHandler.mockClear();
+      replyWithImageHandler.mockClear();
+
+      // Test 2: When asking for 'REPLY_WITH_IMAGE', it should match REPLY_WITH_IMAGE exactly
+      responseMemory.content.actions = ['REPLY_WITH_IMAGE'];
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
+      expect(replyHandler).not.toHaveBeenCalled();
+    });
   });
 
   // --- Adapter Passthrough Tests ---

@@ -76,6 +76,7 @@
     "@clack/prompts": "^0.11.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-local-ai": "1.0.5",
+    "@elizaos/plugin-openai": "1.0.6",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
     "bun": "^1.2.17",

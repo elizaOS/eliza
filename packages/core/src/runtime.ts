@@ -581,7 +581,7 @@ export class AgentRuntime implements IAgentRuntime {
       let accumulatedState = state;
 
       function normalizeAction(actionString: string) {
-        return actionString.toLowerCase().replace('_', '');
+        return actionString.toLowerCase().replace(/_/g, '');
       }
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
@@ -605,24 +605,47 @@ export class AgentRuntime implements IAgentRuntime {
 
         this.logger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
+
+        // First try exact match
         let action = this.actions.find(
-          (a: { name: string }) =>
-            normalizeAction(a.name).includes(normalizedResponseAction) ||
-            normalizedResponseAction.includes(normalizeAction(a.name))
+          (a: { name: string }) => normalizeAction(a.name) === normalizedResponseAction
         );
+
+        if (!action) {
+          // Then try fuzzy matching
+          action = this.actions.find(
+            (a: { name: string }) =>
+              normalizeAction(a.name).includes(normalizedResponseAction) ||
+              normalizedResponseAction.includes(normalizeAction(a.name))
+          );
+        }
+
         if (action) {
           this.logger.debug(`Success: Found action: ${action?.name}`);
         } else {
           this.logger.debug('Attempting to find action in similes.');
           for (const _action of this.actions) {
-            const simileAction = _action.similes?.find(
-              (simile) =>
-                simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
-                normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
+            // First try exact match in similes
+            const exactSimileMatch = _action.similes?.find(
+              (simile) => normalizeAction(simile) === normalizedResponseAction
             );
-            if (simileAction) {
+
+            if (exactSimileMatch) {
               action = _action;
-              this.logger.debug(`Success: Action found in similes: ${action.name}`);
+              this.logger.debug(`Success: Action found in similes (exact match): ${action.name}`);
+              break;
+            }
+
+            // Then try fuzzy match in similes
+            const fuzzySimileMatch = _action.similes?.find(
+              (simile) =>
+                normalizeAction(simile).includes(normalizedResponseAction) ||
+                normalizedResponseAction.includes(normalizeAction(simile))
+            );
+
+            if (fuzzySimileMatch) {
+              action = _action;
+              this.logger.debug(`Success: Action found in similes (fuzzy match): ${action.name}`);
               break;
             }
           }
