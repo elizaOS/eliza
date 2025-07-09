@@ -517,14 +517,14 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   // Helper functions for immutable action plan updates
-  private updateActionPlan(plan: any, updates: Partial<any>): any {
+  private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
     return { ...plan, ...updates };
   }
 
-  private updateActionStep(plan: any, index: number, stepUpdates: Partial<any>): any {
+  private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T {
     return {
       ...plan,
-      steps: plan.steps.map((step: any, i: number) => 
+      steps: plan.steps.map((step: S, i: number) => 
         i === index ? { ...step, ...stepUpdates } : step
       )
     };
