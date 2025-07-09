@@ -901,10 +901,12 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
 
-          // Update plan with error
+          // Update plan with error using immutable pattern
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan.steps[actionIndex].status = 'failed';
-            actionPlan.steps[actionIndex].error = errorMessage;
+            actionPlan = updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMessage
+            });
           }
 
           // Clear action context on error
