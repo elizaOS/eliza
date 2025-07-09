@@ -4,7 +4,6 @@ import {
   IAgentRuntime,
   ModelType,
   Service,
-  ServiceType,
   type Memory,
   type UUID,
   type IDatabaseAdapter,
@@ -16,7 +15,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import type { Form, FormField, FormFieldType, FormStatus, FormTemplate, FormUpdateResult } from '../types';
 
-const FORMS_STORAGE_KEY = 'forms:state';
 const FORMS_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
 // Zod schemas for validation
@@ -93,7 +91,7 @@ const DatabaseFieldRowSchema = z.object({
     if (!val) return undefined;
     try {
       return JSON.parse(val);
-    } catch (e) {
+    } catch (_e) {
       return undefined;
     }
   }),
@@ -148,7 +146,7 @@ export class FormsService extends Service {
     return service;
   }
 
-  async initialize(runtime: IAgentRuntime): Promise<void> {
+  async initialize(_runtime: IAgentRuntime): Promise<void> {
     this.registerDefaultTemplates();
 
     // Check if database tables exist
@@ -660,7 +658,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     if (this.tablesChecked) return;
     
     try {
-      const db = this.runtime as IDatabaseAdapter;
+      const db = this.runtime as any;
       if (!db.getDatabase) {
         logger.debug('Database adapter not available');
         return;
@@ -715,7 +713,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
         return;
       }
 
-      const db = this.runtime as IDatabaseAdapter;
+      const db = this.runtime as any;
       if (!db.getDatabase) {
         return;
       }
@@ -742,7 +740,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
         await database.run('BEGIN');
 
         // Batch insert/update all forms
-        for (const { form, formId } of formsToPersist) {
+        for (const { form } of formsToPersist) {
           const formData = {
             id: form.id,
             agentId: form.agentId,
@@ -851,7 +849,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
         }
       }
 
-      const db = this.runtime as IDatabaseAdapter;
+      const db = this.runtime as any;
       if (!db.getDatabase) {
         logger.warn('Database adapter not available for form persistence');
         return;
@@ -981,7 +979,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
         return;
       }
 
-      const db = this.runtime as IDatabaseAdapter;
+      const db = this.runtime as any;
       if (!db.getDatabase) {
         logger.warn('Database adapter not available for form restoration');
         return;
@@ -1223,7 +1221,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     }
   }
 
-  private serializeForm(form: Form): any {
+  private _serializeForm(form: Form): any {
     // Convert functions to null for JSON serialization
     return {
       ...form,
@@ -1235,7 +1233,7 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     };
   }
 
-  private deserializeForm(data: any): Form {
+  private _deserializeForm(data: any): Form {
     // Restore form structure (callbacks will be re-registered by the creating plugin)
     return {
       ...data,
