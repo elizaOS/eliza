@@ -521,7 +521,7 @@ export class AgentRuntime implements IAgentRuntime {
     return { ...plan, ...updates };
   }
 
-  private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T {
+  private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T & { steps: S[] } {
     return {
       ...plan,
       steps: plan.steps.map((step: S, i: number) => 
