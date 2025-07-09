@@ -68,10 +68,15 @@ export function resolveEnvFile(startDir: string = process.cwd(), boundaryDir?: s
  * @param fallbackDir - Optional fallback directory when env var is not set.
  * @returns The resolved data directory with any tilde expanded.
  */
-export async function resolvePgliteDir(dir?: string, fallbackDir?: string): Promise<string> {
+export async function resolvePgliteDir(
+  dir?: string,
+  fallbackDir?: string,
+  targetProjectDir?: string
+): Promise<string> {
   const userEnv = UserEnvironment.getInstance();
   const pathsInfo = await userEnv.getPathInfo();
-  const projectRoot = pathsInfo.monorepoRoot || process.cwd(); // Base directory should be monorepo root or cwd
+  // When targetProjectDir is provided (e.g., during project creation), use it instead of monorepo root
+  const projectRoot = targetProjectDir || pathsInfo.monorepoRoot || process.cwd();
 
   // Use the envFilePath from UserEnvironment which is already correctly resolved
   if (pathsInfo.envFilePath && existsSync(pathsInfo.envFilePath)) {
