@@ -903,7 +903,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Update plan with error using immutable pattern
           if (actionPlan && actionPlan.steps[actionIndex]) {
-            actionPlan = updateActionStep(actionPlan, actionIndex, {
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: 'failed',
               error: errorMessage
             });
