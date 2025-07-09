@@ -30,6 +30,8 @@ export class FormsService extends Service {
   private templates: Map<string, FormTemplate> = new Map();
   private persistenceTimer?: NodeJS.Timeout;
   private cleanupTimer?: NodeJS.Timeout;
+  private tablesChecked = false;
+  private tablesExist = false;
 
   capabilityDescription = 'Form management service for collecting structured data from users';
 
@@ -46,8 +48,15 @@ export class FormsService extends Service {
   async initialize(runtime: IAgentRuntime): Promise<void> {
     this.registerDefaultTemplates();
 
-    // Restore persisted forms
-    await this.restorePersistedForms();
+    // Check if database tables exist
+    await this.checkDatabaseTables();
+
+    // Restore persisted forms only if tables exist
+    if (this.tablesExist) {
+      await this.restorePersistedForms();
+    } else {
+      logger.warn('Forms database tables not found. Persistence disabled until tables are created.');
+    }
 
     // Set up auto-persistence
     this.persistenceTimer = setInterval(() => {
@@ -95,6 +104,38 @@ export class FormsService extends Service {
         },
       ],
     });
+  }
+
+  /**
+   * Wait for database tables to be available
+   * This can be called by plugins that depend on forms persistence
+   */
+  async waitForTables(maxAttempts = 10, delayMs = 1000): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (!this.tablesChecked) {
+        await this.checkDatabaseTables();
+      }
+      
+      if (this.tablesExist) {
+        return true;
+      }
+      
+      if (i < maxAttempts - 1) {
+        logger.debug(`Waiting for forms tables... attempt ${i + 1}/${maxAttempts}`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        this.tablesChecked = false; // Force recheck
+      }
+    }
+    
+    logger.warn('Forms tables not available after waiting');
+    return false;
+  }
+
+  /**
+   * Check if persistence is available
+   */
+  isPersistenceAvailable(): boolean {
+    return this.tablesExist;
   }
 
   /**
@@ -541,8 +582,71 @@ Return only valid JSON with extracted values. Be precise and extract only what i
     }
   }
 
+  private async checkDatabaseTables(): Promise<void> {
+    if (this.tablesChecked) return;
+    
+    try {
+      const db = this.runtime as IDatabaseAdapter;
+      if (!db.getDatabase) {
+        logger.debug('Database adapter not available');
+        return;
+      }
+
+      const database = await db.getDatabase();
+      if (!database) {
+        logger.debug('Database not available');
+        return;
+      }
+
+      // Check if forms table exists
+      try {
+        const result = await database.get(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'forms'
+          ) as exists
+        `);
+        
+        this.tablesExist = result?.exists || false;
+        
+        if (!this.tablesExist) {
+          // Try with schema prefix
+          const schemaResult = await database.get(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_schema LIKE '%forms%' AND table_name = 'forms'
+            ) as exists
+          `);
+          this.tablesExist = schemaResult?.exists || false;
+        }
+      } catch (error) {
+        // If the query fails, assume tables don't exist
+        logger.debug('Could not check for forms tables:', error);
+        this.tablesExist = false;
+      }
+      
+      this.tablesChecked = true;
+      logger.info(`Forms database tables ${this.tablesExist ? 'found' : 'not found'}`);
+    } catch (error) {
+      logger.error('Error checking database tables:', error);
+      this.tablesChecked = true;
+      this.tablesExist = false;
+    }
+  }
+
   private async persistForms(): Promise<void> {
     try {
+      // Skip if tables don't exist
+      if (!this.tablesExist) {
+        // Periodically recheck in case tables were created
+        if (!this.tablesChecked || Math.random() < 0.1) { // Check 10% of the time
+          await this.checkDatabaseTables();
+        }
+        if (!this.tablesExist) {
+          return;
+        }
+      }
+
       const db = this.runtime as IDatabaseAdapter;
       if (!db.getDatabase) {
         logger.warn('Database adapter not available for form persistence');
@@ -581,19 +685,28 @@ Return only valid JSON with extracted values. Be precise and extract only what i
           };
 
           // Use raw SQL for compatibility with different database adapters
-          await database.run(`
-            INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              status = EXCLUDED.status,
-              current_step_index = EXCLUDED.current_step_index,
-              steps = EXCLUDED.steps,
-              updated_at = EXCLUDED.updated_at,
-              completed_at = EXCLUDED.completed_at,
-              metadata = EXCLUDED.metadata
-          `, [formData.id, formData.agentId, formData.name, formData.description, formData.status, 
-              formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt, 
-              formData.completedAt, formData.metadata]);
+          try {
+            await database.run(`
+              INSERT INTO forms (id, agent_id, name, description, status, current_step_index, steps, created_at, updated_at, completed_at, metadata)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                status = EXCLUDED.status,
+                current_step_index = EXCLUDED.current_step_index,
+                steps = EXCLUDED.steps,
+                updated_at = EXCLUDED.updated_at,
+                completed_at = EXCLUDED.completed_at,
+                metadata = EXCLUDED.metadata
+            `, [formData.id, formData.agentId, formData.name, formData.description, formData.status, 
+                formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt, 
+                formData.completedAt, formData.metadata]);
+          } catch (dbError: any) {
+            if (dbError.message?.includes('does not exist') || dbError.message?.includes('no such table')) {
+              logger.warn('Forms table does not exist. Marking tables as not found.');
+              this.tablesExist = false;
+              return;
+            }
+            throw dbError;
+          }
 
           // Persist form fields
           for (const step of form.steps) {
@@ -613,16 +726,25 @@ Return only valid JSON with extracted values. Be precise and extract only what i
                 metadata: JSON.stringify(field.metadata || {}),
               };
 
-              await database.run(`
-                INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-                ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
-                  value = EXCLUDED.value,
-                  error = EXCLUDED.error,
-                  updated_at = datetime('now')
-              `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label, 
-                  fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional, 
-                  fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
+              try {
+                await database.run(`
+                  INSERT INTO form_fields (form_id, step_id, field_id, label, type, value, is_secret, is_optional, description, criteria, error, metadata, created_at, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                  ON CONFLICT(form_id, step_id, field_id) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    error = EXCLUDED.error,
+                    updated_at = datetime('now')
+                `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label, 
+                    fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional, 
+                    fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
+              } catch (dbError: any) {
+                if (dbError.message?.includes('does not exist') || dbError.message?.includes('no such table')) {
+                  logger.warn('Form fields table does not exist. Marking tables as not found.');
+                  this.tablesExist = false;
+                  return;
+                }
+                throw dbError;
+              }
             }
           }
         } catch (error) {
@@ -638,6 +760,11 @@ Return only valid JSON with extracted values. Be precise and extract only what i
 
   private async restorePersistedForms(): Promise<void> {
     try {
+      // Skip if tables don't exist
+      if (!this.tablesExist) {
+        return;
+      }
+
       const db = this.runtime as IDatabaseAdapter;
       if (!db.getDatabase) {
         logger.warn('Database adapter not available for form restoration');
@@ -651,11 +778,21 @@ Return only valid JSON with extracted values. Be precise and extract only what i
       }
 
       // Restore forms from database
-      const formsResult = await database.all(`
-        SELECT * FROM forms 
-        WHERE agent_id = ? AND status != 'completed'
-        ORDER BY updated_at DESC
-      `, [this.runtime.agentId]);
+      let formsResult;
+      try {
+        formsResult = await database.all(`
+          SELECT * FROM forms 
+          WHERE agent_id = ? AND status != 'completed'
+          ORDER BY updated_at DESC
+        `, [this.runtime.agentId]);
+      } catch (error: any) {
+        if (error.message?.includes('does not exist') || error.message?.includes('no such table')) {
+          logger.debug('Forms table does not exist during restoration');
+          this.tablesExist = false;
+          return;
+        }
+        throw error;
+      }
 
       if (!formsResult || formsResult.length === 0) {
         logger.debug('No forms to restore from database');
@@ -668,11 +805,21 @@ Return only valid JSON with extracted values. Be precise and extract only what i
           const steps = JSON.parse(formRow.steps);
           
           // Restore form fields
-          const fieldsResult = await database.all(`
-            SELECT * FROM form_fields 
-            WHERE form_id = ?
-            ORDER BY step_id, field_id
-          `, [formRow.id]);
+          let fieldsResult;
+          try {
+            fieldsResult = await database.all(`
+              SELECT * FROM form_fields 
+              WHERE form_id = ?
+              ORDER BY step_id, field_id
+            `, [formRow.id]);
+          } catch (error: any) {
+            if (error.message?.includes('does not exist') || error.message?.includes('no such table')) {
+              logger.debug('Form fields table does not exist during restoration');
+              this.tablesExist = false;
+              return;
+            }
+            throw error;
+          }
 
           // Group fields by step
           const fieldsByStep = new Map<string, typeof fieldsResult>();
