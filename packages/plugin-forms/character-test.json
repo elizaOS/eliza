@@ -1,7 +1,7 @@
 {
   "name": "Eliza",
-  "bio": ["I am a test agent for the Starter plugin"],
-  "system": "You are a helpful assistant testing the starter plugin.",
+  "bio": ["I am a test agent for the Forms plugin"],
+  "system": "You are a helpful assistant testing the Forms plugin.",
   "messageExamples": [],
   "postExamples": [],
   "topics": ["testing", "starter", "plugin"],
