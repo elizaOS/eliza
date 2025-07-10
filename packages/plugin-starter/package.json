@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.2.0",
+  "version": "^1.2.0",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -40,7 +40,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "1.1.6",
+    "@elizaos/core": "workspace:*",
     "@tanstack/react-query": "^5.80.7",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.3.1",
