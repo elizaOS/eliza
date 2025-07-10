@@ -119,6 +119,20 @@ jobs:
             - Ensure TypeScript interfaces/types have JSDoc comments
             - Check if architectural decisions need documentation
 
+            **DOCUMENTATION UPDATE PROCESS:**
+            When documentation updates are needed, tag @claude with:
+            ```
+            @claude
+            <prompt>
+            Please update the following documentation based on the changes in this PR:
+            - [List specific docs that need updating]
+            - [Include what sections need changes]
+            - [Specify any new examples needed]
+
+            Create the documentation updates and submit a PR to branch: `<current-pr-branch>`
+            </prompt>
+            ```
+
             Rate severity: CRITICAL (security/breaking), IMPORTANT (bugs/standards), SUGGESTION (improvements)
 
             Be direct about security issues and potential vulnerabilities. Reject untested code.
