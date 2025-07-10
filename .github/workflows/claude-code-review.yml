@@ -111,6 +111,9 @@ jobs:
 
             Be direct about security issues and potential vulnerabilities. Reject untested code.
 
+          # Allow Claude to run bun commands during review
+          allowed_tools: 'Bash(bun install),Bash(bun run build),Bash(bun test),Bash(bun run lint),Bash(bun run format)'
+
           # Optional: Customize review based on file types
           # direct_prompt: |
           #   Review this PR focusing on:
