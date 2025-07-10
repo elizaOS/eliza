@@ -1,5 +1,6 @@
 import type { MemoryMetadata } from './memory';
-import type { Content, UUID } from './primitives';
+import type { Content } from './messaging';
+import type { UUID } from './uuid';
 
 /**
  * Represents a single item of knowledge that can be processed and stored by the agent.

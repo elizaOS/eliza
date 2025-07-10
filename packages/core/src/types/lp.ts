@@ -1,4 +1,4 @@
-import type { Metadata } from './primitives';
+import type { Metadata } from './metadata';
 import { Service } from './service';
 import type { TokenBalance } from './token';
 

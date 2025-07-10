@@ -1,5 +1,5 @@
 import type { Memory } from './memory';
-import type { UUID } from './primitives';
+import type { UUID } from './uuid';
 import type { IAgentRuntime } from './runtime';
 import type { State } from './state';
 

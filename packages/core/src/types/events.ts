@@ -2,7 +2,8 @@ import type { HandlerCallback } from './components';
 import type { Entity, Room, World } from './environment';
 import type { Memory } from './memory';
 import type { ModelTypeName } from './model';
-import type { Metadata, UUID } from './primitives';
+import type { UUID } from './uuid';
+import type { Metadata } from './metadata';
 import type { IAgentRuntime } from './runtime';
 
 /**

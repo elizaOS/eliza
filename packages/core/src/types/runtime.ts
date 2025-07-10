@@ -4,13 +4,13 @@ import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
 import { Memory } from './memory';
-import type { SendHandlerFunction, TargetInfo } from './messaging';
+import type { Content, SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
 import type { Plugin, Route } from './plugin';
-import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
 import type { TaskWorker } from './task';
+import type { UUID } from './uuid';
 
 /**
  * Represents the core runtime environment for an agent.

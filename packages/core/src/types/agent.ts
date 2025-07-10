@@ -1,6 +1,7 @@
 import type { DirectoryItem } from './knowledge';
-import type { Content, UUID } from './primitives';
+import type { Content } from './messaging';
 import type { State } from './state';
+import type { UUID } from './uuid';
 
 /**
  * Example message for demonstration

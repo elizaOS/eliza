@@ -1,4 +1,5 @@
-import type { Content, UUID } from './primitives';
+import type { Content } from './messaging';
+import type { UUID } from './uuid';
 
 /**
  * Memory type enumeration for built-in memory types

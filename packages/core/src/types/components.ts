@@ -1,5 +1,5 @@
 import type { Memory } from './memory';
-import type { Content } from './primitives';
+import type { Content } from './messaging';
 import type { IAgentRuntime } from './runtime';
 import type { State } from './state';
 

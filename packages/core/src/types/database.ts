@@ -1,7 +1,8 @@
 import type { Agent } from './agent';
 import type { Component, Entity, Participant, Relationship, Room, World } from './environment';
 import type { Memory, MemoryMetadata } from './memory';
-import type { Metadata, UUID } from './primitives';
+import type { UUID } from './uuid';
+import type { Metadata } from './metadata';
 import type { Task } from './task';
 
 /**

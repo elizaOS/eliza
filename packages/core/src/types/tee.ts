@@ -1,4 +1,4 @@
-import type { Metadata } from './primitives';
+import type { Metadata } from './metadata';
 
 // Represents an agent in the TeeAgent table, containing details about the agent.
 /**

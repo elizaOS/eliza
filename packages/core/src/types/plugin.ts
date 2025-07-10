@@ -3,9 +3,9 @@ import type { Action, Evaluator, Provider } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { EventHandler, EventPayloadMap } from './events';
 import type { IAgentRuntime } from './runtime';
+import type { PluginScenario } from './scenario';
 import type { Service } from './service';
 import type { TestSuite } from './testing';
-
 export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
   path: string;
@@ -34,7 +34,12 @@ export interface Plugin {
   init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
 
   // Configuration
-  config?: { [key: string]: any };
+  config?: {
+    defaultEnabled?: boolean;
+    category?: string;
+    permissions?: string[];
+    [key: string]: any;
+  };
 
   services?: (typeof Service)[];
 
@@ -45,10 +50,11 @@ export interface Plugin {
     validator?: (data: any) => boolean;
   }[];
 
-  // Optional plugin features
+  // Plugin component arrays with built-in enable/disable support
   actions?: Action[];
   providers?: Provider[];
   evaluators?: Evaluator[];
+
   adapter?: IDatabaseAdapter;
   models?: {
     [key: string]: (...args: any[]) => Promise<any>;
@@ -56,6 +62,7 @@ export interface Plugin {
   events?: PluginEvents;
   routes?: Route[];
   tests?: TestSuite[];
+  scenarios?: PluginScenario[];
 
   dependencies?: string[];
 

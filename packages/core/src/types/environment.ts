@@ -1,4 +1,5 @@
-import type { Metadata, UUID } from './primitives';
+import type { UUID } from './uuid';
+import type { Metadata } from './metadata';
 
 export interface Component {
   id: UUID;
