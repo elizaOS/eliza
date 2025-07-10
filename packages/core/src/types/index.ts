@@ -19,3 +19,17 @@ export * from './testing';
 export * from './settings';
 export * from './wallet';
 export * from './lp';
+
+export type {
+  Action,
+  ActionExample,
+  Evaluator,
+  Provider,
+  EvaluationExample,
+  ProviderResult,
+  HandlerCallback,
+  Handler,
+  Validator,
+  ActionResult,
+  ActionContext,
+} from './components';

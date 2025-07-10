@@ -7,6 +7,8 @@ import {
   type Memory,
   ModelType,
   type State,
+  type ActionResult,
+  logger,
 } from '@elizaos/core';
 
 /**
@@ -63,31 +65,78 @@ export const replyAction = {
     _options: any,
     callback: HandlerCallback,
     responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
+    // Access previous action results from context if available
+    const context = _options?.context;
+    const previousResults = context?.previousResults || [];
+
+    if (previousResults.length > 0) {
+      logger.debug(`[REPLY] Found ${previousResults.length} previous action results`);
+    }
+
     // Check if any responses had providers associated with them
     const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
 
     // Only generate response using LLM if no suitable response was found
-    state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
+    state = await runtime.composeState(message, [
+      ...(allProviders ?? []),
+      'RECENT_MESSAGES',
+      'ACTION_STATE',
+    ]);
 
     const prompt = composePromptFromState({
       state,
       template: replyTemplate,
     });
 
-    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-      prompt,
-    });
+    try {
+      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        prompt,
+      });
 
-    const responseContent = {
-      thought: response.thought,
-      text: (response.message as string) || '',
-      actions: ['REPLY'],
-    };
+      const responseContent = {
+        thought: response.thought,
+        text: (response.message as string) || '',
+        actions: ['REPLY'],
+      };
 
-    await callback(responseContent);
+      await callback(responseContent);
 
-    return true;
+      return {
+        text: `Generated reply: ${responseContent.text}`,
+        values: {
+          success: true,
+          responded: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: response.thought,
+        },
+        data: {
+          actionName: 'REPLY',
+          response: responseContent,
+          thought: response.thought,
+          messageGenerated: true,
+        },
+        success: true,
+      };
+    } catch (error) {
+      logger.error(`[REPLY] Error generating response: ${error}`);
+
+      return {
+        text: 'Error generating reply',
+        values: {
+          success: false,
+          responded: false,
+          error: true,
+        },
+        data: {
+          actionName: 'REPLY',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
   },
   examples: [
     [
