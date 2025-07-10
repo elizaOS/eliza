@@ -82,68 +82,6 @@ const config: Config = {
     [
       '@docusaurus/plugin-content-docs',
       {
-        id: 'partners',
-        path: './partners',
-        routeBasePath: 'partners',
-        sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
-          const sidebarItems = await defaultSidebarItemsGenerator(args);
-          return sidebarItems
-            .map((item: SidebarItem) => {
-              if (item.type === 'category') {
-                item.label = '🤝 ' + item.label;
-              }
-              return item;
-            })
-            .sort((a: SidebarItem, b: SidebarItem) => {
-              const labelA = a.label || '';
-              const labelB = b.label || '';
-              return labelA.localeCompare(labelB, undefined, {
-                numeric: true,
-              });
-            });
-        },
-      },
-    ],
-    [
-      '@docusaurus/plugin-content-docs',
-      {
-        id: 'community',
-        path: 'community',
-        routeBasePath: 'community',
-        sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
-          const sidebarItems = await defaultSidebarItemsGenerator(args);
-          return sidebarItems
-            .map((item: SidebarItem) => {
-              if (item.type === 'category') {
-                switch (item.label.toLowerCase()) {
-                  case 'streams':
-                    item.label = '📺 ' + item.label;
-                    break;
-                  case 'development':
-                    item.label = '💻 ' + item.label;
-                    break;
-                  case 'the_arena':
-                    item.label = '🏟️ ' + item.label;
-                    break;
-                  default:
-                    item.label = '📄 ' + item.label;
-                }
-              }
-              return item;
-            })
-            .sort((a: SidebarItem, b: SidebarItem) => {
-              const labelA = a.label || '';
-              const labelB = b.label || '';
-              return labelA.localeCompare(labelB, undefined, {
-                numeric: true,
-              });
-            });
-        },
-      },
-    ],
-    [
-      '@docusaurus/plugin-content-docs',
-      {
         id: 'packages',
         path: 'packages',
         routeBasePath: 'packages',
@@ -315,10 +253,6 @@ const config: Config = {
               path: '',
               banner: 'none',
             },
-            '0.25.9': {
-              label: '0.25.9',
-              path: '0.25.9',
-            },
           },
         },
         theme: {
@@ -445,25 +379,10 @@ const config: Config = {
           position: 'left',
         },
         {
-          type: 'dropdown',
-          label: 'Community',
+          label: 'Calendar',
+          to: 'https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto',
+          target: '_blank',
           position: 'left',
-          to: '/community',
-          items: [
-            {
-              label: 'Partners',
-              to: '/partners',
-            },
-            {
-              label: 'Calendar',
-              to: 'https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto',
-              target: '_blank',
-            },
-            {
-              label: 'Video Gallery',
-              to: '/community/videos',
-            },
-          ],
         },
         {
           type: 'dropdown',
