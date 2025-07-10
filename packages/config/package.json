@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/config",
+  "description": "Shared configuration for ElizaOS projects and plugins",
+  "version": "1.2.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "UNLICENSED",
+  "author": "${GITHUB_USERNAME}",
+  "keywords": [
+    "plugin",
+    "elizaos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "${REPO_URL}"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
+  },
+  "exports": {
+    "./eslint/eslint.config.plugin.js": "./src/eslint/eslint.config.plugin.js",
+    "./eslint/eslint.config.base.js": "./src/eslint/eslint.config.base.js",
+    "./eslint/eslint.config.frontend.js": "./src/eslint/eslint.config.frontend.js",
+    "./prettier/prettier.config.js": "./src/prettier/prettier.config.js",
+    "./typescript/tsconfig.base.json": "./src/typescript/tsconfig.base.json",
+    "./typescript/tsconfig.plugin.json": "./src/typescript/tsconfig.plugin.json",
+    "./typescript/tsconfig.frontend.json": "./src/typescript/tsconfig.frontend.json",
+    "./typescript/tsconfig.test.json": "./src/typescript/tsconfig.test.json"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {},
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.24.2"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+}
