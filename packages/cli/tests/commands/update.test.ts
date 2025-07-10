@@ -83,7 +83,7 @@ describe('ElizaOS Update Commands', () => {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
-      expect(result).toMatch(/Version: 1\.0/);
+      expect(result).toMatch(/Version: 1\.2\.0/);
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

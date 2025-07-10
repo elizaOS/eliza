@@ -476,22 +476,25 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/agents/:agentId/:filename',
-        (req: express.Request, res: express.Response) => {
+        (req: express.Request, res: express.Response): void => {
           const agentId = req.params.agentId as string;
           const filename = req.params.filename as string;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
-            return res.status(400).json({ error: 'Invalid agent ID format' });
+            res.status(400).json({ error: 'Invalid agent ID format' });
+            return;
           }
           const sanitizedFilename = basename(filename);
           const agentUploadsPath = join(uploadsBasePath, agentId);
           const filePath = join(agentUploadsPath, sanitizedFilename);
           if (!filePath.startsWith(agentUploadsPath)) {
-            return res.status(403).json({ error: 'Access denied' });
+            res.status(403).json({ error: 'Access denied' });
+            return;
           }
 
           if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File does not exist!!!!!!!' });
+            res.status(404).json({ error: 'File does not exist!!!!!!!' });
+            return;
           }
 
           res.sendFile(sanitizedFilename, { root: agentUploadsPath }, (err) => {
@@ -511,18 +514,23 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
+        (
+          req: express.Request<{ agentId: string; filename: string }>,
+          res: express.Response
+        ): void => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
-            return res.status(400).json({ error: 'Invalid agent ID format' });
+            res.status(400).json({ error: 'Invalid agent ID format' });
+            return;
           }
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
           if (!filePath.startsWith(agentGeneratedPath)) {
-            return res.status(403).json({ error: 'Access denied' });
+            res.status(403).json({ error: 'Access denied' });
+            return;
           }
           res.sendFile(filePath, (err) => {
             if (err) {
