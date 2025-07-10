@@ -44,33 +44,98 @@ jobs:
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Review this ElizaOS pull request following the project's CLAUDE.md guidelines.
 
-            Be constructive and helpful in your feedback.
+            **FUNDAMENTAL PRINCIPLE: CODE WITHOUT TEST COVERAGE IS PROBABLY BROKEN**
+            - Assume untested code doesn't work correctly
+            - Models hallucinate frequently - testing is critical for correctness
+            - First attempts are usually incorrect without thorough testing
+            - Require tests for ALL new functionality and bug fixes
 
-          # Optional: Customize review based on file types
-          # direct_prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
+            **CRITICAL SECURITY REVIEW:**
+            - Check for exposed API keys, secrets, or credentials
+            - Verify no hardcoded sensitive data
+            - Review external API calls for security vulnerabilities
+            - Detect any potentially malicious code or suspicious patterns
+            - Ensure proper input validation and sanitization
+            - Check for SQL injection, XSS, or other security vulnerabilities
 
-          # Optional: Different prompts for different authors
-          # direct_prompt: |
-          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' &&
-          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
-          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+            **TYPESCRIPT & TYPE SAFETY:**
+            - Ensure ALL code has proper TypeScript typing (no 'any' types)
+            - Verify interfaces and types are properly defined in types.ts
+            - Check for type assertions that could hide runtime errors
+            - Ensure proper error handling with typed errors
+            - Verify all function parameters and returns are typed
 
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+            **ELIZAOS ARCHITECTURE COMPLIANCE:**
+            - Verify @elizaos/core is used correctly (not packages/core in imports)
+            - Check no circular dependencies (core cannot depend on other packages)
+            - Ensure proper abstraction layers (Channel→Room, Server→World)
+            - Verify services maintain system state correctly
+            - Check plugin architecture compliance
+            - Ensure deterministic UUID generation where applicable
 
-          # Optional: Skip review for certain conditions
-          # if: |
-          #   !contains(github.event.pull_request.title, '[skip-review]') &&
-          #   !contains(github.event.pull_request.title, '[WIP]')
+            **CODE STANDARDS:**
+            - Use functional programming patterns (no classes)
+            - Comprehensive error handling required
+            - Clear separation of concerns
+            - No stubs, fake code, or incomplete implementations
+            - Follow existing patterns in codebase
+            - Descriptive variable and function names
+
+            **TESTING REQUIREMENTS:**
+            - REJECT CODE WITHOUT TESTS - it's likely broken
+            - Verify comprehensive test coverage using bun test
+            - Check for proper unit tests using bun test ONLY
+            - Ensure E2E tests for runtime integrations
+            - Verify tests actually test the functionality (not just pass)
+            - Check for edge cases and error scenarios
+            - NO vitest, jest, mocha, or other test frameworks - ONLY bun test
+
+            **MONOREPO COMPLIANCE:**
+            - CRITICAL: Verify use of 'bun' exclusively (NEVER npm, pnpm, yarn, or npx)
+            - Flag ANY usage of npm, pnpm, yarn, vitest, jest as CRITICAL issues
+            - Check package.json scripts use bun commands
+            - Ensure proper build pipeline integration
+            - Verify no breaking changes to dependent packages
+            - All installations must use 'bun install' or 'bun add'
+
+            **SPECIFIC CHECKS:**
+            - Database queries use IDatabaseAdapter interface
+            - Actions include proper validation functions
+            - Providers format data correctly for templates
+            - Evaluators run after response generation
+            - Services are properly registered with runtime
+
+            **DOCUMENTATION REQUIREMENTS:**
+            - Check if changes require documentation updates
+            - Verify README.md updates for new features or breaking changes
+            - Ensure API changes are documented
+            - Check for updated usage examples
+            - Verify configuration changes are documented
+            - Ensure new environment variables are documented
+            - Check if migration guides are needed for breaking changes
+            - Verify inline code comments for complex logic
+            - Ensure TypeScript interfaces/types have JSDoc comments
+            - Check if architectural decisions need documentation
+
+            **DOCUMENTATION UPDATE PROCESS:**
+            When documentation updates are needed, tag @claude with:
+            ```
+            @claude
+            <prompt>
+            Please update the following documentation based on the changes in this PR:
+            - [List specific docs that need updating]
+            - [Include what sections need changes]
+            - [Specify any new examples needed]
+
+            Create the documentation updates and submit a PR to branch: `<current-pr-branch>`
+            </prompt>
+            ```
+
+            Rate severity: CRITICAL (security/breaking), IMPORTANT (bugs/standards), SUGGESTION (improvements)
+
+            Be direct about security issues and potential vulnerabilities. Reject untested code.
+
+          # Allow Claude to run bun commands during review
+          allowed_tools: 'Bash(bun install),Bash(bun run build),Bash(bun test),Bash(bun run lint),Bash(bun run format)'
