@@ -808,7 +808,7 @@ export class AgentRuntime implements IAgentRuntime {
                 ...accumulatedState,
                 values: { ...accumulatedState.values, ...actionResult.values },
                 data: {
-                  ...accumulatedState.data,
+                  ...(accumulatedState.data || {}),
                   actionResults: [...(accumulatedState.data?.actionResults || []), actionResult],
                   actionPlan,
                 },
@@ -819,9 +819,18 @@ export class AgentRuntime implements IAgentRuntime {
             if (actionResult && accumulatedState.data) {
               if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
               
-              // Clean up old entries if we're at the limit
+              // Add new entry first, then clean up if we exceed the limit
+              const memoryKey = `action_${responseAction}_${uuidv4()}`;
+              const memoryEntry: WorkingMemoryEntry = {
+                actionName: action.name,
+                result: actionResult,
+                timestamp: Date.now()
+              };
+              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
+              
+              // Clean up old entries if we now exceed the limit
               const entries = Object.entries(accumulatedState.data.workingMemory);
-              if (entries.length >= this.maxWorkingMemoryEntries) {
+              if (entries.length > this.maxWorkingMemoryEntries) {
                 // Sort by timestamp (newest first) and keep only the most recent entries
                 const sorted = entries.sort((a, b) => {
                   const entryA = a[1] as WorkingMemoryEntry | null;
@@ -830,20 +839,11 @@ export class AgentRuntime implements IAgentRuntime {
                   const timestampB = entryB?.timestamp ?? 0;
                   return timestampB - timestampA;
                 });
-                // Keep the most recent entries - 1 to make room for the new entry
+                // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
                 accumulatedState.data.workingMemory = Object.fromEntries(
-                  sorted.slice(0, this.maxWorkingMemoryEntries - 1)
+                  sorted.slice(0, this.maxWorkingMemoryEntries)
                 );
               }
-              
-              // Store in working memory with UUID to prevent collisions
-              const memoryKey = `action_${responseAction}_${uuidv4()}`;
-              const memoryEntry: WorkingMemoryEntry = {
-                actionName: action.name,
-                result: actionResult,
-                timestamp: Date.now()
-              };
-              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
             }
 
             // Update plan with success immutably
