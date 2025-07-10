@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, mock, afterEach, jest } from 'bun:test';
 import { MessageBusService } from '../services/message';
-import { createMockAgentRuntime } from './test-utils/mocks';
+import { createMockAgentRuntime } from '@elizaos/test-utils';
 import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import internalMessageBus from '../bus';

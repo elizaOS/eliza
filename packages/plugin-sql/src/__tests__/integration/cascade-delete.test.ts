@@ -97,7 +97,7 @@ describe('Cascade Delete Tests', () => {
     expect(await adapter.getAgent(agentId)).not.toBeNull();
     expect(await adapter.getWorld(worldId)).not.toBeNull();
     expect((await adapter.getRoomsByIds([roomId]))?.length).toBe(1);
-    expect((await adapter.getEntityByIds([entityId]))?.length).toBe(1);
+    expect((await adapter.getEntitiesByIds([entityId]))?.length).toBe(1);
     expect(await adapter.getMemoryById(memoryId)).not.toBeNull();
     expect(await adapter.getTask(taskId)).not.toBeNull();
     expect(await adapter.getCache('test_cache_key')).toBeDefined();
@@ -112,7 +112,7 @@ describe('Cascade Delete Tests', () => {
     // Verify all related data is deleted via cascade
     expect(await adapter.getWorld(worldId)).toBeNull();
     expect(await adapter.getRoomsByIds([roomId])).toEqual([]);
-    expect(await adapter.getEntityByIds([entityId])).toEqual([]);
+    expect(await adapter.getEntitiesByIds([entityId])).toEqual([]);
     expect(await adapter.getMemoryById(memoryId)).toBeNull();
     expect(await adapter.getTask(taskId)).toBeNull();
     expect(await adapter.getCache('test_cache_key')).toBeUndefined();

@@ -743,7 +743,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Step 2: Create all entities
     const entityIds = entities.map((e) => e.id);
-    const entityExistsCheck = await this.adapter.getEntityByIds(entityIds);
+    const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
     const entitiesToUpdate = entityExistsCheck.map((e) => e.id);
     const entitiesToCreate = entities.filter((e) => !entitiesToUpdate.includes(e.id));
 
@@ -1475,13 +1475,13 @@ export class AgentRuntime implements IAgentRuntime {
     return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
-    const entities = await this.adapter.getEntityByIds([entityId]);
+    const entities = await this.adapter.getEntitiesByIds([entityId]);
     if (!entities?.length) return null;
     return entities[0];
   }
 
-  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    return await this.adapter.getEntityByIds(entityIds);
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+    return await this.adapter.getEntitiesByIds(entityIds);
   }
   async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
     return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
