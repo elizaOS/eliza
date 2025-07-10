@@ -1,6 +1,7 @@
 import type { Plugin } from '@elizaos/core';
 import {
   type Action,
+  type ActionResult,
   type Content,
   type GenerateTextParams,
   type HandlerCallback,
@@ -69,11 +70,11 @@ const helloWorldAction: Action = {
     _options: any,
     callback?: HandlerCallback,
     _responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     try {
       logger.info('Handling HELLO_WORLD action');
 
-      // Simple response content
+      // Simple response content for callback
       const responseContent: Content = {
         text: 'hello world!',
         actions: ['HELLO_WORLD'],
@@ -85,10 +86,21 @@ const helloWorldAction: Action = {
         await callback(responseContent);
       }
 
-      return responseContent;
+      // Return ActionResult
+      return {
+        text: 'hello world!',
+        success: true,
+        data: {
+          actions: ['HELLO_WORLD'],
+          source: message.content.source,
+        },
+      };
     } catch (error) {
       logger.error('Error in HELLO_WORLD action:', error);
-      throw error;
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 
