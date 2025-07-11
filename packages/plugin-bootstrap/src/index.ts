@@ -555,7 +555,9 @@ const messageReceivedHandler = async ({
                 responseContent.actions = ["IGNORE"];
               } else {
                 // Text present, LLM intended to reply, remove IGNORE
-                responseContent.actions = responseContent.actions.filter(action => action !== "IGNORE");
+                responseContent.actions = responseContent.actions.filter(
+                  action => action.toUpperCase() !== "IGNORE"
+                );
               }
             }
 
