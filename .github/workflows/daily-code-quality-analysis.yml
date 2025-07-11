@@ -501,6 +501,16 @@ jobs:
               reportContent = 'Error reading analysis report.';
             }
 
+            // GitHub has a 65536 character limit for issue bodies
+            const maxReportLength = 50000; // Leave room for the rest of the issue body
+            let reportTruncated = false;
+            if (reportContent.length > maxReportLength) {
+              // Truncate at a line boundary to keep markdown valid
+              const truncateAt = reportContent.lastIndexOf('\n', maxReportLength);
+              reportContent = reportContent.substring(0, truncateAt > 0 ? truncateAt : maxReportLength);
+              reportTruncated = true;
+            }
+
             // Count issues for summary
             let summaryStats = {
               deadCode: 0,
@@ -545,6 +555,8 @@ jobs:
             <summary>Click to expand full analysis results</summary>
 
             ${reportContent}
+
+            ${reportTruncated ? '\n\n**Note:** The full report was truncated due to GitHub\'s character limit. View the complete report in the workflow artifacts.' : ''}
 
             </details>
 
