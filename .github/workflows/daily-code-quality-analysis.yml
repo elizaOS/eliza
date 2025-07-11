@@ -556,7 +556,7 @@ jobs:
 
             ${reportContent}
 
-            ${reportTruncated ? '\n\n**Note:** The full report was truncated due to GitHub\'s character limit. View the complete report in the workflow artifacts.' : ''}
+            ${reportTruncated ? '\n\n**⚠️ Report Truncated**: The full analysis exceeded GitHub\'s 65KB limit.\n\n**📥 Download Full Report:**\n1. Go to the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n2. Scroll to "Artifacts" section at the bottom\n3. Download `code-quality-analysis-${{ github.run_id }}`\n\nThe artifact contains all analysis files and is retained for 30 days.' : ''}
 
             </details>
 
