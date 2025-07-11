@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
+      issues: write # Not used for issue creation (uses GH_PAT instead), but needed for other steps
       pull-requests: read
       id-token: write
 
@@ -483,18 +483,13 @@ jobs:
             core.setOutput('analyzed_branch', '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}');
 
       # Step 11: Create analysis issue for review
-      # NOTE: Claude will NOT automatically respond to this issue because it's created by a bot
-      # The Claude GitHub Action has security protection against bot-triggered loops
-      #
-      # WORKAROUNDS:
-      # 1. Manually comment on the issue with @claude to trigger analysis
-      # 2. Have a human user create the issue instead
-      # 3. Use a GitHub App with a user token instead of GITHUB_TOKEN
-      # 4. Wait for Claude action to support bot triggers (currently blocked)
+      # Using GH_PAT instead of GITHUB_TOKEN so the issue is created by a real user
+      # This allows Claude to respond automatically (Claude blocks bot-created issues)
       - name: Create Code Quality Analysis Issue
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_issues != 'false'
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GH_PAT }}
           script: |
             const fs = require('fs');
             const date = new Date().toISOString().split('T')[0];
@@ -571,9 +566,6 @@ jobs:
             ---
 
             **Workflow Run:** [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-
-            **⚠️ Note:** Claude will not automatically respond to this issue because it was created by a GitHub Actions bot.
-            To trigger Claude's analysis, a human user must comment on this issue mentioning @claude.
 
             @claude Please review this code quality analysis and identify the most critical issues that need immediate attention.`;
 
