@@ -545,32 +545,29 @@ const messageReceivedHandler = async ({
             //    - If text is empty, we assume the LLM intended to IGNORE and drop all other actions.
             //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
             // This ensures consistent, clear behavior and preserves reply speed optimizations.
-            if (
-              responseContent.actions &&
-              responseContent.actions.length > 1
-            ) {
+            if (responseContent.actions && responseContent.actions.length > 1) {
               // Helper function to safely check if an action is IGNORE
               const isIgnoreAction = (action: unknown): boolean => {
-                return typeof action === 'string' && action.toUpperCase() === "IGNORE";
+                return typeof action === 'string' && action.toUpperCase() === 'IGNORE';
               };
 
               // Check if any action is IGNORE
               const hasIgnoreAction = responseContent.actions.some(isIgnoreAction);
 
               if (hasIgnoreAction) {
-                if (!responseContent.text || responseContent.text.trim() === "") {
+                if (!responseContent.text || responseContent.text.trim() === '') {
                   // No text, truly meant to IGNORE
-                  responseContent.actions = ["IGNORE"];
+                  responseContent.actions = ['IGNORE'];
                 } else {
                   // Text present, LLM intended to reply, remove IGNORE
                   const filteredActions = responseContent.actions.filter(
-                    action => !isIgnoreAction(action)
+                    (action) => !isIgnoreAction(action)
                   );
 
                   // Ensure we don't end up with an empty actions array when text is present
                   // If all actions were IGNORE, default to REPLY
                   if (filteredActions.length === 0) {
-                    responseContent.actions = ["REPLY"];
+                    responseContent.actions = ['REPLY'];
                   } else {
                     responseContent.actions = filteredActions;
                   }
@@ -1115,14 +1112,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-          ownership: {
-            ownerId: entityId,
-          },
-          roles: {
-            [entityId]: Role.OWNER,
-          },
-          settings: {}, // Initialize empty settings for onboarding
-        }
+            ownership: {
+              ownerId: entityId,
+            },
+            roles: {
+              [entityId]: Role.OWNER,
+            },
+            settings: {}, // Initialize empty settings for onboarding
+          }
         : undefined;
 
     logger.info(
