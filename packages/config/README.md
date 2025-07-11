@@ -68,7 +68,7 @@ export default [
   ...pluginConfig,
   {
     // Your custom rules here
-  }
+  },
 ];
 ```
 
@@ -107,7 +107,11 @@ import tsConfigTest from '@elizaos/config/typescript/tsconfig.test.json';
 // ESLint configs
 import eslintConfigPlugin from '@elizaos/config/eslint/eslint.config.plugin.js';
 import eslintConfigFrontend from '@elizaos/config/eslint/eslint.config.frontend.js';
-import { baseConfig, testOverrides, standardIgnores } from '@elizaos/config/eslint/eslint.config.base.js';
+import {
+  baseConfig,
+  testOverrides,
+  standardIgnores,
+} from '@elizaos/config/eslint/eslint.config.base.js';
 
 // Prettier config
 import prettierConfig from '@elizaos/config/prettier/prettier.config.js';
@@ -121,8 +125,8 @@ The package also exports configuration paths that can be used programmatically:
 import { configPaths } from '@elizaos/config';
 
 console.log(configPaths.typescript.base); // '@elizaos/configs/typescript/tsconfig.base.json'
-console.log(configPaths.eslint.plugin);   // '@elizaos/configs/eslint/eslint.config.plugin.js'
-console.log(configPaths.prettier);         // '@elizaos/configs/prettier/prettier.config.js'
+console.log(configPaths.eslint.plugin); // '@elizaos/configs/eslint/eslint.config.plugin.js'
+console.log(configPaths.prettier); // '@elizaos/configs/prettier/prettier.config.js'
 ```
 
 ## Development
