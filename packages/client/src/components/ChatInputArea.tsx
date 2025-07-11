@@ -62,7 +62,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
       <form
         ref={formRef}
         onSubmit={handleSendMessage}
-        className="relative rounded-md border bg-card py-2 sm:py-3 px-4"
+        className="relative rounded-md border bg-card p-2 sm:p-3"
       >
         {selectedFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 pb-0 max-h-32 sm:max-h-40 overflow-y-auto">
