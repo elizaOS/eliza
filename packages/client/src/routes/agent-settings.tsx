@@ -44,9 +44,7 @@ export default function AgentSettingsRoute() {
         <AgentSettings
           agent={agent}
           agentId={agentId as UUID}
-          onSaveComplete={() => {
-            navigate('/');
-          }}
+          onSaveComplete={() => {}}
         />
       </div>
     </div>
