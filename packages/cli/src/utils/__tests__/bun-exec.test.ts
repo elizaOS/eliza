@@ -110,6 +110,56 @@ describe('bun-exec', () => {
       });
     });
 
+    it('should read stdout and stderr concurrently', async () => {
+      let stdoutReadStarted = false;
+      let stderrReadStarted = false;
+      let processExited = false;
+      
+      mockProc = {
+        stdout: new ReadableStream({
+          async start(controller) {
+            stdoutReadStarted = true;
+            // Simulate some delay
+            await new Promise(resolve => setTimeout(resolve, 50));
+            controller.enqueue(new TextEncoder().encode('stdout data'));
+            controller.close();
+          }
+        }),
+        stderr: new ReadableStream({
+          async start(controller) {
+            stderrReadStarted = true;
+            // Simulate some delay
+            await new Promise(resolve => setTimeout(resolve, 50));
+            controller.enqueue(new TextEncoder().encode('stderr data'));
+            controller.close();
+          }
+        }),
+        exited: new Promise(resolve => {
+          // Process exits after a delay
+          setTimeout(() => {
+            processExited = true;
+            resolve(0);
+          }, 100);
+        }),
+        kill: mock(() => {}),
+        killed: false
+      };
+      // @ts-ignore
+      Bun.spawn = mock(() => mockProc);
+
+      const result = await bunExec('test-concurrent');
+
+      // All operations should have started
+      expect(stdoutReadStarted).toBe(true);
+      expect(stderrReadStarted).toBe(true);
+      expect(processExited).toBe(true);
+
+      // Should have collected both outputs
+      expect(result.stdout).toBe('stdout data');
+      expect(result.stderr).toBe('stderr data');
+      expect(result.exitCode).toBe(0);
+    });
+
     it('should handle custom options', async () => {
       const options: BunExecOptions = {
         cwd: '/custom/path',
@@ -128,10 +178,25 @@ describe('bun-exec', () => {
       });
     });
 
-    it('should handle timeout', async () => {
+    it('should handle timeout for entire operation', async () => {
       mockProc = {
-        ...mockProc,
-        exited: new Promise(() => {}) // Never resolves
+        stdout: new ReadableStream({
+          async start(controller) {
+            // Simulate slow stdout that would exceed timeout
+            await new Promise(resolve => setTimeout(resolve, 200));
+            controller.enqueue(new TextEncoder().encode('stdout'));
+            controller.close();
+          }
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('stderr'));
+            controller.close();
+          }
+        }),
+        exited: new Promise(() => {}), // Never resolves
+        kill: mock(() => {}),
+        killed: false
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -211,6 +276,12 @@ describe('bun-exec', () => {
           start(controller) {
             controller.error(new Error('Stream error'));
           }
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('stderr output'));
+            controller.close();
+          }
         })
       };
       // @ts-ignore
@@ -218,9 +289,11 @@ describe('bun-exec', () => {
 
       const result = await bunExec('echo', ['test']);
 
-      // Should continue execution despite stream error
+      // Should continue execution despite stdout stream error
       expect(result.exitCode).toBe(0);
       expect(result.success).toBe(true);
+      expect(result.stdout).toBe(''); // Empty due to error
+      expect(result.stderr).toBe('stderr output'); // Should still get stderr
     });
 
     it('should clean up process on error', async () => {
@@ -258,6 +331,26 @@ describe('bun-exec', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(ProcessExecutionError);
       }
+    });
+
+    it('should not kill process after timeout if already timed out', async () => {
+      mockProc = {
+        ...mockProc,
+        exited: new Promise(() => {}), // Never resolves
+        kill: mock(() => {}),
+        killed: false
+      };
+      // @ts-ignore
+      Bun.spawn = mock(() => mockProc);
+
+      try {
+        await bunExec('timeout-test', [], { timeout: 50 });
+      } catch (error) {
+        expect(error).toBeInstanceOf(ProcessTimeoutError);
+      }
+
+      // The kill should have been called once during timeout
+      expect(mockProc.kill).toHaveBeenCalledTimes(1);
     });
   });
 

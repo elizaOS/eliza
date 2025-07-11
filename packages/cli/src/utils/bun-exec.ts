@@ -70,6 +70,26 @@ function escapeShellArg(arg: string): string {
 }
 
 /**
+ * Helper to read a stream into a string
+ */
+async function readStreamSafe(
+  stream: ReadableStream | number | null | undefined,
+  streamName: string
+): Promise<string> {
+  if (!stream || typeof stream === 'number') {
+    return '';
+  }
+  
+  try {
+    const text = await new Response(stream).text();
+    return text;
+  } catch (error) {
+    logger.debug(`[bunExec] Error reading ${streamName}:`, error);
+    return '';
+  }
+}
+
+/**
  * Execute a command using Bun's shell functionality with enhanced security and error handling
  * This is a drop-in replacement for execa
  * 
@@ -110,6 +130,7 @@ export async function bunExec(
 ): Promise<ExecResult> {
   let proc: Subprocess<"pipe" | "inherit" | "ignore"> | null = null;
   let timeoutId: Timer | null = null;
+  let timedOut = false;
   
   try {
     // Build the full command with proper escaping for logging
@@ -126,11 +147,21 @@ export async function bunExec(
       stderr: options.stderr || options.stdio || 'pipe',
     });
 
-    // Set up timeout if specified
+    // Set up abort signal handling
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => {
+        if (proc) {
+          proc.kill();
+        }
+      });
+    }
+
+    // Create a promise that will reject on timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       if (options.timeout && options.timeout > 0) {
         const timeoutMs = options.timeout;
         timeoutId = setTimeout(() => {
+          timedOut = true;
           if (proc) {
             proc.kill();
           }
@@ -143,58 +174,17 @@ export async function bunExec(
       }
     });
 
-    // Set up abort signal handling
-    if (options.signal) {
-      options.signal.addEventListener('abort', () => {
-        if (proc) {
-          proc.kill();
-        }
-      });
-    }
-
-    // Collect output if piped
-    let stdout = '';
-    let stderr = '';
-
-    // Handle stdout stream safely
-    if (proc.stdout && typeof proc.stdout !== 'number' && options.stdout !== 'inherit' && options.stdio !== 'inherit') {
-      try {
-        const stdoutText = await Promise.race([
-          new Response(proc.stdout).text(),
-          timeoutPromise
-        ]);
-        stdout = stdoutText;
-      } catch (error) {
-        if (error instanceof ProcessTimeoutError) {
-          throw error;
-        }
-        logger.debug('[bunExec] Error reading stdout:', error);
-        // Continue execution even if stdout reading fails
-      }
-    }
-
-    // Handle stderr stream safely
-    if (proc.stderr && typeof proc.stderr !== 'number' && options.stderr !== 'inherit' && options.stdio !== 'inherit') {
-      try {
-        const stderrText = await Promise.race([
-          new Response(proc.stderr).text(),
-          timeoutPromise
-        ]);
-        stderr = stderrText;
-      } catch (error) {
-        if (error instanceof ProcessTimeoutError) {
-          throw error;
-        }
-        logger.debug('[bunExec] Error reading stderr:', error);
-        // Continue execution even if stderr reading fails
-      }
-    }
-
-    // Wait for the process to complete with timeout
-    const exitCode = await Promise.race([
-      proc.exited,
+    // Read all streams and wait for exit concurrently
+    const [stdout, stderr, exitCode] = await Promise.race([
+      // Normal execution path - all operations run concurrently
+      Promise.all([
+        readStreamSafe(proc.stdout, 'stdout'),
+        readStreamSafe(proc.stderr, 'stderr'),
+        proc.exited
+      ]),
+      // Timeout path
       timeoutPromise
-    ]) as number;
+    ]);
 
     // Clear timeout if process completed successfully
     if (timeoutId) {
@@ -222,8 +212,6 @@ export async function bunExec(
       clearTimeout(timeoutId);
     }
     
-    logger.debug(`[bunExec] Error executing command: ${error}`);
-    
     // Re-throw timeout errors as-is
     if (error instanceof ProcessTimeoutError) {
       throw error;
@@ -242,7 +230,7 @@ export async function bunExec(
     throw error;
   } finally {
     // Ensure process cleanup
-    if (proc && proc.killed === false) {
+    if (proc && proc.killed === false && !timedOut) {
       try {
         proc.kill();
       } catch (cleanupError) {
