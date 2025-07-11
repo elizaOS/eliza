@@ -1,4 +1,5 @@
 export { actionsProvider } from './actions';
+export { actionStateProvider } from './actionState';
 export { anxietyProvider } from './anxiety';
 export { attachmentsProvider } from './attachments';
 export { capabilitiesProvider } from './capabilities';

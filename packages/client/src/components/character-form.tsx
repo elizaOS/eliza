@@ -63,6 +63,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SecretPanelRef } from './secret-panel';
 import { MissingSecretsDialog } from './missing-secrets-dialog';
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
+import { createElizaClient } from '@/lib/api-client-config';
 
 export type InputField = {
   name: string;
@@ -204,10 +205,27 @@ export default function CharacterForm({
   const [showRightScroll, setShowRightScroll] = useState(false);
   const [showMissingSecretsDialog, setShowMissingSecretsDialog] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<Agent | null>(null);
+  const [globalEnvs, setGlobalEnvs] = useState<Record<string, string>>({});
 
   // Get required secrets based on enabled plugins
   const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
   const { requiredSecrets } = useRequiredSecrets(enabledPlugins);
+
+  // Fetch global environment variables
+  useEffect(() => {
+    const fetchGlobalEnvs = async () => {
+      try {
+        const elizaClient = createElizaClient();
+        const data = await elizaClient.system.getEnvironment();
+        setGlobalEnvs(data || {});
+      } catch (error) {
+        console.error('Failed to fetch global environment variables:', error);
+        setGlobalEnvs({});
+      }
+    };
+
+    fetchGlobalEnvs();
+  }, []);
 
   // Use the custom hook to detect container width
   const { containerRef, showLabels } = useContainerWidth(640); // Adjust threshold as needed
@@ -517,7 +535,16 @@ export default function CharacterForm({
         missingSecrets = requiredSecrets
           .filter((secret) => {
             const value = currentSecrets[secret.name];
-            return !value || (typeof value === 'string' && value.trim() === '');
+            // Check agent-specific secret
+            if (value && typeof value === 'string' && value.trim() !== '') {
+              return false;
+            }
+            // Check global environment
+            const globalValue = globalEnvs[secret.name];
+            if (globalValue && globalValue.trim() !== '') {
+              return false;
+            }
+            return true;
           })
           .map((secret) => secret.name);
       }
@@ -1076,7 +1103,16 @@ export default function CharacterForm({
             missingSecretNames = requiredSecrets
               .filter((secret) => {
                 const value = currentSecrets[secret.name];
-                return !value || (typeof value === 'string' && value.trim() === '');
+                // Check agent-specific secret
+                if (value && typeof value === 'string' && value.trim() !== '') {
+                  return false;
+                }
+                // Check global environment
+                const globalValue = globalEnvs[secret.name];
+                if (globalValue && globalValue.trim() !== '') {
+                  return false;
+                }
+                return true;
               })
               .map((secret) => secret.name);
           }
