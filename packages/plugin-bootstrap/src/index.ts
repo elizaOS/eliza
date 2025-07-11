@@ -547,17 +547,34 @@ const messageReceivedHandler = async ({
             // This ensures consistent, clear behavior and preserves reply speed optimizations.
             if (
               responseContent.actions &&
-              responseContent.actions.length > 1 &&
-              responseContent.actions.some(action => action.toUpperCase() === "IGNORE")
+              responseContent.actions.length > 1
             ) {
-              if (!responseContent.text || responseContent.text.trim() === "") {
-                // No text, truly meant to IGNORE
-                responseContent.actions = ["IGNORE"];
-              } else {
-                // Text present, LLM intended to reply, remove IGNORE
-                responseContent.actions = responseContent.actions.filter(
-                  action => action.toUpperCase() !== "IGNORE"
-                );
+              // Helper function to safely check if an action is IGNORE
+              const isIgnoreAction = (action: unknown): boolean => {
+                return typeof action === 'string' && action.toUpperCase() === "IGNORE";
+              };
+
+              // Check if any action is IGNORE
+              const hasIgnoreAction = responseContent.actions.some(isIgnoreAction);
+
+              if (hasIgnoreAction) {
+                if (!responseContent.text || responseContent.text.trim() === "") {
+                  // No text, truly meant to IGNORE
+                  responseContent.actions = ["IGNORE"];
+                } else {
+                  // Text present, LLM intended to reply, remove IGNORE
+                  const filteredActions = responseContent.actions.filter(
+                    action => !isIgnoreAction(action)
+                  );
+
+                  // Ensure we don't end up with an empty actions array when text is present
+                  // If all actions were IGNORE, default to REPLY
+                  if (filteredActions.length === 0) {
+                    responseContent.actions = ["REPLY"];
+                  } else {
+                    responseContent.actions = filteredActions;
+                  }
+                }
               }
             }
 
@@ -565,6 +582,7 @@ const messageReceivedHandler = async ({
             // Simple = REPLY action with no providers used
             const isSimple =
               responseContent.actions?.length === 1 &&
+              typeof responseContent.actions[0] === 'string' &&
               responseContent.actions[0].toUpperCase() === 'REPLY' &&
               (!responseContent.providers || responseContent.providers.length === 0);
 
@@ -1097,14 +1115,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-            ownership: {
-              ownerId: entityId,
-            },
-            roles: {
-              [entityId]: Role.OWNER,
-            },
-            settings: {}, // Initialize empty settings for onboarding
-          }
+          ownership: {
+            ownerId: entityId,
+          },
+          roles: {
+            [entityId]: Role.OWNER,
+          },
+          settings: {}, // Initialize empty settings for onboarding
+        }
         : undefined;
 
     logger.info(
