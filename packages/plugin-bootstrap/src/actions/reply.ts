@@ -22,10 +22,18 @@ import {
  * @type {string}
  */
 const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
+
 {{providers}}
+
 # Instructions: Write the next message for {{agentName}}.
 "thought" should be a short description of what the agent is thinking about and planning.
 "message" should be the next message for {{agentName}} which they will send to the conversation.
+
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
 
 Response format should be formatted in a valid JSON block like this:
 \`\`\`json
