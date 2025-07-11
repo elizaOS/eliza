@@ -137,17 +137,17 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
         .filter((secret) => {
           const secretName = typeof secret === 'object' && 'name' in secret ? secret.name : secret;
           const value = currentSecrets[secretName];
-          
+
           // Check if the value exists in current secrets
           if (value && value.trim() !== '') {
             return false;
           }
-          
+
           // Check if the value exists in global environment
           if (globalEnvs[secretName] && globalEnvs[secretName].trim() !== '') {
             return false;
           }
-          
+
           return true;
         })
         .map((secret) => (typeof secret === 'object' && 'name' in secret ? secret.name : secret));
@@ -405,7 +405,14 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
           .join(',');
         lastRequiredSecretsKeyRef.current = requiredSecretsKey;
       }
-    }, [characterValue.id, characterValue.settings?.secrets, requiredSecrets, isLoadingSecrets, globalEnvs, isLoadingGlobalEnvs]);
+    }, [
+      characterValue.id,
+      characterValue.settings?.secrets,
+      requiredSecrets,
+      isLoadingSecrets,
+      globalEnvs,
+      isLoadingGlobalEnvs,
+    ]);
 
     // Sync secrets when plugins change (not just when agent changes)
     useEffect(() => {
@@ -783,9 +790,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     });
 
     // Check if a secret exists in global environment
-    const isInGlobalEnv = useCallback((secretName: string) => {
-      return globalEnvs[secretName] && globalEnvs[secretName].trim() !== '';
-    }, [globalEnvs]);
+    const isInGlobalEnv = useCallback(
+      (secretName: string) => {
+        return globalEnvs[secretName] && globalEnvs[secretName].trim() !== '';
+      },
+      [globalEnvs]
+    );
 
     // Custom scrollbar styles for input containers - visible scrollbar like Railway
     const scrollbarContainerClass = `
@@ -863,20 +873,26 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                 </AlertDescription>
               </Alert>
             )}
-            
+
             {/* Show info about global environment variables */}
-            {!isLoadingSecrets && !isLoadingGlobalEnvs && 
-             requiredSecrets.some(secret => isInGlobalEnv(secret.name) && !envs.find(e => e.name === secret.name)?.value) && (
-              <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
-                <Globe className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertDescription className="text-blue-800 dark:text-blue-200">
-                  <strong>Global environment variables detected:</strong>
-                  <p className="text-sm mt-1">
-                    Some required secrets are automatically using values from your global environment settings. To override any of these for this specific agent, simply enter a new value in the field.
-                  </p>
-                </AlertDescription>
-              </Alert>
-            )}
+            {!isLoadingSecrets &&
+              !isLoadingGlobalEnvs &&
+              requiredSecrets.some(
+                (secret) =>
+                  isInGlobalEnv(secret.name) && !envs.find((e) => e.name === secret.name)?.value
+              ) && (
+                <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+                  <Globe className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertDescription className="text-blue-800 dark:text-blue-200">
+                    <strong>Global environment variables detected:</strong>
+                    <p className="text-sm mt-1">
+                      Some required secrets are automatically using values from your global
+                      environment settings. To override any of these for this specific agent, simply
+                      enter a new value in the field.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
 
             {/* Add new variable form */}
             <div className="space-y-2">
@@ -1029,7 +1045,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                       <div
                         key={`${env.name}-${index}`}
                         className={`grid grid-cols-[minmax(200px,1fr)_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${
-                          env.isRequired && (!env.value || env.value.trim() === '') && !isInGlobalEnv(env.name)
+                          env.isRequired &&
+                          (!env.value || env.value.trim() === '') &&
+                          !isInGlobalEnv(env.name)
                             ? 'bg-red-500/5'
                             : ''
                         }`}
@@ -1048,13 +1066,20 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                             {isInGlobalEnv(env.name) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Badge variant="secondary" className="text-xs shrink-0 flex items-center gap-1">
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-xs shrink-0 flex items-center gap-1"
+                                  >
                                     <Globe className="w-3 h-3" />
                                     Global
                                   </Badge>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>{env.value ? 'Overriding global value' : 'Value pulled from global environment. Add new value to override.'}</p>
+                                  <p>
+                                    {env.value
+                                      ? 'Overriding global value'
+                                      : 'Value pulled from global environment. Add new value to override.'}
+                                  </p>
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -1083,7 +1108,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                     className="font-mono text-sm border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                                     style={{ minWidth: '100%' }}
                                     type={visibleSecrets.has(index) ? 'text' : 'password'}
-                                    placeholder={isInGlobalEnv(env.name) && !env.value ? `Using global (enter to override)` : (env.example || 'Enter value...')}
+                                    placeholder={
+                                      isInGlobalEnv(env.name) && !env.value
+                                        ? `Using global (enter to override)`
+                                        : env.example || 'Enter value...'
+                                    }
                                     autoFocus
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') {
@@ -1141,7 +1170,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                       <code className="font-mono text-sm whitespace-nowrap block">
                                         {env.value || (
                                           <span className="text-muted-foreground italic">
-                                            {isInGlobalEnv(env.name) ? 'Using global value' : (env.example ? `e.g. ${env.example}` : 'Not set')}
+                                            {isInGlobalEnv(env.name)
+                                              ? 'Using global value'
+                                              : env.example
+                                                ? `e.g. ${env.example}`
+                                                : 'Not set'}
                                           </span>
                                         )}
                                       </code>
@@ -1161,9 +1194,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                     <div className="space-y-1">
                                       <p className="font-semibold">Global Environment Variable</p>
                                       <p className="text-sm">
-                                        {env.value 
+                                        {env.value
                                           ? "You've entered a custom value for this agent. This overrides the global environment setting. Clear the field to use the global value."
-                                          : "This secret is currently using the value from your global environment settings. The actual value is hidden for security. Enter a value here if you want to override it for this agent only."}
+                                          : 'This secret is currently using the value from your global environment settings. The actual value is hidden for security. Enter a value here if you want to override it for this agent only.'}
                                       </p>
                                     </div>
                                   </TooltipContent>
@@ -1239,7 +1272,10 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                 </Badge>
                               )}
                               {isInGlobalEnv(env.name) && (
-                                <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs flex items-center gap-1"
+                                >
                                   <Globe className="w-3 h-3" />
                                   Global
                                 </Badge>
@@ -1297,7 +1333,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                   className="font-mono text-sm pr-10 border-0 focus-visible:ring-0 w-auto min-w-full rounded"
                                   style={{ minWidth: '100%' }}
                                   type={visibleSecrets.has(index) ? 'text' : 'password'}
-                                  placeholder={isInGlobalEnv(env.name) && !env.value ? `Using global (enter to override)` : (env.example || 'Enter value...')}
+                                  placeholder={
+                                    isInGlobalEnv(env.name) && !env.value
+                                      ? `Using global (enter to override)`
+                                      : env.example || 'Enter value...'
+                                  }
                                   autoFocus
                                   onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
@@ -1357,7 +1397,11 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                     <code className="font-mono text-sm whitespace-nowrap block">
                                       {env.value || (
                                         <span className="text-muted-foreground italic">
-                                          {isInGlobalEnv(env.name) ? 'Using global value' : (env.example ? `e.g. ${env.example}` : 'Not set')}
+                                          {isInGlobalEnv(env.name)
+                                            ? 'Using global value'
+                                            : env.example
+                                              ? `e.g. ${env.example}`
+                                              : 'Not set'}
                                         </span>
                                       )}
                                     </code>
@@ -1377,9 +1421,9 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                                   <div className="space-y-1">
                                     <p className="font-semibold">Global Environment Variable</p>
                                     <p className="text-sm">
-                                      {env.value 
+                                      {env.value
                                         ? "You've entered a custom value for this agent. This overrides the global environment setting. Clear the field to use the global value."
-                                        : "This secret is currently using the value from your global environment settings. The actual value is hidden for security. Enter a value here if you want to override it for this agent only."}
+                                        : 'This secret is currently using the value from your global environment settings. The actual value is hidden for security. Enter a value here if you want to override it for this agent only.'}
                                     </p>
                                   </div>
                                 </TooltipContent>

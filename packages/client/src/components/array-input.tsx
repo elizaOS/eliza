@@ -47,7 +47,7 @@ type TagInputProps = {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
-  onAdd: () => void
+  onAdd: () => void;
 };
 
 const TagInput = ({ value, onChange, onKeyDown, onAdd }: TagInputProps) => (

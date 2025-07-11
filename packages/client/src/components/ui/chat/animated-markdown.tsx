@@ -27,7 +27,7 @@ export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
       setVisibleText(children);
       return;
     }
-  
+
     const safeDuration = Math.max(1000, maxDurationMs);
 
     setVisibleText('');
@@ -36,7 +36,6 @@ export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
     const totalChars = children.length;
     const totalSteps = Math.ceil(safeDuration / TYPING_INTERVAL);
     const charsPerStep = Math.max(1, Math.ceil(totalChars / totalSteps));
-
 
     let visibleCharCount = 0;
     const interval = setInterval(() => {
