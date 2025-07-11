@@ -406,7 +406,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Model Usage', () => {
     it('should call registered model handler', async () => {
-      const modelHandler = mock().mockResolvedValue({ result: 'success' });
+      const modelHandler = mock().mockResolvedValue('success');
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler, 'test-provider');
@@ -420,7 +420,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         expect.objectContaining({ ...params, runtime: runtime })
       );
-      expect(result).toEqual({ result: 'success' });
+      expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
         expect.objectContaining({ type: `useModel:${modelType}` })
@@ -471,7 +471,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {}, // options
+        expect.objectContaining({
+          context: expect.objectContaining({
+            previousResults: expect.any(Array),
+            getPreviousResult: expect.any(Function),
+          }),
+        }), // options now contains context
         undefined, // callback
         [responseMemory] // responses array
       );
@@ -491,6 +496,52 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.log).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'action' })
       );
+    });
+
+    it('should prioritize exact action name matches over fuzzy matches', async () => {
+      // Create two actions where one name is a substring of another
+      const replyHandler = mock().mockResolvedValue(undefined);
+      const replyWithImageHandler = mock().mockResolvedValue(undefined);
+
+      const replyAction: Action = {
+        name: 'REPLY',
+        description: 'Simple reply action',
+        similes: [],
+        examples: [],
+        handler: replyHandler,
+        validate: mock().mockImplementation(async () => true),
+      };
+
+      const replyWithImageAction: Action = {
+        name: 'REPLY_WITH_IMAGE',
+        description: 'Reply with image action',
+        similes: [],
+        examples: [],
+        handler: replyWithImageHandler,
+        validate: mock().mockImplementation(async () => true),
+      };
+
+      // Register both actions
+      runtime.registerAction(replyAction);
+      runtime.registerAction(replyWithImageAction);
+
+      // Test 1: When asking for 'REPLY', it should match REPLY exactly, not REPLY_WITH_IMAGE
+      responseMemory.content.actions = ['REPLY'];
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(replyHandler).toHaveBeenCalledTimes(1);
+      expect(replyWithImageHandler).not.toHaveBeenCalled();
+
+      // Reset mocks
+      replyHandler.mockClear();
+      replyWithImageHandler.mockClear();
+
+      // Test 2: When asking for 'REPLY_WITH_IMAGE', it should match REPLY_WITH_IMAGE exactly
+      responseMemory.content.actions = ['REPLY_WITH_IMAGE'];
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
+      expect(replyHandler).not.toHaveBeenCalled();
     });
   });
 

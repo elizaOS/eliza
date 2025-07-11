@@ -9,6 +9,7 @@ import {
   ModelType,
   parseBooleanFromText,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -63,7 +64,7 @@ export const unfollowRoomAction: Action = {
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
     _responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     async function _shouldUnfollow(state: State): Promise<boolean> {
       const shouldUnfollowPrompt = composePromptFromState({
         state,
@@ -80,23 +81,76 @@ export const unfollowRoomAction: Action = {
     }
 
     if (state && (await _shouldUnfollow(state))) {
-      await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
+      try {
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
 
-      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+        const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-      await runtime.createMemory(
-        {
-          entityId: message.entityId,
-          agentId: message.agentId,
-          roomId: message.roomId,
-          content: {
-            thought: `I unfollowed the room ${room.name}`,
-            actions: ['UNFOLLOW_ROOM_START'],
+        await runtime.createMemory(
+          {
+            entityId: message.entityId,
+            agentId: message.agentId,
+            roomId: message.roomId,
+            content: {
+              thought: `I unfollowed the room ${room.name}`,
+              actions: ['UNFOLLOW_ROOM_START'],
+            },
           },
-        },
-        'messages'
-      );
+          'messages'
+        );
+
+        return {
+          text: `Stopped following room: ${room.name}`,
+          values: {
+            success: true,
+            roomUnfollowed: true,
+            roomId: message.roomId,
+            roomName: room.name,
+            newState: null,
+          },
+          data: {
+            actionName: 'UNFOLLOW_ROOM',
+            roomId: message.roomId,
+            roomName: room.name,
+            unfollowed: true,
+          },
+          success: true,
+        };
+      } catch (error) {
+        return {
+          text: 'Failed to unfollow room',
+          values: {
+            success: false,
+            error: 'UNFOLLOW_FAILED',
+          },
+          data: {
+            actionName: 'UNFOLLOW_ROOM',
+            error: error instanceof Error ? error.message : String(error),
+            roomId: message.roomId,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
     } else {
+      // Decided not to unfollow or missing state
+      if (!state) {
+        return {
+          text: 'State is required for unfollow room action',
+          values: {
+            success: false,
+            error: 'STATE_REQUIRED',
+          },
+          data: {
+            actionName: 'UNFOLLOW_ROOM',
+            error: 'State is required',
+          },
+          success: false,
+          error: new Error('State is required for unfollow room action'),
+        };
+      }
+
+      // Create memory about the failed attempt
       await runtime.createMemory(
         {
           entityId: message.entityId,
@@ -113,6 +167,23 @@ export const unfollowRoomAction: Action = {
         },
         'messages'
       );
+
+      return {
+        text: 'Did not unfollow room - criteria not met',
+        values: {
+          success: true,
+          roomUnfollowed: false,
+          roomId: message.roomId,
+          reason: 'CRITERIA_NOT_MET',
+        },
+        data: {
+          actionName: 'UNFOLLOW_ROOM',
+          roomId: message.roomId,
+          unfollowed: false,
+          reason: 'Decision criteria not met',
+        },
+        success: true,
+      };
     }
   },
   examples: [

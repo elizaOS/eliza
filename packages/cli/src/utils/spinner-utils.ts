@@ -1,7 +1,7 @@
 import { execa } from 'execa';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
-import { parseBooleanFromText } from '@elizaos/core';
+import { parseBooleanFromText, logger } from '@elizaos/core';
 
 /**
  * Check if quiet mode is enabled

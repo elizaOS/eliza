@@ -313,7 +313,7 @@ function resolveModelToPlugin(modelName: string): string | null {
     anthropic: 'anthropic',
     openrouter: 'openrouter',
     ollama: 'ollama',
-    google: 'google',
+    google: 'google-genai',
   };
 
   return modelToPlugin[modelName] || null;

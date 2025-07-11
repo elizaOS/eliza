@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import AIWriter from 'react-aiwriter';
 import { Markdown } from './markdown';
 
 interface AnimatedMarkdownProps {
@@ -10,6 +9,7 @@ interface AnimatedMarkdownProps {
   variant?: 'user' | 'agent';
   shouldAnimate?: boolean;
   messageId?: string;
+  maxDurationMs?: number; // Optional prop to control cap duration
 }
 
 export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
@@ -18,38 +18,42 @@ export const AnimatedMarkdown: React.FC<AnimatedMarkdownProps> = ({
   variant = 'agent',
   shouldAnimate = false,
   messageId,
+  maxDurationMs = 10000,
 }) => {
-  const [animationComplete, setAnimationComplete] = React.useState(!shouldAnimate);
+  const [visibleText, setVisibleText] = React.useState(shouldAnimate ? '' : children);
 
-  // Reset animation state when message changes
   React.useEffect(() => {
-    if (shouldAnimate) {
-      setAnimationComplete(false);
-      // Estimate animation time based on text length (50ms per character roughly)
-      const estimatedTime = Math.min(children.length * 50, 3000);
-      const timer = setTimeout(() => {
-        setAnimationComplete(true);
-      }, estimatedTime);
-
-      return () => clearTimeout(timer);
-    } else {
-      setAnimationComplete(true);
+    if (!shouldAnimate || !children.trim()) {
+      setVisibleText(children);
+      return;
     }
-  }, [children, shouldAnimate, messageId]);
 
-  // If not animating or animation is complete, render markdown
-  if (!shouldAnimate || animationComplete) {
-    return (
-      <Markdown className={className} variant={variant}>
-        {children}
-      </Markdown>
-    );
-  }
+    const safeDuration = Math.max(1000, maxDurationMs);
 
-  // During animation, show AIWriter with plain text
+    setVisibleText('');
+
+    const TYPING_INTERVAL = 20;
+    const totalChars = children.length;
+    const totalSteps = Math.ceil(safeDuration / TYPING_INTERVAL);
+    const charsPerStep = Math.max(1, Math.ceil(totalChars / totalSteps));
+
+    let visibleCharCount = 0;
+    const interval = setInterval(() => {
+      visibleCharCount += charsPerStep;
+      if (visibleCharCount >= totalChars) {
+        setVisibleText(children);
+        clearInterval(interval);
+      } else {
+        setVisibleText(children.slice(0, visibleCharCount));
+      }
+    }, TYPING_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [children, shouldAnimate, messageId, maxDurationMs]);
+
   return (
-    <div className={className}>
-      <AIWriter>{children}</AIWriter>
-    </div>
+    <Markdown className={className} variant={variant}>
+      {visibleText}
+    </Markdown>
   );
 };
