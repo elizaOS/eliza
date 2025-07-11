@@ -34,7 +34,7 @@
     "./typescript/tsconfig.test.json": "./src/typescript/tsconfig.test.json"
   },
   "files": [
-    "src"
+    "dist"
   ],
   "dependencies": {},
   "devDependencies": {
