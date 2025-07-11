@@ -2,9 +2,9 @@ name: Daily Code Quality Analysis
 
 on:
   schedule:
-    # Run daily at noon UTC (12:00 PM UTC) on develop branch only
-    # Time zones: 4:00 AM PST / 7:00 AM EST / 1:00 PM CET / 8:00 PM CST
-    - cron: '0 12 * * *'
+    # Run daily at 1:00 PM UTC on develop branch only
+    # Time zones: 5:00 AM PST / 8:00 AM EST / 2:00 PM CET / 9:00 PM CST
+    - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
       create_issues:
@@ -60,87 +60,6 @@ jobs:
         run: |
           bun add -D knip
 
-      - name: Setup Knip configuration
-        id: knip-setup
-        run: |
-          # Check for existing Knip configuration
-          if [ -f "knip.config.ts" ]; then
-            echo "Found existing knip.config.ts - using it for analysis"
-            echo "using_existing_config=true" >> $GITHUB_OUTPUT
-            echo "config_type=ts" >> $GITHUB_OUTPUT
-            echo "had_backup=false" >> $GITHUB_OUTPUT
-          elif [ -f "knip.json" ]; then
-            echo "Found existing knip.json - backing it up and using it"
-            cp knip.json knip.json.backup
-            echo "using_existing_config=true" >> $GITHUB_OUTPUT
-            echo "config_type=json" >> $GITHUB_OUTPUT
-            echo "had_backup=true" >> $GITHUB_OUTPUT
-          else
-            echo "No existing Knip configuration found - creating basic knip.json"
-            cat > knip.json << 'EOF'
-            {
-              "$schema": "https://unpkg.com/knip@5/schema.json",
-              "entry": [
-                "packages/*/src/index.ts",
-                "packages/*/src/index.js"
-              ],
-              "project": [
-                "packages/**/src/**/*.{ts,tsx,js,jsx}",
-                "!packages/**/dist/**",
-                "!packages/**/node_modules/**"
-              ],
-              "ignore": [
-                "**/*.test.ts",
-                "**/*.spec.ts",
-                "**/*.test.tsx",
-                "**/*.spec.tsx",
-                "**/__tests__/**",
-                "**/test/**",
-                "**/tests/**"
-              ],
-              "ignoreExportsUsedInFile": true,
-              "ignoreDependencies": [
-                "@types/*",
-                "typescript"
-              ],
-              "rules": {
-                "files": "error",
-                "dependencies": "error",
-                "devDependencies": "error",
-                "unlisted": "error",
-                "binaries": "error",
-                "unresolved": "error",
-                "exports": "error",
-                "types": "error",
-                "nsExports": "error",
-                "duplicates": "error"
-              }
-            }
-            EOF
-            echo "using_existing_config=false" >> $GITHUB_OUTPUT
-            echo "config_type=json" >> $GITHUB_OUTPUT
-            echo "had_backup=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Verify Knip configuration
-        run: |
-          echo "Knip configuration status:"
-          echo "- Using existing config: ${{ steps.knip-setup.outputs.using_existing_config }}"
-          echo "- Config type: ${{ steps.knip-setup.outputs.config_type }}"
-          if [ "${{ steps.knip-setup.outputs.had_backup }}" = "true" ]; then
-            echo "- Original knip.json backed up"
-          fi
-          
-          # Show which configuration file is being used
-          if [ -f "knip.config.ts" ]; then
-            echo "Using knip.config.ts for analysis"
-          elif [ -f "knip.json" ]; then
-            echo "Using knip.json for analysis"
-          else
-            echo "No Knip configuration found - this should not happen"
-            exit 1
-          fi
-
       - name: Create analysis results directory
         run: mkdir -p analysis-results
 
@@ -153,9 +72,9 @@ jobs:
           echo "Analyzed using [Knip](https://knip.dev/) - a comprehensive dead code detection tool" >> analysis-results/dead-code.md
           echo "" >> analysis-results/dead-code.md
 
-          # Run Knip analysis
+          # Run Knip analysis with no-progress flag (automatically set in CI)
           echo "### Knip Analysis Results" >> analysis-results/dead-code.md
-          bunx knip --reporter compact 2>&1 | tee -a analysis-results/dead-code.md || true
+          bunx knip --reporter symbols 2>&1 | tee -a analysis-results/dead-code.md || true
 
           # Additional analysis for orphaned files
           echo "" >> analysis-results/dead-code.md
@@ -199,7 +118,7 @@ jobs:
                 function_start = 0
                 function_name = ""
             }
-            
+
             # Function declaration patterns - more specific and comprehensive
             /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
             /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
@@ -219,7 +138,7 @@ jobs:
                 }
                 next
             }
-            
+
             # Handle opening braces
             /{/ {
                 if (in_function) {
@@ -228,14 +147,14 @@ jobs:
                     brace_count += length($0)
                 }
             }
-            
+
             # Handle closing braces - works with indented braces
             /}/ {
                 if (in_function) {
                     # Count closing braces on this line
                     gsub(/[^}]/, "", $0)
                     brace_count -= length($0)
-                    
+
                     # If we have balanced braces, function is complete
                     if (brace_count <= 0) {
                         function_length = NR - function_start + 1
@@ -369,7 +288,7 @@ jobs:
                 function_name = ""
                 has_comment = 0
             }
-            
+
             # Function declaration patterns - more specific and comprehensive
             /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
             /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
@@ -390,14 +309,14 @@ jobs:
                 }
                 next
             }
-            
+
             # Check for comments before function
             /\/\*\*|\/\// {
                 if (in_function && NR >= function_start - 3 && NR <= function_start) {
                     has_comment = 1
                 }
             }
-            
+
             # Handle opening braces
             /{/ {
                 if (in_function) {
@@ -406,14 +325,14 @@ jobs:
                     brace_count += length($0)
                 }
             }
-            
+
             # Handle closing braces - works with indented braces
             /}/ {
                 if (in_function) {
                     # Count closing braces on this line
                     gsub(/[^}]/, "", $0)
                     brace_count -= length($0)
-                    
+
                     # If we have balanced braces, function is complete
                     if (brace_count <= 0) {
                         function_length = NR - function_start + 1
@@ -665,43 +584,15 @@ jobs:
 
           echo "## Analysis Tools Used:" >> $GITHUB_STEP_SUMMARY
           echo "- [Knip](https://knip.dev/) for comprehensive dead code detection" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.knip-setup.outputs.using_existing_config }}" = "true" ]; then
-            echo "  - Using existing ${{ steps.knip-setup.outputs.config_type }} configuration" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "  - Using basic workflow-generated configuration" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "  - Using existing knip.config.ts configuration" >> $GITHUB_STEP_SUMMARY
           echo "- Pattern matching for security and code quality issues" >> $GITHUB_STEP_SUMMARY
           echo "- Custom analyzers for ElizaOS-specific standards" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "Full analysis results are available as workflow artifacts." >> $GITHUB_STEP_SUMMARY
 
-      # Clean up temporary files and restore original configuration
-      - name: Clean up temporary files
+      # No cleanup needed since we use the existing knip.config.ts
+      - name: Analysis complete
         if: always()
         run: |
-          # Restore original knip.json if it was backed up
-          if [ "${{ steps.knip-setup.outputs.had_backup }}" = "true" ]; then
-            echo "Restoring original knip.json from backup"
-            if [ -f "knip.json.backup" ]; then
-              mv knip.json.backup knip.json
-              echo "Successfully restored original knip.json"
-            else
-              echo "Warning: Backup file not found, but backup was expected"
-            fi
-          elif [ "${{ steps.knip-setup.outputs.using_existing_config }}" = "false" ]; then
-            echo "Removing temporary knip.json created by workflow"
-            rm -f knip.json
-            echo "Successfully removed temporary knip.json"
-          else
-            echo "No cleanup needed - using existing configuration"
-          fi
-          
-          # Final verification
-          if [ -f "knip.config.ts" ]; then
-            echo "Final state: knip.config.ts exists (as expected)"
-          elif [ -f "knip.json" ]; then
-            echo "Final state: knip.json exists (as expected)"
-          else
-            echo "Final state: No Knip configuration found (this is normal if none existed originally)"
-          fi
+          echo "Analysis completed using existing knip.config.ts configuration"
