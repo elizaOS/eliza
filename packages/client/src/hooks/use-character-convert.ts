@@ -58,23 +58,32 @@ export function useConvertCharacter() {
     }
 
     // Model provider
+    let providerMatched = false;
     if (typeof v1.modelProvider === 'string') {
       const lower = v1.modelProvider.toLowerCase();
       const mapped = PROVIDER_PLUGIN_MAPPINGS[lower];
       if (mapped && availablePlugins.includes(mapped)) {
         matched.add(mapped);
+        providerMatched = true;
       } else {
         const constructed = `@elizaos/plugin-${lower}`;
         if (availablePlugins.includes(constructed)) {
           matched.add(constructed);
+          providerMatched = true;
         }
-        // Note: Removed unsafe fallback to @elizaos/plugin-openai
-        // Only add plugins that actually exist in availablePlugins
+      }
+      if (!providerMatched) {
+        if (availablePlugins.includes("@elizaos/plugin-openai")) {
+            matched.add("@elizaos/plugin-openai");
+        }
+      }
+    } else {
+      // If no modelProvider specified, default to OpenAI
+      if (availablePlugins.includes("@elizaos/plugin-openai")) {
+        matched.add("@elizaos/plugin-openai");
       }
     }
-    // Note: Removed unsafe fallback when no model provider is specified
-    // Only add plugins that actually exist in availablePlugins
-
+    
     // Add essential plugins only if they exist in availablePlugins
     for (const plugin of ESSENTIAL_PLUGINS) {
       if (availablePlugins.includes(plugin)) {
@@ -93,7 +102,7 @@ export function useConvertCharacter() {
 
   const convertCharacter = (v1: V1Character): Character => {
     const bio = [...(Array.isArray(v1.bio) ? v1.bio : v1.bio ? [v1.bio] : []), ...(v1.lore ?? [])];
-    
+
     const messageExamples =
       (v1.messageExamples ?? []).map((thread: any[]) =>
         thread.map((msg: any) => {
