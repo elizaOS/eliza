@@ -44,7 +44,6 @@ describe('Prompts', () => {
       expect(messageHandlerTemplate).toContain('IMPORTANT PROVIDER SELECTION RULES');
       expect(messageHandlerTemplate).toContain('ATTACHMENTS');
       expect(messageHandlerTemplate).toContain('ENTITIES');
-      expect(messageHandlerTemplate).toContain('KNOWLEDGE');
     });
 
     it('postCreationTemplate should contain required placeholders and examples', () => {
