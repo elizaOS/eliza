@@ -16,12 +16,21 @@ export async function checkBunInstallation(): Promise<BunInstallationResult> {
     if (bunExists) {
       // Get bun version
       const result = await bunExec('bun', ['--version']);
-      const version = result.stdout.trim();
       
-      return {
-        installed: true,
-        message: `Bun ${version} is installed`,
-      };
+      if (result.success) {
+        const version = result.stdout.trim();
+        
+        return {
+          installed: true,
+          message: `Bun ${version} is installed`,
+        };
+      } else {
+        return {
+          installed: false,
+          message: 'Bun command failed',
+          error: result.stderr || 'Unknown error',
+        };
+      }
     } else {
       return {
         installed: false,

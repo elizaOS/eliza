@@ -9,8 +9,8 @@ const INSTALLATION_VERIFICATION_DELAY_MS = 2000; // 2 seconds delay to allow ins
  */
 async function isBunInstalled(): Promise<boolean> {
   try {
-    await bunExec('bun', ['--version'], { stdio: 'ignore' });
-    return true;
+    const result = await bunExec('bun', ['--version'], { stdio: 'ignore' });
+    return result.success;
   } catch {
     return false;
   }

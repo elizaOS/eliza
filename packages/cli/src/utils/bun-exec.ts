@@ -132,7 +132,6 @@ export async function bunExec(
 ): Promise<ExecResult> {
   let proc: Subprocess<"pipe" | "inherit" | "ignore"> | null = null;
   let timeoutId: Timer | null = null;
-  let timedOut = false;
   
   try {
     // Build the full command with proper escaping for logging
@@ -152,7 +151,7 @@ export async function bunExec(
     // Set up abort signal handling
     if (options.signal) {
       options.signal.addEventListener('abort', () => {
-        if (proc) {
+        if (proc && proc.exitCode === null) {
           proc.kill();
         }
       });
@@ -163,8 +162,7 @@ export async function bunExec(
       if (options.timeout && options.timeout > 0) {
         const timeoutMs = options.timeout;
         timeoutId = setTimeout(() => {
-          timedOut = true;
-          if (proc) {
+          if (proc && proc.exitCode === null) {
             proc.kill();
           }
           reject(new ProcessTimeoutError(
@@ -231,14 +229,14 @@ export async function bunExec(
     
     throw error;
   } finally {
-    // Ensure process cleanup - check if process is still running
-    if (proc && proc.exitCode === null && !timedOut) {
+    // Ensure process cleanup - only kill if process is still running
+    if (proc && proc.exitCode === null) {
       try {
-        if (!proc.killed) {
-          proc.kill();
-        }
+        proc.kill();
+        logger.debug('[bunExec] Killed still-running process in cleanup');
       } catch (cleanupError) {
-        logger.debug('[bunExec] Error during process cleanup:', cleanupError);
+        // Process may have exited between our check and the kill attempt
+        logger.debug('[bunExec] Process cleanup error (process may have already exited):', cleanupError);
       }
     }
   }
