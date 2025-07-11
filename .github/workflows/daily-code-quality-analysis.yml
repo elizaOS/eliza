@@ -656,7 +656,7 @@ jobs:
               - Link to relevant workflow step output
 
             **Example Issue Structure:**
-            ```
+            \`\`\`
             ## Problem
             [Clear description of the issue and its impact]
 
@@ -667,16 +667,16 @@ jobs:
             - path/to/other.ts:45
 
             ## Current State
-            ```typescript
+            \`\`\`typescript
             // Problem code example
-            ```
+            \`\`\`
 
             ## Suggested Fix
             [Specific implementation steps]
 
             ## Priority
             [CRITICAL/HIGH/MEDIUM] - [Justification]
-            ```
+            \`\`\`
 
             Remember: You MUST check the workflow logs thoroughly. The summary in this issue is truncated - the full details are in the workflow run. Create exactly 5 issues that will have the most impact on code quality and security.`;
 
