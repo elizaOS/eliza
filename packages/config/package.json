@@ -3,7 +3,6 @@
   "description": "Shared configuration for ElizaOS projects and plugins",
   "version": "1.2.0",
   "type": "module",
-  "private": true,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
