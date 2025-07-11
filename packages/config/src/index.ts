@@ -29,10 +29,6 @@ export const configPaths = {
     frontend: '@elizaos/config/typescript/tsconfig.frontend.json',
     test: '@elizaos/config/typescript/tsconfig.test.json',
   },
-  build: {
-    plugin: '@elizaos/config/build/build.config.plugin.ts',
-    script: '@elizaos/config/build/build.plugin.ts',
-  },
   eslint: {
     plugin: '@elizaos/config/eslint/eslint.config.plugin.js',
     frontend: '@elizaos/config/eslint/eslint.config.frontend.js',
