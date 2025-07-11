@@ -485,7 +485,7 @@ jobs:
 
       # Step 11: Create analysis issue for review
       - name: Create Code Quality Analysis Issue
-        if: github.event.inputs.create_issues != 'false'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_issues != 'false'
         uses: actions/github-script@v7
         with:
           script: |
@@ -595,8 +595,10 @@ jobs:
           echo "**Branch:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ github.event.inputs.create_issues }}" != "false" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.create_issues }}" != "false" ]; then
             echo "**Issue Creation:** An issue has been created for manual review" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "**Issue Creation:** Scheduled runs do not create issues automatically" >> $GITHUB_STEP_SUMMARY
           else
             echo "**Issue Creation:** Disabled for this run" >> $GITHUB_STEP_SUMMARY
           fi
