@@ -172,7 +172,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
     this.currentRunId = undefined; // Initialize run ID tracker
-    
+
     // Set max working memory entries from settings or environment
     if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
       this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
@@ -536,17 +536,23 @@ export class AgentRuntime implements IAgentRuntime {
     return { ...plan, ...updates };
   }
 
-  private updateActionStep<T, S>(plan: T & { steps: S[] }, index: number, stepUpdates: Partial<S>): T & { steps: S[] } {
+  private updateActionStep<T, S>(
+    plan: T & { steps: S[] },
+    index: number,
+    stepUpdates: Partial<S>
+  ): T & { steps: S[] } {
     // Add bounds checking
     if (!plan.steps || index < 0 || index >= plan.steps.length) {
-      this.logger.warn(`Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`);
+      this.logger.warn(
+        `Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`
+      );
       return plan;
     }
     return {
       ...plan,
-      steps: plan.steps.map((step: S, i: number) => 
+      steps: plan.steps.map((step: S, i: number) =>
         i === index ? { ...step, ...stepUpdates } : step
-      )
+      ),
     };
   }
 
@@ -692,7 +698,7 @@ export class AgentRuntime implements IAgentRuntime {
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: 'failed',
-              error: errorMsg
+              error: errorMsg,
             });
           }
 
@@ -721,7 +727,7 @@ export class AgentRuntime implements IAgentRuntime {
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: 'failed',
-              error: 'No handler'
+              error: 'No handler',
             });
           }
 
@@ -788,7 +794,7 @@ export class AgentRuntime implements IAgentRuntime {
               // Ensure success field exists with default true
               actionResult = {
                 success: true, // Default to true if not specified
-                ...result
+                ...result,
               } as ActionResult;
             } else {
               actionResult = {
@@ -818,16 +824,16 @@ export class AgentRuntime implements IAgentRuntime {
             // Store in working memory (in state data) with cleanup
             if (actionResult && accumulatedState.data) {
               if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
-              
+
               // Add new entry first, then clean up if we exceed the limit
               const memoryKey = `action_${responseAction}_${uuidv4()}`;
               const memoryEntry: WorkingMemoryEntry = {
                 actionName: action.name,
                 result: actionResult,
-                timestamp: Date.now()
+                timestamp: Date.now(),
               };
               accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
-              
+
               // Clean up old entries if we now exceed the limit
               const entries = Object.entries(accumulatedState.data.workingMemory);
               if (entries.length > this.maxWorkingMemoryEntries) {
@@ -850,7 +856,7 @@ export class AgentRuntime implements IAgentRuntime {
             if (actionPlan && actionPlan.steps[actionIndex]) {
               actionPlan = this.updateActionStep(actionPlan, actionIndex, {
                 status: 'completed',
-                result: actionResult
+                result: actionResult,
               });
             }
           }
@@ -929,7 +935,7 @@ export class AgentRuntime implements IAgentRuntime {
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: 'failed',
-              error: errorMessage
+              error: errorMessage,
             });
           }
 

@@ -50,12 +50,12 @@ describe('Action Chaining Fixes', () => {
 
       // Original should be unchanged
       expect(originalPlan.currentStep).toBe(1);
-      
+
       // Updated should have new value
       expect(updatedPlan.currentStep).toBe(2);
       expect(updatedPlan.totalSteps).toBe(3);
       expect(updatedPlan.steps).toEqual(originalPlan.steps);
-      
+
       // Should be different objects
       expect(updatedPlan).not.toBe(originalPlan);
     });
@@ -123,12 +123,10 @@ describe('Action Chaining Fixes', () => {
       });
 
       // Keep only the most recent MAX_WORKING_MEMORY_ENTRIES
-      const cleaned = Object.fromEntries(
-        sorted.slice(0, MAX_WORKING_MEMORY_ENTRIES)
-      );
+      const cleaned = Object.fromEntries(sorted.slice(0, MAX_WORKING_MEMORY_ENTRIES));
 
       expect(Object.keys(cleaned).length).toBe(MAX_WORKING_MEMORY_ENTRIES);
-      
+
       // Verify we kept the newest entries
       const cleanedKeys = Object.keys(cleaned);
       expect(cleanedKeys).toContain('action_59');
@@ -136,60 +134,64 @@ describe('Action Chaining Fixes', () => {
       expect(cleanedKeys).not.toContain('action_9'); // Old entry should be removed
     });
   });
-  
+
   describe('Bounds Checking', () => {
     it('should handle updateActionStep with invalid indices', () => {
       // Mock logger
       const warnCalls: string[] = [];
-      const mockLogger = { 
-        warn: (msg: string) => { warnCalls.push(msg); }
+      const mockLogger = {
+        warn: (msg: string) => {
+          warnCalls.push(msg);
+        },
       };
-      
+
       // Helper function that mimics the runtime's updateActionStep
       const updateActionStep = <T, S>(
-        plan: T & { steps: S[] }, 
-        index: number, 
+        plan: T & { steps: S[] },
+        index: number,
         stepUpdates: Partial<S>,
         logger: typeof mockLogger
       ): T & { steps: S[] } => {
         if (!plan.steps || index < 0 || index >= plan.steps.length) {
-          logger.warn(`Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`);
+          logger.warn(
+            `Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`
+          );
           return plan;
         }
         return {
           ...plan,
-          steps: plan.steps.map((step: S, i: number) => 
+          steps: plan.steps.map((step: S, i: number) =>
             i === index ? { ...step, ...stepUpdates } : step
-          )
+          ),
         };
       };
-      
+
       // Test data
       const plan = {
         name: 'test-plan',
         steps: [
           { status: 'pending', action: 'step1' },
           { status: 'pending', action: 'step2' },
-          { status: 'pending', action: 'step3' }
-        ]
+          { status: 'pending', action: 'step3' },
+        ],
       };
-      
+
       // Test valid index
       const updated1 = updateActionStep(plan, 1, { status: 'completed' }, mockLogger);
       expect(updated1.steps[1].status).toBe('completed');
       expect(warnCalls.length).toBe(0);
-      
+
       // Test negative index
       const updated2 = updateActionStep(plan, -1, { status: 'failed' }, mockLogger);
       expect(updated2).toBe(plan); // Should return original plan
       expect(warnCalls[0]).toBe('Invalid step index: -1 for plan with 3 steps');
-      
+
       // Test index out of bounds
       warnCalls.length = 0; // Clear warnings
       const updated3 = updateActionStep(plan, 5, { status: 'failed' }, mockLogger);
       expect(updated3).toBe(plan); // Should return original plan
       expect(warnCalls[0]).toBe('Invalid step index: 5 for plan with 3 steps');
-      
+
       // Test with null steps
       warnCalls.length = 0; // Clear warnings
       const planWithNullSteps = { name: 'test', steps: null as any };

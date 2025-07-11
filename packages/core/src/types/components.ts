@@ -179,6 +179,6 @@ export interface ActionContext {
 export function createActionResult(partial: Partial<ActionResult> = {}): ActionResult {
   return {
     success: true, // Default to success
-    ...partial
+    ...partial,
   };
 }
