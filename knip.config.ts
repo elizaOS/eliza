@@ -137,7 +137,7 @@ const config: KnipConfig = {
   // Plugins to include in analysis
   plugins: [
     // Include plugin files in analysis
-    'packages/plugin-*/src/**/*.{ts,js}',
+    'packages/plugin-*/src/**/*.{ts,js,tsx,jsx}',
   ],
 
   // Additional include patterns for specific file types
