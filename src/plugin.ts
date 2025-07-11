@@ -8,7 +8,8 @@ import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
 import suggestRoute from "./routes/suggest";
 import { BrowserService } from "./services/browser";
-import { LevvaService } from "./services/levva";
+import { LevvaService } from "./services/levva/class";
+import { newsProvider } from "./providers/news";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -99,7 +100,7 @@ const plugin: Plugin = {
   },
   services: [BrowserService, LevvaService],
   actions: [swapTokens, analyzeWallet],
-  providers: [levvaProvider],
+  providers: [levvaProvider, newsProvider],
 };
 
 export default plugin;

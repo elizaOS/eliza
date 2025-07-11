@@ -4,6 +4,8 @@ import { getDb } from "./client";
 import { levvaUserTable } from "../../schema/levva-user";
 import { getAddress } from "viem";
 
+// todo move to services/levva
+
 interface GetUserParams {
   address?: `0x${string}`;
   id?: UUID;

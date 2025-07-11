@@ -6,9 +6,9 @@ values
   ('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 1, 6, NULL, 'USD Coin', 'USDC'),
   ('0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 42161, 6, NULL, 'USD₮0', 'USDT'),
   ('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 42161, 6, NULL, 'USD Coin', 'USDC'),
-  ('0xdAC17F958D2ee523a2206206994597C13D831ec7', 1, 6, '{"allowanceSlot":"0x1720703b80d843ccd5aea9c1af1d6573ad7bb7f405cd9ad961aae73c182d0f0a"}', 'Tether USD', 'USDT')
+  ('0xdAC17F958D2ee523a2206206994597C13D831ec7', 1, 6, '{"allowanceSlot":"0x1720703b80d843ccd5aea9c1af1d6573ad7bb7f405cd9ad961aae73c182d0f0a"}', 'Tether USD', 'USDT');
 
 insert into "erc20"
 	("address", "chain_id", "decimals", "info", "name", "symbol") 
 values 
-	('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 1, 18, NULL, 'Wrapped Ether', 'WETH') 
+	('0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 1, 18, NULL, 'Wrapped Ether', 'WETH');

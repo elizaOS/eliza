@@ -1,18 +1,25 @@
+import assert from "node:assert";
+import EventEmitter from "node:events";
+import { sha256, toHex } from "viem";
 import {
   type IAgentRuntime,
   logger,
   Service,
   ServiceType,
 } from "@elizaos/core";
-import assert from "node:assert";
-import { LEVVA_SERVICE } from "../constants/enum.ts";
-import { ILevvaService } from "../types/service.ts";
-import { BrowserService } from "./browser.ts";
-import { blockexplorers, getChain, getToken } from "../util";
-import { CacheEntry } from "../types/core.ts";
-import { CalldataWithDescription } from "../types/tx.ts";
-import { sha256, toHex } from "viem";
-import { getActiveMarkets, PendleActiveMarkets } from "../api/market/pendle.ts";
+import { BrowserService, PageContent } from "../browser.ts";
+import { LEVVA_SERVICE } from "../../constants/enum.ts";
+import {
+  getActiveMarkets,
+  PendleActiveMarkets,
+} from "../../api/market/pendle.ts";
+import { CacheEntry } from "../../types/core.ts";
+import { ILevvaService } from "../../types/service.ts";
+import { CalldataWithDescription } from "../../types/tx.ts";
+import { blockexplorers, getChain, getToken } from "../../util/index.ts";
+import { xmlParser } from "../../util/xml.ts";
+import { delay, isRejected, isResolved } from "../../util/async.ts";
+import { getFeed, getFeedItemId, getLatestNews, isFeedItem, onFeedItem } from "./news.ts";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -27,14 +34,61 @@ function checkPlugins(runtime: IAgentRuntime) {
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
+const MAX_WAIT_TIME = 15000;
+
 export class LevvaService extends Service implements ILevvaService {
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
     "Levva service should analyze the user's portfolio, suggest earning strategies, swap crypto assets, etc.";
 
+  private events = new EventEmitter();
+  private background: { id?: string; promise: Promise<unknown> }[] = [];
+
+  private handlerInterval: NodeJS.Timeout | null = null;
+
+  private bgHandler = async () => {
+    const unresolved: { id?: string; promise: Promise<unknown> }[] = [];
+
+    for (const { id, promise } of this.background) {
+      if (await isResolved(promise)) {
+        if (id) {
+          this.events.emit("background:resolved", { id, value: await promise });
+        }
+      } else if (await isRejected(promise)) {
+        try {
+          await promise;
+        } catch (error) {
+          logger.error(`Background promise rejected: ${id}`, error);
+        }
+      } else {
+        unresolved.push({ id, promise });
+      }
+    }
+
+    this.background = unresolved;
+  };
+
+  private inBackground = async <T>(
+    fn: () => Promise<T>,
+    id?: string
+  ): Promise<T | undefined> => {
+    const promise = fn();
+    this.background.push({ id, promise });
+    return Promise.race([promise, delay(MAX_WAIT_TIME, undefined)]);
+  };
+
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     assert(checkPlugins(runtime), "Required plugins not found");
+    this.handlerInterval = setInterval(this.bgHandler, 500);
+
+    this.events.on("background:resolved", (event) => {
+      // logger.info(`Background promise resolved: ${event.id}`, event.value);
+
+      if (isFeedItem(event.id)) {
+        onFeedItem(this.runtime, event.id, event.value);
+      }
+    });
   }
 
   static async start(runtime: IAgentRuntime) {
@@ -47,14 +101,21 @@ export class LevvaService extends Service implements ILevvaService {
     logger.info("*** Stopping Levva service ***");
     // get the service from the runtime
     const service = runtime.getService(LevvaService.serviceType);
+
     if (!service) {
       throw new Error("Levva service not found");
     }
+
     service.stop();
   }
 
   async stop() {
     logger.info("*** Stopping levva service instance ***");
+
+    if (this.handlerInterval) {
+      clearInterval(this.handlerInterval);
+      this.handlerInterval = null;
+    }
   }
 
   async getAvailableTokens(params: { chainId: number }) {
@@ -193,63 +254,45 @@ export class LevvaService extends Service implements ILevvaService {
 
   // -- End of Wallet Assets --
   // -- Crypto news --
-  // todo fetch from cryptopanic rss feed
-  async getCryptoNews() {
+
+  // todo config
+  private RSS_FEEDS = ["https://cryptopanic.com/news/rss/"];
+
+  private fetchFeed = async (url: string) => {
     const browser = await this.runtime.getService<BrowserService>(
       ServiceType.BROWSER
     );
 
-    const url = "https://cryptopanic.com/news/rss/";
-    const cacheKey = `feed:crypto-panic`;
-    // timed cache, todo make util function
-    const cacheTime = 1800000;
-    const timestamp = Date.now();
+    try {
+      logger.info(`Fetching feed: ${url}`);
+      const items = await getFeed(this.runtime, url);
 
-    const cached = await this.runtime.getCache<CacheEntry<{}[]>>(cacheKey);
+      await Promise.all(
+        items.map((item, i) => {
+          const id = getFeedItemId(item.link);
 
-    if (cached?.timestamp && timestamp - cached.timestamp < cacheTime) {
-      return cached.value;
+          return this.inBackground(
+            async () =>
+              browser.getPageContent(item.link, this.runtime, i * 1000),
+            id
+          );
+        })
+      );
+    } catch (error) {
+      console.error(error);
+      logger.info(error.stack);
     }
+  };
 
-    const feed = await browser.processPageContent(
-      url,
-      async (text) => {
-        console.log(text);
-        return `<task>Please generate a summary for every entry in the news feed in given text</task>
-<text>
-${text}
-</text>
-<keys>
-- topics - array of objects with the following keys:
-  - "title" - title of the news entry
-  - "summary" - summary of the news entry
-  - "source" - url of the news source
-</keys>
-<output>
-Respond using JSON format like this:
-{
-  "topics": <array>
-}
-Your response should include the valid JSON block and nothing else.
-</output>
-`;
-      },
-      "text"
-    );
-
-    // todo type check
-    await this.runtime.setCache(cacheKey, {
-      timestamp,
-      value: feed?.topics ?? [],
-    });
-
-    return feed?.topics ?? [];
+  async getCryptoNews(limit?: number) {
+    await Promise.allSettled(this.RSS_FEEDS.map(this.fetchFeed));
+    return getLatestNews(this.runtime, limit);
   }
   // -- End of Crypto news --
 
   async getPendleMarkets(params: { chainId: number }) {
     const ttl = 3600000;
-    const cacheKey = `pendle:markets:${params.chainId}`;
+    const cacheKey = `pendle-markets:${params.chainId}`;
     const cached =
       await this.runtime.getCache<CacheEntry<PendleActiveMarkets>>(cacheKey);
 

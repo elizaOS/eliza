@@ -5,19 +5,54 @@ import { PendleActiveMarkets } from "src/api/market/pendle";
 
 export interface ILevvaService extends Service {
   // known tokens
-  formatToken(token: { symbol: string, name: string, address?: string, decimals: number, info?: Record<string, any> }, compact?: boolean): string;
-  getAvailableTokens(params: { chainId: number }): Promise<{ symbol: string, name: string, address?: string, decimals: number, info?: Record<string, any> }[]>;
+  formatToken(
+    token: {
+      symbol: string;
+      name: string;
+      address?: string;
+      decimals: number;
+      info?: Record<string, any>;
+    },
+    compact?: boolean
+  ): string;
+  getAvailableTokens(params: {
+    chainId: number;
+  }): Promise<
+    {
+      symbol: string;
+      name: string;
+      address?: string;
+      decimals: number;
+      info?: Record<string, any>;
+    }[]
+  >;
 
   // wallet assets
   getWalletAssets(params: {
     address: `0x${string}`;
     chainId: number;
-  }): Promise<{ symbol: string, balance: string, value: string, address?: string }[]>;
-  formatWalletAssets(assets: { symbol: string, balance: string, value: string, address?: string }[]): string;
+  }): Promise<
+    { symbol: string; balance: string; value: string; address?: string }[]
+  >;
+  formatWalletAssets(
+    assets: {
+      symbol: string;
+      balance: string;
+      value: string;
+      address?: string;
+    }[]
+  ): string;
 
   // news aggregator
-  /** @deprecated needs different sources, proper typing */
-  getCryptoNews(): Promise<{}[]>; 
+  getCryptoNews(limit?: number): Promise<
+    {
+      id: string;
+      title: string;
+      description: string;
+      link: string;
+      createdAt: Date;
+    }[]
+  >;
 
   // market data
   getPendleMarkets(params: { chainId: number }): Promise<PendleActiveMarkets>;

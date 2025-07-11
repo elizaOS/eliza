@@ -1,13 +1,13 @@
-import { ServiceType, State, UUID, type Provider } from "@elizaos/core";
+import { State, UUID, type Provider } from "@elizaos/core";
 import { RawMessage } from "../types/core";
-import { getChain, getLevvaUser, getToken } from "../util";
+import { getChain, getLevvaUser } from "../util";
 import { ILevvaService } from "src/types/service";
 import { LEVVA_SERVICE } from "src/constants/enum";
 
 export interface LevvaProviderState {
   chainId: number;
   user?: { id: UUID; address: `0x${string}` };
-  tokens: { symbol: string, name: string, decimals: number, address?: string, info?: Record<string, any> }[];
+  tokens?: { symbol: string, name: string, decimals: number, address?: string, info?: Record<string, any> }[];
 }
 
 export const selectLevvaState = (
@@ -53,6 +53,7 @@ export const levvaProvider: Provider = {
 
     return {
       text: `${prompts}
+Selected EVM chain: ${getChain(chainId).name}.
 ${addressText}
 Known token symbols: ${tokenSymbols.join(", ")}.`,
       data: {

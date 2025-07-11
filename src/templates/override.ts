@@ -27,6 +27,7 @@ IMPORTANT ACTION ORDERING RULES:
 
 IMPORTANT PROVIDER SELECTION RULES:
 - If the message mentions images, photos, pictures, attachments(except calls.json attachment), or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
+- If the message asks about crypto news, include "CRYPTO_NEWS" in your providers list
 - If the message asks about or references specific people, include "ENTITIES" in your providers list  
 - If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
 - If the message asks about facts or specific information, include "FACTS" in your providers list

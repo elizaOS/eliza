@@ -36,12 +36,10 @@ export const analyzeWallet: Action = {
         throw new Error("User not found");
       }
 
-      const [
-        assets, 
-        // news
-      ] = await Promise.all([
+      const [assets, news, pendleMarkets] = await Promise.all([
         service.getWalletAssets({ chainId, address }),
-        // service.getCryptoNews(),
+        service.getCryptoNews(),
+        service.getPendleMarkets({ chainId }),
       ]);
 
       const result = await runtime.useModel(ModelType.OBJECT_LARGE, {
@@ -50,9 +48,19 @@ export const analyzeWallet: Action = {
 User has following tokens available in portfolio:
 ${service.formatWalletAssets(assets)}
 </portfolio>
-${/*<news>
-${news.map((topic) => JSON.stringify(topic)).join("\n")  todo implement news formatter }
-</news>*/""}
+<markets>
+Pendle markets:
+${pendleMarkets.map((v) => `${v.name} - Expiration: ${v.expiry}; Details: ${JSON.stringify(v.details)}`).join("\n")}
+</markets>
+<news>
+Latest news:
+${news.map((v) => v.description).join("\n")}
+</news>
+<instructions>
+Display summary of user's holdings.
+Gain insights from the news and portfolio.
+Look at available markets and suggest actions.
+</instructions>
 <output>
 Respond using JSON format like this:
 {

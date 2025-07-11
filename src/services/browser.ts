@@ -16,6 +16,7 @@ import {
   type Page,
   chromium,
 } from "patchright";
+import { delay } from "../util/async";
 
 // Type for cached content
 interface CachedContent {
@@ -77,7 +78,7 @@ async function generateSummary(
  * @property { string } description - The description of the page.
  * @property { string } bodyContent - The main content of the page.
  */
-type PageContent = {
+export type PageContent = {
   title: string;
   description: string;
   bodyContent: string;
@@ -238,10 +239,11 @@ export class BrowserService extends Service {
    */
   async getPageContent(
     url: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
+    throttle?: number
   ): Promise<PageContent> {
     await this.initializeBrowser();
-    return await this.fetchPageContent(url, runtime);
+    return await this.fetchPageContent(url, runtime, throttle);
   }
 
   // needs to be cached externally
@@ -291,6 +293,7 @@ export class BrowserService extends Service {
 
         await page.close();
         page = undefined;
+        await delay(1500); // wait before using next proxy, todo config
       } catch (error) {
         logger.error("Error fetching page content", error);
       }
@@ -342,7 +345,8 @@ export class BrowserService extends Service {
    */
   private async fetchPageContent(
     url: string,
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
+    throttle?: number
   ): Promise<PageContent> {
     const cacheKey = this.getCacheKey(url);
     const cached = await runtime.getCache<CachedContent>(
@@ -351,6 +355,10 @@ export class BrowserService extends Service {
 
     if (cached) {
       return cached.content;
+    }
+
+    if (throttle) {
+      await delay(throttle);
     }
 
     let page: Page | undefined;
