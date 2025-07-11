@@ -514,7 +514,7 @@ jobs:
 
             try {
               summaryStats.deadCode = (reportContent.match(/^- /gm) || []).length;
-              summaryStats.security = (reportContent.match(/### .* Security/gm) || []).length;
+              summaryStats.security = (reportContent.match(/### (Potential|Eval|innerHTML|ReDoS)/gm) || []).length;
               summaryStats.typeSafety = (reportContent.match(/:\s*any/gm) || []).length;
             } catch (e) {
               console.log('Error counting issues:', e);
