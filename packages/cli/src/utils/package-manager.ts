@@ -4,7 +4,7 @@ import { displayBunInstallationTipCompact } from './bun-installation-helper';
 import { runBunCommand } from './run-bun';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { execa } from 'execa';
+import { bunExec } from './bun-exec';
 
 /**
  * Always returns 'bun' as the package manager for ElizaOS CLI.
@@ -67,9 +67,8 @@ export async function removeFromBunLock(packageName: string, directory: string):
 
   try {
     // Use bun remove to cleanly remove the package from lockfile
-    await execa('bun', ['remove', packageName], {
+    await bunExec('bun', ['remove', packageName], {
       cwd: directory,
-      stdio: 'pipe', // Don't show output for cleanup operation
     });
     logger.debug(`Successfully removed ${packageName} from bun.lock`);
   } catch (error: any) {
