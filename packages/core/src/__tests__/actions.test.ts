@@ -173,8 +173,8 @@ describe('Actions', () => {
       const formatted = formatActions([mockActions[0], mockActions[1]]);
       const parts = formatted.split('\n');
       expect(parts.length).toBe(2);
-      expect(parts[0]).toMatch(/^(greet|farewell): /);
-      expect(parts[1]).toMatch(/^(greet|farewell): /);
+      expect(parts[0]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
+      expect(parts[1]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
     });
 
     it('should handle empty actions array', () => {
