@@ -11,6 +11,7 @@ import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
 import { monorepo } from '@/src/commands/monorepo';
 import { start } from '@/src/commands/start';
+import { stop } from '@/src/commands/stop';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
@@ -71,6 +72,7 @@ async function main() {
     .addCommand(agent)
     .addCommand(tee)
     .addCommand(start)
+    .addCommand(stop)
     .addCommand(update)
     .addCommand(test)
     .addCommand(env)

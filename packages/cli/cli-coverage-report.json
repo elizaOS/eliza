@@ -1,0 +1,111 @@
+{
+  "implemented": [
+    "create",
+    "monorepo",
+    "plugins",
+    "agent",
+    "tee",
+    "start",
+    "stop",
+    "update",
+    "test",
+    "env",
+    "dev",
+    "publish"
+  ],
+  "documented": [
+    "agent",
+    "create",
+    "dev",
+    "env",
+    "monorepo",
+    "plugins",
+    "publish",
+    "start",
+    "stop",
+    "tee",
+    "test",
+    "update"
+  ],
+  "tested": [
+    "agent",
+    "create",
+    "dev",
+    "env",
+    "monorepo",
+    "plugins",
+    "publish",
+    "start",
+    "stop",
+    "tee",
+    "test",
+    "update"
+  ],
+  "missing": {
+    "documentation": [],
+    "tests": [],
+    "implementation": []
+  },
+  "helpValidation": [
+    {
+      "command": "create",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js create --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "monorepo",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js monorepo --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "plugins",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js plugins --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "agent",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js agent --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "tee",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js tee --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "start",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js start --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "stop",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js stop --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "update",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js update --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "test",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js test --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "env",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js env --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "dev",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js dev --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    },
+    {
+      "command": "publish",
+      "status": "fail",
+      "error": "Command execution failed: Error: Command failed: bun D:\\OSS\\eliza\\packages\\cli\\dist\\index.js publish --help\nerror: Cannot find module '@elizaos/core' from 'D:\\OSS\\eliza\\packages\\cli\\dist\\index.js'\n\nBun v1.2.18 (Windows x64)\n"
+    }
+  ]
+}
