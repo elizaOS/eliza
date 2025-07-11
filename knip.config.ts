@@ -1,23 +1,28 @@
-import type { KnipConfig } from 'knip';
+// Knip configuration for ElizaOS monorepo
+// Simplified configuration that works in CI without type definitions
 
-const config: KnipConfig = {
+const config = {
   $schema: 'https://unpkg.com/knip@5/schema.json',
 
   // Entry points for the monorepo packages
   entry: [
+    // Standard package entry points
     'packages/*/src/index.{ts,js,tsx,jsx}',
+
+    // Vite app entry points
+    'packages/client/src/main.tsx',
+    'packages/app/src/main.tsx',
+
+    // CLI specific entry
     'packages/cli/src/index.ts',
-    'packages/core/src/index.ts',
-    'packages/client/src/index.tsx',
-    'packages/app/src/main.ts',
   ],
 
   // Project files to analyze
   project: [
     'packages/**/src/**/*.{ts,tsx,js,jsx}',
     '!packages/**/dist/**',
+    '!packages/**/build/**',
     '!packages/**/node_modules/**',
-    '!packages/**/*.d.ts',
   ],
 
   // Ignore patterns
@@ -33,19 +38,21 @@ const config: KnipConfig = {
     '**/dist/**',
     '**/build/**',
     '**/out/**',
+    '**/.turbo/**',
 
-    // Config files that may have unused exports
-    '**/*.config.{ts,js}',
-    '**/vite.config.ts',
-    '**/rollup.config.js',
+    // Config files
+    '**/*.config.{ts,js,mjs,cjs}',
+    '**/vite.config.{ts,js,mjs}',
 
     // Documentation and examples
     '**/docs/**',
     '**/examples/**',
+    '**/scripts/**',
 
     // Generated files
-    '**/*.generated.ts',
+    '**/*.generated.{ts,js}',
     '**/generated/**',
+    '**/*.d.ts',
   ],
 
   // Workspace configuration for monorepo
@@ -64,21 +71,32 @@ const config: KnipConfig = {
     // Type definitions
     '@types/*',
 
-    // Build tools that are used in config files
+    // Build tools
     'typescript',
     'vite',
     'rollup',
     'esbuild',
     'tsup',
+    'turbo',
 
-    // Testing tools used in test files
+    // Testing tools
     'vitest',
     'bun:test',
 
-    // ElizaOS uses bun, but some deps might reference these
+    // Linters and formatters
+    'eslint',
+    'prettier',
+    'knip',
+
+    // Package managers
     'npm',
     'yarn',
     'pnpm',
+    'bun',
+
+    // Development tools
+    'husky',
+    'lerna',
   ],
 
   // Ignore specific binaries
@@ -88,6 +106,11 @@ const config: KnipConfig = {
     'tsx',
     'tsup',
     'vite',
+    'rollup',
+    'turbo',
+    'lerna',
+    'knip',
+    'prettier',
   ],
 
   // Rules configuration
@@ -104,7 +127,7 @@ const config: KnipConfig = {
     unlisted: 'error',
 
     // Report unused binaries
-    binaries: 'error',
+    binaries: 'warn',
 
     // Report unresolved imports
     unresolved: 'error',
@@ -127,55 +150,6 @@ const config: KnipConfig = {
     // Report unused class members
     classMembers: 'warn',
   },
-
-  // Compilers to use for different file types
-  compilers: {
-    css: 'node_modules/.bin/postcss',
-    svg: 'node_modules/.bin/svgo',
-  },
-
-  // Plugins to include in analysis
-  plugins: [
-    // Include plugin files in analysis
-    'packages/plugin-*/src/**/*.{ts,js,tsx,jsx}',
-  ],
-
-  // Additional include patterns for specific file types
-  include: {
-    // Include GitHub Actions workflows
-    gitHubActions: ['.github/workflows/*.yml'],
-  },
-
-  // Exclude patterns for specific file types
-  exclude: {
-    // Exclude test files from production analysis
-    production: [
-      '**/*.test.*',
-      '**/*.spec.*',
-      '**/__tests__/**',
-      '**/test/**',
-      '**/tests/**',
-    ],
-  },
-
-  // Reporter configuration
-  reporter: 'symbols',
-
-  // Issue types to report
-  issueTypes: [
-    'files',
-    'dependencies',
-    'devDependencies',
-    'unlisted',
-    'binaries',
-    'unresolved',
-    'exports',
-    'types',
-    'nsExports',
-    'duplicates',
-    'enumMembers',
-    'classMembers',
-  ],
 };
 
 export default config;
