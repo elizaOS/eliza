@@ -56,6 +56,12 @@ IMPORTANT PROVIDER SELECTION RULES:
 - If the message asks about the environment or world context, include "WORLD" in your providers list
 - If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
 
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
+
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
 
