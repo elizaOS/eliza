@@ -82,7 +82,6 @@
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
-    "execa": "^9.6.0",
     "fs-extra": "^11.1.0",
     "globby": "^14.0.2",
     "https-proxy-agent": "^7.0.6",
