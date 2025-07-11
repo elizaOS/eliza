@@ -60,48 +60,86 @@ jobs:
         run: |
           bun add -D knip
 
-      - name: Create Knip configuration
+      - name: Setup Knip configuration
+        id: knip-setup
         run: |
-          cat > knip.json << 'EOF'
-          {
-            "$schema": "https://unpkg.com/knip@5/schema.json",
-            "entry": [
-              "packages/*/src/index.ts",
-              "packages/*/src/index.js"
-            ],
-            "project": [
-              "packages/**/src/**/*.{ts,tsx,js,jsx}",
-              "!packages/**/dist/**",
-              "!packages/**/node_modules/**"
-            ],
-            "ignore": [
-              "**/*.test.ts",
-              "**/*.spec.ts",
-              "**/*.test.tsx",
-              "**/*.spec.tsx",
-              "**/__tests__/**",
-              "**/test/**",
-              "**/tests/**"
-            ],
-            "ignoreExportsUsedInFile": true,
-            "ignoreDependencies": [
-              "@types/*",
-              "typescript"
-            ],
-            "rules": {
-              "files": "error",
-              "dependencies": "error",
-              "devDependencies": "error",
-              "unlisted": "error",
-              "binaries": "error",
-              "unresolved": "error",
-              "exports": "error",
-              "types": "error",
-              "nsExports": "error",
-              "duplicates": "error"
+          # Check for existing Knip configuration
+          if [ -f "knip.config.ts" ]; then
+            echo "Found existing knip.config.ts - using it for analysis"
+            echo "using_existing_config=true" >> $GITHUB_OUTPUT
+            echo "config_type=ts" >> $GITHUB_OUTPUT
+            echo "had_backup=false" >> $GITHUB_OUTPUT
+          elif [ -f "knip.json" ]; then
+            echo "Found existing knip.json - backing it up and using it"
+            cp knip.json knip.json.backup
+            echo "using_existing_config=true" >> $GITHUB_OUTPUT
+            echo "config_type=json" >> $GITHUB_OUTPUT
+            echo "had_backup=true" >> $GITHUB_OUTPUT
+          else
+            echo "No existing Knip configuration found - creating basic knip.json"
+            cat > knip.json << 'EOF'
+            {
+              "$schema": "https://unpkg.com/knip@5/schema.json",
+              "entry": [
+                "packages/*/src/index.ts",
+                "packages/*/src/index.js"
+              ],
+              "project": [
+                "packages/**/src/**/*.{ts,tsx,js,jsx}",
+                "!packages/**/dist/**",
+                "!packages/**/node_modules/**"
+              ],
+              "ignore": [
+                "**/*.test.ts",
+                "**/*.spec.ts",
+                "**/*.test.tsx",
+                "**/*.spec.tsx",
+                "**/__tests__/**",
+                "**/test/**",
+                "**/tests/**"
+              ],
+              "ignoreExportsUsedInFile": true,
+              "ignoreDependencies": [
+                "@types/*",
+                "typescript"
+              ],
+              "rules": {
+                "files": "error",
+                "dependencies": "error",
+                "devDependencies": "error",
+                "unlisted": "error",
+                "binaries": "error",
+                "unresolved": "error",
+                "exports": "error",
+                "types": "error",
+                "nsExports": "error",
+                "duplicates": "error"
+              }
             }
-          }
-          EOF
+            EOF
+            echo "using_existing_config=false" >> $GITHUB_OUTPUT
+            echo "config_type=json" >> $GITHUB_OUTPUT
+            echo "had_backup=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify Knip configuration
+        run: |
+          echo "Knip configuration status:"
+          echo "- Using existing config: ${{ steps.knip-setup.outputs.using_existing_config }}"
+          echo "- Config type: ${{ steps.knip-setup.outputs.config_type }}"
+          if [ "${{ steps.knip-setup.outputs.had_backup }}" = "true" ]; then
+            echo "- Original knip.json backed up"
+          fi
+          
+          # Show which configuration file is being used
+          if [ -f "knip.config.ts" ]; then
+            echo "Using knip.config.ts for analysis"
+          elif [ -f "knip.json" ]; then
+            echo "Using knip.json for analysis"
+          else
+            echo "No Knip configuration found - this should not happen"
+            exit 1
+          fi
 
       - name: Create analysis results directory
         run: mkdir -p analysis-results
@@ -154,7 +192,64 @@ jobs:
           echo "" >> analysis-results/code-quality.md
           echo "### Long Functions (>50 lines)" >> analysis-results/code-quality.md
           find packages -name "*.ts" -o -name "*.tsx" | grep -v node_modules | grep -v dist | while read file; do
-            awk '/function|const.*=.*\(|export.*\(/ {start=NR; func=$0} /^}/ {if(NR-start>50) print FILENAME":"start"-"NR" ("NR-start" lines)"}' "$file"
+            awk '
+            BEGIN {
+                brace_count = 0
+                in_function = 0
+                function_start = 0
+                function_name = ""
+            }
+            
+            # Function declaration patterns - more specific and comprehensive
+            /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+                if (!in_function) {
+                    in_function = 1
+                    function_start = NR
+                    function_name = $0
+                    brace_count = 0
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+                next
+            }
+            
+            # Handle opening braces
+            /{/ {
+                if (in_function) {
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+            }
+            
+            # Handle closing braces - works with indented braces
+            /}/ {
+                if (in_function) {
+                    # Count closing braces on this line
+                    gsub(/[^}]/, "", $0)
+                    brace_count -= length($0)
+                    
+                    # If we have balanced braces, function is complete
+                    if (brace_count <= 0) {
+                        function_length = NR - function_start + 1
+                        if (function_length > 50) {
+                            print FILENAME ":" function_start "-" NR " (" function_length " lines) - " substr(function_name, 1, 60)
+                        }
+                        in_function = 0
+                        function_start = 0
+                        function_name = ""
+                        brace_count = 0
+                    }
+                }
+            }
+            ' "$file"
           done | head -20 >> analysis-results/code-quality.md || echo "Analysis completed" >> analysis-results/code-quality.md
 
           # Check for complex conditions
@@ -266,9 +361,74 @@ jobs:
           echo "" >> analysis-results/documentation.md
           echo "### Complex Functions Without Comments (>20 lines)" >> analysis-results/documentation.md
           find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(node_modules|dist|test|spec)" | while read file; do
-            awk '/function|const.*=.*\(/ {start=NR; func=$0; has_comment=0}
-                 /\/\*\*|\/\// {if (NR >= start-3 && NR <= start) has_comment=1}
-                 /^}/ {if(NR-start>20 && !has_comment) print FILENAME":"start" - Function with "NR-start" lines and no documentation"}' "$file"
+            awk '
+            BEGIN {
+                brace_count = 0
+                in_function = 0
+                function_start = 0
+                function_name = ""
+                has_comment = 0
+            }
+            
+            # Function declaration patterns - more specific and comprehensive
+            /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+                if (!in_function) {
+                    in_function = 1
+                    function_start = NR
+                    function_name = $0
+                    brace_count = 0
+                    has_comment = 0
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+                next
+            }
+            
+            # Check for comments before function
+            /\/\*\*|\/\// {
+                if (in_function && NR >= function_start - 3 && NR <= function_start) {
+                    has_comment = 1
+                }
+            }
+            
+            # Handle opening braces
+            /{/ {
+                if (in_function) {
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+            }
+            
+            # Handle closing braces - works with indented braces
+            /}/ {
+                if (in_function) {
+                    # Count closing braces on this line
+                    gsub(/[^}]/, "", $0)
+                    brace_count -= length($0)
+                    
+                    # If we have balanced braces, function is complete
+                    if (brace_count <= 0) {
+                        function_length = NR - function_start + 1
+                        if (function_length > 20 && !has_comment) {
+                            print FILENAME ":" function_start " - Function with " function_length " lines and no documentation"
+                        }
+                        in_function = 0
+                        function_start = 0
+                        function_name = ""
+                        brace_count = 0
+                        has_comment = 0
+                    }
+                }
+            }
+            ' "$file"
           done | head -20 >> analysis-results/documentation.md || echo "Analysis completed" >> analysis-results/documentation.md
 
       # Step 7: Documentation Accuracy and Completeness
@@ -505,14 +665,43 @@ jobs:
 
           echo "## Analysis Tools Used:" >> $GITHUB_STEP_SUMMARY
           echo "- [Knip](https://knip.dev/) for comprehensive dead code detection" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.knip-setup.outputs.using_existing_config }}" = "true" ]; then
+            echo "  - Using existing ${{ steps.knip-setup.outputs.config_type }} configuration" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "  - Using basic workflow-generated configuration" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "- Pattern matching for security and code quality issues" >> $GITHUB_STEP_SUMMARY
           echo "- Custom analyzers for ElizaOS-specific standards" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "Full analysis results are available as workflow artifacts." >> $GITHUB_STEP_SUMMARY
 
-      # Clean up Knip config
+      # Clean up temporary files and restore original configuration
       - name: Clean up temporary files
         if: always()
         run: |
-          rm -f knip.json
+          # Restore original knip.json if it was backed up
+          if [ "${{ steps.knip-setup.outputs.had_backup }}" = "true" ]; then
+            echo "Restoring original knip.json from backup"
+            if [ -f "knip.json.backup" ]; then
+              mv knip.json.backup knip.json
+              echo "Successfully restored original knip.json"
+            else
+              echo "Warning: Backup file not found, but backup was expected"
+            fi
+          elif [ "${{ steps.knip-setup.outputs.using_existing_config }}" = "false" ]; then
+            echo "Removing temporary knip.json created by workflow"
+            rm -f knip.json
+            echo "Successfully removed temporary knip.json"
+          else
+            echo "No cleanup needed - using existing configuration"
+          fi
+          
+          # Final verification
+          if [ -f "knip.config.ts" ]; then
+            echo "Final state: knip.config.ts exists (as expected)"
+          elif [ -f "knip.json" ]; then
+            echo "Final state: knip.json exists (as expected)"
+          else
+            echo "Final state: No Knip configuration found (this is normal if none existed originally)"
+          fi
