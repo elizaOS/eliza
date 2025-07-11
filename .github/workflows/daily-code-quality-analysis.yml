@@ -66,6 +66,8 @@ jobs:
       - name: Analyze Dead Code with Knip
         id: dead-code
         run: |
+          echo "::group::Dead Code Analysis"
+          echo "Starting dead code analysis with Knip..."
           echo "## Dead Code Analysis" > analysis-results/dead-code.md
           echo "" >> analysis-results/dead-code.md
           echo "Analyzed using [Knip](https://knip.dev/) - a comprehensive dead code detection tool" >> analysis-results/dead-code.md
@@ -73,7 +75,9 @@ jobs:
 
           # Run Knip analysis with no-progress flag (automatically set in CI)
           echo "### Knip Analysis Results" >> analysis-results/dead-code.md
+          echo "Running Knip analysis..."
           bunx knip --reporter symbols 2>&1 | tee -a analysis-results/dead-code.md || true
+          echo "::endgroup::"
 
           # Additional analysis for orphaned files
           echo "" >> analysis-results/dead-code.md
@@ -94,10 +98,13 @@ jobs:
       - name: Analyze Code Quality
         id: code-quality
         run: |
+          echo "::group::Code Quality Analysis"
+          echo "Starting code quality analysis..."
           echo "## Code Quality Analysis" > analysis-results/code-quality.md
           echo "" >> analysis-results/code-quality.md
 
           # Check for console.log statements
+          echo "Checking for console.log statements..."
           echo "### Console.log Statements Found" >> analysis-results/code-quality.md
           grep -r "console\.log" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/code-quality.md || echo "None found" >> analysis-results/code-quality.md
 
@@ -171,18 +178,23 @@ jobs:
           done | head -20 >> analysis-results/code-quality.md || echo "Analysis completed" >> analysis-results/code-quality.md
 
           # Check for complex conditions
+          echo "Analyzing complex conditional statements..."
           echo "" >> analysis-results/code-quality.md
           echo "### Complex Conditions (>3 &&/||)" >> analysis-results/code-quality.md
           grep -r "if.*&&.*&&.*&&\|if.*||.*||.*||" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/code-quality.md || echo "None found" >> analysis-results/code-quality.md
+          echo "::endgroup::"
 
       # Step 3: Security Analysis
       - name: Analyze Security Issues
         id: security
         run: |
+          echo "::group::Security Analysis"
+          echo "Starting security vulnerability scan..."
           echo "## Security Analysis" > analysis-results/security.md
           echo "" >> analysis-results/security.md
 
           # Check for hardcoded secrets/API keys
+          echo "Scanning for hardcoded secrets and API keys..."
           echo "### Potential Hardcoded Secrets" >> analysis-results/security.md
           grep -r -E "(api_key|apiKey|API_KEY|secret|password|token|private_key|privateKey)\s*[:=]\s*[\"'][^\"']+[\"']" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E "(process\.env|import|interface|type|:\s*string|test|spec|example)" | head -20 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
 
@@ -197,18 +209,23 @@ jobs:
           grep -r -E "(query|execute)\s*\(.*\$\{.*\}|query.*\+.*\+" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
 
           # Check for unsafe regex
+          echo "Checking for ReDoS vulnerabilities..."
           echo "" >> analysis-results/security.md
           echo "### Potential ReDoS Vulnerabilities" >> analysis-results/security.md
           grep -r -E "new RegExp\(|\/.*(\+|\*|\{[0-9]*,\}).*(\+|\*|\{[0-9]*,\}).*\/" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
+          echo "::endgroup::"
 
       # Step 4: Test Coverage Analysis
       - name: Analyze Test Coverage
         id: test-coverage
         run: |
+          echo "::group::Test Coverage Analysis"
+          echo "Analyzing test coverage..."
           echo "## Test Coverage Analysis" > analysis-results/test-coverage.md
           echo "" >> analysis-results/test-coverage.md
 
           # Find files without corresponding test files
+          echo "Finding files without test coverage..."
           echo "### Files Without Tests" >> analysis-results/test-coverage.md
           find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(test|spec|\.d\.ts|node_modules|dist)" | while read file; do
             basename="${file%.*}"
@@ -231,15 +248,19 @@ jobs:
               echo "- $file (only $test_count test blocks)" >> analysis-results/test-coverage.md
             fi
           done >> analysis-results/test-coverage.md || echo "Analysis completed" >> analysis-results/test-coverage.md
+          echo "::endgroup::"
 
       # Step 5: Type Safety Analysis
       - name: Analyze Type Safety
         id: type-safety
         run: |
+          echo "::group::Type Safety Analysis"
+          echo "Checking TypeScript type safety..."
           echo "## Type Safety Analysis" > analysis-results/type-safety.md
           echo "" >> analysis-results/type-safety.md
 
           # Check for 'any' types
+          echo "Scanning for 'any' type usage..."
           echo "### Usage of 'any' Type" >> analysis-results/type-safety.md
           grep -r -E ":\s*any(\s|$|,|\)|\[)" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -30 >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
 
@@ -254,14 +275,18 @@ jobs:
           grep -r -E "\s+as\s+\w+" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E "(import|export|const\s+\w+\s+as)" | head -20 >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
 
           # Check for @ts-ignore
+          echo "Checking for @ts-ignore directives..."
           echo "" >> analysis-results/type-safety.md
           echo "### @ts-ignore Usage" >> analysis-results/type-safety.md
           grep -r "@ts-ignore" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
+          echo "::endgroup::"
 
       # Step 6: Documentation Analysis
       - name: Analyze Documentation
         id: documentation
         run: |
+          echo "::group::Documentation Analysis"
+          echo "Analyzing code documentation..."
           echo "## Documentation Analysis" > analysis-results/documentation.md
           echo "" >> analysis-results/documentation.md
 
@@ -348,11 +373,14 @@ jobs:
             }
             ' "$file"
           done | head -20 >> analysis-results/documentation.md || echo "Analysis completed" >> analysis-results/documentation.md
+          echo "::endgroup::"
 
       # Step 7: Documentation Accuracy and Completeness
       - name: Analyze Documentation Accuracy
         id: docs-accuracy
         run: |
+          echo "::group::Documentation Accuracy Analysis"
+          echo "Checking documentation accuracy and completeness..."
           echo "## Documentation Accuracy and Completeness" > analysis-results/docs-accuracy.md
           echo "" >> analysis-results/docs-accuracy.md
 
@@ -408,11 +436,14 @@ jobs:
           else
             echo "No docs directory found in standard locations" >> analysis-results/docs-accuracy.md
           fi
+          echo "::endgroup::"
 
       # Step 8: Repository Standards Analysis
       - name: Analyze Repository Standards
         id: repo-standards
         run: |
+          echo "::group::Repository Standards Analysis"
+          echo "Checking ElizaOS repository standards compliance..."
           echo "## Repository Standards Analysis" > analysis-results/repo-standards.md
           echo "" >> analysis-results/repo-standards.md
 
@@ -438,10 +469,13 @@ jobs:
           echo "" >> analysis-results/repo-standards.md
           echo "Test syntax that should use bun:test instead:" >> analysis-results/repo-standards.md
           grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 >> analysis-results/repo-standards.md || echo "None found"
+          echo "::endgroup::"
 
       # Step 9: Combine all analysis results
       - name: Combine Analysis Results
         run: |
+          echo "::group::Combining Analysis Results"
+          echo "Creating full analysis report..."
           echo "# ElizaOS Code Quality Analysis Report" > analysis-results/full-report.md
           echo "Generated on: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> analysis-results/full-report.md
           echo "" >> analysis-results/full-report.md
@@ -462,6 +496,8 @@ jobs:
               echo -e "\n---\n" >> analysis-results/full-report.md
             fi
           done
+          echo "Full report created successfully"
+          echo "::endgroup::"
 
       # Step 10: Get existing issues to avoid duplicates
       - name: Get Existing Issues
@@ -567,7 +603,82 @@ jobs:
 
             **Workflow Run:** [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
-            @claude Please review this code quality analysis and identify the most critical issues that need immediate attention.`;
+            ---
+
+            @claude Your task is to thoroughly analyze this code quality report and create exactly 5 GitHub issues for the most critical problems.
+
+            **IMPORTANT: Check the Workflow Run Logs**
+            You MUST examine the detailed workflow run logs to understand the full context:
+            1. Use the workflow run link above: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            2. Check EACH analysis step's logs thoroughly:
+               - Dead Code Analysis (look for Knip output)
+               - Code Quality Analysis (console.log, TODOs, long functions)
+               - Security Analysis (hardcoded secrets, eval usage)
+               - Test Coverage Analysis (files without tests)
+               - Type Safety Analysis (any types, @ts-ignore)
+               - Documentation Analysis (missing JSDoc)
+               - Repository Standards (non-bun test frameworks)
+            3. Look for any errors, warnings, or unexpected outputs in the logs
+
+            **Use Available Tools:**
+            You have access to GitHub tools - use them to:
+            - Create issues with proper formatting
+            - Apply multiple labels to each issue
+            - Check for existing similar issues before creating new ones
+            - Reference specific commits or files when relevant
+
+            **Analysis Process:**
+            1. First, read the summary statistics in this issue
+            2. Then, expand and review the full analysis report above
+            3. CRITICALLY: Check the workflow run logs for detailed findings
+            4. Cross-reference the report with the actual workflow output
+            5. Identify patterns and root causes, not just symptoms
+
+            **Create EXACTLY 5 Issues Following This Priority:**
+            1. CRITICAL: Security vulnerabilities (exposed secrets, eval, SQL injection)
+            2. CRITICAL: Non-bun test frameworks (ElizaOS uses bun:test ONLY)
+            3. HIGH: Missing tests for core functionality (packages/core especially)
+            4. HIGH: Excessive 'any' types in TypeScript files
+            5. MEDIUM: Significant dead code identified by Knip
+
+            **Issue Format Requirements:**
+            - Title: "[Code Quality] [Priority] [Category] Specific description"
+            - Labels: Apply ALL relevant labels:
+              - Priority: critical, high, medium
+              - Category: security, testing, technical-debt, documentation, type-safety
+              - Type: bug (if applicable)
+              - code-quality (always include this)
+            - Body MUST include:
+              - Problem summary with impact assessment
+              - Specific files/locations (with line numbers from logs)
+              - Reproduction steps or code examples
+              - Suggested fix with implementation approach
+              - Link to relevant workflow step output
+
+            **Example Issue Structure:**
+            ```
+            ## Problem
+            [Clear description of the issue and its impact]
+
+            ## Evidence
+            Found in workflow step: [Link to specific step]
+            Affected files:
+            - path/to/file.ts:123
+            - path/to/other.ts:45
+
+            ## Current State
+            ```typescript
+            // Problem code example
+            ```
+
+            ## Suggested Fix
+            [Specific implementation steps]
+
+            ## Priority
+            [CRITICAL/HIGH/MEDIUM] - [Justification]
+            ```
+
+            Remember: You MUST check the workflow logs thoroughly. The summary in this issue is truncated - the full details are in the workflow run. Create exactly 5 issues that will have the most impact on code quality and security.`;
 
             try {
               const issue = await github.rest.issues.create({
@@ -603,11 +714,19 @@ jobs:
       # Step 13: Post summary
       - name: Post Workflow Summary
         run: |
+          echo "::group::Workflow Summary"
           echo "# Code Quality Analysis Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Type:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Output summary to console for visibility
+          echo "=== WORKFLOW SUMMARY ==="
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}"
+          echo "Workflow Type: ${{ github.event_name }}"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.create_issues }}" != "false" ]; then
             echo "**Issue Creation:** An issue has been created for manual review" >> $GITHUB_STEP_SUMMARY
@@ -625,15 +744,42 @@ jobs:
           dead_code_count=$(grep -c "^- " analysis-results/dead-code.md 2>/dev/null || echo 0)
           knip_issues=$(grep -c "^\[" analysis-results/dead-code.md 2>/dev/null || echo 0)
           echo "- **Dead Code:** $dead_code_count files + $knip_issues Knip findings" >> $GITHUB_STEP_SUMMARY
+          echo "Dead Code: $dead_code_count files + $knip_issues Knip findings"
 
-          echo "- **Code Quality:** $(grep -c ":" analysis-results/code-quality.md 2>/dev/null || echo 0) issues" >> $GITHUB_STEP_SUMMARY
-          echo "- **Security:** $(grep -c ":" analysis-results/security.md 2>/dev/null || echo 0) potential vulnerabilities" >> $GITHUB_STEP_SUMMARY
-          echo "- **Missing Tests:** $(grep -c "^- " analysis-results/test-coverage.md 2>/dev/null || echo 0) files without tests" >> $GITHUB_STEP_SUMMARY
-          echo "- **Type Safety:** $(grep -c ":" analysis-results/type-safety.md 2>/dev/null || echo 0) violations" >> $GITHUB_STEP_SUMMARY
-          echo "- **Code Documentation:** $(grep -c ":" analysis-results/documentation.md 2>/dev/null || echo 0) missing docs" >> $GITHUB_STEP_SUMMARY
-          echo "- **Docs Accuracy:** $(grep -c "- " analysis-results/docs-accuracy.md 2>/dev/null || echo 0) issues" >> $GITHUB_STEP_SUMMARY
-          echo "- **Standards:** $(grep -c ":" analysis-results/repo-standards.md 2>/dev/null || echo 0) violations" >> $GITHUB_STEP_SUMMARY
+          code_quality_count=$(grep -c ":" analysis-results/code-quality.md 2>/dev/null || echo 0)
+          echo "- **Code Quality:** $code_quality_count issues" >> $GITHUB_STEP_SUMMARY
+          echo "Code Quality: $code_quality_count issues"
+
+          security_count=$(grep -c ":" analysis-results/security.md 2>/dev/null || echo 0)
+          echo "- **Security:** $security_count potential vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "Security: $security_count potential vulnerabilities"
+
+          test_count=$(grep -c "^- " analysis-results/test-coverage.md 2>/dev/null || echo 0)
+          echo "- **Missing Tests:** $test_count files without tests" >> $GITHUB_STEP_SUMMARY
+          echo "Missing Tests: $test_count files without tests"
+
+          type_safety_count=$(grep -c ":" analysis-results/type-safety.md 2>/dev/null || echo 0)
+          echo "- **Type Safety:** $type_safety_count violations" >> $GITHUB_STEP_SUMMARY
+          echo "Type Safety: $type_safety_count violations"
+
+          docs_count=$(grep -c ":" analysis-results/documentation.md 2>/dev/null || echo 0)
+          echo "- **Code Documentation:** $docs_count missing docs" >> $GITHUB_STEP_SUMMARY
+          echo "Code Documentation: $docs_count missing docs"
+
+          docs_accuracy_count=$(grep -c "- " analysis-results/docs-accuracy.md 2>/dev/null || echo 0)
+          echo "- **Docs Accuracy:** $docs_accuracy_count issues" >> $GITHUB_STEP_SUMMARY
+          echo "Docs Accuracy: $docs_accuracy_count issues"
+
+          standards_count=$(grep -c ":" analysis-results/repo-standards.md 2>/dev/null || echo 0)
+          echo "- **Standards:** $standards_count violations" >> $GITHUB_STEP_SUMMARY
+          echo "Standards: $standards_count violations"
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Calculate total issues
+          total_issues=$((dead_code_count + knip_issues + code_quality_count + security_count + test_count + type_safety_count + docs_count + docs_accuracy_count + standards_count))
+          echo ""
+          echo "TOTAL ISSUES FOUND: $total_issues"
+          echo ""
 
           echo "## Analysis Tools Used:" >> $GITHUB_STEP_SUMMARY
           echo "- [Knip](https://knip.dev/) for comprehensive dead code detection" >> $GITHUB_STEP_SUMMARY
@@ -644,8 +790,28 @@ jobs:
 
           echo "Full analysis results are available as workflow artifacts." >> $GITHUB_STEP_SUMMARY
 
+          # Output critical findings summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Critical Findings Summary" >> $GITHUB_STEP_SUMMARY
+          if [ $security_count -gt 0 ]; then
+            echo "⚠️ **Security Issues Found:** Review security.md for potential vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ SECURITY ISSUES FOUND - Review immediately!"
+          fi
+
+          if grep -q "jest\|vitest\|mocha" analysis-results/repo-standards.md 2>/dev/null; then
+            echo "⚠️ **Non-Bun Test Framework:** ElizaOS requires bun:test exclusively" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ NON-BUN TEST FRAMEWORK DETECTED - Must use bun:test!"
+          fi
+
+          echo ""
+          echo "=== ANALYSIS COMPLETE ==="
+          echo "Artifacts will be available for 30 days at:"
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "::endgroup::"
+
       # No cleanup needed since we use the existing knip.config.ts
       - name: Analysis complete
         if: always()
         run: |
+          echo "::notice title=Analysis Complete::Code quality analysis completed successfully. Check the workflow summary for results."
           echo "Analysis completed using existing knip.config.ts configuration"
