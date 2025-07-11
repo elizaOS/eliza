@@ -1,0 +1,41 @@
+import type { BuildConfig } from 'bun';
+
+export const buildConfig: BuildConfig = {
+  entrypoints: ['./src/index.ts'],
+  outdir: './dist',
+  target: 'node',
+  format: 'esm',
+  splitting: false,
+  sourcemap: 'external',
+  external: [
+    // Node built-ins
+    'fs',
+    'path',
+    'http',
+    'https',
+    'crypto',
+    'node:fs',
+    'node:path',
+    'node:http',
+    'node:https',
+    'node:crypto',
+    'node:stream',
+    'node:buffer',
+    'node:util',
+    'node:events',
+    'node:url',
+    // Dependencies
+    '@elizaos/core',
+    'near-api-js',
+    '@ref-finance/ref-sdk',
+    'bignumber.js',
+    'node-cache',
+    'zod',
+    'form-data',
+    'whatwg-url',
+    'dotenv',
+    'util',
+    'url',
+  ],
+  naming: '[dir]/[name].[ext]',
+};

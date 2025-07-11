@@ -1,0 +1,138 @@
+{
+  "name": "@elizaos/plugin-near",
+  "version": "1.0.12",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-near.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^2.2.10",
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google-vertex": "^2.2.24",
+    "@ai-sdk/groq": "^1.2.9",
+    "@ai-sdk/mistral": "^1.2.8",
+    "@ai-sdk/openai": "^1.3.22",
+    "@ai-sdk/xai": "^1.2.16",
+    "@elizaos/core": "workspace:*",
+    "@ref-finance/ref-sdk": "^1.4.6",
+    "bignumber.js": "9.1.2",
+    "fastembed": "^1.14.4",
+    "near-api-js": "5.0.1",
+    "node-cache": "5.1.2",
+    "ollama-ai-provider": "^1.2.0",
+    "openai": "^5.8.2",
+    "together-ai": "^0.16.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.17",
+    "@types/node": "^22.10.6",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "dotenv": "^16.4.5",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^16.2.0",
+    "prettier": "3.5.3",
+    "typescript": "5.8.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist coverage .turbo",
+    "lint": "echo 'Linting disabled for plugin-near due to ESLint config conflicts with ES modules' && prettier --write ./src",
+    "lint:check": "eslint src && prettier --check ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:unit": "bun test src/__tests__/unit",
+    "test:integration": "bun test src/__tests__/integration",
+    "test:e2e": "npm run build && elizaos test"
+  },
+  "peerDependencies": {
+    "form-data": "4.0.1",
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "NEAR_WALLET_SECRET_KEY": {
+        "type": "string",
+        "description": "Base58-encoded NEAR wallet private key for transaction signing",
+        "required": true,
+        "sensitive": true
+      },
+      "NEAR_WALLET_PUBLIC_KEY": {
+        "type": "string",
+        "description": "Base58-encoded NEAR wallet public key",
+        "required": true,
+        "sensitive": false
+      },
+      "NEAR_ADDRESS": {
+        "type": "string",
+        "description": "NEAR account name (e.g., alice.near or alice.testnet)",
+        "required": true,
+        "sensitive": false
+      },
+      "NEAR_NETWORK": {
+        "type": "string",
+        "description": "NEAR network to connect to (mainnet or testnet)",
+        "required": false,
+        "default": "testnet",
+        "sensitive": false
+      },
+      "NEAR_RPC_URL": {
+        "type": "string",
+        "description": "Custom RPC endpoint URL for NEAR network",
+        "required": false,
+        "default": "https://neart.lava.build",
+        "sensitive": false
+      },
+      "NEAR_SLIPPAGE": {
+        "type": "string",
+        "description": "Maximum acceptable slippage percentage for swaps (e.g., '1' for 1%)",
+        "required": false,
+        "default": "1",
+        "sensitive": false
+      },
+      "REF_FINANCE_CONTRACT": {
+        "type": "string",
+        "description": "Ref Finance contract address for the selected network",
+        "required": false,
+        "default": "Auto-detected based on network",
+        "sensitive": false
+      },
+      "WRAP_NEAR_CONTRACT": {
+        "type": "string",
+        "description": "Wrapped NEAR contract address for the selected network",
+        "required": false,
+        "default": "Auto-detected based on network",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+}
