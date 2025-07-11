@@ -468,7 +468,7 @@ jobs:
           grep -r -E "(from ['\"]vitest|from ['\"]jest|from ['\"]mocha|import.*vitest|import.*jest|require\(['\"]jest|require\(['\"]vitest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
           echo "" >> analysis-results/repo-standards.md
           echo "Test syntax that should use bun:test instead:" >> analysis-results/repo-standards.md
-          grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 >> analysis-results/repo-standards.md || echo "None found"
+          grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
           echo "::endgroup::"
 
       # Step 9: Combine all analysis results
