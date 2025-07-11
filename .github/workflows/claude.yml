@@ -47,11 +47,16 @@ jobs:
           # Allow Claude to run specific commands including GitHub CLI for issue management
           allowed_tools: "Bash(bun install),Bash(bun run build),Bash(bun test),Bash(bun run test),Bash(bun run lint),Bash(bun run format),Bash(gh *)"
 
-          # Optional: Add custom instructions for Claude to customize its behavior for your project
-          # custom_instructions: |
-          #   Follow our coding standards
-          #   Ensure all new code has tests
-          #   Use TypeScript for new files
+          # Custom instructions for Claude to handle ElizaOS standards
+          custom_instructions: |
+            Follow ElizaOS coding standards from CLAUDE.md
+            Use bun exclusively (never npm, pnpm, yarn, or npx)
+            For testing:
+            - Use bun:test for all unit tests, integration tests, and backend tests
+            - Cypress is ONLY acceptable for frontend UI testing in packages/client
+            - Never use jest, vitest, mocha, or other test frameworks except Cypress for UI
+            When creating GitHub issues, use proper labels and formatting
+            Check workflow logs using gh run view <run-id> --log for details
 
           # Optional: Custom environment variables for Claude
           # claude_env: |
