@@ -27,6 +27,7 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
       ? await bunExec('bun', finalArgs, { cwd })
       : await bunExecInherit('bun', finalArgs, { cwd });
 
+    // Using result.success for clarity - it's a boolean that indicates exitCode === 0
     if (silent && !result.success) {
       throw new Error(
         `Bun command failed with exit code ${result.exitCode}: ${result.stderr || result.stdout}`
@@ -48,6 +49,7 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
         ? await bunExec('bun', args, { cwd })
         : await bunExecInherit('bun', args, { cwd });
 
+      // Using result.success for clarity - it's a boolean that indicates exitCode === 0
       if (silent && !retryResult.success) {
         throw new Error(
           `Bun command failed with exit code ${retryResult.exitCode}: ${retryResult.stderr || retryResult.stdout}`

@@ -1,6 +1,9 @@
 import { type Subprocess } from 'bun';
 import { logger } from '@elizaos/core';
 
+// Constants
+const COMMAND_EXISTS_TIMEOUT_MS = 5000; // 5 seconds timeout for command existence checks
+
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -46,7 +49,6 @@ export class ProcessTimeoutError extends Error {
  * Properly escape shell arguments to prevent command injection
  * Uses JSON.stringify for robust escaping of special characters
  * 
- * @internal
  * @param arg - The argument to escape
  * @returns The escaped argument
  * 
@@ -229,10 +231,12 @@ export async function bunExec(
     
     throw error;
   } finally {
-    // Ensure process cleanup
-    if (proc && proc.killed === false && !timedOut) {
+    // Ensure process cleanup - check if process is still running
+    if (proc && proc.exitCode === null && !timedOut) {
       try {
-        proc.kill();
+        if (!proc.killed) {
+          proc.kill();
+        }
       } catch (cleanupError) {
         logger.debug('[bunExec] Error during process cleanup:', cleanupError);
       }
@@ -333,13 +337,13 @@ export async function commandExists(command: string): Promise<boolean> {
     if (process.platform === 'win32') {
       const result = await bunExec('where', [command], { 
         stdio: 'ignore',
-        timeout: 5000 // 5 second timeout for command existence check
+        timeout: COMMAND_EXISTS_TIMEOUT_MS
       });
       return result.success;
     } else {
       const result = await bunExec('which', [command], { 
         stdio: 'ignore',
-        timeout: 5000 // 5 second timeout for command existence check
+        timeout: COMMAND_EXISTS_TIMEOUT_MS
       });
       return result.success;
     }

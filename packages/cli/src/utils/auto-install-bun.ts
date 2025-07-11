@@ -1,6 +1,9 @@
 import { logger } from '@elizaos/core';
 import { bunExec, bunExecInherit } from './bun-exec';
 
+// Constants
+const INSTALLATION_VERIFICATION_DELAY_MS = 2000; // 2 seconds delay to allow installation to complete
+
 /**
  * Checks if Bun is already installed
  */
@@ -38,7 +41,7 @@ export async function autoInstallBun(): Promise<boolean> {
 
     // Verify installation
     // Sleep briefly to allow the installation to complete
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, INSTALLATION_VERIFICATION_DELAY_MS));
 
     // Check if Bun is now available
     if (await isBunInstalled()) {
