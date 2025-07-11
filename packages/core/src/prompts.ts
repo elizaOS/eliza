@@ -47,6 +47,7 @@ IMPORTANT ACTION ORDERING RULES:
 - REPLY is used to acknowledge and inform the user about what you're going to do
 - Follow-up actions execute the actual tasks after acknowledgment
 - Use IGNORE only when you should not respond at all
+- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
