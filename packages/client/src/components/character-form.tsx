@@ -8,7 +8,7 @@ import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT_TYPE, FIELD_REQUIREMENTS } fro
 import { useToast } from '@/hooks/use-toast';
 import { exportCharacterAsJson } from '@/lib/export-utils';
 import { compressImage } from '@/lib/utils';
-import type { Agent } from '@elizaos/core';
+import type { Agent, Character } from '@elizaos/core';
 import type React from 'react';
 import {
   type FormEvent,
@@ -111,7 +111,7 @@ export type CharacterFormProps = {
     addArrayItem?: <T>(path: string, item: T) => void;
     removeArrayItem?: (path: string, index: number) => void;
     updateSetting?: (path: string, value: any) => void;
-    importAgent?: (value: Agent) => void;
+    importAgent?: (value: Character) => void;
     [key: string]: any;
   };
   onTemplateChange?: () => void;
@@ -755,7 +755,7 @@ export default function CharacterForm({
 
     try {
       const text = await file.text();
-      let json: Agent = JSON.parse(text);
+      let json: Character = JSON.parse(text);
 
       if (isV1Character(json)) {
         json = convertCharacter(json);
@@ -856,7 +856,7 @@ export default function CharacterForm({
       const template = getTemplateById(templateId);
       if (template && setCharacterValue.importAgent) {
         // Use the importAgent function to set all template values at once
-        setCharacterValue.importAgent(template.template as Agent);
+        setCharacterValue.importAgent(template.template as Character);
         // Notify parent of template change
         onTemplateChange?.();
       }

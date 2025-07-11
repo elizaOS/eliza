@@ -1,4 +1,4 @@
-import { Agent, Content } from '@elizaos/core';
+import { Character, Content } from '@elizaos/core';
 import { usePlugins } from '@/hooks/use-plugins';
 
 const PROVIDER_PLUGIN_MAPPINGS: Record<string, string> = {
@@ -13,7 +13,7 @@ const CLIENT_PLUGIN_MAPPINGS: Record<string, string> = {
 
 const ESSENTIAL_PLUGINS = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'];
 
-export interface V1Character extends Agent {
+export interface V1Character extends Character {
     name: string;
     lore?: string[];
     clients?: string[];
@@ -91,7 +91,6 @@ export function useConvertCharacter() {
     ) ?? [];
 
     const plugins = matchPlugins(v1);
-    const now = Date.now();
     const v2 = {
       name: v1.name,
       username: v1.username,
@@ -104,8 +103,6 @@ export function useConvertCharacter() {
       adjectives: v1.adjectives,
       messageExamples,
       postExamples: v1.postExamples,
-      createdAt: now,
-      updatedAt: now
     };
 
     return v2;
