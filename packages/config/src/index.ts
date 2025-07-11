@@ -24,18 +24,18 @@ export { default as prettierConfig } from './prettier/prettier.config.js';
 // Configuration paths for package.json references
 export const configPaths = {
   typescript: {
-    base: '@elizaos/configs/typescript/tsconfig.base.json',
-    plugin: '@elizaos/configs/typescript/tsconfig.plugin.json',
-    frontend: '@elizaos/configs/typescript/tsconfig.frontend.json',
-    test: '@elizaos/configs/typescript/tsconfig.test.json',
+    base: '@elizaos/config/typescript/tsconfig.base.json',
+    plugin: '@elizaos/config/typescript/tsconfig.plugin.json',
+    frontend: '@elizaos/config/typescript/tsconfig.frontend.json',
+    test: '@elizaos/config/typescript/tsconfig.test.json',
   },
   build: {
-    plugin: '@elizaos/configs/build/build.config.plugin.ts',
-    script: '@elizaos/configs/build/build.plugin.ts',
+    plugin: '@elizaos/config/build/build.config.plugin.ts',
+    script: '@elizaos/config/build/build.plugin.ts',
   },
   eslint: {
-    plugin: '@elizaos/configs/eslint/eslint.config.plugin.js',
-    frontend: '@elizaos/configs/eslint/eslint.config.frontend.js',
+    plugin: '@elizaos/config/eslint/eslint.config.plugin.js',
+    frontend: '@elizaos/config/eslint/eslint.config.frontend.js',
   },
-  prettier: '@elizaos/configs/prettier/prettier.config.js',
+  prettier: '@elizaos/config/prettier/prettier.config.js',
 };
