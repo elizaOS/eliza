@@ -64,6 +64,7 @@ import type { SecretPanelRef } from './secret-panel';
 import { MissingSecretsDialog } from './missing-secrets-dialog';
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 import { createElizaClient } from '@/lib/api-client-config';
+import { V1Character, useConvertCharacter } from '@/hooks/use-character-convert';
 
 export type InputField = {
   name: string;
@@ -210,6 +211,8 @@ export default function CharacterForm({
   // Get required secrets based on enabled plugins
   const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
   const { requiredSecrets } = useRequiredSecrets(enabledPlugins);
+
+  const { convertCharacter } = useConvertCharacter();
 
   // Fetch global environment variables
   useEffect(() => {
@@ -738,13 +741,25 @@ export default function CharacterForm({
     exportCharacterAsJson(characterValue, toast);
   };
 
+  function isV1Character(char: unknown): char is V1Character {
+    return (
+      typeof char === 'object' &&
+      char !== null &&
+      ('lore' in char || 'clients' in char || 'modelProvider' in char)
+    );
+  }
+
   const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const text = await file.text();
-      const json: Agent = JSON.parse(text);
+      let json: Agent = JSON.parse(text);
+
+      if (isV1Character(json)) {
+        json = convertCharacter(json);
+      }
 
       // Check for required fields using FIELD_REQUIREMENTS
       const missingFields = (
