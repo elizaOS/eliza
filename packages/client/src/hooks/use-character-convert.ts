@@ -92,8 +92,8 @@ export function useConvertCharacter() {
   }
 
   const convertCharacter = (v1: V1Character): Character => {
-    const bio = [...(v1.bio ?? []), ...(v1.lore ?? [])];
-
+    const bio = [...(Array.isArray(v1.bio) ? v1.bio : v1.bio ? [v1.bio] : []), ...(v1.lore ?? [])];
+    
     const messageExamples =
       (v1.messageExamples ?? []).map((thread: any[]) =>
         thread.map((msg: any) => {
