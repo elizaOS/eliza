@@ -1,8 +1,28 @@
 import { logger } from '@elizaos/core';
 import { bunExec, bunExecInherit } from './bun-exec';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 // Constants
 const INSTALLATION_VERIFICATION_DELAY_MS = 2000; // 2 seconds delay to allow installation to complete
+
+/**
+ * Updates the PATH environment variable to include Bun's installation directory
+ */
+function updatePathForBun(): void {
+  const home = homedir();
+  const bunBinPath = join(home, '.bun', 'bin');
+  
+  // Check if the PATH already includes the Bun directory
+  const currentPath = process.env.PATH || '';
+  const pathSeparator = process.platform === 'win32' ? ';' : ':';
+  
+  if (!currentPath.includes(bunBinPath)) {
+    // Prepend Bun's bin directory to PATH
+    process.env.PATH = `${bunBinPath}${pathSeparator}${currentPath}`;
+    logger.debug(`Added ${bunBinPath} to PATH for current process`);
+  }
+}
 
 /**
  * Checks if Bun is already installed
@@ -38,6 +58,9 @@ export async function autoInstallBun(): Promise<boolean> {
     }
 
     logger.info('Bun installation script executed successfully.');
+
+    // Update PATH for the current process
+    updatePathForBun();
 
     // Verify installation
     // Sleep briefly to allow the installation to complete
