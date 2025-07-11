@@ -6,7 +6,6 @@ export { default as tsConfigBase } from './typescript/tsconfig.base.json';
 export { default as tsConfigPlugin } from './typescript/tsconfig.plugin.json';
 export { default as tsConfigFrontend } from './typescript/tsconfig.frontend.json';
 export { default as tsConfigTest } from './typescript/tsconfig.test.json';
-export { buildConfig as pluginBuildConfig } from './build/build.config.plugin';
 export { default as eslintConfigPlugin } from './eslint/eslint.config.plugin.js';
 export { default as eslintConfigFrontend } from './eslint/eslint.config.frontend.js';
 export {
@@ -21,10 +20,6 @@ export declare const configPaths: {
     plugin: string;
     frontend: string;
     test: string;
-  };
-  build: {
-    plugin: string;
-    script: string;
   };
   eslint: {
     plugin: string;
