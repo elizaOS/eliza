@@ -538,6 +538,27 @@ const messageReceivedHandler = async ({
           if (responseContent && message.id) {
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
+            // --- LLM IGNORE/REPLY ambiguity handling ---
+            // Sometimes the LLM outputs actions like ["REPLY", "IGNORE"], which breaks isSimple detection
+            // and triggers unnecessary large LLM calls. We clarify intent here:
+            // - If IGNORE is present with other actions:
+            //    - If text is empty, we assume the LLM intended to IGNORE and drop all other actions.
+            //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
+            // This ensures consistent, clear behavior and preserves reply speed optimizations.
+            if (
+              responseContent.actions &&
+              responseContent.actions.length > 1 &&
+              responseContent.actions.includes("IGNORE")
+            ) {
+              if (!responseContent.text || responseContent.text.trim() === "") {
+                // No text, truly meant to IGNORE
+                responseContent.actions = ["IGNORE"];
+              } else {
+                // Text present, LLM intended to reply, remove IGNORE
+                responseContent.actions = responseContent.actions.filter(action => action !== "IGNORE");
+              }
+            }
+
             // Automatically determine if response is simple based on providers and actions
             // Simple = REPLY action with no providers used
             const isSimple =
