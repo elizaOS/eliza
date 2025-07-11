@@ -127,7 +127,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 ? 'Type your message here...'
                 : 'Message group...'
           }
-          className="max-h-[none] min-h-12 resize-none rounded-none bg-card border-0 px-0 py-0 shadow-none focus-visible:ring-0 text-sm sm:text-base"
+          className="min-h-12 resize-none rounded-none bg-card border-0 px-0 py-0 shadow-none focus-visible:ring-0 text-sm sm:text-base"
           disabled={
             inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')
           }
