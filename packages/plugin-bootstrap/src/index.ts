@@ -548,7 +548,7 @@ const messageReceivedHandler = async ({
             if (
               responseContent.actions &&
               responseContent.actions.length > 1 &&
-              responseContent.actions.includes("IGNORE")
+              responseContent.actions.some(action => action.toUpperCase() === "IGNORE")
             ) {
               if (!responseContent.text || responseContent.text.trim() === "") {
                 // No text, truly meant to IGNORE
