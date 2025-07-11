@@ -14,10 +14,25 @@ const CLIENT_PLUGIN_MAPPINGS: Record<string, string> = {
 const ESSENTIAL_PLUGINS = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'];
 
 export interface V1Character extends Character {
-    name: string;
-    lore?: string[];
-    clients?: string[];
-    modelProvider?: string;
+  name: string;
+  lore?: string[];
+  clients?: string[];
+  modelProvider?: string;
+  bio?: string | string[];
+  messageExamples?: any[][];
+  username?: string;
+  system?: string;
+  settings?: {
+    [key: string]: string | boolean | number | Record<string, any>;
+  };
+  topics?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  adjectives?: string[];
+  postExamples?: string[];
 }
 
 export function useConvertCharacter() {
@@ -52,17 +67,19 @@ export function useConvertCharacter() {
         const constructed = `@elizaos/plugin-${lower}`;
         if (availablePlugins.includes(constructed)) {
           matched.add(constructed);
-        } else {
-          matched.add('@elizaos/plugin-openai'); // safe fallback
         }
+        // Note: Removed unsafe fallback to @elizaos/plugin-openai
+        // Only add plugins that actually exist in availablePlugins
       }
-    } else {
-      matched.add('@elizaos/plugin-openai'); // fallback if none specified
     }
+    // Note: Removed unsafe fallback when no model provider is specified
+    // Only add plugins that actually exist in availablePlugins
 
-    // Add essential plugins
+    // Add essential plugins only if they exist in availablePlugins
     for (const plugin of ESSENTIAL_PLUGINS) {
-      matched.add(plugin);
+      if (availablePlugins.includes(plugin)) {
+        matched.add(plugin);
+      }
     }
 
     return Array.from(matched).sort();
@@ -74,24 +91,24 @@ export function useConvertCharacter() {
     return typeof example === 'object' && example !== null && 'user' in example;
   }
 
-  const convertCharacter = (v1: V1Character): V1Character => {
+  const convertCharacter = (v1: V1Character): Character => {
     const bio = [...(v1.bio ?? []), ...(v1.lore ?? [])];
 
     const messageExamples =
-    (v1.messageExamples ?? []).map((thread) =>
-      thread.map((msg) => {
-        if (isV1MessageExampleFormat(msg)) {
-          return {
-            name: msg.user,
-            content: msg.content,
-          };
-        }
-        return msg;
-      })
-    ) ?? [];
+      (v1.messageExamples ?? []).map((thread: any[]) =>
+        thread.map((msg: any) => {
+          if (isV1MessageExampleFormat(msg)) {
+            return {
+              name: msg.user,
+              content: msg.content,
+            };
+          }
+          return msg;
+        })
+      ) ?? [];
 
     const plugins = matchPlugins(v1);
-    const v2 = {
+    const v2: Character = {
       name: v1.name,
       username: v1.username,
       system: v1.system,
