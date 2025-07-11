@@ -483,80 +483,100 @@ jobs:
             // Also output current branch for reference
             core.setOutput('analyzed_branch', '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}');
 
-      # Step 11: Use Claude to analyze results and create issues
-      - name: Claude Analysis and Issue Creation
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_issues != 'false'
-        uses: anthropics/claude-code-action@beta
+      # Step 11: Create analysis issue for review
+      - name: Create Code Quality Analysis Issue
+        if: github.event.inputs.create_issues != 'false'
+        uses: actions/github-script@v7
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          script: |
+            const fs = require('fs');
+            const date = new Date().toISOString().split('T')[0];
+            const branch = '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}';
 
-          # Use Claude Opus 4 thinking model for comprehensive analysis
-          model: 'claude-opus-4-20250514'
+            // Read the full report
+            let reportContent = '';
+            try {
+              reportContent = fs.readFileSync('analysis-results/full-report.md', 'utf8');
+            } catch (error) {
+              console.error('Could not read analysis report:', error);
+              reportContent = 'Error reading analysis report.';
+            }
 
-          direct_prompt: |
-            Analyze the code quality report and create GitHub issues for the most critical problems found.
+            // Count issues for summary
+            let summaryStats = {
+              deadCode: 0,
+              security: 0,
+              typeSafety: 0,
+              testCoverage: 0,
+              codeQuality: 0,
+              documentation: 0,
+              repoStandards: 0
+            };
 
-            **Analysis Report:**
-            $(cat analysis-results/full-report.md)
+            try {
+              summaryStats.deadCode = (reportContent.match(/^- /gm) || []).length;
+              summaryStats.security = (reportContent.match(/### .* Security/gm) || []).length;
+              summaryStats.typeSafety = (reportContent.match(/:\s*any/gm) || []).length;
+            } catch (e) {
+              console.log('Error counting issues:', e);
+            }
 
-            **Existing Issues (DO NOT DUPLICATE):**
-            ${{ steps.existing-issues.outputs.existing_titles }}
+            const issueBody = `## Code Quality Analysis Report - ${date}
 
-            **Instructions:**
-            1. Review the analysis results and identify the most critical issues
-            2. Group related problems together
-            3. Create issues for the following categories if problems exist:
-               - Dead code that should be removed (especially from Knip analysis)
-               - Critical security vulnerabilities
-               - Missing test coverage for important functionality
-               - Type safety violations (excessive 'any' usage)
-               - Repository standard violations (especially non-bun test frameworks)
-               - Missing or outdated documentation
-               - Documentation accuracy issues (broken links, outdated examples)
+            This automated analysis was run on the \`${branch}\` branch.
 
-            **IMPORTANT**:
-            - ElizaOS uses 'bun:test' exclusively. Flag any usage of jest, vitest, mocha or other test frameworks as HIGH priority issues.
-            - Documentation accuracy is critical - outdated docs are worse than no docs
+            ### Summary of Findings
 
-            **Issue Format:**
-            - Title: "${{ env.ISSUE_PREFIX }} [Category] Brief description"
-            - Labels: "${{ env.ISSUE_LABEL }}", plus relevant category labels like:
-              - "security" for security issues
-              - "testing" for test coverage
-              - "technical-debt" for code quality
-              - "documentation" for docs
-              - "type-safety" for TypeScript issues
-            - Body should include:
-              - Summary of the problem
-              - Specific files/locations affected
-              - Recommended fixes
-              - Priority level (Critical/High/Medium/Low)
-              - Code examples where relevant
+            - 🗑️ Dead Code Issues: ${summaryStats.deadCode}+
+            - 🔒 Security Concerns: ${summaryStats.security}+
+            - 📝 Type Safety Issues: ${summaryStats.typeSafety}+
+            - 🧪 Missing Test Coverage: Multiple files
+            - 📚 Documentation Gaps: Multiple areas
 
-            **Prioritization:**
-            - CRITICAL: Security issues, broken functionality, exposed secrets
-            - HIGH: Missing tests for core functionality, excessive any types, standard violations
-            - MEDIUM: Dead code, code quality issues, documentation gaps
-            - LOW: Minor improvements, style issues
+            ### Next Steps
 
-            Create a maximum of 5 issues per run, focusing on the highest priority problems.
-            DO NOT create issues for problems that already have open issues.
-            Group related problems into single issues where it makes sense.
+            1. Review the full analysis report below
+            2. Identify the most critical issues
+            3. Create separate issues for high-priority problems
+            4. You can ask @claude to help analyze specific findings or create issues
 
-            Use the GitHub API to create the issues directly.
+            ### Full Analysis Report
 
-          allowed_tools: 'GitHubAPI(create_issue)'
+            <details>
+            <summary>Click to expand full analysis results</summary>
 
-      # Step 11b: Inform about skipped Claude analysis on scheduled runs
-      - name: Claude Analysis Skipped (Scheduled Run)
-        if: github.event_name == 'schedule'
-        run: |
-          echo "::notice title=Claude Analysis Skipped::Claude issue creation is only available for manual workflow runs. To create issues based on this analysis, please run the workflow manually with 'workflow_dispatch'."
-          echo "" >> analysis-results/full-report.md
-          echo "---" >> analysis-results/full-report.md
-          echo "" >> analysis-results/full-report.md
-          echo "**Note:** Claude AI analysis and automatic issue creation is disabled for scheduled runs." >> analysis-results/full-report.md
-          echo "To enable Claude analysis and issue creation, run this workflow manually using the 'Run workflow' button." >> analysis-results/full-report.md
+            ${reportContent}
+
+            </details>
+
+            ---
+
+            **Workflow Run:** [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            @claude Please review this code quality analysis and identify the most critical issues that need immediate attention.`;
+
+            try {
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[Code Quality] Analysis Report - ${date}`,
+                body: issueBody,
+                labels: ['code-quality', 'needs-review', 'automated']
+              });
+
+              console.log(`Created issue #${issue.data.number}`);
+              core.setOutput('issue_number', issue.data.number);
+              core.setOutput('issue_url', issue.data.html_url);
+
+              // Add to summary
+              await core.summary
+                .addHeading('Code Quality Issue Created')
+                .addLink(`Issue #${issue.data.number}`, issue.data.html_url)
+                .write();
+            } catch (error) {
+              console.error('Failed to create issue:', error);
+              core.setFailed(`Failed to create issue: ${error.message}`);
+            }
 
       # Step 12: Upload analysis artifacts
       - name: Upload Analysis Results
@@ -573,7 +593,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Model:** Claude Opus 4 (Thinking Model)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.create_issues }}" != "false" ]; then
+            echo "**Issue Creation:** An issue has been created for manual review" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Issue Creation:** Disabled for this run" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Count issues in each category
