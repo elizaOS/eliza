@@ -485,7 +485,7 @@ jobs:
 
       # Step 11: Use Claude to analyze results and create issues
       - name: Claude Analysis and Issue Creation
-        if: github.event.inputs.create_issues != 'false'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_issues != 'false'
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -546,6 +546,17 @@ jobs:
             Use the GitHub API to create the issues directly.
 
           allowed_tools: 'GitHubAPI(create_issue)'
+
+      # Step 11b: Inform about skipped Claude analysis on scheduled runs
+      - name: Claude Analysis Skipped (Scheduled Run)
+        if: github.event_name == 'schedule'
+        run: |
+          echo "::notice title=Claude Analysis Skipped::Claude issue creation is only available for manual workflow runs. To create issues based on this analysis, please run the workflow manually with 'workflow_dispatch'."
+          echo "" >> analysis-results/full-report.md
+          echo "---" >> analysis-results/full-report.md
+          echo "" >> analysis-results/full-report.md
+          echo "**Note:** Claude AI analysis and automatic issue creation is disabled for scheduled runs." >> analysis-results/full-report.md
+          echo "To enable Claude analysis and issue creation, run this workflow manually using the 'Run workflow' button." >> analysis-results/full-report.md
 
       # Step 12: Upload analysis artifacts
       - name: Upload Analysis Results
