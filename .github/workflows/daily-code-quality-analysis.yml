@@ -19,7 +19,6 @@ on:
         type: string
 
 env:
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   ISSUE_LABEL: 'code-quality'
   ISSUE_PREFIX: '[Code Quality]'
@@ -41,9 +40,9 @@ jobs:
           fetch-depth: 0 # Full history for better analysis
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 23
+          node-version: '23.3.0'
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
