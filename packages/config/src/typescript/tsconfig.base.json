@@ -33,8 +33,6 @@
       "@elizaos/cli/*": ["packages/cli/src/*"],
       "@elizaos/plugin-sql": ["packages/plugin-sql/src"],
       "@elizaos/plugin-sql/*": ["packages/plugin-sql/src/*"],
-      "@elizaos/plugin-forms": ["packages/plugin-forms/src"],
-      "@elizaos/plugin-forms/*": ["packages/plugin-forms/src/*"],
       "@elizaos/plugin-bootstrap": ["packages/plugin-bootstrap/src"],
       "@elizaos/plugin-bootstrap/*": ["packages/plugin-bootstrap/src/*"],
       "@elizaos/plugin-dummy-services": ["packages/plugin-dummy-services/src"],
