@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { bunExec, bunExecInherit } from './bun-exec';
+import { bunExec, bunExecInherit, commandExists } from './bun-exec';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -17,10 +17,21 @@ function updatePathForBun(): void {
   const currentPath = process.env.PATH || '';
   const pathSeparator = process.platform === 'win32' ? ';' : ':';
   
-  if (!currentPath.includes(bunBinPath)) {
+  // Split PATH into individual directories and check for exact match
+  const pathDirs = currentPath.split(pathSeparator);
+  const bunBinPathNormalized = bunBinPath.replace(/[/\\]+$/, ''); // Remove trailing slashes
+  
+  const isInPath = pathDirs.some(dir => {
+    const dirNormalized = dir.replace(/[/\\]+$/, ''); // Remove trailing slashes
+    return dirNormalized === bunBinPathNormalized;
+  });
+  
+  if (!isInPath) {
     // Prepend Bun's bin directory to PATH
     process.env.PATH = `${bunBinPath}${pathSeparator}${currentPath}`;
     logger.debug(`Added ${bunBinPath} to PATH for current process`);
+  } else {
+    logger.debug(`${bunBinPath} is already in PATH`);
   }
 }
 
@@ -29,9 +40,19 @@ function updatePathForBun(): void {
  */
 async function isBunInstalled(): Promise<boolean> {
   try {
+    // First check if the command exists using commandExists
+    // This avoids throwing when bun is not found
+    const exists = await commandExists('bun');
+    if (!exists) {
+      return false;
+    }
+    
+    // If it exists, verify it actually works by getting version
     const result = await bunExec('bun', ['--version'], { stdio: 'ignore' });
     return result.success;
-  } catch {
+  } catch (error) {
+    // Handle any unexpected errors
+    logger.debug('Error checking if Bun is installed:', error);
     return false;
   }
 }
