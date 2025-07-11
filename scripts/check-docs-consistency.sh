@@ -82,7 +82,7 @@ print_section "Core Classes and Interfaces Documentation"
         sed -E 's/export (interface|type) (\w+).*/\2/' | \
         while read -r type_name; do
             check_entity_documented "$type_name" "Type/Interface"
-        done | sort -u | head -20
+        done | sort -u | head -n "${MAX_RESULTS:-0}"
     else
         echo "Could not find packages/core/src/types.ts"
     fi
