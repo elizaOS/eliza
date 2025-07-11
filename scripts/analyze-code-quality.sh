@@ -132,10 +132,66 @@ print_info "Analyzing code quality..."
     echo "### TODO/FIXME Comments"
     grep -r "TODO\|FIXME" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
 
-    echo ""
     echo "### Long Functions (>50 lines)"
     find packages -name "*.ts" -o -name "*.tsx" | grep -v node_modules | grep -v dist | while read file; do
-        awk '/function|const.*=.*\(|export.*\(/ {start=NR; func=$0} /^}/ {if(NR-start>50) print FILENAME":"start"-"NR" ("NR-start" lines)"}' "$file" 2>/dev/null
+        awk '
+        BEGIN {
+            brace_count = 0
+            in_function = 0
+            function_start = 0
+            function_name = ""
+        }
+        
+        # Function declaration patterns - more specific and comprehensive
+        /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+        /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+            if (!in_function) {
+                in_function = 1
+                function_start = NR
+                function_name = $0
+                brace_count = 0
+                # Count opening braces on this line
+                gsub(/[^{]/, "", $0)
+                brace_count += length($0)
+            }
+            next
+        }
+        
+        # Handle opening braces
+        /{/ {
+            if (in_function) {
+                # Count opening braces on this line
+                gsub(/[^{]/, "", $0)
+                brace_count += length($0)
+            }
+        }
+        
+        # Handle closing braces - works with indented braces
+        /}/ {
+            if (in_function) {
+                # Count closing braces on this line
+                gsub(/[^}]/, "", $0)
+                brace_count -= length($0)
+                
+                # If we have balanced braces, function is complete
+                if (brace_count <= 0) {
+                    function_length = NR - function_start + 1
+                    if (function_length > 50) {
+                        print FILENAME ":" function_start "-" NR " (" function_length " lines) - " substr(function_name, 1, 60)
+                    }
+                    in_function = 0
+                    function_start = 0
+                    function_name = ""
+                    brace_count = 0
+                }
+            }
+        }
+        ' "$file" 2>/dev/null
     done | head -20 || echo "Analysis completed"
 
     echo ""
@@ -236,9 +292,74 @@ print_info "Analyzing documentation..."
     echo ""
     echo "### Complex Functions Without Comments (>20 lines)"
     find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(node_modules|dist|test|spec)" | while read file; do
-        awk '/function|const.*=.*\(/ {start=NR; func=$0; has_comment=0}
-             /\/\*\*|\/\// {if (NR >= start-3 && NR <= start) has_comment=1}
-             /^}/ {if(NR-start>20 && !has_comment) print FILENAME":"start" - Function with "NR-start" lines and no documentation"}' "$file" 2>/dev/null
+        awk '
+        BEGIN {
+            brace_count = 0
+            in_function = 0
+            function_start = 0
+            function_name = ""
+            has_comment = 0
+        }
+        
+        # Function declaration patterns - more specific and comprehensive
+        /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+        /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+        /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+            if (!in_function) {
+                in_function = 1
+                function_start = NR
+                function_name = $0
+                brace_count = 0
+                has_comment = 0
+                # Count opening braces on this line
+                gsub(/[^{]/, "", $0)
+                brace_count += length($0)
+            }
+            next
+        }
+        
+        # Check for comments before function
+        /\/\*\*|\/\// {
+            if (in_function && NR >= function_start - 3 && NR <= function_start) {
+                has_comment = 1
+            }
+        }
+        
+        # Handle opening braces
+        /{/ {
+            if (in_function) {
+                # Count opening braces on this line
+                gsub(/[^{]/, "", $0)
+                brace_count += length($0)
+            }
+        }
+        
+        # Handle closing braces - works with indented braces
+        /}/ {
+            if (in_function) {
+                # Count closing braces on this line
+                gsub(/[^}]/, "", $0)
+                brace_count -= length($0)
+                
+                # If we have balanced braces, function is complete
+                if (brace_count <= 0) {
+                    function_length = NR - function_start + 1
+                    if (function_length > 20 && !has_comment) {
+                        print FILENAME ":" function_start " - Function with " function_length " lines and no documentation"
+                    }
+                    in_function = 0
+                    function_start = 0
+                    function_name = ""
+                    brace_count = 0
+                    has_comment = 0
+                }
+            }
+        }
+        ' "$file" 2>/dev/null
     done | head -20 || echo "Analysis completed"
 } >> "${REPORT_FILE}"
 
