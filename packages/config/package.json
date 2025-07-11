@@ -9,19 +9,20 @@
   "types": "dist/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
-  "license": "UNLICENSED",
-  "author": "${GITHUB_USERNAME}",
+  "license": "MIT",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos"
   ],
   "repository": {
     "type": "git",
-    "url": "${REPO_URL}"
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "packages/config"
   },
-  "homepage": "https://elizaos.ai",
+  "homepage": "https://eliza.how",
   "bugs": {
-    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
+    "url": "https://github.com/elizaos/eliza/issues"
   },
   "exports": {
     "./eslint/eslint.config.plugin.js": "./src/eslint/eslint.config.plugin.js",
@@ -42,24 +43,12 @@
     "typescript": "^5.8.2"
   },
   "scripts": {
+    "build": "tsup",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "resolutions": {
-    "zod": "3.24.2"
-  },
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
-      }
-    }
-  },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  }
 }
