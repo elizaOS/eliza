@@ -1,0 +1,45 @@
+import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { $ } from 'bun';
+
+describe('Build Order Integration Test', () => {
+  const rootDir = path.resolve(__dirname, '../..');
+  const distDir = path.join(rootDir, 'dist');
+  const viteBuildMarker = path.join(distDir, '.vite', 'manifest.json'); // Vite creates this
+  const tsupBuildMarker = path.join(distDir, 'index.js'); // TSup creates this
+
+  beforeAll(async () => {
+    // Clean dist directory before test
+    if (fs.existsSync(distDir)) {
+      await $`rm -rf ${distDir}`;
+    }
+  });
+
+  afterAll(async () => {
+    // Clean up after test
+    if (fs.existsSync(distDir)) {
+      await $`rm -rf ${distDir}`;
+    }
+  });
+
+  it('should ensure vite build outputs persist after tsup build', async () => {
+    // Run the full build process
+    await $`cd ${rootDir} && bun run build`;
+
+    const distFiles = fs.readdirSync(distDir);
+
+    // Should have vite outputs (HTML files)
+    expect(distFiles.some(file => file.endsWith('.html'))).toBe(true);
+
+    // Should have vite manifest
+    expect(fs.existsSync(viteBuildMarker)).toBe(true);
+
+    // Should have vite assets directory
+    expect(distFiles.includes('assets')).toBe(true);
+
+    // Should have tsup outputs (JS and d.ts files)
+    expect(distFiles.some(file => file === 'index.js')).toBe(true);
+    expect(distFiles.some(file => file === 'index.d.ts')).toBe(true);
+  }, 30000); // 30 second timeout for build process
+});
