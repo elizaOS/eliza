@@ -29,7 +29,7 @@ export type Handler = (
   options?: { [key: string]: unknown },
   callback?: HandlerCallback,
   responses?: Memory[]
-) => Promise<ActionResult | void>;
+) => Promise<ActionResult | void | undefined>;
 
 /**
  * Validator function type for actions/evaluators
@@ -39,6 +39,19 @@ export type Validator = (
   message: Memory,
   state?: State
 ) => Promise<boolean>;
+
+/**
+ * Result of executing an action
+ */
+export interface ActionResult {
+  values?: {
+    [key: string]: any;
+  };
+  data?: {
+    [key: string]: any;
+  };
+  text?: string;
+}
 
 /**
  * Represents an action the agent can perform

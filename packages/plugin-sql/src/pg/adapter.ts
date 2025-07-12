@@ -106,8 +106,8 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return super.createEntities(entities);
   }
 
-  getEntityByIds(entityIds: UUID[]): Promise<Entity[]> {
-    return super.getEntityByIds(entityIds).then((result) => result || []);
+  getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]> {
+    return super.getEntitiesByIds(entityIds).then((result) => result || []);
   }
 
   updateEntity(entity: Entity): Promise<void> {

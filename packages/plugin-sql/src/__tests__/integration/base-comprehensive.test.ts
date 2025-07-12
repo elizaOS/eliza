@@ -169,7 +169,7 @@ describe('Base Adapter Comprehensive Tests', () => {
       await adapter.deleteEntity(entityId);
 
       // Verify entity is deleted
-      const entities = await adapter.getEntityByIds([entityId]);
+      const entities = await adapter.getEntitiesByIds([entityId]);
       expect(entities).toHaveLength(0);
 
       // Verify related memory is also deleted
@@ -479,7 +479,7 @@ describe('Base Adapter Comprehensive Tests', () => {
         },
       ]);
 
-      const entities = await adapter.getEntityByIds([entityId]);
+      const entities = await adapter.getEntitiesByIds([entityId]);
       expect(entities?.[0]?.metadata).toEqual({});
 
       // Memory with required entityId
@@ -539,7 +539,7 @@ describe('Base Adapter Comprehensive Tests', () => {
 
       // Verify all were created
       const entityIds = entities.map((e) => e.id!);
-      const retrievedEntities = await adapter.getEntityByIds(entityIds);
+      const retrievedEntities = await adapter.getEntitiesByIds(entityIds);
       expect(retrievedEntities).toHaveLength(batchSize);
 
       const roomIds = rooms.map((r) => r.id);

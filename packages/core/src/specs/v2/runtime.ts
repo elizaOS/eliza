@@ -485,8 +485,8 @@ export class AgentRuntime implements IAgentRuntime {
     return this._runtime.getEntityById(entityId);
   }
 
-  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    return this._runtime.getEntityByIds(entityIds);
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+    return this._runtime.getEntitiesByIds(entityIds);
   }
 
   async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
