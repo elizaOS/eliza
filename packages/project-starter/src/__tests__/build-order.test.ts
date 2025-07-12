@@ -12,14 +12,14 @@ describe('Build Order Integration Test', () => {
   beforeAll(async () => {
     // Clean dist directory before test
     if (fs.existsSync(distDir)) {
-      await $`rm -rf ${distDir}`;
+      await fs.promises.rm(distDir, { recursive: true, force: true });
     }
   });
 
   afterAll(async () => {
     // Clean up after test
     if (fs.existsSync(distDir)) {
-      await $`rm -rf ${distDir}`;
+      await fs.promises.rm(distDir, { recursive: true, force: true });
     }
   });
 
