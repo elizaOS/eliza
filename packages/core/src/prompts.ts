@@ -47,14 +47,16 @@ IMPORTANT ACTION ORDERING RULES:
 - REPLY is used to acknowledge and inform the user about what you're going to do
 - Follow-up actions execute the actual tasks after acknowledgment
 - Use IGNORE only when you should not respond at all
+- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
 IMPORTANT PROVIDER SELECTION RULES:
+- Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
 - If the message asks about or references specific people, include "ENTITIES" in your providers list  
 - If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
 - If the message asks about facts or specific information, include "FACTS" in your providers list
 - If the message asks about the environment or world context, include "WORLD" in your providers list
-- If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
+- If no additional context is needed, you may leave the providers list empty.
 
 IMPORTANT CODE BLOCK FORMATTING RULES:
 - If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).

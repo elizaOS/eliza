@@ -538,10 +538,48 @@ const messageReceivedHandler = async ({
           if (responseContent && message.id) {
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
+            // --- LLM IGNORE/REPLY ambiguity handling ---
+            // Sometimes the LLM outputs actions like ["REPLY", "IGNORE"], which breaks isSimple detection
+            // and triggers unnecessary large LLM calls. We clarify intent here:
+            // - If IGNORE is present with other actions:
+            //    - If text is empty, we assume the LLM intended to IGNORE and drop all other actions.
+            //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
+            // This ensures consistent, clear behavior and preserves reply speed optimizations.
+            if (responseContent.actions && responseContent.actions.length > 1) {
+              // Helper function to safely check if an action is IGNORE
+              const isIgnoreAction = (action: unknown): boolean => {
+                return typeof action === 'string' && action.toUpperCase() === 'IGNORE';
+              };
+
+              // Check if any action is IGNORE
+              const hasIgnoreAction = responseContent.actions.some(isIgnoreAction);
+
+              if (hasIgnoreAction) {
+                if (!responseContent.text || responseContent.text.trim() === '') {
+                  // No text, truly meant to IGNORE
+                  responseContent.actions = ['IGNORE'];
+                } else {
+                  // Text present, LLM intended to reply, remove IGNORE
+                  const filteredActions = responseContent.actions.filter(
+                    (action) => !isIgnoreAction(action)
+                  );
+
+                  // Ensure we don't end up with an empty actions array when text is present
+                  // If all actions were IGNORE, default to REPLY
+                  if (filteredActions.length === 0) {
+                    responseContent.actions = ['REPLY'];
+                  } else {
+                    responseContent.actions = filteredActions;
+                  }
+                }
+              }
+            }
+
             // Automatically determine if response is simple based on providers and actions
             // Simple = REPLY action with no providers used
             const isSimple =
               responseContent.actions?.length === 1 &&
+              typeof responseContent.actions[0] === 'string' &&
               responseContent.actions[0].toUpperCase() === 'REPLY' &&
               (!responseContent.providers || responseContent.providers.length === 0);
 
