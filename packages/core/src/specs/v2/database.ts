@@ -58,7 +58,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @param entityIds The UUIDs of the user account to retrieve.
    * @returns A Promise that resolves to the Entity object or null if not found.
    */
-  abstract getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null>;
+  abstract getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null>;
 
   abstract getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]>;
 
