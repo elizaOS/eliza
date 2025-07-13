@@ -2,8 +2,6 @@
 use std::net::TcpStream;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
 use tauri::Manager;
 
 // Store the server process so we can kill it when the app closes
@@ -66,7 +64,7 @@ pub fn run() {
             }
             
             // Add event listener for app exit
-            let app_handle = app.handle();
+            let _app_handle = app.handle();
             
             #[cfg(desktop)]
             {
