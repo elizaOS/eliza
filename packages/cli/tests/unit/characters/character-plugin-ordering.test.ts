@@ -210,8 +210,6 @@ describe('Character Plugin Ordering', () => {
       expect(googleIndex).toBeGreaterThan(anthropicIndex);
       expect(googleIndex).toBeGreaterThan(openrouterIndex);
 
-      // Local AI should not be included when other providers exist
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should handle platform plugins with AI providers', () => {
@@ -233,8 +231,6 @@ describe('Character Plugin Ordering', () => {
       expect(openaiIndex).toBeGreaterThan(discordIndex);
       expect(openaiIndex).toBeGreaterThan(telegramIndex);
 
-      // Should not include local-ai when embedding-capable provider (OpenAI) is available
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should handle Twitter plugin with all required tokens', () => {
@@ -256,8 +252,6 @@ describe('Character Plugin Ordering', () => {
       expect(twitterIndex).toBeGreaterThan(anthropicIndex);
       expect(openaiIndex).toBeGreaterThan(twitterIndex);
 
-      // Should not include local-ai when embedding-capable provider (OpenAI) is available
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should NOT include Twitter plugin with incomplete tokens', () => {
@@ -343,7 +337,6 @@ describe('Character Plugin Ordering', () => {
           '@elizaos/plugin-openai',
           '@elizaos/plugin-ollama',
           '@elizaos/plugin-google-genai',
-          '@elizaos/plugin-local-ai',
         ];
 
         const textOnlyPlugins = ['@elizaos/plugin-anthropic', '@elizaos/plugin-openrouter'];

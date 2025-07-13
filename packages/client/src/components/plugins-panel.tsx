@@ -236,8 +236,6 @@ export default function PluginsPanel({
                           return 'ElevenLabs plugin is required for the selected voice model.';
                         case 'openai':
                           return 'OpenAI plugin is required for the selected voice model.';
-                        case 'local':
-                          return 'Local AI plugin is required for the selected voice model.';
                         case 'none':
                           return 'No voice plugin required for "No Voice" option.';
                         default:
