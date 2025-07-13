@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, synchronize]
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
