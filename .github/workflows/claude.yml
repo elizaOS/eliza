@@ -44,8 +44,8 @@ jobs:
           # Optional: Trigger when specific user is assigned to an issue
           # assignee_trigger: "claude-bot"
 
-          # Allow Claude to run specific commands including GitHub CLI for issue management
-          allowed_tools: 'Bash(bun install),Bash(bun run build),Bash(bun test),Bash(bun run test),Bash(bun run lint),Bash(bun run format),Bash(gh *)'
+          # Allow Claude to run all bash and GitHub CLI commands
+          allowed_tools: 'Bash(*),Bash(gh *)'
 
           # Custom instructions for Claude to handle ElizaOS standards
           custom_instructions: |
