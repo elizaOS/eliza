@@ -15,7 +15,9 @@ export async function getViteOutDir(packageRoot: string): Promise<string> {
   // Import the vite config dynamically
   const configModule = await import(viteConfigPath);
   const config =
-    typeof configModule.default === 'function' ? configModule.default({}) : configModule.default;
+    typeof configModule.default === 'function'
+      ? configModule.default({ command: 'build', mode: 'production' })
+      : configModule.default;
 
   let outDir = config.build?.outDir || 'dist';
   const viteRoot = config.root || '.';
