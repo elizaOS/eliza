@@ -35,11 +35,6 @@ export function getAvailableAIModels(): AIModelOption[] {
       description: 'Access multiple AI models',
     },
     {
-      title: 'Ollama',
-      value: 'ollama',
-      description: 'Self-hosted models',
-    },
-    {
       title: 'Google Generative AI',
       value: 'google',
       description: 'Gemini models',
@@ -127,11 +122,6 @@ export function getAvailableEmbeddingModels(): AIModelOption[] {
       title: 'OpenAI',
       value: 'openai',
       description: 'OpenAI text-embedding-ada-002',
-    },
-    {
-      title: 'Ollama',
-      value: 'ollama',
-      description: 'Self-hosted embedding models',
     },
     {
       title: 'Google Generative AI',
