@@ -5645,6 +5645,8 @@
 
     "@elizaos/api-client/@types/node": ["@types/node@24.0.13", "", { "dependencies": { "undici-types": "~7.8.0" } }, "sha512-Qm9OYVOFHFYg3wJoTSrz80hoec5Lia/dPp84do3X7dZvLikQvM1YpmvTBEdIr/e+U8HTkFjLHLnl78K/qjf+jQ=="],
 
+    "@elizaos/api-client/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+
     "@elizaos/app/@elizaos/api-client": ["@elizaos/api-client@1.1.6", "", { "dependencies": { "@elizaos/core": "1.1.6" } }, "sha512-DSuKNgTth3aYryNcYH3ZMpEtsJHhSGOHfq3xiu7TKgzcO9ovdMwk6ONEbDkj7UjDpB3OPIAk53vFXCdCQti/SQ=="],
 
     "@elizaos/app/@elizaos/cli": ["@elizaos/cli@1.1.6", "", { "dependencies": { "@anthropic-ai/claude-code": "^1.0.35", "@anthropic-ai/sdk": "^0.54.0", "@clack/prompts": "^0.11.0", "@elizaos/core": "1.1.6", "@elizaos/plugin-sql": "1.1.6", "@elizaos/server": "1.1.6", "bun": "^1.2.17", "chalk": "^5.3.0", "chokidar": "^4.0.3", "commander": "^14.0.0", "dotenv": "^16.5.0", "execa": "^9.6.0", "fs-extra": "^11.1.0", "globby": "^14.0.2", "https-proxy-agent": "^7.0.6", "ora": "^8.1.1", "rimraf": "6.0.1", "semver": "^7.7.2", "simple-git": "^3.27.0", "tiktoken": "^1.0.18", "tsconfig-paths": "^4.2.0", "type-fest": "^4.41.0", "yoctocolors": "^2.1.1", "zod": "^3.25.67" }, "bin": { "elizaos": "dist/index.js" } }, "sha512-UQ7ig20rjNEsqiMmHFT0eXCg4riaDFQc6OA7+Xy1uWceuTrJWt1mdAhSVs0DV/iGn66x+upO3MS3YwijReSwvg=="],
