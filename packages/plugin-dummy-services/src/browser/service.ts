@@ -75,8 +75,17 @@ export class DummyBrowserService extends Service implements IBrowserService {
     this.runtime.logger.debug(`Extracting content${selector ? ` from ${selector}` : ''}`);
     
     // Mock content extraction based on current URL
-    const isGitHub = this.currentUrl.includes('github.com');
-    const isGoogle = this.currentUrl.includes('google.com');
+    let isGitHub = false;
+    let isGoogle = false;
+    
+    try {
+      const url = new URL(this.currentUrl);
+      isGitHub = url.hostname === 'github.com' || url.hostname.endsWith('.github.com');
+      isGoogle = url.hostname === 'google.com' || url.hostname.endsWith('.google.com');
+    } catch (error) {
+      // If URL is invalid, default to false for both
+      this.runtime.logger.debug('Invalid URL format, defaulting to generic content');
+    }
     
     let mockContent: ExtractedContent;
     
