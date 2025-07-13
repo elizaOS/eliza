@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.2.1",
+  "version": "1.2.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,8 +18,8 @@
     "lint": "prettier --write ./src"
   },
   "dependencies": {
-    "@elizaos/api-client": "1.1.6",
-    "@elizaos/cli": "1.1.6",
+    "@elizaos/api-client": "1.2.4",
+    "@elizaos/cli": "1.2.4",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2",
