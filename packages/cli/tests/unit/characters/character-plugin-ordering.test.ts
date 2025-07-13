@@ -137,16 +137,15 @@ describe('Character Plugin Ordering', () => {
       expect(openaiIndex).toBeGreaterThan(anthropicIndex);
     });
 
-    it('should place Ollama after text-only plugins', () => {
+    it('should always place Ollama last as universal fallback', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-      process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
-
+      
       const character = getElizaCharacter();
       const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
       const ollamaIndex = character.plugins.indexOf(PLUGINS.OLLAMA);
-
-      expect(anthropicIndex).toBeGreaterThan(-1);
-      expect(ollamaIndex).toBeGreaterThan(-1);
+      
+      // Ollama should always be included and always be last
+      expect(ollamaIndex).toBe(character.plugins.length - 1);
       expect(ollamaIndex).toBeGreaterThan(anthropicIndex);
     });
 
@@ -163,9 +162,8 @@ describe('Character Plugin Ordering', () => {
       expect(googleIndex).toBeGreaterThan(openrouterIndex);
     });
 
-    it('should place all embedding plugins before bootstrap', () => {
+    it('should place OpenAI and Google plugins before bootstrap, Ollama after', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
-      process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
       process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'google-key';
 
       const character = getElizaCharacter();
@@ -176,13 +174,13 @@ describe('Character Plugin Ordering', () => {
 
       expect(bootstrapIndex).toBeGreaterThan(-1);
       expect(bootstrapIndex).toBeGreaterThan(openaiIndex);
-      expect(bootstrapIndex).toBeGreaterThan(ollamaIndex);
       expect(bootstrapIndex).toBeGreaterThan(googleIndex);
+      expect(ollamaIndex).toBeGreaterThan(bootstrapIndex); // Ollama is after bootstrap
     });
   });
 
   describe('Complex Environment Combinations', () => {
-    it('should handle Anthropic + OpenAI correctly (OpenAI before ollama)', () => {
+    it('should handle Anthropic + OpenAI correctly (Ollama always last)', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
       process.env.OPENAI_API_KEY = 'openai-key';
 
@@ -191,23 +189,22 @@ describe('Character Plugin Ordering', () => {
         PLUGINS.SQL,
         PLUGINS.ANTHROPIC,
         PLUGINS.OPENAI,
-        PLUGINS.OLLAMA,
         PLUGINS.BOOTSTRAP,
+        PLUGINS.OLLAMA,
       ];
 
       expect(character.plugins).toEqual(expectedOrder);
     });
 
-    it('should handle OpenRouter + Ollama correctly (Ollama last)', () => {
+    it('should handle OpenRouter correctly (Ollama always last)', () => {
       process.env.OPENROUTER_API_KEY = 'openrouter-key';
-      process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
 
       const character = getElizaCharacter();
       const expectedOrder = [
         PLUGINS.SQL,
         PLUGINS.OPENROUTER,
-        PLUGINS.OLLAMA,
         PLUGINS.BOOTSTRAP,
+        PLUGINS.OLLAMA,
       ];
 
       expect(character.plugins).toEqual(expectedOrder);

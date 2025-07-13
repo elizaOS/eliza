@@ -203,8 +203,6 @@ export function getElizaCharacter(): Character {
     // Embedding-capable plugins (before platform plugins per documented order)
     ...(!!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(!!process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    // Always include Ollama as fallback for local AI
-    '@elizaos/plugin-ollama',
 
     // Platform plugins
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
@@ -218,6 +216,9 @@ export function getElizaCharacter(): Character {
 
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+
+    // Always include Ollama as ultimate fallback for local AI
+    '@elizaos/plugin-ollama',
   ];
 
   return {
