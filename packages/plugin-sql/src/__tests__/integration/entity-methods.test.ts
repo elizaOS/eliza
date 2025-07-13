@@ -36,14 +36,14 @@ describe('Entity Methods Integration Tests', () => {
       await adapter.createEntities([entity]);
 
       // Verify it exists
-      let retrieved = await adapter.getEntityByIds([entity.id!]);
+      let retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved).toHaveLength(1);
 
       // Delete entity
       await adapter.deleteEntity(entity.id!);
 
       // Verify it's deleted
-      retrieved = await adapter.getEntityByIds([entity.id!]);
+      retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved).toHaveLength(0);
     });
 

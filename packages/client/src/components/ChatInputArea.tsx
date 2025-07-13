@@ -62,7 +62,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
       <form
         ref={formRef}
         onSubmit={handleSendMessage}
-        className="relative rounded-md border bg-card"
+        className="relative rounded-md border bg-card p-2 sm:p-3"
       >
         {selectedFiles.length > 0 && (
           <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 pb-0 max-h-32 sm:max-h-40 overflow-y-auto">
@@ -127,13 +127,13 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 ? 'Type your message here...'
                 : 'Message group...'
           }
-          className="min-h-12 resize-none rounded-md bg-card border-0 p-2 sm:p-3 shadow-none focus-visible:ring-0 text-sm sm:text-base"
+          className="min-h-12 resize-none rounded-none bg-card border-0 px-0 py-0 shadow-none focus-visible:ring-0 text-sm sm:text-base"
           disabled={
             inputDisabled || (chatType === ChannelType.DM && targetAgentData?.status === 'inactive')
           }
           data-testid="chat-input"
         />
-        <div className="flex items-center p-2 sm:p-3 pt-0 gap-1">
+        <div className="flex items-center pt-0 gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
               <div>

@@ -41,13 +41,7 @@ export default function AgentSettingsRoute() {
   return (
     <div className="flex w-full justify-center px-4 sm:px-6 overflow-y-auto">
       <div className="w-full md:max-w-4xl py-6">
-        <AgentSettings
-          agent={agent}
-          agentId={agentId as UUID}
-          onSaveComplete={() => {
-            navigate('/');
-          }}
-        />
+        <AgentSettings agent={agent} agentId={agentId as UUID} onSaveComplete={() => {}} />
       </div>
     </div>
   );

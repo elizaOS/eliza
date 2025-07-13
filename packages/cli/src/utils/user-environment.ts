@@ -9,6 +9,7 @@ import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
 import { emoji } from './emoji-handler';
 import { autoInstallBun, shouldAutoInstall } from './auto-install-bun';
+import { bunExecSimple } from './bun-exec';
 
 // Types
 interface OSInfo {
@@ -134,7 +135,7 @@ export class UserEnvironment {
 
     try {
       // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
+      const { stdout } = await bunExecSimple('bun', ['--version']);
       version = stdout.trim();
       logger.debug(`[UserEnvironment] Bun version: ${version}`);
     } catch (e) {
@@ -150,9 +151,7 @@ export class UserEnvironment {
         if (installSuccess) {
           // Try to get version again after installation
           try {
-            const { stdout } = await import('execa').then(({ execa }) =>
-              execa('bun', ['--version'])
-            );
+            const { stdout } = await bunExecSimple('bun', ['--version']);
             version = stdout.trim();
             logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
           } catch (retryError) {
@@ -382,8 +381,7 @@ export class UserEnvironment {
 
       // Try npm as last resort
       try {
-        const { execa } = await import('execa');
-        const { stdout } = await execa('npm', ['view', packageName, 'version']);
+        const { stdout } = await bunExecSimple('npm', ['view', packageName, 'version']);
         if (stdout?.trim()) {
           logger.info(`Found latest version of ${packageName} from npm: ${stdout.trim()}`);
           return stdout.trim();

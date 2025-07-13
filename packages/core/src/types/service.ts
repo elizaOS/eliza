@@ -27,10 +27,7 @@ export interface ServiceTypeRegistry {
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
-  DATABASE_MIGRATION: 'database_migration';
-  PLUGIN_MANAGER: 'PLUGIN_MANAGER';
-  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION';
-  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION';
+  UNKNOWN: 'unknown';
 }
 
 /**
@@ -97,10 +94,7 @@ export const ServiceType = {
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
-  DATABASE_MIGRATION: 'database_migration',
-  PLUGIN_MANAGER: 'PLUGIN_MANAGER',
-  PLUGIN_CONFIGURATION: 'PLUGIN_CONFIGURATION',
-  PLUGIN_USER_INTERACTION: 'PLUGIN_USER_INTERACTION',
+  UNKNOWN: 'unknown',
 } as const satisfies ServiceTypeRegistry;
 
 /**

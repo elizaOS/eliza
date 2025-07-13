@@ -45,14 +45,14 @@ describe('Entity Integration Tests', () => {
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
 
-      const retrieved = await adapter.getEntityByIds([entityId]);
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.[0]?.id).toBe(entityId);
     });
 
     it('should return empty array when retrieving non-existent entities', async () => {
       const nonExistentId = uuidv4() as UUID;
-      const retrieved = await adapter.getEntityByIds([nonExistentId]);
+      const retrieved = await adapter.getEntitiesByIds([nonExistentId]);
       expect(retrieved).toEqual([]);
     });
 
@@ -71,7 +71,7 @@ describe('Entity Integration Tests', () => {
       const updatedEntity = { ...entity, names: ['Updated Name'], metadata: { updated: 'data' } };
       await adapter.updateEntity(updatedEntity);
 
-      const retrieved = await adapter.getEntityByIds([entityId]);
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.[0]?.names).toEqual(['Updated Name']);
       expect(retrieved?.[0]?.metadata).toEqual({ updated: 'data' });
@@ -98,7 +98,7 @@ describe('Entity Integration Tests', () => {
       const result = await adapter.createEntities(entities);
       expect(result).toBe(true);
 
-      const retrieved = await adapter.getEntityByIds([entity1Id, entity2Id]);
+      const retrieved = await adapter.getEntitiesByIds([entity1Id, entity2Id]);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.length).toBe(2);
     });
@@ -115,7 +115,7 @@ describe('Entity Integration Tests', () => {
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
 
-      const retrieved = await adapter.getEntityByIds([entityId]);
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.[0]?.names).toEqual(['Primary Name', 'Alias 1', 'Alias 2']);
     });
@@ -131,7 +131,7 @@ describe('Entity Integration Tests', () => {
       const result = await adapter.createEntities([entity]);
       expect(result).toBe(true);
 
-      const retrieved = await adapter.getEntityByIds([entityId]);
+      const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(retrieved?.[0]?.metadata).toEqual({}); // Assuming default is an empty object
     });
