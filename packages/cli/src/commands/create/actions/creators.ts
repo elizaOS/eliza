@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
-import { setupProjectEnvironment, setupAIModelConfig, setupEmbeddingModelConfig, hasValidApiKey } from './setup';
+import { setupProjectEnvironment, setupAIModelConfig, setupEmbeddingModelConfig, hasValidOllamaEndpoint } from './setup';
 import {
   installDependenciesWithSpinner,
   buildProjectWithSpinner,
@@ -44,7 +44,7 @@ async function handleInteractiveConfiguration(
 
   // Always set up Ollama as universal fallback (if not already configured)
   const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
-  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
+  if (!hasValidOllamaEndpoint(envContent)) {
     await setupEmbeddingModelConfig('ollama', envFilePath, false);
   }
 }

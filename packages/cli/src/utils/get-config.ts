@@ -710,21 +710,18 @@ export async function storeOllamaConfig(
       .filter(
         (line) =>
           !line.startsWith('OLLAMA_API_ENDPOINT=') &&
-          !line.startsWith('OLLAMA_MODEL=') &&
-          !line.startsWith('USE_OLLAMA_TEXT_MODELS=')
+          !line.startsWith('OLLAMA_MODEL=')
       );
 
     // Add new Ollama configuration
     lines.push(`OLLAMA_API_ENDPOINT=${config.endpoint}`);
     lines.push(`OLLAMA_MODEL=${config.model}`);
-    lines.push('USE_OLLAMA_TEXT_MODELS=true');
 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
 
     // Update process.env
     process.env.OLLAMA_API_ENDPOINT = config.endpoint;
     process.env.OLLAMA_MODEL = config.model;
-    process.env.USE_OLLAMA_TEXT_MODELS = 'true';
 
     logger.success('Ollama configuration saved to configuration');
   } catch (error) {
@@ -788,8 +785,7 @@ export async function promptAndStoreOllamaEmbeddingConfig(
           .split('\n')
           .filter(
             (line) =>
-              !line.startsWith('OLLAMA_EMBEDDING_MODEL=') &&
-              !line.startsWith('USE_OLLAMA_EMBEDDINGS=')
+              !line.startsWith('OLLAMA_EMBEDDING_MODEL=')
           );
 
         // Check if we need to update the endpoint
@@ -815,14 +811,12 @@ export async function promptAndStoreOllamaEmbeddingConfig(
 
         // Add embedding-specific configuration
         lines.push(`OLLAMA_EMBEDDING_MODEL=${results.embeddingModel}`);
-        lines.push('USE_OLLAMA_EMBEDDINGS=true');
 
         await fs.writeFile(envPath, lines.join('\n'), 'utf8');
 
         // Update process.env
         process.env.OLLAMA_API_ENDPOINT = results.endpoint;
         process.env.OLLAMA_EMBEDDING_MODEL = results.embeddingModel;
-        process.env.USE_OLLAMA_EMBEDDINGS = 'true';
 
         logger.success('Ollama embedding configuration saved');
       } catch (error) {

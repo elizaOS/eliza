@@ -46,7 +46,6 @@ export async function setupAIModelConfig(
           content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
           content += 'OLLAMA_MODEL=gemma3\n';
           content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
-          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
           content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
           content += '# Pull models with: ollama pull gemma3 && ollama pull nomic-embed-text\n';
 
@@ -151,7 +150,6 @@ export async function setupAIModelConfig(
           content += '# Ollama Configuration\n';
           content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
           content += 'OLLAMA_MODEL=gemma3\n';
-          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
           content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
@@ -217,6 +215,24 @@ export function hasValidApiKey(content: string, keyName: string): boolean {
 }
 
 /**
+ * Checks if an Ollama endpoint URL exists and is valid
+ */
+export function hasValidOllamaEndpoint(content: string): boolean {
+  const regex = /^OLLAMA_API_ENDPOINT=(.+)$/m;
+  const match = content.match(regex);
+  if (!match) return false;
+
+  const value = match[1].trim();
+  // Check if it's a valid URL format
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Sets up embedding model configuration when the primary AI model doesn't support embeddings.
  */
 export async function setupEmbeddingModelConfig(
@@ -263,17 +279,18 @@ export async function setupEmbeddingModelConfig(
       }
 
       case 'ollama': {
-        // Check if Ollama config already exists with valid values
-        if (!hasValidApiKey(content, 'OLLAMA_API_ENDPOINT')) {
+        // Check if Ollama config already exists with valid endpoint
+        if (!hasValidOllamaEndpoint(content)) {
           if (isNonInteractive) {
-            // In non-interactive mode, add/update placeholder
+            // In non-interactive mode, add complete Ollama configuration
             if (!content.includes('OLLAMA_API_ENDPOINT=')) {
               content += '\n# Embedding Model Configuration (Fallback)\n';
-              content += '# Ollama Embeddings Configuration\n';
+              content += '# Ollama Configuration\n';
               content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+              content += 'OLLAMA_MODEL=gemma3\n';
               content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
-              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
               content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+              content += '# Pull models with: ollama pull gemma3 && ollama pull nomic-embed-text\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
           } else {
@@ -281,14 +298,14 @@ export async function setupEmbeddingModelConfig(
             await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         } else {
-          // Ollama endpoint exists, but we need to prompt for embedding model specifically
+          // Ollama endpoint exists, ensure all Ollama configs are present
           if (isNonInteractive) {
-            // In non-interactive mode, just add embedding model if not present
-            if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
-              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+            // In non-interactive mode, add missing Ollama configs
+            if (!content.includes('OLLAMA_MODEL=')) {
+              content += 'OLLAMA_MODEL=gemma3\n';
             }
-            if (!content.includes('USE_OLLAMA_EMBEDDINGS')) {
-              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
+            if (!content.includes('OLLAMA_EMBEDDING_MODEL=')) {
+              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
           } else {
@@ -401,7 +418,7 @@ export async function setupProjectEnvironment(
   // Always set up Ollama as universal fallback (if not already configured)
   // This should happen regardless of interactive mode since Ollama is always included
   const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
-  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
+  if (!hasValidOllamaEndpoint(envContent)) {
     await setupEmbeddingModelConfig('ollama', envFilePath, true);
   }
 
