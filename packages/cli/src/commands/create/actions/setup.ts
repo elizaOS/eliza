@@ -200,7 +200,7 @@ export async function setupAIModelConfig(
 /**
  * Checks if an environment variable has a real value (not a placeholder) in the content
  */
-function hasValidApiKey(content: string, keyName: string): boolean {
+export function hasValidApiKey(content: string, keyName: string): boolean {
   const regex = new RegExp(`^${keyName}=(.+)$`, 'm');
   const match = content.match(regex);
   if (!match) return false;
@@ -396,12 +396,13 @@ export async function setupProjectEnvironment(
     if (embeddingModel) {
       await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
     }
+  }
 
-    // Always set up Ollama as universal fallback (if not already configured)
-    const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
-    if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
-      await setupEmbeddingModelConfig('ollama', envFilePath, isNonInteractive);
-    }
+  // Always set up Ollama as universal fallback (if not already configured)
+  // This should happen regardless of interactive mode since Ollama is always included
+  const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
+  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
+    await setupEmbeddingModelConfig('ollama', envFilePath, true);
   }
 
   // Install AI model plugin

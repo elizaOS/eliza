@@ -200,6 +200,12 @@ export function getElizaCharacter(): Character {
     ...(!!process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(!!process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 
+    // Embedding-capable plugins (before platform plugins per documented order)
+    ...(!!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(!!process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
+    // Always include Ollama as fallback for local AI
+    '@elizaos/plugin-ollama',
+
     // Platform plugins
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
     ...(process.env.TWITTER_API_KEY &&
@@ -212,12 +218,6 @@ export function getElizaCharacter(): Character {
 
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-
-    // Embedding-capable plugins last (lowest priority for embedding fallback)
-    ...(!!process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(!!process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    // Always include Ollama as fallback for local AI
-    '@elizaos/plugin-ollama',
   ];
 
   return {
