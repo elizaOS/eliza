@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -18,10 +18,14 @@ describe('ElizaOS Start Commands', () => {
   let originalCwd: string;
   let testServerPort: number;
   let processManager: TestProcessManager;
+  let originalElizaTestMode: string | undefined;
 
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
+
+    // Store original ELIZA_TEST_MODE
+    originalElizaTestMode = process.env.ELIZA_TEST_MODE;
 
     // Initialize process manager
     processManager = new TestProcessManager();
@@ -53,6 +57,13 @@ describe('ElizaOS Start Commands', () => {
     delete process.env.LOCAL_SMALL_MODEL;
     delete process.env.LOCAL_MEDIUM_MODEL;
     delete process.env.TEST_SERVER_PORT;
+
+    // Restore original ELIZA_TEST_MODE
+    if (originalElizaTestMode !== undefined) {
+      process.env.ELIZA_TEST_MODE = originalElizaTestMode;
+    } else {
+      delete process.env.ELIZA_TEST_MODE;
+    }
 
     // Restore original working directory
     safeChangeDirectory(originalCwd);
@@ -96,6 +107,30 @@ describe('ElizaOS Start Commands', () => {
     }
 
     return serverProcess;
+  };
+
+  // Helper function to create a project structure for build testing
+  const createProjectStructure = async (hasPackageJson = true, hasBuildScript = true) => {
+    if (hasPackageJson) {
+      const packageJson = {
+        name: 'test-eliza-project',
+        version: '1.0.0',
+        scripts: hasBuildScript ? { build: 'echo "Building..." && mkdir -p dist && echo "Build complete"' } : {},
+        dependencies: {
+          '@elizaos/core': '^1.0.0',
+        },
+      };
+      await writeFile(join(testTmpDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+    }
+
+    // Create src directory and basic files
+    await mkdir(join(testTmpDir, 'src'), { recursive: true });
+    await writeFile(join(testTmpDir, 'src', 'index.ts'), 'export default {};');
+    
+    // Create test character file
+    const charactersDir = join(__dirname, '../test-characters');
+    const adaPath = join(charactersDir, 'ada.json');
+    return adaPath;
   };
 
   // Basic agent check
@@ -323,4 +358,111 @@ describe('ElizaOS Start Commands', () => {
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
+
+  // Auto-build functionality tests
+  describe('Auto-build functionality', () => {
+    it('should automatically build project when not in monorepo and not in test mode', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+      
+      // Temporarily unset ELIZA_TEST_MODE to test auto-build
+      delete process.env.ELIZA_TEST_MODE;
+      
+      try {
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath} --help`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+        
+        // The help command should work and show the updated description
+        expect(result).toContain('Build and start the Eliza agent server');
+      } finally {
+        // Restore test mode
+        process.env.ELIZA_TEST_MODE = 'true';
+      }
+    });
+
+    it('should skip build when ELIZA_TEST_MODE is set to true', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+      
+      // Explicitly set ELIZA_TEST_MODE to 'true'
+      process.env.ELIZA_TEST_MODE = 'true';
+      
+      const result = execSync(
+        `${elizaosCmd} start --character ${adaPath} --help`,
+        getPlatformOptions({ encoding: 'utf8' })
+      );
+      
+      // Should show help without attempting to build
+      expect(result).toContain('Build and start the Eliza agent server');
+    });
+
+    it('should skip build when ELIZA_TEST_MODE is set to any truthy value', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+      
+      // Test with different truthy values
+      const truthyValues = ['1', 'yes', 'on', 'enabled'];
+      
+      for (const value of truthyValues) {
+        process.env.ELIZA_TEST_MODE = value;
+        
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath} --help`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+        
+        // Should show help without attempting to build
+        expect(result).toContain('Build and start the Eliza agent server');
+      }
+    });
+
+    it('should skip build when in monorepo directory', async () => {
+      // Create a package.json that indicates monorepo structure
+      const packageJson = {
+        name: 'elizaos-monorepo',
+        version: '1.0.0',
+        workspaces: ['packages/*'],
+        scripts: {
+          build: 'turbo build'
+        }
+      };
+      await writeFile(join(testTmpDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+      
+      // Create packages directory structure
+      await mkdir(join(testTmpDir, 'packages'), { recursive: true });
+      await mkdir(join(testTmpDir, 'packages', 'core'), { recursive: true });
+      await mkdir(join(testTmpDir, 'packages', 'cli'), { recursive: true });
+      
+      // Create turbo.json to indicate monorepo
+      const turboJson = {
+        pipeline: {
+          build: {
+            outputs: ['dist/**']
+          }
+        }
+      };
+      await writeFile(join(testTmpDir, 'turbo.json'), JSON.stringify(turboJson, null, 2));
+      
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
+      
+      // Temporarily unset ELIZA_TEST_MODE to test monorepo detection
+      delete process.env.ELIZA_TEST_MODE;
+      
+      try {
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath} --help`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+        
+        // Should show help without attempting to build (monorepo detected)
+        expect(result).toContain('Build and start the Eliza agent server');
+      } finally {
+        // Restore test mode
+        process.env.ELIZA_TEST_MODE = 'true';
+      }
+    });
+  });
 });

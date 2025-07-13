@@ -1,8 +1,8 @@
 import { loadProject } from '@/src/project';
 import { createTask, displayBanner, handleError, runTasks } from '@/src/utils';
+import { buildProject } from '@/src/utils/build-project';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { validatePort } from '@/src/utils/port-validation';
-import { runBunCommand } from '@/src/utils/run-bun';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
@@ -31,16 +31,13 @@ export const start = new Command()
       const dirInfo = detectDirectoryType(cwd);
       const isMonorepo = dirInfo.type === 'elizaos-monorepo';
 
-      if (!isMonorepo && !process.env.ELIZA_TEST_MODE) {
+      if (!isMonorepo && process.env.ELIZA_TEST_MODE !== 'true') {
         try {
-          await runTasks([
-            createTask('Building project', async () => {
-              await runBunCommand(['run', 'build'], cwd, true);
-            }),
-          ]);
+          // Use buildProject function with proper UI feedback and error handling
+          await buildProject(cwd, false);
         } catch (error) {
           logger.error(`Build error: ${error instanceof Error ? error.message : String(error)}`);
-          logger.info('Continuing with start anyway...');
+          logger.warn('Build failed, but continuing with start. Some features may not work correctly.');
         }
       }
 
