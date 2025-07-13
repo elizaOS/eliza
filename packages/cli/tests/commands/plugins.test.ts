@@ -106,14 +106,14 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add installs a plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add @elizaos/plugin-xmtp --skip-env-prompt`, {
+        execSync(`${elizaosCmd} plugins add @elizaos/plugin-openai --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
         });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('@elizaos/plugin-xmtp');
+        expect(packageJson).toContain('@elizaos/plugin-openai');
       } catch (error: any) {
         console.error('[ERROR] Plugin installation failed:', error.message);
         console.error('[ERROR] stdout:', error.stdout?.toString() || 'none');

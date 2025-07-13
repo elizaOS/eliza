@@ -1,12 +1,12 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec, bunExecInherit, bunExecSimple } from '@/src/utils/bun-exec';
 
 /**
  * Check if bun is available on the system
  */
 export async function isBunAvailable(): Promise<boolean> {
   try {
-    await execa('bun', ['--version'], { stdio: 'ignore' });
+    await bunExec('bun', ['--version'], { stdio: 'ignore' });
     return true;
   } catch (error) {
     return false;
@@ -19,14 +19,12 @@ export async function isBunAvailable(): Promise<boolean> {
  */
 export async function isCliInstalledViaNpm(): Promise<boolean> {
   try {
-    const { stdout } = await execa('npm', ['list', '-g', '@elizaos/cli', '--depth=0'], {
-      stdio: 'pipe',
-    });
+    const { stdout } = await bunExecSimple('npm', ['list', '-g', '@elizaos/cli', '--depth=0']);
     return stdout.includes('@elizaos/cli');
   } catch (error) {
     // Also check if the current elizaos command points to npm installation
     try {
-      const { stdout: whichOutput } = await execa('which', ['elizaos'], { stdio: 'pipe' });
+      const { stdout: whichOutput } = await bunExecSimple('which', ['elizaos']);
       return whichOutput.includes('node_modules') || whichOutput.includes('.nvm');
     } catch {
       return false;
@@ -39,7 +37,7 @@ export async function isCliInstalledViaNpm(): Promise<boolean> {
  */
 async function removeNpmInstallation(): Promise<void> {
   logger.info('Removing npm installation of @elizaos/cli...');
-  await execa('npm', ['uninstall', '-g', '@elizaos/cli'], { stdio: 'inherit' });
+  await bunExecInherit('npm', ['uninstall', '-g', '@elizaos/cli']);
 }
 
 /**
@@ -47,7 +45,7 @@ async function removeNpmInstallation(): Promise<void> {
  */
 async function installCliWithBun(version: string): Promise<void> {
   logger.info('Installing CLI with bun...');
-  await execa('bun', ['add', '-g', `@elizaos/cli@${version}`], { stdio: 'inherit' });
+  await bunExecInherit('bun', ['add', '-g', `@elizaos/cli@${version}`]);
 }
 
 /**
@@ -55,7 +53,7 @@ async function installCliWithBun(version: string): Promise<void> {
  */
 async function verifyCliInstallation(expectedVersion: string): Promise<boolean> {
   try {
-    const { stdout } = await execa('elizaos', ['-v'], { stdio: 'pipe' });
+    const { stdout } = await bunExecSimple('elizaos', ['-v']);
     const output = stdout.trim();
 
     // Extract version using regex pattern (handles v1.0.6, 1.0.6, etc.)
@@ -116,7 +114,7 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
     // Try to clean up failed bun installation
     try {
       logger.info('Cleaning up failed bun installation...');
-      await execa('bun', ['remove', '-g', '@elizaos/cli'], { stdio: 'ignore' });
+      await bunExec('bun', ['remove', '-g', '@elizaos/cli'], { stdio: 'ignore' });
     } catch {
       // Ignore cleanup errors
     }

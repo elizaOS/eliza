@@ -232,9 +232,7 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
       }
 
       try {
-        const { exec } = await import('node:child_process');
-        const { promisify } = await import('node:util');
-        const execAsync = promisify(exec);
+        const { bunExec } = await import('@/src/utils/bun-exec');
 
         // Unix-like: Use pgrep/xargs, excluding current CLI process to prevent self-termination
         // Support both node and bun executables, and look for common ElizaOS patterns
@@ -246,14 +244,14 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
 
         for (const pattern of patterns) {
           try {
-            const { stdout } = await execAsync(`pgrep -f "${pattern}"`);
-            const pids = stdout
+            const result = await bunExec('sh', ['-c', `pgrep -f "${pattern}"`]);
+            const pids = result.stdout
               .trim()
               .split('\n')
               .filter((pid) => pid && pid !== process.pid.toString());
 
             if (pids.length > 0) {
-              await execAsync(`echo "${pids.join(' ')}" | xargs -r kill`);
+              await bunExec('sh', ['-c', `echo "${pids.join(' ')}" | xargs -r kill`]);
             }
           } catch (pgrepError) {
             // pgrep returns exit code 1 when no processes match, which is expected

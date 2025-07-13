@@ -33,7 +33,6 @@ import {
   getAllVoiceModels,
   getVoiceModelByValue,
   providerPluginMap,
-  localVoiceModels,
   openAIVoiceModels,
   elevenLabsVoiceModels,
 } from '../config/voice-models';
@@ -648,17 +647,6 @@ export default function CharacterForm({
               <>
                 <SelectGroup>
                   <SelectItem value="none">No Voice</SelectItem>
-                </SelectGroup>
-
-                <SelectSeparator />
-
-                <SelectGroup>
-                  <SelectLabel>Local Voices</SelectLabel>
-                  {localVoiceModels.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label.replace('Local Voice - ', '')}
-                    </SelectItem>
-                  ))}
                 </SelectGroup>
 
                 <SelectSeparator />

@@ -7725,7 +7725,7 @@ This will start your agents according to your project configuration.
 # Please read the comments for each of the configurations
 
 # The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
-# i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai plugin
+# i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the ollama plugin
 # Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
 # For multi-agent, each agent will need keys for the various services it is connected to
 # You can use the .env or environment variables generally for shared keys, such as to model providers, 
@@ -7736,7 +7736,7 @@ This will start your agents according to your project configuration.
 # and you can use them by overriding the base URL
 
 # NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
-# need to get embeddings using another provider, for example openai or our local-ai plugin
+# need to get embeddings using another provider, for example openai or ollama
 
 # OpenAI Configuration
 OPENAI_API_KEY=

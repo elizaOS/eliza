@@ -75,13 +75,6 @@ export const character: Character = {
     ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
     ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
 
-    // Local-AI fallback (only when no embedding providers exist)
-    ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : []),
-
     // Platform and bootstrap plugins
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
@@ -114,9 +107,8 @@ export const character: Character = {
 ### 5. Embedding-Capable AI Providers (Always Last)
 
 - `@elizaos/plugin-openai` - GPT models + embeddings
-- `@elizaos/plugin-ollama` - Local models + embeddings
 - `@elizaos/plugin-google-genai` - Gemini models + embeddings
-- `@elizaos/plugin-local-ai` - Final fallback when no other AI providers exist
+- `@elizaos/plugin-ollama` - Local models + embeddings (universal fallback, always included)
 
 ## Real-World Examples
 
@@ -131,7 +123,7 @@ ANTHROPIC_API_KEY=your_claude_key
 OPENAI_API_KEY=your_openai_key
 ```
 
-**Result**: Anthropic handles text generation, OpenAI handles embeddings. No Local-AI needed.
+**Result**: Anthropic handles text generation, OpenAI handles embeddings. Ollama included as fallback.
 
 ### Scenario 2: Privacy-First Local Setup
 
@@ -160,20 +152,18 @@ OLLAMA_API_ENDPOINT=http://localhost:11434
 
 **Result**: OpenAI primary for everything, Anthropic backup for text, Ollama local fallback.
 
-## The Local-AI Safety Net
+## The Ollama Universal Fallback
 
-Here's a neat feature: Local-AI automatically loads as a fallback when you don't have any embedding-capable cloud providers. This ensures your agent always has access to embeddings (needed for memory and context) even with a text-only provider like Anthropic.
+Here's a key feature: Ollama is always included as a universal fallback for local AI capabilities. This ensures your agent always has access to embeddings (needed for memory and context) even with a text-only provider like Anthropic, and provides a local option when cloud services are unavailable.
 
-The logic is simple:
+The new approach is simple:
 
 ```typescript
-// Only load Local-AI if no embedding providers are configured
-...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : [])
+// Ollama is always included as universal fallback
+'@elizaos/plugin-ollama',
 ```
+
+This guarantees that embeddings are always available, whether you're using cloud providers or running entirely offline.
 
 ## Environment Variables That Matter
 
@@ -227,9 +217,9 @@ bun test src/__tests__/character-plugin-ordering.test.ts
 
 ### "Embedding operations failing"
 
-**Verify**: At least one embedding-capable provider (OpenAI, Ollama, Google GenAI, or Local-AI) is configured and loading.
+**Verify**: At least one embedding-capable provider (OpenAI, Google GenAI, or Ollama) is configured and loading. Ollama is always included as fallback.
 
-### "Local-AI loading unexpectedly"
+### "Ollama loading when not configured"
 
 **Solution**: Check that your embedding-capable provider environment variables are set correctly.
 
