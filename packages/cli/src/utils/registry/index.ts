@@ -2,7 +2,7 @@ import { getGitHubCredentials, getLocalPackages, resolveEnvFile } from '@/src/ut
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
-import { execa } from 'execa';
+import { bunExecSimple } from '../bun-exec.js';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -452,7 +452,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
  */
 export async function repoHasBranch(repoUrl: string, branchName: string): Promise<boolean> {
   try {
-    const { stdout } = await execa('git', ['ls-remote', '--heads', repoUrl, branchName]);
+    const { stdout } = await bunExecSimple('git', ['ls-remote', '--heads', repoUrl, branchName]);
     return stdout.includes(branchName);
   } catch (error) {
     logger.warn(

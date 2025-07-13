@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec } from '../bun-exec.js';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -29,10 +29,10 @@ export async function runTypeCheck(
       args.push('--strict');
     }
 
-    const { stdout, stderr } = await execa('tsc', args, {
+    const result = await bunExec('tsc', args, {
       cwd: projectPath,
-      reject: false,
     });
+    const { stdout, stderr } = result;
 
     const hasErrors = stderr.includes('error TS') || stdout.includes('error TS');
 
