@@ -86,7 +86,7 @@ export default function PluginsPanel({
 
   // Get plugin names from available plugins
   const pluginNames = useMemo(() => {
-    const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-local-ai'];
+    const defaultPlugins = ['@elizaos/plugin-sql'];
     if (!plugins) return defaultPlugins;
     return [
       ...defaultPlugins,
