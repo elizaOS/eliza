@@ -32,7 +32,7 @@
     "elizaos": "./dist/index.js"
   },
   "scripts": {
-    "start": "bun run build && node dist/index.js start",
+    "start": "bun run build && bun dist/index.js start",
     "build": "bun run src/scripts/copy-templates.ts && bun x tsup",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",

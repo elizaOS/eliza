@@ -133,66 +133,72 @@ export class UserEnvironment {
 
     let version: string | null = null;
 
-    try {
-      // Get bun version
-      const { stdout } = await bunExecSimple('bun', ['--version']);
-      version = stdout.trim();
-      logger.debug(`[UserEnvironment] Bun version: ${version}`);
-    } catch (e) {
-      logger.debug(
-        `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
-      );
+    // First check if we're already running under Bun
+    if (typeof Bun !== 'undefined' && Bun.version) {
+      version = Bun.version;
+      logger.debug(`[UserEnvironment] Running under Bun runtime, version: ${version}`);
+    } else {
+      try {
+        // Get bun version from command line
+        const { stdout } = await bunExecSimple('bun', ['--version']);
+        version = stdout.trim();
+        logger.debug(`[UserEnvironment] Bun version: ${version}`);
+      } catch (e) {
+        logger.debug(
+          `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
+        );
 
-      // Attempt auto-installation if conditions are met
-      if (shouldAutoInstall()) {
-        logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
-        const installSuccess = await autoInstallBun();
+        // Attempt auto-installation if conditions are met
+        if (shouldAutoInstall()) {
+          logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
+          const installSuccess = await autoInstallBun();
 
-        if (installSuccess) {
-          // Try to get version again after installation
-          try {
-            const { stdout } = await bunExecSimple('bun', ['--version']);
-            version = stdout.trim();
-            logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
-          } catch (retryError) {
-            logger.error(
-              `Failed to verify Bun installation after auto-install: ${
-                retryError instanceof Error ? retryError.message : String(retryError)
-              }`
-            );
-            // Continue to manual installation instructions
+          if (installSuccess) {
+            // Try to get version again after installation
+            try {
+              const { stdout } = await bunExecSimple('bun', ['--version']);
+              version = stdout.trim();
+              logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
+            } catch (retryError) {
+              logger.error(
+                `Failed to verify Bun installation after auto-install: ${
+                  retryError instanceof Error ? retryError.message : String(retryError)
+                }`
+              );
+              // Continue to manual installation instructions
+            }
           }
         }
-      }
 
-      // If auto-installation failed or was not attempted, show manual instructions
-      if (!version) {
-        const platform = process.platform;
-        logger.error(
-          `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
-        );
-        logger.error('');
-        logger.error(
-          `${emoji.rocket('Install Bun using the appropriate command for your system:')}`
-        );
-        logger.error('');
+        // If auto-installation failed or was not attempted, show manual instructions
+        if (!version) {
+          const platform = process.platform;
+          logger.error(
+            `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+          );
+          logger.error('');
+          logger.error(
+            `${emoji.rocket('Install Bun using the appropriate command for your system:')}`
+          );
+          logger.error('');
 
-        if (platform === 'win32') {
-          logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
-        } else {
-          logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
-          if (platform === 'darwin') {
-            logger.error('   macOS (Homebrew): brew install bun');
+          if (platform === 'win32') {
+            logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+          } else {
+            logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+            if (platform === 'darwin') {
+              logger.error('   macOS (Homebrew): brew install bun');
+            }
           }
-        }
-        logger.error('');
-        logger.error('   More options: https://bun.sh/docs/installation');
-        logger.error('   After installation, restart your terminal or source your shell profile');
-        logger.error('');
+          logger.error('');
+          logger.error('   More options: https://bun.sh/docs/installation');
+          logger.error('   After installation, restart your terminal or source your shell profile');
+          logger.error('');
 
-        // Force exit the process - Bun is required for ElizaOS CLI
-        logger.error('🔴 Exiting: Bun installation is required to continue.');
-        process.exit(1);
+          // Force exit the process - Bun is required for ElizaOS CLI
+          logger.error('🔴 Exiting: Bun installation is required to continue.');
+          process.exit(1);
+        }
       }
     }
 
