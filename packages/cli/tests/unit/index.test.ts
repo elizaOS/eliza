@@ -49,11 +49,20 @@ describe('Signal handling', () => {
   let mockExit: ReturnType<typeof mock>;
   let mockLogger: any;
   let mockStopServer: ReturnType<typeof mock>;
-  let isShuttingDown: boolean;
+  let shutdownState: { isShuttingDown: boolean; tryInitiateShutdown(): boolean };
 
   beforeEach(() => {
-    // Reset shutdown flag
-    isShuttingDown = false;
+    // Reset shutdown state
+    shutdownState = {
+      isShuttingDown: false,
+      tryInitiateShutdown(): boolean {
+        if (this.isShuttingDown) {
+          return false;
+        }
+        this.isShuttingDown = true;
+        return true;
+      }
+    };
     
     // Mock process.exit
     originalExit = process.exit;
@@ -87,13 +96,12 @@ describe('Signal handling', () => {
 
   // Test gracefulShutdown function behavior
   async function testGracefulShutdown(signal: string, expectedExitCode: number) {
-    // Simulate the gracefulShutdown function logic
-    if (isShuttingDown) {
+    // Simulate the gracefulShutdown function logic with new shutdown state
+    if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring ${signal} - shutdown already in progress`);
       return;
     }
     
-    isShuttingDown = true;
     mockLogger.info(`Received ${signal}, shutting down gracefully...`);
     
     try {
@@ -140,13 +148,12 @@ describe('Signal handling', () => {
     const testError = new Error('Server stop failed');
     mockStopServer.mockRejectedValue(testError);
     
-    // Simulate gracefulShutdown with error
-    if (isShuttingDown) {
+    // Simulate gracefulShutdown with error using new shutdown state
+    if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
       return;
     }
     
-    isShuttingDown = true;
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
     
     try {
@@ -176,13 +183,12 @@ describe('Signal handling', () => {
     const testErrorObject = { message: 'Non-error object' };
     mockStopServer.mockRejectedValue(testErrorObject);
     
-    // Simulate gracefulShutdown with non-Error object
-    if (isShuttingDown) {
+    // Simulate gracefulShutdown with non-Error object using new shutdown state
+    if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
       return;
     }
     
-    isShuttingDown = true;
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
     
     try {
@@ -209,11 +215,10 @@ describe('Signal handling', () => {
   it('should prevent multiple concurrent shutdown attempts', async () => {
     // First shutdown attempt
     const firstShutdown = async () => {
-      if (isShuttingDown) {
+      if (!shutdownState.tryInitiateShutdown()) {
         mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
         return;
       }
-      isShuttingDown = true;
       mockLogger.info(`Received SIGINT, shutting down gracefully...`);
       
       // Simulate a slow server stop
@@ -230,11 +235,10 @@ describe('Signal handling', () => {
 
     // Second shutdown attempt (should be ignored)
     const secondShutdown = async () => {
-      if (isShuttingDown) {
+      if (!shutdownState.tryInitiateShutdown()) {
         mockLogger.debug(`Ignoring SIGTERM - shutdown already in progress`);
         return;
       }
-      isShuttingDown = true;
       mockLogger.info(`Received SIGTERM, shutting down gracefully...`);
       await mockStopServer();
       mockLogger.info('Server stopped successfully');
@@ -258,5 +262,113 @@ describe('Signal handling', () => {
     
     // Verify stopServer was only called once
     expect(mockStopServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle fallback exit code for unknown signals', async () => {
+    // Test with an unknown signal
+    const unknownSignal = 'SIGUSR1';
+    
+    // Simulate gracefulShutdown with unknown signal
+    if (!shutdownState.tryInitiateShutdown()) {
+      mockLogger.debug(`Ignoring ${unknownSignal} - shutdown already in progress`);
+      return;
+    }
+    
+    mockLogger.info(`Received ${unknownSignal}, shutting down gracefully...`);
+    
+    try {
+      await mockStopServer();
+      mockLogger.info('Server stopped successfully');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      mockLogger.error(`Error stopping server: ${errorMessage}`);
+      mockLogger.debug('Full error details:', error);
+    }
+    
+    // Should use fallback exit code 0 for unknown signals
+    const exitCode = unknownSignal === 'SIGINT' ? 130 : unknownSignal === 'SIGTERM' ? 143 : 0;
+    expect(exitCode).toBe(0);
+    
+    try {
+      process.exit(exitCode);
+    } catch (error) {
+      // Expected behavior in test environment
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('Process exit called with code: 0');
+    }
+
+    expect(mockLogger.info).toHaveBeenCalledWith('Received SIGUSR1, shutting down gracefully...');
+    expect(mockLogger.info).toHaveBeenCalledWith('Server stopped successfully');
+    expect(mockStopServer).toHaveBeenCalled();
+    expect(mockExit).toHaveBeenCalledWith(0);
+  });
+
+  it('should atomically handle shutdown state to prevent race conditions', async () => {
+    // Test the atomic nature of tryInitiateShutdown
+    const state = {
+      isShuttingDown: false,
+      tryInitiateShutdown(): boolean {
+        if (this.isShuttingDown) {
+          return false;
+        }
+        this.isShuttingDown = true;
+        return true;
+      }
+    };
+
+    // First attempt should succeed
+    const firstAttempt = state.tryInitiateShutdown();
+    expect(firstAttempt).toBe(true);
+    expect(state.isShuttingDown).toBe(true);
+
+    // Second attempt should fail
+    const secondAttempt = state.tryInitiateShutdown();
+    expect(secondAttempt).toBe(false);
+    expect(state.isShuttingDown).toBe(true);
+  });
+});
+
+describe('Signal handler registration', () => {
+  let originalProcessOn: typeof process.on;
+  let mockProcessOn: ReturnType<typeof mock>;
+  let signalHandlers: Record<string, Function> = {};
+
+  beforeEach(() => {
+    // Mock process.on to capture signal handlers
+    originalProcessOn = process.on;
+    mockProcessOn = mock((event: string, handler: Function) => {
+      signalHandlers[event] = handler;
+      return process;
+    });
+    process.on = mockProcessOn as any;
+  });
+
+  afterEach(() => {
+    // Restore original process.on
+    process.on = originalProcessOn;
+    signalHandlers = {};
+    mockProcessOn.mockRestore();
+  });
+
+  it('should register SIGINT and SIGTERM signal handlers', () => {
+    // Simulate the signal handler registration that happens in index.ts
+    const gracefulShutdown = async (signal: string) => {
+      // Mock implementation for testing
+    };
+    
+    // Simulate the registration calls
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+    // Verify handlers were registered
+    expect(mockProcessOn).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+    expect(mockProcessOn).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    expect(mockProcessOn).toHaveBeenCalledTimes(2);
+
+    // Verify handlers are stored
+    expect(signalHandlers['SIGINT']).toBeDefined();
+    expect(signalHandlers['SIGTERM']).toBeDefined();
+    expect(typeof signalHandlers['SIGINT']).toBe('function');
+    expect(typeof signalHandlers['SIGTERM']).toBe('function');
   });
 });

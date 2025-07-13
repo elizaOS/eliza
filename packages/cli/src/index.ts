@@ -20,8 +20,25 @@ import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
 import { stopServer } from '@/src/commands/dev/utils/server-manager';
 
-// Flag to prevent multiple concurrent shutdown attempts
-let isShuttingDown = false;
+/**
+ * Shutdown state management to prevent race conditions
+ * Using an object to encapsulate state and provide atomic operations
+ */
+const shutdownState = {
+  isShuttingDown: false,
+  
+  /**
+   * Atomically check and set the shutdown flag
+   * @returns true if shutdown was initiated, false if already in progress
+   */
+  tryInitiateShutdown(): boolean {
+    if (this.isShuttingDown) {
+      return false;
+    }
+    this.isShuttingDown = true;
+    return true;
+  }
+};
 
 /**
  * Graceful shutdown handler for SIGINT and SIGTERM signals
@@ -29,13 +46,11 @@ let isShuttingDown = false;
  * Prevents race conditions from multiple rapid signal events
  */
 async function gracefulShutdown(signal: string) {
-  // Prevent concurrent shutdown attempts
-  if (isShuttingDown) {
+  // Atomically check and set shutdown flag to prevent race conditions
+  if (!shutdownState.tryInitiateShutdown()) {
     logger.debug(`Ignoring ${signal} - shutdown already in progress`);
     return;
   }
-  
-  isShuttingDown = true;
   logger.info(`Received ${signal}, shutting down gracefully...`);
   
   try {
