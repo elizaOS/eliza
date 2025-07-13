@@ -32,7 +32,7 @@ export const character: Character = {
 
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-    
+
     // Ollama as universal fallback (always included for local AI capabilities)
     '@elizaos/plugin-ollama',
   ],

@@ -708,9 +708,7 @@ export async function storeOllamaConfig(
     const lines = content
       .split('\n')
       .filter(
-        (line) =>
-          !line.startsWith('OLLAMA_API_ENDPOINT=') &&
-          !line.startsWith('OLLAMA_MODEL=')
+        (line) => !line.startsWith('OLLAMA_API_ENDPOINT=') && !line.startsWith('OLLAMA_MODEL=')
       );
 
     // Add new Ollama configuration
@@ -783,10 +781,7 @@ export async function promptAndStoreOllamaEmbeddingConfig(
         // Only remove embedding-specific lines, preserve general Ollama config
         const lines = content
           .split('\n')
-          .filter(
-            (line) =>
-              !line.startsWith('OLLAMA_EMBEDDING_MODEL=')
-          );
+          .filter((line) => !line.startsWith('OLLAMA_EMBEDDING_MODEL='));
 
         // Check if we need to update the endpoint
         const endpointPattern = /^OLLAMA_API_ENDPOINT=(.*)$/m;

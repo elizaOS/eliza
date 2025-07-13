@@ -109,7 +109,6 @@ describe('Project Starter Character Plugin Ordering', () => {
 
       // Bootstrap should be present unless IGNORE_BOOTSTRAP is set
       expect(plugins).toContain('@elizaos/plugin-bootstrap');
-
     });
 
     it('should maintain proper ordering between plugin categories', () => {
@@ -150,7 +149,6 @@ describe('Project Starter Character Plugin Ordering', () => {
           '@elizaos/plugin-google-genai',
         ].includes(plugin)
       );
-
     });
 
     it('should include proper conditional checks for Twitter', () => {
@@ -199,7 +197,6 @@ describe('Project Starter Character Plugin Ordering', () => {
         expect(hasEmbeddingAtEnd).toBe(true);
       }
     });
-
 
     it('should maintain consistent plugin structure', () => {
       // Test multiple evaluations for consistency
