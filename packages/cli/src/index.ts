@@ -20,11 +20,22 @@ import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
 import { stopServer } from '@/src/commands/dev/utils/server-manager';
 
+// Flag to prevent multiple concurrent shutdown attempts
+let isShuttingDown = false;
+
 /**
  * Graceful shutdown handler for SIGINT and SIGTERM signals
  * Ensures proper cleanup of server processes before exiting
+ * Prevents race conditions from multiple rapid signal events
  */
 async function gracefulShutdown(signal: string) {
+  // Prevent concurrent shutdown attempts
+  if (isShuttingDown) {
+    logger.debug(`Ignoring ${signal} - shutdown already in progress`);
+    return;
+  }
+  
+  isShuttingDown = true;
   logger.info(`Received ${signal}, shutting down gracefully...`);
   
   try {
@@ -32,10 +43,15 @@ async function gracefulShutdown(signal: string) {
     await stopServer();
     logger.info('Server stopped successfully');
   } catch (error) {
-    logger.error('Error stopping server:', error);
+    // Extract error message for better debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error stopping server: ${errorMessage}`);
+    logger.debug('Full error details:', error);
   }
   
-  process.exit(0);
+  // Use appropriate exit codes for different signals
+  const exitCode = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 0;
+  process.exit(exitCode);
 }
 
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
