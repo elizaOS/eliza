@@ -70,7 +70,7 @@ export async function removeFromBunLock(packageName: string, directory: string):
     const result = await bunExec('bun', ['remove', packageName], {
       cwd: directory,
     });
-    
+
     if (result.success) {
       logger.debug(`Successfully removed ${packageName} from bun.lock`);
     } else {
@@ -78,7 +78,9 @@ export async function removeFromBunLock(packageName: string, directory: string):
       if (result.stderr?.includes('not found') || result.stderr?.includes('No such package')) {
         logger.debug(`Package ${packageName} not found in lockfile (expected for cleanup)`);
       } else {
-        logger.warn(`Failed to remove ${packageName} from bun.lock: ${result.stderr || 'Unknown error'}`);
+        logger.warn(
+          `Failed to remove ${packageName} from bun.lock: ${result.stderr || 'Unknown error'}`
+        );
       }
     }
   } catch (error: any) {

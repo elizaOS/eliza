@@ -15,16 +15,19 @@ The repository includes a GitHub Actions workflow that runs daily at noon UTC to
 **Workflow:** `.github/workflows/daily-code-quality-analysis.yml`
 
 **Schedule:** Daily at 12:00 PM UTC (noon) on the `develop` branch
+
 - 12:00 PM UTC
 - 4:00 AM PST / 7:00 AM EST (US)
 - 1:00 PM CET (Europe)
 - 8:00 PM CST (China)
 
 **Branch:** Runs on `develop` branch by default
+
 - Scheduled runs: Always analyze `develop` branch
 - Manual runs: Can specify different branch via workflow dispatch
 
 **Features:**
+
 - Analyzes the `develop` branch (configurable for manual runs)
 - Uses Claude Opus 4 (thinking model) for intelligent analysis
 - Creates GitHub issues for critical problems
@@ -34,39 +37,46 @@ The repository includes a GitHub Actions workflow that runs daily at noon UTC to
 ### What Gets Analyzed
 
 1. **Dead Code Detection** (using [Knip](https://knip.dev/))
+
    - Unused files, exports, and dependencies
    - Orphaned code that's never imported
    - Unused npm scripts and binaries
 
 2. **Code Quality**
+
    - Console.log statements left in code
    - TODO/FIXME comments
    - Functions longer than 50 lines
    - Complex conditional statements
 
 3. **Security Vulnerabilities**
+
    - Hardcoded secrets or API keys
    - Usage of eval()
    - Potential SQL injection risks
    - ReDoS vulnerabilities in regex patterns
 
 4. **Test Coverage**
+
    - Files without corresponding test files
    - Test files with insufficient test cases
    - Missing test coverage for critical functionality
 
 5. **Type Safety**
+
    - Excessive use of 'any' type
    - Functions without return type annotations
    - Type assertions that could hide errors
    - @ts-ignore usage
 
 6. **Code Documentation**
+
    - Exported functions without JSDoc comments
    - Complex functions without documentation
    - Missing inline comments for complex logic
 
 7. **Documentation Accuracy** (in docs package)
+
    - Broken internal links in markdown files
    - Missing documentation for core packages
    - Outdated code examples (old imports/syntax)
@@ -94,6 +104,7 @@ For immediate code quality checks, use the manual analysis script:
 ```
 
 Or trigger the GitHub workflow manually:
+
 1. Go to Actions → Daily Code Quality Analysis
 2. Click "Run workflow"
 3. Select branch to analyze (default: develop)
@@ -102,6 +113,7 @@ Or trigger the GitHub workflow manually:
 This script performs the same analysis as the GitHub workflow but saves results locally.
 
 **Output:**
+
 - Results are saved to `analysis-results/full-report-{timestamp}.md`
 - Console output shows progress and summary
 - Each category of issues is clearly separated
@@ -116,6 +128,7 @@ For specialized documentation accuracy checks, use the dedicated script:
 ```
 
 This script performs deep analysis of documentation accuracy:
+
 - Checks if all core types/interfaces are documented
 - Verifies all plugins have documentation
 - Finds outdated code examples and imports
@@ -125,6 +138,7 @@ This script performs deep analysis of documentation accuracy:
 - Checks if environment variables are documented
 
 **Output:**
+
 - Results saved to `analysis-results/docs-consistency-report-{timestamp}.md`
 - Focused specifically on documentation vs code consistency
 - Provides actionable items for documentation updates
@@ -219,29 +233,40 @@ Issues are categorized by priority:
 ### Common Issues and Fixes
 
 #### Dead Code
+
 ```typescript
 // Before: Unused export
-export const unusedFunction = () => { /* ... */ }
+export const unusedFunction = () => {
+  /* ... */
+};
 
 // Fix: Remove if truly unused, or add a comment if intentionally kept
 // @keep - Used by external consumers
-export const unusedFunction = () => { /* ... */ }
+export const unusedFunction = () => {
+  /* ... */
+};
 ```
 
 #### Type Safety
+
 ```typescript
 // Before: Using 'any'
-const processData = (data: any) => { /* ... */ }
+const processData = (data: any) => {
+  /* ... */
+};
 
 // After: Proper typing
 interface DataItem {
   id: string;
   value: number;
 }
-const processData = (data: DataItem) => { /* ... */ }
+const processData = (data: DataItem) => {
+  /* ... */
+};
 ```
 
 #### Missing Tests
+
 ```typescript
 // For file: packages/core/src/utils/helper.ts
 // Create: packages/core/src/utils/helper.test.ts
@@ -261,6 +286,7 @@ describe('helperFunction', () => {
 ```
 
 #### Documentation Accuracy
+
 ```markdown
 // Broken link example
 [API Reference](../api/missing-file.md) // This link points to non-existent file
@@ -294,11 +320,13 @@ The automated workflow creates issues with:
 ## Best Practices
 
 ### 1. Regular Review
+
 - Review the daily analysis reports
 - Address critical issues immediately
 - Plan sprints to tackle medium/low priority issues
 
 ### 2. Pre-commit Checks
+
 ```bash
 # Run analysis before committing
 ./scripts/analyze-code-quality.sh
@@ -309,22 +337,26 @@ bunx knip
 ```
 
 ### 3. Continuous Improvement
+
 - Add project-specific rules to Knip config
 - Customize analysis thresholds
 - Create team-specific standards
 
 ### 4. Documentation
+
 - Document why code is kept if Knip flags it as dead
 - Add JSDoc comments for complex functions
 - Keep README files updated
 
 ### 5. Test Framework Compliance
+
 - ALWAYS use `import { describe, it, expect } from 'bun:test'`
 - NEVER use jest, vitest, mocha, or any other test framework
 - Run tests with `bun test` command only
 - Report any non-bun test framework usage as HIGH priority
 
 ### 6. Documentation Maintenance
+
 - Keep all documentation up to date with code changes
 - Fix broken links immediately
 - Update code examples when APIs change
@@ -368,7 +400,7 @@ ignore: [
   '**/*.generated.ts',
   '**/legacy/**',
   // Add your patterns
-]
+];
 ```
 
 ## Troubleshooting

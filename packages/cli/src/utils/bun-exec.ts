@@ -48,10 +48,10 @@ export class ProcessTimeoutError extends Error {
 /**
  * Properly escape shell arguments to prevent command injection
  * Uses JSON.stringify for robust escaping of special characters
- * 
+ *
  * @param arg - The argument to escape
  * @returns The escaped argument
- * 
+ *
  * @example
  * ```typescript
  * escapeShellArg('hello world') // => '"hello world"'
@@ -64,8 +64,8 @@ function escapeShellArg(arg: string): string {
   if (arg === '') {
     return '""';
   }
-  
-  // Use JSON.stringify to handle all special characters including quotes, 
+
+  // Use JSON.stringify to handle all special characters including quotes,
   // backslashes, newlines, etc. Then remove the outer quotes that JSON adds
   const escaped = JSON.stringify(arg);
   return escaped;
@@ -81,7 +81,7 @@ async function readStreamSafe(
   if (!stream || typeof stream === 'number') {
     return '';
   }
-  
+
   try {
     const text = await new Response(stream).text();
     return text;
@@ -94,21 +94,21 @@ async function readStreamSafe(
 /**
  * Execute a command using Bun's shell functionality with enhanced security and error handling
  * This is a drop-in replacement for execa
- * 
+ *
  * @param command - The command to execute
  * @param args - Array of arguments to pass to the command
  * @param options - Execution options including cwd, env, stdio, timeout, and signal
  * @returns Promise resolving to execution result with stdout, stderr, exitCode, and success
- * 
+ *
  * @throws {ProcessExecutionError} When the command execution fails
  * @throws {ProcessTimeoutError} When the command times out
- * 
+ *
  * @example
  * ```typescript
  * // Simple command execution
  * const result = await bunExec('echo', ['hello world']);
  * console.log(result.stdout); // "hello world"
- * 
+ *
  * // With timeout
  * try {
  *   await bunExec('long-running-command', [], { timeout: 5000 });
@@ -117,7 +117,7 @@ async function readStreamSafe(
  *     console.log('Command timed out');
  *   }
  * }
- * 
+ *
  * // With custom environment
  * await bunExec('npm', ['install'], {
  *   cwd: '/path/to/project',
@@ -130,9 +130,9 @@ export async function bunExec(
   args: string[] = [],
   options: BunExecOptions = {}
 ): Promise<ExecResult> {
-  let proc: Subprocess<"pipe" | "inherit" | "ignore"> | null = null;
+  let proc: Subprocess<'pipe' | 'inherit' | 'ignore'> | null = null;
   let timeoutId: Timer | null = null;
-  
+
   try {
     // Build the full command with proper escaping for logging
     const escapedArgs = args.map(escapeShellArg);
@@ -165,11 +165,13 @@ export async function bunExec(
           if (proc && proc.exitCode === null) {
             proc.kill();
           }
-          reject(new ProcessTimeoutError(
-            `Command timed out after ${timeoutMs}ms`,
-            fullCommand,
-            timeoutMs
-          ));
+          reject(
+            new ProcessTimeoutError(
+              `Command timed out after ${timeoutMs}ms`,
+              fullCommand,
+              timeoutMs
+            )
+          );
         }, timeoutMs);
       }
     });
@@ -180,10 +182,10 @@ export async function bunExec(
       Promise.all([
         readStreamSafe(proc.stdout, 'stdout'),
         readStreamSafe(proc.stderr, 'stderr'),
-        proc.exited
+        proc.exited,
       ]),
       // Timeout path
-      timeoutPromise
+      timeoutPromise,
     ]);
 
     // Clear timeout if process completed successfully
@@ -211,12 +213,12 @@ export async function bunExec(
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
-    
+
     // Re-throw timeout errors as-is
     if (error instanceof ProcessTimeoutError) {
       throw error;
     }
-    
+
     // Wrap other errors with more context
     if (error instanceof Error) {
       throw new ProcessExecutionError(
@@ -226,7 +228,7 @@ export async function bunExec(
         command
       );
     }
-    
+
     throw error;
   } finally {
     // Ensure process cleanup - only kill if process is still running
@@ -236,7 +238,10 @@ export async function bunExec(
         logger.debug('[bunExec] Killed still-running process in cleanup');
       } catch (cleanupError) {
         // Process may have exited between our check and the kill attempt
-        logger.debug('[bunExec] Process cleanup error (process may have already exited):', cleanupError);
+        logger.debug(
+          '[bunExec] Process cleanup error (process may have already exited):',
+          cleanupError
+        );
       }
     }
   }
@@ -245,20 +250,20 @@ export async function bunExec(
 /**
  * Execute a command and only return stdout (similar to execa's simple usage)
  * Throws an error if the command fails unless stdio is set to 'ignore'
- * 
+ *
  * @param command - The command to execute
  * @param args - Array of arguments to pass to the command
  * @param options - Execution options
  * @returns Promise resolving to object with stdout property
- * 
+ *
  * @throws {ProcessExecutionError} When the command fails (exitCode !== 0)
- * 
+ *
  * @example
  * ```typescript
  * // Get command output
  * const { stdout } = await bunExecSimple('git', ['rev-parse', 'HEAD']);
  * console.log('Current commit:', stdout);
- * 
+ *
  * // Ignore errors
  * const result = await bunExecSimple('which', ['optional-tool'], { stdio: 'ignore' });
  * ```
@@ -283,17 +288,17 @@ export async function bunExecSimple(
 /**
  * Execute a command with inherited stdio (for interactive commands)
  * Useful for commands that need user interaction or should display output directly
- * 
+ *
  * @param command - The command to execute
  * @param args - Array of arguments to pass to the command
  * @param options - Execution options (stdio will be overridden to 'inherit')
  * @returns Promise resolving to execution result
- * 
+ *
  * @example
  * ```typescript
  * // Run interactive command
  * await bunExecInherit('npm', ['install']);
- * 
+ *
  * // Run command that needs terminal colors
  * await bunExecInherit('npm', ['run', 'test']);
  * ```
@@ -312,10 +317,10 @@ export async function bunExecInherit(
 /**
  * Check if a command exists in the system PATH
  * Uses 'which' on Unix-like systems and 'where' on Windows
- * 
+ *
  * @param command - The command name to check
  * @returns Promise resolving to true if command exists, false otherwise
- * 
+ *
  * @example
  * ```typescript
  * // Check if git is installed
@@ -324,7 +329,7 @@ export async function bunExecInherit(
  * } else {
  *   console.log('Git is not installed');
  * }
- * 
+ *
  * // Check for optional tools
  * const hasDocker = await commandExists('docker');
  * const hasNode = await commandExists('node');
@@ -333,19 +338,19 @@ export async function bunExecInherit(
 export async function commandExists(command: string): Promise<boolean> {
   try {
     if (process.platform === 'win32') {
-      const result = await bunExec('where', [command], { 
+      const result = await bunExec('where', [command], {
         stdio: 'ignore',
-        timeout: COMMAND_EXISTS_TIMEOUT_MS
+        timeout: COMMAND_EXISTS_TIMEOUT_MS,
       });
       return result.success;
     } else {
-      const result = await bunExec('which', [command], { 
+      const result = await bunExec('which', [command], {
         stdio: 'ignore',
-        timeout: COMMAND_EXISTS_TIMEOUT_MS
+        timeout: COMMAND_EXISTS_TIMEOUT_MS,
       });
       return result.success;
     }
   } catch {
     return false;
   }
-} 
+}

@@ -23,7 +23,7 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
   }
 
   try {
-    const result = silent 
+    const result = silent
       ? await bunExec('bun', finalArgs, { cwd })
       : await bunExecInherit('bun', finalArgs, { cwd });
 

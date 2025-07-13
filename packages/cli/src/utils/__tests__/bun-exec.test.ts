@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import type { Subprocess } from 'bun';
-import { 
-  bunExec, 
-  bunExecSimple, 
-  bunExecInherit, 
+import {
+  bunExec,
+  bunExecSimple,
+  bunExecInherit,
   commandExists,
   ProcessExecutionError,
   ProcessTimeoutError,
   type ExecResult,
-  type BunExecOptions
+  type BunExecOptions,
 } from '../bun-exec';
 
 // Mock logger
@@ -16,48 +16,48 @@ const mockLogger = {
   debug: mock(() => {}),
   info: mock(() => {}),
   warn: mock(() => {}),
-  error: mock(() => {})
+  error: mock(() => {}),
 };
 
 // Override the logger import
 mock.module('@elizaos/core', () => ({
-  logger: mockLogger
+  logger: mockLogger,
 }));
 
 describe('bun-exec', () => {
   let mockProc: any;
   let originalSpawn: typeof Bun.spawn;
-  
+
   beforeEach(() => {
     // Store original spawn
     originalSpawn = Bun.spawn;
-    
+
     // Clear all mocks
     mockLogger.debug.mockClear();
     mockLogger.info.mockClear();
     mockLogger.warn.mockClear();
     mockLogger.error.mockClear();
-    
+
     // Default mock process
     mockProc = {
       stdout: new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('test output'));
           controller.close();
-        }
+        },
       }),
       stderr: new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode(''));
           controller.close();
-        }
+        },
       }),
       exited: Promise.resolve(0),
       exitCode: null,
       kill: mock(() => {}),
-      killed: false
+      killed: false,
     };
-    
+
     // Mock Bun.spawn
     // @ts-ignore - Mocking Bun.spawn
     Bun.spawn = mock(() => mockProc);
@@ -71,35 +71,40 @@ describe('bun-exec', () => {
   describe('bunExec', () => {
     it('should execute a command successfully', async () => {
       // Simulate process completing successfully
-      mockProc.exited.then(() => { mockProc.exitCode = 0; });
-      
+      mockProc.exited.then(() => {
+        mockProc.exitCode = 0;
+      });
+
       const result = await bunExec('echo', ['hello']);
 
       expect(result).toEqual({
         stdout: 'test output',
         stderr: '',
         exitCode: 0,
-        success: true
+        success: true,
       });
 
       expect(Bun.spawn).toHaveBeenCalledWith(['echo', 'hello'], {
         cwd: undefined,
         env: process.env,
         stdout: 'pipe',
-        stderr: 'pipe'
+        stderr: 'pipe',
       });
     });
 
     it('should handle command failure with non-zero exit code', async () => {
       mockProc = {
         ...mockProc,
-        exited: Promise.resolve(1).then(code => { mockProc.exitCode = 1; return code; }),
+        exited: Promise.resolve(1).then((code) => {
+          mockProc.exitCode = 1;
+          return code;
+        }),
         stderr: new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode('error message'));
             controller.close();
-          }
-        })
+          },
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -110,7 +115,7 @@ describe('bun-exec', () => {
         stdout: 'test output',
         stderr: 'error message',
         exitCode: 1,
-        success: false
+        success: false,
       });
     });
 
@@ -118,28 +123,28 @@ describe('bun-exec', () => {
       let stdoutReadStarted = false;
       let stderrReadStarted = false;
       let processExited = false;
-      
+
       mockProc = {
         exitCode: null,
         stdout: new ReadableStream({
           async start(controller) {
             stdoutReadStarted = true;
             // Simulate some delay
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             controller.enqueue(new TextEncoder().encode('stdout data'));
             controller.close();
-          }
+          },
         }),
         stderr: new ReadableStream({
           async start(controller) {
             stderrReadStarted = true;
             // Simulate some delay
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             controller.enqueue(new TextEncoder().encode('stderr data'));
             controller.close();
-          }
+          },
         }),
-        exited: new Promise(resolve => {
+        exited: new Promise((resolve) => {
           // Process exits after a delay
           setTimeout(() => {
             processExited = true;
@@ -148,7 +153,7 @@ describe('bun-exec', () => {
           }, 100);
         }),
         kill: mock(() => {}),
-        killed: false
+        killed: false,
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -171,7 +176,7 @@ describe('bun-exec', () => {
         cwd: '/custom/path',
         env: { CUSTOM_VAR: 'value' },
         stdout: 'inherit',
-        stderr: 'pipe'
+        stderr: 'pipe',
       };
 
       await bunExec('ls', ['-la'], options);
@@ -180,7 +185,7 @@ describe('bun-exec', () => {
         cwd: '/custom/path',
         env: { ...process.env, CUSTOM_VAR: 'value' },
         stdout: 'inherit',
-        stderr: 'pipe'
+        stderr: 'pipe',
       });
     });
 
@@ -190,20 +195,20 @@ describe('bun-exec', () => {
         stdout: new ReadableStream({
           async start(controller) {
             // Simulate slow stdout that would exceed timeout
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise((resolve) => setTimeout(resolve, 200));
             controller.enqueue(new TextEncoder().encode('stdout'));
             controller.close();
-          }
+          },
         }),
         stderr: new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode('stderr'));
             controller.close();
-          }
+          },
         }),
         exited: new Promise(() => {}), // Never resolves
         kill: mock(() => {}),
-        killed: false
+        killed: false,
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -227,7 +232,7 @@ describe('bun-exec', () => {
             mockProc.exitCode = 0;
             resolve(0);
           }, 200);
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -247,11 +252,11 @@ describe('bun-exec', () => {
       mockProc = {
         ...mockProc,
         exitCode: null,
-        exited: Promise.resolve(0).then(code => {
+        exited: Promise.resolve(0).then((code) => {
           // Simulate process completing before cleanup
           mockProc.exitCode = 0;
           return code;
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -270,13 +275,13 @@ describe('bun-exec', () => {
           start(controller) {
             controller.enqueue(new TextEncoder().encode(''));
             controller.close();
-          }
+          },
         }),
         stderr: new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode(''));
             controller.close();
-          }
+          },
         }),
         exited: new Promise(() => {}), // Never resolves
         kill: mock(() => {
@@ -290,7 +295,7 @@ describe('bun-exec', () => {
             mockProc.exitCode = 143; // SIGTERM exit code
           }
         }),
-        killed: false
+        killed: false,
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -310,10 +315,10 @@ describe('bun-exec', () => {
         ...mockProc,
         stdout: null,
         stderr: null,
-        exited: Promise.resolve(0).then(code => {
+        exited: Promise.resolve(0).then((code) => {
           mockProc.exitCode = 0;
           return code;
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -324,7 +329,7 @@ describe('bun-exec', () => {
         stdout: '',
         stderr: '',
         exitCode: 0,
-        success: true
+        success: true,
       });
     });
 
@@ -332,11 +337,11 @@ describe('bun-exec', () => {
       mockProc = {
         ...mockProc,
         stdout: 1, // stdout file descriptor
-        stderr: 2,  // stderr file descriptor
-        exited: Promise.resolve(0).then(code => {
+        stderr: 2, // stderr file descriptor
+        exited: Promise.resolve(0).then((code) => {
           mockProc.exitCode = 0;
           return code;
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -347,7 +352,7 @@ describe('bun-exec', () => {
         stdout: '',
         stderr: '',
         exitCode: 0,
-        success: true
+        success: true,
       });
     });
 
@@ -358,18 +363,18 @@ describe('bun-exec', () => {
         stdout: new ReadableStream({
           start(controller) {
             controller.error(new Error('Stream error'));
-          }
+          },
         }),
         stderr: new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode('stderr output'));
             controller.close();
-          }
+          },
         }),
-        exited: Promise.resolve(0).then(code => {
+        exited: Promise.resolve(0).then((code) => {
           mockProc.exitCode = 0;
           return code;
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -387,7 +392,7 @@ describe('bun-exec', () => {
       mockProc = {
         ...mockProc,
         exitCode: null,
-        exited: Promise.reject(new Error('Process error'))
+        exited: Promise.reject(new Error('Process error')),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -408,7 +413,7 @@ describe('bun-exec', () => {
         kill: mock(() => {
           throw new Error('Kill failed');
         }),
-        exited: Promise.reject(new Error('Process error'))
+        exited: Promise.reject(new Error('Process error')),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -430,13 +435,13 @@ describe('bun-exec', () => {
           start(controller) {
             controller.enqueue(new TextEncoder().encode(''));
             controller.close();
-          }
+          },
         }),
         stderr: new ReadableStream({
           start(controller) {
             controller.enqueue(new TextEncoder().encode(''));
             controller.close();
-          }
+          },
         }),
         exited: Promise.reject(new Error('Process failed')),
         kill: mock(() => {
@@ -444,7 +449,7 @@ describe('bun-exec', () => {
           mockProc.exitCode = 1;
           throw new Error('Process not found');
         }),
-        killed: false
+        killed: false,
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -467,8 +472,10 @@ describe('bun-exec', () => {
 
   describe('bunExecSimple', () => {
     it('should return stdout on success', async () => {
-      mockProc.exited.then(() => { mockProc.exitCode = 0; });
-      
+      mockProc.exited.then(() => {
+        mockProc.exitCode = 0;
+      });
+
       const result = await bunExecSimple('echo', ['hello']);
 
       expect(result).toEqual({ stdout: 'test output' });
@@ -478,7 +485,7 @@ describe('bun-exec', () => {
       mockProc = {
         ...mockProc,
         exitCode: null,
-        exited: Promise.resolve(1).then(code => {
+        exited: Promise.resolve(1).then((code) => {
           mockProc.exitCode = 1;
           return code;
         }),
@@ -486,8 +493,8 @@ describe('bun-exec', () => {
           start(controller) {
             controller.enqueue(new TextEncoder().encode('error message'));
             controller.close();
-          }
-        })
+          },
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -504,10 +511,10 @@ describe('bun-exec', () => {
       mockProc = {
         ...mockProc,
         exitCode: null,
-        exited: Promise.resolve(1).then(code => {
+        exited: Promise.resolve(1).then((code) => {
           mockProc.exitCode = 1;
           return code;
-        })
+        }),
       };
       // @ts-ignore
       Bun.spawn = mock(() => mockProc);
@@ -526,7 +533,7 @@ describe('bun-exec', () => {
         cwd: undefined,
         env: process.env,
         stdout: 'inherit',
-        stderr: 'inherit'
+        stderr: 'inherit',
       });
     });
 
@@ -537,7 +544,7 @@ describe('bun-exec', () => {
         cwd: undefined,
         env: process.env,
         stdout: 'inherit',
-        stderr: 'inherit'
+        stderr: 'inherit',
       });
     });
   });
@@ -547,13 +554,15 @@ describe('bun-exec', () => {
       beforeEach(() => {
         Object.defineProperty(process, 'platform', {
           value: 'linux',
-          configurable: true
+          configurable: true,
         });
       });
 
       it('should return true when command exists', async () => {
-        mockProc.exited.then(() => { mockProc.exitCode = 0; });
-        
+        mockProc.exited.then(() => {
+          mockProc.exitCode = 0;
+        });
+
         const exists = await commandExists('node');
 
         expect(exists).toBe(true);
@@ -561,7 +570,7 @@ describe('bun-exec', () => {
           cwd: undefined,
           env: process.env,
           stdout: 'ignore',
-          stderr: 'ignore'
+          stderr: 'ignore',
         });
       });
 
@@ -569,10 +578,10 @@ describe('bun-exec', () => {
         mockProc = {
           ...mockProc,
           exitCode: null,
-          exited: Promise.resolve(1).then(code => {
+          exited: Promise.resolve(1).then((code) => {
             mockProc.exitCode = 1;
             return code;
-          })
+          }),
         };
         // @ts-ignore
         Bun.spawn = mock(() => mockProc);
@@ -598,13 +607,15 @@ describe('bun-exec', () => {
       beforeEach(() => {
         Object.defineProperty(process, 'platform', {
           value: 'win32',
-          configurable: true
+          configurable: true,
         });
       });
 
       it('should use where command on Windows', async () => {
-        mockProc.exited.then(() => { mockProc.exitCode = 0; });
-        
+        mockProc.exited.then(() => {
+          mockProc.exitCode = 0;
+        });
+
         const exists = await commandExists('node');
 
         expect(exists).toBe(true);
@@ -612,7 +623,7 @@ describe('bun-exec', () => {
           cwd: undefined,
           env: process.env,
           stdout: 'ignore',
-          stderr: 'ignore'
+          stderr: 'ignore',
         });
       });
     });
@@ -650,10 +661,7 @@ describe('bun-exec', () => {
     it('should handle empty arguments', async () => {
       await bunExec('echo', ['', 'test', '']);
 
-      expect(Bun.spawn).toHaveBeenCalledWith(
-        ['echo', '', 'test', ''],
-        expect.objectContaining({})
-      );
+      expect(Bun.spawn).toHaveBeenCalledWith(['echo', '', 'test', ''], expect.objectContaining({}));
     });
   });
 
@@ -677,4 +685,4 @@ describe('bun-exec', () => {
       expect(error.timeout).toBe(5000);
     });
   });
-}); 
+});

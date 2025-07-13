@@ -12,20 +12,20 @@ const INSTALLATION_VERIFICATION_DELAY_MS = 2000; // 2 seconds delay to allow ins
 function updatePathForBun(): void {
   const home = homedir();
   const bunBinPath = join(home, '.bun', 'bin');
-  
+
   // Check if the PATH already includes the Bun directory
   const currentPath = process.env.PATH || '';
   const pathSeparator = process.platform === 'win32' ? ';' : ':';
-  
+
   // Split PATH into individual directories and check for exact match
   const pathDirs = currentPath.split(pathSeparator);
   const bunBinPathNormalized = bunBinPath.replace(/[/\\]+$/, ''); // Remove trailing slashes
-  
-  const isInPath = pathDirs.some(dir => {
+
+  const isInPath = pathDirs.some((dir) => {
     const dirNormalized = dir.replace(/[/\\]+$/, ''); // Remove trailing slashes
     return dirNormalized === bunBinPathNormalized;
   });
-  
+
   if (!isInPath) {
     // Prepend Bun's bin directory to PATH
     process.env.PATH = `${bunBinPath}${pathSeparator}${currentPath}`;
@@ -46,7 +46,7 @@ async function isBunInstalled(): Promise<boolean> {
     if (!exists) {
       return false;
     }
-    
+
     // If it exists, verify it actually works by getting version
     const result = await bunExec('bun', ['--version'], { stdio: 'ignore' });
     return result.success;
