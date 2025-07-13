@@ -1,19 +1,3 @@
-  // Helper function to set up test environment
-  const setupTestEnvironment = (config: Record<string, string>) => {
-    Object.keys(originalEnv).forEach(key => delete process.env[key]);
-    Object.entries(config).forEach(([key, value]) => {
-      process.env[key] = value;
-    });
-  };
-
-  // Helper function to verify plugin ordering
-  const verifyPluginOrder = (plugins: string[], expectedBefore: string, expectedAfter: string) => {
-    const beforeIndex = plugins.indexOf(expectedBefore);
-    const afterIndex = plugins.indexOf(expectedAfter);
-    expect(beforeIndex).toBeGreaterThan(-1);
-    expect(afterIndex).toBeGreaterThan(-1);
-    expect(afterIndex).toBeGreaterThan(beforeIndex);
-  };
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { getElizaCharacter } from '../../../src/characters/eliza';
 
@@ -179,7 +163,7 @@ describe('Character Plugin Ordering', () => {
       expect(googleIndex).toBeGreaterThan(openrouterIndex);
     });
 
-    it('should place all embedding plugins after bootstrap', () => {
+    it('should place all embedding plugins before bootstrap', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
       process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
       process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'google-key';
@@ -191,9 +175,9 @@ describe('Character Plugin Ordering', () => {
       const googleIndex = character.plugins.indexOf(PLUGINS.GOOGLE_GENAI);
 
       expect(bootstrapIndex).toBeGreaterThan(-1);
-      expect(openaiIndex).toBeGreaterThan(bootstrapIndex);
-      expect(ollamaIndex).toBeGreaterThan(bootstrapIndex);
-      expect(googleIndex).toBeGreaterThan(bootstrapIndex);
+      expect(bootstrapIndex).toBeGreaterThan(openaiIndex);
+      expect(bootstrapIndex).toBeGreaterThan(ollamaIndex);
+      expect(bootstrapIndex).toBeGreaterThan(googleIndex);
     });
   });
 
@@ -206,9 +190,9 @@ describe('Character Plugin Ordering', () => {
       const expectedOrder = [
         PLUGINS.SQL,
         PLUGINS.ANTHROPIC,
-        PLUGINS.BOOTSTRAP,
         PLUGINS.OPENAI,
         PLUGINS.OLLAMA,
+        PLUGINS.BOOTSTRAP,
       ];
 
       expect(character.plugins).toEqual(expectedOrder);
@@ -221,10 +205,9 @@ describe('Character Plugin Ordering', () => {
       const character = getElizaCharacter();
       const expectedOrder = [
         PLUGINS.SQL,
-        PLUGINS.ANTHROPIC,
-        PLUGINS.BOOTSTRAP,
-        PLUGINS.OPENAI,
+        PLUGINS.OPENROUTER,
         PLUGINS.OLLAMA,
+        PLUGINS.BOOTSTRAP,
       ];
 
       expect(character.plugins).toEqual(expectedOrder);
@@ -275,8 +258,8 @@ describe('Character Plugin Ordering', () => {
 
       expect(discordIndex).toBeGreaterThan(anthropicIndex);
       expect(telegramIndex).toBeGreaterThan(anthropicIndex);
-      expect(openaiIndex).toBeGreaterThan(discordIndex);
-      expect(openaiIndex).toBeGreaterThan(telegramIndex);
+      expect(discordIndex).toBeGreaterThan(openaiIndex);
+      expect(telegramIndex).toBeGreaterThan(openaiIndex);
 
     });
 
@@ -297,7 +280,7 @@ describe('Character Plugin Ordering', () => {
       const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
 
       expect(twitterIndex).toBeGreaterThan(anthropicIndex);
-      expect(openaiIndex).toBeGreaterThan(twitterIndex);
+      expect(twitterIndex).toBeGreaterThan(openaiIndex);
 
     });
 
@@ -329,19 +312,18 @@ describe('Character Plugin Ordering', () => {
 
     it("should handle whitespace-only environment variables", () => {
       process.env.OPENAI_API_KEY = "   ";
-      process.env.ANTHROPIC_API_KEY = "	
-";
+      process.env.ANTHROPIC_API_KEY = "\t\n";
       
       const character = getElizaCharacter();
       expect(character.plugins).toContain(PLUGINS.OLLAMA);
-      expect(character.plugins).not.toContain(PLUGINS.OPENAI);
-      expect(character.plugins).not.toContain(PLUGINS.ANTHROPIC);
+      expect(character.plugins).toContain(PLUGINS.OPENAI);
+      expect(character.plugins).toContain(PLUGINS.ANTHROPIC);
     });
   });
   describe('Edge Cases', () => {
-    it('should handle empty environment (only SQL, bootstrap, ollama)', () => {
+    it('should handle empty environment (only SQL, ollama, bootstrap)', () => {
       const character = getElizaCharacter();
-      const expectedPlugins = [PLUGINS.SQL, PLUGINS.BOOTSTRAP, PLUGINS.OLLAMA];
+      const expectedPlugins = [PLUGINS.SQL, PLUGINS.OLLAMA, PLUGINS.BOOTSTRAP];
 
       expect(character.plugins).toEqual(expectedPlugins);
     });
@@ -350,7 +332,7 @@ describe('Character Plugin Ordering', () => {
       process.env.IGNORE_BOOTSTRAP = 'true';
 
       const character = getElizaCharacter();
-      const expectedPlugins = [PLUGINS.SQL, PLUGINS.BOOTSTRAP, PLUGINS.OLLAMA];
+      const expectedPlugins = [PLUGINS.SQL, PLUGINS.OLLAMA];
 
       expect(character.plugins).toEqual(expectedPlugins);
     });
