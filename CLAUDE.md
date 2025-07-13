@@ -144,12 +144,13 @@ bun run release:alpha   # Release alpha version
   - `bunExecInherit()` - For interactive commands
   - `commandExists()` - To check if commands exist
 - **Example usage:**
+
   ```typescript
   import { bunExec, bunExecSimple } from '@/utils/bun-exec';
-  
+
   // Simple command
   const output = await bunExecSimple('git status');
-  
+
   // Full control
   const result = await bunExec('bun', ['test'], { cwd: '/path/to/dir' });
   ```

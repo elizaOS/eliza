@@ -184,9 +184,7 @@ describe('buildProject', () => {
     const buildError = new Error('Build failed');
     mockRunBunWithSpinner.mockResolvedValue({ success: false, error: buildError });
 
-    await expect(buildProject(testProjectPath)).rejects.toThrow(
-      'Build failed'
-    );
+    await expect(buildProject(testProjectPath)).rejects.toThrow('Build failed');
   });
 
   it('should throw error when no build method can be determined', async () => {
@@ -225,8 +223,6 @@ describe('buildProject', () => {
 
     mockBunExec.mockResolvedValue({ success: false, stdout: '', stderr: 'tsc error', exitCode: 1 });
 
-    await expect(buildProject(testProjectPath)).rejects.toThrow(
-      'bunx tsc build failed: tsc error'
-    );
+    await expect(buildProject(testProjectPath)).rejects.toThrow('bunx tsc build failed: tsc error');
   });
 });

@@ -2,25 +2,24 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { getElizaCharacter } from '../../../src/characters/eliza';
 
 describe('Character Plugin Ordering', () => {
-
   // Plugin name constants for better maintainability
   const PLUGINS = {
-    SQL: "@elizaos/plugin-sql",
-    BOOTSTRAP: "@elizaos/plugin-bootstrap",
-    OLLAMA: "@elizaos/plugin-ollama",
-    ANTHROPIC: "@elizaos/plugin-anthropic",
-    OPENAI: "@elizaos/plugin-openai",
-    OPENROUTER: "@elizaos/plugin-openrouter",
-    GOOGLE_GENAI: "@elizaos/plugin-google-genai",
-    DISCORD: "@elizaos/plugin-discord",
-    TWITTER: "@elizaos/plugin-twitter",
-    TELEGRAM: "@elizaos/plugin-telegram"
+    SQL: '@elizaos/plugin-sql',
+    BOOTSTRAP: '@elizaos/plugin-bootstrap',
+    OLLAMA: '@elizaos/plugin-ollama',
+    ANTHROPIC: '@elizaos/plugin-anthropic',
+    OPENAI: '@elizaos/plugin-openai',
+    OPENROUTER: '@elizaos/plugin-openrouter',
+    GOOGLE_GENAI: '@elizaos/plugin-google-genai',
+    DISCORD: '@elizaos/plugin-discord',
+    TWITTER: '@elizaos/plugin-twitter',
+    TELEGRAM: '@elizaos/plugin-telegram',
   };
   let originalEnv: Record<string, string | undefined>;
 
   // Helper function to set up test environment
   const setupTestEnvironment = (config: Record<string, string>) => {
-    Object.keys(originalEnv).forEach(key => delete process.env[key]);
+    Object.keys(originalEnv).forEach((key) => delete process.env[key]);
     Object.entries(config).forEach(([key, value]) => {
       process.env[key] = value;
     });
@@ -139,11 +138,11 @@ describe('Character Plugin Ordering', () => {
 
     it('should always place Ollama last as universal fallback', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-      
+
       const character = getElizaCharacter();
       const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
       const ollamaIndex = character.plugins.indexOf(PLUGINS.OLLAMA);
-      
+
       // Ollama should always be included and always be last
       expect(ollamaIndex).toBe(character.plugins.length - 1);
       expect(ollamaIndex).toBeGreaterThan(anthropicIndex);
@@ -200,12 +199,7 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENROUTER_API_KEY = 'openrouter-key';
 
       const character = getElizaCharacter();
-      const expectedOrder = [
-        PLUGINS.SQL,
-        PLUGINS.OPENROUTER,
-        PLUGINS.BOOTSTRAP,
-        PLUGINS.OLLAMA,
-      ];
+      const expectedOrder = [PLUGINS.SQL, PLUGINS.OPENROUTER, PLUGINS.BOOTSTRAP, PLUGINS.OLLAMA];
 
       expect(character.plugins).toEqual(expectedOrder);
     });
@@ -236,7 +230,6 @@ describe('Character Plugin Ordering', () => {
       expect(ollamaIndex).toBeGreaterThan(openrouterIndex);
       expect(googleIndex).toBeGreaterThan(anthropicIndex);
       expect(googleIndex).toBeGreaterThan(openrouterIndex);
-
     });
 
     it('should handle platform plugins with AI providers', () => {
@@ -257,7 +250,6 @@ describe('Character Plugin Ordering', () => {
       expect(telegramIndex).toBeGreaterThan(anthropicIndex);
       expect(discordIndex).toBeGreaterThan(openaiIndex);
       expect(telegramIndex).toBeGreaterThan(openaiIndex);
-
     });
 
     it('should handle Twitter plugin with all required tokens', () => {
@@ -278,7 +270,6 @@ describe('Character Plugin Ordering', () => {
 
       expect(twitterIndex).toBeGreaterThan(anthropicIndex);
       expect(twitterIndex).toBeGreaterThan(openaiIndex);
-
     });
 
     it('should NOT include Twitter plugin with incomplete tokens', () => {
@@ -290,27 +281,27 @@ describe('Character Plugin Ordering', () => {
     });
   });
 
-  describe("Error Handling", () => {
-    it("should handle invalid environment variable values gracefully", () => {
-      process.env.OLLAMA_API_ENDPOINT = "invalid-url";
-      process.env.OPENAI_API_KEY = "";
-      
+  describe('Error Handling', () => {
+    it('should handle invalid environment variable values gracefully', () => {
+      process.env.OLLAMA_API_ENDPOINT = 'invalid-url';
+      process.env.OPENAI_API_KEY = '';
+
       const character = getElizaCharacter();
       expect(character.plugins).toContain(PLUGINS.OLLAMA);
     });
 
-    it("should handle malformed Twitter credentials", () => {
-      process.env.TWITTER_API_KEY = "malformed";
-      process.env.TWITTER_API_SECRET_KEY = "";
-      
+    it('should handle malformed Twitter credentials', () => {
+      process.env.TWITTER_API_KEY = 'malformed';
+      process.env.TWITTER_API_SECRET_KEY = '';
+
       const character = getElizaCharacter();
       expect(character.plugins).not.toContain(PLUGINS.TWITTER);
     });
 
-    it("should handle whitespace-only environment variables", () => {
-      process.env.OPENAI_API_KEY = "   ";
-      process.env.ANTHROPIC_API_KEY = "\t\n";
-      
+    it('should handle whitespace-only environment variables', () => {
+      process.env.OPENAI_API_KEY = '   ';
+      process.env.ANTHROPIC_API_KEY = '\t\n';
+
       const character = getElizaCharacter();
       expect(character.plugins).toContain(PLUGINS.OLLAMA);
       expect(character.plugins).not.toContain(PLUGINS.OPENAI);
@@ -336,32 +327,31 @@ describe('Character Plugin Ordering', () => {
   });
 
   describe('Plugin Order Consistency', () => {
-
-    it("should ensure no duplicate plugins in any configuration", () => {
+    it('should ensure no duplicate plugins in any configuration', () => {
       setupTestEnvironment({
-        ANTHROPIC_API_KEY: "key",
-        OPENAI_API_KEY: "key",
-        OLLAMA_API_ENDPOINT: "http://localhost:11434",
-        GOOGLE_GENERATIVE_AI_API_KEY: "key"
+        ANTHROPIC_API_KEY: 'key',
+        OPENAI_API_KEY: 'key',
+        OLLAMA_API_ENDPOINT: 'http://localhost:11434',
+        GOOGLE_GENERATIVE_AI_API_KEY: 'key',
       });
-      
+
       const character = getElizaCharacter();
       const uniquePlugins = [...new Set(character.plugins)];
-      
+
       expect(character.plugins.length).toBe(uniquePlugins.length);
     });
 
-    it("should maintain performance with large environment variable sets", () => {
+    it('should maintain performance with large environment variable sets', () => {
       const startTime = Date.now();
-      
+
       // Set many environment variables to test performance
       for (let i = 0; i < 100; i++) {
         process.env[`TEST_VAR_${i}`] = `value_${i}`;
       }
-      
+
       const character = getElizaCharacter();
       const endTime = Date.now();
-      
+
       expect(character.plugins).toContain(PLUGINS.SQL);
       expect(character.plugins).toContain(PLUGINS.OLLAMA);
       expect(endTime - startTime).toBeLessThan(1000); // Should complete within 1 second
@@ -403,11 +393,7 @@ describe('Character Plugin Ordering', () => {
         expect(character.plugins[0]).toBe(PLUGINS.SQL);
 
         // Find embedding plugins
-        const embeddingPlugins = [
-          PLUGINS.OPENAI,
-          PLUGINS.OLLAMA,
-          PLUGINS.GOOGLE_GENAI,
-        ];
+        const embeddingPlugins = [PLUGINS.OPENAI, PLUGINS.OLLAMA, PLUGINS.GOOGLE_GENAI];
 
         const textOnlyPlugins = [PLUGINS.ANTHROPIC, PLUGINS.OPENROUTER];
 
@@ -430,31 +416,31 @@ describe('Character Plugin Ordering', () => {
     });
   });
 
-  describe("Integration Tests", () => {
-    it("should match expected plugin installation behavior from setup.ts", () => {
+  describe('Integration Tests', () => {
+    it('should match expected plugin installation behavior from setup.ts', () => {
       // This test ensures alignment between character plugin loading and setup installation
-      setupTestEnvironment({ ANTHROPIC_API_KEY: "test-key" });
-      
+      setupTestEnvironment({ ANTHROPIC_API_KEY: 'test-key' });
+
       const character = getElizaCharacter();
-      
+
       // Verify that plugins expected to be installed are actually included
       expect(character.plugins).toContain(PLUGINS.ANTHROPIC);
       expect(character.plugins).toContain(PLUGINS.OLLAMA); // Should always be fallback
-      
+
       // Verify ordering requirements from PR #5556
       verifyPluginOrder(character.plugins, PLUGINS.ANTHROPIC, PLUGINS.OLLAMA);
     });
 
-    it("should ensure Ollama is always included regardless of primary AI provider", () => {
+    it('should ensure Ollama is always included regardless of primary AI provider', () => {
       const testConfigs = [
-        { OPENAI_API_KEY: "key" },
-        { ANTHROPIC_API_KEY: "key" },
-        { GOOGLE_GENERATIVE_AI_API_KEY: "key" },
-        { OPENROUTER_API_KEY: "key" },
-        {} // No AI provider
+        { OPENAI_API_KEY: 'key' },
+        { ANTHROPIC_API_KEY: 'key' },
+        { GOOGLE_GENERATIVE_AI_API_KEY: 'key' },
+        { OPENROUTER_API_KEY: 'key' },
+        {}, // No AI provider
       ];
 
-      testConfigs.forEach(config => {
+      testConfigs.forEach((config) => {
         setupTestEnvironment(config);
         const character = getElizaCharacter();
         expect(character.plugins).toContain(PLUGINS.OLLAMA);

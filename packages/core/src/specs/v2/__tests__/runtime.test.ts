@@ -489,7 +489,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     it('createEntity should call adapter.createEntities', async () => {
       // Reset the mock to clear any calls from initialization
       (mockDatabaseAdapter.createEntities as any).mockClear();
-      
+
       const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'] };
       await runtime.createEntity(entityData);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);

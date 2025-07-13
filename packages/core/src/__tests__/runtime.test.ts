@@ -268,7 +268,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
         {
           id: agentId,
-          agentId: agentId,  
+          agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
@@ -305,7 +305,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
         {
           id: agentId,
-          agentId: agentId,  
+          agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);

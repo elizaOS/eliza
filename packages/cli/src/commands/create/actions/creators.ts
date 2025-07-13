@@ -5,7 +5,12 @@ import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
-import { setupProjectEnvironment, setupAIModelConfig, setupEmbeddingModelConfig, hasValidApiKey } from './setup';
+import {
+  setupProjectEnvironment,
+  setupAIModelConfig,
+  setupEmbeddingModelConfig,
+  hasValidApiKey,
+} from './setup';
 import {
   installDependenciesWithSpinner,
   buildProjectWithSpinner,
