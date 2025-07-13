@@ -3,25 +3,24 @@
   "description": "Utilities and objects for unit testing",
   "version": "1.2.0",
   "type": "module",
-  "private": true,
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
-  "license": "UNLICENSED",
-  "author": "${GITHUB_USERNAME}",
+  "license": "MIT",
+  "author": "elizaOS",
   "keywords": [
     "plugin",
     "elizaos"
   ],
   "repository": {
     "type": "git",
-    "url": "${REPO_URL}"
+    "url": "https://github.com/elizaos/elizaos"
   },
   "homepage": "https://elizaos.ai",
   "bugs": {
-    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
+    "url": "https://github.com/elizaos/elizaos/issues"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -70,12 +69,7 @@
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
-      }
-    }
+    "pluginParameters": {}
   },
   "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
 }
