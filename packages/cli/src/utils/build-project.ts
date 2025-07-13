@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec } from './bun-exec';
 import { detectDirectoryType } from './directory-detection';
 import { runBunWithSpinner } from './spinner-utils';
 import colors from 'yoctocolors';
@@ -69,12 +69,10 @@ export async function buildProject(cwd: string = process.cwd(), isPlugin = false
     const tsconfigPath = path.join(cwd, 'tsconfig.json');
     if (fs.existsSync(tsconfigPath)) {
       try {
-        const result = await execa('bunx', ['tsc', '--build'], {
+        const result = await bunExec('bunx', ['tsc', '--build'], {
           cwd,
-          stdio: 'pipe',
-          reject: false,
         });
-        if (result.exitCode === 0) {
+        if (result.success) {
           return;
         } else {
           throw new Error(`bunx tsc build failed: ${result.stderr || result.stdout}`);

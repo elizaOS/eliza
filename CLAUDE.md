@@ -134,6 +134,27 @@ bun run release:alpha   # Release alpha version
 - **IF A COMMAND DOESN'T WORK:** Check `package.json` in the relevant package directory for correct script names
 - Use `bun` for global installs: `bun install -g @elizaos/cli`
 
+### Process Execution
+
+- **NEVER USE `execa` OR OTHER PROCESS EXECUTION LIBRARIES**
+- **ALWAYS USE `Bun.spawn()` FOR SPAWNING PROCESSES**
+- **USE THE EXISTING `bun-exec` UTILITY:** Located at `packages/cli/src/utils/bun-exec.ts` which provides:
+  - `bunExec()` - Main execution function with full control
+  - `bunExecSimple()` - For simple command execution
+  - `bunExecInherit()` - For interactive commands
+  - `commandExists()` - To check if commands exist
+- **Example usage:**
+
+  ```typescript
+  import { bunExec, bunExecSimple } from '@/utils/bun-exec';
+
+  // Simple command
+  const output = await bunExecSimple('git status');
+
+  // Full control
+  const result = await bunExec('bun', ['test'], { cwd: '/path/to/dir' });
+  ```
+
 ### Git & GitHub
 
 - **ALWAYS USE `gh` CLI FOR GIT AND GITHUB OPERATIONS**

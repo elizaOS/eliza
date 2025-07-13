@@ -513,7 +513,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {UUID[]} entityIds - The unique identifiers of the entities to retrieve.
    * @returns {Promise<Entity[] | null>} A Promise that resolves to the entity with its components if found, null otherwise.
    */
-  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     return this.withDatabase(async () => {
       const result = await this.db
         .select({
@@ -645,7 +645,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     }
 
     try {
-      const existingEntities = await this.getEntityByIds([entity.id]);
+      const existingEntities = await this.getEntitiesByIds([entity.id]);
 
       if (!existingEntities || !existingEntities.length) {
         return await this.createEntities([entity]);
@@ -2109,7 +2109,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .from(participantTable)
         .where(eq(participantTable.entityId, entityId));
 
-      const entities = await this.getEntityByIds([entityId]);
+      const entities = await this.getEntitiesByIds([entityId]);
 
       if (!entities || !entities.length) {
         return [];

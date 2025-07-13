@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExec } from './bun-exec.js';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { parseBooleanFromText, logger } from '@elizaos/core';
@@ -38,13 +38,11 @@ export async function runCommandWithSpinner(
   try {
     spinner.start(options.spinnerText);
 
-    const result = await execa(command, args, {
+    const result = await bunExec(command, args, {
       cwd: options.cwd || process.cwd(),
-      stdio: 'pipe',
-      reject: false,
     });
 
-    if (result.exitCode === 0) {
+    if (result.success) {
       spinner.stop(options.successText);
       return {
         success: true,
@@ -163,13 +161,11 @@ export async function installPluginWithSpinner(
   spinner.start(`Installing ${packageName}${purposeText}...`);
 
   try {
-    const result = await execa('bun', ['add', packageName], {
+    const result = await bunExec('bun', ['add', packageName], {
       cwd: targetDir,
-      stdio: 'pipe',
-      reject: false,
     });
 
-    if (result.exitCode === 0) {
+    if (result.success) {
       spinner.stop(colors.green(`✓ ${packageName} installed successfully`));
     } else {
       // Log warning but don't throw - plugin installation is non-critical

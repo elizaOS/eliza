@@ -55,49 +55,15 @@ describe('Project Starter Character Plugin Ordering', () => {
     });
   });
 
-  describe('Local AI Fallback Logic Structure', () => {
-    it('should have local-ai fallback condition that checks all AI providers', () => {
-      // Test the structure of the conditional logic by examining the character definition
-      const characterStr = character.toString();
-
-      // The local-ai plugin should be conditional on NO other AI providers being available
-      expect(typeof character.plugins).toBe('object');
-      expect(Array.isArray(character.plugins)).toBe(true);
-
-      // Test the logical structure - local AI may or may not be present depending on env
-      const hasOtherAiProviders = character.plugins.some((plugin) =>
-        [
-          '@elizaos/plugin-anthropic',
-          '@elizaos/plugin-openai',
-          '@elizaos/plugin-openrouter',
-          '@elizaos/plugin-ollama',
-          '@elizaos/plugin-google-genai',
-        ].includes(plugin)
-      );
-      const hasLocalAi = character.plugins.includes('@elizaos/plugin-local-ai');
-
-      // If other AI providers exist, local-ai should not be present (and vice versa)
-      if (hasOtherAiProviders) {
-        expect(hasLocalAi).toBe(false);
-      } else {
-        expect(hasLocalAi).toBe(true);
-      }
-    });
-
+  describe('Plugin Structure and Ordering', () => {
     it('should structure embedding plugins after text-only plugins', () => {
       const plugins = character.plugins;
 
       // Find indices of key plugins
       const sqlIndex = plugins.indexOf('@elizaos/plugin-sql');
-      const localAiIndex = plugins.indexOf('@elizaos/plugin-local-ai');
 
       // SQL should be first
       expect(sqlIndex).toBe(0);
-
-      // Local AI should be last when present
-      if (localAiIndex !== -1) {
-        expect(localAiIndex).toBe(plugins.length - 1);
-      }
     });
   });
 
@@ -116,7 +82,6 @@ describe('Project Starter Character Plugin Ordering', () => {
         '@elizaos/plugin-openai',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-google-genai',
-        '@elizaos/plugin-local-ai',
       ];
 
       // Platform plugins
@@ -144,24 +109,6 @@ describe('Project Starter Character Plugin Ordering', () => {
 
       // Bootstrap should be present unless IGNORE_BOOTSTRAP is set
       expect(plugins).toContain('@elizaos/plugin-bootstrap');
-
-      // Local AI is only present when no other AI providers are available
-      const hasOtherAiProviders = plugins.some((plugin) =>
-        [
-          '@elizaos/plugin-anthropic',
-          '@elizaos/plugin-openai',
-          '@elizaos/plugin-openrouter',
-          '@elizaos/plugin-ollama',
-          '@elizaos/plugin-google-genai',
-        ].includes(plugin)
-      );
-      const hasLocalAi = plugins.includes('@elizaos/plugin-local-ai');
-
-      if (hasOtherAiProviders) {
-        expect(hasLocalAi).toBe(false);
-      } else {
-        expect(hasLocalAi).toBe(true);
-      }
     });
 
     it('should maintain proper ordering between plugin categories', () => {
@@ -170,14 +117,13 @@ describe('Project Starter Character Plugin Ordering', () => {
       // Get indices of representative plugins from each category
       const sqlIndex = plugins.indexOf('@elizaos/plugin-sql');
       const bootstrapIndex = plugins.indexOf('@elizaos/plugin-bootstrap');
-      const localAiIndex = plugins.indexOf('@elizaos/plugin-local-ai');
 
       // SQL should be first
       expect(sqlIndex).toBe(0);
 
-      // Bootstrap should come before embedding plugins
-      if (bootstrapIndex !== -1 && localAiIndex !== -1) {
-        expect(bootstrapIndex).toBeLessThan(localAiIndex);
+      // Bootstrap should be present
+      if (bootstrapIndex !== -1) {
+        expect(bootstrapIndex).toBeGreaterThan(sqlIndex);
       }
     });
   });
@@ -193,8 +139,8 @@ describe('Project Starter Character Plugin Ordering', () => {
       expect(plugins).toContain('@elizaos/plugin-sql');
       expect(plugins).toContain('@elizaos/plugin-bootstrap');
 
-      // Local AI presence depends on other AI providers
-      const hasOtherAiProviders = plugins.some((plugin) =>
+      // Should handle various AI providers
+      const hasAiProviders = plugins.some((plugin) =>
         [
           '@elizaos/plugin-anthropic',
           '@elizaos/plugin-openai',
@@ -203,10 +149,6 @@ describe('Project Starter Character Plugin Ordering', () => {
           '@elizaos/plugin-google-genai',
         ].includes(plugin)
       );
-
-      if (!hasOtherAiProviders) {
-        expect(plugins).toContain('@elizaos/plugin-local-ai');
-      }
     });
 
     it('should include proper conditional checks for Twitter', () => {
@@ -242,7 +184,6 @@ describe('Project Starter Character Plugin Ordering', () => {
         '@elizaos/plugin-openai',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-google-genai',
-        '@elizaos/plugin-local-ai',
       ];
 
       // Check if any embedding plugins are present
@@ -254,28 +195,6 @@ describe('Project Starter Character Plugin Ordering', () => {
           embeddingPlugins.includes(plugin)
         );
         expect(hasEmbeddingAtEnd).toBe(true);
-      }
-    });
-
-    it('should place local-ai as final fallback when present', () => {
-      const plugins = character.plugins;
-      const localAiIndex = plugins.indexOf('@elizaos/plugin-local-ai');
-
-      // Local AI should be the last plugin when it's present (no other AI providers)
-      if (localAiIndex !== -1) {
-        expect(localAiIndex).toBe(plugins.length - 1);
-      } else {
-        // If local AI is not present, other AI providers should exist
-        const hasOtherAiProviders = plugins.some((plugin) =>
-          [
-            '@elizaos/plugin-anthropic',
-            '@elizaos/plugin-openai',
-            '@elizaos/plugin-openrouter',
-            '@elizaos/plugin-ollama',
-            '@elizaos/plugin-google-genai',
-          ].includes(plugin)
-        );
-        expect(hasOtherAiProviders).toBe(true);
       }
     });
 
@@ -304,7 +223,6 @@ describe('Project Starter Character Plugin Ordering', () => {
         '@elizaos/plugin-openai',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-google-genai',
-        '@elizaos/plugin-local-ai',
       ];
 
       const textOnlyIndices = textOnlyPlugins
@@ -349,19 +267,14 @@ describe('Project Starter Character Plugin Ordering', () => {
         '@elizaos/plugin-google-genai',
       ];
 
-      // In a complete setup, local-ai should not be included
+      // In a complete setup, at least one AI provider should be present
       // Test the logical structure based on current environment
       const hasOtherAiProviders = character.plugins.some((plugin) =>
         allAiProviders.includes(plugin)
       );
-      const hasLocalAi = character.plugins.includes('@elizaos/plugin-local-ai');
 
-      // If other AI providers exist, local-ai should not be present
-      if (hasOtherAiProviders) {
-        expect(hasLocalAi).toBe(false);
-      } else {
-        expect(hasLocalAi).toBe(true);
-      }
+      // At least one AI provider should be present
+      expect(hasOtherAiProviders).toBe(true);
     });
 
     it('should validate embedding vs text-only categorization', () => {
@@ -369,7 +282,6 @@ describe('Project Starter Character Plugin Ordering', () => {
         '@elizaos/plugin-openai',
         '@elizaos/plugin-ollama',
         '@elizaos/plugin-google-genai',
-        '@elizaos/plugin-local-ai',
       ];
 
       const textOnlyPlugins = ['@elizaos/plugin-anthropic', '@elizaos/plugin-openrouter'];
@@ -402,20 +314,9 @@ describe('Project Starter Character Plugin Ordering', () => {
           '@elizaos/plugin-google-genai',
         ].includes(plugin)
       );
-      const hasLocalAi = plugins.includes('@elizaos/plugin-local-ai');
 
-      // Either has other AI providers OR has local-ai fallback
-      expect(hasOtherAiProviders || hasLocalAi).toBe(true);
-
-      // Conditional plugins depend on actual environment variables
-      // Test that the structure is logical based on what's present
-      if (hasOtherAiProviders) {
-        // If other AI providers are present, local-ai should not be
-        expect(hasLocalAi).toBe(false);
-      } else {
-        // If no other AI providers, local-ai should be present as fallback
-        expect(hasLocalAi).toBe(true);
-      }
+      // Should have at least one AI provider
+      expect(hasOtherAiProviders).toBe(true);
     });
   });
 

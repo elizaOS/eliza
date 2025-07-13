@@ -108,7 +108,7 @@ plugins: [
   '@elizaos/plugin-sql', // Always first
   '@elizaos/plugin-openai',
   // OR '@elizaos/plugin-google',  // OR use Google for embeddings
-  // OR '@elizaos/plugin-local-ai', // OR use local embeddings
+  // OR '@elizaos/plugin-ollama', // OR use Ollama for embeddings
   '@elizaos/plugin-knowledge', // Always after sql and embedding provider
 ];
 ```
@@ -373,7 +373,7 @@ This guide covers the installation process...
 
    - `@elizaos/plugin-openai` (requires `OPENAI_API_KEY`)
    - `@elizaos/plugin-google` (requires `GOOGLE_API_KEY`)
-   - `@elizaos/plugin-local-ai` (for local models)
+   - `@elizaos/plugin-ollama` (for local models)
 
 3. **Check environment variables** - Ensure your embedding provider has valid credentials
 

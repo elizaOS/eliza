@@ -38,6 +38,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   close: mock(async () => undefined),
   getConnection: mock(async () => ({})),
   getEntityByIds: mock(async () => []),
+  getEntitiesByIds: mock(async () => []),
   createEntities: mock(async () => true),
   getMemories: mock(async () => []),
   getMemoryById: mock(async () => null),
@@ -266,6 +267,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           names: [mockCharacter.name],
         },
       ]);
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockImplementation(async () => [
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
       (mockDatabaseAdapter.getRoomsByIds as any).mockImplementation(async () => []);
       (mockDatabaseAdapter.getParticipantsForRoom as any).mockImplementation(async () => []);
 
@@ -367,7 +375,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
   describe('Model Usage', () => {
     it('should call registered model handler', async () => {
-      const modelHandler = mock(async () => ({ result: 'success' }));
+      const modelHandler = mock(async () => 'success');
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler);
@@ -384,11 +392,21 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(paramsArg.someOption).toBe(params.someOption);
       expect(paramsArg.runtime).toBeDefined();
       expect(paramsArg.runtime.agentId).toBe(runtime.agentId);
-      expect(result).toEqual({ result: 'success' });
+      expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
-      expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
-        expect.objectContaining({ type: `useModel:${modelType}` })
+      // In the updated runtime, we log once for useModel
+      expect(mockDatabaseAdapter.log).toHaveBeenCalledTimes(1);
+
+      // Check that at least one log call contains the modelType
+      const logCalls = (mockDatabaseAdapter.log as any).mock.calls;
+
+      // Only check for useModel log since prompt logging might be conditional
+      const hasUseModelLog = logCalls.some(
+        (call: any[]) =>
+          call[0]?.type === `useModel:${modelType}` && call[0]?.body?.modelType === modelType
       );
+
+      expect(hasUseModelLog).toBe(true);
     });
 
     it('should throw if model type is not registered', async () => {
@@ -438,7 +456,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {}, // options
+        expect.objectContaining({
+          context: expect.objectContaining({
+            previousResults: expect.any(Array),
+            getPreviousResult: expect.any(Function),
+          }),
+        }), // options now contains context
         undefined, // callback
         [responseMemory] // responses array
       );
@@ -464,6 +487,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
     it('createEntity should call adapter.createEntities', async () => {
+      // Reset the mock to clear any calls from initialization
+      (mockDatabaseAdapter.createEntities as any).mockClear();
+
       const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'] };
       await runtime.createEntity(entityData);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);

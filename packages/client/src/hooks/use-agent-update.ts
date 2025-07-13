@@ -1,5 +1,5 @@
 import { usePartialUpdate } from '@/hooks/use-partial-update';
-import type { Agent } from '@elizaos/core';
+import type { Agent, Character } from '@elizaos/core';
 import { useCallback, useRef } from 'react';
 
 /**
@@ -30,7 +30,7 @@ export function useAgentUpdate(initialAgent: Agent) {
    * @param templateAgent The agent template to import
    */
   const importAgent = useCallback(
-    (templateAgent: Agent) => {
+    (templateAgent: Character) => {
       // For each top-level property in the template, update it in the current agent
       Object.entries(templateAgent).forEach(([key, value]) => {
         if (key === 'settings' && value) {

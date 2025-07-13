@@ -1,7 +1,7 @@
 export interface VoiceModel {
   value: string;
   label: string;
-  provider: 'local' | 'elevenlabs' | 'openai' | 'none';
+  provider: 'elevenlabs' | 'openai' | 'none';
   gender?: 'male' | 'female';
   language?: string;
   features?: string[];
@@ -13,7 +13,6 @@ export interface VoiceModel {
 
 export const providerPluginMap: Record<string, string> = {
   elevenlabs: '@elizaos/plugin-elevenlabs',
-  local: '@elizaos/plugin-local-ai',
   openai: '@elizaos/plugin-openai',
   none: '', // No plugin needed for "No Voice" option
 };
@@ -21,12 +20,7 @@ export const providerPluginMap: Record<string, string> = {
 // No voice option for agents that don't need speech capabilities
 export const noVoiceModel: VoiceModel[] = [{ value: 'none', label: 'No Voice', provider: 'none' }];
 
-export const localVoiceModels: VoiceModel[] = [
-  { value: 'female_1', label: 'Local Voice - Female 1', provider: 'local', gender: 'female' },
-  { value: 'female_2', label: 'Local Voice - Female 2', provider: 'local', gender: 'female' },
-  { value: 'male_1', label: 'Local Voice - Male 1', provider: 'local', gender: 'male' },
-  { value: 'male_2', label: 'Local Voice - Male 2', provider: 'local', gender: 'male' },
-];
+export const localVoiceModels: VoiceModel[] = [];
 
 export const elevenLabsVoiceModels: VoiceModel[] = [
   {
@@ -159,11 +153,9 @@ export const getAllVoiceModels = (): VoiceModel[] => {
 };
 
 export const getVoiceModelsByProvider = (
-  provider: 'local' | 'elevenlabs' | 'openai' | 'none'
+  provider: 'elevenlabs' | 'openai' | 'none'
 ): VoiceModel[] => {
   switch (provider) {
-    case 'local':
-      return localVoiceModels;
     case 'elevenlabs':
       return elevenLabsVoiceModels;
     case 'openai':

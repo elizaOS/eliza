@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      issues: read
+      issues: write
       id-token: write
     steps:
       - name: Checkout repository
@@ -44,14 +44,16 @@ jobs:
           # Optional: Trigger when specific user is assigned to an issue
           # assignee_trigger: "claude-bot"
 
-          # Optional: Allow Claude to run specific commands
-          # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
+          # Allow Claude to run all bash and GitHub CLI commands
+          allowed_tools: 'Bash(*),Bash(gh *)'
 
-          # Optional: Add custom instructions for Claude to customize its behavior for your project
-          # custom_instructions: |
-          #   Follow our coding standards
-          #   Ensure all new code has tests
-          #   Use TypeScript for new files
+          # Custom instructions for Claude to handle ElizaOS standards
+          custom_instructions: |
+            Be concise. Focus on actionable solutions.
+            - Use bun only (no npm/pnpm/yarn)
+            - Use bun test only (no jest/vitest)
+            - Check logs: gh run view <run-id> --log
+            - Follow CLAUDE.md standards
 
           # Optional: Custom environment variables for Claude
           # claude_env: |

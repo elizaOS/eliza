@@ -12,6 +12,7 @@ import {
   type State,
   type UUID,
   World,
+  type ActionResult,
 } from '@elizaos/core';
 import dedent from 'dedent';
 
@@ -89,10 +90,22 @@ export const updateRoleAction: Action = {
     state?: State,
     _options?: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     if (!state) {
       logger.error('State is required for role assignment');
-      throw new Error('State is required for role assignment');
+      return {
+        text: 'State is required for role assignment',
+        values: {
+          success: false,
+          error: 'STATE_REQUIRED',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'State is required',
+        },
+        success: false,
+        error: new Error('State is required for role assignment'),
+      };
     }
 
     // Extract needed values from message and state
@@ -112,7 +125,18 @@ export const updateRoleAction: Action = {
       await callback?.({
         text: "I couldn't find the world. This action only works in a world.",
       });
-      return;
+      return {
+        text: 'World not found',
+        values: {
+          success: false,
+          error: 'WORLD_NOT_FOUND',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'World not found',
+        },
+        success: false,
+      };
     }
 
     if (!world.metadata?.roles) {
@@ -194,16 +218,34 @@ export const updateRoleAction: Action = {
         actions: ['UPDATE_ROLE'],
         source: 'discord',
       });
-      return;
+      return {
+        text: 'No valid role assignments found',
+        values: {
+          success: false,
+          error: 'NO_ASSIGNMENTS',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'No valid role assignments found in the request',
+        },
+        success: false,
+      };
     }
 
     // Process each role assignment
     let worldUpdated = false;
+    const successfulUpdates: Array<{ entityId: string; entityName: string; newRole: Role }> = [];
+    const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
     for (const assignment of result) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        logger.error('Could not find an ID ot assign to');
+        logger.error('Could not find an ID to assign to');
+        failedUpdates.push({
+          entityId: assignment.entityId,
+          reason: 'Entity not found',
+        });
+        continue;
       }
 
       const currentRole = world.metadata.roles[assignment.entityId];
@@ -215,6 +257,10 @@ export const updateRoleAction: Action = {
           actions: ['UPDATE_ROLE'],
           source: 'discord',
         });
+        failedUpdates.push({
+          entityId: assignment.entityId,
+          reason: 'Insufficient permissions',
+        });
         continue;
       }
 
@@ -222,6 +268,11 @@ export const updateRoleAction: Action = {
       world.metadata.roles[assignment.entityId] = assignment.newRole;
 
       worldUpdated = true;
+      successfulUpdates.push({
+        entityId: assignment.entityId,
+        entityName: targetEntity?.names[0] || 'Unknown',
+        newRole: assignment.newRole,
+      });
 
       await callback?.({
         text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
@@ -232,9 +283,46 @@ export const updateRoleAction: Action = {
 
     // Save updated world metadata if any changes were made
     if (worldUpdated) {
-      await runtime.updateWorld(world);
-      logger.info(`Updated roles in world metadata for server ${serverId}`);
+      try {
+        await runtime.updateWorld(world);
+        logger.info(`Updated roles in world metadata for server ${serverId}`);
+      } catch (error) {
+        logger.error('Failed to save world updates:', error);
+        return {
+          text: 'Failed to save role updates',
+          values: {
+            success: false,
+            error: 'SAVE_FAILED',
+          },
+          data: {
+            actionName: 'UPDATE_ROLE',
+            error: error instanceof Error ? error.message : String(error),
+            attemptedUpdates: successfulUpdates,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
     }
+
+    return {
+      text: `Role updates completed: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`,
+      values: {
+        success: true,
+        successfulUpdates: successfulUpdates.length,
+        failedUpdates: failedUpdates.length,
+        updates: successfulUpdates,
+        failures: failedUpdates,
+      },
+      data: {
+        actionName: 'UPDATE_ROLE',
+        successfulUpdates,
+        failedUpdates,
+        worldId: world.id,
+        serverId,
+      },
+      success: true,
+    };
   },
 
   examples: [

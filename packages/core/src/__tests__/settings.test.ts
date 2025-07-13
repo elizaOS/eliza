@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
@@ -73,6 +73,10 @@ describe('settings utilities', () => {
       serverId: 'server-123',
       metadata: {},
     };
+  });
+
+  afterEach(() => {
+    mock.restore();
   });
 
   describe('createSettingFromConfig', () => {

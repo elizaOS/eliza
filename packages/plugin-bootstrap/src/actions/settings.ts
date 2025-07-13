@@ -16,6 +16,7 @@ import {
   type Setting,
   type State,
   type WorldSettings,
+  type ActionResult,
 } from '@elizaos/core';
 import dedent from 'dedent';
 
@@ -271,7 +272,7 @@ export async function updateWorldSettings(
 function formatSettingsList(worldSettings: WorldSettings): string {
   const settings = Object.entries(worldSettings)
     .filter(([key]) => !key.startsWith('_')) // Skip internal settings
-    .map(([key, setting]) => {
+    .map(([key, setting]: [string, Setting]) => {
       const status = setting.value !== null ? 'Configured' : 'Not configured';
       const required = setting.required ? 'Required' : 'Optional';
       return `- ${setting.name} (${key}): ${status}, ${required}`;
@@ -293,16 +294,18 @@ function categorizeSettings(worldSettings: WorldSettings): {
   const requiredUnconfigured: [string, Setting][] = [];
   const optionalUnconfigured: [string, Setting][] = [];
 
-  for (const [key, setting] of Object.entries(worldSettings) as [string, Setting][]) {
+  for (const [key, setting] of Object.entries(worldSettings)) {
     // Skip internal settings
     if (key.startsWith('_')) continue;
 
-    if (setting.value !== null) {
-      configured.push([key, setting]);
-    } else if (setting.required) {
-      requiredUnconfigured.push([key, setting]);
+    const typedSetting = setting as Setting;
+
+    if (typedSetting.value !== null) {
+      configured.push([key, typedSetting]);
+    } else if (typedSetting.required) {
+      requiredUnconfigured.push([key, typedSetting]);
     } else {
-      optionalUnconfigured.push([key, setting]);
+      optionalUnconfigured.push([key, typedSetting]);
     }
   }
 
@@ -488,7 +491,7 @@ async function handleOnboardingComplete(
   worldSettings: WorldSettings,
   _state: State,
   callback: HandlerCallback
-): Promise<void> {
+): Promise<ActionResult> {
   try {
     // Generate completion message
     const prompt = composePrompt({
@@ -509,6 +512,21 @@ async function handleOnboardingComplete(
       actions: ['ONBOARDING_COMPLETE'],
       source: 'discord',
     });
+
+    return {
+      text: 'Onboarding completed successfully',
+      values: {
+        success: true,
+        onboardingComplete: true,
+        allRequiredConfigured: true,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'ONBOARDING_COMPLETE',
+        settingsStatus: formatSettingsList(worldSettings),
+      },
+      success: true,
+    };
   } catch (error) {
     logger.error(`Error handling settings completion: ${error}`);
     await callback({
@@ -516,6 +534,21 @@ async function handleOnboardingComplete(
       actions: ['ONBOARDING_COMPLETE'],
       source: 'discord',
     });
+
+    return {
+      text: 'Onboarding completed with fallback message',
+      values: {
+        success: true,
+        onboardingComplete: true,
+        fallbackUsed: true,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'ONBOARDING_COMPLETE',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      success: true,
+    };
   }
 }
 
@@ -528,15 +561,14 @@ async function generateSuccessResponse(
   state: State,
   messages: string[],
   callback: HandlerCallback
-): Promise<void> {
+): Promise<ActionResult> {
   try {
     // Check if all required settings are now configured
     const { requiredUnconfigured } = categorizeSettings(worldSettings);
 
     if (requiredUnconfigured.length === 0) {
       // All required settings are configured, complete settings
-      await handleOnboardingComplete(runtime, worldSettings, state, callback);
-      return;
+      return await handleOnboardingComplete(runtime, worldSettings, state, callback);
     }
 
     const requiredUnconfiguredString = requiredUnconfigured
@@ -564,6 +596,22 @@ async function generateSuccessResponse(
       actions: ['SETTING_UPDATED'],
       source: 'discord',
     });
+
+    return {
+      text: 'Settings updated successfully',
+      values: {
+        success: true,
+        settingsUpdated: true,
+        remainingRequired: requiredUnconfigured.length,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATED',
+        updatedMessages: messages,
+        remainingRequired: requiredUnconfigured.length,
+      },
+      success: true,
+    };
   } catch (error) {
     logger.error(`Error generating success response: ${error}`);
     await callback({
@@ -571,6 +619,21 @@ async function generateSuccessResponse(
       actions: ['SETTING_UPDATED'],
       source: 'discord',
     });
+
+    return {
+      text: 'Settings updated with fallback message',
+      values: {
+        success: true,
+        settingsUpdated: true,
+        fallbackUsed: true,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATED',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      success: true,
+    };
   }
 }
 
@@ -582,15 +645,14 @@ async function generateFailureResponse(
   worldSettings: WorldSettings,
   state: State,
   callback: HandlerCallback
-): Promise<void> {
+): Promise<ActionResult> {
   try {
     // Get next required setting
     const { requiredUnconfigured } = categorizeSettings(worldSettings);
 
     if (requiredUnconfigured.length === 0) {
       // All required settings are configured, complete settings
-      await handleOnboardingComplete(runtime, worldSettings, state, callback);
-      return;
+      return await handleOnboardingComplete(runtime, worldSettings, state, callback);
     }
 
     const requiredUnconfiguredString = requiredUnconfigured
@@ -617,6 +679,21 @@ async function generateFailureResponse(
       actions: ['SETTING_UPDATE_FAILED'],
       source: 'discord',
     });
+
+    return {
+      text: 'No settings were updated',
+      values: {
+        success: false,
+        settingsUpdated: false,
+        remainingRequired: requiredUnconfigured.length,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATE_FAILED',
+        remainingRequired: requiredUnconfigured.length,
+      },
+      success: false,
+    };
   } catch (error) {
     logger.error(`Error generating failure response: ${error}`);
     await callback({
@@ -624,6 +701,21 @@ async function generateFailureResponse(
       actions: ['SETTING_UPDATE_FAILED'],
       source: 'discord',
     });
+
+    return {
+      text: 'Failed to parse settings with fallback message',
+      values: {
+        success: false,
+        settingsUpdated: false,
+        fallbackUsed: true,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATE_FAILED',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      success: false,
+    };
   }
 }
 
@@ -634,7 +726,7 @@ async function generateErrorResponse(
   runtime: IAgentRuntime,
   state: State,
   callback: HandlerCallback
-): Promise<void> {
+): Promise<ActionResult> {
   try {
     const prompt = composePromptFromState({
       state,
@@ -652,6 +744,19 @@ async function generateErrorResponse(
       actions: ['SETTING_UPDATE_ERROR'],
       source: 'discord',
     });
+
+    return {
+      text: 'Error processing settings',
+      values: {
+        success: false,
+        error: 'PROCESSING_ERROR',
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATE_ERROR',
+      },
+      success: false,
+    };
   } catch (error) {
     logger.error(`Error generating error response: ${error}`);
     await callback({
@@ -659,6 +764,22 @@ async function generateErrorResponse(
       actions: ['SETTING_UPDATE_ERROR'],
       source: 'discord',
     });
+
+    return {
+      text: 'Error with fallback message',
+      values: {
+        success: false,
+        error: 'PROCESSING_ERROR',
+        fallbackUsed: true,
+      },
+      data: {
+        actionName: 'UPDATE_SETTINGS',
+        action: 'SETTING_UPDATE_ERROR',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      success: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
   }
 }
 
@@ -710,21 +831,61 @@ export const updateSettingsAction: Action = {
     state?: State,
     _options?: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         logger.error('State is required for settings handler');
-        throw new Error('State is required for settings handler');
+        if (callback) {
+          await generateErrorResponse(runtime, state!, callback);
+        }
+        return {
+          text: 'State is required for settings handler',
+          values: {
+            success: false,
+            error: 'STATE_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'State is required',
+          },
+          success: false,
+          error: new Error('State is required for settings handler'),
+        };
       }
 
       if (!message) {
         logger.error('Message is required for settings handler');
-        throw new Error('Message is required for settings handler');
+        await generateErrorResponse(runtime, state, callback!);
+        return {
+          text: 'Message is required for settings handler',
+          values: {
+            success: false,
+            error: 'MESSAGE_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'Message is required',
+          },
+          success: false,
+          error: new Error('Message is required for settings handler'),
+        };
       }
 
       if (!callback) {
         logger.error('Callback is required for settings handler');
-        throw new Error('Callback is required for settings handler');
+        return {
+          text: 'Callback is required for settings handler',
+          values: {
+            success: false,
+            error: 'CALLBACK_REQUIRED',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'Callback is required',
+          },
+          success: false,
+          error: new Error('Callback is required for settings handler'),
+        };
       }
 
       // Find the server where this user is the owner
@@ -734,7 +895,19 @@ export const updateSettingsAction: Action = {
       if (!serverOwnership) {
         logger.error(`No server found for user ${message.entityId} in handler`);
         await generateErrorResponse(runtime, state, callback);
-        return;
+        return {
+          text: 'No server found for user',
+          values: {
+            success: false,
+            error: 'NO_SERVER_FOUND',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'No server found where user is owner',
+            entityId: message.entityId,
+          },
+          success: false,
+        };
       }
 
       const serverId = serverOwnership?.serverId;
@@ -742,7 +915,20 @@ export const updateSettingsAction: Action = {
 
       if (!serverId) {
         logger.error(`No server ID found for user ${message.entityId} in handler`);
-        return;
+        await generateErrorResponse(runtime, state, callback);
+        return {
+          text: 'No server ID found',
+          values: {
+            success: false,
+            error: 'NO_SERVER_ID',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'No server ID found',
+            entityId: message.entityId,
+          },
+          success: false,
+        };
       }
 
       // Get settings state from world metadata
@@ -751,7 +937,19 @@ export const updateSettingsAction: Action = {
       if (!worldSettings) {
         logger.error(`No settings state found for server ${serverId} in handler`);
         await generateErrorResponse(runtime, state, callback);
-        return;
+        return {
+          text: 'No settings state found',
+          values: {
+            success: false,
+            error: 'NO_SETTINGS_STATE',
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'No settings state found for server',
+            serverId,
+          },
+          success: false,
+        };
       }
 
       // Extract setting values from message
@@ -776,7 +974,19 @@ export const updateSettingsAction: Action = {
         if (!updatedWorldSettings) {
           logger.error('Failed to retrieve updated settings state');
           await generateErrorResponse(runtime, state, callback);
-          return;
+          return {
+            text: 'Failed to retrieve updated settings state',
+            values: {
+              success: false,
+              error: 'RETRIEVE_FAILED',
+            },
+            data: {
+              actionName: 'UPDATE_SETTINGS',
+              error: 'Failed to retrieve updated settings state',
+              serverId,
+            },
+            success: false,
+          };
         }
 
         await generateSuccessResponse(
@@ -786,15 +996,72 @@ export const updateSettingsAction: Action = {
           updateResults.messages,
           callback
         );
+
+        // Check if all required settings are configured
+        const { requiredUnconfigured } = categorizeSettings(updatedWorldSettings);
+        const allConfigured = requiredUnconfigured.length === 0;
+
+        return {
+          text: `Settings updated successfully`,
+          values: {
+            success: true,
+            settingsUpdated: extractedSettings.length,
+            updatedSettings: extractedSettings.map((s) => s.key),
+            remainingRequired: requiredUnconfigured.length,
+            allConfigured,
+            serverId,
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            updatedSettings: extractedSettings,
+            messages: updateResults.messages,
+            remainingRequired: requiredUnconfigured.map(([key, _]) => key),
+            allConfigured,
+            serverId,
+          },
+          success: true,
+        };
       } else {
         logger.info('No settings were updated');
         await generateFailureResponse(runtime, worldSettings, state, callback);
+
+        const { requiredUnconfigured } = categorizeSettings(worldSettings);
+
+        return {
+          text: 'No settings were updated',
+          values: {
+            success: false,
+            error: 'NO_UPDATES',
+            remainingRequired: requiredUnconfigured.length,
+            serverId,
+          },
+          data: {
+            actionName: 'UPDATE_SETTINGS',
+            error: 'No valid settings found in message',
+            remainingRequired: requiredUnconfigured.map(([key, _]) => key),
+            serverId,
+          },
+          success: false,
+        };
       }
     } catch (error) {
       logger.error(`Error in settings handler: ${error}`);
       if (state && callback) {
         await generateErrorResponse(runtime, state, callback);
       }
+      return {
+        text: 'Error in settings handler',
+        values: {
+          success: false,
+          error: 'HANDLER_ERROR',
+        },
+        data: {
+          actionName: 'UPDATE_SETTINGS',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
   examples: [

@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, synchronize]
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
@@ -44,33 +44,36 @@ jobs:
 
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            Review this PR. Be concise and actionable.
 
-            Be constructive and helpful in your feedback.
+            **🚨 CRITICAL CHECKS:**
+            - Security: hardcoded keys, SQL injection, XSS
+            - No tests = REJECT (untested code is broken)
+            - Wrong tools: npm/pnpm/yarn/jest/vitest = REJECT
+            - Breaking changes without migration = REJECT
 
-          # Optional: Customize review based on file types
-          # direct_prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
+            **✅ REQUIRED:**
+            - TypeScript types (no 'any')
+            - Tests with bun test ONLY
+            - Use @elizaos/core imports (not packages/core)
+            - Functional code (no classes)
+            - Error handling
 
-          # Optional: Different prompts for different authors
-          # direct_prompt: |
-          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' &&
-          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
-          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+            **📋 VERIFY:**
+            - All new code has tests
+            - bun commands only in package.json
+            - No circular dependencies
+            - Follows existing patterns
+            - Docs updated if needed
 
-          # Optional: Add specific tools for running tests or linting
-          # allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck)"
+            **🎯 OUTPUT FORMAT:**
+            ```
+            ❌ CRITICAL: [issue] → Fix: [specific action]
+            ⚠️ IMPORTANT: [issue] → Fix: [specific action]
+            💡 SUGGESTION: [improvement] → Consider: [action]
+            ```
 
-          # Optional: Skip review for certain conditions
-          # if: |
-          #   !contains(github.event.pull_request.title, '[skip-review]') &&
-          #   !contains(github.event.pull_request.title, '[WIP]')
+            Skip explanations. List issues with fixes.
+
+          # Allow Claude to run all bash and gh commands during review
+          allowed_tools: 'Bash(*),Bash(gh *)'

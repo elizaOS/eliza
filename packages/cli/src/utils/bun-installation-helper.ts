@@ -1,60 +1,78 @@
 import { logger } from '@elizaos/core';
 import { emoji } from './emoji-handler';
+import { bunExec, commandExists } from './bun-exec';
 
-/**
- * Display helpful bun installation instructions with OS-specific commands
- */
-export function displayBunInstallationTips(): void {
-  logger.error(`\n${emoji.error('Bun is not installed or not found in PATH')}`);
-  logger.info(`\n${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
+export interface BunInstallationResult {
+  installed: boolean;
+  message: string;
+  error?: string;
+}
 
-  // Detect OS and show relevant command
+export async function checkBunInstallation(): Promise<BunInstallationResult> {
+  try {
+    // Check if bun is available
+    const bunExists = await commandExists('bun');
+
+    if (bunExists) {
+      // Get bun version
+      const result = await bunExec('bun', ['--version']);
+
+      if (result.success) {
+        const version = result.stdout.trim();
+
+        return {
+          installed: true,
+          message: `Bun ${version} is installed`,
+        };
+      } else {
+        return {
+          installed: false,
+          message: 'Bun command failed',
+          error: result.stderr || 'Unknown error',
+        };
+      }
+    } else {
+      return {
+        installed: false,
+        message: 'Bun is not installed',
+      };
+    }
+  } catch (error) {
+    return {
+      installed: false,
+      message: 'Failed to check Bun installation',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function displayBunInstallInstructions(): void {
   const platform = process.platform;
 
-  if (platform === 'win32') {
-    logger.info(`\n${emoji.package('Windows:')}`);
-    logger.info('   powershell -c "irm bun.sh/install.ps1 | iex"');
-    logger.info('   # or use Scoop: scoop install bun');
-    logger.info('   # or use Chocolatey: choco install bun');
-  } else {
-    logger.info(`\n${emoji.penguin('Linux/macOS:')}`);
-    logger.info('   curl -fsSL https://bun.sh/install | bash');
+  logger.error(
+    `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+  );
+  logger.error('');
+  logger.error(`${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
+  logger.error('');
 
+  if (platform === 'win32') {
+    logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+  } else {
+    logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
     if (platform === 'darwin') {
-      logger.info('   # or use Homebrew: brew install bun');
+      logger.error('   macOS (Homebrew): brew install bun');
     }
   }
-
-  logger.info(`\n${emoji.link('More installation options: https://bun.sh/docs/installation')}`);
-  logger.info(`\n${emoji.tip('After installation, restart your terminal or run:')}`);
-  logger.info('   source ~/.bashrc  # Linux');
-  logger.info('   source ~/.zshrc   # macOS with zsh');
-  logger.info('   # or restart your terminal');
+  logger.error('');
+  logger.error('   More options: https://bun.sh/docs/installation');
+  logger.error('   After installation, restart your terminal or source your shell profile');
+  logger.error('');
 }
 
 /**
- * Display compact bun installation tip for inline use
+ * Returns a compact installation tip for bun
  */
 export function displayBunInstallationTipCompact(): string {
-  const platform = process.platform;
-
-  if (platform === 'win32') {
-    return 'Install bun: powershell -c "irm bun.sh/install.ps1 | iex" (see https://bun.sh/docs/installation)';
-  } else {
-    return 'Install bun: curl -fsSL https://bun.sh/install | bash (see https://bun.sh/docs/installation)';
-  }
-}
-
-/**
- * Check if bun is available and provide installation tips if not
- */
-export async function ensureBunAvailable(): Promise<boolean> {
-  try {
-    const { execa } = await import('execa');
-    await execa('bun', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch (error) {
-    displayBunInstallationTips();
-    return false;
-  }
+  return 'Please install Bun from https://bun.sh';
 }

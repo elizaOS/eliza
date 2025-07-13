@@ -31,6 +31,32 @@ export async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
+        // Configure Ollama for local AI usage
+        if (isNonInteractive) {
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# Local AI Configuration (using Ollama)\n';
+          content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+          content += 'OLLAMA_MODEL=gemma3\n';
+          content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
+          content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+          content += '# Pull models with: ollama pull gemma3 && ollama pull nomic-embed-text\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+        } else {
+          // Interactive mode - prompt for Ollama configuration
+          await promptAndStoreOllamaConfig(envFilePath);
+          // Also set up embedding model
+          await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+        }
         break;
       }
 
@@ -124,7 +150,7 @@ export async function setupAIModelConfig(
           content += '\n# AI Model Configuration\n';
           content += '# Ollama Configuration\n';
           content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
-          content += 'OLLAMA_MODEL=llama2\n';
+          content += 'OLLAMA_MODEL=gemma3\n';
           content += 'USE_OLLAMA_TEXT_MODELS=true\n';
           content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
 
@@ -174,7 +200,7 @@ export async function setupAIModelConfig(
 /**
  * Checks if an environment variable has a real value (not a placeholder) in the content
  */
-function hasValidApiKey(content: string, keyName: string): boolean {
+export function hasValidApiKey(content: string, keyName: string): boolean {
   const regex = new RegExp(`^${keyName}=(.+)$`, 'm');
   const match = content.match(regex);
   if (!match) return false;
@@ -372,9 +398,23 @@ export async function setupProjectEnvironment(
     }
   }
 
-  // Install AI model plugin (skip for local AI)
-  if (aiModel !== 'local') {
+  // Always set up Ollama as universal fallback (if not already configured)
+  // This should happen regardless of interactive mode since Ollama is always included
+  const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
+  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
+    await setupEmbeddingModelConfig('ollama', envFilePath, true);
+  }
+
+  // Install AI model plugin
+  if (aiModel === 'local') {
+    // Install Ollama plugin for local AI
+    await installModelPlugin('ollama', targetDir, 'for local AI');
+  } else {
     await installModelPlugin(aiModel, targetDir);
+    // Always install Ollama as fallback since character always includes it
+    if (aiModel !== 'ollama') {
+      await installModelPlugin('ollama', targetDir, 'as fallback');
+    }
   }
 
   // Install embedding model plugin if different from AI model
