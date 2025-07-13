@@ -30,7 +30,7 @@ const SAMPLE_ENV_TEMPLATE = `### elizaOS Environment Variables ###
 # Please read the comments for each of the configurations
 
 ## The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys,
-## i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the local-ai or ollama plugin
+## i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the ollama plugin
 ## Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
 ## For multi-agent, each agent will need keys for the various services it is connected to
 -------------------------------
@@ -42,7 +42,7 @@ const SAMPLE_ENV_TEMPLATE = `### elizaOS Environment Variables ###
 ## and you can use them by overriding the base URL
 
 ## NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will
-## need to get embeddings using another provider, for example openai or our local-ai plugin
+## need to get embeddings using another provider, for example openai or ollama
 
 # OpenAI Configuration
 OPENAI_API_KEY=
@@ -75,16 +75,6 @@ ANTHROPIC_API_KEY=
 # OLLAMA_SMALL_MODEL=gemma3:latest
 # OLLAMA_MEDIUM_MODEL=gemma3:latest
 # OLLAMA_LARGE_MODEL=gemma3:latest
-
-
-# Local AI Configuration
-## REMEMBER A GOOD AMOUNT OF VRAM IS NEEDED FOR THE LARGE LOCAL MODELS
---------------------------------
-# LOCAL_SMALL_MODEL=DeepHermes-3-Llama-3-3B-Preview-q4.gguf
-# LOCAL_LARGE_MODEL=DeepHermes-3-Llama-3-70B-Preview-q4.gguf
-# LOCAL_EMBEDDING_MODEL=bge-small-en-v1.5.Q4_K_M.gguf
-
-
 
 
 # Highly recommended to use nomic-embed-text for embeddings
@@ -718,23 +708,18 @@ export async function storeOllamaConfig(
     const lines = content
       .split('\n')
       .filter(
-        (line) =>
-          !line.startsWith('OLLAMA_API_ENDPOINT=') &&
-          !line.startsWith('OLLAMA_MODEL=') &&
-          !line.startsWith('USE_OLLAMA_TEXT_MODELS=')
+        (line) => !line.startsWith('OLLAMA_API_ENDPOINT=') && !line.startsWith('OLLAMA_MODEL=')
       );
 
     // Add new Ollama configuration
     lines.push(`OLLAMA_API_ENDPOINT=${config.endpoint}`);
     lines.push(`OLLAMA_MODEL=${config.model}`);
-    lines.push('USE_OLLAMA_TEXT_MODELS=true');
 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
 
     // Update process.env
     process.env.OLLAMA_API_ENDPOINT = config.endpoint;
     process.env.OLLAMA_MODEL = config.model;
-    process.env.USE_OLLAMA_TEXT_MODELS = 'true';
 
     logger.success('Ollama configuration saved to configuration');
   } catch (error) {
@@ -796,11 +781,7 @@ export async function promptAndStoreOllamaEmbeddingConfig(
         // Only remove embedding-specific lines, preserve general Ollama config
         const lines = content
           .split('\n')
-          .filter(
-            (line) =>
-              !line.startsWith('OLLAMA_EMBEDDING_MODEL=') &&
-              !line.startsWith('USE_OLLAMA_EMBEDDINGS=')
-          );
+          .filter((line) => !line.startsWith('OLLAMA_EMBEDDING_MODEL='));
 
         // Check if we need to update the endpoint
         const endpointPattern = /^OLLAMA_API_ENDPOINT=(.*)$/m;
@@ -825,14 +806,12 @@ export async function promptAndStoreOllamaEmbeddingConfig(
 
         // Add embedding-specific configuration
         lines.push(`OLLAMA_EMBEDDING_MODEL=${results.embeddingModel}`);
-        lines.push('USE_OLLAMA_EMBEDDINGS=true');
 
         await fs.writeFile(envPath, lines.join('\n'), 'utf8');
 
         // Update process.env
         process.env.OLLAMA_API_ENDPOINT = results.endpoint;
         process.env.OLLAMA_EMBEDDING_MODEL = results.embeddingModel;
-        process.env.USE_OLLAMA_EMBEDDINGS = 'true';
 
         logger.success('Ollama embedding configuration saved');
       } catch (error) {

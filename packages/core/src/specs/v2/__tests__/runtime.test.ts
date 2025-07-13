@@ -38,6 +38,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   close: mock(async () => undefined),
   getConnection: mock(async () => ({})),
   getEntityByIds: mock(async () => []),
+  getEntitiesByIds: mock(async () => []),
   createEntities: mock(async () => true),
   getMemories: mock(async () => []),
   getMemoryById: mock(async () => null),
@@ -266,6 +267,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           names: [mockCharacter.name],
         },
       ]);
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockImplementation(async () => [
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
       (mockDatabaseAdapter.getRoomsByIds as any).mockImplementation(async () => []);
       (mockDatabaseAdapter.getParticipantsForRoom as any).mockImplementation(async () => []);
 
@@ -479,6 +487,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
     it('createEntity should call adapter.createEntities', async () => {
+      // Reset the mock to clear any calls from initialization
+      (mockDatabaseAdapter.createEntities as any).mockClear();
+
       const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'] };
       await runtime.createEntity(entityData);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);

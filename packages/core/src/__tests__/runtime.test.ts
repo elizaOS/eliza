@@ -38,6 +38,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   close: mock().mockResolvedValue(undefined),
   getConnection: mock().mockResolvedValue({}),
   getEntityByIds: mock().mockResolvedValue([]),
+  getEntitiesByIds: mock().mockResolvedValue([]),
   createEntities: mock().mockResolvedValue(true),
   getMemories: mock().mockResolvedValue([]),
   getMemoryById: mock().mockResolvedValue(null),
@@ -271,6 +272,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           names: [mockCharacter.name],
         },
       ]);
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
       (mockDatabaseAdapter.getRoomsByIds as any).mockResolvedValue([]);
       (mockDatabaseAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
 
@@ -301,6 +309,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           names: [mockCharacter.name],
         },
       ]);
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+        {
+          id: agentId,
+          agentId: agentId,
+          names: [mockCharacter.name],
+        },
+      ]);
       (mockDatabaseAdapter.getRoomsByIds as any).mockResolvedValue([]);
       (mockDatabaseAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
@@ -316,7 +331,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
       // expect(mockDatabaseAdapter.getAgent).toHaveBeenCalledWith(agentId); // This is no longer called
-      expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
@@ -328,7 +343,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
       expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
-      expect(mockDatabaseAdapter.getEntityByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);

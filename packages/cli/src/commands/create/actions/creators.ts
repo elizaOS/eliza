@@ -1,11 +1,16 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { copyTemplate as copyTemplateUtil } from '@/src/utils';
+import { copyTemplate as copyTemplateUtil, promptAndStorePostgresUrl } from '@/src/utils';
 import { join } from 'path';
 import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
-import { setupProjectEnvironment } from './setup';
+import {
+  setupProjectEnvironment,
+  setupAIModelConfig,
+  setupEmbeddingModelConfig,
+  hasValidApiKey,
+} from './setup';
 import {
   installDependenciesWithSpinner,
   buildProjectWithSpinner,
@@ -14,6 +19,40 @@ import {
 } from '@/src/utils/spinner-utils';
 import { existsSync, rmSync } from 'node:fs';
 import { getDisplayDirectory } from '@/src/utils/helpers';
+
+/**
+ * Handles interactive configuration setup for projects
+ * This includes database configuration, AI model setup, and Ollama fallback configuration
+ */
+async function handleInteractiveConfiguration(
+  targetDir: string,
+  database: string,
+  aiModel: string,
+  embeddingModel?: string
+): Promise<void> {
+  const envFilePath = `${targetDir}/.env`;
+
+  // Handle PostgreSQL configuration
+  if (database === 'postgres') {
+    await promptAndStorePostgresUrl(envFilePath);
+  }
+
+  // Handle AI model configuration
+  if (aiModel !== 'local' || embeddingModel) {
+    if (aiModel !== 'local') {
+      await setupAIModelConfig(aiModel, envFilePath, false);
+    }
+    if (embeddingModel) {
+      await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
+    }
+  }
+
+  // Always set up Ollama as universal fallback (if not already configured)
+  const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
+  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
+    await setupEmbeddingModelConfig('ollama', envFilePath, false);
+  }
+}
 
 /**
  * wraps the creation process with cleanup handlers that remove the directory
@@ -239,24 +278,7 @@ export async function createTEEProject(
 
     // Handle interactive configuration before spinner tasks
     if (!isNonInteractive) {
-      const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
-      const { promptAndStorePostgresUrl } = await import('@/src/utils');
-      const envFilePath = `${teeTargetDir}/.env`;
-
-      // Handle PostgreSQL configuration
-      if (database === 'postgres') {
-        await promptAndStorePostgresUrl(envFilePath);
-      }
-
-      // Handle AI model configuration
-      if (aiModel !== 'local' || embeddingModel) {
-        if (aiModel !== 'local') {
-          await setupAIModelConfig(aiModel, envFilePath, false);
-        }
-        if (embeddingModel) {
-          await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
-        }
-      }
+      await handleInteractiveConfiguration(teeTargetDir, database, aiModel, embeddingModel);
     }
 
     await runTasks([
@@ -321,24 +343,7 @@ export async function createProject(
 
     // Handle interactive configuration before spinner tasks
     if (!isNonInteractive) {
-      const { setupAIModelConfig, setupEmbeddingModelConfig } = await import('./setup');
-      const { promptAndStorePostgresUrl } = await import('@/src/utils');
-      const envFilePath = `${projectTargetDir}/.env`;
-
-      // Handle PostgreSQL configuration
-      if (database === 'postgres') {
-        await promptAndStorePostgresUrl(envFilePath);
-      }
-
-      // Handle AI model configuration
-      if (aiModel !== 'local' || embeddingModel) {
-        if (aiModel !== 'local') {
-          await setupAIModelConfig(aiModel, envFilePath, false);
-        }
-        if (embeddingModel) {
-          await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
-        }
-      }
+      await handleInteractiveConfiguration(projectTargetDir, database, aiModel, embeddingModel);
     }
 
     await runTasks([
