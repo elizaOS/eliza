@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExecSimple } from '@/src/utils/bun-exec';
 import * as semver from 'semver';
 import { UserEnvironment } from '@/src/utils/user-environment';
 import { VersionCheckResult } from '../types';
@@ -87,7 +87,7 @@ export function isMajorUpdate(currentVersion: string, targetVersion: string): bo
 export async function fetchLatestVersion(packageName: string): Promise<string | null> {
   try {
     // Always check npm registry for the actual latest version
-    const { stdout } = await execa('npm', ['view', packageName, 'version'], {
+    const { stdout } = await bunExecSimple('npm', ['view', packageName, 'version'], {
       env: { NODE_ENV: 'production' },
     });
     const version = stdout.trim();

@@ -1,6 +1,6 @@
 import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExecInherit } from '@/src/utils/bun-exec';
 import { GlobalUpdateOptions } from '../types';
 import { checkVersionNeedsUpdate, fetchLatestVersion, getVersion } from '../utils/version-utils';
 
@@ -50,9 +50,7 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
           );
           // Fallback to npm installation since bun failed
           try {
-            await execa('npm', ['install', '-g', `@elizaos/cli@${latestVersion}`], {
-              stdio: 'inherit',
-            });
+            await bunExecInherit('npm', ['install', '-g', `@elizaos/cli@${latestVersion}`]);
             console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
             return true;
           } catch (npmError) {
@@ -66,7 +64,7 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
 
     // Standard bun installation (no npm installation detected or migration skipped)
     try {
-      await execa('bun', ['add', '-g', `@elizaos/cli@${latestVersion}`], { stdio: 'inherit' });
+      await bunExecInherit('bun', ['add', '-g', `@elizaos/cli@${latestVersion}`]);
       console.log(`CLI updated successfully to version ${latestVersion} [✓]`);
       return true;
     } catch (bunError) {
