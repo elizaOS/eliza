@@ -31,6 +31,25 @@ export async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
+        // Configure Ollama for local AI usage
+        let content = '';
+        if (existsSync(envFilePath)) {
+          content = await fs.readFile(envFilePath, 'utf8');
+        }
+
+        if (content && !content.endsWith('\n')) {
+          content += '\n';
+        }
+
+        content += '\n# Local AI Configuration (using Ollama)\n';
+        content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+        content += 'OLLAMA_MODEL=gemma3\n';
+        content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+        content += 'USE_OLLAMA_TEXT_MODELS=true\n';
+        content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+        content += '# Pull models with: ollama pull gemma3 && ollama pull nomic-embed-text\n';
+
+        await fs.writeFile(envFilePath, content, 'utf8');
         break;
       }
 
@@ -372,8 +391,11 @@ export async function setupProjectEnvironment(
     }
   }
 
-  // Install AI model plugin (skip for local AI)
-  if (aiModel !== 'local') {
+  // Install AI model plugin
+  if (aiModel === 'local') {
+    // Install Ollama plugin for local AI
+    await installModelPlugin('ollama', targetDir, 'for local AI');
+  } else {
     await installModelPlugin(aiModel, targetDir);
   }
 

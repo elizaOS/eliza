@@ -41,7 +41,7 @@ describe('Character Plugin Ordering', () => {
   describe('Core Plugin Ordering', () => {
     it('should always include SQL plugin first', () => {
       const character = getElizaCharacter();
-      expect(character.plugins[0]).toBe('@elizaos/plugin-sql');
+      expect(character.plugins?.[0]).toBe('@elizaos/plugin-sql');
     });
 
     it('should include bootstrap plugin by default (not ignored)', () => {
@@ -56,41 +56,38 @@ describe('Character Plugin Ordering', () => {
     });
   });
 
-  describe('Local AI Fallback Behavior', () => {
-    it('should include local-ai when no AI providers are available', () => {
+  describe('Ollama Fallback Behavior', () => {
+    it('should always include ollama as fallback for local AI', () => {
       const character = getElizaCharacter();
-      expect(character.plugins).toContain('@elizaos/plugin-local-ai');
-      // Should be the last plugin (after bootstrap)
-      const lastPlugin = character.plugins[character.plugins.length - 1];
-      expect(lastPlugin).toBe('@elizaos/plugin-local-ai');
-    });
-
-    it('should NOT include local-ai when OpenAI is available', () => {
-      process.env.OPENAI_API_KEY = 'test-key';
-      const character = getElizaCharacter();
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
-      expect(character.plugins).toContain('@elizaos/plugin-openai');
-    });
-
-    it('should include local-ai when only Anthropic is available (text-only, no embeddings)', () => {
-      process.env.ANTHROPIC_API_KEY = 'test-key';
-      const character = getElizaCharacter();
-      expect(character.plugins).toContain('@elizaos/plugin-local-ai');
-      expect(character.plugins).toContain('@elizaos/plugin-anthropic');
-    });
-
-    it('should NOT include local-ai when embedding-capable AI provider is available', () => {
-      process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
-      const character = getElizaCharacter();
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
       expect(character.plugins).toContain('@elizaos/plugin-ollama');
     });
 
-    it('should include local-ai when only text-only providers are available', () => {
+    it('should include ollama even when OpenAI is available', () => {
+      process.env.OPENAI_API_KEY = 'test-key';
+      const character = getElizaCharacter();
+      expect(character.plugins).toContain('@elizaos/plugin-ollama');
+      expect(character.plugins).toContain('@elizaos/plugin-openai');
+    });
+
+    it('should include ollama when only Anthropic is available', () => {
+      process.env.ANTHROPIC_API_KEY = 'test-key';
+      const character = getElizaCharacter();
+      expect(character.plugins).toContain('@elizaos/plugin-ollama');
+      expect(character.plugins).toContain('@elizaos/plugin-anthropic');
+    });
+
+    it('should include ollama when Google GenAI is available', () => {
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'test-key';
+      const character = getElizaCharacter();
+      expect(character.plugins).toContain('@elizaos/plugin-ollama');
+      expect(character.plugins).toContain('@elizaos/plugin-google-genai');
+    });
+
+    it('should include ollama when only text-only providers are available', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
       process.env.OPENROUTER_API_KEY = 'openrouter-key';
       const character = getElizaCharacter();
-      expect(character.plugins).toContain('@elizaos/plugin-local-ai');
+      expect(character.plugins).toContain('@elizaos/plugin-ollama');
       expect(character.plugins).toContain('@elizaos/plugin-anthropic');
       expect(character.plugins).toContain('@elizaos/plugin-openrouter');
     });
@@ -155,7 +152,7 @@ describe('Character Plugin Ordering', () => {
   });
 
   describe('Complex Environment Combinations', () => {
-    it('should handle Anthropic + OpenAI correctly (OpenAI last, no local-ai)', () => {
+    it('should handle Anthropic + OpenAI correctly (OpenAI before ollama)', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
       process.env.OPENAI_API_KEY = 'openai-key';
 
@@ -165,10 +162,10 @@ describe('Character Plugin Ordering', () => {
         '@elizaos/plugin-anthropic',
         '@elizaos/plugin-bootstrap',
         '@elizaos/plugin-openai',
+        '@elizaos/plugin-ollama',
       ];
 
       expect(character.plugins).toEqual(expectedOrder);
-      expect(character.plugins).not.toContain('@elizaos/plugin-local-ai');
     });
 
     it('should handle OpenRouter + Ollama correctly (Ollama last)', () => {
@@ -273,12 +270,12 @@ describe('Character Plugin Ordering', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle empty environment (only SQL, bootstrap, local-ai)', () => {
+    it('should handle empty environment (only SQL, bootstrap, ollama)', () => {
       const character = getElizaCharacter();
       const expectedPlugins = [
         '@elizaos/plugin-sql',
         '@elizaos/plugin-bootstrap',
-        '@elizaos/plugin-local-ai',
+        '@elizaos/plugin-ollama',
       ];
 
       expect(character.plugins).toEqual(expectedPlugins);
@@ -288,7 +285,7 @@ describe('Character Plugin Ordering', () => {
       process.env.IGNORE_BOOTSTRAP = 'true';
 
       const character = getElizaCharacter();
-      const expectedPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-local-ai'];
+      const expectedPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-ollama'];
 
       expect(character.plugins).toEqual(expectedPlugins);
     });
@@ -298,7 +295,7 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
 
       const character = getElizaCharacter();
-      const expectedPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-openai'];
+      const expectedPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-ollama'];
 
       expect(character.plugins).toEqual(expectedPlugins);
     });

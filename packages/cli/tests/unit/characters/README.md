@@ -8,8 +8,8 @@ ElizaOS uses a sophisticated plugin loading system that automatically detects av
 
 ### Key Principles
 
-1. **Embedding Plugins Last**: Plugins that support embeddings (OpenAI, Ollama, Google GenAI, Local-AI) are always loaded with the lowest priority
-2. **Local-AI as Final Fallback**: When no other AI providers are available, Local-AI serves as the ultimate fallback
+1. **Embedding Plugins Last**: Plugins that support embeddings (OpenAI, Ollama, Google GenAI) are always loaded with the lowest priority
+2. **Ollama as Universal Fallback**: Ollama is always included as a fallback for local AI capabilities
 3. **Text-Only Plugins First**: Providers without embedding support (Anthropic, OpenRouter) load before embedding-capable plugins
 4. **Environment-Driven**: Plugin selection is automatic based on available environment variables
 
@@ -37,9 +37,8 @@ ElizaOS uses a sophisticated plugin loading system that automatically detects av
 ### 🧠 Embedding-Capable AI Plugins (Always Last)
 
 - `@elizaos/plugin-openai` - GPT models + embeddings
-- `@elizaos/plugin-ollama` - Local models + embeddings
 - `@elizaos/plugin-google-genai` - Gemini models + embeddings
-- `@elizaos/plugin-local-ai` - Final fallback when no other AI providers exist
+- `@elizaos/plugin-ollama` - Local models + embeddings (always included as fallback)
 
 ## Plugin Loading Order
 

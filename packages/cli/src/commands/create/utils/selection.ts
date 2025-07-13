@@ -15,9 +15,9 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI',
+      title: 'Local AI (Ollama)',
       value: 'local',
-      description: 'Local models, no API required',
+      description: 'Local models via Ollama, no API required',
     },
     {
       title: 'OpenAI',
@@ -119,9 +119,9 @@ export async function selectAIModel(): Promise<string> {
 export function getAvailableEmbeddingModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI',
+      title: 'Local AI (Ollama)',
       value: 'local',
-      description: 'Local embeddings, no API required',
+      description: 'Local embeddings via Ollama, no API required',
     },
     {
       title: 'OpenAI',
