@@ -173,9 +173,9 @@ describe('Service Type System', () => {
   
   describe('Service lifecycle', () => {
     it('should stop all services of all types', async () => {
-      const wallet1 = await runtime.registerService(MockWalletService1);
-      const wallet2 = await runtime.registerService(MockWalletService2);
-      const pdf = await runtime.registerService(MockPdfService);
+      await runtime.registerService(MockWalletService1);
+      await runtime.registerService(MockWalletService2);
+      await runtime.registerService(MockPdfService);
       
       // Mock the stop methods to track calls
       const stopCalls: string[] = [];
