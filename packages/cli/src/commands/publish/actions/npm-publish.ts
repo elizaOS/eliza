@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExecInherit } from '../../../utils/bun-exec.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PackageJson } from '../types';
@@ -25,11 +25,11 @@ export async function publishToNpm(
 
   // Build the package
   console.info('Building package...');
-  await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
+  await bunExecInherit('npm', ['run', 'build'], { cwd });
 
   // Publish to npm with --ignore-scripts to prevent recursion
   console.info('Publishing to npm...');
-  await execa('npm', ['publish', '--ignore-scripts'], { cwd, stdio: 'inherit' });
+  await bunExecInherit('npm', ['publish', '--ignore-scripts'], { cwd });
 
   console.log(`[√] Successfully published ${packageJson.name}@${packageJson.version} to npm`);
 }
