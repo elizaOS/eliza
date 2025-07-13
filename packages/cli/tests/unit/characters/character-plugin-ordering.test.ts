@@ -313,14 +313,14 @@ describe('Character Plugin Ordering', () => {
       
       const character = getElizaCharacter();
       expect(character.plugins).toContain(PLUGINS.OLLAMA);
-      expect(character.plugins).toContain(PLUGINS.OPENAI);
-      expect(character.plugins).toContain(PLUGINS.ANTHROPIC);
+      expect(character.plugins).not.toContain(PLUGINS.OPENAI);
+      expect(character.plugins).not.toContain(PLUGINS.ANTHROPIC);
     });
   });
   describe('Edge Cases', () => {
-    it('should handle empty environment (only SQL, ollama, bootstrap)', () => {
+    it('should handle empty environment (only SQL, bootstrap, ollama)', () => {
       const character = getElizaCharacter();
-      const expectedPlugins = [PLUGINS.SQL, PLUGINS.OLLAMA, PLUGINS.BOOTSTRAP];
+      const expectedPlugins = [PLUGINS.SQL, PLUGINS.BOOTSTRAP, PLUGINS.OLLAMA];
 
       expect(character.plugins).toEqual(expectedPlugins);
     });
