@@ -47,7 +47,7 @@ The system loads plugins in this strict order:
 ```
 1. Core Plugins (SQL)
 2. Text-Only AI Plugins (Anthropic, OpenRouter)
-3. Embedding-Capable AI Plugins (OpenAI, Ollama, Google, Local-AI)
+3. Embedding-Capable AI Plugins (OpenAI, Ollama, Google)
 4. Platform Plugins (Discord, Twitter, Telegram)
 5. Bootstrap Plugin
 ```
@@ -66,13 +66,6 @@ The system loads plugins in this strict order:
 ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
 ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
 
-// Final fallback (only when no embedding-capable providers exist)
-...(
-    !process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : []),
 ```
 
 ### Platform Plugin Detection
@@ -97,7 +90,7 @@ The system loads plugins in this strict order:
 Comprehensive test suite covering:
 
 - Core plugin ordering
-- Local-AI fallback behavior
+- Ollama fallback behavior
 - Embedding plugin priority
 - Complex environment combinations
 - Edge cases and validation
@@ -137,8 +130,8 @@ bun run src/__tests__/plugin-ordering-demo.ts
 ### 1. No AI Providers
 
 - **Environment**: Clean (no API keys)
-- **Result**: SQL → Bootstrap → Local-AI
-- **Validation**: Local-AI serves as fallback
+- **Result**: SQL → Bootstrap → Ollama
+- **Validation**: Ollama serves as fallback
 
 ### 2. Anthropic Only
 
@@ -162,7 +155,7 @@ bun run src/__tests__/plugin-ordering-demo.ts
 
 - **Environment**: All AI provider keys
 - **Result**: SQL → Anthropic → OpenRouter → Bootstrap → OpenAI → Ollama → Google
-- **Validation**: No Local-AI fallback needed
+- **Validation**: Ollama included for local AI fallback
 
 ### 6. Platform Integration
 
@@ -182,7 +175,7 @@ The test suite validates these critical rules:
 
 1. ✅ **SQL Always First**: `@elizaos/plugin-sql` must be the first plugin
 2. ✅ **AI Plugin Order**: Text-only plugins (Anthropic, OpenRouter) load before embedding-capable plugins
-3. ✅ **Local-AI Fallback**: Only present when no embedding-capable providers exist
+3. ✅ **Ollama Fallback**: Always present as universal fallback
 4. ✅ **Platform After AI**: Platform plugins load after all AI plugins
 5. ✅ **Bootstrap Last**: Bootstrap loads after all other plugins (unless disabled)
 6. ✅ **No Duplicates**: Each plugin appears exactly once
@@ -254,8 +247,8 @@ When adding new plugins:
 **Q: Why isn't my AI plugin loading?**
 A: Check environment variables are set correctly and match the expected names.
 
-**Q: Why is Local-AI loading when I have other AI providers?**
-A: Check the fallback condition - Local-AI only loads when ALL embedding-capable AI provider env vars are missing (OpenAI, Ollama, Google GenAI).
+**Q: Why is Ollama always loading?**
+A: Ollama is always included as a universal fallback for local AI capabilities, regardless of other providers.
 
 **Q: Why isn't Twitter loading?**
 A: Twitter requires ALL 4 environment variables: API key, secret, access token, and access token secret.
