@@ -109,7 +109,7 @@ export function createTestAction(
   const {
     description = `Test action: ${name}`,
     validateResult = true,
-    handlerResult = { text: `${name} executed successfully` },
+    handlerResult = { text: `${name} executed successfully`, success: true },
     examples = [],
   } = options;
 

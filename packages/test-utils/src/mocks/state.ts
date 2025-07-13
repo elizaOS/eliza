@@ -141,6 +141,7 @@ export function createMockProviderResult(
  */
 export function createMockActionResult(overrides: MockActionResultOverrides = {}): ActionResult {
   const baseResult: ActionResult = {
+    success: true,
     values: {
       success: true,
       actionId: 'test-action-id',
