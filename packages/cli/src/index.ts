@@ -18,9 +18,28 @@ import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
+import { stopServer } from '@/src/commands/dev/utils/server-manager';
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+/**
+ * Graceful shutdown handler for SIGINT and SIGTERM signals
+ * Ensures proper cleanup of server processes before exiting
+ */
+async function gracefulShutdown(signal: string) {
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+  
+  try {
+    // Stop the dev server if it's running
+    await stopServer();
+    logger.info('Server stopped successfully');
+  } catch (error) {
+    logger.error('Error stopping server:', error);
+  }
+  
+  process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 /**
  * Asynchronous function that serves as the main entry point for the application.
