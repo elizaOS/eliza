@@ -75,5 +75,5 @@ jobs:
 
             Skip explanations. List issues with fixes.
 
-          # Allow Claude to run bun commands during review
-          allowed_tools: 'Bash(bun install),Bash(bun run build),Bash(bun test),Bash(bun run lint),Bash(bun run format)'
+          # Allow Claude to run all bash and gh commands during review
+          allowed_tools: 'Bash(*),Bash(gh *)'
