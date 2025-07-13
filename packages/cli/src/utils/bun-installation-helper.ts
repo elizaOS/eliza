@@ -12,14 +12,14 @@ export async function checkBunInstallation(): Promise<BunInstallationResult> {
   try {
     // Check if bun is available
     const bunExists = await commandExists('bun');
-    
+
     if (bunExists) {
       // Get bun version
       const result = await bunExec('bun', ['--version']);
-      
+
       if (result.success) {
         const version = result.stdout.trim();
-        
+
         return {
           installed: true,
           message: `Bun ${version} is installed`,

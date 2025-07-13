@@ -73,17 +73,17 @@ export function useConvertCharacter() {
         }
       }
       if (!providerMatched) {
-        if (availablePlugins.includes("@elizaos/plugin-openai")) {
-            matched.add("@elizaos/plugin-openai");
+        if (availablePlugins.includes('@elizaos/plugin-openai')) {
+          matched.add('@elizaos/plugin-openai');
         }
       }
     } else {
       // If no modelProvider specified, default to OpenAI
-      if (availablePlugins.includes("@elizaos/plugin-openai")) {
-        matched.add("@elizaos/plugin-openai");
+      if (availablePlugins.includes('@elizaos/plugin-openai')) {
+        matched.add('@elizaos/plugin-openai');
       }
     }
-    
+
     // Add essential plugins only if they exist in availablePlugins
     for (const plugin of ESSENTIAL_PLUGINS) {
       if (availablePlugins.includes(plugin)) {
@@ -94,9 +94,7 @@ export function useConvertCharacter() {
     return Array.from(matched).sort();
   };
 
-  function isV1MessageExampleFormat(
-    example: any
-  ): example is { user: string; content: Content } {
+  function isV1MessageExampleFormat(example: any): example is { user: string; content: Content } {
     return typeof example === 'object' && example !== null && 'user' in example;
   }
 

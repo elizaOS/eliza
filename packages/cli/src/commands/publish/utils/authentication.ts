@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExecSimple, bunExecInherit } from '../../../utils/bun-exec.js';
 import * as clack from '@clack/prompts';
 
 /**
@@ -11,7 +11,7 @@ export async function getNpmUsername(): Promise<string> {
 
   try {
     // Check if already logged in
-    const { stdout } = await execa('npm', ['whoami']);
+    const { stdout } = await bunExecSimple('npm', ['whoami']);
     const currentUser = stdout.trim();
     console.info(`Found existing NPM login: ${currentUser}`);
 
@@ -31,10 +31,10 @@ export async function getNpmUsername(): Promise<string> {
     } else {
       // They want to use a different account, prompt for login
       console.info('Please login with your desired NPM account...');
-      await execa('npm', ['login'], { stdio: 'inherit' });
+      await bunExecInherit('npm', ['login']);
 
       // Get the new username after login
-      const { stdout: newStdout } = await execa('npm', ['whoami']);
+      const { stdout: newStdout } = await bunExecSimple('npm', ['whoami']);
       const newUser = newStdout.trim();
       console.info(`Logged in as: ${newUser}`);
       return newUser;
@@ -43,10 +43,10 @@ export async function getNpmUsername(): Promise<string> {
     // Not logged in, prompt for login
     console.info('Not logged into NPM. Please login to continue...');
     try {
-      await execa('npm', ['login'], { stdio: 'inherit' });
+      await bunExecInherit('npm', ['login']);
 
       // Get username after successful login
-      const { stdout } = await execa('npm', ['whoami']);
+      const { stdout } = await bunExecSimple('npm', ['whoami']);
       const username = stdout.trim();
       console.info(`Successfully logged in as: ${username}`);
       return username;

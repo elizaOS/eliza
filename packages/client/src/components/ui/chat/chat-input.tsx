@@ -39,7 +39,7 @@ const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>(
         )}
         {...props}
       />
-    )
+    );
   }
 );
 ChatInput.displayName = 'ChatInput';
