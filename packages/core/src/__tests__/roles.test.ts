@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
 import { getUserServerRole, findWorldsForOwner } from '../roles';
 import { Role, type IAgentRuntime, type UUID, type World } from '../types';
@@ -33,6 +33,10 @@ describe('roles utilities', () => {
       getWorld: mock(),
       getAllWorlds: mock(),
     } as unknown as IAgentRuntime;
+  });
+
+  afterEach(() => {
+    mock.restore();
   });
 
   describe('getUserServerRole', () => {
