@@ -49,14 +49,11 @@ jobs:
 
           # Custom instructions for Claude to handle ElizaOS standards
           custom_instructions: |
-            Follow ElizaOS coding standards from CLAUDE.md
-            Use bun exclusively (never npm, pnpm, yarn, or npx)
-            For testing:
-            - Use bun:test for all unit tests, integration tests, and backend tests
-            - Cypress is ONLY acceptable for frontend UI testing in packages/client
-            - Never use jest, vitest, mocha, or other test frameworks except Cypress for UI
-            When creating GitHub issues, use proper labels and formatting
-            Check workflow logs using gh run view <run-id> --log for details
+            Be concise. Focus on actionable solutions.
+            - Use bun only (no npm/pnpm/yarn)
+            - Use bun test only (no jest/vitest)
+            - Check logs: gh run view <run-id> --log
+            - Follow CLAUDE.md standards
 
           # Optional: Custom environment variables for Claude
           # claude_env: |

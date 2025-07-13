@@ -1,7 +1,7 @@
 export interface VoiceModel {
   value: string;
   label: string;
-  provider: 'local' | 'elevenlabs' | 'openai' | 'none';
+  provider: 'elevenlabs' | 'openai' | 'none';
   gender?: 'male' | 'female';
   language?: string;
   features?: string[];
@@ -153,11 +153,9 @@ export const getAllVoiceModels = (): VoiceModel[] => {
 };
 
 export const getVoiceModelsByProvider = (
-  provider: 'local' | 'elevenlabs' | 'openai' | 'none'
+  provider: 'elevenlabs' | 'openai' | 'none'
 ): VoiceModel[] => {
   switch (provider) {
-    case 'local':
-      return localVoiceModels;
     case 'elevenlabs':
       return elevenLabsVoiceModels;
     case 'openai':
