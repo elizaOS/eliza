@@ -38,20 +38,20 @@
       "dependencies": {
         "@elizaos/api-client": "1.2.4",
         "@elizaos/cli": "1.2.4",
-        "@tauri-apps/api": "^2.3.0",
-        "@tauri-apps/plugin-opener": "^2",
-        "@tauri-apps/plugin-shell": "^2",
+        "@tauri-apps/api": "^2.6.0",
+        "@tauri-apps/plugin-opener": "^2.4.0",
+        "@tauri-apps/plugin-shell": "^2.3.0",
         "react": "^19.1.0",
-        "react-dom": "^19.0.0",
+        "react-dom": "^19.1.0",
       },
       "devDependencies": {
-        "@tauri-apps/cli": "^2",
-        "@types/react": "^19.0.0",
-        "@types/react-dom": "^19.0.0",
-        "@vitejs/plugin-react": "^4.3.4",
+        "@tauri-apps/cli": "^2.6.2",
+        "@types/react": "^19.1.5",
+        "@types/react-dom": "^19.1.6",
+        "@vitejs/plugin-react": "^4.6.0",
         "prettier": "3.5.3",
         "typescript": "5.8.2",
-        "vite": "^6.0.3",
+        "vite": "^6.3.5",
       },
     },
     "packages/autodoc": {
@@ -5644,8 +5644,6 @@
     "@docusaurus/utils/jiti": ["jiti@1.21.7", "", { "bin": { "jiti": "bin/jiti.js" } }, "sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A=="],
 
     "@elizaos/api-client/@types/node": ["@types/node@24.0.13", "", { "dependencies": { "undici-types": "~7.8.0" } }, "sha512-Qm9OYVOFHFYg3wJoTSrz80hoec5Lia/dPp84do3X7dZvLikQvM1YpmvTBEdIr/e+U8HTkFjLHLnl78K/qjf+jQ=="],
-
-    "@elizaos/api-client/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
     "@elizaos/app/@elizaos/api-client": ["@elizaos/api-client@1.2.4", "", { "dependencies": { "@elizaos/core": "1.2.4" } }, "sha512-YYih+wvvZYNIHgf12E5OpL1bAWWc0T/4oYEmSP5peu7EdL0eX4vMeuSGPxu2RFcH5IDUTp+y0pYygfzEigIoEw=="],
 
