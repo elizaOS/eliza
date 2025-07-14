@@ -10,6 +10,7 @@ import {
   killProcessOnPort,
   waitForServerReady,
 } from './test-utils';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 
 // Helper function to execute CLI commands using Bun.spawn
 async function execCliCommand(command: string, options: any = {}): Promise<string> {
@@ -68,12 +69,9 @@ describe('ElizaOS Agent Commands', () => {
     testServerUrl = `http://localhost:${testServerPort}`;
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
 
-    // Setup CLI command with robust bun path detection
-    const scriptDir = join(__dirname, '..');
-    const detectedBunPath = getBunExecutable();
-    elizaosCmd = `${detectedBunPath} ${join(scriptDir, '../dist/index.js')}`;
-    console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
-    console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
+    // Setup CLI command - use the linked elizaos command
+    elizaosCmd = 'elizaos';
+    console.log(`[DEBUG] Using elizaos command: ${elizaosCmd}`);
 
     // Kill any existing processes on port 3000 with extended cleanup for macOS CI
     console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
@@ -116,15 +114,13 @@ describe('ElizaOS Agent Commands', () => {
       throw new Error('CLI templates not built');
     }
 
-    // Spawn server process using Bun.spawn
-    const serverBunPath = getBunExecutable();
-    console.log(`[DEBUG] Spawning server with: ${serverBunPath} ${cliPath} start`);
+    // Spawn server process using Bun.spawn with linked elizaos command
+    console.log(`[DEBUG] Spawning server with: ${elizaosCmd} start`);
 
     try {
       const proc = Bun.spawn(
         [
-          serverBunPath,
-          cliPath,
+          elizaosCmd,
           'start',
           '--port',
           testServerPort,
@@ -345,12 +341,12 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent list works with JSON flag', async () => {
-    const result = execSync(
-      `${elizaosCmd} agent list --remote-url ${testServerUrl} --json`,
-      getPlatformOptions({
-        encoding: 'utf8',
-      })
-    );
+    const { stdout: result } = await bunExecSimple(elizaosCmd, [
+      'agent', 'list', '--remote-url', testServerUrl, '--json'
+    ], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      env: process.env
+    });
     expect(result).toContain('[');
     expect(result).toContain('{');
     expect(result).toMatch(/(name|Name)/);
@@ -495,12 +491,12 @@ describe('ElizaOS Agent Commands', () => {
 
     // Stop agent
     try {
-      execSync(
-        `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
-        getPlatformOptions({
-          encoding: 'utf8',
-        })
-      );
+      await bunExecSimple(elizaosCmd, [
+        'agent', 'stop', '--remote-url', testServerUrl, '-n', 'Ada'
+      ], {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env
+      });
       // Should succeed or not be running
     } catch (e: any) {
       expect(e.stdout || e.stderr).toMatch(/not running/);

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
+import { safeChangeDirectory, runCliCommandSilently, runElizaCmd } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
@@ -20,9 +19,8 @@ describe('ElizaOS Update Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    // Setup CLI command - use the linked elizaos command
+    elizaosCmd = 'elizaos';
   });
 
   afterEach(async () => {
@@ -47,8 +45,8 @@ describe('ElizaOS Update Commands', () => {
   };
 
   // --help
-  it('update --help shows usage and options', () => {
-    const result = execSync(`${elizaosCmd} update --help`, { encoding: 'utf8' });
+  it('update --help shows usage and options', async () => {
+    const result = await runElizaCmd(['update', '--help']);
     expect(result).toContain('Usage: elizaos update');
     expect(result).toContain('--cli');
     expect(result).toContain('--packages');

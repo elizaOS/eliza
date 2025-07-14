@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
 import { mkdtemp, rm, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as path from 'node:path';
@@ -11,6 +10,8 @@ import {
   expectCliCommandToFail,
   crossPlatform,
   getPlatformOptions,
+  runElizaCmd,
+  execShellCommand,
 } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
@@ -29,10 +30,9 @@ describe('ElizaOS Create Commands', () => {
     // Setup test environment for each test
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
 
-    // Setup CLI commands
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
-    createElizaCmd = `bun "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
+    // Setup CLI commands - use the linked elizaos command
+    elizaosCmd = 'elizaos';
+    createElizaCmd = `bun "${join(__dirname, '../../create-eliza/index.mjs')}"`;
 
     // Change to test directory
     process.chdir(testTmpDir);
@@ -69,10 +69,7 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', async () => {
-    const result = execSync(
-      `${elizaosCmd} create --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+    const result = await runElizaCmd(['create', '--help']);
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -165,11 +162,11 @@ describe('ElizaOS Create Commands', () => {
     // Use cross-platform commands
     try {
       crossPlatform.removeDir('existing-app');
-      execSync(`mkdir existing-app`, getPlatformOptions({ stdio: 'ignore' }));
+      await execShellCommand('mkdir existing-app', { stdio: 'ignore' });
       if (process.platform === 'win32') {
-        execSync(`echo test > existing-app\\file.txt`, getPlatformOptions({ stdio: 'ignore' }));
+        await execShellCommand('echo test > existing-app\\file.txt', { stdio: 'ignore' });
       } else {
-        execSync(`echo "test" > existing-app/file.txt`, getPlatformOptions({ stdio: 'ignore' }));
+        await execShellCommand('echo "test" > existing-app/file.txt', { stdio: 'ignore' });
       }
     } catch (e) {
       // Ignore setup errors
@@ -187,7 +184,7 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform commands
       try {
         crossPlatform.removeDir('create-in-place');
-        execSync(`mkdir create-in-place`, getPlatformOptions({ stdio: 'ignore' }));
+        await execShellCommand('mkdir create-in-place', { stdio: 'ignore' });
       } catch (e) {
         // Ignore setup errors
       }
@@ -426,7 +423,7 @@ describe('ElizaOS Create Commands', () => {
         // Create a test subdirectory and navigate to it
         const testSubDir = 'test-subdir';
         crossPlatform.removeDir(testSubDir);
-        execSync(`mkdir ${testSubDir}`, getPlatformOptions({ stdio: 'ignore' }));
+        await execShellCommand(`mkdir ${testSubDir}`, { stdio: 'ignore' });
 
         const originalDir = process.cwd();
         process.chdir(testSubDir);
@@ -467,7 +464,7 @@ describe('ElizaOS Create Commands', () => {
 
         const testDir = 'migration-test-dir';
         crossPlatform.removeDir(testDir);
-        execSync(`mkdir ${testDir}`, getPlatformOptions({ stdio: 'ignore' }));
+        await execShellCommand(`mkdir ${testDir}`, { stdio: 'ignore' });
 
         const originalDir = process.cwd();
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { Command } from 'commander';
 import * as childProcess from 'node:child_process';
-import { execSync } from 'node:child_process';
+import { execShellCommand } from './test-utils';
 import { teeCommand } from '../../src/commands/tee';
 import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
 
@@ -9,9 +9,9 @@ import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
 let mockSpawn: any;
 
 // Check if npx is available
-function isNpxAvailable(): boolean {
+async function isNpxAvailable(): Promise<boolean> {
   try {
-    execSync('npx --version', { stdio: 'ignore' });
+    await execShellCommand('npx --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -19,7 +19,14 @@ function isNpxAvailable(): boolean {
 }
 
 // Skip Phala tests in CI or when npx is not available
-const skipPhalaTests = process.env.CI === 'true' || !isNpxAvailable();
+let skipPhalaTests = process.env.CI === 'true';
+
+// Initialize skipPhalaTests asynchronously
+(async () => {
+  if (!skipPhalaTests) {
+    skipPhalaTests = !(await isNpxAvailable());
+  }
+})();
 
 describe('TEE Command', () => {
   beforeEach(() => {

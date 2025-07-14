@@ -8,6 +8,15 @@ import { bunExecSimple } from '../../src/utils/bun-exec';
 
 const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 
+// Helper function to execute ElizaOS CLI commands
+async function runElizaCmd(elizaosCmd: string, args: string[], options: { timeout?: number } = {}) {
+  const { stdout } = await bunExecSimple(elizaosCmd, args, {
+    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
+    env: process.env
+  });
+  return stdout;
+}
+
 describe('ElizaOS Plugin Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
@@ -21,22 +30,20 @@ describe('ElizaOS Plugin Commands', () => {
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-plugins-'));
 
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
+    // Setup CLI command - use the linked elizaos command
+    elizaosCmd = 'elizaos';
 
     // Create one test project for all plugin tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
     process.chdir(testTmpDir);
 
     console.log('Creating shared test project...');
-    execSync(
-      `${elizaosCmd} create shared-test-project --yes`,
-      getPlatformOptions({
-        stdio: 'pipe',
-        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-      })
-    );
+    await bunExecSimple(elizaosCmd, [
+      'create', 'shared-test-project', '--yes'
+    ], {
+      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      env: process.env
+    });
 
     // Change to project directory for all tests
     process.chdir(projectDir);
@@ -71,8 +78,8 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   // Core help / list tests
-  it('plugins command shows help with no subcommand', () => {
-    const result = execSync(`${elizaosCmd} plugins`, getPlatformOptions({ encoding: 'utf8' }));
+  it('plugins command shows help with no subcommand', async () => {
+    const result = await runElizaCmd(elizaosCmd, ['plugins']);
     expect(result).toContain('Manage ElizaOS plugins');
     expect(result).toContain('Commands:');
     expect(result).toContain('list');
@@ -81,29 +88,23 @@ describe('ElizaOS Plugin Commands', () => {
     expect(result).toContain('remove');
   });
 
-  it('plugins --help shows usage information', () => {
-    const result = execSync(
-      `${elizaosCmd} plugins --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+  it('plugins --help shows usage information', async () => {
+    const result = await runElizaCmd(elizaosCmd, ['plugins', '--help']);
     expect(result).toContain('Manage ElizaOS plugins');
   });
 
-  it('plugins list shows available plugins', () => {
-    const result = execSync(`${elizaosCmd} plugins list`, getPlatformOptions({ encoding: 'utf8' }));
+  it('plugins list shows available plugins', async () => {
+    const result = await runElizaCmd(elizaosCmd, ['plugins', 'list']);
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);
   });
 
-  it('plugins list aliases (l, ls) work correctly', () => {
+  it('plugins list aliases (l, ls) work correctly', async () => {
     const aliases = ['l', 'ls'];
 
     for (const alias of aliases) {
-      const result = execSync(
-        `${elizaosCmd} plugins ${alias}`,
-        getPlatformOptions({ encoding: 'utf8' })
-      );
+      const result = await runElizaCmd(elizaosCmd, ['plugins', alias]);
       expect(result).toContain('Available v1.x plugins');
       expect(result).toContain('plugins');
     }
@@ -114,10 +115,8 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add installs a plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add @elizaos/plugin-openai --skip-env-prompt`, {
-          stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
-          cwd: projectDir,
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', '@elizaos/plugin-openai', '--skip-env-prompt'], {
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION
         });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
@@ -136,10 +135,8 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins install alias works',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins install @elizaos/plugin-mcp --skip-env-prompt`, {
-          stdio: 'pipe',
-          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
-          cwd: projectDir,
+        await runElizaCmd(elizaosCmd, ['plugins', 'install', '@elizaos/plugin-mcp', '--skip-env-prompt'], {
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION
         });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
@@ -158,7 +155,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add supports third-party plugins',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', '@fleek-platform/eliza-plugin-mcp', '--skip-env-prompt'], {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
@@ -181,8 +178,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         // First GitHub URL install
-        execSync(
-          `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', 'https://github.com/elizaos-plugins/plugin-video-understanding', '--skip-env-prompt'],
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -194,8 +190,7 @@ describe('ElizaOS Plugin Commands', () => {
         expect(packageJson1).toContain('plugin-video-understanding');
 
         // Second GitHub URL install with shorthand syntax
-        execSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', 'github:elizaos-plugins/plugin-openrouter#1.x', '--skip-env-prompt'],
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -219,7 +214,7 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins installed-plugins shows installed plugins',
     async () => {
-      const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
+      const result = await runElizaCmd(elizaosCmd, ['plugins', 'installed-plugins']);
       // Should show previously installed plugins from other tests
       expect(result).toMatch(/@elizaos\/plugin-|github:/);
     },
@@ -231,19 +226,15 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins remove uninstalls a plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add @elizaos/plugin-elevenlabs --skip-env-prompt`, {
-          stdio: 'pipe',
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', '@elizaos/plugin-elevenlabs', '--skip-env-prompt'], {
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
-          cwd: projectDir,
         });
 
         let packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-elevenlabs');
 
-        execSync(`${elizaosCmd} plugins remove @elizaos/plugin-elevenlabs`, {
-          stdio: 'pipe',
+        await runElizaCmd(elizaosCmd, ['plugins', 'remove', '@elizaos/plugin-elevenlabs'], {
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-          cwd: projectDir,
         });
 
         packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
@@ -270,7 +261,7 @@ describe('ElizaOS Plugin Commands', () => {
 
         // Add all plugins first
         for (const plugin of plugins) {
-          execSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt`, {
+          await runElizaCmd(elizaosCmd, ['plugins', 'add', plugin, '--skip-env-prompt'], {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
             cwd: projectDir,
@@ -285,7 +276,7 @@ describe('ElizaOS Plugin Commands', () => {
         ];
 
         for (const [command, plugin] of removeCommands) {
-          execSync(`${elizaosCmd} plugins ${command} ${plugin}`, {
+          await runElizaCmd(elizaosCmd, ['plugins', command, plugin], {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             cwd: projectDir,
@@ -306,7 +297,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add fails for missing plugin',
     async () => {
       try {
-        execSync(`${elizaosCmd} plugins add missing --skip-env-prompt`, {
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', 'missing', '--skip-env-prompt'], {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
           cwd: projectDir,
@@ -325,14 +316,9 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add via GitHub shorthand URL',
     async () => {
       try {
-        execSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
-          {
-            stdio: 'pipe',
-            timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
-            cwd: projectDir,
-          }
-        );
+        await runElizaCmd(elizaosCmd, ['plugins', 'add', 'github:elizaos-plugins/plugin-farcaster#1.x', '--skip-env-prompt'], {
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
+        });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('github:elizaos-plugins/plugin-farcaster#1.x');

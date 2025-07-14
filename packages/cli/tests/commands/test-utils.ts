@@ -6,10 +6,23 @@ import { TEST_TIMEOUTS } from '../test-timeouts';
 import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
 
 /**
- * Helper function to execute shell commands using Bun.spawn
- * This is used for system commands that don't go through bunExec
+ * Helper function to execute elizaos CLI commands
+ * This assumes elizaos has been linked globally via bun link
  */
-async function execShellCommand(command: string, options: { encoding?: string, stdio?: string, timeout?: number } = {}): Promise<string> {
+export async function runElizaCmd(args: string[], options: { timeout?: number; cwd?: string } = {}): Promise<string> {
+  const { stdout } = await bunExecSimple('elizaos', args, {
+    timeout: options.timeout || 30000,
+    cwd: options.cwd || process.cwd(),
+    env: process.env
+  });
+  return stdout;
+}
+
+/**
+ * Helper function to execute shell commands using Bun.spawn
+ * This replaces execSync for system commands like mkdir, echo, etc.
+ */
+export async function execShellCommand(command: string, options: { encoding?: string, stdio?: string, timeout?: number } = {}): Promise<string> {
   // For complex shell commands, we need to use shell
   const shell = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
   const proc = Bun.spawn([...shell, command], {
