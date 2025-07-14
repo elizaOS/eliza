@@ -31,7 +31,7 @@ export const start = new Command()
       const dirInfo = detectDirectoryType(cwd);
       const isMonorepo = dirInfo.type === 'elizaos-monorepo';
 
-      if (!isMonorepo && process.env.ELIZA_TEST_MODE !== 'true') {
+      if (!isMonorepo && !process.env.ELIZA_TEST_MODE) {
         try {
           // Use buildProject function with proper UI feedback and error handling
           await buildProject(cwd, false);
