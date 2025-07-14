@@ -55,8 +55,10 @@ async function gracefulShutdown(signal: string) {
   
   try {
     // Stop the dev server if it's running
-    await stopServer();
-    logger.info('Server stopped successfully');
+    const serverWasStopped = await stopServer();
+    if (serverWasStopped) {
+      logger.info('Server stopped successfully');
+    }
   } catch (error) {
     // Extract error message for better debugging
     const errorMessage = error instanceof Error ? error.message : String(error);

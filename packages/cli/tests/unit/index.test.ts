@@ -80,7 +80,8 @@ describe('Signal handling', () => {
 
     // Mock stopServer
     mockStopServer = mock(async () => {
-      // Default mock implementation - succeeds
+      // Default mock implementation - returns true (server was stopped)
+      return true;
     });
   });
 
@@ -105,8 +106,10 @@ describe('Signal handling', () => {
     mockLogger.info(`Received ${signal}, shutting down gracefully...`);
     
     try {
-      await mockStopServer();
-      mockLogger.info('Server stopped successfully');
+      const serverWasStopped = await mockStopServer();
+      if (serverWasStopped) {
+        mockLogger.info('Server stopped successfully');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       mockLogger.error(`Error stopping server: ${errorMessage}`);
@@ -157,8 +160,10 @@ describe('Signal handling', () => {
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
     
     try {
-      await mockStopServer();
-      mockLogger.info('Server stopped successfully');
+      const serverWasStopped = await mockStopServer();
+      if (serverWasStopped) {
+        mockLogger.info('Server stopped successfully');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       mockLogger.error(`Error stopping server: ${errorMessage}`);
@@ -192,8 +197,10 @@ describe('Signal handling', () => {
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
     
     try {
-      await mockStopServer();
-      mockLogger.info('Server stopped successfully');
+      const serverWasStopped = await mockStopServer();
+      if (serverWasStopped) {
+        mockLogger.info('Server stopped successfully');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       mockLogger.error(`Error stopping server: ${errorMessage}`);
@@ -277,8 +284,10 @@ describe('Signal handling', () => {
     mockLogger.info(`Received ${unknownSignal}, shutting down gracefully...`);
     
     try {
-      await mockStopServer();
-      mockLogger.info('Server stopped successfully');
+      const serverWasStopped = await mockStopServer();
+      if (serverWasStopped) {
+        mockLogger.info('Server stopped successfully');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       mockLogger.error(`Error stopping server: ${errorMessage}`);
@@ -325,6 +334,45 @@ describe('Signal handling', () => {
     const secondAttempt = state.tryInitiateShutdown();
     expect(secondAttempt).toBe(false);
     expect(state.isShuttingDown).toBe(true);
+  });
+
+  it('should not log server messages when no server is running', async () => {
+    // Mock stopServer to return false (no server was running)
+    mockStopServer.mockResolvedValue(false);
+    
+    // Simulate gracefulShutdown when no server is running
+    if (!shutdownState.tryInitiateShutdown()) {
+      mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
+      return;
+    }
+    
+    mockLogger.info(`Received SIGINT, shutting down gracefully...`);
+    
+    try {
+      const serverWasStopped = await mockStopServer();
+      if (serverWasStopped) {
+        mockLogger.info('Server stopped successfully');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      mockLogger.error(`Error stopping server: ${errorMessage}`);
+      mockLogger.debug('Full error details:', error);
+    }
+    
+    try {
+      process.exit(130);
+    } catch (error) {
+      // Expected behavior in test environment
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('Process exit called with code: 130');
+    }
+
+    // Verify graceful shutdown was initiated
+    expect(mockLogger.info).toHaveBeenCalledWith('Received SIGINT, shutting down gracefully...');
+    // Verify "Server stopped successfully" was NOT called since no server was running
+    expect(mockLogger.info).not.toHaveBeenCalledWith('Server stopped successfully');
+    expect(mockStopServer).toHaveBeenCalled();
+    expect(mockExit).toHaveBeenCalledWith(130);
   });
 });
 
