@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
-import { execSync } from 'node:child_process';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { safeChangeDirectory, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 
 const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 
@@ -44,10 +44,10 @@ describe('ElizaOS Plugin Commands', () => {
 
     // Install dependencies to ensure plugins can be verified
     console.log('Installing project dependencies...');
-    execSync('bun install', getPlatformOptions({
-      stdio: 'pipe',
+    await bunExecSimple('bun', ['install'], {
       timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
-    }));
+      env: process.env
+    });
     console.log('Dependencies installed successfully');
   });
 

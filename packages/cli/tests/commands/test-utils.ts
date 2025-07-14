@@ -166,9 +166,25 @@ export async function runCliCommand(
 
   try {
     // Parse the command to extract the actual script path and arguments
-    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
+    let bunArgs: string[];
+    
+    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
+    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
+    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
+    
+    if (bunRunMatch) {
+      // Format: bun run "script.js"
+      bunArgs = ['run', bunRunMatch[1]];
+    } else if (bunDirectMatch) {
+      // Format: bun "path/to/script.js"
+      bunArgs = [bunDirectMatch[1]];
+    } else {
+      // Fallback: assume it's a direct command
+      bunArgs = [elizaosCmd];
+    }
+    
     const argsArray = args.split(' ').filter(arg => arg.length > 0);
-    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,

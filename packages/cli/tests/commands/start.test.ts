@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +10,7 @@ import {
   TestProcessManager,
   waitForServerReady,
 } from './test-utils';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
@@ -111,8 +111,11 @@ describe('ElizaOS Start Commands', () => {
 
 
   // Basic agent check
-  it('start command shows help', () => {
-    const result = execSync(`${elizaosCmd} start --help`, getPlatformOptions({ encoding: 'utf8' }));
+  it('start command shows help', async () => {
+    const { stdout: result } = await bunExecSimple(elizaosCmd, ['start', '--help'], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      env: process.env
+    });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
