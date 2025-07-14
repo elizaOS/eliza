@@ -20,14 +20,14 @@ describe('ElizaOS Env Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  it('env --help shows usage', () => {
-    const result = runCliCommand(context.elizaosCmd, 'env --help');
+  it('env --help shows usage', async () => {
+    const result = await runCliCommand(context.elizaosCmd, 'env --help');
     expectHelpOutput(result, 'env');
   });
 
   it('env list shows environment variables', async () => {
     // First call: no local .env file present
-    let result = runCliCommand(context.elizaosCmd, 'env list');
+    let result = await runCliCommand(context.elizaosCmd, 'env list');
 
     const expectedSections = ['System Information', 'Local Environment Variables'];
     for (const section of expectedSections) {
@@ -39,7 +39,7 @@ describe('ElizaOS Env Commands', () => {
     // Create a local .env file and try again
     await writeFile('.env', 'TEST_VAR=test_value');
 
-    result = runCliCommand(context.elizaosCmd, 'env list');
+    result = await runCliCommand(context.elizaosCmd, 'env list');
     expect(result).toContain('TEST_VAR');
     expect(result).toContain('test_value');
   });
@@ -47,7 +47,7 @@ describe('ElizaOS Env Commands', () => {
   it('env list --local shows only local environment', async () => {
     await writeFile('.env', 'LOCAL_TEST=local_value');
 
-    const result = runCliCommand(context.elizaosCmd, 'env list --local');
+    const result = await runCliCommand(context.elizaosCmd, 'env list --local');
 
     expect(result).toContain('LOCAL_TEST');
     expect(result).toContain('local_value');
@@ -74,7 +74,7 @@ describe('ElizaOS Env Commands', () => {
   it('env reset shows all necessary options', async () => {
     await writeFile('.env', 'DUMMY=value');
 
-    const result = runCliCommand(context.elizaosCmd, 'env reset --yes');
+    const result = await runCliCommand(context.elizaosCmd, 'env reset --yes');
 
     expect(result).toContain('Reset Summary');
     expect(result).toContain('Local environment variables');

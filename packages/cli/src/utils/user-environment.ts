@@ -5,7 +5,6 @@ import * as semver from 'semver';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync, readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
 import { emoji } from './emoji-handler';
 import { autoInstallBun, shouldAutoInstall } from './auto-install-bun';
@@ -208,12 +207,18 @@ export class UserEnvironment {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
         // Check if bun has the CLI installed globally
-        const command =
+        // Use Bun.spawnSync for checking global packages
+        const args =
           process.platform === 'win32'
-            ? `bun pm ls -g | findstr "${packageName}"`
-            : `bun pm ls -g | grep -q "${packageName}"`;
-        execSync(command, { stdio: 'ignore' });
-        isGlobalCheck = true;
+            ? ['cmd', '/c', `bun pm ls -g | findstr "${packageName}"`]
+            : ['sh', '-c', `bun pm ls -g | grep -q "${packageName}"`];
+
+        const proc = Bun.spawnSync(args, {
+          stdout: 'ignore',
+          stderr: 'ignore',
+        });
+
+        isGlobalCheck = proc.exitCode === 0;
       }
     } catch (error) {
       // Package not found globally

@@ -41,6 +41,14 @@ describe('ElizaOS Plugin Commands', () => {
     // Change to project directory for all tests
     process.chdir(projectDir);
     console.log('Shared test project created at:', projectDir);
+
+    // Install dependencies to ensure plugins can be verified
+    console.log('Installing project dependencies...');
+    execSync('bun install', getPlatformOptions({
+      stdio: 'pipe',
+      timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
+    }));
+    console.log('Dependencies installed successfully');
   });
 
   beforeEach(() => {

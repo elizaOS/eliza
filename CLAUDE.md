@@ -137,6 +137,7 @@ bun run release:alpha   # Release alpha version
 ### Process Execution
 
 - **NEVER USE `execa` OR OTHER PROCESS EXECUTION LIBRARIES**
+- **NEVER USE NODE.JS APIS LIKE `execSync`, `spawnSync`, `exec`, `spawn` FROM `child_process`**
 - **ALWAYS USE `Bun.spawn()` FOR SPAWNING PROCESSES**
 - **USE THE EXISTING `bun-exec` UTILITY:** Located at `packages/cli/src/utils/bun-exec.ts` which provides:
   - `bunExec()` - Main execution function with full control
@@ -154,6 +155,8 @@ bun run release:alpha   # Release alpha version
   // Full control
   const result = await bunExec('bun', ['test'], { cwd: '/path/to/dir' });
   ```
+
+  **IMPORTANT:** Even in test files, avoid using Node.js `execSync` or other child_process APIs. Use the bun-exec utilities or Bun.spawn directly.
 
 ### Git & GitHub
 
