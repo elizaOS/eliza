@@ -39,8 +39,9 @@ describe('ElizaOS Start Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command - use the linked elizaos command
-    elizaosCmd = 'elizaos';
+    // Setup CLI command
+    const scriptDir = join(__dirname, '..');
+    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -84,8 +85,8 @@ describe('ElizaOS Start Commands', () => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
     const serverProcess = processManager.spawn(
-      elizaosCmd,
-      ['start', ...args.split(' ')],
+      'bun',
+      [join(__dirname, '..', '../dist/index.js'), 'start', ...args.split(' ')],
       {
         env: {
           ...process.env,

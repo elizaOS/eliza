@@ -4,41 +4,10 @@
  */
 
 import { mock } from 'bun:test';
-import { bunExecSimple } from '../src/utils/bun-exec';
-import { join } from 'node:path';
 
 // Set up global environment variables for testing
 process.env.NODE_ENV = 'test';
 process.env.ELIZA_NONINTERACTIVE = 'true';
-
-// Build and link the CLI for testing
-async function setupCliForTesting() {
-  try {
-    console.log('Building CLI for tests...');
-    const cliPackageDir = join(__dirname, '..');
-    
-    // Build the CLI
-    await bunExecSimple('bun', ['run', 'build'], {
-      cwd: cliPackageDir,
-      env: process.env
-    });
-    
-    // Link the CLI globally
-    console.log('Linking CLI globally...');
-    await bunExecSimple('bun', ['link'], {
-      cwd: cliPackageDir,
-      env: process.env
-    });
-    
-    console.log('CLI build and link completed successfully');
-  } catch (error) {
-    console.error('Failed to setup CLI for testing:', error);
-    throw error;
-  }
-}
-
-// Run the setup
-await setupCliForTesting();
 
 // Mock problematic Node.js modules first
 mock.module('multer', () => {

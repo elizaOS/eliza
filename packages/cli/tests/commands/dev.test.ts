@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { getBunExecutable, killProcessOnPort, safeChangeDirectory, runElizaCmd, expectCliCommandToFail } from './test-utils';
+import { getBunExecutable, killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
@@ -22,7 +23,7 @@ describe('ElizaOS Dev Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
 
     // Setup CLI command
-    elizaosCmd = 'elizaos';
+    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -193,8 +194,8 @@ describe('ElizaOS Dev Commands', () => {
     return devProcess;
   };
 
-  it('dev --help shows usage', async () => {
-    const result = await runElizaCmd(['dev', '--help']);
+  it('dev --help shows usage', () => {
+    const result = execSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -516,11 +517,14 @@ describe('ElizaOS Dev Commands', () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }, 15000); // Reduced timeout for CI stability
 
-  it('dev command validates port parameter', async () => {
+  it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      await expectCliCommandToFail(elizaosCmd, 'dev --port abc', {
+      execSync(`${elizaosCmd} dev --port abc`, {
+        encoding: 'utf8',
+        stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,
+        cwd: projectDir,
       });
       expect(false).toBe(true); // Should not reach here
     } catch (error: any) {

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
@@ -53,16 +54,18 @@ describe('ElizaOS Env Commands', () => {
     expect(result).not.toContain('System Information');
   });
 
-  it.skip('env edit-local creates local .env if missing', async () => {
+  it('env edit-local creates local .env if missing', async () => {
     // Skip this test on Windows due to complex shell input handling
     if (process.platform === 'win32') {
       console.warn('Skipping env edit-local test on Windows due to shell input limitations');
       return;
     }
 
-    // This test is skipped because interactive commands are not easily tested
-    // TODO: Consider adding a non-interactive flag or test mode
-    const result = 'skipped';
+    // Use printf to simulate user input on Unix systems
+    const result = execSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
+      encoding: 'utf8',
+      shell: '/bin/bash',
+    });
 
     // The command should complete successfully
     expect(result).toBeTruthy();

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runElizaCmd } from '../commands/test-utils';
 
 describe('Plugin Test Isolation', () => {
   let tempDir: string;
@@ -18,7 +18,7 @@ describe('Plugin Test Isolation', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('should only run tests for the specific plugin being tested', async () => {
+  it('should only run tests for the specific plugin being tested', () => {
     // Create a mock plugin structure
     const pluginDir = join(tempDir, 'test-plugin');
     mkdirSync(pluginDir, { recursive: true });
@@ -52,8 +52,10 @@ export const testPlugin = {
 
     // Run the test command and capture output
     try {
-      const output = await runElizaCmd(['test', '--skip-build'], {
+      const output = execSync(`node ${cliPath} test --skip-build`, {
         cwd: pluginDir,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_ENV: 'test' },
       });
 
       // Verify the output shows plugin test isolation
@@ -71,7 +73,7 @@ export const testPlugin = {
     }
   });
 
-  it('should set ELIZA_TESTING_PLUGIN environment variable for plugins', async () => {
+  it('should set ELIZA_TESTING_PLUGIN environment variable for plugins', () => {
     // Create a mock plugin that checks for the environment variable
     const pluginDir = join(tempDir, 'env-test-plugin');
     mkdirSync(pluginDir, { recursive: true });
@@ -97,8 +99,10 @@ export const envTestPlugin = {
     writeFileSync(join(pluginDir, 'src', 'index.ts'), pluginContent);
 
     try {
-      const output = await runElizaCmd(['test', '--skip-build'], {
+      const output = execSync(`node ${cliPath} test --skip-build`, {
         cwd: pluginDir,
+        encoding: 'utf8',
+        env: { ...process.env, NODE_ENV: 'test' },
       });
 
       // The environment variable should be set
