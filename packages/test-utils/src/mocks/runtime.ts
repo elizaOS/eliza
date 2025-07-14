@@ -87,6 +87,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     events: overrides.events || new Map(),
     fetch: overrides.fetch || null,
     routes: overrides.routes || [],
+    logger: overrides.logger || console,
 
     // Database Properties
     db: overrides.db || mockDb,
@@ -96,8 +97,11 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     initialize: mock().mockResolvedValue(undefined),
     getConnection: mock().mockResolvedValue(mockDb),
     getService: mock().mockReturnValue(null),
+    getServicesByType: mock().mockReturnValue([]),
     getAllServices: mock().mockReturnValue(new Map()),
     registerService: mock().mockResolvedValue(undefined),
+    getRegisteredServiceTypes: mock().mockReturnValue([]),
+    hasService: mock().mockReturnValue(false),
     registerDatabaseAdapter: mock(),
     setSetting: mock(),
     getSetting: mock((key: string) => {

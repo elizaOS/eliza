@@ -14,15 +14,15 @@ export const dummyServicesPlugin: Plugin = {
   name: 'dummy-services',
   description: 'Load standard dummy services for testing purposes.',
   services: [
-    DummyTokenDataService, 
-    DummyLpService, 
-    DummyWalletService, 
-    DummyPdfService, 
-    DummyVideoService, 
-    DummyBrowserService, 
-    DummyTranscriptionService, 
-    DummyWebSearchService, 
-    DummyEmailService
+    DummyTokenDataService,
+    DummyLpService,
+    DummyWalletService,
+    DummyPdfService,
+    DummyVideoService,
+    DummyBrowserService,
+    DummyTranscriptionService,
+    DummyWebSearchService,
+    DummyEmailService,
   ],
   tests: [dummyServicesScenariosSuite],
   init: async (runtime) => {
@@ -33,14 +33,14 @@ export const dummyServicesPlugin: Plugin = {
 export default dummyServicesPlugin;
 
 // Export services for direct use
-export { 
-  DummyTokenDataService, 
-  DummyLpService, 
-  DummyWalletService, 
-  DummyPdfService, 
-  DummyVideoService, 
-  DummyBrowserService, 
-  DummyTranscriptionService, 
-  DummyWebSearchService, 
-  DummyEmailService 
+export {
+  DummyTokenDataService,
+  DummyLpService,
+  DummyWalletService,
+  DummyPdfService,
+  DummyVideoService,
+  DummyBrowserService,
+  DummyTranscriptionService,
+  DummyWebSearchService,
+  DummyEmailService,
 };

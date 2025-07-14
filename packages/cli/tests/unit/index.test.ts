@@ -61,9 +61,9 @@ describe('Signal handling', () => {
         }
         this.isShuttingDown = true;
         return true;
-      }
+      },
     };
-    
+
     // Mock process.exit
     originalExit = process.exit;
     mockExit = mock((code?: number) => {
@@ -102,9 +102,9 @@ describe('Signal handling', () => {
       mockLogger.debug(`Ignoring ${signal} - shutdown already in progress`);
       return;
     }
-    
+
     mockLogger.info(`Received ${signal}, shutting down gracefully...`);
-    
+
     try {
       const serverWasStopped = await mockStopServer();
       if (serverWasStopped) {
@@ -115,10 +115,10 @@ describe('Signal handling', () => {
       mockLogger.error(`Error stopping server: ${errorMessage}`);
       mockLogger.debug('Full error details:', error);
     }
-    
+
     const exitCode = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 0;
     expect(exitCode).toBe(expectedExitCode);
-    
+
     try {
       process.exit(exitCode);
     } catch (error) {
@@ -130,7 +130,7 @@ describe('Signal handling', () => {
 
   it('should handle SIGINT gracefully and exit with code 130', async () => {
     await testGracefulShutdown('SIGINT', 130);
-    
+
     expect(mockLogger.info).toHaveBeenCalledWith('Received SIGINT, shutting down gracefully...');
     expect(mockLogger.info).toHaveBeenCalledWith('Server stopped successfully');
     expect(mockStopServer).toHaveBeenCalled();
@@ -139,7 +139,7 @@ describe('Signal handling', () => {
 
   it('should handle SIGTERM gracefully and exit with code 143', async () => {
     await testGracefulShutdown('SIGTERM', 143);
-    
+
     expect(mockLogger.info).toHaveBeenCalledWith('Received SIGTERM, shutting down gracefully...');
     expect(mockLogger.info).toHaveBeenCalledWith('Server stopped successfully');
     expect(mockStopServer).toHaveBeenCalled();
@@ -150,15 +150,15 @@ describe('Signal handling', () => {
     // Mock stopServer to throw an error
     const testError = new Error('Server stop failed');
     mockStopServer.mockRejectedValue(testError);
-    
+
     // Simulate gracefulShutdown with error using new shutdown state
     if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
       return;
     }
-    
+
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
-    
+
     try {
       const serverWasStopped = await mockStopServer();
       if (serverWasStopped) {
@@ -169,7 +169,7 @@ describe('Signal handling', () => {
       mockLogger.error(`Error stopping server: ${errorMessage}`);
       mockLogger.debug('Full error details:', error);
     }
-    
+
     try {
       process.exit(130);
     } catch (error) {
@@ -187,15 +187,15 @@ describe('Signal handling', () => {
     // Mock stopServer to throw a non-Error object
     const testErrorObject = { message: 'Non-error object' };
     mockStopServer.mockRejectedValue(testErrorObject);
-    
+
     // Simulate gracefulShutdown with non-Error object using new shutdown state
     if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
       return;
     }
-    
+
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
-    
+
     try {
       const serverWasStopped = await mockStopServer();
       if (serverWasStopped) {
@@ -206,7 +206,7 @@ describe('Signal handling', () => {
       mockLogger.error(`Error stopping server: ${errorMessage}`);
       mockLogger.debug('Full error details:', error);
     }
-    
+
     try {
       process.exit(130);
     } catch (error) {
@@ -227,12 +227,12 @@ describe('Signal handling', () => {
         return;
       }
       mockLogger.info(`Received SIGINT, shutting down gracefully...`);
-      
+
       // Simulate a slow server stop
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await mockStopServer();
       mockLogger.info('Server stopped successfully');
-      
+
       try {
         process.exit(130);
       } catch (error) {
@@ -249,7 +249,7 @@ describe('Signal handling', () => {
       mockLogger.info(`Received SIGTERM, shutting down gracefully...`);
       await mockStopServer();
       mockLogger.info('Server stopped successfully');
-      
+
       try {
         process.exit(143);
       } catch (error) {
@@ -263,10 +263,12 @@ describe('Signal handling', () => {
     // Verify first shutdown was processed
     expect(mockLogger.info).toHaveBeenCalledWith('Received SIGINT, shutting down gracefully...');
     expect(mockLogger.info).toHaveBeenCalledWith('Server stopped successfully');
-    
+
     // Verify second shutdown was ignored
-    expect(mockLogger.debug).toHaveBeenCalledWith('Ignoring SIGTERM - shutdown already in progress');
-    
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      'Ignoring SIGTERM - shutdown already in progress'
+    );
+
     // Verify stopServer was only called once
     expect(mockStopServer).toHaveBeenCalledTimes(1);
   });
@@ -274,15 +276,15 @@ describe('Signal handling', () => {
   it('should handle fallback exit code for unknown signals', async () => {
     // Test with an unknown signal
     const unknownSignal = 'SIGUSR1';
-    
+
     // Simulate gracefulShutdown with unknown signal
     if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring ${unknownSignal} - shutdown already in progress`);
       return;
     }
-    
+
     mockLogger.info(`Received ${unknownSignal}, shutting down gracefully...`);
-    
+
     try {
       const serverWasStopped = await mockStopServer();
       if (serverWasStopped) {
@@ -293,11 +295,11 @@ describe('Signal handling', () => {
       mockLogger.error(`Error stopping server: ${errorMessage}`);
       mockLogger.debug('Full error details:', error);
     }
-    
+
     // Should use fallback exit code 0 for unknown signals
     const exitCode = unknownSignal === 'SIGINT' ? 130 : unknownSignal === 'SIGTERM' ? 143 : 0;
     expect(exitCode).toBe(0);
-    
+
     try {
       process.exit(exitCode);
     } catch (error) {
@@ -322,7 +324,7 @@ describe('Signal handling', () => {
         }
         this.isShuttingDown = true;
         return true;
-      }
+      },
     };
 
     // First attempt should succeed
@@ -339,15 +341,15 @@ describe('Signal handling', () => {
   it('should not log server messages when no server is running', async () => {
     // Mock stopServer to return false (no server was running)
     mockStopServer.mockResolvedValue(false);
-    
+
     // Simulate gracefulShutdown when no server is running
     if (!shutdownState.tryInitiateShutdown()) {
       mockLogger.debug(`Ignoring SIGINT - shutdown already in progress`);
       return;
     }
-    
+
     mockLogger.info(`Received SIGINT, shutting down gracefully...`);
-    
+
     try {
       const serverWasStopped = await mockStopServer();
       if (serverWasStopped) {
@@ -358,7 +360,7 @@ describe('Signal handling', () => {
       mockLogger.error(`Error stopping server: ${errorMessage}`);
       mockLogger.debug('Full error details:', error);
     }
-    
+
     try {
       process.exit(130);
     } catch (error) {
@@ -403,7 +405,7 @@ describe('Signal handler registration', () => {
     const gracefulShutdown = async (signal: string) => {
       // Mock implementation for testing
     };
-    
+
     // Simulate the registration calls
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

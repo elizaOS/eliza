@@ -1,5 +1,4 @@
-import { ServiceType } from './service';
-import type { Service } from './service';
+import { Service, ServiceType } from './service';
 
 export interface PdfExtractionResult {
   text: string;
@@ -36,16 +35,16 @@ export interface PdfConversionOptions {
  */
 export abstract class IPdfService extends Service {
   static override readonly serviceType = ServiceType.PDF;
-  
+
   public readonly capabilityDescription = 'PDF processing, extraction, and generation capabilities';
-  
+
   /**
    * Extract text and metadata from a PDF file
    * @param pdfPath - Path to the PDF file or buffer
    * @returns Promise resolving to extracted text and metadata
    */
   abstract extractText(pdfPath: string | Buffer): Promise<PdfExtractionResult>;
-  
+
   /**
    * Generate a PDF from HTML content
    * @param htmlContent - HTML content to convert to PDF
@@ -53,7 +52,7 @@ export abstract class IPdfService extends Service {
    * @returns Promise resolving to PDF buffer
    */
   abstract generatePdf(htmlContent: string, options?: PdfGenerationOptions): Promise<Buffer>;
-  
+
   /**
    * Convert a document to PDF format
    * @param filePath - Path to the document file
@@ -61,14 +60,14 @@ export abstract class IPdfService extends Service {
    * @returns Promise resolving to PDF buffer
    */
   abstract convertToPdf(filePath: string, options?: PdfConversionOptions): Promise<Buffer>;
-  
+
   /**
    * Merge multiple PDF files into one
    * @param pdfPaths - Array of PDF file paths or buffers
    * @returns Promise resolving to merged PDF buffer
    */
   abstract mergePdfs(pdfPaths: (string | Buffer)[]): Promise<Buffer>;
-  
+
   /**
    * Split a PDF into individual pages
    * @param pdfPath - Path to the PDF file or buffer

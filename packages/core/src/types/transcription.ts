@@ -1,5 +1,4 @@
-import { ServiceType } from './service';
-import type { Service } from './service';
+import { Service, ServiceType } from './service';
 
 export interface TranscriptionOptions {
   language?: string;
@@ -62,33 +61,42 @@ export interface TextToSpeechOptions {
  */
 export abstract class ITranscriptionService extends Service {
   static override readonly serviceType = ServiceType.TRANSCRIPTION;
-  
+
   public readonly capabilityDescription = 'Audio transcription and speech processing capabilities';
-  
+
   /**
    * Transcribe audio file to text
    * @param audioPath - Path to audio file or audio buffer
    * @param options - Transcription options
    * @returns Promise resolving to transcription result
    */
-  abstract transcribeAudio(audioPath: string | Buffer, options?: TranscriptionOptions): Promise<TranscriptionResult>;
-  
+  abstract transcribeAudio(
+    audioPath: string | Buffer,
+    options?: TranscriptionOptions
+  ): Promise<TranscriptionResult>;
+
   /**
    * Transcribe video file to text (extracts audio first)
    * @param videoPath - Path to video file or video buffer
    * @param options - Transcription options
    * @returns Promise resolving to transcription result
    */
-  abstract transcribeVideo(videoPath: string | Buffer, options?: TranscriptionOptions): Promise<TranscriptionResult>;
-  
+  abstract transcribeVideo(
+    videoPath: string | Buffer,
+    options?: TranscriptionOptions
+  ): Promise<TranscriptionResult>;
+
   /**
    * Real-time speech to text from audio stream
    * @param audioStream - Audio stream or buffer
    * @param options - Speech to text options
    * @returns Promise resolving to transcription result
    */
-  abstract speechToText(audioStream: NodeJS.ReadableStream | Buffer, options?: SpeechToTextOptions): Promise<TranscriptionResult>;
-  
+  abstract speechToText(
+    audioStream: NodeJS.ReadableStream | Buffer,
+    options?: SpeechToTextOptions
+  ): Promise<TranscriptionResult>;
+
   /**
    * Convert text to speech
    * @param text - Text to convert to speech
@@ -96,24 +104,26 @@ export abstract class ITranscriptionService extends Service {
    * @returns Promise resolving to audio buffer
    */
   abstract textToSpeech(text: string, options?: TextToSpeechOptions): Promise<Buffer>;
-  
+
   /**
    * Get supported languages for transcription
    * @returns Promise resolving to array of supported language codes
    */
   abstract getSupportedLanguages(): Promise<string[]>;
-  
+
   /**
    * Get available voices for text to speech
    * @returns Promise resolving to array of available voices
    */
-  abstract getAvailableVoices(): Promise<Array<{
-    id: string;
-    name: string;
-    language: string;
-    gender?: 'male' | 'female' | 'neutral';
-  }>>;
-  
+  abstract getAvailableVoices(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      language: string;
+      gender?: 'male' | 'female' | 'neutral';
+    }>
+  >;
+
   /**
    * Detect language of audio file
    * @param audioPath - Path to audio file or audio buffer

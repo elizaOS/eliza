@@ -26,10 +26,11 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   actions: Action[];
   evaluators: Evaluator[];
   plugins: Plugin[];
-  services: Map<ServiceTypeName, Service>;
+  services: Map<ServiceTypeName, Service[]>;
   events: Map<string, ((params: any) => Promise<void>)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
+  logger: any;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -39,12 +40,16 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getConnection(): Promise<any>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
-  
+
   getServicesByType<T extends Service>(service: ServiceTypeName | string): T[];
 
   getAllServices(): Map<ServiceTypeName, Service[]>;
 
   registerService(service: typeof Service): Promise<void>;
+
+  getRegisteredServiceTypes(): ServiceTypeName[];
+
+  hasService(serviceType: ServiceTypeName | string): boolean;
 
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;

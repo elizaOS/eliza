@@ -1,24 +1,21 @@
 import { IAgentRuntime } from '@elizaos/core';
-import { 
-  IWebSearchService, 
-  SearchOptions, 
-  SearchResult, 
-  SearchResponse, 
-  NewsSearchOptions, 
-  ImageSearchOptions, 
+import {
+  IWebSearchService,
+  SearchOptions,
+  SearchResult,
+  SearchResponse,
+  NewsSearchOptions,
+  ImageSearchOptions,
   VideoSearchOptions,
-  Service 
 } from '@elizaos/core';
 
 /**
  * Dummy web search service for testing purposes
  * Provides mock implementations of web search operations
  */
-export class DummyWebSearchService extends Service implements IWebSearchService {
+export class DummyWebSearchService extends IWebSearchService {
   static override readonly serviceType = IWebSearchService.serviceType;
-  
-  public readonly capabilityDescription = 'Dummy web search service for testing';
-  
+
   private trendingSearches = [
     'artificial intelligence',
     'machine learning',
@@ -29,34 +26,34 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
     'renewable energy',
     'cybersecurity',
     'biotechnology',
-    'autonomous vehicles'
+    'autonomous vehicles',
   ];
-  
+
   constructor(runtime: IAgentRuntime) {
     super(runtime);
   }
-  
+
   static async start(runtime: IAgentRuntime): Promise<DummyWebSearchService> {
     const service = new DummyWebSearchService(runtime);
     await service.initialize();
     return service;
   }
-  
+
   async initialize(): Promise<void> {
     this.runtime.logger.info('DummyWebSearchService initialized');
   }
-  
+
   async stop(): Promise<void> {
     this.runtime.logger.info('DummyWebSearchService stopped');
   }
-  
+
   async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
     this.runtime.logger.debug(`Searching for: "${query}"`);
-    
+
     if (options) {
       this.runtime.logger.debug('Search options:', options);
     }
-    
+
     // Mock search results
     const results: SearchResult[] = [
       {
@@ -68,7 +65,7 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         publishedDate: new Date('2024-01-15'),
         source: 'Example Guide',
         relevanceScore: 0.95,
-        snippet: `Learn everything about ${query} with this detailed guide...`
+        snippet: `Learn everything about ${query} with this detailed guide...`,
       },
       {
         title: `${query} - Latest News and Updates`,
@@ -79,7 +76,7 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         publishedDate: new Date('2024-01-10'),
         source: 'Example News',
         relevanceScore: 0.88,
-        snippet: `Breaking news about ${query}: Recent developments show...`
+        snippet: `Breaking news about ${query}: Recent developments show...`,
       },
       {
         title: `${query} - Wikipedia`,
@@ -89,10 +86,10 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         publishedDate: new Date('2023-12-01'),
         source: 'Wikipedia',
         relevanceScore: 0.82,
-        snippet: `${query} is a topic that encompasses various aspects...`
-      }
+        snippet: `${query} is a topic that encompasses various aspects...`,
+      },
     ];
-    
+
     return {
       query,
       results,
@@ -102,24 +99,24 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         `${query} tutorial`,
         `${query} examples`,
         `${query} best practices`,
-        `${query} 2024`
+        `${query} 2024`,
       ],
       relatedSearches: [
         `what is ${query}`,
         `how to ${query}`,
         `${query} vs alternatives`,
-        `${query} benefits`
-      ]
+        `${query} benefits`,
+      ],
     };
   }
-  
+
   async searchNews(query: string, options?: NewsSearchOptions): Promise<SearchResponse> {
     this.runtime.logger.debug(`Searching news for: "${query}"`);
-    
+
     if (options) {
       this.runtime.logger.debug('News search options:', options);
     }
-    
+
     // Mock news results
     const results: SearchResult[] = [
       {
@@ -130,7 +127,7 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         thumbnail: 'https://news.example.com/breaking.jpg',
         publishedDate: new Date(Date.now() - 3600000), // 1 hour ago
         source: 'Example News',
-        relevanceScore: 0.93
+        relevanceScore: 0.93,
       },
       {
         title: `${query}: Analysis and Commentary`,
@@ -140,26 +137,26 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         thumbnail: 'https://analysis.example.com/analysis.jpg',
         publishedDate: new Date(Date.now() - 7200000), // 2 hours ago
         source: 'Example Analysis',
-        relevanceScore: 0.87
-      }
+        relevanceScore: 0.87,
+      },
     ];
-    
+
     return {
       query,
       results,
       totalResults: 12345,
       searchTime: 0.28,
-      suggestions: [`${query} news`, `${query} headlines`, `${query} updates`]
+      suggestions: [`${query} news`, `${query} headlines`, `${query} updates`],
     };
   }
-  
+
   async searchImages(query: string, options?: ImageSearchOptions): Promise<SearchResponse> {
     this.runtime.logger.debug(`Searching images for: "${query}"`);
-    
+
     if (options) {
       this.runtime.logger.debug('Image search options:', options);
     }
-    
+
     // Mock image results
     const results: SearchResult[] = Array.from({ length: 12 }, (_, i) => ({
       title: `${query} Image ${i + 1}`,
@@ -168,24 +165,24 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
       displayUrl: 'images.example.com',
       thumbnail: `https://images.example.com/thumb/${query.replace(/\s+/g, '-')}-${i + 1}.jpg`,
       source: 'Example Images',
-      relevanceScore: 0.9 - (i * 0.05)
+      relevanceScore: 0.9 - i * 0.05,
     }));
-    
+
     return {
       query,
       results,
       totalResults: 45678,
-      searchTime: 0.35
+      searchTime: 0.35,
     };
   }
-  
+
   async searchVideos(query: string, options?: VideoSearchOptions): Promise<SearchResponse> {
     this.runtime.logger.debug(`Searching videos for: "${query}"`);
-    
+
     if (options) {
       this.runtime.logger.debug('Video search options:', options);
     }
-    
+
     // Mock video results
     const results: SearchResult[] = [
       {
@@ -196,7 +193,7 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         thumbnail: `https://video.example.com/thumb/tutorial-${query.replace(/\s+/g, '-')}.jpg`,
         publishedDate: new Date('2024-01-05'),
         source: 'Example Video',
-        relevanceScore: 0.91
+        relevanceScore: 0.91,
       },
       {
         title: `${query} Explained in 5 Minutes`,
@@ -206,21 +203,21 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         thumbnail: `https://video.example.com/thumb/quick-${query.replace(/\s+/g, '-')}.jpg`,
         publishedDate: new Date('2024-01-03'),
         source: 'Example Video',
-        relevanceScore: 0.86
-      }
+        relevanceScore: 0.86,
+      },
     ];
-    
+
     return {
       query,
       results,
       totalResults: 8765,
-      searchTime: 0.31
+      searchTime: 0.31,
     };
   }
-  
+
   async getSuggestions(query: string): Promise<string[]> {
     this.runtime.logger.debug(`Getting suggestions for: "${query}"`);
-    
+
     // Mock suggestions based on query
     const suggestions = [
       `${query} tutorial`,
@@ -230,19 +227,19 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
       `${query} vs alternatives`,
       `how to ${query}`,
       `what is ${query}`,
-      `${query} 2024`
+      `${query} 2024`,
     ];
-    
+
     return suggestions;
   }
-  
+
   async getTrendingSearches(region?: string): Promise<string[]> {
     this.runtime.logger.debug(`Getting trending searches for region: ${region || 'global'}`);
-    
+
     // Return shuffled trending searches
     return [...this.trendingSearches].sort(() => Math.random() - 0.5);
   }
-  
+
   async getPageInfo(url: string): Promise<{
     title: string;
     description: string;
@@ -252,10 +249,10 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
     links: string[];
   }> {
     this.runtime.logger.debug(`Getting page info for: ${url}`);
-    
+
     // Mock page information
     const domain = new URL(url).hostname;
-    
+
     return {
       title: `Mock Page Title - ${domain}`,
       description: `This is a mock page description for ${url}. It provides detailed information about the page content.`,
@@ -269,21 +266,17 @@ export class DummyWebSearchService extends Service implements IWebSearchService 
         'twitter:card': 'summary_large_image',
         'twitter:title': `Mock Page Title - ${domain}`,
         'twitter:description': `Mock page description for ${url}`,
-        'author': 'Mock Author',
-        'keywords': 'mock, page, content, analysis'
+        author: 'Mock Author',
+        keywords: 'mock, page, content, analysis',
       },
-      images: [
-        `${url}/image1.jpg`,
-        `${url}/image2.jpg`,
-        `${url}/banner.jpg`
-      ],
+      images: [`${url}/image1.jpg`, `${url}/image2.jpg`, `${url}/banner.jpg`],
       links: [
         `${url}/page1`,
         `${url}/page2`,
         `${url}/contact`,
         `${url}/about`,
-        'https://external-link.com'
-      ]
+        'https://external-link.com',
+      ],
     };
   }
 }

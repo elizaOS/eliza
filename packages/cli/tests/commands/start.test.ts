@@ -115,7 +115,9 @@ describe('ElizaOS Start Commands', () => {
       const packageJson = {
         name: 'test-eliza-project',
         version: '1.0.0',
-        scripts: hasBuildScript ? { build: 'echo "Building..." && mkdir -p dist && echo "Build complete"' } : {},
+        scripts: hasBuildScript
+          ? { build: 'echo "Building..." && mkdir -p dist && echo "Build complete"' }
+          : {},
         dependencies: {
           '@elizaos/core': '^1.0.0',
         },

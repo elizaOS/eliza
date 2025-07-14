@@ -1,5 +1,4 @@
-import { ServiceType } from './service';
-import type { Service } from './service';
+import { Service, ServiceType } from './service';
 
 export interface VideoInfo {
   title?: string;
@@ -53,16 +52,16 @@ export interface VideoProcessingOptions {
  */
 export abstract class IVideoService extends Service {
   static override readonly serviceType = ServiceType.VIDEO;
-  
+
   public readonly capabilityDescription = 'Video download, processing, and conversion capabilities';
-  
+
   /**
    * Get video information without downloading
    * @param url - Video URL
    * @returns Promise resolving to video information
    */
   abstract getVideoInfo(url: string): Promise<VideoInfo>;
-  
+
   /**
    * Download a video from URL
    * @param url - Video URL
@@ -70,7 +69,7 @@ export abstract class IVideoService extends Service {
    * @returns Promise resolving to downloaded file path
    */
   abstract downloadVideo(url: string, options?: VideoDownloadOptions): Promise<string>;
-  
+
   /**
    * Extract audio from video
    * @param videoPath - Path to video file or video URL
@@ -78,7 +77,7 @@ export abstract class IVideoService extends Service {
    * @returns Promise resolving to audio file path
    */
   abstract extractAudio(videoPath: string, outputPath?: string): Promise<string>;
-  
+
   /**
    * Generate thumbnail from video
    * @param videoPath - Path to video file or video URL
@@ -86,7 +85,7 @@ export abstract class IVideoService extends Service {
    * @returns Promise resolving to thumbnail image path
    */
   abstract getThumbnail(videoPath: string, timestamp?: number): Promise<string>;
-  
+
   /**
    * Convert video to different format
    * @param videoPath - Path to input video file
@@ -94,8 +93,12 @@ export abstract class IVideoService extends Service {
    * @param options - Processing options
    * @returns Promise resolving to converted video path
    */
-  abstract convertVideo(videoPath: string, outputPath: string, options?: VideoProcessingOptions): Promise<string>;
-  
+  abstract convertVideo(
+    videoPath: string,
+    outputPath: string,
+    options?: VideoProcessingOptions
+  ): Promise<string>;
+
   /**
    * Get available formats for a video URL
    * @param url - Video URL

@@ -1531,10 +1531,10 @@ export class AgentRuntime implements IAgentRuntime {
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
-    
+
     try {
       const serviceInstance = await serviceDef.start(this);
-      
+
       // Initialize arrays if they don't exist
       if (!this.services.has(serviceType)) {
         this.services.set(serviceType, []);
@@ -1542,11 +1542,11 @@ export class AgentRuntime implements IAgentRuntime {
       if (!this.serviceTypes.has(serviceType)) {
         this.serviceTypes.set(serviceType, []);
       }
-      
+
       // Add the service to the arrays
       this.services.get(serviceType)!.push(serviceInstance);
       this.serviceTypes.get(serviceType)!.push(serviceDef);
-      
+
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }

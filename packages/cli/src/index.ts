@@ -26,7 +26,7 @@ import { stopServer } from '@/src/commands/dev/utils/server-manager';
  */
 const shutdownState = {
   isShuttingDown: false,
-  
+
   /**
    * Atomically check and set the shutdown flag
    * @returns true if shutdown was initiated, false if already in progress
@@ -37,7 +37,7 @@ const shutdownState = {
     }
     this.isShuttingDown = true;
     return true;
-  }
+  },
 };
 
 /**
@@ -52,7 +52,7 @@ async function gracefulShutdown(signal: string) {
     return;
   }
   logger.info(`Received ${signal}, shutting down gracefully...`);
-  
+
   try {
     // Stop the dev server if it's running
     const serverWasStopped = await stopServer();
@@ -65,7 +65,7 @@ async function gracefulShutdown(signal: string) {
     logger.error(`Error stopping server: ${errorMessage}`);
     logger.debug('Full error details:', error);
   }
-  
+
   // Use appropriate exit codes for different signals
   const exitCode = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 0;
   process.exit(exitCode);

@@ -37,7 +37,9 @@ export const start = new Command()
           await buildProject(cwd, false);
         } catch (error) {
           logger.error(`Build error: ${error instanceof Error ? error.message : String(error)}`);
-          logger.warn('Build failed, but continuing with start. Some features may not work correctly.');
+          logger.warn(
+            'Build failed, but continuing with start. Some features may not work correctly.'
+          );
         }
       }
 

@@ -1,5 +1,4 @@
-import { ServiceType } from './service';
-import type { Service } from './service';
+import { Service, ServiceType } from './service';
 import type { UUID } from './primitives';
 
 export interface PostMedia {
@@ -154,9 +153,10 @@ export interface PostAnalytics {
  */
 export abstract class IPostService extends Service {
   static override readonly serviceType = ServiceType.POST;
-  
-  public readonly capabilityDescription = 'Social media posting and content management capabilities';
-  
+
+  public readonly capabilityDescription =
+    'Social media posting and content management capabilities';
+
   /**
    * Create and publish a new post
    * @param content - Post content
@@ -164,21 +164,21 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving to post ID
    */
   abstract createPost(content: PostContent, options?: PostCreateOptions): Promise<UUID>;
-  
+
   /**
    * Get posts from timeline or specific user
    * @param options - Search options
    * @returns Promise resolving to array of posts
    */
   abstract getPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
-  
+
   /**
    * Get a specific post by ID
    * @param postId - Post ID
    * @returns Promise resolving to post info
    */
   abstract getPost(postId: UUID): Promise<PostInfo>;
-  
+
   /**
    * Edit an existing post
    * @param postId - Post ID
@@ -186,14 +186,14 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving when edit completes
    */
   abstract editPost(postId: UUID, content: PostContent): Promise<void>;
-  
+
   /**
    * Delete a post
    * @param postId - Post ID
    * @returns Promise resolving when deletion completes
    */
   abstract deletePost(postId: UUID): Promise<void>;
-  
+
   /**
    * Like/unlike a post
    * @param postId - Post ID
@@ -201,7 +201,7 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving when operation completes
    */
   abstract likePost(postId: UUID, like: boolean): Promise<void>;
-  
+
   /**
    * Share/repost a post
    * @param postId - Post ID
@@ -209,7 +209,7 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving to share ID
    */
   abstract sharePost(postId: UUID, comment?: string): Promise<UUID>;
-  
+
   /**
    * Save/unsave a post
    * @param postId - Post ID
@@ -217,7 +217,7 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving when operation completes
    */
   abstract savePost(postId: UUID, save: boolean): Promise<void>;
-  
+
   /**
    * Comment on a post
    * @param postId - Post ID
@@ -225,7 +225,7 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving to comment ID
    */
   abstract commentOnPost(postId: UUID, content: PostContent): Promise<UUID>;
-  
+
   /**
    * Get comments for a post
    * @param postId - Post ID
@@ -233,7 +233,7 @@ export abstract class IPostService extends Service {
    * @returns Promise resolving to array of comments
    */
   abstract getComments(postId: UUID, options?: PostSearchOptions): Promise<PostInfo[]>;
-  
+
   /**
    * Schedule a post for later publishing
    * @param content - Post content
@@ -241,22 +241,26 @@ export abstract class IPostService extends Service {
    * @param options - Publishing options
    * @returns Promise resolving to scheduled post ID
    */
-  abstract schedulePost(content: PostContent, scheduledAt: Date, options?: PostCreateOptions): Promise<UUID>;
-  
+  abstract schedulePost(
+    content: PostContent,
+    scheduledAt: Date,
+    options?: PostCreateOptions
+  ): Promise<UUID>;
+
   /**
    * Get analytics for a post
    * @param postId - Post ID
    * @returns Promise resolving to post analytics
    */
   abstract getPostAnalytics(postId: UUID): Promise<PostAnalytics>;
-  
+
   /**
    * Get trending posts
    * @param options - Search options
    * @returns Promise resolving to trending posts
    */
   abstract getTrendingPosts(options?: PostSearchOptions): Promise<PostInfo[]>;
-  
+
   /**
    * Search posts across platforms
    * @param query - Search query

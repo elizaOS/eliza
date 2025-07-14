@@ -1,5 +1,4 @@
-import { ServiceType } from './service';
-import type { Service } from './service';
+import { Service, ServiceType } from './service';
 import type { UUID } from './primitives';
 
 export interface MessageParticipant {
@@ -118,9 +117,9 @@ export interface MessageChannel {
  */
 export abstract class IMessageService extends Service {
   static override readonly serviceType = ServiceType.MESSAGE;
-  
+
   public readonly capabilityDescription = 'Message sending, receiving, and management capabilities';
-  
+
   /**
    * Send a message to a channel
    * @param channelId - Channel ID
@@ -128,8 +127,12 @@ export abstract class IMessageService extends Service {
    * @param options - Send options
    * @returns Promise resolving to message ID
    */
-  abstract sendMessage(channelId: UUID, content: MessageContent, options?: MessageSendOptions): Promise<UUID>;
-  
+  abstract sendMessage(
+    channelId: UUID,
+    content: MessageContent,
+    options?: MessageSendOptions
+  ): Promise<UUID>;
+
   /**
    * Get messages from a channel
    * @param channelId - Channel ID
@@ -137,14 +140,14 @@ export abstract class IMessageService extends Service {
    * @returns Promise resolving to array of messages
    */
   abstract getMessages(channelId: UUID, options?: MessageSearchOptions): Promise<MessageInfo[]>;
-  
+
   /**
    * Get a specific message by ID
    * @param messageId - Message ID
    * @returns Promise resolving to message
    */
   abstract getMessage(messageId: UUID): Promise<MessageInfo>;
-  
+
   /**
    * Edit a message
    * @param messageId - Message ID
@@ -152,14 +155,14 @@ export abstract class IMessageService extends Service {
    * @returns Promise resolving when edit completes
    */
   abstract editMessage(messageId: UUID, content: MessageContent): Promise<void>;
-  
+
   /**
    * Delete a message
    * @param messageId - Message ID
    * @returns Promise resolving when deletion completes
    */
   abstract deleteMessage(messageId: UUID): Promise<void>;
-  
+
   /**
    * Add a reaction to a message
    * @param messageId - Message ID
@@ -167,7 +170,7 @@ export abstract class IMessageService extends Service {
    * @returns Promise resolving when reaction is added
    */
   abstract addReaction(messageId: UUID, emoji: string): Promise<void>;
-  
+
   /**
    * Remove a reaction from a message
    * @param messageId - Message ID
@@ -175,34 +178,34 @@ export abstract class IMessageService extends Service {
    * @returns Promise resolving when reaction is removed
    */
   abstract removeReaction(messageId: UUID, emoji: string): Promise<void>;
-  
+
   /**
    * Pin a message
    * @param messageId - Message ID
    * @returns Promise resolving when message is pinned
    */
   abstract pinMessage(messageId: UUID): Promise<void>;
-  
+
   /**
    * Unpin a message
    * @param messageId - Message ID
    * @returns Promise resolving when message is unpinned
    */
   abstract unpinMessage(messageId: UUID): Promise<void>;
-  
+
   /**
    * Get available channels
    * @returns Promise resolving to array of channels
    */
   abstract getChannels(): Promise<MessageChannel[]>;
-  
+
   /**
    * Get channel information
    * @param channelId - Channel ID
    * @returns Promise resolving to channel info
    */
   abstract getChannel(channelId: UUID): Promise<MessageChannel>;
-  
+
   /**
    * Create a new channel
    * @param name - Channel name
@@ -210,12 +213,16 @@ export abstract class IMessageService extends Service {
    * @param options - Channel options
    * @returns Promise resolving to new channel ID
    */
-  abstract createChannel(name: string, type: MessageChannel['type'], options?: {
-    description?: string;
-    participants?: UUID[];
-    private?: boolean;
-  }): Promise<UUID>;
-  
+  abstract createChannel(
+    name: string,
+    type: MessageChannel['type'],
+    options?: {
+      description?: string;
+      participants?: UUID[];
+      private?: boolean;
+    }
+  ): Promise<UUID>;
+
   /**
    * Search messages across channels
    * @param query - Search query
