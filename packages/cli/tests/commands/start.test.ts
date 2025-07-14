@@ -153,10 +153,13 @@ describe('ElizaOS Start Commands', () => {
               timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             });
 
-            result = execSync(
-              `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-              platformOptions
-            );
+            const { stdout } = await bunExecSimple(elizaosCmd, [
+              'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`
+            ], {
+              timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+              env: process.env
+            });
+            result = stdout;
 
             // If we get a result, check if it contains Ada
             if (result && result.includes('Ada')) {
@@ -242,39 +245,45 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  it('multiple character formats parse', () => {
+  it('multiple character formats parse', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
     const formats = [',', ' '];
 
     for (const fmt of formats) {
-      const result = execSync(
-        `${elizaosCmd} start --character "${adaPath}${fmt}${adaPath}" --help`,
-        getPlatformOptions({ encoding: 'utf8' })
-      );
+      const { stdout: result } = await bunExecSimple(elizaosCmd, [
+        'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'
+      ], {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env
+      });
       expect(result).toContain('start');
     }
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  it('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
-    const result = execSync(
-      `${elizaosCmd} start --character "${adaPath},does-not-exist.json" --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+    const { stdout: result } = await bunExecSimple(elizaosCmd, [
+      'start', '--character', `${adaPath},does-not-exist.json`, '--help'
+    ], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      env: process.env
+    });
     expect(result).toContain('start');
   });
 
   // --build flag accepted
-  it('build option flag accepted', () => {
-    const result = execSync(
-      `${elizaosCmd} start --build --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+  it('build option flag accepted', async () => {
+    const { stdout: result } = await bunExecSimple(elizaosCmd, [
+      'start', '--build', '--help'
+    ], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,  
+      env: process.env
+    });
     expect(result).toContain('start');
   });
 

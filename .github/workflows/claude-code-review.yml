@@ -45,6 +45,8 @@ jobs:
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
             Review this PR. Be concise and actionable.
+            
+            **📝 IMPORTANT: Check and consider all previous review comments in this PR before making new suggestions. Don't repeat issues that have already been addressed or are being discussed.**
 
             **🚨 CRITICAL CHECKS:**
             - Security: hardcoded keys, SQL injection, XSS
