@@ -21,15 +21,15 @@ describe('ElizaOS Monorepo Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  it('monorepo --help shows usage', () => {
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
+  it('monorepo --help shows usage', async () => {
+    const result = await runCliCommand(context.elizaosCmd, 'monorepo --help');
     expectHelpOutput(result, 'monorepo', ['-b', '--branch', '-d', '--dir']);
   });
 
-  it('monorepo uses default branch and directory', () => {
+  it('monorepo uses default branch and directory', async () => {
     // This would try to clone, so we just test that it recognizes the command
     // without actually performing the network operation
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
+    const result = await runCliCommand(context.elizaosCmd, 'monorepo --help');
     expect(result).toContain('Branch to install');
     expect(result).toContain('develop'); // default branch
   });
@@ -38,7 +38,7 @@ describe('ElizaOS Monorepo Commands', () => {
     await mkdir('not-empty-dir');
     await writeFile('not-empty-dir/placeholder', '');
 
-    const result = expectCliCommandToFail(context.elizaosCmd, 'monorepo --dir not-empty-dir', {
+    const result = await expectCliCommandToFail(context.elizaosCmd, 'monorepo --dir not-empty-dir', {
       timeout: TEST_TIMEOUTS.QUICK_COMMAND,
     });
     expect(result.status).not.toBe(0);

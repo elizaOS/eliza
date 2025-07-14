@@ -191,7 +191,7 @@ export function runCliCommandSync(args: string[], options: BunExecSyncOptions = 
  * @param commandString - Full command string
  * @returns Parsed command and arguments
  */
-function parseCommand(commandString: string): { command: string; args: string[] } {
+export function parseCommand(commandString: string): { command: string; args: string[] } {
   const parts: string[] = [];
   let current = '';
   let inQuotes = false;

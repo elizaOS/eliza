@@ -72,7 +72,7 @@ describe('ElizaOS Agent Commands', () => {
     // Setup CLI command with robust bun path detection
     const scriptDir = join(__dirname, '..');
     const detectedBunPath = getBunExecutable();
-    elizaosCmd = `${detectedBunPath} ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `${detectedBunPath} "${join(scriptDir, '../dist/index.js')}"`;
     console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
     console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
 

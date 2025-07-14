@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
+import { parseCommand } from '../utils/bun-test-helpers';
 
 /**
  * Helper function to execute shell commands using Bun.spawn
@@ -70,9 +71,10 @@ export async function setupTestEnvironment(): Promise<TestContext> {
   const testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
   process.chdir(testTmpDir);
 
-  const scriptDir = join(__dirname, '../..');
-  const scriptPath = join(scriptDir, 'dist/index.js');
-  const elizaosCmd = `bun run "${scriptPath}"`;
+  // Use absolute path to avoid issues with __dirname in tests
+  const cliPackageRoot = join(originalCwd, '../..');
+  const scriptPath = join(cliPackageRoot, 'packages/cli/dist/index.js');
+  const elizaosCmd = `bun "${scriptPath}"`;
 
   return { testTmpDir, elizaosCmd, originalCwd };
 }
@@ -202,8 +204,9 @@ export async function runCliCommand(
       bunArgs = [elizaosCmd];
     }
 
-    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
-    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
+    const parsed = parseCommand(args);
+    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
+    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
@@ -271,8 +274,9 @@ export async function runCliCommandSilently(
       bunArgs = [elizaosCmd];
     }
 
-    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
-    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
+    const parsed = parseCommand(args);
+    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
+    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
@@ -334,8 +338,9 @@ export async function expectCliCommandToFail(
       bunArgs = [elizaosCmd];
     }
 
-    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
-    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
+    const parsed = parseCommand(args);
+    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
+    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
@@ -722,6 +727,12 @@ export const crossPlatform = {
 export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
 
+  // Always ensure environment variables are passed, especially PATH
+  platformOptions.env = {
+    ...process.env,
+    ...baseOptions.env, // Preserve any custom env vars from baseOptions
+  };
+
   if (process.platform === 'win32') {
     // Only scale the timeout if one was explicitly provided
     if (platformOptions.timeout !== undefined) {
@@ -736,10 +747,9 @@ export function getPlatformOptions(baseOptions: any = {}): any {
       platformOptions.timeout = platformOptions.timeout * 1.25;
     }
     platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    // Merge environment variables instead of overwriting
+    // Add macOS specific paths and locale
     platformOptions.env = {
-      ...process.env,
-      ...baseOptions.env, // Preserve any custom env vars from baseOptions
+      ...platformOptions.env,
       PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
       LC_ALL: 'en_US.UTF-8',

@@ -211,10 +211,10 @@ describe('ElizaOS Create Commands', () => {
   );
 
   it('rejects invalid project name', async () => {
-    const result = await expectCliCommandToFail(elizaosCmd, 'create "Invalid Name" --yes');
+    const result = await expectCliCommandToFail(elizaosCmd, 'create Invalid-Name! --yes');
 
     expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(/Invalid/i);
+    expect(result.output).toMatch(/Invalid project name/i);
   });
 
   it('rejects invalid project type', async () => {
