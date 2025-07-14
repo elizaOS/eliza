@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getBunExecutable, killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { bunExecSync } from '../utils/bun-test-helpers';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
@@ -195,7 +195,7 @@ describe('ElizaOS Dev Commands', () => {
   };
 
   it('dev --help shows usage', () => {
-    const result = execSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -520,7 +520,7 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      execSync(`${elizaosCmd} dev --port abc`, {
+      bunExecSync(`${elizaosCmd} dev --port abc`, {
         encoding: 'utf8',
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,

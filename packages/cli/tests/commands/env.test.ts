@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
+import { bunExecSync } from '../utils/bun-test-helpers';
 import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
@@ -62,7 +62,7 @@ describe('ElizaOS Env Commands', () => {
     }
 
     // Use printf to simulate user input on Unix systems
-    const result = execSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
+    const result = bunExecSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
       encoding: 'utf8',
       shell: '/bin/bash',
     });

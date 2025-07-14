@@ -10,6 +10,7 @@ import {
   killProcessOnPort,
   waitForServerReady,
 } from './test-utils';
+import { bunExecSync } from '../utils/bun-test-helpers';
 
 // Helper function to execute CLI commands using Bun.spawn
 async function execCliCommand(command: string, options: any = {}): Promise<string> {
@@ -18,27 +19,27 @@ async function execCliCommand(command: string, options: any = {}): Promise<strin
     stdout: options.stdio === 'ignore' || options.stdio === 'pipe' ? 'pipe' : 'inherit',
     stderr: options.stdio === 'ignore' || options.stdio === 'pipe' ? 'pipe' : 'inherit',
   });
-  
+
   let timeoutId: Timer | null = null;
   if (options.timeout) {
     timeoutId = setTimeout(() => {
       proc.kill();
     }, options.timeout);
   }
-  
+
   try {
     if (options.stdio === 'ignore') {
       await proc.exited;
       return '';
     }
-    
+
     const [stdout, stderr] = await Promise.all([
       proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
       proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
     ]);
-    
+
     await proc.exited;
-    
+
     if (proc.exitCode !== 0) {
       const error: any = new Error(`Command failed with exit code ${proc.exitCode}`);
       error.status = proc.exitCode;
@@ -46,7 +47,7 @@ async function execCliCommand(command: string, options: any = {}): Promise<strin
       error.stderr = stderr;
       throw error;
     }
-    
+
     return stdout;
   } finally {
     if (timeoutId) {
@@ -330,7 +331,10 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent help displays usage information', async () => {
-    const result = await execCliCommand(`${elizaosCmd} agent --help`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = await execCliCommand(
+      `${elizaosCmd} agent --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('Usage: elizaos agent');
   });
 
@@ -345,7 +349,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent list works with JSON flag', async () => {
-    const result = execSync(
+    const result = bunExecSync(
       `${elizaosCmd} agent list --remote-url ${testServerUrl} --json`,
       getPlatformOptions({
         encoding: 'utf8',
@@ -495,7 +499,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Stop agent
     try {
-      execSync(
+      bunExecSync(
         `${elizaosCmd} agent stop --remote-url ${testServerUrl} -n Ada`,
         getPlatformOptions({
           encoding: 'utf8',
@@ -530,4 +534,3 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 });
-

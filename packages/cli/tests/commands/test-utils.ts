@@ -9,34 +9,37 @@ import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
  * Helper function to execute shell commands using Bun.spawn
  * This is used for system commands that don't go through bunExec
  */
-async function execShellCommand(command: string, options: { encoding?: string, stdio?: string, timeout?: number } = {}): Promise<string> {
+async function execShellCommand(
+  command: string,
+  options: { encoding?: string; stdio?: string; timeout?: number } = {}
+): Promise<string> {
   // For complex shell commands, we need to use shell
   const shell = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
   const proc = Bun.spawn([...shell, command], {
     stdout: options.stdio === 'ignore' ? 'ignore' : 'pipe',
     stderr: options.stdio === 'ignore' ? 'ignore' : 'pipe',
   });
-  
+
   let timeoutId: Timer | null = null;
   if (options.timeout) {
     timeoutId = setTimeout(() => {
       proc.kill();
     }, options.timeout);
   }
-  
+
   try {
     if (options.stdio === 'ignore') {
       await proc.exited;
       return '';
     }
-    
+
     const [stdout, stderr] = await Promise.all([
       proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
       proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
     ]);
-    
+
     await proc.exited;
-    
+
     if (proc.exitCode !== 0 && !options.stdio) {
       const error: any = new Error(`Command failed: ${command}\nstderr: ${stderr}`);
       error.status = proc.exitCode;
@@ -44,7 +47,7 @@ async function execShellCommand(command: string, options: { encoding?: string, s
       error.stderr = stderr;
       throw error;
     }
-    
+
     return stdout;
   } finally {
     if (timeoutId) {
@@ -122,13 +125,29 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
   });
 
   try {
-    // Parse the command to extract the actual script path
-    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
-    const result = await bunExec('bun', ['run', cmd, 'create', projectName, '--yes'], {
+    // Parse the command to extract the actual script path and arguments
+    let bunArgs: string[];
+
+    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
+    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
+    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
+
+    if (bunRunMatch) {
+      // Format: bun run "script.js"
+      bunArgs = ['run', bunRunMatch[1]];
+    } else if (bunDirectMatch) {
+      // Format: bun "path/to/script.js"
+      bunArgs = [bunDirectMatch[1]];
+    } else {
+      // Fallback: assume it's a direct command
+      bunArgs = [elizaosCmd];
+    }
+
+    const result = await bunExec('bun', [...bunArgs, 'create', projectName, '--yes'], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
-      stdio: platformOptions.stdio as 'pipe' | 'inherit' | 'ignore'
+      stdio: platformOptions.stdio as 'pipe' | 'inherit' | 'ignore',
     });
     if (!result.success) {
       const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
@@ -167,11 +186,11 @@ export async function runCliCommand(
   try {
     // Parse the command to extract the actual script path and arguments
     let bunArgs: string[];
-    
+
     // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
     const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
     const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
-    
+
     if (bunRunMatch) {
       // Format: bun run "script.js"
       bunArgs = ['run', bunRunMatch[1]];
@@ -182,14 +201,14 @@ export async function runCliCommand(
       // Fallback: assume it's a direct command
       bunArgs = [elizaosCmd];
     }
-    
-    const argsArray = args.split(' ').filter(arg => arg.length > 0);
+
+    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
     const result = await bunExec('bun', [...bunArgs, ...argsArray], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
       stdout: 'pipe',
-      stderr: 'pipe'
+      stderr: 'pipe',
     });
     if (!result.success) {
       const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
@@ -235,14 +254,30 @@ export async function runCliCommandSilently(
 
   try {
     // Parse the command to extract the actual script path and arguments
-    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
-    const argsArray = args.split(' ').filter(arg => arg.length > 0);
-    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+    let bunArgs: string[];
+
+    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
+    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
+    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
+
+    if (bunRunMatch) {
+      // Format: bun run "script.js"
+      bunArgs = ['run', bunRunMatch[1]];
+    } else if (bunDirectMatch) {
+      // Format: bun "path/to/script.js"
+      bunArgs = [bunDirectMatch[1]];
+    } else {
+      // Fallback: assume it's a direct command
+      bunArgs = [elizaosCmd];
+    }
+
+    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
+    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
       stdout: 'pipe',
-      stderr: 'pipe'
+      stderr: 'pipe',
     });
     if (!result.success) {
       const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
@@ -282,14 +317,30 @@ export async function expectCliCommandToFail(
 
   try {
     // Parse the command to extract the actual script path and arguments
-    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
-    const argsArray = args.split(' ').filter(arg => arg.length > 0);
-    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+    let bunArgs: string[];
+
+    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
+    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
+    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
+
+    if (bunRunMatch) {
+      // Format: bun run "script.js"
+      bunArgs = ['run', bunRunMatch[1]];
+    } else if (bunDirectMatch) {
+      // Format: bun "path/to/script.js"
+      bunArgs = [bunDirectMatch[1]];
+    } else {
+      // Fallback: assume it's a direct command
+      bunArgs = [elizaosCmd];
+    }
+
+    const argsArray = args.split(' ').filter((arg) => arg.length > 0);
+    const result = await bunExec('bun', [...bunArgs, ...argsArray], {
       cwd: process.cwd(),
       timeout: platformOptions.timeout,
       env: platformOptions.env,
       stdout: 'pipe',
-      stderr: 'pipe'
+      stderr: 'pipe',
     });
     if (result.success) {
       throw new Error(`Command should have failed but succeeded with output: ${result.stdout}`);
@@ -709,21 +760,22 @@ export class TestProcessManager {
    * Spawn a process with proper error handling and cleanup
    */
   spawn(command: string, args: string[], options: any = {}): any {
-    const { spawn } = require('child_process');
-
     // Force stdio to 'ignore' to prevent hanging streams on Windows
     const processOptions = {
-      ...options,
-      stdio: ['ignore', 'ignore', 'ignore'], // Ignore all stdio to prevent hanging
+      cwd: options.cwd || process.cwd(),
+      env: options.env || process.env,
+      stdout: 'ignore',
+      stderr: 'ignore', 
+      stdin: 'ignore'
     };
 
-    const childProcess = spawn(command, args, processOptions);
+    const childProcess = Bun.spawn([command, ...args], processOptions);
 
     // Track the process for cleanup
     this.processes.add(childProcess);
 
     // Remove from tracking when process exits naturally
-    childProcess.on('exit', () => {
+    childProcess.exited.then(() => {
       this.processes.delete(childProcess);
     });
 
@@ -734,26 +786,13 @@ export class TestProcessManager {
    * Gracefully terminate a single process with platform-specific handling
    */
   async terminateProcess(process: any): Promise<void> {
-    if (!process || process.exitCode !== null || process.killed) {
+    if (!process || process.exitCode !== null) {
       return;
     }
 
     try {
-      // Create exit promise
-      const exitPromise = new Promise<void>((resolve) => {
-        if (process.exitCode !== null) {
-          resolve();
-          return;
-        }
-
-        const cleanup = () => {
-          process.removeAllListeners();
-          resolve();
-        };
-
-        process.once('exit', cleanup);
-        process.once('error', cleanup);
-      });
+      // For Bun processes, we have an exited promise
+      const exitPromise = process.exited;
 
       if (process.platform === 'win32') {
         // Windows: Try graceful termination first

@@ -10,17 +10,14 @@ try {
   console.log('Checking for staged files...');
   const proc = Bun.spawnSync(['git', 'diff', '--staged', '--name-only'], {
     stdout: 'pipe',
-    stderr: 'pipe'
+    stderr: 'pipe',
   });
-  
+
   if (proc.exitCode !== 0) {
     throw new Error('Failed to get staged files');
   }
-  
-  const stagedFiles = new TextDecoder().decode(proc.stdout)
-    .trim()
-    .split('\n')
-    .filter(Boolean);
+
+  const stagedFiles = new TextDecoder().decode(proc.stdout).trim().split('\n').filter(Boolean);
 
   console.log(`Found ${stagedFiles.length} staged files.`);
 
@@ -48,9 +45,9 @@ try {
   const fileList = filesToLint.join(' ');
   const prettierProc = Bun.spawnSync(['bun', 'prettier', '--write', ...filesToLint], {
     stdout: 'inherit',
-    stderr: 'inherit'
+    stderr: 'inherit',
   });
-  
+
   if (prettierProc.exitCode !== 0) {
     throw new Error('Prettier formatting failed');
   }
@@ -58,9 +55,9 @@ try {
   // Add the formatted files back to staging
   const gitAddProc = Bun.spawnSync(['git', 'add', ...filesToLint], {
     stdout: 'inherit',
-    stderr: 'inherit'
+    stderr: 'inherit',
   });
-  
+
   if (gitAddProc.exitCode !== 0) {
     throw new Error('Failed to add files to git');
   }

@@ -682,7 +682,7 @@ export class AgentServer {
               try {
                 const proc = Bun.spawnSync(['npm', 'root', '-g'], {
                   stdout: 'pipe',
-                  stderr: 'pipe'
+                  stderr: 'pipe',
                 });
                 if (proc.exitCode === 0 && proc.stdout) {
                   const npmRoot = new TextDecoder().decode(proc.stdout).trim();

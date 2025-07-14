@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { safeChangeDirectory, runCliCommandSilently } from './test-utils';
+import { safeChangeDirectory, runCliCommandSilently, runCliCommand } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
@@ -22,7 +21,7 @@ describe('ElizaOS Update Commands', () => {
 
     // Setup CLI command
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
   });
 
   afterEach(async () => {
@@ -40,15 +39,15 @@ describe('ElizaOS Update Commands', () => {
 
   // Helper function to create project
   const makeProj = async (name: string) => {
-    runCliCommandSilently(elizaosCmd, `create ${name} --yes`, {
+    await runCliCommandSilently(elizaosCmd, `create ${name} --yes`, {
       timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
     process.chdir(join(testTmpDir, name));
   };
 
   // --help
-  it('update --help shows usage and options', () => {
-    const result = execSync(`${elizaosCmd} update --help`, { encoding: 'utf8' });
+  it('update --help shows usage and options', async () => {
+    const result = await runCliCommand(elizaosCmd, 'update --help');
     expect(result).toContain('Usage: elizaos update');
     expect(result).toContain('--cli');
     expect(result).toContain('--packages');
@@ -62,7 +61,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-app');
 
-      const result = runCliCommandSilently(elizaosCmd, 'update', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -79,7 +78,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-check-app');
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --check', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --check', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -93,7 +92,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-skip-build-app');
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --skip-build', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --skip-build', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -107,7 +106,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-packages-app');
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -121,8 +120,8 @@ describe('ElizaOS Update Commands', () => {
 
   it(
     'update --cli works outside a project',
-    () => {
-      const result = runCliCommandSilently(elizaosCmd, 'update --cli', {
+    async () => {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --cli', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -139,7 +138,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-combined-app');
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --cli --packages', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --cli --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -153,8 +152,8 @@ describe('ElizaOS Update Commands', () => {
 
   it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update succeeds outside a project (global check)',
-    () => {
-      const result = runCliCommandSilently(elizaosCmd, 'update', {
+    async () => {
+      const result = await runCliCommandSilently(elizaosCmd, 'update', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -169,8 +168,8 @@ describe('ElizaOS Update Commands', () => {
   // Non-project directory handling
   it(
     'update --packages shows helpful message in empty directory',
-    () => {
-      const result = runCliCommandSilently(elizaosCmd, 'update --packages', {
+    async () => {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -198,7 +197,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -229,7 +228,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --packages --check', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --packages --check', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -262,7 +261,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -273,7 +272,7 @@ describe('ElizaOS Update Commands', () => {
 
   it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update command should not create files in non-project directory',
-    () => {
+    async () => {
       // Create a temporary directory that's not a project
       const tmpDir = mkdtempSync(join(tmpdir(), 'eliza-test-'));
       const currentDir = process.cwd();
@@ -281,7 +280,7 @@ describe('ElizaOS Update Commands', () => {
       try {
         // Change to temp directory and run update command
         process.chdir(tmpDir);
-        const result = runCliCommandSilently(elizaosCmd, 'update', {
+        const result = await runCliCommandSilently(elizaosCmd, 'update', {
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
         });
 

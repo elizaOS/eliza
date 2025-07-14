@@ -14,7 +14,7 @@ import { bunExecSimple } from '../../src/utils/bun-exec';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
+  let elizaosPath: string;
   let originalCwd: string;
   let testServerPort: number;
   let processManager: TestProcessManager;
@@ -39,9 +39,9 @@ describe('ElizaOS Start Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command
+    // Setup CLI path
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    elizaosPath = join(scriptDir, '../dist/index.js');
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -109,12 +109,11 @@ describe('ElizaOS Start Commands', () => {
     return serverProcess;
   };
 
-
   // Basic agent check
   it('start command shows help', async () => {
-    const { stdout: result } = await bunExecSimple(elizaosCmd, ['start', '--help'], {
+    const { stdout: result } = await bunExecSimple('bun', [elizaosPath, 'start', '--help'], {
       timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      env: process.env
+      env: process.env,
     });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
@@ -153,12 +152,14 @@ describe('ElizaOS Start Commands', () => {
               timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             });
 
-            const { stdout } = await bunExecSimple(elizaosCmd, [
-              'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`
-            ], {
-              timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-              env: process.env
-            });
+            const { stdout } = await bunExecSimple(
+              'bun',
+              [elizaosPath, 'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`],
+              {
+                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+                env: process.env,
+              }
+            );
             result = stdout;
 
             // If we get a result, check if it contains Ada
@@ -252,12 +253,14 @@ describe('ElizaOS Start Commands', () => {
     const formats = [',', ' '];
 
     for (const fmt of formats) {
-      const { stdout: result } = await bunExecSimple(elizaosCmd, [
-        'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'
-      ], {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-        env: process.env
-      });
+      const { stdout: result } = await bunExecSimple(
+        'bun',
+        [elizaosPath, 'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'],
+        {
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          env: process.env,
+        }
+      );
       expect(result).toContain('start');
     }
   });
@@ -267,23 +270,27 @@ describe('ElizaOS Start Commands', () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
-    const { stdout: result } = await bunExecSimple(elizaosCmd, [
-      'start', '--character', `${adaPath},does-not-exist.json`, '--help'
-    ], {
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      env: process.env
-    });
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--character', `${adaPath},does-not-exist.json`, '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
+    );
     expect(result).toContain('start');
   });
 
   // --build flag accepted
   it('build option flag accepted', async () => {
-    const { stdout: result } = await bunExecSimple(elizaosCmd, [
-      'start', '--build', '--help'
-    ], {
-      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,  
-      env: process.env
-    });
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--build', '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
+    );
     expect(result).toContain('start');
   });
 

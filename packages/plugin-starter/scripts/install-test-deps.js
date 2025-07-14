@@ -40,7 +40,7 @@ function installTestDependencies() {
       stderr: 'inherit',
       cwd: process.cwd(),
     });
-    
+
     if (proc.exitCode !== 0) {
       throw new Error('bun add command failed');
     }

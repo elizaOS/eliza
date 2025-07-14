@@ -3,7 +3,7 @@ import { usePlugins } from '@/hooks/use-plugins';
 
 const PROVIDER_PLUGIN_MAPPINGS: Record<string, string> = {
   google: '@elizaos/plugin-google-genai',
-  llama_local: "@elizaos/plugin-ollama",
+  llama_local: '@elizaos/plugin-ollama',
   // extend as needed
 };
 
