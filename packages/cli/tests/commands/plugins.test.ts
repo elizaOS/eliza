@@ -73,7 +73,7 @@ describe('ElizaOS Plugin Commands', () => {
 
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
-    const result = execSync(`${elizaosCmd} plugins`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = bunExecSync(`${elizaosCmd} plugins`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Manage ElizaOS plugins');
     expect(result).toContain('Commands:');
     expect(result).toContain('list');
@@ -83,7 +83,7 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   it('plugins --help shows usage information', () => {
-    const result = execSync(
+    const result = bunExecSync(
       `${elizaosCmd} plugins --help`,
       getPlatformOptions({ encoding: 'utf8' })
     );
@@ -91,7 +91,7 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   it('plugins list shows available plugins', () => {
-    const result = execSync(`${elizaosCmd} plugins list`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = bunExecSync(`${elizaosCmd} plugins list`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);
@@ -101,7 +101,7 @@ describe('ElizaOS Plugin Commands', () => {
     const aliases = ['l', 'ls'];
 
     for (const alias of aliases) {
-      const result = execSync(
+      const result = bunExecSync(
         `${elizaosCmd} plugins ${alias}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
@@ -223,7 +223,7 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins installed-plugins shows installed plugins',
     async () => {
-      const result = execSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
+      const result = bunExecSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
       // Should show previously installed plugins from other tests
       expect(result).toMatch(/@elizaos\/plugin-|github:/);
     },
