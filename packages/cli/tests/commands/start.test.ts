@@ -1,8 +1,8 @@
 import { execSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
   getPlatformOptions,
@@ -18,10 +18,14 @@ describe('ElizaOS Start Commands', () => {
   let originalCwd: string;
   let testServerPort: number;
   let processManager: TestProcessManager;
+  let originalElizaTestMode: string | undefined;
 
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
+
+    // Store original ELIZA_TEST_MODE
+    originalElizaTestMode = process.env.ELIZA_TEST_MODE;
 
     // Initialize process manager
     processManager = new TestProcessManager();
@@ -53,6 +57,13 @@ describe('ElizaOS Start Commands', () => {
     delete process.env.LOCAL_SMALL_MODEL;
     delete process.env.LOCAL_MEDIUM_MODEL;
     delete process.env.TEST_SERVER_PORT;
+
+    // Restore original ELIZA_TEST_MODE
+    if (originalElizaTestMode !== undefined) {
+      process.env.ELIZA_TEST_MODE = originalElizaTestMode;
+    } else {
+      delete process.env.ELIZA_TEST_MODE;
+    }
 
     // Restore original working directory
     safeChangeDirectory(originalCwd);
@@ -96,6 +107,30 @@ describe('ElizaOS Start Commands', () => {
     }
 
     return serverProcess;
+  };
+
+  // Helper function to create a project structure for build testing
+  const createProjectStructure = async (hasPackageJson = true, hasBuildScript = true) => {
+    if (hasPackageJson) {
+      const packageJson = {
+        name: 'test-eliza-project',
+        version: '1.0.0',
+        scripts: hasBuildScript ? { build: 'echo "Building..." && mkdir -p dist && echo "Build complete"' } : {},
+        dependencies: {
+          '@elizaos/core': '^1.0.0',
+        },
+      };
+      await writeFile(join(testTmpDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+    }
+
+    // Create src directory and basic files
+    await mkdir(join(testTmpDir, 'src'), { recursive: true });
+    await writeFile(join(testTmpDir, 'src', 'index.ts'), 'export default {};');
+
+    // Create test character file
+    const charactersDir = join(__dirname, '../test-characters');
+    const adaPath = join(charactersDir, 'ada.json');
+    return adaPath;
   };
 
   // Basic agent check
@@ -323,4 +358,231 @@ describe('ElizaOS Start Commands', () => {
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
+
+  // Auto-build functionality tests
+  describe('Auto-build functionality', () => {
+    let buildProjectMock: any;
+    let buildProjectCalls: Array<{ cwd: string; isPlugin: boolean }> = [];
+
+    beforeEach(() => {
+      // Create mock that tracks calls
+      buildProjectCalls = [];
+      buildProjectMock = mock((cwd: string, isPlugin: boolean) => {
+        buildProjectCalls.push({ cwd, isPlugin });
+        return Promise.resolve();
+      });
+
+      // Mock the buildProject function
+      mock.module('@/src/utils/build-project', () => ({
+        buildProject: buildProjectMock,
+      }));
+    });
+
+    afterEach(() => {
+      buildProjectCalls = [];
+    });
+
+    it('should automatically build project when not in monorepo and not in test mode', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+
+      // Temporarily unset ELIZA_TEST_MODE to test auto-build
+      const originalTestMode = process.env.ELIZA_TEST_MODE;
+      delete process.env.ELIZA_TEST_MODE;
+
+      try {
+        // Mock monorepo detection to return null (not in monorepo)
+        const mockUserEnvironment = {
+          getInstance: mock(() => ({
+            findMonorepoRoot: mock(() => null),
+          })),
+        };
+        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
+
+        // Execute the start command without --help
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath}`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+
+        // Verify buildProject was called
+        expect(buildProjectMock).toHaveBeenCalledTimes(1);
+        expect(buildProjectCalls[0]).toEqual({
+          cwd: process.cwd(),
+          isPlugin: false,
+        });
+
+        // Verify the command executed (should contain some output)
+        expect(result).toBeTruthy();
+      } finally {
+        // Restore test mode
+        if (originalTestMode) {
+          process.env.ELIZA_TEST_MODE = originalTestMode;
+        } else {
+          delete process.env.ELIZA_TEST_MODE;
+        }
+      }
+    });
+
+    it('should skip build when ELIZA_TEST_MODE is set to true', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+
+      // Explicitly set ELIZA_TEST_MODE to 'true'
+      const originalTestMode = process.env.ELIZA_TEST_MODE;
+      process.env.ELIZA_TEST_MODE = 'true';
+
+      try {
+        // Mock monorepo detection to return null (not in monorepo)
+        const mockUserEnvironment = {
+          getInstance: mock(() => ({
+            findMonorepoRoot: mock(() => null),
+          })),
+        };
+        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
+
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath}`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+
+        // Verify buildProject was NOT called due to test mode
+        expect(buildProjectMock).not.toHaveBeenCalled();
+
+        // Verify the command executed
+        expect(result).toBeTruthy();
+      } finally {
+        // Restore original test mode
+        if (originalTestMode) {
+          process.env.ELIZA_TEST_MODE = originalTestMode;
+        } else {
+          delete process.env.ELIZA_TEST_MODE;
+        }
+      }
+    });
+
+    it('should skip build when ELIZA_TEST_MODE is set to any truthy value', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+
+      // Test with different truthy values
+      const truthyValues = ['1', 'yes', 'on', 'enabled'];
+
+      for (const value of truthyValues) {
+        // Reset mock calls
+        buildProjectCalls = [];
+
+        const originalTestMode = process.env.ELIZA_TEST_MODE;
+        process.env.ELIZA_TEST_MODE = value;
+
+        try {
+          // Mock monorepo detection to return null (not in monorepo)
+          const mockUserEnvironment = {
+            getInstance: mock(() => ({
+              findMonorepoRoot: mock(() => null),
+            })),
+          };
+          mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
+
+          const result = execSync(
+            `${elizaosCmd} start --character ${adaPath}`,
+            getPlatformOptions({ encoding: 'utf8' })
+          );
+
+          // Verify buildProject was NOT called due to test mode
+          expect(buildProjectMock).not.toHaveBeenCalled();
+
+          // Verify the command executed
+          expect(result).toBeTruthy();
+        } finally {
+          // Restore original test mode
+          if (originalTestMode) {
+            process.env.ELIZA_TEST_MODE = originalTestMode;
+          } else {
+            delete process.env.ELIZA_TEST_MODE;
+          }
+        }
+      }
+    });
+
+    it('should skip build when in monorepo directory', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+
+      // Temporarily unset ELIZA_TEST_MODE to test monorepo detection
+      const originalTestMode = process.env.ELIZA_TEST_MODE;
+      delete process.env.ELIZA_TEST_MODE;
+
+      try {
+        // Mock monorepo detection to return a monorepo root
+        const mockUserEnvironment = {
+          getInstance: mock(() => ({
+            findMonorepoRoot: mock(() => '/path/to/monorepo'),
+          })),
+        };
+        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
+
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath}`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+
+        // Verify buildProject was NOT called due to monorepo detection
+        expect(buildProjectMock).not.toHaveBeenCalled();
+
+        // Verify the command executed
+        expect(result).toBeTruthy();
+      } finally {
+        // Restore test mode
+        if (originalTestMode) {
+          process.env.ELIZA_TEST_MODE = originalTestMode;
+        } else {
+          delete process.env.ELIZA_TEST_MODE;
+        }
+      }
+    });
+
+    it('should handle build errors gracefully and continue with start', async () => {
+      // Create a project structure with build script
+      const adaPath = await createProjectStructure(true, true);
+
+      // Temporarily unset ELIZA_TEST_MODE to test auto-build
+      const originalTestMode = process.env.ELIZA_TEST_MODE;
+      delete process.env.ELIZA_TEST_MODE;
+
+      try {
+        // Mock monorepo detection to return null (not in monorepo)
+        const mockUserEnvironment = {
+          getInstance: mock(() => ({
+            findMonorepoRoot: mock(() => null),
+          })),
+        };
+        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
+
+        // Mock buildProject to throw an error
+        const buildProjectErrorMock = mock(() => Promise.reject(new Error('Build failed')));
+        mock.module('@/src/utils/build-project', () => ({
+          buildProject: buildProjectErrorMock,
+        }));
+
+        const result = execSync(
+          `${elizaosCmd} start --character ${adaPath}`,
+          getPlatformOptions({ encoding: 'utf8' })
+        );
+
+        // Verify buildProject was called (attempted to build)
+        expect(buildProjectErrorMock).toHaveBeenCalledTimes(1);
+
+        // Verify the command still executed despite build error
+        expect(result).toBeTruthy();
+      } finally {
+        // Restore test mode
+        if (originalTestMode) {
+          process.env.ELIZA_TEST_MODE = originalTestMode;
+        } else {
+          delete process.env.ELIZA_TEST_MODE;
+        }
+      }
+    });
+  });
 });

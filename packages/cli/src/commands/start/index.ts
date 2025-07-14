@@ -1,19 +1,20 @@
-import { displayBanner, handleError } from '@/src/utils';
-import { validatePort } from '@/src/utils/port-validation';
-import { loadCharacterTryPath } from '@elizaos/server';
 import { loadProject } from '@/src/project';
+import { createTask, displayBanner, handleError, runTasks } from '@/src/utils';
+import { buildProject } from '@/src/utils/build-project';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
+import { loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
-import { startAgents } from './actions/server-start';
-import { StartOptions } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { startAgents } from './actions/server-start';
+import { StartOptions } from './types';
 import { loadEnvConfig } from './utils/config-utils';
-import { detectDirectoryType } from '@/src/utils/directory-detection';
 
 export const start = new Command()
   .name('start')
-  .description('Start the Eliza agent server')
+  .description('Build and start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
   .option('-p, --port <port>', 'Port to listen on', validatePort)
   .option('--character <paths...>', 'Character file(s) to use')
@@ -24,6 +25,21 @@ export const start = new Command()
     try {
       // Load env config first before any character loading
       await loadEnvConfig();
+
+      // Build the project first (unless it's a monorepo)
+      const cwd = process.cwd();
+      const dirInfo = detectDirectoryType(cwd);
+      const isMonorepo = dirInfo.type === 'elizaos-monorepo';
+
+      if (!isMonorepo && !process.env.ELIZA_TEST_MODE) {
+        try {
+          // Use buildProject function with proper UI feedback and error handling
+          await buildProject(cwd, false);
+        } catch (error) {
+          logger.error(`Build error: ${error instanceof Error ? error.message : String(error)}`);
+          logger.warn('Build failed, but continuing with start. Some features may not work correctly.');
+        }
+      }
 
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
