@@ -1,9 +1,57 @@
-import { execSync } from 'child_process';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
+
+/**
+ * Helper function to execute shell commands using Bun.spawn
+ * This is used for system commands that don't go through bunExec
+ */
+async function execShellCommand(command: string, options: { encoding?: string, stdio?: string, timeout?: number } = {}): Promise<string> {
+  // For complex shell commands, we need to use shell
+  const shell = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
+  const proc = Bun.spawn([...shell, command], {
+    stdout: options.stdio === 'ignore' ? 'ignore' : 'pipe',
+    stderr: options.stdio === 'ignore' ? 'ignore' : 'pipe',
+  });
+  
+  let timeoutId: Timer | null = null;
+  if (options.timeout) {
+    timeoutId = setTimeout(() => {
+      proc.kill();
+    }, options.timeout);
+  }
+  
+  try {
+    if (options.stdio === 'ignore') {
+      await proc.exited;
+      return '';
+    }
+    
+    const [stdout, stderr] = await Promise.all([
+      proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+      proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    ]);
+    
+    await proc.exited;
+    
+    if (proc.exitCode !== 0 && !options.stdio) {
+      const error: any = new Error(`Command failed: ${command}\nstderr: ${stderr}`);
+      error.status = proc.exitCode;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      throw error;
+    }
+    
+    return stdout;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 export interface TestContext {
   testTmpDir: string;
@@ -74,7 +122,21 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
   });
 
   try {
-    execSync(`${elizaosCmd} create ${projectName} --yes`, platformOptions);
+    // Parse the command to extract the actual script path
+    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
+    const result = await bunExec('bun', ['run', cmd, 'create', projectName, '--yes'], {
+      cwd: process.cwd(),
+      timeout: platformOptions.timeout,
+      env: platformOptions.env,
+      stdio: platformOptions.stdio as 'pipe' | 'inherit' | 'ignore'
+    });
+    if (!result.success) {
+      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
+      error.status = result.exitCode;
+      error.stdout = result.stdout;
+      error.stderr = result.stderr;
+      throw error;
+    }
     process.chdir(projectName);
   } catch (error: any) {
     console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
@@ -91,11 +153,11 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
 /**
  * Helper to run CLI command and expect it to succeed
  */
-export function runCliCommand(
+export async function runCliCommand(
   elizaosCmd: string,
   args: string,
   options: { timeout?: number } = {}
-): string {
+): Promise<string> {
   const platformOptions = getPlatformOptions({
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
@@ -103,7 +165,27 @@ export function runCliCommand(
   });
 
   try {
-    return execSync(`${elizaosCmd} ${args}`, platformOptions);
+    // Parse the command to extract the actual script path and arguments
+    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
+    const argsArray = args.split(' ').filter(arg => arg.length > 0);
+    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+      cwd: process.cwd(),
+      timeout: platformOptions.timeout,
+      env: platformOptions.env,
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+    if (!result.success) {
+      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
+      error.status = result.exitCode;
+      error.stdout = result.stdout;
+      error.stderr = result.stderr;
+      error.platform = process.platform;
+      error.signal = null;
+      error.pid = undefined;
+      throw error;
+    }
+    return result.stdout;
   } catch (error: any) {
     // Enhanced error reporting for debugging
     const errorDetails = {
@@ -124,11 +206,11 @@ export function runCliCommand(
 /**
  * Helper to run CLI command silently (suppressing console output)
  */
-export function runCliCommandSilently(
+export async function runCliCommandSilently(
   elizaosCmd: string,
   args: string,
   options: { timeout?: number } = {}
-): string {
+): Promise<string> {
   const platformOptions = getPlatformOptions({
     encoding: 'utf8',
     stdio: 'pipe',
@@ -136,7 +218,26 @@ export function runCliCommandSilently(
   });
 
   try {
-    return execSync(`${elizaosCmd} ${args}`, platformOptions);
+    // Parse the command to extract the actual script path and arguments
+    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
+    const argsArray = args.split(' ').filter(arg => arg.length > 0);
+    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+      cwd: process.cwd(),
+      timeout: platformOptions.timeout,
+      env: platformOptions.env,
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+    if (!result.success) {
+      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
+      error.status = result.exitCode;
+      error.stdout = result.stdout;
+      error.stderr = result.stderr;
+      error.platform = process.platform;
+      error.signal = null;
+      throw error;
+    }
+    return result.stdout;
   } catch (error: any) {
     // Enhanced error reporting for debugging silent commands
     console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
@@ -152,11 +253,11 @@ export function runCliCommandSilently(
 /**
  * Helper to run CLI command and expect it to fail
  */
-export function expectCliCommandToFail(
+export async function expectCliCommandToFail(
   elizaosCmd: string,
   args: string,
   options: { timeout?: number } = {}
-): { status: number; output: string } {
+): Promise<{ status: number; output: string }> {
   const platformOptions = getPlatformOptions({
     encoding: 'utf8',
     stdio: 'pipe',
@@ -164,11 +265,30 @@ export function expectCliCommandToFail(
   });
 
   try {
-    const result = execSync(`${elizaosCmd} ${args}`, platformOptions);
-    throw new Error(`Command should have failed but succeeded with output: ${result}`);
-  } catch (e: any) {
+    // Parse the command to extract the actual script path and arguments
+    const cmd = elizaosCmd.replace(/^bun run "(.+)"$/, '$1');
+    const argsArray = args.split(' ').filter(arg => arg.length > 0);
+    const result = await bunExec('bun', ['run', cmd, ...argsArray], {
+      cwd: process.cwd(),
+      timeout: platformOptions.timeout,
+      env: platformOptions.env,
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+    if (result.success) {
+      throw new Error(`Command should have failed but succeeded with output: ${result.stdout}`);
+    }
     return {
-      status: e.status || -1,
+      status: result.exitCode || -1,
+      output: result.stdout + result.stderr,
+    };
+  } catch (e: any) {
+    // If it's not an expected failure, re-throw
+    if (e.message?.includes('Command should have failed')) {
+      throw e;
+    }
+    return {
+      status: e.status || e.exitCode || -1,
       output: (e.stdout || '') + (e.stderr || ''),
     };
   }
@@ -399,7 +519,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
   try {
     if (process.platform === 'win32') {
       // Windows: More reliable process killing
-      const netstatResult = execSync(`netstat -ano | findstr :${port}`, {
+      const netstatResult = await execShellCommand(`netstat -ano | findstr :${port}`, {
         encoding: 'utf8',
         stdio: 'pipe',
       });
@@ -414,7 +534,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
 
       for (const pid of pids) {
         try {
-          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+          await execShellCommand(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
         } catch (e) {
           // Ignore if process is already dead
         }
@@ -423,7 +543,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
       // macOS: More reliable process killing with better error handling
       try {
         // First try to find processes listening on the port with increased timeout
-        const lsofResult = execSync(`lsof -ti:${port}`, {
+        const lsofResult = await execShellCommand(`lsof -ti:${port}`, {
           encoding: 'utf8',
           stdio: 'pipe',
           timeout: 10000, // Increased timeout for CI
@@ -438,11 +558,11 @@ export async function killProcessOnPort(port: number): Promise<void> {
         for (const pid of pids) {
           try {
             // Check if process exists first
-            execSync(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            await execShellCommand(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
 
             // Try SIGTERM first
             console.log(`[DEBUG] Sending SIGTERM to PID ${pid}`);
-            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
+            await execShellCommand(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
 
             // Wait longer for graceful shutdown on macOS CI
             const waitTime = process.env.CI === 'true' ? 3000 : 1000;
@@ -450,9 +570,9 @@ export async function killProcessOnPort(port: number): Promise<void> {
 
             // Check if still running, then force kill
             try {
-              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+              await execShellCommand(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
               console.log(`[DEBUG] Process ${pid} still running, sending SIGKILL`);
-              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
+              await execShellCommand(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
               await new Promise((resolve) => setTimeout(resolve, 500));
             } catch (e) {
               // Process already dead, good
@@ -469,7 +589,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
       }
     } else {
       // Other Unix systems
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, {
+      await execShellCommand(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, {
         stdio: 'ignore',
         timeout: 5000,
       });
@@ -502,24 +622,24 @@ export function getBunExecutable(): string {
  * Cross-platform file operations utility
  */
 export const crossPlatform = {
-  removeDir: (path: string) => {
+  removeDir: async (path: string) => {
     try {
       if (process.platform === 'win32') {
-        execSync(`if exist "${path}" rmdir /s /q "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`if exist "${path}" rmdir /s /q "${path}"`, { stdio: 'ignore' });
       } else {
-        execSync(`rm -rf "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`rm -rf "${path}"`, { stdio: 'ignore' });
       }
     } catch (e) {
       // Ignore cleanup errors
     }
   },
 
-  removeFile: (path: string) => {
+  removeFile: async (path: string) => {
     try {
       if (process.platform === 'win32') {
-        execSync(`if exist "${path}" del /q "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`if exist "${path}" del /q "${path}"`, { stdio: 'ignore' });
       } else {
-        execSync(`rm -f "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`rm -f "${path}"`, { stdio: 'ignore' });
       }
     } catch (e) {
       // Ignore cleanup errors
