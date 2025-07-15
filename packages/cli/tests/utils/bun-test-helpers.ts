@@ -62,6 +62,26 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     shell = true,
   } = options;
 
+  // Ensure bun is in PATH for CI environments
+  const enhancedEnv = { ...env };
+  if (enhancedEnv.PATH) {
+    const pathSeparator = process.platform === 'win32' ? ';' : ':';
+    const currentPaths = enhancedEnv.PATH.split(pathSeparator);
+    
+    // Add common bun installation paths if not already present
+    const bunPaths = [
+      process.env.HOME ? `${process.env.HOME}/.bun/bin` : null,
+      '/opt/homebrew/bin',
+      '/usr/local/bin'
+    ].filter(Boolean);
+    
+    for (const bunPath of bunPaths) {
+      if (bunPath && !currentPaths.some(p => p === bunPath || p.endsWith('/.bun/bin'))) {
+        enhancedEnv.PATH = `${bunPath}${pathSeparator}${enhancedEnv.PATH}`;
+      }
+    }
+  }
+
   // Parse command into parts
   let args: string[];
   let cmd: string;
@@ -83,7 +103,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   // Configure spawn options
   const spawnOptions: SpawnOptions.Sync = {
     cwd,
-    env: env as any,
+    env: enhancedEnv as any,
     stdout: stdio === 'inherit' ? 'inherit' : 'pipe',
     stderr: stdio === 'inherit' ? 'inherit' : 'pipe',
     stdin: stdio === 'inherit' ? 'inherit' : 'ignore',
