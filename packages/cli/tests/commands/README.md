@@ -9,6 +9,7 @@ This directory contains TypeScript tests for the ElizaOS CLI, converted from the
 The test suite provides several helper functions:
 
 **From `test-utils.ts`:**
+
 - **`setupTestEnvironment()`** - Creates temporary directories and sets up test state
 - **`cleanupTestEnvironment()`** - Cleans up after tests complete
 - **`expectHelpOutput()`** - Validates help command output
@@ -18,6 +19,7 @@ The test suite provides several helper functions:
 - **`assertions`** - Common assertion helpers
 
 **From `../utils/bun-test-helpers.ts`:**
+
 - **`bunExecSync()`** - Execute CLI commands synchronously
 - **`bunSpawn()`** - Spawn long-running processes
 - **`parseCommand()`** - Parse command strings
@@ -45,7 +47,7 @@ import {
   setupTestEnvironment,
   cleanupTestEnvironment,
   expectHelpOutput,
-  type TestContext
+  type TestContext,
 } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
@@ -69,18 +71,18 @@ describe('ElizaOS Command Tests', () => {
 
 ### Files Status
 
-| Test File          | Status        | Pattern Used                |
-| ------------------ | ------------- | --------------------------- |
-| `agent.test.ts`    | ✅ Updated    | Direct bunExecSync          |
-| `create.test.ts`   | ✅ Updated    | Direct bunExecSync          |
-| `dev.test.ts`      | ✅ Updated    | Direct bunExecSync/Bun.spawn|
-| `env.test.ts`      | ✅ Updated    | Direct bunExecSync          |
-| `monorepo.test.ts` | ✅ Updated    | Direct bunExecSync          |
-| `plugins.test.ts`  | ✅ Correct    | Already using bunExecSync   |
-| `publish.test.ts`  | ✅ Correct    | Already using bunExecSync   |
-| `start.test.ts`    | ✅ Correct    | Already using proper pattern|
-| `test.test.ts`     | ✅ Updated    | Direct bunExecSync          |
-| `update.test.ts`   | ✅ Updated    | Direct bunExecSync          |
+| Test File          | Status     | Pattern Used                 |
+| ------------------ | ---------- | ---------------------------- |
+| `agent.test.ts`    | ✅ Updated | Direct bunExecSync           |
+| `create.test.ts`   | ✅ Updated | Direct bunExecSync           |
+| `dev.test.ts`      | ✅ Updated | Direct bunExecSync/Bun.spawn |
+| `env.test.ts`      | ✅ Updated | Direct bunExecSync           |
+| `monorepo.test.ts` | ✅ Updated | Direct bunExecSync           |
+| `plugins.test.ts`  | ✅ Correct | Already using bunExecSync    |
+| `publish.test.ts`  | ✅ Correct | Already using bunExecSync    |
+| `start.test.ts`    | ✅ Correct | Already using proper pattern |
+| `test.test.ts`     | ✅ Updated | Direct bunExecSync           |
+| `update.test.ts`   | ✅ Updated | Direct bunExecSync           |
 
 ### Migration from Old Patterns
 
@@ -95,11 +97,13 @@ When migrating tests from older patterns:
 ### Key Patterns
 
 1. **Synchronous command execution:**
+
    ```typescript
    const result = bunExecSync('elizaos [command]', { encoding: 'utf8' });
    ```
 
 2. **Long-running processes:**
+
    ```typescript
    const proc = Bun.spawn(['elizaos', 'start', ...args], {
      cwd: process.cwd(),

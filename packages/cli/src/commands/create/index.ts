@@ -141,7 +141,7 @@ export const create = new Command('create')
       switch (projectType) {
         case 'plugin': {
           let pluginType = 'full'; // Default to full plugin
-          
+
           if (!isNonInteractive) {
             const selectedPluginType = await clack.select({
               message: 'What type of plugin would you like to create?',

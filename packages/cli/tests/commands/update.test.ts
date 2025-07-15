@@ -18,7 +18,6 @@ describe('ElizaOS Update Commands', () => {
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
     process.chdir(testTmpDir);
-
   });
 
   afterEach(async () => {

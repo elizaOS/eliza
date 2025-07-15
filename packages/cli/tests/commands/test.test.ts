@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import {
-  setupTestEnvironment,
-  cleanupTestEnvironment,
-  type TestContext,
-} from './test-utils';
+import { setupTestEnvironment, cleanupTestEnvironment, type TestContext } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
 describe('ElizaOS Test Commands', () => {
@@ -38,7 +34,9 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test component command accepts -n option', async () => {
-    const result = bunExecSync('elizaos test component -n filter-name --help', { encoding: 'utf8' });
+    const result = bunExecSync('elizaos test component -n filter-name --help', {
+      encoding: 'utf8',
+    });
     expect(result).toContain('component');
   });
 
@@ -53,10 +51,9 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test command accepts combination of options', async () => {
-    const result = bunExecSync(
-      'elizaos test -n filter-name --skip-build --help',
-      { encoding: 'utf8' }
-    );
+    const result = bunExecSync('elizaos test -n filter-name --skip-build --help', {
+      encoding: 'utf8',
+    });
     expect(result).toContain('Filter tests by name');
     expect(result).toContain('Skip building before running tests');
   });

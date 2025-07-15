@@ -4,20 +4,14 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import {
-  getPlatformOptions,
-  killProcessOnPort,
-  waitForServerReady,
-} from './test-utils';
+import { getPlatformOptions, killProcessOnPort, waitForServerReady } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
-
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
   let testTmpDir: string;
   let testServerPort: string;
   let testServerUrl: string;
-  
 
   beforeAll(async () => {
     // Setup test environment
@@ -50,7 +44,9 @@ describe('ElizaOS Agent Commands', () => {
     try {
       bunExecSync('elizaos --version', { encoding: 'utf8', timeout: 5000 });
     } catch (error) {
-      console.error('[ERROR] elizaos command not available. Run "bun link" in the CLI package first.');
+      console.error(
+        '[ERROR] elizaos command not available. Run "bun link" in the CLI package first.'
+      );
       throw new Error('elizaos command not available');
     }
 
@@ -59,14 +55,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const proc = Bun.spawn(
-        [
-          'elizaos',
-          'start',
-          '--port',
-          testServerPort,
-          '--character',
-          defaultCharacter,
-        ],
+        ['elizaos', 'start', '--port', testServerPort, '--character', defaultCharacter],
         {
           env: {
             ...process.env,
@@ -261,10 +250,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent help displays usage information', async () => {
-    const result = bunExecSync(
-      `elizaos agent --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+    const result = bunExecSync(`elizaos agent --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Usage: elizaos agent');
   });
 

@@ -5,6 +5,7 @@ A minimal backend-only plugin template for ElizaOS. This template provides a cle
 ## Overview
 
 This quick-starter template is ideal for:
+
 - Backend-only plugins
 - Simple API integrations
 - Services and providers
@@ -33,6 +34,7 @@ plugin-quick-starter/
 ## Getting Started
 
 1. **Create your plugin:**
+
    ```bash
    elizaos create my-plugin
    # Select: Plugin
@@ -40,11 +42,13 @@ plugin-quick-starter/
    ```
 
 2. **Navigate to your plugin:**
+
    ```bash
    cd my-plugin
    ```
 
 3. **Install dependencies:**
+
    ```bash
    bun install
    ```
@@ -57,16 +61,19 @@ plugin-quick-starter/
 ## Key Features
 
 ### Minimal Dependencies
+
 - Only essential packages (`@elizaos/core`, `zod`)
 - No frontend frameworks or build tools
 - Fast installation and builds
 
 ### Simple Testing
+
 - Unit tests only with Bun test runner
 - No E2E or component testing overhead
 - Quick test execution
 
 ### Backend Focus
+
 - API routes for server-side functionality
 - Services for state management
 - Actions for agent capabilities
@@ -75,7 +82,9 @@ plugin-quick-starter/
 ## Plugin Components
 
 ### Actions
+
 Define agent capabilities:
+
 ```typescript
 const myAction: Action = {
   name: 'MY_ACTION',
@@ -87,20 +96,22 @@ const myAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     // Action implementation
     return { success: true, data: {} };
-  }
+  },
 };
 ```
 
 ### Services
+
 Manage plugin state:
+
 ```typescript
 export class MyService extends Service {
   static serviceType = 'my-service';
-  
+
   async start() {
     // Initialize service
   }
-  
+
   async stop() {
     // Cleanup
   }
@@ -108,7 +119,9 @@ export class MyService extends Service {
 ```
 
 ### Providers
+
 Supply contextual information:
+
 ```typescript
 const myProvider: Provider = {
   name: 'MY_PROVIDER',
@@ -117,23 +130,27 @@ const myProvider: Provider = {
     return {
       text: 'Provider data',
       values: {},
-      data: {}
+      data: {},
     };
-  }
+  },
 };
 ```
 
 ### API Routes
+
 Backend endpoints:
+
 ```typescript
-routes: [{
-  name: 'api-endpoint',
-  path: '/api/endpoint',
-  type: 'GET',
-  handler: async (req, res) => {
-    res.json({ data: 'response' });
-  }
-}]
+routes: [
+  {
+    name: 'api-endpoint',
+    path: '/api/endpoint',
+    type: 'GET',
+    handler: async (req, res) => {
+      res.json({ data: 'response' });
+    },
+  },
+];
 ```
 
 ## Development Commands
@@ -158,6 +175,7 @@ bun run format
 ## Testing
 
 Write unit tests in `src/__tests__/`:
+
 ```typescript
 import { describe, it, expect } from 'bun:test';
 
@@ -177,6 +195,7 @@ describe('My Plugin', () => {
 ## When to Use Quick Starter
 
 Use this template when you need:
+
 - ✅ Backend-only functionality
 - ✅ Simple API integrations
 - ✅ Lightweight plugins
@@ -184,6 +203,7 @@ Use this template when you need:
 - ✅ Minimal dependencies
 
 Consider the full plugin-starter if you need:
+
 - ❌ React frontend components
 - ❌ Complex UI interactions
 - ❌ E2E testing with Cypress

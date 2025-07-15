@@ -173,9 +173,11 @@ export async function createPlugin(
   await withCleanupOnInterrupt(pluginTargetDir, pluginDirName, async () => {
     // Map plugin type to template name
     const templateName = pluginType === 'quick' ? 'plugin-quick' : 'plugin';
-    
+
     await runTasks([
-      createTask('Copying plugin template', () => copyTemplateUtil(templateName as any, pluginTargetDir)),
+      createTask('Copying plugin template', () =>
+        copyTemplateUtil(templateName as any, pluginTargetDir)
+      ),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
     ]);
 
