@@ -43,6 +43,15 @@ export function getAvailableAIModels(): AIModelOption[] {
 }
 
 /**
+ * Checks if an AI model has built-in embedding support.
+ * Models with embeddings don't need a separate embedding provider.
+ */
+export function hasEmbeddingSupport(aiModel: string): boolean {
+  const modelsWithEmbeddings = ['local', 'openai', 'google'];
+  return modelsWithEmbeddings.includes(aiModel);
+}
+
+/**
  * Gets available database options for selection during project creation.
  */
 export function getAvailableDatabases(): DatabaseOption[] {

@@ -5,7 +5,7 @@ import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
-import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
+import { selectDatabase, selectAIModel, selectEmbeddingModel, hasEmbeddingSupport } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 
@@ -187,7 +187,7 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }
@@ -215,7 +215,7 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }
