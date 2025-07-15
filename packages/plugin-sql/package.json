@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -27,7 +27,7 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
-    "@elizaos/core": "1.2.6",
+    "@elizaos/core": "1.2.7",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"

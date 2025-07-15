@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,8 +26,8 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "1.2.6",
-    "@elizaos/plugin-sql": "1.2.6"
+    "@elizaos/core": "1.2.7",
+    "@elizaos/plugin-sql": "1.2.7"
   },
   "devDependencies": {
     "@types/bun": "^1.2.16",
