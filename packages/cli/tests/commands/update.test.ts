@@ -290,6 +290,7 @@ describe('ElizaOS Update Commands', () => {
           BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache'
         }
       });
+      // The output includes the banner and other messages, but should contain the warning
       expect(result).toContain('CLI update is not available when running via npx or bunx');
       expect(result).toContain('bun install -g @elizaos/cli');
     });
