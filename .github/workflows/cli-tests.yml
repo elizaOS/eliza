@@ -88,11 +88,11 @@ jobs:
           echo "LOG_LEVEL=info" >> .env
 
       - name: Install cross-env globally
-        run: npm install -g cross-env
+        run: bun install -g cross-env
 
       - name: Install BATS on macOS
         if: matrix.os == 'macos-latest'
-        run: npm install -g bats
+        run: bun install -g bats
 
       - name: Run CLI TypeScript tests
         timeout-minutes: 15
