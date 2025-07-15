@@ -227,11 +227,13 @@ export async function copyTemplate(
 }
 
 /**
- * Replace hardcoded "plugin-starter" strings in source files with the actual plugin name
+ * Replace hardcoded "plugin-starter" or "plugin-quick-starter" strings in source files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
   const filesToProcess = [
     'src/index.ts',
+    'src/plugin.ts',
+    'src/__tests__/plugin.test.ts',
     '__tests__/plugin.test.ts',
     'e2e/starter-plugin.test.ts',
     'README.md',
@@ -251,8 +253,9 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
       ) {
         let content = await fs.readFile(fullPath, 'utf8');
 
-        // Replace the hardcoded plugin name in source files
+        // Replace both plugin-starter and plugin-quick-starter with the actual plugin name
         content = content.replace(/plugin-starter/g, pluginName);
+        content = content.replace(/plugin-quick-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');
         logger.debug(`Updated plugin name in ${filePath}`);
