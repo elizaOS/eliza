@@ -281,16 +281,15 @@ describe('ElizaOS Update Commands', () => {
   );
 
   describe('bunx/npx detection', () => {
-
     it.skip('update --cli shows warning when running via bunx', () => {
       // Skip this test in monorepo context as it behaves differently
       // In monorepo, the version is "monorepo" and update logic is different
-      const result = bunExecSync('elizaos update --cli', { 
+      const result = bunExecSync('elizaos update --cli', {
         encoding: 'utf8',
         env: {
           ...process.env,
-          BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache'
-        }
+          BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache',
+        },
       });
       // The output includes the banner and other messages, but should contain the warning
       expect(result).toContain('CLI update is not available when running via npx or bunx');
@@ -299,24 +298,24 @@ describe('ElizaOS Update Commands', () => {
 
     it.skip('update --cli shows warning when BUN_INSTALL_CACHE_DIR is set', () => {
       // Skip this test in monorepo context
-      const result = bunExecSync('elizaos update --cli', { 
+      const result = bunExecSync('elizaos update --cli', {
         encoding: 'utf8',
         env: {
           ...process.env,
-          BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache'
-        }
+          BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache',
+        },
       });
       expect(result).toContain('CLI update is not available when running via npx or bunx');
     });
 
     it.skip('update --cli shows warning when running via npx', () => {
       // Skip this test in monorepo context
-      const result = bunExecSync('elizaos update --cli', { 
+      const result = bunExecSync('elizaos update --cli', {
         encoding: 'utf8',
         env: {
           ...process.env,
-          npm_execpath: '/usr/local/lib/node_modules/npm/bin/npx-cli.js'
-        }
+          npm_execpath: '/usr/local/lib/node_modules/npm/bin/npx-cli.js',
+        },
       });
       expect(result).toContain('CLI update is not available when running via npx or bunx');
     });
@@ -372,12 +371,12 @@ describe('ElizaOS Update Commands', () => {
         await makeProj('update-bunx-packages');
 
         // Simulate bunx execution by setting environment variable
-        const result = bunExecSync('elizaos update --packages', { 
+        const result = bunExecSync('elizaos update --packages', {
           encoding: 'utf8',
           env: {
             ...process.env,
-            BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache'
-          }
+            BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache',
+          },
         });
         // Should update packages even when running via bunx
         expect(result).toMatch(
@@ -394,12 +393,12 @@ describe('ElizaOS Update Commands', () => {
         await makeProj('update-bunx-both');
 
         // Simulate bunx execution by setting environment variable
-        const result = bunExecSync('elizaos update', { 
+        const result = bunExecSync('elizaos update', {
           encoding: 'utf8',
           env: {
             ...process.env,
-            BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache'
-          }
+            BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache',
+          },
         });
         // Should show warning about CLI but continue with packages
         expect(result).toContain('CLI update is not available when running via npx or bunx');
