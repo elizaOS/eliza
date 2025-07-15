@@ -1,19 +1,17 @@
-import type { Plugin } from '@elizaos/core';
-import {
-  type Action,
-  type ActionResult,
-  type Content,
-  type GenerateTextParams,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type Provider,
-  type ProviderResult,
-  Service,
-  type State,
-  logger,
+import type {
+  Action,
+  ActionResult,
+  Content,
+  GenerateTextParams,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  Plugin,
+  Provider,
+  ProviderResult,
+  State,
 } from '@elizaos/core';
+import { ModelType, Service, logger } from '@elizaos/core';
 import { z } from 'zod';
 import { StarterPluginTestSuite } from './tests';
 
