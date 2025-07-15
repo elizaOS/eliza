@@ -133,9 +133,6 @@ export async function createTestProject(projectName: string): Promise<void> {
   }
 }
 
-
-
-
 /**
  * Helper to validate that help output contains expected strings
  */
@@ -449,7 +446,6 @@ export async function killProcessOnPort(port: number): Promise<void> {
     );
   }
 }
-
 
 /**
  * Cross-platform file operations utility

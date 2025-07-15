@@ -5,12 +5,7 @@ import fs from 'node:fs/promises';
 import * as clack from '@clack/prompts';
 import colors from 'yoctocolors';
 import { processPluginName, validateTargetDirectory } from '../utils';
-import {
-  setupProjectEnvironment,
-  setupAIModelConfig,
-  setupEmbeddingModelConfig,
-  hasValidApiKey,
-} from './setup';
+import { setupProjectEnvironment, setupAIModelConfig, setupEmbeddingModelConfig } from './setup';
 import {
   installDependenciesWithSpinner,
   buildProjectWithSpinner,
@@ -45,12 +40,6 @@ async function handleInteractiveConfiguration(
     if (embeddingModel) {
       await setupEmbeddingModelConfig(embeddingModel, envFilePath, false);
     }
-  }
-
-  // Always set up Ollama as universal fallback (if not already configured)
-  const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
-  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
-    await setupEmbeddingModelConfig('ollama', envFilePath, false);
   }
 }
 
@@ -128,6 +117,7 @@ async function withCleanupOnInterrupt<T>(
 export async function createPlugin(
   pluginName: string,
   targetDir: string,
+  pluginType: string = 'full',
   isNonInteractive = false
 ): Promise<void> {
   // Process and validate the plugin name
@@ -170,8 +160,13 @@ export async function createPlugin(
   }
 
   await withCleanupOnInterrupt(pluginTargetDir, pluginDirName, async () => {
+    // Map plugin type to template name
+    const templateName = pluginType === 'quick' ? 'plugin-quick' : 'plugin';
+
     await runTasks([
-      createTask('Copying plugin template', () => copyTemplateUtil('plugin', pluginTargetDir)),
+      createTask('Copying plugin template', () =>
+        copyTemplateUtil(templateName as any, pluginTargetDir)
+      ),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
     ]);
 

@@ -1,11 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { killProcessOnPort, safeChangeDirectory } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
+import { killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
@@ -494,4 +493,179 @@ describe('ElizaOS Dev Commands', () => {
       expect(error.status).not.toBe(0);
     }
   });
+
+  it('dev command handles port conflicts by finding next available port', async () => {
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
+    // Kill any existing process on port 3000
+    await killProcessOnPort(3000);
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
+
+    // Start a dummy server on port 3000 to create a conflict
+    let dummyServer;
+    try {
+      dummyServer = Bun.serve({
+        port: 3000,
+        fetch() {
+          return new Response('Dummy server');
+        },
+      });
+    } catch (error) {
+      // If we can't create the dummy server, skip this test
+      console.log('[PORT CONFLICT TEST] Cannot create dummy server on port 3000, skipping test');
+      return;
+    }
+
+    try {
+      // Run dev command without specifying port (should default to 3000 but find 3001)
+      const devProcess = Bun.spawn(['elizaos', 'dev'], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          LOG_LEVEL: 'debug', // Enable debug to see port conflict message
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      runningProcesses.push(devProcess);
+
+      // Collect output to check for port conflict message
+      let output = '';
+      let stderrOutput = '';
+      const decoder = new TextDecoder();
+
+      // Create readers for both stdout and stderr
+      const stdoutReader = devProcess.stdout!.getReader();
+      const stderrReader = devProcess.stderr!.getReader();
+
+      // Read output for a few seconds to capture the port conflict message
+      const startTime = Date.now();
+      while (Date.now() - startTime < 3000) {
+        // Read from stdout
+        const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            output += chunk;
+          }
+        });
+
+        // Read from stderr
+        const stderrPromise = stderrReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            stderrOutput += chunk;
+          }
+        });
+
+        // Wait for both with a timeout
+        await Promise.race([
+          Promise.all([stdoutPromise, stderrPromise]),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ]);
+
+        // Check if we see the expected port conflict message in either output
+        const combinedOutput = output + stderrOutput;
+        if (combinedOutput.match(/Port 3000 is in use, using port \d+ instead/)) {
+          break;
+        }
+      }
+
+      // Verify the server started successfully with any alternative port
+      const combinedOutput = output + stderrOutput;
+      expect(combinedOutput).toMatch(/Port 3000 is in use, using port \d+ instead/);
+
+      // Clean up the dev process
+      devProcess.kill('SIGTERM');
+      await devProcess.exited;
+    } finally {
+      // Clean up the dummy server
+      dummyServer.stop();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  });
+
+  it('dev command uses specified port when provided', async () => {
+    const specifiedPort = 8888;
+
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
+    // Run dev command with explicit port
+    const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0',
+        LOG_LEVEL: 'info',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    runningProcesses.push(devProcess);
+
+    // Collect output to check for port usage
+    let output = '';
+    let stderrOutput = '';
+    const decoder = new TextDecoder();
+
+    // Create readers for both stdout and stderr
+    const stdoutReader = devProcess.stdout!.getReader();
+    const stderrReader = devProcess.stderr!.getReader();
+
+    // Read output for a few seconds to capture the server start message
+    const startTime = Date.now();
+    while (Date.now() - startTime < 5000) {
+      // Increased timeout
+      // Read from stdout
+      const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          output += chunk;
+        }
+      });
+
+      // Read from stderr
+      const stderrPromise = stderrReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          stderrOutput += chunk;
+        }
+      });
+
+      // Wait for both with a timeout
+      await Promise.race([
+        Promise.all([stdoutPromise, stderrPromise]),
+        new Promise((resolve) => setTimeout(resolve, 100)),
+      ]);
+
+      // Check if we see the server started on the specified port
+      const combinedOutput = output + stderrOutput;
+
+      // More flexible port detection - check for the port number in various formats
+      if (combinedOutput.includes(specifiedPort.toString())) {
+        break;
+      }
+    }
+
+    // Debug output for troubleshooting
+    const combinedOutput = output + stderrOutput;
+    if (!combinedOutput.includes(specifiedPort.toString())) {
+      console.log('Test output (stdout):', output);
+      console.log('Test output (stderr):', stderrOutput);
+      console.log('Combined length:', combinedOutput.length);
+    }
+
+    // Verify the server started on the specified port - more flexible check
+    expect(combinedOutput).toContain(specifiedPort.toString());
+
+    // Clean up the dev process
+    devProcess.kill('SIGTERM');
+    await devProcess.exited;
+  }, 10000);
 });

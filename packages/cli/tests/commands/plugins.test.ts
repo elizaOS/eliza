@@ -78,18 +78,12 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   it('plugins --help shows usage information', () => {
-    const result = bunExecSync(
-      `elizaos plugins --help`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+    const result = bunExecSync(`elizaos plugins --help`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Manage ElizaOS plugins');
   });
 
   it('plugins list shows available plugins', () => {
-    const result = bunExecSync(
-      `elizaos plugins list`,
-      getPlatformOptions({ encoding: 'utf8' })
-    );
+    const result = bunExecSync(`elizaos plugins list`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);
@@ -157,14 +151,11 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add supports third-party plugins',
     async () => {
       try {
-        bunExecSync(
-          `elizaos plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`,
-          {
-            stdio: 'pipe',
-            timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
-            cwd: projectDir,
-          }
-        );
+        bunExecSync(`elizaos plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`, {
+          stdio: 'pipe',
+          timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
+          cwd: projectDir,
+        });
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');

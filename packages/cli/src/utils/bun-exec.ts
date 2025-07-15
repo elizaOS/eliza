@@ -9,25 +9,25 @@ const COMMAND_EXISTS_TIMEOUT_MS = 5000; // 5 seconds timeout for command existen
  */
 function ensureBunInPath(env: Record<string, string> = {}): Record<string, string> {
   const enhancedEnv = { ...process.env, ...env };
-  
+
   if (enhancedEnv.PATH) {
     const pathSeparator = process.platform === 'win32' ? ';' : ':';
     const currentPaths = enhancedEnv.PATH.split(pathSeparator);
-    
+
     // Add common bun installation paths if not already present
     const bunPaths = [
       process.env.HOME ? `${process.env.HOME}/.bun/bin` : null,
       '/opt/homebrew/bin',
-      '/usr/local/bin'
+      '/usr/local/bin',
     ].filter(Boolean);
-    
+
     for (const bunPath of bunPaths) {
-      if (bunPath && !currentPaths.some(p => p === bunPath || p.endsWith('/.bun/bin'))) {
+      if (bunPath && !currentPaths.some((p) => p === bunPath || p.endsWith('/.bun/bin'))) {
         enhancedEnv.PATH = `${bunPath}${pathSeparator}${enhancedEnv.PATH}`;
       }
     }
   }
-  
+
   return enhancedEnv;
 }
 
@@ -170,7 +170,7 @@ export async function bunExec(
     // Use Bun's shell functionality with proper options
     // Always ensure bun is in PATH for subprocess execution
     const enhancedEnv = ensureBunInPath(options.env);
-    
+
     proc = Bun.spawn([command, ...args], {
       cwd: options.cwd,
       env: enhancedEnv,

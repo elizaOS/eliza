@@ -1,19 +1,23 @@
-import type {
-  Action,
-  ActionResult,
-  Content,
-  GenerateTextParams,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-  Plugin,
-  Provider,
-  ProviderResult,
-  State,
+import type { Plugin } from '@elizaos/core';
+import {
+  type Action,
+  type ActionResult,
+  type Content,
+  type GenerateTextParams,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type Provider,
+  type ProviderResult,
+  Service,
+  type State,
+  logger,
+  type MessagePayload,
+  type WorldPayload,
+  EventType,
 } from '@elizaos/core';
-import { ModelType, Service, logger } from '@elizaos/core';
 import { z } from 'zod';
-import { StarterPluginTestSuite } from './tests';
 
 /**
  * Defines the configuration schema for a plugin, including the validation rules for the plugin name.
@@ -65,7 +69,7 @@ const helloWorldAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: any,
+    _options: Record<string, unknown> = {},
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -143,42 +147,45 @@ const helloWorldProvider: Provider = {
 };
 
 export class StarterService extends Service {
-  static serviceType = 'starter';
-  capabilityDescription =
+  static override serviceType = 'starter';
+
+  override capabilityDescription =
     'This is a starter service which is attached to the agent through the starter plugin.';
-  constructor(protected runtime: IAgentRuntime) {
+
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
   }
 
-  static async start(runtime: IAgentRuntime) {
-    logger.info(`*** Starting starter service - MODIFIED: ${new Date().toISOString()} ***`);
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
+    logger.info('Starting starter service');
     const service = new StarterService(runtime);
     return service;
   }
 
-  static async stop(runtime: IAgentRuntime) {
-    logger.info('*** TESTING DEV MODE - STOP MESSAGE CHANGED! ***');
-    // get the service from the runtime
+  static override async stop(runtime: IAgentRuntime): Promise<void> {
+    logger.info('Stopping starter service');
     const service = runtime.getService(StarterService.serviceType);
     if (!service) {
       throw new Error('Starter service not found');
     }
-    service.stop();
+    if ('stop' in service && typeof service.stop === 'function') {
+      await service.stop();
+    }
   }
 
-  async stop() {
-    logger.info('*** THIRD CHANGE - TESTING FILE WATCHING! ***');
+  override async stop(): Promise<void> {
+    logger.info('Starter service stopped');
   }
 }
 
 export const starterPlugin: Plugin = {
-  name: 'plugin-starter',
-  description: 'Plugin starter for elizaOS',
+  name: 'plugin-quick-starter',
+  description: 'Quick backend-only plugin template for elizaOS',
   config: {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
   },
   async init(config: Record<string, string>) {
-    logger.info('*** TESTING DEV MODE - PLUGIN MODIFIED AND RELOADED! ***');
+    logger.info('Initializing plugin-quick-starter');
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 
@@ -218,66 +225,47 @@ export const starterPlugin: Plugin = {
   },
   routes: [
     {
-      name: 'hello-world-route',
-      path: '/helloworld',
+      name: 'api-status',
+      path: '/api/status',
       type: 'GET',
       handler: async (_req: any, res: any) => {
-        // send a response
         res.json({
-          message: 'Hello World!',
-        });
-      },
-    },
-    {
-      name: 'current-time-route',
-      path: '/api/time',
-      type: 'GET',
-      handler: async (_req: any, res: any) => {
-        // Return current time in various formats
-        const now = new Date();
-        res.json({
-          timestamp: now.toISOString(),
-          unix: Math.floor(now.getTime() / 1000),
-          formatted: now.toLocaleString(),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          status: 'ok',
+          plugin: 'quick-starter',
+          timestamp: new Date().toISOString(),
         });
       },
     },
   ],
   events: {
-    MESSAGE_RECEIVED: [
-      async (params) => {
+    [EventType.MESSAGE_RECEIVED]: [
+      async (params: MessagePayload) => {
         logger.debug('MESSAGE_RECEIVED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('Message:', params.message);
       },
     ],
-    VOICE_MESSAGE_RECEIVED: [
-      async (params) => {
+    [EventType.VOICE_MESSAGE_RECEIVED]: [
+      async (params: MessagePayload) => {
         logger.debug('VOICE_MESSAGE_RECEIVED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('Message:', params.message);
       },
     ],
-    WORLD_CONNECTED: [
-      async (params) => {
+    [EventType.WORLD_CONNECTED]: [
+      async (params: WorldPayload) => {
         logger.debug('WORLD_CONNECTED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('World:', params.world);
       },
     ],
-    WORLD_JOINED: [
-      async (params) => {
+    [EventType.WORLD_JOINED]: [
+      async (params: WorldPayload) => {
         logger.debug('WORLD_JOINED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('World:', params.world);
       },
     ],
   },
   services: [StarterService],
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
-  tests: [StarterPluginTestSuite],
   // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependecies go here (if requires another plugin)
 };
 

@@ -70,7 +70,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     // Use shell to execute command
     const shellCmd =
       typeof shell === 'string' ? shell : process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
-    
+
     // On Windows, cmd.exe has special quoting rules
     // If the command already contains quotes, we need to handle them carefully
     let shellArgs: string[];
@@ -85,7 +85,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     } else {
       shellArgs = ['-c', command];
     }
-    
+
     cmd = shellCmd;
     args = shellArgs;
   } else {
@@ -189,9 +189,7 @@ export function bunSpawn(
  */
 export function runCliCommandSync(args: string[], options: BunExecSyncOptions = {}): string {
   // Use global elizaos command
-  const command = `elizaos ${args
-    .map((arg) => (arg.includes(' ') ? `"${arg}"` : arg))
-    .join(' ')}`;
+  const command = `elizaos ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`;
 
   return bunExecSync(command, options) as string;
 }

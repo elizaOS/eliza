@@ -74,6 +74,12 @@ async function copyTemplates() {
   await copyDir(pluginStarterSrc, pluginStarterDest);
   console.log('✅ Copied plugin-starter template');
 
+  // Copy plugin-quick-starter template
+  const pluginQuickStarterSrc = path.join(rootDir, 'packages/plugin-quick-starter');
+  const pluginQuickStarterDest = path.join(templatesDir, 'plugin-quick-starter');
+  await copyDir(pluginQuickStarterSrc, pluginQuickStarterDest);
+  console.log('✅ Copied plugin-quick-starter template');
+
   console.log('✅ All templates copied successfully!');
 }
 

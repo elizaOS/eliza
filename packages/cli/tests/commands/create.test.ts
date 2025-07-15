@@ -4,10 +4,7 @@ import { join } from 'node:path';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
-import {
-  safeChangeDirectory,
-  crossPlatform,
-} from './test-utils';
+import { safeChangeDirectory, crossPlatform } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
 import { isValidOllamaEndpoint } from '../../src/utils/get-config';
@@ -59,10 +56,7 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', () => {
-    const result = bunExecSync(
-      `elizaos create --help`,
-      { encoding: 'utf8' }
-    ) as string;
+    const result = bunExecSync(`elizaos create --help`, { encoding: 'utf8' }) as string;
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -111,13 +105,10 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform directory removal
       await crossPlatform.removeDir('plugin-my-plugin-app');
 
-      const result = bunExecSync(
-        'elizaos create my-plugin-app --yes --type plugin',
-        {
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-        }
-      ) as string;
+      const result = bunExecSync('elizaos create my-plugin-app --yes --type plugin', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      }) as string;
 
       // Check for various success patterns
       const successPatterns = [
@@ -149,10 +140,9 @@ describe('ElizaOS Create Commands', () => {
     // Use cross-platform file removal
     await crossPlatform.removeFile('my-test-agent.json');
 
-    const result = bunExecSync(
-      'elizaos create my-test-agent --yes --type agent',
-      { encoding: 'utf8' }
-    ) as string;
+    const result = bunExecSync('elizaos create my-test-agent --yes --type agent', {
+      encoding: 'utf8',
+    }) as string;
 
     expect(result).toContain('Agent character created successfully');
     expect(existsSync('my-test-agent.json')).toBe(true);
@@ -175,7 +165,9 @@ describe('ElizaOS Create Commands', () => {
 
     let result: { status: number; output: string };
     try {
-      const output = bunExecSync('elizaos create existing-app --yes', { encoding: 'utf8' }) as string;
+      const output = bunExecSync('elizaos create existing-app --yes', {
+        encoding: 'utf8',
+      }) as string;
       throw new Error(`Command should have failed but succeeded with output: ${output}`);
     } catch (e: any) {
       if (e.message?.includes('Command should have failed')) {
@@ -217,7 +209,9 @@ describe('ElizaOS Create Commands', () => {
   it('rejects invalid project name', () => {
     let result: { status: number; output: string };
     try {
-      const output = bunExecSync('elizaos create Invalid-Name! --yes', { encoding: 'utf8' }) as string;
+      const output = bunExecSync('elizaos create Invalid-Name! --yes', {
+        encoding: 'utf8',
+      }) as string;
       throw new Error(`Command should have failed but succeeded with output: ${output}`);
     } catch (e: any) {
       if (e.message?.includes('Command should have failed')) {
@@ -236,10 +230,9 @@ describe('ElizaOS Create Commands', () => {
   it('rejects invalid project type', () => {
     let result: { status: number; output: string };
     try {
-      const output = bunExecSync(
-        'elizaos create bad-type-proj --yes --type bad-type',
-        { encoding: 'utf8' }
-      ) as string;
+      const output = bunExecSync('elizaos create bad-type-proj --yes --type bad-type', {
+        encoding: 'utf8',
+      }) as string;
       throw new Error(`Command should have failed but succeeded with output: ${output}`);
     } catch (e: any) {
       if (e.message?.includes('Command should have failed')) {
@@ -391,7 +384,9 @@ describe('ElizaOS Create Commands', () => {
     it('rejects --dir flag with helpful error message', () => {
       let result: { status: number; output: string };
       try {
-        const output = bunExecSync('elizaos create my-project --dir /some/path', { encoding: 'utf8' }) as string;
+        const output = bunExecSync('elizaos create my-project --dir /some/path', {
+          encoding: 'utf8',
+        }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
       } catch (e: any) {
         if (e.message?.includes('Command should have failed')) {
@@ -422,7 +417,9 @@ describe('ElizaOS Create Commands', () => {
     it('rejects -d shorthand flag', () => {
       let result: { status: number; output: string };
       try {
-        const output = bunExecSync('elizaos create my-project -d /some/path', { encoding: 'utf8' }) as string;
+        const output = bunExecSync('elizaos create my-project -d /some/path', {
+          encoding: 'utf8',
+        }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
       } catch (e: any) {
         if (e.message?.includes('Command should have failed')) {
@@ -460,13 +457,10 @@ describe('ElizaOS Create Commands', () => {
         process.chdir(testSubDir);
 
         try {
-          const result = bunExecSync(
-            'elizaos create my-current-dir-project --yes',
-            {
-              encoding: 'utf8',
-              timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-            }
-          ) as string;
+          const result = bunExecSync('elizaos create my-current-dir-project --yes', {
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          }) as string;
 
           // Check for success patterns
           const successPatterns = [
