@@ -128,6 +128,7 @@ async function withCleanupOnInterrupt<T>(
 export async function createPlugin(
   pluginName: string,
   targetDir: string,
+  pluginType: string = 'full',
   isNonInteractive = false
 ): Promise<void> {
   // Process and validate the plugin name
@@ -170,8 +171,11 @@ export async function createPlugin(
   }
 
   await withCleanupOnInterrupt(pluginTargetDir, pluginDirName, async () => {
+    // Map plugin type to template name
+    const templateName = pluginType === 'quick' ? 'plugin-quick' : 'plugin';
+    
     await runTasks([
-      createTask('Copying plugin template', () => copyTemplateUtil('plugin', pluginTargetDir)),
+      createTask('Copying plugin template', () => copyTemplateUtil(templateName as any, pluginTargetDir)),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
     ]);
 

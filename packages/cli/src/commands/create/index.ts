@@ -139,9 +139,38 @@ export const create = new Command('create')
 
       // Handle different project types
       switch (projectType) {
-        case 'plugin':
-          await createPlugin(projectName!, process.cwd(), isNonInteractive);
+        case 'plugin': {
+          let pluginType = 'full'; // Default to full plugin
+          
+          if (!isNonInteractive) {
+            const selectedPluginType = await clack.select({
+              message: 'What type of plugin would you like to create?',
+              options: [
+                {
+                  label: 'Quick Plugin (Backend Only)',
+                  value: 'quick',
+                  hint: 'Simple backend-only plugin without frontend',
+                },
+                {
+                  label: 'Full Plugin (with Frontend)',
+                  value: 'full',
+                  hint: 'Complete plugin with React frontend and API routes',
+                },
+              ],
+              initialValue: 'quick',
+            });
+
+            if (clack.isCancel(selectedPluginType)) {
+              clack.cancel('Operation cancelled.');
+              process.exit(0);
+            }
+
+            pluginType = selectedPluginType as string;
+          }
+
+          await createPlugin(projectName!, process.cwd(), pluginType, isNonInteractive);
           break;
+        }
 
         case 'agent':
           await createAgent(projectName!, process.cwd(), isNonInteractive);
