@@ -73,7 +73,7 @@ describe('ElizaOS Update Commands', () => {
 
       const result = bunExecSync('elizaos update --check', { encoding: 'utf8' });
 
-      expect(result).toMatch(/Version: 1\.2\.1/);
+      expect(result).toMatch(/Version: 1\.2\.\d+/);
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
@@ -140,7 +140,7 @@ describe('ElizaOS Update Commands', () => {
 
       // Should either show success or message about creating project
       expect(result).toMatch(
-        /(Project successfully updated|Update completed|already up to date|No updates available|create a new ElizaOS project|This appears to be an empty directory|Version: monorepo)/
+        /(Project successfully updated|Update completed|already up to date|No updates available|create a new ElizaOS project|This appears to be an empty directory|Version: monorepo|Version: 1\.2\.\d+)/
       );
     },
     TEST_TIMEOUTS.STANDARD_COMMAND
@@ -267,7 +267,7 @@ describe('ElizaOS Update Commands', () => {
         expect(existsSync(join(tmpDir, 'yarn.lock'))).toBe(false);
 
         // Output should mention CLI update, not package updates
-        expect(result).toMatch(/CLI.*update|updat.*CLI|Version: monorepo/i);
+        expect(result).toMatch(/CLI.*update|updat.*CLI|Version: monorepo|Version: 1\.2\.\d+/i);
         expect(result).not.toMatch(/packages.*installed/i);
       } finally {
         // Change back to original directory

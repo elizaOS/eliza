@@ -4,7 +4,6 @@ import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  runCliCommand,
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
@@ -21,13 +20,13 @@ describe('ElizaOS Env Commands', () => {
   });
 
   it('env --help shows usage', async () => {
-    const result = await runCliCommand('env --help');
+    const result = bunExecSync('elizaos env --help', { encoding: 'utf8' });
     expectHelpOutput(result, 'env');
   });
 
   it('env list shows environment variables', async () => {
     // First call: no local .env file present
-    let result = await runCliCommand('env list');
+    let result = bunExecSync('elizaos env list', { encoding: 'utf8' });
 
     const expectedSections = ['System Information', 'Local Environment Variables'];
     for (const section of expectedSections) {
@@ -39,7 +38,7 @@ describe('ElizaOS Env Commands', () => {
     // Create a local .env file and try again
     await writeFile('.env', 'TEST_VAR=test_value');
 
-    result = await runCliCommand('env list');
+    result = bunExecSync('elizaos env list', { encoding: 'utf8' });
     expect(result).toContain('TEST_VAR');
     expect(result).toContain('test_value');
   });
@@ -47,7 +46,7 @@ describe('ElizaOS Env Commands', () => {
   it('env list --local shows only local environment', async () => {
     await writeFile('.env', 'LOCAL_TEST=local_value');
 
-    const result = await runCliCommand('env list --local');
+    const result = bunExecSync('elizaos env list --local', { encoding: 'utf8' });
 
     expect(result).toContain('LOCAL_TEST');
     expect(result).toContain('local_value');
@@ -74,7 +73,7 @@ describe('ElizaOS Env Commands', () => {
   it('env reset shows all necessary options', async () => {
     await writeFile('.env', 'DUMMY=value');
 
-    const result = await runCliCommand('env reset --yes');
+    const result = bunExecSync('elizaos env reset --yes', { encoding: 'utf8' });
 
     expect(result).toContain('Reset Summary');
     expect(result).toContain('Local environment variables');

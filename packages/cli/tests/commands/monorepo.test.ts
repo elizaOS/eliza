@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFile, mkdir } from 'node:fs/promises';
+import { bunExecSync } from '../utils/bun-test-helpers';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  runCliCommand,
   expectCliCommandToFail,
   expectHelpOutput,
   type TestContext,
@@ -22,14 +22,14 @@ describe('ElizaOS Monorepo Commands', () => {
   });
 
   it('monorepo --help shows usage', async () => {
-    const result = await runCliCommand('monorepo --help');
+    const result = bunExecSync('elizaos monorepo --help', { encoding: 'utf8' });
     expectHelpOutput(result, 'monorepo', ['-b', '--branch', '-d', '--dir']);
   });
 
   it('monorepo uses default branch and directory', async () => {
     // This would try to clone, so we just test that it recognizes the command
     // without actually performing the network operation
-    const result = await runCliCommand('monorepo --help');
+    const result = bunExecSync('elizaos monorepo --help', { encoding: 'utf8' });
     expect(result).toContain('Branch to install');
     expect(result).toContain('develop'); // default branch
   });
