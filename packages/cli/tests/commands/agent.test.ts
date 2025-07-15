@@ -5,31 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
-  getBunExecutable,
   getPlatformOptions,
   killProcessOnPort,
   waitForServerReady,
 } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
-// Helper function to execute CLI commands
-async function execCliCommand(command: string, options: any = {}): Promise<string> {
-  try {
-    const result = bunExecSync(command, {
-      ...options,
-      encoding: 'utf8',
-      stdio: options.stdio || 'pipe',
-    });
-    return result as string;
-  } catch (error: any) {
-    // Re-throw with the expected error format
-    const err: any = new Error(error.message);
-    err.status = error.status;
-    err.stdout = error.stdout || '';
-    err.stderr = error.stderr || '';
-    throw err;
-  }
-}
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -67,7 +48,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Verify elizaos command is available
     try {
-      await execCliCommand('elizaos --version', { timeout: 5000 });
+      bunExecSync('elizaos --version', { encoding: 'utf8', timeout: 5000 });
     } catch (error) {
       console.error('[ERROR] elizaos command not available. Run "bun link" in the CLI package first.');
       throw new Error('elizaos command not available');
@@ -220,7 +201,7 @@ describe('ElizaOS Agent Commands', () => {
           timeout: 30000, // 30 second timeout for loading each character
         });
 
-        await execCliCommand(
+        bunExecSync(
           `elizaos agent start --remote-url ${testServerUrl} --path "${characterPath}"`,
           platformOptions
         );
@@ -280,7 +261,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent help displays usage information', async () => {
-    const result = await execCliCommand(
+    const result = bunExecSync(
       `elizaos agent --help`,
       getPlatformOptions({ encoding: 'utf8' })
     );
@@ -288,7 +269,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent list returns agents', async () => {
-    const result = await execCliCommand(
+    const result = bunExecSync(
       `elizaos agent list --remote-url ${testServerUrl}`,
       getPlatformOptions({
         encoding: 'utf8',
@@ -310,7 +291,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent get shows details with name parameter', async () => {
-    const result = await execCliCommand(
+    const result = bunExecSync(
       `elizaos agent get --remote-url ${testServerUrl} -n Ada`,
       getPlatformOptions({
         encoding: 'utf8',
@@ -320,7 +301,7 @@ describe('ElizaOS Agent Commands', () => {
   });
 
   it('agent get with JSON flag shows character definition', async () => {
-    const result = await execCliCommand(
+    const result = bunExecSync(
       `elizaos agent get --remote-url ${testServerUrl} -n Ada --json`,
       getPlatformOptions({
         encoding: 'utf8',
@@ -332,7 +313,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
-    await execCliCommand(
+    bunExecSync(
       `elizaos agent get --remote-url ${testServerUrl} -n Ada --output "${outputFile}"`,
       getPlatformOptions({ encoding: 'utf8' })
     );
@@ -348,7 +329,7 @@ describe('ElizaOS Agent Commands', () => {
     const maxPath = join(charactersDir, 'max.json');
 
     try {
-      const result = await execCliCommand(
+      const result = bunExecSync(
         `elizaos agent start --remote-url ${testServerUrl} --path "${maxPath}"`,
         getPlatformOptions({ encoding: 'utf8' })
       );
@@ -361,7 +342,7 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent start works with name parameter', async () => {
     try {
-      await execCliCommand(
+      bunExecSync(
         `elizaos agent start --remote-url ${testServerUrl} -n Ada`,
         getPlatformOptions({
           encoding: 'utf8',
@@ -377,7 +358,7 @@ describe('ElizaOS Agent Commands', () => {
     const nonExistentName = `NonExistent_${Date.now()}`;
 
     try {
-      await execCliCommand(
+      bunExecSync(
         `elizaos agent start --remote-url ${testServerUrl} -n ${nonExistentName}`,
         getPlatformOptions({
           encoding: 'utf8',
@@ -395,7 +376,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent stop works after start', async () => {
     // Ensure Ada is started first
     try {
-      await execCliCommand(
+      bunExecSync(
         `elizaos agent start --remote-url ${testServerUrl} -n Ada`,
         getPlatformOptions({ stdio: 'pipe' })
       );
@@ -404,7 +385,7 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     try {
-      const result = await execCliCommand(
+      const result = bunExecSync(
         `elizaos agent stop --remote-url ${testServerUrl} -n Ada`,
         getPlatformOptions({
           encoding: 'utf8',
@@ -425,7 +406,7 @@ describe('ElizaOS Agent Commands', () => {
     const { writeFile } = await import('fs/promises');
     await writeFile(configFile, configContent);
 
-    const result = await execCliCommand(
+    const result = bunExecSync(
       `elizaos agent set --remote-url ${testServerUrl} -n Ada -f "${configFile}"`,
       getPlatformOptions({ encoding: 'utf8' })
     );
@@ -435,7 +416,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent full lifecycle management', async () => {
     // Start agent
     try {
-      await execCliCommand(
+      bunExecSync(
         `elizaos agent start --remote-url ${testServerUrl} -n Ada`,
         getPlatformOptions({
           encoding: 'utf8',
@@ -465,7 +446,7 @@ describe('ElizaOS Agent Commands', () => {
     // This tests the --all flag functionality using pkill
     // Placed at end to avoid interfering with other tests that need the server
     try {
-      const result = await execCliCommand(
+      const result = bunExecSync(
         `elizaos agent stop --all`,
         getPlatformOptions({
           encoding: 'utf8',
