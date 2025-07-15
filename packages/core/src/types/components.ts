@@ -41,19 +41,6 @@ export type Validator = (
 ) => Promise<boolean>;
 
 /**
- * Result of executing an action
- */
-export interface ActionResult {
-  values?: {
-    [key: string]: any;
-  };
-  data?: {
-    [key: string]: any;
-  };
-  text?: string;
-}
-
-/**
  * Represents an action the agent can perform
  */
 export interface Action {
