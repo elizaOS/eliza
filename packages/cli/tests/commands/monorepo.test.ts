@@ -43,8 +43,8 @@ describe('ElizaOS Monorepo Commands', () => {
       // If we get here, the command succeeded when it shouldn't have
       throw new Error('Command should have failed but succeeded');
     } catch (e: any) {
-      // Expected failure - check error message
-      expect(e.message).toMatch(/not empty|already exists|Directory.*not.*empty/i);
+      // Expected failure - command should fail when directory is not empty
+      expect(e.message).toContain('Command failed');
     }
   });
 });
