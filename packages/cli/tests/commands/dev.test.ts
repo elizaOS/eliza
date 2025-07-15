@@ -506,7 +506,7 @@ describe('ElizaOS Dev Commands', () => {
 
     try {
       // Run dev command without specifying port (should default to 3000 but find 3001)
-      const devProcess = Bun.spawn(['bun', 'run', 'elizaos', 'dev'], {
+      const devProcess = Bun.spawn(['elizaos', 'dev'], {
         cwd: projectDir,
         env: {
           ...process.env,
@@ -526,7 +526,7 @@ describe('ElizaOS Dev Commands', () => {
 
       // Read output for a few seconds to capture the port conflict message
       const startTime = Date.now();
-      while (Date.now() - startTime < 5000) {
+      while (Date.now() - startTime < 3000) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value);
@@ -556,19 +556,16 @@ describe('ElizaOS Dev Commands', () => {
     const specifiedPort = 8888;
 
     // Run dev command with explicit port
-    const devProcess = Bun.spawn(
-      ['bun', 'run', 'elizaos', 'dev', '--port', specifiedPort.toString()],
-      {
-        cwd: projectDir,
-        env: {
-          ...process.env,
-          FORCE_COLOR: '0',
-          LOG_LEVEL: 'info',
-        },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      }
-    );
+    const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0',
+        LOG_LEVEL: 'info',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
 
     runningProcesses.push(devProcess);
 
@@ -579,7 +576,7 @@ describe('ElizaOS Dev Commands', () => {
 
     // Read output for a few seconds to capture the server start message
     const startTime = Date.now();
-    while (Date.now() - startTime < 5000) {
+    while (Date.now() - startTime < 3000) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = decoder.decode(value);

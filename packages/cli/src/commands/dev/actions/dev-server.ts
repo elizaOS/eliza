@@ -38,10 +38,20 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
   // Handle port availability checking
   const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-  const availablePort = await findNextAvailablePort(desiredPort);
+  let availablePort: number;
 
-  if (availablePort !== desiredPort) {
-    logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
+  try {
+    availablePort = await findNextAvailablePort(desiredPort);
+
+    if (availablePort !== desiredPort) {
+      logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
+    }
+  } catch (error) {
+    logger.error(
+      `Failed to find available port starting from ${desiredPort}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    logger.error('Please specify a different port using --port option');
+    throw new Error(`No available ports found starting from ${desiredPort}`);
   }
 
   // Pass the available port to the start command
