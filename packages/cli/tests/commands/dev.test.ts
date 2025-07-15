@@ -138,7 +138,7 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] Using Bun.spawn for dev command`);
 
     try {
-      const devProcess = Bun.spawn(['bun', 'dist/index.js', 'dev', ...args.split(' ')], {
+      const devProcess = Bun.spawn(['elizaos', 'dev', ...args.split(' ')], {
         cwd: cwd || projectDir,
         env: {
           ...process.env,
@@ -175,7 +175,7 @@ describe('ElizaOS Dev Commands', () => {
   };
 
   it('dev --help shows usage', () => {
-    const result = bunExecSync(`bun dist/index.js dev --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -201,7 +201,7 @@ describe('ElizaOS Dev Commands', () => {
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn(['bun', 'dist/index.js', 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: projectDir,
         env: {
           ...process.env,
@@ -373,7 +373,7 @@ describe('ElizaOS Dev Commands', () => {
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn(['bun', 'dist/index.js', 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: nonElizaDir,
         env: {
           ...process.env,
@@ -481,7 +481,7 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      bunExecSync(`bun dist/index.js dev --port abc`, {
+      bunExecSync(`elizaos dev --port abc`, {
         encoding: 'utf8',
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,
