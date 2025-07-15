@@ -133,88 +133,8 @@ export async function createTestProject(projectName: string): Promise<void> {
   }
 }
 
-/**
- * Helper to run CLI command and expect it to succeed
- */
-export async function runCliCommand(
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<string> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
 
-  try {
-    const result = await bunExecSimple(`elizaos ${args}`);
-    return result;
-  } catch (error: any) {
-    // Enhanced error reporting for debugging
-    const errorDetails = {
-      command: `elizaos ${args}`,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-      status: error.status,
-      signal: error.signal,
-      stdout: error.stdout?.toString() || '',
-      stderr: error.stderr?.toString() || '',
-      pid: error.pid,
-    };
-    console.error('[CLI Command Error]', errorDetails);
-    throw error;
-  }
-}
 
-/**
- * Helper to run CLI command silently (suppressing console output)
- */
-export async function runCliCommandSilently(
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<string> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    const result = await bunExecSimple(`elizaos ${args}`);
-    return result;
-  } catch (error: any) {
-    // Enhanced error reporting for debugging silent commands
-    console.error(`[Silent CLI Command Error] elizaos ${args}:`, {
-      status: error.status,
-      signal: error.signal,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-    });
-    throw error;
-  }
-}
-
-/**
- * Helper to run CLI command and expect it to fail
- */
-export async function expectCliCommandToFail(
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<{ status: number; output: string }> {
-  try {
-    const result = await bunExecSimple(`elizaos ${args}`);
-    throw new Error(`Command should have failed but succeeded with output: ${result}`);
-  } catch (e: any) {
-    // If it's not an expected failure, re-throw
-    if (e.message?.includes('Command should have failed')) {
-      throw e;
-    }
-    return {
-      status: e.status || e.exitCode || -1,
-      output: (e.stdout || '') + (e.stderr || ''),
-    };
-  }
-}
 
 /**
  * Helper to validate that help output contains expected strings
@@ -530,15 +450,6 @@ export async function killProcessOnPort(port: number): Promise<void> {
   }
 }
 
-/**
- * Get the correct bun executable path for the platform
- */
-export function getBunExecutable(): string {
-  // Always use 'bun' - Bun handles platform differences internally
-  const bunCmd = 'bun';
-  console.log(`[DEBUG] Using bun executable: ${bunCmd}`);
-  return bunCmd;
-}
 
 /**
  * Cross-platform file operations utility
