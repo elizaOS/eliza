@@ -96,6 +96,8 @@ function getPackageName(templateType: string): string {
       return 'project-tee-starter';
     case 'plugin':
       return 'plugin-starter';
+    case 'plugin-quick':
+      return 'plugin-quick-starter';
     case 'project':
     case 'project-starter':
     default:
@@ -107,7 +109,7 @@ function getPackageName(templateType: string): string {
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
-  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin',
+  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin' | 'plugin-quick',
   targetDir: string
 ) {
   const packageName = getPackageName(templateType);
@@ -155,7 +157,7 @@ export async function copyTemplate(
   await copyDir(templateDir, targetDir);
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
-  if (templateType === 'plugin') {
+  if (templateType === 'plugin' || templateType === 'plugin-quick') {
     const pluginNameFromPath = path.basename(targetDir);
     await replacePluginNameInFiles(targetDir, pluginNameFromPath);
   }
@@ -225,11 +227,13 @@ export async function copyTemplate(
 }
 
 /**
- * Replace hardcoded "plugin-starter" strings in source files with the actual plugin name
+ * Replace hardcoded "plugin-starter" or "plugin-quick-starter" strings in source files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
   const filesToProcess = [
     'src/index.ts',
+    'src/plugin.ts',
+    'src/__tests__/plugin.test.ts',
     '__tests__/plugin.test.ts',
     'e2e/starter-plugin.test.ts',
     'README.md',
@@ -249,8 +253,9 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
       ) {
         let content = await fs.readFile(fullPath, 'utf8');
 
-        // Replace the hardcoded plugin name in source files
+        // Replace both plugin-starter and plugin-quick-starter with the actual plugin name
         content = content.replace(/plugin-starter/g, pluginName);
+        content = content.replace(/plugin-quick-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');
         logger.debug(`Updated plugin name in ${filePath}`);
