@@ -213,7 +213,6 @@ export class UserEnvironment {
     const cliPath = process.argv[1] || '';
     const isInGlobalPath =
       cliPath.includes('/.bun/install/global/') ||
-      cliPath.includes('/node_modules/.bin/') ||
       cliPath.includes('/npm/global/') ||
       (process.platform === 'win32' && cliPath.includes('\\npm\\'));
 
