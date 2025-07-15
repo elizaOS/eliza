@@ -42,9 +42,7 @@ export const update = new Command()
         if (isNpx || isBunx) {
           console.warn('CLI update is not available when running via npx or bunx.');
           console.info('Please install the CLI globally:');
-          console.info('  bun install -g @elizaos/cli');
-          console.info('  # or');
-          console.info('  npm install -g @elizaos/cli');
+          console.info(' bun install -g @elizaos/cli');
 
           if (!updatePackages) return;
         } else {

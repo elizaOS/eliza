@@ -6,6 +6,7 @@ import { safeChangeDirectory } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
+import { mock } from 'bun:test';
 
 describe('ElizaOS Update Commands', () => {
   let testTmpDir: string;
@@ -277,4 +278,154 @@ describe('ElizaOS Update Commands', () => {
     },
     TEST_TIMEOUTS.STANDARD_COMMAND
   );
+
+  describe('bunx/npx detection', () => {
+    let originalArgv: string[];
+    let originalEnv: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      // Save original values
+      originalArgv = [...process.argv];
+      originalEnv = { ...process.env };
+    });
+
+    afterEach(() => {
+      // Restore original values
+      process.argv = originalArgv;
+      process.env = originalEnv;
+    });
+
+    it('update --cli shows warning when running via bunx', () => {
+      // Simulate bunx execution
+      process.argv = [
+        '/Users/user/.bun/bin/bun',
+        '/Users/user/.bun/install/cache/@elizaos/cli@1.2.5/dist/index.js',
+        'update',
+        '--cli',
+      ];
+      process.env = {};
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).toContain('CLI update is not available when running via npx or bunx');
+      expect(result).toContain('bun install -g @elizaos/cli');
+    });
+
+    it('update --cli shows warning when BUN_INSTALL_CACHE_DIR is set', () => {
+      // Simulate bunx environment variable
+      process.argv = ['/Users/user/.bun/bin/bun', '/some/path/index.js', 'update', '--cli'];
+      process.env = {
+        BUN_INSTALL_CACHE_DIR: '/Users/user/.bun/install/cache',
+      };
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).toContain('CLI update is not available when running via npx or bunx');
+    });
+
+    it('update --cli shows warning when running via npx', () => {
+      // Simulate npx execution
+      process.argv = [
+        'node',
+        '/Users/user/.npm/_npx/12345/@elizaos/cli/dist/index.js',
+        'update',
+        '--cli',
+      ];
+      process.env = {
+        npm_execpath: '/usr/local/lib/node_modules/npm/bin/npx-cli.js',
+      };
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).toContain('CLI update is not available when running via npx or bunx');
+    });
+
+    it.skip('update --cli works with global bun installation', () => {
+      // Simulate global bun installation
+      process.argv = [
+        '/Users/user/.bun/bin/bun',
+        '/Users/user/.bun/install/global/@elizaos/cli/dist/index.js',
+        'update',
+        '--cli',
+      ];
+      process.env = {};
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).not.toContain('CLI update is not available when running via npx or bunx');
+      expect(result).toMatch(
+        /(Project successfully updated|Update completed|already up to date|No updates available|Checking for updates)/
+      );
+    });
+
+    it.skip('update --cli works with global npm installation', () => {
+      // Simulate global npm installation
+      process.argv = [
+        'node',
+        '/usr/local/lib/node_modules/@elizaos/cli/dist/index.js',
+        'update',
+        '--cli',
+      ];
+      process.env = {};
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).not.toContain('CLI update is not available when running via npx or bunx');
+      expect(result).toMatch(
+        /(Project successfully updated|Update completed|already up to date|No updates available|Checking for updates)/
+      );
+    });
+
+    it.skip('update --cli works when NODE_ENV=global', () => {
+      // Simulate global flag via environment
+      process.argv = ['/Users/user/.bun/bin/bun', '/some/local/path/index.js', 'update', '--cli'];
+      process.env = {
+        NODE_ENV: 'global',
+      };
+
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
+      expect(result).not.toContain('CLI update is not available when running via npx or bunx');
+    });
+
+    it(
+      'update --packages still works when running via bunx',
+      async () => {
+        await makeProj('update-bunx-packages');
+
+        // Simulate bunx execution
+        process.argv = [
+          '/Users/user/.bun/bin/bun',
+          '/Users/user/.bun/install/cache/@elizaos/cli@1.2.5/dist/index.js',
+          'update',
+          '--packages',
+        ];
+        process.env = {};
+
+        const result = bunExecSync('elizaos update --packages', { encoding: 'utf8' });
+        // Should update packages even when running via bunx
+        expect(result).toMatch(
+          /(Project successfully updated|Update completed|already up to date|No updates available)/
+        );
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+
+    it(
+      'update (both cli and packages) shows warning but continues with packages via bunx',
+      async () => {
+        await makeProj('update-bunx-both');
+
+        // Simulate bunx execution
+        process.argv = [
+          '/Users/user/.bun/bin/bun',
+          '/Users/user/.bun/install/cache/@elizaos/cli@1.2.5/dist/index.js',
+          'update',
+        ];
+        process.env = {};
+
+        const result = bunExecSync('elizaos update', { encoding: 'utf8' });
+        // Should show warning about CLI but continue with packages
+        expect(result).toContain('CLI update is not available when running via npx or bunx');
+        expect(result).toMatch(
+          /(Project successfully updated|Update completed|already up to date|No updates available|Found.*ElizaOS package)/
+        );
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+  });
 });
