@@ -115,7 +115,11 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   // Handle errors
   if (proc.exitCode !== 0) {
     const error = new Error(`Command failed: ${command}\n${proc.stderr}`);
-    const enhancedError = error as Error & { status: number | null; stderr: string; stdout: string };
+    const enhancedError = error as Error & {
+      status: number | null;
+      stderr: string;
+      stdout: string;
+    };
     enhancedError.status = proc.exitCode;
     enhancedError.stderr = proc.stderr;
     enhancedError.stdout = proc.stdout;

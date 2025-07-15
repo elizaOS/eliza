@@ -42,7 +42,11 @@ async function execShellCommand(
     await proc.exited;
 
     if (proc.exitCode !== 0 && !options.stdio) {
-      const error = new Error(`Command failed: ${command}\nstderr: ${stderr}`) as Error & { status: number | null; stdout: string; stderr: string };
+      const error = new Error(`Command failed: ${command}\nstderr: ${stderr}`) as Error & {
+        status: number | null;
+        stdout: string;
+        stderr: string;
+      };
       error.status = proc.exitCode;
       error.stdout = stdout;
       error.stderr = stderr;

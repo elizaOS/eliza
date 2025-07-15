@@ -389,7 +389,12 @@ describe('ElizaOS Create Commands', () => {
         }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
       } catch (e: unknown) {
-        const error = e as Error & { status?: number; exitCode?: number; stdout?: string; stderr?: string };
+        const error = e as Error & {
+          status?: number;
+          exitCode?: number;
+          stdout?: string;
+          stderr?: string;
+        };
         if (error.message?.includes('Command should have failed')) {
           throw error;
         }
@@ -423,7 +428,12 @@ describe('ElizaOS Create Commands', () => {
         }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
       } catch (e: unknown) {
-        const error = e as Error & { status?: number; exitCode?: number; stdout?: string; stderr?: string };
+        const error = e as Error & {
+          status?: number;
+          exitCode?: number;
+          stdout?: string;
+          stderr?: string;
+        };
         if (error.message?.includes('Command should have failed')) {
           throw error;
         }

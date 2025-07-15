@@ -128,7 +128,12 @@ export class UserEnvironment {
     logger.debug('[UserEnvironment] Using bun as the package manager for ElizaOS CLI');
 
     const isNpx = process.env.npm_execpath?.includes('npx');
-    const isBunx = process.argv[0]?.includes('bun');
+    // Check if running via bunx by looking for bunx cache patterns in the script path
+    const scriptPath = process.argv[1] || '';
+    const isBunx =
+      scriptPath.includes('.bun/install/cache/') ||
+      scriptPath.includes('bunx') ||
+      process.env.BUN_INSTALL_CACHE_DIR !== undefined;
 
     let version: string | null = null;
 
@@ -203,26 +208,39 @@ export class UserEnvironment {
 
     const packageName = '@elizaos/cli';
     let isGlobalCheck = false;
+
+    // First check if the script path indicates a global installation
+    const cliPath = process.argv[1] || '';
+    const isInGlobalPath =
+      cliPath.includes('/.bun/install/global/') ||
+      cliPath.includes('/npm/global/') ||
+      (process.platform === 'win32' && cliPath.includes('\\npm\\'));
+
     try {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
-        // Check if bun has the CLI installed globally
-        // Use Bun.spawnSync for checking global packages
-        const args =
-          process.platform === 'win32'
-            ? ['cmd', '/c', `bun pm ls -g | findstr "${packageName}"`]
-            : ['sh', '-c', `bun pm ls -g | grep -q "${packageName}"`];
+        // If we're already in a global path, consider it global
+        if (isInGlobalPath) {
+          isGlobalCheck = true;
+        } else {
+          // Check if bun has the CLI installed globally
+          // Use Bun.spawnSync for checking global packages
+          const args =
+            process.platform === 'win32'
+              ? ['cmd', '/c', `bun pm ls -g | findstr "${packageName}"`]
+              : ['sh', '-c', `bun pm ls -g | grep -q "${packageName}"`];
 
-        const proc = Bun.spawnSync(args, {
-          stdout: 'ignore',
-          stderr: 'ignore',
-        });
+          const proc = Bun.spawnSync(args, {
+            stdout: 'ignore',
+            stderr: 'ignore',
+          });
 
-        isGlobalCheck = proc.exitCode === 0;
+          isGlobalCheck = proc.exitCode === 0;
+        }
       }
     } catch (error) {
-      // Package not found globally
-      isGlobalCheck = false;
+      // Package not found globally - but still might be global based on path
+      isGlobalCheck = isInGlobalPath;
     }
 
     // Combine check with NODE_ENV check

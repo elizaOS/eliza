@@ -46,7 +46,7 @@ exports.handler = async (event, context) => {
     }
 
     // Prepare the system prompt
-    const systemPrompt = `You are the ElizaOS documentation assistant. ElizaOS is a powerful multi-agent simulation framework for building autonomous AI agents. 
+    const systemPrompt = `You are the ElizaOS documentation assistant. ElizaOS is a powerful multi-agent simulation framework for building autonomous AI agents.
 
 Key features include:
 - Multi-platform support (Discord, Twitter, Telegram, etc.)
@@ -54,7 +54,7 @@ Key features include:
 - Memory and knowledge management
 - Custom actions and behaviors
 - Built with TypeScript
-- CLI tools for easy setup: npm install -g @elizaos/cli
+- CLI tools for easy setup: bun install -g @elizaos/cli
 
 Always provide helpful, accurate, and concise answers based on the ElizaOS documentation. If you're unsure about something, say so rather than guessing.`;
 
