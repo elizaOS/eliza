@@ -44,7 +44,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@elizaos/cli": "latest",
+    "@elizaos/core": "workspace:*",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
