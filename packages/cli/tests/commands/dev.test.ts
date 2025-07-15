@@ -495,6 +495,9 @@ describe('ElizaOS Dev Commands', () => {
   });
 
   it('dev command handles port conflicts by finding next available port', async () => {
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
     // Start a dummy server on port 3000 to create a conflict
     const dummyServer = Bun.serve({
       port: 3000,
@@ -511,6 +514,7 @@ describe('ElizaOS Dev Commands', () => {
           ...process.env,
           FORCE_COLOR: '0',
           LOG_LEVEL: 'debug', // Enable debug to see port conflict message
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -576,6 +580,9 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command uses specified port when provided', async () => {
     const specifiedPort = 8888;
 
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
     // Run dev command with explicit port
     const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
       cwd: projectDir,
@@ -583,6 +590,7 @@ describe('ElizaOS Dev Commands', () => {
         ...process.env,
         FORCE_COLOR: '0',
         LOG_LEVEL: 'info',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
       },
       stdout: 'pipe',
       stderr: 'pipe',
