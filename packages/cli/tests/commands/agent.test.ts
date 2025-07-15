@@ -14,45 +14,21 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 
 // Helper function to execute CLI commands using Bun.spawn
 async function execCliCommand(command: string, options: any = {}): Promise<string> {
-  const shell = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
-  const proc = Bun.spawn([...shell, command], {
-    stdout: options.stdio === 'ignore' || options.stdio === 'pipe' ? 'pipe' : 'inherit',
-    stderr: options.stdio === 'ignore' || options.stdio === 'pipe' ? 'pipe' : 'inherit',
-  });
-
-  let timeoutId: Timer | null = null;
-  if (options.timeout) {
-    timeoutId = setTimeout(() => {
-      proc.kill();
-    }, options.timeout);
-  }
-
+  // Use bunExecSync for better compatibility
   try {
-    if (options.stdio === 'ignore') {
-      await proc.exited;
-      return '';
-    }
-
-    const [stdout, stderr] = await Promise.all([
-      proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
-      proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
-    ]);
-
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
-      const error: any = new Error(`Command failed with exit code ${proc.exitCode}`);
-      error.status = proc.exitCode;
-      error.stdout = stdout;
-      error.stderr = stderr;
-      throw error;
-    }
-
-    return stdout;
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+    const result = bunExecSync(command, {
+      ...options,
+      encoding: 'utf8',
+      stdio: options.stdio || 'pipe',
+    });
+    return result as string;
+  } catch (error: any) {
+    // Re-throw with the expected error format
+    const err: any = new Error(error.message);
+    err.status = error.status;
+    err.stdout = error.stdout || '';
+    err.stderr = error.stderr || '';
+    throw err;
   }
 }
 

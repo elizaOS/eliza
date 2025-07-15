@@ -775,8 +775,8 @@ export class TestProcessManager {
       cwd: options.cwd || process.cwd(),
       env: options.env || process.env,
       stdout: 'ignore',
-      stderr: 'ignore', 
-      stdin: 'ignore'
+      stderr: 'ignore',
+      stdin: 'ignore',
     };
 
     const childProcess = Bun.spawn([command, ...args], processOptions);

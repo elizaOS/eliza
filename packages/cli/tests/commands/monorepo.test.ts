@@ -38,9 +38,13 @@ describe('ElizaOS Monorepo Commands', () => {
     await mkdir('not-empty-dir');
     await writeFile('not-empty-dir/placeholder', '');
 
-    const result = await expectCliCommandToFail(context.elizaosCmd, 'monorepo --dir not-empty-dir', {
-      timeout: TEST_TIMEOUTS.QUICK_COMMAND,
-    });
+    const result = await expectCliCommandToFail(
+      context.elizaosCmd,
+      'monorepo --dir not-empty-dir',
+      {
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
+      }
+    );
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(/not empty/);
   });

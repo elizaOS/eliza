@@ -91,7 +91,10 @@ describe('ElizaOS Plugin Commands', () => {
   });
 
   it('plugins list shows available plugins', () => {
-    const result = bunExecSync(`${elizaosCmd} plugins list`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = bunExecSync(
+      `${elizaosCmd} plugins list`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('Available v1.x plugins');
     expect(result).toMatch(/plugin-openai/);
     expect(result).toMatch(/plugin-ollama/);

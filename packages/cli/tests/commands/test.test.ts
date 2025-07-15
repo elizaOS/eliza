@@ -54,7 +54,10 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test command accepts combination of options', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test -n filter-name --skip-build --help');
+    const result = await runCliCommand(
+      context.elizaosCmd,
+      'test -n filter-name --skip-build --help'
+    );
     expect(result).toContain('Filter tests by name');
     expect(result).toContain('Skip building before running tests');
   });
