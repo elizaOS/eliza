@@ -165,7 +165,7 @@ export async function createPlugin(
 
     await runTasks([
       createTask('Copying plugin template', () =>
-        copyTemplateUtil(templateName as any, pluginTargetDir)
+        copyTemplateUtil(templateName as 'plugin' | 'plugin-quick', pluginTargetDir)
       ),
       createTask('Installing dependencies', () => installDependenciesWithSpinner(pluginTargetDir)),
     ]);

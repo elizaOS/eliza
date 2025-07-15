@@ -388,13 +388,14 @@ describe('ElizaOS Create Commands', () => {
           encoding: 'utf8',
         }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
-      } catch (e: any) {
-        if (e.message?.includes('Command should have failed')) {
-          throw e;
+      } catch (e: unknown) {
+        const error = e as Error & { status?: number; exitCode?: number; stdout?: string; stderr?: string };
+        if (error.message?.includes('Command should have failed')) {
+          throw error;
         }
         result = {
-          status: e.status || e.exitCode || -1,
-          output: (e.stdout || '') + (e.stderr || ''),
+          status: error.status || error.exitCode || -1,
+          output: (error.stdout || '') + (error.stderr || ''),
         };
       }
 
@@ -421,13 +422,14 @@ describe('ElizaOS Create Commands', () => {
           encoding: 'utf8',
         }) as string;
         throw new Error(`Command should have failed but succeeded with output: ${output}`);
-      } catch (e: any) {
-        if (e.message?.includes('Command should have failed')) {
-          throw e;
+      } catch (e: unknown) {
+        const error = e as Error & { status?: number; exitCode?: number; stdout?: string; stderr?: string };
+        if (error.message?.includes('Command should have failed')) {
+          throw error;
         }
         result = {
-          status: e.status || e.exitCode || -1,
-          output: (e.stdout || '') + (e.stderr || ''),
+          status: error.status || error.exitCode || -1,
+          output: (error.stdout || '') + (error.stderr || ''),
         };
       }
 

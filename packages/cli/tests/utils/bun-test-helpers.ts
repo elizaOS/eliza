@@ -98,7 +98,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   // Configure spawn options
   const spawnOptions: SpawnOptions.Sync = {
     cwd,
-    env: env as any,
+    env: env as Record<string, string | undefined>,
     stdout: stdio === 'inherit' ? 'inherit' : 'pipe',
     stderr: stdio === 'inherit' ? 'inherit' : 'pipe',
     stdin: stdio === 'inherit' ? 'inherit' : 'ignore',
@@ -115,9 +115,10 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   // Handle errors
   if (proc.exitCode !== 0) {
     const error = new Error(`Command failed: ${command}\n${proc.stderr}`);
-    (error as any).status = proc.exitCode;
-    (error as any).stderr = proc.stderr;
-    (error as any).stdout = proc.stdout;
+    const enhancedError = error as Error & { status: number | null; stderr: string; stdout: string };
+    enhancedError.status = proc.exitCode;
+    enhancedError.stderr = proc.stderr;
+    enhancedError.stdout = proc.stdout;
     throw error;
   }
 
@@ -156,7 +157,7 @@ export function bunSpawn(
 ): ReturnType<typeof Bun.spawn> {
   const defaultOptions: SpawnOptions.OptionsObject = {
     cwd: process.cwd(),
-    env: process.env as any,
+    env: process.env as Record<string, string | undefined>,
     stdout: 'pipe',
     stderr: 'pipe',
     stdin: 'pipe',
