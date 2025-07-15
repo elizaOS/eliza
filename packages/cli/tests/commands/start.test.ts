@@ -1,8 +1,7 @@
-import { execSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import {
   getPlatformOptions,
@@ -11,10 +10,11 @@ import {
   TestProcessManager,
   waitForServerReady,
 } from './test-utils';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
+  let elizaosPath: string;
   let originalCwd: string;
   let testServerPort: number;
   let processManager: TestProcessManager;
@@ -39,9 +39,9 @@ describe('ElizaOS Start Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command
+    // Setup CLI path
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    elizaosPath = join(scriptDir, '../dist/index.js');
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -109,33 +109,12 @@ describe('ElizaOS Start Commands', () => {
     return serverProcess;
   };
 
-  // Helper function to create a project structure for build testing
-  const createProjectStructure = async (hasPackageJson = true, hasBuildScript = true) => {
-    if (hasPackageJson) {
-      const packageJson = {
-        name: 'test-eliza-project',
-        version: '1.0.0',
-        scripts: hasBuildScript ? { build: 'echo "Building..." && mkdir -p dist && echo "Build complete"' } : {},
-        dependencies: {
-          '@elizaos/core': '^1.0.0',
-        },
-      };
-      await writeFile(join(testTmpDir, 'package.json'), JSON.stringify(packageJson, null, 2));
-    }
-
-    // Create src directory and basic files
-    await mkdir(join(testTmpDir, 'src'), { recursive: true });
-    await writeFile(join(testTmpDir, 'src', 'index.ts'), 'export default {};');
-
-    // Create test character file
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
-    return adaPath;
-  };
-
   // Basic agent check
-  it('start command shows help', () => {
-    const result = execSync(`${elizaosCmd} start --help`, getPlatformOptions({ encoding: 'utf8' }));
+  it('start command shows help', async () => {
+    const { stdout: result } = await bunExecSimple('bun', [elizaosPath, 'start', '--help'], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      env: process.env,
+    });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
@@ -173,10 +152,15 @@ describe('ElizaOS Start Commands', () => {
               timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             });
 
-            result = execSync(
-              `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-              platformOptions
+            const { stdout } = await bunExecSimple(
+              'bun',
+              [elizaosPath, 'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`],
+              {
+                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+                env: process.env,
+              }
             );
+            result = stdout;
 
             // If we get a result, check if it contains Ada
             if (result && result.includes('Ada')) {
@@ -262,38 +246,50 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  it('multiple character formats parse', () => {
+  it('multiple character formats parse', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
     const formats = [',', ' '];
 
     for (const fmt of formats) {
-      const result = execSync(
-        `${elizaosCmd} start --character "${adaPath}${fmt}${adaPath}" --help`,
-        getPlatformOptions({ encoding: 'utf8' })
+      const { stdout: result } = await bunExecSimple(
+        'bun',
+        [elizaosPath, 'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'],
+        {
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          env: process.env,
+        }
       );
       expect(result).toContain('start');
     }
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  it('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
-    const result = execSync(
-      `${elizaosCmd} start --character "${adaPath},does-not-exist.json" --help`,
-      getPlatformOptions({ encoding: 'utf8' })
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--character', `${adaPath},does-not-exist.json`, '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
     );
     expect(result).toContain('start');
   });
 
   // --build flag accepted
-  it('build option flag accepted', () => {
-    const result = execSync(
-      `${elizaosCmd} start --build --help`,
-      getPlatformOptions({ encoding: 'utf8' })
+  it('build option flag accepted', async () => {
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--build', '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
     );
     expect(result).toContain('start');
   });
@@ -359,230 +355,7 @@ describe('ElizaOS Start Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  // Auto-build functionality tests
-  describe('Auto-build functionality', () => {
-    let buildProjectMock: any;
-    let buildProjectCalls: Array<{ cwd: string; isPlugin: boolean }> = [];
-
-    beforeEach(() => {
-      // Create mock that tracks calls
-      buildProjectCalls = [];
-      buildProjectMock = mock((cwd: string, isPlugin: boolean) => {
-        buildProjectCalls.push({ cwd, isPlugin });
-        return Promise.resolve();
-      });
-
-      // Mock the buildProject function
-      mock.module('@/src/utils/build-project', () => ({
-        buildProject: buildProjectMock,
-      }));
-    });
-
-    afterEach(() => {
-      buildProjectCalls = [];
-    });
-
-    it('should automatically build project when not in monorepo and not in test mode', async () => {
-      // Create a project structure with build script
-      const adaPath = await createProjectStructure(true, true);
-
-      // Temporarily unset ELIZA_TEST_MODE to test auto-build
-      const originalTestMode = process.env.ELIZA_TEST_MODE;
-      delete process.env.ELIZA_TEST_MODE;
-
-      try {
-        // Mock monorepo detection to return null (not in monorepo)
-        const mockUserEnvironment = {
-          getInstance: mock(() => ({
-            findMonorepoRoot: mock(() => null),
-          })),
-        };
-        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
-
-        // Execute the start command without --help
-        const result = execSync(
-          `${elizaosCmd} start --character ${adaPath}`,
-          getPlatformOptions({ encoding: 'utf8' })
-        );
-
-        // Verify buildProject was called
-        expect(buildProjectMock).toHaveBeenCalledTimes(1);
-        expect(buildProjectCalls[0]).toEqual({
-          cwd: process.cwd(),
-          isPlugin: false,
-        });
-
-        // Verify the command executed (should contain some output)
-        expect(result).toBeTruthy();
-      } finally {
-        // Restore test mode
-        if (originalTestMode) {
-          process.env.ELIZA_TEST_MODE = originalTestMode;
-        } else {
-          delete process.env.ELIZA_TEST_MODE;
-        }
-      }
-    });
-
-    it('should skip build when ELIZA_TEST_MODE is set to true', async () => {
-      // Create a project structure with build script
-      const adaPath = await createProjectStructure(true, true);
-
-      // Explicitly set ELIZA_TEST_MODE to 'true'
-      const originalTestMode = process.env.ELIZA_TEST_MODE;
-      process.env.ELIZA_TEST_MODE = 'true';
-
-      try {
-        // Mock monorepo detection to return null (not in monorepo)
-        const mockUserEnvironment = {
-          getInstance: mock(() => ({
-            findMonorepoRoot: mock(() => null),
-          })),
-        };
-        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
-
-        const result = execSync(
-          `${elizaosCmd} start --character ${adaPath}`,
-          getPlatformOptions({ encoding: 'utf8' })
-        );
-
-        // Verify buildProject was NOT called due to test mode
-        expect(buildProjectMock).not.toHaveBeenCalled();
-
-        // Verify the command executed
-        expect(result).toBeTruthy();
-      } finally {
-        // Restore original test mode
-        if (originalTestMode) {
-          process.env.ELIZA_TEST_MODE = originalTestMode;
-        } else {
-          delete process.env.ELIZA_TEST_MODE;
-        }
-      }
-    });
-
-    it('should skip build when ELIZA_TEST_MODE is set to any truthy value', async () => {
-      // Create a project structure with build script
-      const adaPath = await createProjectStructure(true, true);
-
-      // Test with different truthy values
-      const truthyValues = ['1', 'yes', 'on', 'enabled'];
-
-      for (const value of truthyValues) {
-        // Reset mock calls
-        buildProjectCalls = [];
-
-        const originalTestMode = process.env.ELIZA_TEST_MODE;
-        process.env.ELIZA_TEST_MODE = value;
-
-        try {
-          // Mock monorepo detection to return null (not in monorepo)
-          const mockUserEnvironment = {
-            getInstance: mock(() => ({
-              findMonorepoRoot: mock(() => null),
-            })),
-          };
-          mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
-
-          const result = execSync(
-            `${elizaosCmd} start --character ${adaPath}`,
-            getPlatformOptions({ encoding: 'utf8' })
-          );
-
-          // Verify buildProject was NOT called due to test mode
-          expect(buildProjectMock).not.toHaveBeenCalled();
-
-          // Verify the command executed
-          expect(result).toBeTruthy();
-        } finally {
-          // Restore original test mode
-          if (originalTestMode) {
-            process.env.ELIZA_TEST_MODE = originalTestMode;
-          } else {
-            delete process.env.ELIZA_TEST_MODE;
-          }
-        }
-      }
-    });
-
-    it('should skip build when in monorepo directory', async () => {
-      // Create a project structure with build script
-      const adaPath = await createProjectStructure(true, true);
-
-      // Temporarily unset ELIZA_TEST_MODE to test monorepo detection
-      const originalTestMode = process.env.ELIZA_TEST_MODE;
-      delete process.env.ELIZA_TEST_MODE;
-
-      try {
-        // Mock monorepo detection to return a monorepo root
-        const mockUserEnvironment = {
-          getInstance: mock(() => ({
-            findMonorepoRoot: mock(() => '/path/to/monorepo'),
-          })),
-        };
-        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
-
-        const result = execSync(
-          `${elizaosCmd} start --character ${adaPath}`,
-          getPlatformOptions({ encoding: 'utf8' })
-        );
-
-        // Verify buildProject was NOT called due to monorepo detection
-        expect(buildProjectMock).not.toHaveBeenCalled();
-
-        // Verify the command executed
-        expect(result).toBeTruthy();
-      } finally {
-        // Restore test mode
-        if (originalTestMode) {
-          process.env.ELIZA_TEST_MODE = originalTestMode;
-        } else {
-          delete process.env.ELIZA_TEST_MODE;
-        }
-      }
-    });
-
-    it('should handle build errors gracefully and continue with start', async () => {
-      // Create a project structure with build script
-      const adaPath = await createProjectStructure(true, true);
-
-      // Temporarily unset ELIZA_TEST_MODE to test auto-build
-      const originalTestMode = process.env.ELIZA_TEST_MODE;
-      delete process.env.ELIZA_TEST_MODE;
-
-      try {
-        // Mock monorepo detection to return null (not in monorepo)
-        const mockUserEnvironment = {
-          getInstance: mock(() => ({
-            findMonorepoRoot: mock(() => null),
-          })),
-        };
-        mock.module('@/src/utils/user-environment', () => mockUserEnvironment);
-
-        // Mock buildProject to throw an error
-        const buildProjectErrorMock = mock(() => Promise.reject(new Error('Build failed')));
-        mock.module('@/src/utils/build-project', () => ({
-          buildProject: buildProjectErrorMock,
-        }));
-
-        const result = execSync(
-          `${elizaosCmd} start --character ${adaPath}`,
-          getPlatformOptions({ encoding: 'utf8' })
-        );
-
-        // Verify buildProject was called (attempted to build)
-        expect(buildProjectErrorMock).toHaveBeenCalledTimes(1);
-
-        // Verify the command still executed despite build error
-        expect(result).toBeTruthy();
-      } finally {
-        // Restore test mode
-        if (originalTestMode) {
-          process.env.ELIZA_TEST_MODE = originalTestMode;
-        } else {
-          delete process.env.ELIZA_TEST_MODE;
-        }
-      }
-    });
-  });
+  // Note: Auto-build functionality tests have been removed as they relied on mocking,
+  // which is inappropriate for e2e tests. These tests should be implemented as unit tests
+  // in a separate test file if the build behavior needs to be tested.
 });

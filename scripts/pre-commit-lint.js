@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
 // Log that we're starting
@@ -9,11 +8,16 @@ console.log('Running pre-commit hook...');
 try {
   // Get all staged files using git diff --staged instead
   console.log('Checking for staged files...');
-  const stagedFiles = execSync('git diff --staged --name-only')
-    .toString()
-    .trim()
-    .split('\n')
-    .filter(Boolean);
+  const proc = Bun.spawnSync(['git', 'diff', '--staged', '--name-only'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  if (proc.exitCode !== 0) {
+    throw new Error('Failed to get staged files');
+  }
+
+  const stagedFiles = new TextDecoder().decode(proc.stdout).trim().split('\n').filter(Boolean);
 
   console.log(`Found ${stagedFiles.length} staged files.`);
 
@@ -39,10 +43,24 @@ try {
   // Run prettier on the files
   console.log('Running prettier on staged files...');
   const fileList = filesToLint.join(' ');
-  execSync(`bun prettier --write ${fileList}`, { stdio: 'inherit' });
+  const prettierProc = Bun.spawnSync(['bun', 'prettier', '--write', ...filesToLint], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+
+  if (prettierProc.exitCode !== 0) {
+    throw new Error('Prettier formatting failed');
+  }
 
   // Add the formatted files back to staging
-  execSync(`git add ${fileList}`, { stdio: 'inherit' });
+  const gitAddProc = Bun.spawnSync(['git', 'add', ...filesToLint], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+
+  if (gitAddProc.exitCode !== 0) {
+    throw new Error('Failed to add files to git');
+  }
 
   console.log('Pre-commit linting completed successfully');
   process.exit(0);

@@ -54,6 +54,7 @@ jobs:
             - Use bun test only (no jest/vitest)
             - Check logs: gh run view <run-id> --log
             - Follow CLAUDE.md standards
+            - **IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed.**
 
           # Optional: Custom environment variables for Claude
           # claude_env: |
