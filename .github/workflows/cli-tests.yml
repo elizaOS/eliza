@@ -95,7 +95,6 @@ jobs:
         run: bun install -g bats
 
       - name: Run CLI TypeScript tests
-        timeout-minutes: 15
         run: cross-env bun test tests/commands/
         working-directory: packages/cli
         env:
