@@ -52,7 +52,6 @@
     "build": "tsc --noEmit && tsup",
     "lint": "prettier --write ./src",
     "test": "bun test",
-    "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },
