@@ -20,9 +20,9 @@
     },
     "packages/api-client": {
       "name": "@elizaos/api-client",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
-        "@elizaos/core": "1.2.6",
+        "@elizaos/core": "1.2.7",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -34,10 +34,10 @@
     },
     "packages/app": {
       "name": "@elizaos/app",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
-        "@elizaos/api-client": "1.2.6",
-        "@elizaos/cli": "1.2.6",
+        "@elizaos/api-client": "1.2.7",
+        "@elizaos/cli": "1.2.7",
         "@tauri-apps/api": "^2.6.0",
         "@tauri-apps/plugin-opener": "^2.4.0",
         "@tauri-apps/plugin-shell": "^2.3.0",
@@ -56,7 +56,7 @@
     },
     "packages/autodoc": {
       "name": "@elizaos/autodoc",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@langchain/openai": "^0.3.16",
         "@octokit/rest": "^21.0.2",
@@ -82,7 +82,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -90,9 +90,9 @@
         "@anthropic-ai/claude-code": "^1.0.35",
         "@anthropic-ai/sdk": "^0.54.0",
         "@clack/prompts": "^0.11.0",
-        "@elizaos/core": "1.2.6",
-        "@elizaos/plugin-sql": "1.2.6",
-        "@elizaos/server": "1.2.6",
+        "@elizaos/core": "1.2.7",
+        "@elizaos/plugin-sql": "1.2.7",
+        "@elizaos/server": "1.2.7",
         "bun": "^1.2.17",
         "chalk": "^5.3.0",
         "chokidar": "^4.0.3",
@@ -131,7 +131,7 @@
     },
     "packages/client": {
       "name": "@elizaos/client",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -258,7 +258,7 @@
     },
     "packages/config": {
       "name": "@elizaos/config",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "devDependencies": {
         "prettier": "^3.5.3",
         "typescript": "^5.8.2",
@@ -266,7 +266,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@sentry/browser": "^9.22.0",
         "buffer": "^6.0.3",
@@ -295,12 +295,12 @@
     },
     "packages/create-eliza": {
       "name": "create-eliza",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "bin": {
         "create-eliza": "index.mjs",
       },
       "dependencies": {
-        "@elizaos/cli": "1.2.6",
+        "@elizaos/cli": "1.2.7",
       },
       "devDependencies": {
         "prettier": "3.5.3",
@@ -308,7 +308,7 @@
     },
     "packages/docs": {
       "name": "@elizaos/docs",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@ahelmy/docusaurus-ai": "^0.0.1-beta",
         "@ai-sdk/openai": "^1.0.18",
@@ -349,10 +349,10 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
-        "@elizaos/core": "1.2.6",
-        "@elizaos/plugin-sql": "1.2.6",
+        "@elizaos/core": "1.2.7",
+        "@elizaos/plugin-sql": "1.2.7",
       },
       "devDependencies": {
         "@types/bun": "^1.2.16",
@@ -367,9 +367,9 @@
     },
     "packages/plugin-dummy-services": {
       "name": "@elizaos/plugin-dummy-services",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
-        "@elizaos/core": "1.2.6",
+        "@elizaos/core": "1.2.7",
         "uuid": "^9.0.0",
       },
       "devDependencies": {
@@ -383,7 +383,7 @@
     },
     "packages/plugin-quick-starter": {
       "name": "@elizaos/plugin-quick-starter",
-      "version": "1.2.1",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^3.24.4",
@@ -398,10 +398,10 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
-        "@elizaos/core": "1.2.6",
+        "@elizaos/core": "1.2.7",
         "drizzle-kit": "^0.31.1",
         "drizzle-orm": "^0.44.2",
         "pg": "^8.13.3",
@@ -419,7 +419,7 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tanstack/react-query": "^5.80.7",
@@ -430,7 +430,7 @@
         "zod": "3.24.2",
       },
       "devDependencies": {
-        "@elizaos/cli": "1.2.6",
+        "@elizaos/cli": "1.2.7",
         "@tailwindcss/vite": "^4.1.10",
         "@vitejs/plugin-react-swc": "^3.10.2",
         "dotenv": "16.4.5",
@@ -442,7 +442,7 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -468,7 +468,7 @@
     },
     "packages/project-tee-starter": {
       "name": "@elizaos/project-tee-starter",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -486,10 +486,10 @@
     },
     "packages/server": {
       "name": "@elizaos/server",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
-        "@elizaos/core": "1.2.6",
-        "@elizaos/plugin-sql": "1.2.6",
+        "@elizaos/core": "1.2.7",
+        "@elizaos/plugin-sql": "1.2.7",
         "@types/express": "^5.0.2",
         "@types/helmet": "^4.0.0",
         "@types/multer": "^1.4.13",
@@ -513,7 +513,7 @@
     },
     "packages/test-utils": {
       "name": "@elizaos/test-utils",
-      "version": "1.2.6",
+      "version": "1.2.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "3.24.2",
@@ -5676,7 +5676,7 @@
 
     "@elizaos/plugin-dummy-services/uuid": ["uuid@9.0.1", "", { "bin": { "uuid": "dist/bin/uuid" } }, "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA=="],
 
-    "@elizaos/plugin-quick-starter/@elizaos/cli": ["@elizaos/cli@1.2.5", "", { "dependencies": { "@anthropic-ai/claude-code": "^1.0.35", "@anthropic-ai/sdk": "^0.54.0", "@clack/prompts": "^0.11.0", "@elizaos/core": "1.2.5", "@elizaos/plugin-sql": "1.2.5", "@elizaos/server": "1.2.5", "bun": "^1.2.17", "chalk": "^5.3.0", "chokidar": "^4.0.3", "commander": "^14.0.0", "dotenv": "^16.5.0", "fs-extra": "^11.1.0", "globby": "^14.0.2", "https-proxy-agent": "^7.0.6", "ora": "^8.1.1", "rimraf": "6.0.1", "semver": "^7.7.2", "simple-git": "^3.27.0", "tiktoken": "^1.0.18", "tsconfig-paths": "^4.2.0", "type-fest": "^4.41.0", "yoctocolors": "^2.1.1", "zod": "^3.25.67" }, "bin": { "elizaos": "dist/index.js" } }, "sha512-yVt4gLQOcq4TbBvirHDnRhlKKaQCrEy1MOuF3cPt7o3cwTHteDEW+WgUNGXi3PA5XgbRFczB7oYcUDszp5q1/w=="],
+    "@elizaos/plugin-quick-starter/@elizaos/cli": ["@elizaos/cli@1.2.8", "", { "dependencies": { "@anthropic-ai/claude-code": "^1.0.35", "@anthropic-ai/sdk": "^0.54.0", "@clack/prompts": "^0.11.0", "@elizaos/core": "1.2.8", "@elizaos/plugin-sql": "1.2.8", "@elizaos/server": "1.2.8", "bun": "^1.2.17", "chalk": "^5.3.0", "chokidar": "^4.0.3", "commander": "^14.0.0", "dotenv": "^16.5.0", "fs-extra": "^11.1.0", "globby": "^14.0.2", "https-proxy-agent": "^7.0.6", "ora": "^8.1.1", "rimraf": "6.0.1", "semver": "^7.7.2", "simple-git": "^3.27.0", "tiktoken": "^1.0.18", "tsconfig-paths": "^4.2.0", "type-fest": "^4.41.0", "yoctocolors": "^2.1.1", "zod": "^3.25.67" }, "bin": { "elizaos": "dist/index.js" } }, "sha512-FYvwJ+HlPSjXMniIdqtV6nb4pCBsXwozTAwEm1qUJ3cnU+ZfLKw2VAOO2CFK/SCgQgwKGofEiSfqD+V75az86w=="],
 
     "@elizaos/plugin-quick-starter/dotenv": ["dotenv@16.4.5", "", {}, "sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg=="],
 
@@ -7062,11 +7062,11 @@
 
     "@elizaos/core/@types/node/undici-types": ["undici-types@7.8.0", "", {}, "sha512-9UJ2xGDvQ43tYyVMpuHlsgApydB8ZKfVYTsLDhXkFL/6gfkp+U8xTGdh8pMJv1SpZna0zxG1DwsKZsreLbXBxw=="],
 
-    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/core": ["@elizaos/core@1.2.5", "", { "dependencies": { "@sentry/browser": "^9.22.0", "buffer": "^6.0.3", "crypto-browserify": "^3.12.1", "dotenv": "16.5.0", "events": "^3.3.0", "glob": "11.0.3", "handlebars": "^4.7.8", "js-sha1": "0.7.0", "langchain": "^0.3.15", "pdfjs-dist": "^5.2.133", "pino": "^9.6.0", "pino-pretty": "^13.0.0", "stream-browserify": "^3.0.0", "unique-names-generator": "4.7.1", "uuid": "11.1.0", "zod": "^3.24.4" } }, "sha512-ymxhKpWfG+IpXP1h2pCEvmLNOavtzvBTeca+9+s969e7uUnwR68IhndaCg0NZsOa4hKzarOGx+ZC1SEgunTorQ=="],
+    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/core": ["@elizaos/core@1.2.8", "", { "dependencies": { "@sentry/browser": "^9.22.0", "buffer": "^6.0.3", "crypto-browserify": "^3.12.1", "dotenv": "16.5.0", "events": "^3.3.0", "glob": "11.0.3", "handlebars": "^4.7.8", "js-sha1": "0.7.0", "langchain": "^0.3.15", "pdfjs-dist": "^5.2.133", "pino": "^9.6.0", "pino-pretty": "^13.0.0", "stream-browserify": "^3.0.0", "unique-names-generator": "4.7.1", "uuid": "11.1.0", "zod": "^3.24.4" } }, "sha512-m+mCPvkKHRrLxWXcyyVsJ8spflqmBRXxNGfPbaE8Mxu2+6vnezduywRGaj3DS+QBzZMNnruJXxKKx8MR1H8TNg=="],
 
-    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/plugin-sql": ["@elizaos/plugin-sql@1.2.5", "", { "dependencies": { "@electric-sql/pglite": "^0.3.3", "@elizaos/core": "1.2.5", "drizzle-kit": "^0.31.1", "drizzle-orm": "^0.44.2", "pg": "^8.13.3" } }, "sha512-fkD8ISpII0Mtx5y0LhIjqMYC4gqG9K+SjyUiRC5Wb/laY1K53AeoAkPXiivTSDeuBlhDs0V4jQHY+4p3cWg28Q=="],
+    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/plugin-sql": ["@elizaos/plugin-sql@1.2.8", "", { "dependencies": { "@electric-sql/pglite": "^0.3.3", "@elizaos/core": "1.2.8", "drizzle-kit": "^0.31.1", "drizzle-orm": "^0.44.2", "pg": "^8.13.3" } }, "sha512-29tcoB5x0LMtn/aCM43tHdfh5ASCQAwLnqkYjlx71RlZ7U5GQ3VbBeTE7hgWINg6UeO3QC2jdfGuXNMtNQahbA=="],
 
-    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/server": ["@elizaos/server@1.2.5", "", { "dependencies": { "@elizaos/core": "1.2.5", "@elizaos/plugin-sql": "1.2.5", "@types/express": "^5.0.2", "@types/helmet": "^4.0.0", "@types/multer": "^1.4.13", "express": "^5.1.0", "express-rate-limit": "^7.5.0", "helmet": "^8.1.0", "multer": "^2.0.1", "path-to-regexp": "^8.2.0", "socket.io": "^4.8.1" } }, "sha512-Z4Ti8hae0/KP/DJibuqbM/Z1CB+uq+pOp/wKvu0SSkmn8bFLHbhNB+dqu0OpGOjb6n3wiYcShYNOnM4H8eHnHA=="],
+    "@elizaos/plugin-quick-starter/@elizaos/cli/@elizaos/server": ["@elizaos/server@1.2.8", "", { "dependencies": { "@elizaos/core": "1.2.8", "@elizaos/plugin-sql": "1.2.8", "@types/express": "^5.0.2", "@types/helmet": "^4.0.0", "@types/multer": "^1.4.13", "express": "^5.1.0", "express-rate-limit": "^7.5.0", "helmet": "^8.1.0", "multer": "^2.0.1", "path-to-regexp": "^8.2.0", "socket.io": "^4.8.1" } }, "sha512-HLMfcbrRYqsoN1kxV2ulGQRsVUEyOcLSqUUZG+UVtXU4xpRvmWJs1W9yqDa5mH2+KcRIQTyat7U7o3EQ826PWA=="],
 
     "@elizaos/plugin-quick-starter/@elizaos/cli/dotenv": ["dotenv@16.6.1", "", {}, "sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow=="],
 
