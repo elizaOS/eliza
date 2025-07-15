@@ -494,4 +494,112 @@ describe('ElizaOS Dev Commands', () => {
       expect(error.status).not.toBe(0);
     }
   });
+
+  it('dev command handles port conflicts by finding next available port', async () => {
+    // Start a dummy server on port 3000 to create a conflict
+    const dummyServer = Bun.serve({
+      port: 3000,
+      fetch() {
+        return new Response('Dummy server');
+      },
+    });
+
+    try {
+      // Run dev command without specifying port (should default to 3000 but find 3001)
+      const devProcess = Bun.spawn(['bun', 'run', 'elizaos', 'dev'], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          LOG_LEVEL: 'debug', // Enable debug to see port conflict message
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      runningProcesses.push(devProcess);
+
+      // Collect output to check for port conflict message
+      let output = '';
+      const reader = devProcess.stdout!.getReader();
+      const decoder = new TextDecoder();
+
+      // Read output for a few seconds to capture the port conflict message
+      const startTime = Date.now();
+      while (Date.now() - startTime < 5000) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        output += chunk;
+
+        // Check if we see the expected port conflict message
+        if (output.includes('Port 3000 is in use, using port 3001 instead')) {
+          expect(output).toContain('Port 3000 is in use, using port 3001 instead');
+          break;
+        }
+      }
+
+      // Verify the server started successfully
+      expect(output).toContain('Port 3000 is in use, using port 3001 instead');
+
+      // Clean up the dev process
+      devProcess.kill('SIGTERM');
+      await devProcess.exited;
+    } finally {
+      // Clean up the dummy server
+      dummyServer.stop();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  });
+
+  it('dev command uses specified port when provided', async () => {
+    const specifiedPort = 8888;
+
+    // Run dev command with explicit port
+    const devProcess = Bun.spawn(
+      ['bun', 'run', 'elizaos', 'dev', '--port', specifiedPort.toString()],
+      {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          LOG_LEVEL: 'info',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      }
+    );
+
+    runningProcesses.push(devProcess);
+
+    // Collect output to check for port usage
+    let output = '';
+    const reader = devProcess.stdout!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read output for a few seconds to capture the server start message
+    const startTime = Date.now();
+    while (Date.now() - startTime < 5000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      output += chunk;
+
+      // Check if we see the server started on the specified port
+      if (
+        output.includes(`http://localhost:${specifiedPort}`) ||
+        output.includes(`port ${specifiedPort}`)
+      ) {
+        break;
+      }
+    }
+
+    // Verify the server started on the specified port
+    expect(output).toContain(`${specifiedPort}`);
+    expect(output).toMatch(/localhost:8888|port 8888/);
+
+    // Clean up the dev process
+    devProcess.kill('SIGTERM');
+    await devProcess.exited;
+  });
 });

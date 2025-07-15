@@ -2,6 +2,8 @@ import { DevOptions } from '../types';
 import { createDevContext, performInitialBuild, performRebuild } from '../utils/build-utils';
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
+import { findNextAvailablePort } from '@/src/utils';
+import { logger } from '@elizaos/core';
 
 /**
  * Start development mode with file watching and auto-restart
@@ -34,10 +36,16 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Prepare CLI arguments for the start command
   const cliArgs: string[] = [];
 
-  // Pass through port option
-  if (options.port) {
-    cliArgs.push('--port', options.port.toString());
+  // Handle port availability checking
+  const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  const availablePort = await findNextAvailablePort(desiredPort);
+
+  if (availablePort !== desiredPort) {
+    logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
   }
+
+  // Pass the available port to the start command
+  cliArgs.push('--port', availablePort.toString());
 
   // Pass through configure option
   if (options.configure) {
