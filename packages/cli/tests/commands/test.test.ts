@@ -49,13 +49,12 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test command accepts --skip-build option', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test --skip-build --help');
+    const result = await runCliCommand('test --skip-build --help');
     expect(result).toContain('Skip building before running tests');
   });
 
   it('test command accepts combination of options', async () => {
     const result = await runCliCommand(
-      context.elizaosCmd,
       'test -n filter-name --skip-build --help'
     );
     expect(result).toContain('Filter tests by name');
@@ -63,17 +62,17 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test command handles basic name format', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test -n basic --help');
+    const result = await runCliCommand('test -n basic --help');
     expectHelpOutput(result, 'test');
   });
 
   it('test command handles .test name format', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test -n basic.test --help');
+    const result = await runCliCommand('test -n basic.test --help');
     expectHelpOutput(result, 'test');
   });
 
   it('test command handles .test.ts name format', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test -n basic.test.ts --help');
+    const result = await runCliCommand('test -n basic.test.ts --help');
     expectHelpOutput(result, 'test');
   });
 });
