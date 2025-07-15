@@ -8,7 +8,6 @@ import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
 describe('ElizaOS Update Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
 
   beforeEach(async () => {
@@ -19,9 +18,6 @@ describe('ElizaOS Update Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-update-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
   });
 
   afterEach(async () => {
@@ -39,7 +35,7 @@ describe('ElizaOS Update Commands', () => {
 
   // Helper function to create project
   const makeProj = async (name: string) => {
-    await runCliCommandSilently(elizaosCmd, `create ${name} --yes`, {
+    await runCliCommandSilently(`create ${name} --yes`, {
       timeout: TEST_TIMEOUTS.PROJECT_CREATION,
     });
     process.chdir(join(testTmpDir, name));
@@ -47,7 +43,7 @@ describe('ElizaOS Update Commands', () => {
 
   // --help
   it('update --help shows usage and options', async () => {
-    const result = await runCliCommand(elizaosCmd, 'update --help');
+    const result = await runCliCommand('update --help');
     expect(result).toContain('Usage: elizaos update');
     expect(result).toContain('--cli');
     expect(result).toContain('--packages');
@@ -61,7 +57,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update', {
+      const result = await runCliCommandSilently('update', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -78,7 +74,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-check-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --check', {
+      const result = await runCliCommandSilently('update --check', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -92,7 +88,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-skip-build-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --skip-build', {
+      const result = await runCliCommandSilently('update --skip-build', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -106,7 +102,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-packages-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently('update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -121,7 +117,7 @@ describe('ElizaOS Update Commands', () => {
   it(
     'update --cli works outside a project',
     async () => {
-      const result = await runCliCommandSilently(elizaosCmd, 'update --cli', {
+      const result = await runCliCommandSilently('update --cli', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -138,7 +134,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-combined-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --cli --packages', {
+      const result = await runCliCommandSilently('update --cli --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -153,7 +149,7 @@ describe('ElizaOS Update Commands', () => {
   it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update succeeds outside a project (global check)',
     async () => {
-      const result = await runCliCommandSilently(elizaosCmd, 'update', {
+      const result = await runCliCommandSilently('update', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -169,7 +165,7 @@ describe('ElizaOS Update Commands', () => {
   it(
     'update --packages shows helpful message in empty directory',
     async () => {
-      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently('update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
