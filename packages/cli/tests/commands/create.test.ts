@@ -70,9 +70,9 @@ describe('ElizaOS Create Commands', () => {
 
   it(
     'create default project succeeds',
-    () => {
+    async () => {
       // Use cross-platform directory removal
-      crossPlatform.removeDir('my-default-app');
+      await crossPlatform.removeDir('my-default-app');
 
       const result = bunExecSync('elizaos create my-default-app --yes', {
         encoding: 'utf8',
@@ -107,9 +107,9 @@ describe('ElizaOS Create Commands', () => {
 
   it(
     'create plugin project succeeds',
-    () => {
+    async () => {
       // Use cross-platform directory removal
-      crossPlatform.removeDir('plugin-my-plugin-app');
+      await crossPlatform.removeDir('plugin-my-plugin-app');
 
       const result = bunExecSync(
         'elizaos create my-plugin-app --yes --type plugin',
@@ -145,9 +145,9 @@ describe('ElizaOS Create Commands', () => {
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
 
-  it('create agent succeeds', () => {
+  it('create agent succeeds', async () => {
     // Use cross-platform file removal
-    crossPlatform.removeFile('my-test-agent.json');
+    await crossPlatform.removeFile('my-test-agent.json');
 
     const result = bunExecSync(
       'elizaos create my-test-agent --yes --type agent',
@@ -159,15 +159,16 @@ describe('ElizaOS Create Commands', () => {
     await validateAgentJson('my-test-agent.json', 'my-test-agent');
   });
 
-  it('rejects creating project in existing directory', () => {
+  it('rejects creating project in existing directory', async () => {
     // Use cross-platform commands
     try {
-      crossPlatform.removeDir('existing-app');
+      await crossPlatform.removeDir('existing-app');
       bunExecSync(`mkdir existing-app`, { stdio: 'ignore' });
       if (process.platform === 'win32') {
         bunExecSync(`echo test > existing-app\\file.txt`, { stdio: 'ignore' });
       } else {
         bunExecSync(`echo "test" > existing-app/file.txt`, { stdio: 'ignore' });
+      }
     } catch (e) {
       // Ignore setup errors
     }
@@ -192,10 +193,10 @@ describe('ElizaOS Create Commands', () => {
 
   it(
     'create project in current directory',
-    () => {
+    async () => {
       // Use cross-platform commands
       try {
-        crossPlatform.removeDir('create-in-place');
+        await crossPlatform.removeDir('create-in-place');
         bunExecSync(`mkdir create-in-place`, { stdio: 'ignore' });
       } catch (e) {
         // Ignore setup errors
@@ -257,7 +258,7 @@ describe('ElizaOS Create Commands', () => {
   // create-eliza parity tests
   it('create-eliza default project succeeds', async () => {
     // Use cross-platform directory removal
-    crossPlatform.removeDir('my-create-app');
+    await crossPlatform.removeDir('my-create-app');
 
     // Skip this test - create-eliza command not available
     console.warn('Skipping create-eliza test - command not available');
@@ -265,7 +266,7 @@ describe('ElizaOS Create Commands', () => {
 
   it('create-eliza plugin project succeeds', async () => {
     // Use cross-platform directory removal
-    crossPlatform.removeDir('plugin-my-create-plugin');
+    await crossPlatform.removeDir('plugin-my-create-plugin');
 
     // Skip this test - create-eliza command not available
     console.warn('Skipping create-eliza plugin test - command not available');
@@ -273,7 +274,7 @@ describe('ElizaOS Create Commands', () => {
 
   it('create-eliza agent succeeds', async () => {
     // Use cross-platform file removal
-    crossPlatform.removeFile('my-create-agent.json');
+    await crossPlatform.removeFile('my-create-agent.json');
 
     // Skip this test - create-eliza command not available
     console.warn('Skipping create-eliza agent test - command not available');
@@ -353,7 +354,7 @@ describe('ElizaOS Create Commands', () => {
         const pluginDir = `plugin-${pluginName}`;
 
         // ensure plugin directory doesn't exist before test
-        crossPlatform.removeDir(pluginDir);
+        await crossPlatform.removeDir(pluginDir);
         expect(existsSync(pluginDir)).toBe(false);
 
         // start the create command in a subprocess that we can kill
@@ -449,10 +450,10 @@ describe('ElizaOS Create Commands', () => {
 
     it(
       'creates project in current directory without --dir flag',
-      () => {
+      async () => {
         // Create a test subdirectory and navigate to it
         const testSubDir = 'test-subdir';
-        crossPlatform.removeDir(testSubDir);
+        await crossPlatform.removeDir(testSubDir);
         bunExecSync(`mkdir ${testSubDir}`, { stdio: 'ignore' });
 
         const originalDir = process.cwd();
@@ -491,13 +492,13 @@ describe('ElizaOS Create Commands', () => {
 
     it(
       'migration guide: shows how to create in specific directory',
-      () => {
+      async () => {
         // This test documents the migration path for users
         // Before: elizaos create my-project --dir /path/to/directory
         // After: cd /path/to/directory && elizaos create my-project
 
         const testDir = 'migration-test-dir';
-        crossPlatform.removeDir(testDir);
+        await crossPlatform.removeDir(testDir);
         bunExecSync(`mkdir ${testDir}`, { stdio: 'ignore' });
 
         const originalDir = process.cwd();
