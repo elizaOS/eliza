@@ -4,13 +4,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { getBunExecutable, killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { killProcessOnPort, safeChangeDirectory } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
   let runningProcesses: any[] = [];
@@ -21,9 +20,6 @@ describe('ElizaOS Dev Commands', () => {
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
-
-    // Setup CLI command
-    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -135,23 +131,14 @@ describe('ElizaOS Dev Commands', () => {
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] __dirname: ${__dirname}`);
-    console.log(`[DEBUG] CLI path: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    const commandStr = `${bunPath} ${cliPath} dev ${args}`;
+    const commandStr = `elizaos dev ${args}`;
     console.log(`[DEBUG] Running command: ${commandStr}`);
 
     // Use Bun.spawn for better compatibility
     console.log(`[DEBUG] Using Bun.spawn for dev command`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev ${args}`);
 
     try {
-      const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
+      const devProcess = Bun.spawn(['elizaos', 'dev', ...args.split(' ')], {
         cwd: cwd || projectDir,
         env: {
           ...process.env,
@@ -173,6 +160,11 @@ describe('ElizaOS Dev Commands', () => {
         throw new Error('Bun.spawn failed to create process - no PID returned');
       }
 
+      runningProcesses.push(devProcess);
+
+      // Wait for process to start
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+
       return devProcess;
     } catch (spawnError) {
       console.error(`[ERROR] Failed to spawn dev process:`, spawnError);
@@ -180,22 +172,10 @@ describe('ElizaOS Dev Commands', () => {
       console.error(`[ERROR] Working directory: ${cwd || projectDir}`);
       throw spawnError;
     }
-
-    if (!devProcess || !devProcess.pid) {
-      console.error('[ERROR] Failed to spawn dev process');
-      throw new Error('Failed to spawn dev process');
-    }
-
-    runningProcesses.push(devProcess);
-
-    // Wait for process to start
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-
-    return devProcess;
   };
 
   it('dev --help shows usage', () => {
-    const result = bunExecSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -216,20 +196,12 @@ describe('ElizaOS Dev Commands', () => {
 
   it('dev command detects project type correctly', async () => {
     // Start dev process and capture output
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    // Use Bun.spawn for project detection test
     console.log(`[DEBUG] Using Bun.spawn for project detection test`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+    console.log(`[DEBUG] Command: elizaos dev --port ${testServerPort}`);
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: projectDir,
         env: {
           ...process.env,
@@ -394,25 +366,14 @@ describe('ElizaOS Dev Commands', () => {
 
     let output = '';
     let outputReceived = false;
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] CLI path for non-eliza test: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    // Validate that CLI and bun exist before spawning
-    if (!existsSync(cliPath)) {
-      throw new Error(`CLI not found at ${cliPath}`);
-    }
 
     // Use Bun.spawn for non-eliza test
     console.log(`[DEBUG] Using Bun.spawn for non-eliza test`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+    console.log(`[DEBUG] Command: elizaos dev --port ${testServerPort}`);
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: nonElizaDir,
         env: {
           ...process.env,
@@ -441,7 +402,7 @@ describe('ElizaOS Dev Commands', () => {
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process for non-eliza test');
-      console.error(`[ERROR] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+      console.error(`[ERROR] Command: elizaos dev --port ${testServerPort}`);
       console.error(`[ERROR] Working directory: ${nonElizaDir}`);
       throw new Error('Failed to spawn dev process');
     }
@@ -520,7 +481,7 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      bunExecSync(`${elizaosCmd} dev --port abc`, {
+      bunExecSync(`elizaos dev --port abc`, {
         encoding: 'utf8',
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,

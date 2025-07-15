@@ -59,24 +59,18 @@ async function execShellCommand(
 
 export interface TestContext {
   testTmpDir: string;
-  elizaosCmd: string;
   originalCwd: string;
 }
 
 /**
- * Standard setup for CLI tests - creates temp directory and sets up CLI command
+ * Standard setup for CLI tests - creates temp directory
  */
 export async function setupTestEnvironment(): Promise<TestContext> {
   const originalCwd = process.cwd();
   const testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
   process.chdir(testTmpDir);
 
-  // Use absolute path to avoid issues with __dirname in tests
-  const cliPackageRoot = join(originalCwd, '../..');
-  const scriptPath = join(cliPackageRoot, 'packages/cli/dist/index.js');
-  const elizaosCmd = `bun "${scriptPath}"`;
-
-  return { testTmpDir, elizaosCmd, originalCwd };
+  return { testTmpDir, originalCwd };
 }
 
 /**
@@ -120,49 +114,17 @@ export function safeChangeDirectory(targetDir: string): void {
 /**
  * Helper to create a basic ElizaOS project for testing
  */
-export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
+export async function createTestProject(projectName: string): Promise<void> {
   const platformOptions = getPlatformOptions({
     stdio: 'pipe',
     timeout: TEST_TIMEOUTS.PROJECT_CREATION,
   });
 
   try {
-    // Parse the command to extract the actual script path and arguments
-    let bunArgs: string[];
-
-    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
-    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
-    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
-
-    if (bunRunMatch) {
-      // Format: bun run "script.js"
-      bunArgs = ['run', bunRunMatch[1]];
-    } else if (bunDirectMatch) {
-      // Format: bun "path/to/script.js"
-      bunArgs = [bunDirectMatch[1]];
-    } else {
-      // Fallback: assume it's a direct command
-      bunArgs = [elizaosCmd];
-    }
-
-    const result = await bunExec('bun', [...bunArgs, 'create', projectName, '--yes'], {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdio: platformOptions.stdio as 'pipe' | 'inherit' | 'ignore',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      throw error;
-    }
+    const result = await bunExecSimple(`elizaos create ${projectName} --yes`);
     process.chdir(projectName);
   } catch (error: any) {
     console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
-      status: error.status,
-      signal: error.signal,
       platform: process.platform,
       stdout: error.stdout?.toString() || '',
       stderr: error.stderr?.toString() || '',
@@ -171,200 +133,8 @@ export async function createTestProject(elizaosCmd: string, projectName: string)
   }
 }
 
-/**
- * Helper to run CLI command and expect it to succeed
- */
-export async function runCliCommand(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<string> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
 
-  try {
-    // Parse the command to extract the actual script path and arguments
-    let bunArgs: string[];
 
-    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
-    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
-    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
-
-    if (bunRunMatch) {
-      // Format: bun run "script.js"
-      bunArgs = ['run', bunRunMatch[1]];
-    } else if (bunDirectMatch) {
-      // Format: bun "path/to/script.js"
-      bunArgs = [bunDirectMatch[1]];
-    } else {
-      // Fallback: assume it's a direct command
-      bunArgs = [elizaosCmd];
-    }
-
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      error.platform = process.platform;
-      error.signal = null;
-      error.pid = undefined;
-      throw error;
-    }
-    return result.stdout;
-  } catch (error: any) {
-    // Enhanced error reporting for debugging
-    const errorDetails = {
-      command: `${elizaosCmd} ${args}`,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-      status: error.status,
-      signal: error.signal,
-      stdout: error.stdout?.toString() || '',
-      stderr: error.stderr?.toString() || '',
-      pid: error.pid,
-    };
-    console.error('[CLI Command Error]', errorDetails);
-    throw error;
-  }
-}
-
-/**
- * Helper to run CLI command silently (suppressing console output)
- */
-export async function runCliCommandSilently(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<string> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    // Parse the command to extract the actual script path and arguments
-    let bunArgs: string[];
-
-    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
-    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
-    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
-
-    if (bunRunMatch) {
-      // Format: bun run "script.js"
-      bunArgs = ['run', bunRunMatch[1]];
-    } else if (bunDirectMatch) {
-      // Format: bun "path/to/script.js"
-      bunArgs = [bunDirectMatch[1]];
-    } else {
-      // Fallback: assume it's a direct command
-      bunArgs = [elizaosCmd];
-    }
-
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      error.platform = process.platform;
-      error.signal = null;
-      throw error;
-    }
-    return result.stdout;
-  } catch (error: any) {
-    // Enhanced error reporting for debugging silent commands
-    console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
-      status: error.status,
-      signal: error.signal,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-    });
-    throw error;
-  }
-}
-
-/**
- * Helper to run CLI command and expect it to fail
- */
-export async function expectCliCommandToFail(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): Promise<{ status: number; output: string }> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    // Parse the command to extract the actual script path and arguments
-    let bunArgs: string[];
-
-    // Handle both formats: 'bun run "script.js"' and 'bun "path/to/script.js"'
-    const bunRunMatch = elizaosCmd.match(/^bun run "(.+)"$/);
-    const bunDirectMatch = elizaosCmd.match(/^bun "(.+)"$/);
-
-    if (bunRunMatch) {
-      // Format: bun run "script.js"
-      bunArgs = ['run', bunRunMatch[1]];
-    } else if (bunDirectMatch) {
-      // Format: bun "path/to/script.js"
-      bunArgs = [bunDirectMatch[1]];
-    } else {
-      // Fallback: assume it's a direct command
-      bunArgs = [elizaosCmd];
-    }
-
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('bun', [...bunArgs, ...allArgs], {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (result.success) {
-      throw new Error(`Command should have failed but succeeded with output: ${result.stdout}`);
-    }
-    return {
-      status: result.exitCode || -1,
-      output: result.stdout + result.stderr,
-    };
-  } catch (e: any) {
-    // If it's not an expected failure, re-throw
-    if (e.message?.includes('Command should have failed')) {
-      throw e;
-    }
-    return {
-      status: e.status || e.exitCode || -1,
-      output: (e.stdout || '') + (e.stderr || ''),
-    };
-  }
-}
 
 /**
  * Helper to validate that help output contains expected strings
@@ -680,15 +450,6 @@ export async function killProcessOnPort(port: number): Promise<void> {
   }
 }
 
-/**
- * Get the correct bun executable path for the platform
- */
-export function getBunExecutable(): string {
-  // Always use 'bun' - Bun handles platform differences internally
-  const bunCmd = 'bun';
-  console.log(`[DEBUG] Using bun executable: ${bunCmd}`);
-  return bunCmd;
-}
 
 /**
  * Cross-platform file operations utility
@@ -727,7 +488,7 @@ export const crossPlatform = {
 export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
 
-  // Always ensure environment variables are passed, especially PATH
+  // Always ensure environment variables are passed
   platformOptions.env = {
     ...process.env,
     ...baseOptions.env, // Preserve any custom env vars from baseOptions
@@ -747,10 +508,9 @@ export function getPlatformOptions(baseOptions: any = {}): any {
       platformOptions.timeout = platformOptions.timeout * 1.25;
     }
     platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    // Add macOS specific paths and locale
+    // Add macOS specific locale
     platformOptions.env = {
       ...platformOptions.env,
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
       LANG: 'en_US.UTF-8',
       LC_ALL: 'en_US.UTF-8',
     };
