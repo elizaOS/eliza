@@ -365,12 +365,7 @@ export async function setupProjectEnvironment(
   }
 
   // Install AI model plugin
-  if (aiModel === 'local') {
-    // Install Ollama plugin for local AI
-    await installModelPlugin('local', targetDir, 'for local AI');
-  } else {
-    await installModelPlugin(aiModel, targetDir);
-  }
+  await installModelPlugin(aiModel, targetDir, aiModel === 'local' ? 'for local AI' : '');
 
   // Install embedding model plugin if different from AI model
   if (embeddingModel && embeddingModel !== 'local') {
@@ -384,7 +379,7 @@ export async function setupProjectEnvironment(
   } else if (embeddingModel === 'local') {
     // If embedding model is 'local' (Ollama) and AI model isn't already 'local'
     if (aiModel !== 'local') {
-      await installModelPlugin('local', targetDir, 'for embeddings');
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
     }
   }
 }
