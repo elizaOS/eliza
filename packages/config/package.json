@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/config",
   "description": "Shared configuration for ElizaOS projects and plugins",
-  "version": "1.2.7",
+  "version": "1.2.9",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -49,5 +49,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "227798477b53ad38b01f147ac1a649a5d1c810a3"
+  "gitHead": "35550a6e598fefac0492b6b692f4904b140f311f"
 }
