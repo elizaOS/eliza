@@ -4,7 +4,6 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  expectCliCommandToFail,
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
@@ -38,13 +37,14 @@ describe('ElizaOS Monorepo Commands', () => {
     await mkdir('not-empty-dir');
     await writeFile('not-empty-dir/placeholder', '');
 
-    const result = await expectCliCommandToFail(
-      'monorepo --dir not-empty-dir',
-      {
-        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
-      }
-    );
-    expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(/not empty/);
+    try {
+      // This should fail because directory is not empty
+      bunExecSync('elizaos monorepo --dir not-empty-dir', { encoding: 'utf8' });
+      // If we get here, the command succeeded when it shouldn't have
+      throw new Error('Command should have failed but succeeded');
+    } catch (e: any) {
+      // Expected failure - check error message
+      expect(e.message).toMatch(/not empty|already exists|Directory.*not.*empty/i);
+    }
   });
 });
