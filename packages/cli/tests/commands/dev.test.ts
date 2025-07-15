@@ -593,34 +593,57 @@ describe('ElizaOS Dev Commands', () => {
 
     // Collect output to check for port usage
     let output = '';
-    const reader = devProcess.stdout!.getReader();
+    let stderrOutput = '';
     const decoder = new TextDecoder();
+
+    // Create readers for both stdout and stderr
+    const stdoutReader = devProcess.stdout!.getReader();
+    const stderrReader = devProcess.stderr!.getReader();
 
     // Read output for a few seconds to capture the server start message
     const startTime = Date.now();
     while (Date.now() - startTime < 3000) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-      output += chunk;
+      // Read from stdout
+      const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          output += chunk;
+        }
+      });
+
+      // Read from stderr
+      const stderrPromise = stderrReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          stderrOutput += chunk;
+        }
+      });
+
+      // Wait for both with a timeout
+      await Promise.race([
+        Promise.all([stdoutPromise, stderrPromise]),
+        new Promise((resolve) => setTimeout(resolve, 100)),
+      ]);
 
       // Check if we see the server started on the specified port
+      const combinedOutput = output + stderrOutput;
       if (
-        output.includes(`http://localhost:${specifiedPort}`) ||
-        output.includes(`port ${specifiedPort}`)
+        combinedOutput.includes(`http://localhost:${specifiedPort}`) ||
+        combinedOutput.includes(`port ${specifiedPort}`)
       ) {
         break;
       }
     }
 
     // Verify the server started on the specified port
-    expect(output).toContain(`${specifiedPort}`);
-    expect(output).toMatch(/localhost:8888|port 8888/);
+    const combinedOutput = output + stderrOutput;
+    expect(combinedOutput).toContain(`${specifiedPort}`);
+    expect(combinedOutput).toMatch(/localhost:8888|port 8888/);
 
     // Clean up the dev process
     devProcess.kill('SIGTERM');
     await devProcess.exited;
-  });
+  }, 10000);
 
   // Tests for non-numeric SERVER_PORT and port 0 handling are skipped in CI
   // because they rely on the updated dev command behavior that's not available
