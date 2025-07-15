@@ -18,7 +18,6 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 
 describe('ElizaOS Create Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
   let createElizaCmd: string;
   let originalCwd: string;
 
@@ -31,7 +30,6 @@ describe('ElizaOS Create Commands', () => {
 
     // Setup CLI commands
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
     createElizaCmd = `bun "${join(scriptDir, '../../create-eliza/index.mjs')}"`;
 
     // Change to test directory
@@ -70,7 +68,7 @@ describe('ElizaOS Create Commands', () => {
 
   it('create --help shows usage', async () => {
     const result = bunExecSync(
-      `${elizaosCmd} create --help`,
+      `elizaos create --help`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toContain('Usage: elizaos create');
@@ -84,7 +82,7 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform directory removal
       crossPlatform.removeDir('my-default-app');
 
-      const result = await runCliCommandSilently(elizaosCmd, 'create my-default-app --yes', {
+      const result = await runCliCommandSilently('create my-default-app --yes', {
         timeout: TEST_TIMEOUTS.PROJECT_CREATION,
       });
 
@@ -121,7 +119,6 @@ describe('ElizaOS Create Commands', () => {
       crossPlatform.removeDir('plugin-my-plugin-app');
 
       const result = await runCliCommandSilently(
-        elizaosCmd,
         'create my-plugin-app --yes --type plugin',
         {
           timeout: TEST_TIMEOUTS.PROJECT_CREATION,
@@ -159,7 +156,6 @@ describe('ElizaOS Create Commands', () => {
     crossPlatform.removeFile('my-test-agent.json');
 
     const result = await runCliCommandSilently(
-      elizaosCmd,
       'create my-test-agent --yes --type agent'
     );
 
@@ -182,7 +178,7 @@ describe('ElizaOS Create Commands', () => {
       // Ignore setup errors
     }
 
-    const result = await expectCliCommandToFail(elizaosCmd, 'create existing-app --yes');
+    const result = await expectCliCommandToFail('create existing-app --yes');
 
     expect(result.status).not.toBe(0);
     expect(result.output).toContain('already exists');
@@ -211,7 +207,7 @@ describe('ElizaOS Create Commands', () => {
   );
 
   it('rejects invalid project name', async () => {
-    const result = await expectCliCommandToFail(elizaosCmd, 'create Invalid-Name! --yes');
+    const result = await expectCliCommandToFail('create Invalid-Name! --yes');
 
     expect(result.status).not.toBe(0);
     expect(result.output).toMatch(/Invalid project name/i);
@@ -219,7 +215,6 @@ describe('ElizaOS Create Commands', () => {
 
   it('rejects invalid project type', async () => {
     const result = await expectCliCommandToFail(
-      elizaosCmd,
       'create bad-type-proj --yes --type bad-type'
     );
 

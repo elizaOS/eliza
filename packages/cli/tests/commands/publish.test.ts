@@ -361,7 +361,7 @@ esac`;
 
   // publish --help (safe test that never prompts)
   it('publish --help shows usage', () => {
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos publish');
     expect(result).toContain('Publish a plugin to npm, GitHub, and the registry');
     expect(result).toContain('--npm');
@@ -384,7 +384,7 @@ esac`;
   // Test mode functionality (should not prompt with proper mocking)
   it('publish command validates basic directory structure', () => {
     // Test that publish command works with help
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
@@ -400,7 +400,7 @@ esac`;
       })
     );
 
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 

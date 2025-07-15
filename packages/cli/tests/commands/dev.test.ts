@@ -10,7 +10,6 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
   let runningProcesses: any[] = [];
@@ -21,9 +20,6 @@ describe('ElizaOS Dev Commands', () => {
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
-
-    // Setup CLI command
-    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -195,7 +191,7 @@ describe('ElizaOS Dev Commands', () => {
   };
 
   it('dev --help shows usage', () => {
-    const result = bunExecSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -520,7 +516,7 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      bunExecSync(`${elizaosCmd} dev --port abc`, {
+      bunExecSync(`elizaos dev --port abc`, {
         encoding: 'utf8',
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,

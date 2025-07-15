@@ -12,7 +12,6 @@ const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 describe('ElizaOS Plugin Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
 
   beforeAll(async () => {
@@ -22,17 +21,13 @@ describe('ElizaOS Plugin Commands', () => {
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-plugins-'));
 
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
-
     // Create one test project for all plugin tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
     process.chdir(testTmpDir);
 
     console.log('Creating shared test project...');
     bunExecSync(
-      `${elizaosCmd} create shared-test-project --yes`,
+      `elizaos create shared-test-project --yes`,
       getPlatformOptions({
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.PROJECT_CREATION,
@@ -73,7 +68,7 @@ describe('ElizaOS Plugin Commands', () => {
 
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
-    const result = bunExecSync(`${elizaosCmd} plugins`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = bunExecSync(`elizaos plugins`, getPlatformOptions({ encoding: 'utf8' }));
     expect(result).toContain('Manage ElizaOS plugins');
     expect(result).toContain('Commands:');
     expect(result).toContain('list');
@@ -84,7 +79,7 @@ describe('ElizaOS Plugin Commands', () => {
 
   it('plugins --help shows usage information', () => {
     const result = bunExecSync(
-      `${elizaosCmd} plugins --help`,
+      `elizaos plugins --help`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toContain('Manage ElizaOS plugins');
@@ -92,7 +87,7 @@ describe('ElizaOS Plugin Commands', () => {
 
   it('plugins list shows available plugins', () => {
     const result = bunExecSync(
-      `${elizaosCmd} plugins list`,
+      `elizaos plugins list`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toContain('Available v1.x plugins');
@@ -105,7 +100,7 @@ describe('ElizaOS Plugin Commands', () => {
 
     for (const alias of aliases) {
       const result = bunExecSync(
-        `${elizaosCmd} plugins ${alias}`,
+        `elizaos plugins ${alias}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toContain('Available v1.x plugins');
@@ -118,7 +113,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add installs a plugin',
     async () => {
       try {
-        bunExecSync(`${elizaosCmd} plugins add @elizaos/plugin-openai --skip-env-prompt`, {
+        bunExecSync(`elizaos plugins add @elizaos/plugin-openai --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
@@ -140,7 +135,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins install alias works',
     async () => {
       try {
-        bunExecSync(`${elizaosCmd} plugins install @elizaos/plugin-mcp --skip-env-prompt`, {
+        bunExecSync(`elizaos plugins install @elizaos/plugin-mcp --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
@@ -163,7 +158,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         bunExecSync(
-          `${elizaosCmd} plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`,
+          `elizaos plugins add @fleek-platform/eliza-plugin-mcp --skip-env-prompt`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -189,7 +184,7 @@ describe('ElizaOS Plugin Commands', () => {
       try {
         // First GitHub URL install
         bunExecSync(
-          `${elizaosCmd} plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
+          `elizaos plugins add https://github.com/elizaos-plugins/plugin-video-understanding --skip-env-prompt`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -202,7 +197,7 @@ describe('ElizaOS Plugin Commands', () => {
 
         // Second GitHub URL install with shorthand syntax
         bunExecSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
+          `elizaos plugins add github:elizaos-plugins/plugin-openrouter#1.x --skip-env-prompt`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
@@ -226,7 +221,7 @@ describe('ElizaOS Plugin Commands', () => {
   it(
     'plugins installed-plugins shows installed plugins',
     async () => {
-      const result = bunExecSync(`${elizaosCmd} plugins installed-plugins`, { encoding: 'utf8' });
+      const result = bunExecSync(`elizaos plugins installed-plugins`, { encoding: 'utf8' });
       // Should show previously installed plugins from other tests
       expect(result).toMatch(/@elizaos\/plugin-|github:/);
     },
@@ -238,7 +233,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins remove uninstalls a plugin',
     async () => {
       try {
-        bunExecSync(`${elizaosCmd} plugins add @elizaos/plugin-elevenlabs --skip-env-prompt`, {
+        bunExecSync(`elizaos plugins add @elizaos/plugin-elevenlabs --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
           cwd: projectDir,
@@ -247,7 +242,7 @@ describe('ElizaOS Plugin Commands', () => {
         let packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-elevenlabs');
 
-        bunExecSync(`${elizaosCmd} plugins remove @elizaos/plugin-elevenlabs`, {
+        bunExecSync(`elizaos plugins remove @elizaos/plugin-elevenlabs`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
           cwd: projectDir,
@@ -277,7 +272,7 @@ describe('ElizaOS Plugin Commands', () => {
 
         // Add all plugins first
         for (const plugin of plugins) {
-          bunExecSync(`${elizaosCmd} plugins add ${plugin} --skip-env-prompt`, {
+          bunExecSync(`elizaos plugins add ${plugin} --skip-env-prompt`, {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,
             cwd: projectDir,
@@ -292,7 +287,7 @@ describe('ElizaOS Plugin Commands', () => {
         ];
 
         for (const [command, plugin] of removeCommands) {
-          bunExecSync(`${elizaosCmd} plugins ${command} ${plugin}`, {
+          bunExecSync(`elizaos plugins ${command} ${plugin}`, {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             cwd: projectDir,
@@ -313,7 +308,7 @@ describe('ElizaOS Plugin Commands', () => {
     'plugins add fails for missing plugin',
     async () => {
       try {
-        bunExecSync(`${elizaosCmd} plugins add missing --skip-env-prompt`, {
+        bunExecSync(`elizaos plugins add missing --skip-env-prompt`, {
           stdio: 'pipe',
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
           cwd: projectDir,
@@ -333,7 +328,7 @@ describe('ElizaOS Plugin Commands', () => {
     async () => {
       try {
         bunExecSync(
-          `${elizaosCmd} plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
+          `elizaos plugins add github:elizaos-plugins/plugin-farcaster#1.x --skip-env-prompt`,
           {
             stdio: 'pipe',
             timeout: TEST_TIMEOUTS.PLUGIN_INSTALLATION,

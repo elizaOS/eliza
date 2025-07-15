@@ -19,32 +19,32 @@ describe('ElizaOS Test Commands', () => {
   });
 
   it('test --help shows usage', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test --help');
+    const result = await runCliCommand('test --help');
     expectHelpOutput(result, 'test');
   });
 
   it('test command accepts -n option with quotes', async () => {
-    const result = await runCliCommand(context.elizaosCmd, `test -n "filter-name" --help`);
+    const result = await runCliCommand(`test -n "filter-name" --help`);
     expect(result).toContain('Filter tests by name');
   });
 
   it('test command accepts -n option without quotes', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test -n filter-name --help');
+    const result = await runCliCommand('test -n filter-name --help');
     expect(result).toContain('Filter tests by name');
   });
 
   it('test command accepts --name option', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test --name filter-name --help');
+    const result = await runCliCommand('test --name filter-name --help');
     expect(result).toContain('Filter tests by name');
   });
 
   it('test component command accepts -n option', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test component -n filter-name --help');
+    const result = await runCliCommand('test component -n filter-name --help');
     expect(result).toContain('component');
   });
 
   it('test e2e command accepts -n option', async () => {
-    const result = await runCliCommand(context.elizaosCmd, 'test e2e -n filter-name --help');
+    const result = await runCliCommand('test e2e -n filter-name --help');
     expect(result).toContain('e2e');
   });
 

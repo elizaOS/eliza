@@ -197,7 +197,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently('update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -228,7 +228,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --packages --check', {
+      const result = await runCliCommandSilently('update --packages --check', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -261,7 +261,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently(elizaosCmd, 'update --packages', {
+      const result = await runCliCommandSilently('update --packages', {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
       });
 
@@ -280,7 +280,7 @@ describe('ElizaOS Update Commands', () => {
       try {
         // Change to temp directory and run update command
         process.chdir(tmpDir);
-        const result = await runCliCommandSilently(elizaosCmd, 'update', {
+        const result = await runCliCommandSilently('update', {
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
         });
 
