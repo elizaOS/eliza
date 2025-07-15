@@ -13,6 +13,9 @@ import {
   Service,
   type State,
   logger,
+  type MessagePayload,
+  type WorldPayload,
+  EventType,
 } from '@elizaos/core';
 import { z } from 'zod';
 
@@ -66,7 +69,7 @@ const helloWorldAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: any,
+    _options: Record<string, unknown> = {},
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -144,30 +147,33 @@ const helloWorldProvider: Provider = {
 };
 
 export class StarterService extends Service {
-  static serviceType = 'starter';
-  capabilityDescription =
+  static override serviceType = 'starter';
+
+  override capabilityDescription =
     'This is a starter service which is attached to the agent through the starter plugin.';
-  constructor(protected runtime: IAgentRuntime) {
+
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
   }
 
-  static async start(runtime: IAgentRuntime) {
+  static override async start(runtime: IAgentRuntime): Promise<Service> {
     logger.info('Starting starter service');
     const service = new StarterService(runtime);
     return service;
   }
 
-  static async stop(runtime: IAgentRuntime) {
+  static override async stop(runtime: IAgentRuntime): Promise<void> {
     logger.info('Stopping starter service');
-    // get the service from the runtime
     const service = runtime.getService(StarterService.serviceType);
     if (!service) {
       throw new Error('Starter service not found');
     }
-    service.stop();
+    if ('stop' in service && typeof service.stop === 'function') {
+      await service.stop();
+    }
   }
 
-  async stop() {
+  override async stop(): Promise<void> {
     logger.info('Starter service stopped');
   }
 }
@@ -226,38 +232,34 @@ export const starterPlugin: Plugin = {
         res.json({
           status: 'ok',
           plugin: 'quick-starter',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       },
     },
   ],
   events: {
-    MESSAGE_RECEIVED: [
-      async (params) => {
+    [EventType.MESSAGE_RECEIVED]: [
+      async (params: MessagePayload) => {
         logger.debug('MESSAGE_RECEIVED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('Message:', params.message);
       },
     ],
-    VOICE_MESSAGE_RECEIVED: [
-      async (params) => {
+    [EventType.VOICE_MESSAGE_RECEIVED]: [
+      async (params: MessagePayload) => {
         logger.debug('VOICE_MESSAGE_RECEIVED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('Message:', params.message);
       },
     ],
-    WORLD_CONNECTED: [
-      async (params) => {
+    [EventType.WORLD_CONNECTED]: [
+      async (params: WorldPayload) => {
         logger.debug('WORLD_CONNECTED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('World:', params.world);
       },
     ],
-    WORLD_JOINED: [
-      async (params) => {
+    [EventType.WORLD_JOINED]: [
+      async (params: WorldPayload) => {
         logger.debug('WORLD_JOINED event received');
-        // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug('World:', params.world);
       },
     ],
   },

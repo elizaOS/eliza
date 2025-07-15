@@ -1,6 +1,6 @@
 import { describe, expect, it, spyOn, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
 import { starterPlugin, StarterService } from '../index';
-import { ModelType, logger } from '@elizaos/core';
+import { ModelType, logger, type IAgentRuntime, type Service } from '@elizaos/core';
 import dotenv from 'dotenv';
 
 // Setup environment variables
@@ -19,18 +19,18 @@ afterAll(() => {
 });
 
 // Create a real runtime for testing
-function createRealRuntime() {
-  const services = new Map();
+function createRealRuntime(): Partial<IAgentRuntime> {
+  const services = new Map<string, Service>();
 
   // Create a real service instance if needed
-  const createService = (serviceType: string) => {
+  const createService = (serviceType: string): Service | null => {
     if (serviceType === StarterService.serviceType) {
       return new StarterService({
         character: {
           name: 'Test Character',
           system: 'You are a helpful assistant for testing.',
         },
-      } as any);
+      } as IAgentRuntime);
     }
     return null;
   };
@@ -39,40 +39,51 @@ function createRealRuntime() {
     character: {
       name: 'Test Character',
       system: 'You are a helpful assistant for testing.',
+      bio: 'A test character for unit testing',
       plugins: [],
       settings: {},
     },
     getSetting: (key: string) => null,
-    models: starterPlugin.models,
     db: {
       get: async (key: string) => null,
-      set: async (key: string, value: any) => true,
+      set: async (key: string, value: unknown) => true,
       delete: async (key: string) => true,
       getKeys: async (pattern: string) => [],
     },
-    getService: (serviceType: string) => {
+    getService: <T extends Service>(serviceType: string): T | null => {
       // Log the service request for debugging
       logger.debug(`Requesting service: ${serviceType}`);
 
       // Get from cache or create new
       if (!services.has(serviceType)) {
         logger.debug(`Creating new service: ${serviceType}`);
-        services.set(serviceType, createService(serviceType));
+        const service = createService(serviceType);
+        if (service) {
+          services.set(serviceType, service);
+        }
       }
 
-      return services.get(serviceType);
+      return (services.get(serviceType) as T) || null;
     },
-    registerService: (serviceType: string, service: any) => {
-      logger.debug(`Registering service: ${serviceType}`);
-      services.set(serviceType, service);
+    registerService: async (ServiceClass: typeof Service): Promise<void> => {
+      logger.debug(`Registering service: ${ServiceClass.serviceType}`);
+      const runtime = {
+        character: {
+          name: 'Test Character',
+          system: 'You are a helpful assistant for testing.',
+          bio: 'A test character for unit testing',
+        },
+      } as IAgentRuntime;
+      const service = await ServiceClass.start(runtime);
+      services.set(ServiceClass.serviceType, service);
     },
   };
 }
 
 describe('Plugin Configuration', () => {
   it('should have correct plugin metadata', () => {
-    expect(starterPlugin.name).toBe('plugin-starter');
-    expect(starterPlugin.description).toBe('Plugin starter for elizaOS');
+    expect(starterPlugin.name).toBe('plugin-quick-starter');
+    expect(starterPlugin.description).toBe('Quick backend-only plugin template for elizaOS');
     expect(starterPlugin.config).toBeDefined();
   });
 
@@ -90,7 +101,10 @@ describe('Plugin Configuration', () => {
       const runtime = createRealRuntime();
 
       if (starterPlugin.init) {
-        await starterPlugin.init({ EXAMPLE_PLUGIN_VARIABLE: 'test-value' }, runtime as any);
+        await starterPlugin.init(
+          { EXAMPLE_PLUGIN_VARIABLE: 'test-value' },
+          runtime as IAgentRuntime
+        );
         expect(true).toBe(true); // If we got here, init succeeded
       }
     } finally {
@@ -125,7 +139,7 @@ describe('Plugin Models', () => {
   it('should return a response from TEXT_SMALL model', async () => {
     if (starterPlugin.models?.[ModelType.TEXT_SMALL]) {
       const runtime = createRealRuntime();
-      const result = await starterPlugin.models[ModelType.TEXT_SMALL](runtime as any, {
+      const result = await starterPlugin.models[ModelType.TEXT_SMALL](runtime as IAgentRuntime, {
         prompt: 'test',
       });
 
@@ -140,7 +154,7 @@ describe('Plugin Models', () => {
 describe('StarterService', () => {
   it('should start the service', async () => {
     const runtime = createRealRuntime();
-    const startResult = await StarterService.start(runtime as any);
+    const startResult = await StarterService.start(runtime as IAgentRuntime);
 
     expect(startResult).toBeDefined();
     expect(startResult.constructor.name).toBe('StarterService');
@@ -152,18 +166,29 @@ describe('StarterService', () => {
   it('should stop the service', async () => {
     const runtime = createRealRuntime();
 
-    // Register a real service first
-    const service = new StarterService(runtime as any);
-    runtime.registerService(StarterService.serviceType, service);
+    // Start the service to get the actual instance
+    const service = await StarterService.start(runtime as IAgentRuntime);
 
     // Spy on the real service's stop method
     const stopSpy = spyOn(service, 'stop');
 
+    // Mock getService to return our spied service
+    const originalGetService = runtime.getService;
+    runtime.getService = <T extends Service>(serviceType: string): T | null => {
+      if (serviceType === StarterService.serviceType) {
+        return service as T;
+      }
+      return null;
+    };
+
     // Call the static stop method
-    await StarterService.stop(runtime as any);
+    await StarterService.stop(runtime as IAgentRuntime);
 
     // Verify the service's stop method was called
     expect(stopSpy).toHaveBeenCalled();
+
+    // Restore original getService
+    runtime.getService = originalGetService;
   });
 
   it('should throw an error when stopping a non-existent service', async () => {
@@ -174,7 +199,9 @@ describe('StarterService', () => {
     const originalGetService = runtime.getService;
     runtime.getService = () => null;
 
-    await expect(StarterService.stop(runtime as any)).rejects.toThrow('Starter service not found');
+    await expect(StarterService.stop(runtime as IAgentRuntime)).rejects.toThrow(
+      'Starter service not found'
+    );
 
     // Restore original getService function
     runtime.getService = originalGetService;
