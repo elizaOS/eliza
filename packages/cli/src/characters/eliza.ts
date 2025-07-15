@@ -224,8 +224,6 @@ export function getElizaCharacter(): Character {
     !process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
       ? ['@elizaos/plugin-ollama']
       : []),
-      
-    '@elizaos/plugin-linear',
   ];
 
   return {
