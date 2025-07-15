@@ -521,26 +521,48 @@ describe('ElizaOS Dev Commands', () => {
 
       // Collect output to check for port conflict message
       let output = '';
-      const reader = devProcess.stdout!.getReader();
+      let stderrOutput = '';
       const decoder = new TextDecoder();
+
+      // Create readers for both stdout and stderr
+      const stdoutReader = devProcess.stdout!.getReader();
+      const stderrReader = devProcess.stderr!.getReader();
 
       // Read output for a few seconds to capture the port conflict message
       const startTime = Date.now();
       while (Date.now() - startTime < 3000) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        output += chunk;
+        // Read from stdout
+        const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            output += chunk;
+          }
+        });
 
-        // Check if we see the expected port conflict message
-        if (output.includes('Port 3000 is in use, using port 3001 instead')) {
-          expect(output).toContain('Port 3000 is in use, using port 3001 instead');
+        // Read from stderr
+        const stderrPromise = stderrReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            stderrOutput += chunk;
+          }
+        });
+
+        // Wait for both with a timeout
+        await Promise.race([
+          Promise.all([stdoutPromise, stderrPromise]),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ]);
+
+        // Check if we see the expected port conflict message in either output
+        const combinedOutput = output + stderrOutput;
+        if (combinedOutput.match(/Port 3000 is in use, using port \d+ instead/)) {
           break;
         }
       }
 
-      // Verify the server started successfully
-      expect(output).toContain('Port 3000 is in use, using port 3001 instead');
+      // Verify the server started successfully with any alternative port
+      const combinedOutput = output + stderrOutput;
+      expect(combinedOutput).toMatch(/Port 3000 is in use, using port \d+ instead/);
 
       // Clean up the dev process
       devProcess.kill('SIGTERM');
@@ -594,6 +616,96 @@ describe('ElizaOS Dev Commands', () => {
     // Verify the server started on the specified port
     expect(output).toContain(`${specifiedPort}`);
     expect(output).toMatch(/localhost:8888|port 8888/);
+
+    // Clean up the dev process
+    devProcess.kill('SIGTERM');
+    await devProcess.exited;
+  });
+
+  it('dev command handles non-numeric SERVER_PORT environment variable', async () => {
+    // Run dev command with non-numeric SERVER_PORT
+    const devProcess = Bun.spawn(['elizaos', 'dev'], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        SERVER_PORT: 'invalid-port', // Non-numeric value
+        FORCE_COLOR: '0',
+        LOG_LEVEL: 'info',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    runningProcesses.push(devProcess);
+
+    // Collect output to check for default port usage
+    let output = '';
+    const reader = devProcess.stdout!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read output for a few seconds to capture the server start message
+    const startTime = Date.now();
+    while (Date.now() - startTime < 3000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      output += chunk;
+
+      // Check if we see the server started on the default port
+      if (output.includes('http://localhost:3000') || output.includes('port 3000')) {
+        break;
+      }
+    }
+
+    // Verify the server started on the default port 3000
+    expect(output).toMatch(/localhost:3000|port 3000/);
+
+    // Clean up the dev process
+    devProcess.kill('SIGTERM');
+    await devProcess.exited;
+  });
+
+  it('dev command respects --port 0 for OS-assigned port', async () => {
+    // Run dev command with port 0 (OS should assign a random available port)
+    const devProcess = Bun.spawn(['elizaos', 'dev', '--port', '0'], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0',
+        LOG_LEVEL: 'info',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    runningProcesses.push(devProcess);
+
+    // Collect output to check for port usage
+    let output = '';
+    const reader = devProcess.stdout!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read output for a few seconds to capture the server start message
+    const startTime = Date.now();
+    while (Date.now() - startTime < 3000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      output += chunk;
+
+      // Check if we see a port assignment message
+      if (output.includes('listening on port') || output.includes('http://localhost:')) {
+        break;
+      }
+    }
+
+    // Verify the server started and did NOT use port 3000 (the default)
+    // When port 0 is used, the OS assigns a random port
+    expect(output).not.toContain('localhost:3000');
+    expect(output).not.toContain('port 3000');
+
+    // Should contain some port number (but not 3000)
+    expect(output).toMatch(/localhost:\d+|port \d+/);
 
     // Clean up the dev process
     devProcess.kill('SIGTERM');

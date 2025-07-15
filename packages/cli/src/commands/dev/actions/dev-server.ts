@@ -37,7 +37,14 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   const cliArgs: string[] = [];
 
   // Handle port availability checking
-  const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  let desiredPort: number;
+  if (options.port !== undefined) {
+    desiredPort = options.port;
+  } else {
+    const serverPort = process.env.SERVER_PORT;
+    const parsedPort = serverPort ? Number.parseInt(serverPort, 10) : NaN;
+    desiredPort = Number.isNaN(parsedPort) ? 3000 : parsedPort;
+  }
   let availablePort: number;
 
   try {
