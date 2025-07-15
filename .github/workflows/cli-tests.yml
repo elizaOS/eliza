@@ -64,6 +64,20 @@ jobs:
       - name: Build all packages
         run: bun run build
 
+      - name: Link CLI globally
+        run: |
+          cd packages/cli
+          bun link
+          cd ../..
+          echo "Linked elizaos command globally"
+
+      - name: Verify CLI link
+        shell: bash
+        run: |
+          echo "Verifying elizaos command is available..."
+          which elizaos || echo "elizaos not found in PATH"
+          elizaos --version || echo "Failed to run elizaos --version"
+
       - name: Verify CLI build artifacts
         shell: bash
         run: |
