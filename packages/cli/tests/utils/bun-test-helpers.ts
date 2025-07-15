@@ -62,26 +62,6 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     shell = true,
   } = options;
 
-  // Ensure bun is in PATH for CI environments
-  const enhancedEnv = { ...env };
-  if (enhancedEnv.PATH) {
-    const pathSeparator = process.platform === 'win32' ? ';' : ':';
-    const currentPaths = enhancedEnv.PATH.split(pathSeparator);
-    
-    // Add common bun installation paths if not already present
-    const bunPaths = [
-      process.env.HOME ? `${process.env.HOME}/.bun/bin` : null,
-      '/opt/homebrew/bin',
-      '/usr/local/bin'
-    ].filter(Boolean);
-    
-    for (const bunPath of bunPaths) {
-      if (bunPath && !currentPaths.some(p => p === bunPath || p.endsWith('/.bun/bin'))) {
-        enhancedEnv.PATH = `${bunPath}${pathSeparator}${enhancedEnv.PATH}`;
-      }
-    }
-  }
-
   // Parse command into parts
   let args: string[];
   let cmd: string;
@@ -118,7 +98,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   // Configure spawn options
   const spawnOptions: SpawnOptions.Sync = {
     cwd,
-    env: enhancedEnv as any,
+    env: env as any,
     stdout: stdio === 'inherit' ? 'inherit' : 'pipe',
     stderr: stdio === 'inherit' ? 'inherit' : 'pipe',
     stdin: stdio === 'inherit' ? 'inherit' : 'ignore',
@@ -208,22 +188,10 @@ export function bunSpawn(
  * ```
  */
 export function runCliCommandSync(args: string[], options: BunExecSyncOptions = {}): string {
-  // Find the CLI entry point
-  const cliPath = join(__dirname, '..', '..', 'dist', 'index.js');
-
-  // Build command - handle Windows path quoting differently
-  let command: string;
-  if (process.platform === 'win32') {
-    // On Windows, avoid double-quoting paths
-    command = `bun ${cliPath} ${args
-      .map((arg) => (arg.includes(' ') ? `"${arg}"` : arg))
-      .join(' ')}`;
-  } else {
-    // On Unix-like systems, quote the path
-    command = `bun "${cliPath}" ${args
-      .map((arg) => (arg.includes(' ') ? `"${arg}"` : arg))
-      .join(' ')}`;
-  }
+  // Use global elizaos command
+  const command = `elizaos ${args
+    .map((arg) => (arg.includes(' ') ? `"${arg}"` : arg))
+    .join(' ')}`;
 
   return bunExecSync(command, options) as string;
 }

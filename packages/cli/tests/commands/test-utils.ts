@@ -121,24 +121,10 @@ export async function createTestProject(projectName: string): Promise<void> {
   });
 
   try {
-    const result = await bunExec('elizaos', ['create', projectName, '--yes'], {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdio: platformOptions.stdio as 'pipe' | 'inherit' | 'ignore',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      throw error;
-    }
+    const result = await bunExecSimple(`elizaos create ${projectName} --yes`);
     process.chdir(projectName);
   } catch (error: any) {
     console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
-      status: error.status,
-      signal: error.signal,
       platform: process.platform,
       stdout: error.stdout?.toString() || '',
       stderr: error.stderr?.toString() || '',
@@ -161,26 +147,8 @@ export async function runCliCommand(
   });
 
   try {
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('elizaos', allArgs, {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      error.platform = process.platform;
-      error.signal = null;
-      error.pid = undefined;
-      throw error;
-    }
-    return result.stdout;
+    const result = await bunExecSimple(`elizaos ${args}`);
+    return result;
   } catch (error: any) {
     // Enhanced error reporting for debugging
     const errorDetails = {
@@ -212,25 +180,8 @@ export async function runCliCommandSilently(
   });
 
   try {
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('elizaos', allArgs, {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (!result.success) {
-      const error: any = new Error(`Command failed with exit code ${result.exitCode}`);
-      error.status = result.exitCode;
-      error.stdout = result.stdout;
-      error.stderr = result.stderr;
-      error.platform = process.platform;
-      error.signal = null;
-      throw error;
-    }
-    return result.stdout;
+    const result = await bunExecSimple(`elizaos ${args}`);
+    return result;
   } catch (error: any) {
     // Enhanced error reporting for debugging silent commands
     console.error(`[Silent CLI Command Error] elizaos ${args}:`, {
@@ -250,29 +201,9 @@ export async function expectCliCommandToFail(
   args: string,
   options: { timeout?: number } = {}
 ): Promise<{ status: number; output: string }> {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
   try {
-    const parsed = parseCommand(args);
-    const allArgs = parsed.command ? [parsed.command, ...parsed.args] : parsed.args;
-    const result = await bunExec('elizaos', allArgs, {
-      cwd: process.cwd(),
-      timeout: platformOptions.timeout,
-      env: platformOptions.env,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    if (result.success) {
-      throw new Error(`Command should have failed but succeeded with output: ${result.stdout}`);
-    }
-    return {
-      status: result.exitCode || -1,
-      output: result.stdout + result.stderr,
-    };
+    const result = await bunExecSimple(`elizaos ${args}`);
+    throw new Error(`Command should have failed but succeeded with output: ${result}`);
   } catch (e: any) {
     // If it's not an expected failure, re-throw
     if (e.message?.includes('Command should have failed')) {
