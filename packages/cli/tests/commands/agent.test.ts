@@ -37,20 +37,12 @@ describe('ElizaOS Agent Commands', () => {
   let testTmpDir: string;
   let testServerPort: string;
   let testServerUrl: string;
-  let elizaosCmd: string;
 
   beforeAll(async () => {
     // Setup test environment
     testServerPort = '3000';
     testServerUrl = `http://localhost:${testServerPort}`;
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
-
-    // Setup CLI command with robust bun path detection
-    const scriptDir = join(__dirname, '..');
-    const detectedBunPath = getBunExecutable();
-    elizaosCmd = `${detectedBunPath} "${join(scriptDir, '../dist/index.js')}"`;
-    console.log(`[DEBUG] Using bun path: ${detectedBunPath}`);
-    console.log(`[DEBUG] ElizaOS command: ${elizaosCmd}`);
 
     // Kill any existing processes on port 3000 with extended cleanup for macOS CI
     console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
