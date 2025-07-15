@@ -733,6 +733,25 @@ export function getPlatformOptions(baseOptions: any = {}): any {
     ...baseOptions.env, // Preserve any custom env vars from baseOptions
   };
 
+  // Ensure bun is in PATH for CI environments
+  if (platformOptions.env.PATH) {
+    const pathSeparator = process.platform === 'win32' ? ';' : ':';
+    const currentPaths = platformOptions.env.PATH.split(pathSeparator);
+    
+    // Add common bun installation paths if not already present
+    const bunPaths = [
+      process.env.HOME ? `${process.env.HOME}/.bun/bin` : null,
+      '/opt/homebrew/bin',
+      '/usr/local/bin'
+    ].filter(Boolean);
+    
+    for (const bunPath of bunPaths) {
+      if (bunPath && !currentPaths.some(p => p === bunPath || p.endsWith('/.bun/bin'))) {
+        platformOptions.env.PATH = `${bunPath}${pathSeparator}${platformOptions.env.PATH}`;
+      }
+    }
+  }
+
   if (process.platform === 'win32') {
     // Only scale the timeout if one was explicitly provided
     if (platformOptions.timeout !== undefined) {
