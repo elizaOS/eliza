@@ -18,9 +18,61 @@ import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
+import { stopServer } from '@/src/commands/dev/utils/server-manager';
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+/**
+ * Shutdown state management to prevent race conditions
+ * Using an object to encapsulate state and provide atomic operations
+ */
+const shutdownState = {
+  isShuttingDown: false,
+
+  /**
+   * Atomically check and set the shutdown flag
+   * @returns true if shutdown was initiated, false if already in progress
+   */
+  tryInitiateShutdown(): boolean {
+    if (this.isShuttingDown) {
+      return false;
+    }
+    this.isShuttingDown = true;
+    return true;
+  },
+};
+
+/**
+ * Graceful shutdown handler for SIGINT and SIGTERM signals
+ * Ensures proper cleanup of server processes before exiting
+ * Prevents race conditions from multiple rapid signal events
+ */
+async function gracefulShutdown(signal: string) {
+  // Atomically check and set shutdown flag to prevent race conditions
+  if (!shutdownState.tryInitiateShutdown()) {
+    logger.debug(`Ignoring ${signal} - shutdown already in progress`);
+    return;
+  }
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+
+  try {
+    // Stop the dev server if it's running
+    const serverWasStopped = await stopServer();
+    if (serverWasStopped) {
+      logger.info('Server stopped successfully');
+    }
+  } catch (error) {
+    // Extract error message for better debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error stopping server: ${errorMessage}`);
+    logger.debug('Full error details:', error);
+  }
+
+  // Use appropriate exit codes for different signals
+  const exitCode = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 0;
+  process.exit(exitCode);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 /**
  * Asynchronous function that serves as the main entry point for the application.

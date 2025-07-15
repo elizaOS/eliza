@@ -33,12 +33,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 23
+        uses: actions/checkout@v4
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -69,6 +64,20 @@ jobs:
       - name: Build all packages
         run: bun run build
 
+      - name: Link CLI globally
+        run: |
+          cd packages/cli
+          bun link
+          cd ../..
+          echo "Linked elizaos command globally"
+
+      - name: Verify CLI link
+        shell: bash
+        run: |
+          echo "Verifying elizaos command is available..."
+          which elizaos || echo "elizaos not found in PATH"
+          elizaos --version || echo "Failed to run elizaos --version"
+
       - name: Verify CLI build artifacts
         shell: bash
         run: |
@@ -93,15 +102,14 @@ jobs:
           echo "LOG_LEVEL=info" >> .env
 
       - name: Install cross-env globally
-        run: npm install -g cross-env
+        run: bun install -g cross-env
 
       - name: Install BATS on macOS
         if: matrix.os == 'macos-latest'
-        run: npm install -g bats
+        run: bun install -g bats
 
       - name: Run CLI TypeScript tests
-        timeout-minutes: 15
-        run: cross-env NODE_OPTIONS="--max-old-space-size=8192" bun test tests/commands/ --timeout 240000
+        run: cross-env bun test tests/commands/
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true

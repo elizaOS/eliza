@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'fs';
-import { execSync } from 'child_process';
 import { join } from 'path';
 
 const testDependencies = {
@@ -36,10 +35,15 @@ function installTestDependencies() {
 
   console.log('Installing test dependencies...');
   try {
-    execSync(`bun add -d ${missingDeps.join(' ')}`, {
-      stdio: 'inherit',
+    const proc = Bun.spawnSync(['bun', 'add', '-d', ...missingDeps], {
+      stdout: 'inherit',
+      stderr: 'inherit',
       cwd: process.cwd(),
     });
+
+    if (proc.exitCode !== 0) {
+      throw new Error('bun add command failed');
+    }
     console.log('✓ Test dependencies installed successfully');
   } catch (error) {
     console.error('Failed to install test dependencies:', error.message);

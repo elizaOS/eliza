@@ -12,8 +12,9 @@ export class DevServerManager implements ServerProcess {
 
   /**
    * Stops the currently running server process
+   * @returns true if a server was stopped, false if no server was running
    */
-  async stop(): Promise<void> {
+  async stop(): Promise<boolean> {
     if (this.process) {
       console.info('Stopping current server process...');
 
@@ -28,7 +29,9 @@ export class DevServerManager implements ServerProcess {
 
       // Give the process a moment to fully terminate
       await new Promise((resolve) => setTimeout(resolve, 500));
+      return true;
     }
+    return false;
   }
 
   /**
@@ -95,10 +98,11 @@ export function getServerManager(): DevServerManager {
 
 /**
  * Stop the server and cleanup
+ * @returns true if a server was stopped, false if no server was running
  */
-export async function stopServer(): Promise<void> {
+export async function stopServer(): Promise<boolean> {
   const server = getServerManager();
-  await server.stop();
+  return await server.stop();
 }
 
 /**

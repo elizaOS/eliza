@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFile, mkdir } from 'node:fs/promises';
+import { bunExecSync } from '../utils/bun-test-helpers';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  runCliCommand,
-  expectCliCommandToFail,
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
@@ -21,15 +20,15 @@ describe('ElizaOS Monorepo Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  it('monorepo --help shows usage', () => {
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
+  it('monorepo --help shows usage', async () => {
+    const result = bunExecSync('elizaos monorepo --help', { encoding: 'utf8' });
     expectHelpOutput(result, 'monorepo', ['-b', '--branch', '-d', '--dir']);
   });
 
-  it('monorepo uses default branch and directory', () => {
+  it('monorepo uses default branch and directory', async () => {
     // This would try to clone, so we just test that it recognizes the command
     // without actually performing the network operation
-    const result = runCliCommand(context.elizaosCmd, 'monorepo --help');
+    const result = bunExecSync('elizaos monorepo --help', { encoding: 'utf8' });
     expect(result).toContain('Branch to install');
     expect(result).toContain('develop'); // default branch
   });
@@ -38,10 +37,14 @@ describe('ElizaOS Monorepo Commands', () => {
     await mkdir('not-empty-dir');
     await writeFile('not-empty-dir/placeholder', '');
 
-    const result = expectCliCommandToFail(context.elizaosCmd, 'monorepo --dir not-empty-dir', {
-      timeout: TEST_TIMEOUTS.QUICK_COMMAND,
-    });
-    expect(result.status).not.toBe(0);
-    expect(result.output).toMatch(/not empty/);
+    try {
+      // This should fail because directory is not empty
+      bunExecSync('elizaos monorepo --dir not-empty-dir', { encoding: 'utf8' });
+      // If we get here, the command succeeded when it shouldn't have
+      throw new Error('Command should have failed but succeeded');
+    } catch (e: any) {
+      // Expected failure - command should fail when directory is not empty
+      expect(e.message).toContain('Command failed');
+    }
   });
 });

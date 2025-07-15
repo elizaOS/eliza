@@ -5,7 +5,7 @@ import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
-import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
+import { selectDatabase, selectAIModel, selectEmbeddingModel, hasEmbeddingSupport } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 
@@ -139,9 +139,38 @@ export const create = new Command('create')
 
       // Handle different project types
       switch (projectType) {
-        case 'plugin':
-          await createPlugin(projectName!, process.cwd(), isNonInteractive);
+        case 'plugin': {
+          let pluginType = 'full'; // Default to full plugin
+
+          if (!isNonInteractive) {
+            const selectedPluginType = await clack.select({
+              message: 'What type of plugin would you like to create?',
+              options: [
+                {
+                  label: 'Quick Plugin (Backend Only)',
+                  value: 'quick',
+                  hint: 'Simple backend-only plugin without frontend',
+                },
+                {
+                  label: 'Full Plugin (with Frontend)',
+                  value: 'full',
+                  hint: 'Complete plugin with React frontend and API routes',
+                },
+              ],
+              initialValue: 'quick',
+            });
+
+            if (clack.isCancel(selectedPluginType)) {
+              clack.cancel('Operation cancelled.');
+              process.exit(0);
+            }
+
+            pluginType = selectedPluginType as string;
+          }
+
+          await createPlugin(projectName!, process.cwd(), pluginType, isNonInteractive);
           break;
+        }
 
         case 'agent':
           await createAgent(projectName!, process.cwd(), isNonInteractive);
@@ -158,7 +187,7 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }
@@ -186,7 +215,7 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }

@@ -822,10 +822,10 @@ The [AgentRuntime](/api/classes/AgentRuntime) class is the primary implementatio
 interface IAgentRuntime {
     // Core identification
     agentId: UUID;
-    
+
     // Configuration
     character: Character;                          // Personality and behavior settings
-    
+
     // Components
     plugins: Plugin[];                             // Additional capabilities
     services: Map<ServiceTypeName, Service>;       // Platform connections and functionality
@@ -833,25 +833,25 @@ interface IAgentRuntime {
     actions: Action[];                             // Available behaviors
     evaluators: Evaluator[];                       // Analysis & learning
     routes: Route[];                               // API endpoints
-    
+
     // Memory Management
     getMemories(...): Promise<Memory[]>;           // Retrieve conversation history
     createMemory(...): Promise<UUID>;              // Store new memories
     searchMemories(...): Promise<Memory[]>;        // Semantic search
-    
+
     // State Composition
     composeState(...): Promise<State>;             // Gather data from providers
-    
+
     // Plugin Management
     registerPlugin(...): Promise<void>;            // Register plugins
-    
+
     // Service Management
     getService<T>(...): T | null;                  // Access services
     registerService(...): Promise<void>;           // Register services
-    
+
     // Model Integration
     useModel<T, R>(...): Promise<R>;               // Use AI models
-    
+
     // Additional Utilities
     getSetting(...): any;                          // Access settings
     setSetting(...): void;                         // Configure settings
@@ -4607,7 +4607,7 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 # Install globally
-npm install -g @elizaos/cli
+bun install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
 ```
@@ -7216,7 +7216,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `updateRoleAction`     | Updates a user's role in a world                |
     | `updateSettingsAction` | Updates agent or world settings                 |
   </TabItem>
-  
+
   <TabItem value="providers" label="Providers">
     | Provider                 | Description                                                |
     | ------------------------ | ---------------------------------------------------------- |
@@ -7237,7 +7237,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `choiceProvider`         | Manages choice-based interactions                          |
     | `capabilitiesProvider`   | Provides information about agent capabilities              |
   </TabItem>
-  
+
   <TabItem value="services" label="Services & Evaluators">
     **Services:**
 
@@ -7253,7 +7253,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
 
   </TabItem>
-  
+
   <TabItem value="events" label="Event Handlers">
     The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
 
@@ -7724,18 +7724,18 @@ This will start your agents according to your project configuration.
 # To get started, copy this file to .env, or make a .env and add the settings you'd like to override
 # Please read the comments for each of the configurations
 
-# The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys, 
+# The only thing you ABSOLUTELY NEED to get up and running is one of the model provider keys,
 # i.e. OPENAI_API_KEY or ANTHROPIC_API_KEY, or setup the ollama plugin
 # Everything else is optional, and most settings and secrets can be configured in your agent or through the GUI
 # For multi-agent, each agent will need keys for the various services it is connected to
-# You can use the .env or environment variables generally for shared keys, such as to model providers, 
+# You can use the .env or environment variables generally for shared keys, such as to model providers,
 # database, etc, with scoped keys for services such as Telegram, Discord, etc
 
 ### MODEL PROVIDER KEYS ###
-# Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs, 
+# Eliza is compatible with a wide array of model providers. Many have OpenAI compatible APIs,
 # and you can use them by overriding the base URL
 
-# NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will 
+# NOTE: You will need a provider that provides embeddings. So even if you use Claude, you will
 # need to get embeddings using another provider, for example openai or ollama
 
 # OpenAI Configuration
@@ -7805,10 +7805,10 @@ ZEROEX_API_KEY=
 COINGECKO_API_KEY=
 
 ### SINGLE AGENT VARIABLES ###
-# If you are running multiple agents, you will need to configure these variables in the agent secrets 
+# If you are running multiple agents, you will need to configure these variables in the agent secrets
 # (available in the GUI) OR you can namespace the secrets and connect them up in your character definition
 
-# Example: 
+# Example:
 # settings: {
 #   process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN
 # }

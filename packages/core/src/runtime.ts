@@ -99,8 +99,8 @@ export class AgentRuntime implements IAgentRuntime {
     }
   >();
   readonly fetch = fetch;
-  services = new Map<ServiceTypeName, Service>();
-  private serviceTypes = new Map<ServiceTypeName, typeof Service>();
+  services = new Map<ServiceTypeName, Service[]>();
+  private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
   models = new Map<string, ModelHandler[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
@@ -310,15 +310,17 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  getAllServices(): Map<ServiceTypeName, Service> {
+  getAllServices(): Map<ServiceTypeName, Service[]> {
     return this.services;
   }
 
   async stop() {
     this.logger.debug(`runtime::stop - character ${this.character.name}`);
-    for (const [serviceName, service] of this.services) {
+    for (const [serviceName, services] of this.services) {
       this.logger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
-      await service.stop();
+      for (const service of services) {
+        await service.stop();
+      }
     }
   }
 
@@ -1465,13 +1467,13 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
-    const serviceInstance = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstance) {
+    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+    if (!serviceInstances || serviceInstances.length === 0) {
       // it's not a warn, a plugin might just not be installed
       this.logger.debug(`Service ${serviceName} not found`);
       return null;
     }
-    return serviceInstance as T;
+    return serviceInstances[0] as T;
   }
 
   /**
@@ -1482,6 +1484,21 @@ export class AgentRuntime implements IAgentRuntime {
    */
   getTypedService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
     return this.getService<T>(serviceName);
+  }
+
+  /**
+   * Get all services of a specific type
+   * @template T - The expected service class type
+   * @param serviceName - The service type name
+   * @returns Array of service instances with proper typing
+   */
+  getServicesByType<T extends Service = Service>(serviceName: ServiceTypeName | string): T[] {
+    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+    if (!serviceInstances || serviceInstances.length === 0) {
+      this.logger.debug(`No services found for type ${serviceName}`);
+      return [];
+    }
+    return serviceInstances as T[];
   }
 
   /**
@@ -1498,7 +1515,8 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns true if the service is registered
    */
   hasService(serviceType: ServiceTypeName | string): boolean {
-    return this.services.has(serviceType as ServiceTypeName);
+    const serviceInstances = this.services.get(serviceType as ServiceTypeName);
+    return serviceInstances !== undefined && serviceInstances.length > 0;
   }
 
   async registerService(serviceDef: typeof Service): Promise<void> {
@@ -1513,16 +1531,22 @@ export class AgentRuntime implements IAgentRuntime {
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
-    if (this.services.has(serviceType)) {
-      this.logger.warn(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
-      );
-      return;
-    }
+
     try {
       const serviceInstance = await serviceDef.start(this);
-      this.services.set(serviceType, serviceInstance);
-      this.serviceTypes.set(serviceType, serviceDef);
+
+      // Initialize arrays if they don't exist
+      if (!this.services.has(serviceType)) {
+        this.services.set(serviceType, []);
+      }
+      if (!this.serviceTypes.has(serviceType)) {
+        this.serviceTypes.set(serviceType, []);
+      }
+
+      // Add the service to the arrays
+      this.services.get(serviceType)!.push(serviceInstance);
+      this.serviceTypes.get(serviceType)!.push(serviceDef);
+
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }

@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,17 +10,22 @@ import {
   TestProcessManager,
   waitForServerReady,
 } from './test-utils';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
+  let elizaosPath: string;
   let originalCwd: string;
   let testServerPort: number;
   let processManager: TestProcessManager;
+  let originalElizaTestMode: string | undefined;
 
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
+
+    // Store original ELIZA_TEST_MODE
+    originalElizaTestMode = process.env.ELIZA_TEST_MODE;
 
     // Initialize process manager
     processManager = new TestProcessManager();
@@ -35,9 +39,9 @@ describe('ElizaOS Start Commands', () => {
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
     process.chdir(testTmpDir);
 
-    // Setup CLI command
+    // Setup CLI path
     const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
+    elizaosPath = join(scriptDir, '../dist/index.js');
 
     // Make PORT + model envs explicit.
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
@@ -53,6 +57,13 @@ describe('ElizaOS Start Commands', () => {
     delete process.env.LOCAL_SMALL_MODEL;
     delete process.env.LOCAL_MEDIUM_MODEL;
     delete process.env.TEST_SERVER_PORT;
+
+    // Restore original ELIZA_TEST_MODE
+    if (originalElizaTestMode !== undefined) {
+      process.env.ELIZA_TEST_MODE = originalElizaTestMode;
+    } else {
+      delete process.env.ELIZA_TEST_MODE;
+    }
 
     // Restore original working directory
     safeChangeDirectory(originalCwd);
@@ -99,8 +110,11 @@ describe('ElizaOS Start Commands', () => {
   };
 
   // Basic agent check
-  it('start command shows help', () => {
-    const result = execSync(`${elizaosCmd} start --help`, getPlatformOptions({ encoding: 'utf8' }));
+  it('start command shows help', async () => {
+    const { stdout: result } = await bunExecSimple('bun', [elizaosPath, 'start', '--help'], {
+      timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+      env: process.env,
+    });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
     expect(result).toContain('--port');
@@ -138,10 +152,15 @@ describe('ElizaOS Start Commands', () => {
               timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
             });
 
-            result = execSync(
-              `${elizaosCmd} agent list --remote-url http://localhost:${testServerPort}`,
-              platformOptions
+            const { stdout } = await bunExecSimple(
+              'bun',
+              [elizaosPath, 'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`],
+              {
+                timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+                env: process.env,
+              }
             );
+            result = stdout;
 
             // If we get a result, check if it contains Ada
             if (result && result.includes('Ada')) {
@@ -227,38 +246,50 @@ describe('ElizaOS Start Commands', () => {
   );
 
   // Multiple character input formats
-  it('multiple character formats parse', () => {
+  it('multiple character formats parse', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
     const formats = [',', ' '];
 
     for (const fmt of formats) {
-      const result = execSync(
-        `${elizaosCmd} start --character "${adaPath}${fmt}${adaPath}" --help`,
-        getPlatformOptions({ encoding: 'utf8' })
+      const { stdout: result } = await bunExecSimple(
+        'bun',
+        [elizaosPath, 'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'],
+        {
+          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          env: process.env,
+        }
       );
       expect(result).toContain('start');
     }
   });
 
   // Mixed valid/invalid files should not crash CLI when running with --help (dry)
-  it('graceful acceptance of invalid character file list (dry)', () => {
+  it('graceful acceptance of invalid character file list (dry)', async () => {
     const charactersDir = join(__dirname, '../test-characters');
     const adaPath = join(charactersDir, 'ada.json');
 
-    const result = execSync(
-      `${elizaosCmd} start --character "${adaPath},does-not-exist.json" --help`,
-      getPlatformOptions({ encoding: 'utf8' })
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--character', `${adaPath},does-not-exist.json`, '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
     );
     expect(result).toContain('start');
   });
 
   // --build flag accepted
-  it('build option flag accepted', () => {
-    const result = execSync(
-      `${elizaosCmd} start --build --help`,
-      getPlatformOptions({ encoding: 'utf8' })
+  it('build option flag accepted', async () => {
+    const { stdout: result } = await bunExecSimple(
+      'bun',
+      [elizaosPath, 'start', '--build', '--help'],
+      {
+        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+        env: process.env,
+      }
     );
     expect(result).toContain('start');
   });
@@ -323,4 +354,8 @@ describe('ElizaOS Start Commands', () => {
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
+
+  // Note: Auto-build functionality tests have been removed as they relied on mocking,
+  // which is inappropriate for e2e tests. These tests should be implemented as unit tests
+  // in a separate test file if the build behavior needs to be tested.
 });

@@ -1,16 +1,14 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { getBunExecutable, killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { bunExecSync } from '../utils/bun-test-helpers';
+import { killProcessOnPort, safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Dev Commands', () => {
   let testTmpDir: string;
   let projectDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
   let testServerPort: number;
   let runningProcesses: any[] = [];
@@ -21,9 +19,6 @@ describe('ElizaOS Dev Commands', () => {
 
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-dev-'));
-
-    // Setup CLI command
-    elizaosCmd = `bun ${join(__dirname, '../../dist/index.js')}`;
 
     // Create one test project for all dev tests to share
     projectDir = join(testTmpDir, 'shared-test-project');
@@ -135,23 +130,14 @@ describe('ElizaOS Dev Commands', () => {
   ): Promise<any> => {
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] __dirname: ${__dirname}`);
-    console.log(`[DEBUG] CLI path: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    const commandStr = `${bunPath} ${cliPath} dev ${args}`;
+    const commandStr = `elizaos dev ${args}`;
     console.log(`[DEBUG] Running command: ${commandStr}`);
 
     // Use Bun.spawn for better compatibility
     console.log(`[DEBUG] Using Bun.spawn for dev command`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev ${args}`);
 
     try {
-      const devProcess = Bun.spawn([bunPath, cliPath, 'dev', ...args.split(' ')], {
+      const devProcess = Bun.spawn(['elizaos', 'dev', ...args.split(' ')], {
         cwd: cwd || projectDir,
         env: {
           ...process.env,
@@ -173,6 +159,11 @@ describe('ElizaOS Dev Commands', () => {
         throw new Error('Bun.spawn failed to create process - no PID returned');
       }
 
+      runningProcesses.push(devProcess);
+
+      // Wait for process to start
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+
       return devProcess;
     } catch (spawnError) {
       console.error(`[ERROR] Failed to spawn dev process:`, spawnError);
@@ -180,22 +171,10 @@ describe('ElizaOS Dev Commands', () => {
       console.error(`[ERROR] Working directory: ${cwd || projectDir}`);
       throw spawnError;
     }
-
-    if (!devProcess || !devProcess.pid) {
-      console.error('[ERROR] Failed to spawn dev process');
-      throw new Error('Failed to spawn dev process');
-    }
-
-    runningProcesses.push(devProcess);
-
-    // Wait for process to start
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
-
-    return devProcess;
   };
 
   it('dev --help shows usage', () => {
-    const result = execSync(`${elizaosCmd} dev --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos dev');
     expect(result).toContain('development mode');
     expect(result).toContain('auto-rebuild');
@@ -216,20 +195,12 @@ describe('ElizaOS Dev Commands', () => {
 
   it('dev command detects project type correctly', async () => {
     // Start dev process and capture output
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] CLI path for dev test: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    // Use Bun.spawn for project detection test
     console.log(`[DEBUG] Using Bun.spawn for project detection test`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+    console.log(`[DEBUG] Command: elizaos dev --port ${testServerPort}`);
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: projectDir,
         env: {
           ...process.env,
@@ -394,25 +365,14 @@ describe('ElizaOS Dev Commands', () => {
 
     let output = '';
     let outputReceived = false;
-    const cliPath = join(__dirname, '../../dist/index.js');
-    console.log(`[DEBUG] CLI path for non-eliza test: ${cliPath}`);
-    console.log(`[DEBUG] CLI exists: ${existsSync(cliPath)}`);
-
-    // Use platform-specific bun executable
-    const bunPath = getBunExecutable();
-
-    // Validate that CLI and bun exist before spawning
-    if (!existsSync(cliPath)) {
-      throw new Error(`CLI not found at ${cliPath}`);
-    }
 
     // Use Bun.spawn for non-eliza test
     console.log(`[DEBUG] Using Bun.spawn for non-eliza test`);
-    console.log(`[DEBUG] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+    console.log(`[DEBUG] Command: elizaos dev --port ${testServerPort}`);
 
     let devProcess: any;
     try {
-      devProcess = Bun.spawn([bunPath, cliPath, 'dev', '--port', testServerPort.toString()], {
+      devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
         cwd: nonElizaDir,
         env: {
           ...process.env,
@@ -441,7 +401,7 @@ describe('ElizaOS Dev Commands', () => {
 
     if (!devProcess || !devProcess.pid) {
       console.error('[ERROR] Failed to spawn dev process for non-eliza test');
-      console.error(`[ERROR] Command: ${bunPath} ${cliPath} dev --port ${testServerPort}`);
+      console.error(`[ERROR] Command: elizaos dev --port ${testServerPort}`);
       console.error(`[ERROR] Working directory: ${nonElizaDir}`);
       throw new Error('Failed to spawn dev process');
     }
@@ -520,7 +480,7 @@ describe('ElizaOS Dev Commands', () => {
   it('dev command validates port parameter', () => {
     // Test that invalid port is rejected
     try {
-      execSync(`${elizaosCmd} dev --port abc`, {
+      bunExecSync(`elizaos dev --port abc`, {
         encoding: 'utf8',
         stdio: 'pipe',
         timeout: TEST_TIMEOUTS.QUICK_COMMAND,
@@ -533,4 +493,179 @@ describe('ElizaOS Dev Commands', () => {
       expect(error.status).not.toBe(0);
     }
   });
+
+  it('dev command handles port conflicts by finding next available port', async () => {
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
+    // Kill any existing process on port 3000
+    await killProcessOnPort(3000);
+    await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
+
+    // Start a dummy server on port 3000 to create a conflict
+    let dummyServer;
+    try {
+      dummyServer = Bun.serve({
+        port: 3000,
+        fetch() {
+          return new Response('Dummy server');
+        },
+      });
+    } catch (error) {
+      // If we can't create the dummy server, skip this test
+      console.log('[PORT CONFLICT TEST] Cannot create dummy server on port 3000, skipping test');
+      return;
+    }
+
+    try {
+      // Run dev command without specifying port (should default to 3000 but find 3001)
+      const devProcess = Bun.spawn(['elizaos', 'dev'], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          LOG_LEVEL: 'debug', // Enable debug to see port conflict message
+          PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      runningProcesses.push(devProcess);
+
+      // Collect output to check for port conflict message
+      let output = '';
+      let stderrOutput = '';
+      const decoder = new TextDecoder();
+
+      // Create readers for both stdout and stderr
+      const stdoutReader = devProcess.stdout!.getReader();
+      const stderrReader = devProcess.stderr!.getReader();
+
+      // Read output for a few seconds to capture the port conflict message
+      const startTime = Date.now();
+      while (Date.now() - startTime < 3000) {
+        // Read from stdout
+        const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            output += chunk;
+          }
+        });
+
+        // Read from stderr
+        const stderrPromise = stderrReader.read().then(({ done, value }) => {
+          if (!done && value) {
+            const chunk = decoder.decode(value);
+            stderrOutput += chunk;
+          }
+        });
+
+        // Wait for both with a timeout
+        await Promise.race([
+          Promise.all([stdoutPromise, stderrPromise]),
+          new Promise((resolve) => setTimeout(resolve, 100)),
+        ]);
+
+        // Check if we see the expected port conflict message in either output
+        const combinedOutput = output + stderrOutput;
+        if (combinedOutput.match(/Port 3000 is in use, using port \d+ instead/)) {
+          break;
+        }
+      }
+
+      // Verify the server started successfully with any alternative port
+      const combinedOutput = output + stderrOutput;
+      expect(combinedOutput).toMatch(/Port 3000 is in use, using port \d+ instead/);
+
+      // Clean up the dev process
+      devProcess.kill('SIGTERM');
+      await devProcess.exited;
+    } finally {
+      // Clean up the dummy server
+      dummyServer.stop();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  });
+
+  it('dev command uses specified port when provided', async () => {
+    const specifiedPort = 8888;
+
+    // Ensure elizadb directory exists
+    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+
+    // Run dev command with explicit port
+    const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
+      cwd: projectDir,
+      env: {
+        ...process.env,
+        FORCE_COLOR: '0',
+        LOG_LEVEL: 'info',
+        PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    runningProcesses.push(devProcess);
+
+    // Collect output to check for port usage
+    let output = '';
+    let stderrOutput = '';
+    const decoder = new TextDecoder();
+
+    // Create readers for both stdout and stderr
+    const stdoutReader = devProcess.stdout!.getReader();
+    const stderrReader = devProcess.stderr!.getReader();
+
+    // Read output for a few seconds to capture the server start message
+    const startTime = Date.now();
+    while (Date.now() - startTime < 5000) {
+      // Increased timeout
+      // Read from stdout
+      const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          output += chunk;
+        }
+      });
+
+      // Read from stderr
+      const stderrPromise = stderrReader.read().then(({ done, value }) => {
+        if (!done && value) {
+          const chunk = decoder.decode(value);
+          stderrOutput += chunk;
+        }
+      });
+
+      // Wait for both with a timeout
+      await Promise.race([
+        Promise.all([stdoutPromise, stderrPromise]),
+        new Promise((resolve) => setTimeout(resolve, 100)),
+      ]);
+
+      // Check if we see the server started on the specified port
+      const combinedOutput = output + stderrOutput;
+
+      // More flexible port detection - check for the port number in various formats
+      if (combinedOutput.includes(specifiedPort.toString())) {
+        break;
+      }
+    }
+
+    // Debug output for troubleshooting
+    const combinedOutput = output + stderrOutput;
+    if (!combinedOutput.includes(specifiedPort.toString())) {
+      console.log('Test output (stdout):', output);
+      console.log('Test output (stderr):', stderrOutput);
+      console.log('Combined length:', combinedOutput.length);
+    }
+
+    // Verify the server started on the specified port - more flexible check
+    expect(combinedOutput).toContain(specifiedPort.toString());
+
+    // Clean up the dev process
+    devProcess.kill('SIGTERM');
+    await devProcess.exited;
+  }, 10000);
 });

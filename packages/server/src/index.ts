@@ -670,7 +670,6 @@ export class AgentServer {
           (() => {
             try {
               // Try to find the global server installation via bun
-              const { execSync } = require('child_process');
               // Bun stores global packages in ~/.bun/install/global/node_modules
               const bunGlobalPath = path.join(
                 os.homedir(),
@@ -681,10 +680,16 @@ export class AgentServer {
               }
               // Also try npm root as fallback (some users might use npm)
               try {
-                const npmRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
-                const globalServerPath = path.join(npmRoot, '@elizaos/server/dist/client');
-                if (existsSync(path.join(globalServerPath, 'index.html'))) {
-                  return globalServerPath;
+                const proc = Bun.spawnSync(['npm', 'root', '-g'], {
+                  stdout: 'pipe',
+                  stderr: 'pipe',
+                });
+                if (proc.exitCode === 0 && proc.stdout) {
+                  const npmRoot = new TextDecoder().decode(proc.stdout).trim();
+                  const globalServerPath = path.join(npmRoot, '@elizaos/server/dist/client');
+                  if (existsSync(path.join(globalServerPath, 'index.html'))) {
+                    return globalServerPath;
+                  }
                 }
               } catch {
                 // npm might not be installed

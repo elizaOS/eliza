@@ -135,33 +135,6 @@ export async function setupAIModelConfig(
         break;
       }
 
-      case 'ollama': {
-        if (isNonInteractive) {
-          // In non-interactive mode, just add placeholder
-          let content = '';
-          if (existsSync(envFilePath)) {
-            content = await fs.readFile(envFilePath, 'utf8');
-          }
-
-          if (content && !content.endsWith('\n')) {
-            content += '\n';
-          }
-
-          content += '\n# AI Model Configuration\n';
-          content += '# Ollama Configuration\n';
-          content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
-          content += 'OLLAMA_MODEL=gemma3\n';
-          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
-          content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
-
-          await fs.writeFile(envFilePath, content, 'utf8');
-        } else {
-          // Interactive mode - prompt for Ollama configuration
-          await promptAndStoreOllamaConfig(envFilePath);
-        }
-        break;
-      }
-
       case 'google': {
         if (isNonInteractive) {
           // In non-interactive mode, just add placeholder
@@ -236,34 +209,7 @@ export async function setupEmbeddingModelConfig(
 
     switch (embeddingModel) {
       case 'local': {
-        content += '\n# Embedding Model Configuration (Fallback)\n';
-        content += '# Using local embeddings - no additional configuration needed\n';
-        await fs.writeFile(envFilePath, content, 'utf8');
-        break;
-      }
-
-      case 'openai': {
-        // Check if OpenAI key already exists with a valid value
-        if (!hasValidApiKey(content, 'OPENAI_API_KEY')) {
-          if (isNonInteractive) {
-            // In non-interactive mode, add/update placeholder
-            if (!content.includes('OPENAI_API_KEY=')) {
-              content += '\n# Embedding Model Configuration (Fallback)\n';
-              content += '# OpenAI Embeddings Configuration\n';
-              content += 'OPENAI_API_KEY=your_openai_api_key_here\n';
-              content += '# Get your API key from: https://platform.openai.com/api-keys\n';
-            }
-            await fs.writeFile(envFilePath, content, 'utf8');
-          } else {
-            // Interactive mode - prompt for OpenAI API key
-            await promptAndStoreOpenAIKey(envFilePath);
-          }
-        }
-        break;
-      }
-
-      case 'ollama': {
-        // Check if Ollama config already exists with valid values
+        // 'local' means Ollama for embeddings, so configure it properly
         if (!hasValidApiKey(content, 'OLLAMA_API_ENDPOINT')) {
           if (isNonInteractive) {
             // In non-interactive mode, add/update placeholder
@@ -294,6 +240,26 @@ export async function setupEmbeddingModelConfig(
           } else {
             // Interactive mode - always prompt for embedding model selection
             await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+          }
+        }
+        break;
+      }
+
+      case 'openai': {
+        // Check if OpenAI key already exists with a valid value
+        if (!hasValidApiKey(content, 'OPENAI_API_KEY')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('OPENAI_API_KEY=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# OpenAI Embeddings Configuration\n';
+              content += 'OPENAI_API_KEY=your_openai_api_key_here\n';
+              content += '# Get your API key from: https://platform.openai.com/api-keys\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - prompt for OpenAI API key
+            await promptAndStoreOpenAIKey(envFilePath);
           }
         }
         break;
@@ -338,7 +304,7 @@ function resolveModelToPlugin(modelName: string): string | null {
     claude: 'anthropic',
     anthropic: 'anthropic',
     openrouter: 'openrouter',
-    ollama: 'ollama',
+    local: 'ollama', // 'local' maps to ollama plugin
     google: 'google-genai',
   };
 
@@ -398,24 +364,8 @@ export async function setupProjectEnvironment(
     }
   }
 
-  // Always set up Ollama as universal fallback (if not already configured)
-  // This should happen regardless of interactive mode since Ollama is always included
-  const envContent = existsSync(envFilePath) ? await fs.readFile(envFilePath, 'utf8') : '';
-  if (!hasValidApiKey(envContent, 'OLLAMA_API_ENDPOINT')) {
-    await setupEmbeddingModelConfig('ollama', envFilePath, true);
-  }
-
   // Install AI model plugin
-  if (aiModel === 'local') {
-    // Install Ollama plugin for local AI
-    await installModelPlugin('ollama', targetDir, 'for local AI');
-  } else {
-    await installModelPlugin(aiModel, targetDir);
-    // Always install Ollama as fallback since character always includes it
-    if (aiModel !== 'ollama') {
-      await installModelPlugin('ollama', targetDir, 'as fallback');
-    }
-  }
+  await installModelPlugin(aiModel, targetDir, aiModel === 'local' ? 'for local AI' : '');
 
   // Install embedding model plugin if different from AI model
   if (embeddingModel && embeddingModel !== 'local') {
@@ -424,6 +374,11 @@ export async function setupProjectEnvironment(
     const embeddingPluginName = resolveModelToPlugin(embeddingModel);
 
     if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+    }
+  } else if (embeddingModel === 'local') {
+    // If embedding model is 'local' (Ollama) and AI model isn't already 'local'
+    if (aiModel !== 'local') {
       await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
     }
   }

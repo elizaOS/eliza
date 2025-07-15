@@ -448,8 +448,8 @@ Our mission is to develop an extensible, modular, open-source AI agent framework
 
 ## Core Philosophy
 
-**Autonomy & Adaptability**: Agents should learn, reason, and adapt across diverse tasks without human intervention.  
-**Modularity & Composability**: AI architectures should be modular, allowing for iterative improvements and robust scalability.  
+**Autonomy & Adaptability**: Agents should learn, reason, and adapt across diverse tasks without human intervention.
+**Modularity & Composability**: AI architectures should be modular, allowing for iterative improvements and robust scalability.
 **Decentralization & Open Collaboration**: AI systems should move beyond centralized control towards distributed intelligence and community-driven progress.
 
 ---
@@ -1062,7 +1062,7 @@ npm create eliza
 
 <details>
     <summary>See CLI commands</summary>
-    
+
 ```bash
 Usage: elizaos [options] [command]
 
@@ -1806,10 +1806,10 @@ The [AgentRuntime](/api/classes/AgentRuntime) class is the primary implementatio
 interface IAgentRuntime {
     // Core identification
     agentId: UUID;
-    
+
     // Configuration
     character: Character;                          // Personality and behavior settings
-    
+
     // Components
     plugins: Plugin[];                             // Additional capabilities
     services: Map<ServiceTypeName, Service>;       // Platform connections and functionality
@@ -1817,25 +1817,25 @@ interface IAgentRuntime {
     actions: Action[];                             // Available behaviors
     evaluators: Evaluator[];                       // Analysis & learning
     routes: Route[];                               // API endpoints
-    
+
     // Memory Management
     getMemories(...): Promise<Memory[]>;           // Retrieve conversation history
     createMemory(...): Promise<UUID>;              // Store new memories
     searchMemories(...): Promise<Memory[]>;        // Semantic search
-    
+
     // State Composition
     composeState(...): Promise<State>;             // Gather data from providers
-    
+
     // Plugin Management
     registerPlugin(...): Promise<void>;            // Register plugins
-    
+
     // Service Management
     getService<T>(...): T | null;                  // Access services
     registerService(...): Promise<void>;           // Register services
-    
+
     // Model Integration
     useModel<T, R>(...): Promise<R>;               // Use AI models
-    
+
     // Additional Utilities
     getSetting(...): any;                          // Access settings
     setSetting(...): void;                         // Configure settings
@@ -5591,7 +5591,7 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 # Install globally
-npm install -g @elizaos/cli
+bun install -g @elizaos/cli
 # Start ElizaOS
 elizaos start
 ```
@@ -17237,7 +17237,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `updateRoleAction`     | Updates a user's role in a world                |
     | `updateSettingsAction` | Updates agent or world settings                 |
   </TabItem>
-  
+
   <TabItem value="providers" label="Providers">
     | Provider                 | Description                                                |
     | ------------------------ | ---------------------------------------------------------- |
@@ -17258,7 +17258,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `choiceProvider`         | Manages choice-based interactions                          |
     | `capabilitiesProvider`   | Provides information about agent capabilities              |
   </TabItem>
-  
+
   <TabItem value="services" label="Services & Evaluators">
     **Services:**
 
@@ -17274,7 +17274,7 @@ The Bootstrap Plugin registers essential components across several categories to
     | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
 
   </TabItem>
-  
+
   <TabItem value="events" label="Event Handlers">
     The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
 
@@ -17817,8 +17817,6 @@ import TabItem from '@theme/TabItem';
 npm install -g bun
 
 # Install the CLI globally
-npm install -g @elizaos/cli
-# or install via bun
 bun install -g @elizaos/cli
 
 # From a folder to install a project
