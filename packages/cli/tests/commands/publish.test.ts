@@ -7,7 +7,6 @@ import { safeChangeDirectory } from './test-utils';
 
 describe('ElizaOS Publish Commands', () => {
   let testTmpDir: string;
-  let elizaosCmd: string;
   let originalCwd: string;
   let originalPath: string;
 
@@ -19,10 +18,6 @@ describe('ElizaOS Publish Commands', () => {
     // Create temporary directory
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-publish-'));
     process.chdir(testTmpDir);
-
-    // Setup CLI command
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun "${join(scriptDir, '../dist/index.js')}"`;
 
     // === COMPREHENSIVE CREDENTIAL MOCKING ===
     // Set all possible environment variables to avoid any prompts
@@ -361,7 +356,7 @@ esac`;
 
   // publish --help (safe test that never prompts)
   it('publish --help shows usage', () => {
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos publish');
     expect(result).toContain('Publish a plugin to npm, GitHub, and the registry');
     expect(result).toContain('--npm');
@@ -373,18 +368,18 @@ esac`;
   // CLI integration (safe test)
   it('publish command integrates with CLI properly', () => {
     // Test that publish command is properly integrated into main CLI
-    const helpResult = bunExecSync(`${elizaosCmd} --help`, { encoding: 'utf8' });
+    const helpResult = bunExecSync(`elizaos --help`, { encoding: 'utf8' });
     expect(helpResult).toContain('publish');
 
     // Test that publish command can be invoked
-    const publishHelpResult = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const publishHelpResult = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(publishHelpResult).toContain('Options:');
   });
 
   // Test mode functionality (should not prompt with proper mocking)
   it('publish command validates basic directory structure', () => {
     // Test that publish command works with help
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
@@ -400,14 +395,14 @@ esac`;
       })
     );
 
-    const result = bunExecSync(`${elizaosCmd} publish --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --help`, { encoding: 'utf8' });
     expect(result).toContain('publish');
   });
 
   // Dry run functionality (should not prompt)
   it('publish dry-run flag works', () => {
     // Test that --dry-run flag is recognized
-    const result = bunExecSync(`${elizaosCmd} publish --dry-run --help`, { encoding: 'utf8' });
+    const result = bunExecSync(`elizaos publish --dry-run --help`, { encoding: 'utf8' });
     expect(result).toContain('dry-run');
   });
 });
