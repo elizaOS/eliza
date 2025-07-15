@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { safeChangeDirectory, runCliCommandSilently, runCliCommand } from './test-utils';
+import { safeChangeDirectory } from './test-utils';
+import { bunExecSync } from '../utils/bun-test-helpers';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
@@ -35,15 +36,13 @@ describe('ElizaOS Update Commands', () => {
 
   // Helper function to create project
   const makeProj = async (name: string) => {
-    await runCliCommandSilently(`create ${name} --yes`, {
-      timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-    });
+    bunExecSync(`elizaos create ${name} --yes`, { encoding: 'utf8' });
     process.chdir(join(testTmpDir, name));
   };
 
   // --help
   it('update --help shows usage and options', async () => {
-    const result = await runCliCommand('update --help');
+    const result = bunExecSync('elizaos update --help', { encoding: 'utf8' });
     expect(result).toContain('Usage: elizaos update');
     expect(result).toContain('--cli');
     expect(result).toContain('--packages');
@@ -57,9 +56,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-app');
 
-      const result = await runCliCommandSilently('update', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update', { encoding: 'utf8' });
 
       // Should either succeed or show success message
       expect(result).toMatch(
@@ -74,9 +71,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-check-app');
 
-      const result = await runCliCommandSilently('update --check', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --check', { encoding: 'utf8' });
 
       expect(result).toMatch(/Version: 1\.2\.1/);
     },
@@ -88,9 +83,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-skip-build-app');
 
-      const result = await runCliCommandSilently('update --skip-build', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --skip-build', { encoding: 'utf8' });
 
       expect(result).not.toContain('Building project');
     },
@@ -102,9 +95,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-packages-app');
 
-      const result = await runCliCommandSilently('update --packages', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --packages', { encoding: 'utf8' });
 
       // Should either succeed or show success message
       expect(result).toMatch(
@@ -117,9 +108,7 @@ describe('ElizaOS Update Commands', () => {
   it(
     'update --cli works outside a project',
     async () => {
-      const result = await runCliCommandSilently('update --cli', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --cli', { encoding: 'utf8' });
 
       // Should either show success or message about installing globally
       expect(result).toMatch(
@@ -134,9 +123,7 @@ describe('ElizaOS Update Commands', () => {
     async () => {
       await makeProj('update-combined-app');
 
-      const result = await runCliCommandSilently('update --cli --packages', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --cli --packages', { encoding: 'utf8' });
 
       // Should either succeed or show success message
       expect(result).toMatch(
@@ -149,9 +136,7 @@ describe('ElizaOS Update Commands', () => {
   it.skipIf(process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true')(
     'update succeeds outside a project (global check)',
     async () => {
-      const result = await runCliCommandSilently('update', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update', { encoding: 'utf8' });
 
       // Should either show success or message about creating project
       expect(result).toMatch(
@@ -165,9 +150,7 @@ describe('ElizaOS Update Commands', () => {
   it(
     'update --packages shows helpful message in empty directory',
     async () => {
-      const result = await runCliCommandSilently('update --packages', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --packages', { encoding: 'utf8' });
 
       expect(result).toContain("This directory doesn't appear to be an ElizaOS project");
     },
@@ -193,9 +176,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently('update --packages', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --packages', { encoding: 'utf8' });
 
       expect(result).toContain('some-other-project');
       expect(result).toContain('elizaos create');
@@ -224,9 +205,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently('update --packages --check', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --packages --check', { encoding: 'utf8' });
 
       expect(result).toContain('ElizaOS');
     },
@@ -257,9 +236,7 @@ describe('ElizaOS Update Commands', () => {
         )
       );
 
-      const result = await runCliCommandSilently('update --packages', {
-        timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      });
+      const result = bunExecSync('elizaos update --packages', { encoding: 'utf8' });
 
       expect(result).toContain('No ElizaOS packages found');
     },
@@ -276,12 +253,10 @@ describe('ElizaOS Update Commands', () => {
       try {
         // Change to temp directory and run update command
         process.chdir(tmpDir);
-        const result = await runCliCommandSilently('update', {
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-        });
+        const result = bunExecSync('elizaos update', { encoding: 'utf8' });
 
         // Command should succeed (updates CLI only)
-        // runCliCommandSilently returns output string on success
+        // bunExecSync returns output string on success
         expect(result).toBeTruthy();
 
         // Verify no project files were created
