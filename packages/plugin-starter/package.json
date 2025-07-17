@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -49,7 +49,7 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
-    "@elizaos/cli": "1.2.9",
+    "@elizaos/cli": "1.2.10",
     "@tailwindcss/vite": "^4.1.10",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "dotenv": "16.4.5",
