@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/test-utils",
   "description": "Utilities and objects for unit testing",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -39,7 +39,7 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "1.2.9",
+    "@elizaos/core": "1.2.10",
     "zod": "3.24.2"
   },
   "devDependencies": {
@@ -65,5 +65,5 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
   },
-  "gitHead": "35550a6e598fefac0492b6b692f4904b140f311f"
+  "gitHead": "01905926c3bcf050838f9a9b3f49848b1e57a705"
 }
