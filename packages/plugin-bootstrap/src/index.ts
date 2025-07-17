@@ -44,7 +44,6 @@ export * from './actions/index.ts';
 export * from './evaluators/index.ts';
 export * from './providers/index.ts';
 
-
 /**
  * Represents media data containing a buffer of data and the media type.
  * @typedef {Object} MediaData
