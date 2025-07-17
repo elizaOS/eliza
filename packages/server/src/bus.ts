@@ -11,8 +11,8 @@ class InternalMessageBus extends EventTarget {
     private maxListeners: number = 50;
     private handlers = new Map<string, Map<Function, EventListener>>();
 
-    emit(event: string, data: any) {
-        this.dispatchEvent(new CustomEvent(event, { detail: data }));
+    emit(event: string, data: any): boolean {
+        return this.dispatchEvent(new CustomEvent(event, { detail: data }));
     }
 
     on(event: string, handler: (data: any) => void) {
