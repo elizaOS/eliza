@@ -9,13 +9,13 @@
  */
 class InternalMessageBus extends EventTarget {
   private maxListeners: number = 50;
-  private handlers = new Map<string, Map<Function, EventListener>>();
+  private handlers = new Map<string, Map<(data: unknown) => void, EventListener>>();
 
-  emit(event: string, data: any): boolean {
+  emit(event: string, data: unknown): boolean {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
-  on(event: string, handler: (data: any) => void) {
+  on(event: string, handler: (data: unknown) => void) {
     // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
@@ -43,7 +43,7 @@ class InternalMessageBus extends EventTarget {
     this.addEventListener(event, wrappedHandler);
   }
 
-  off(event: string, handler: (data: any) => void) {
+  off(event: string, handler: (data: unknown) => void) {
     const eventHandlers = this.handlers.get(event);
     const wrappedHandler = eventHandlers?.get(handler);
 
