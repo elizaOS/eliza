@@ -44,6 +44,11 @@ class InternalMessageBus extends EventTarget {
         if (wrappedHandler) {
             this.removeEventListener(event, wrappedHandler);
             eventHandlers!.delete(handler);
+            
+            // Clean up empty maps
+            if (eventHandlers!.size === 0) {
+                this.handlers.delete(event);
+            }
         }
     }
 
