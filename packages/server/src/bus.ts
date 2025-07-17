@@ -16,14 +16,23 @@ class InternalMessageBus extends EventTarget {
     }
 
     on(event: string, handler: (data: any) => void) {
+        // Check if handler is already registered
+        if (!this.handlers.has(event)) {
+            this.handlers.set(event, new Map());
+        }
+        
+        const eventHandlers = this.handlers.get(event)!;
+        
+        // If handler already exists, don't add it again
+        if (eventHandlers.has(handler)) {
+            return;
+        }
+        
         // Wrap the handler to extract data from CustomEvent
         const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
         
         // Store mapping for removal later
-        if (!this.handlers.has(event)) {
-            this.handlers.set(event, new Map());
-        }
-        this.handlers.get(event)!.set(handler, wrappedHandler);
+        eventHandlers.set(handler, wrappedHandler);
         
         this.addEventListener(event, wrappedHandler);
     }

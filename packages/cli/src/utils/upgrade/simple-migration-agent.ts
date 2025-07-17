@@ -52,14 +52,75 @@ export class SimpleMigrationAgent extends EventTarget {
   }
 
   on(event: string, handler: (data?: any) => void) {
-    const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
-    
+    // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
     }
-    this.handlers.get(event)!.set(handler, wrappedHandler);
+    
+    const eventHandlers = this.handlers.get(event)!;
+    
+    // If handler already exists, don't add it again
+    if (eventHandlers.has(handler)) {
+      return;
+    }
+    
+    // Wrap the handler to extract data from CustomEvent
+    const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
+    
+    // Store mapping for removal later
+    eventHandlers.set(handler, wrappedHandler);
     
     this.addEventListener(event, wrappedHandler);
+  }
+
+  off(event: string, handler: (data?: any) => void) {
+    const eventHandlers = this.handlers.get(event);
+    const wrappedHandler = eventHandlers?.get(handler);
+    
+    if (wrappedHandler) {
+      this.removeEventListener(event, wrappedHandler);
+      eventHandlers!.delete(handler);
+      
+      // Clean up empty maps
+      if (eventHandlers!.size === 0) {
+        this.handlers.delete(event);
+      }
+    }
+  }
+
+  // Alias for EventEmitter compatibility
+  removeListener(event: string, handler: (data?: any) => void) {
+    return this.off(event, handler);
+  }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      // Remove all listeners for specific event
+      const eventHandlers = this.handlers.get(event);
+      if (eventHandlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(event, wrappedHandler);
+        }
+        this.handlers.delete(event);
+      }
+    } else {
+      // Remove all listeners for all events
+      for (const [eventName, eventHandlers] of this.handlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(eventName, wrappedHandler);
+        }
+      }
+      this.handlers.clear();
+    }
+  }
+
+  listenerCount(event: string): number {
+    return this.handlers.get(event)?.size || 0;
+  }
+
+  listeners(event: string): Function[] {
+    const eventHandlers = this.handlers.get(event);
+    return eventHandlers ? Array.from(eventHandlers.keys()) : [];
   }
 
   private isImportantUpdate(text: string): boolean {
