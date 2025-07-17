@@ -20,6 +20,7 @@ import {
   type State,
   type UUID,
   type ActionResult,
+  parseKeyValueXml,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -39,9 +40,7 @@ const componentTemplate = `# Task: Extract Source and Update Component Data
 
 {{#if existingData}}
 # Existing Component Data:
-\`\`\`json
 {{existingData}}
-\`\`\`
 {{/if}}
 
 # Instructions:
@@ -55,39 +54,37 @@ const componentTemplate = `# Task: Extract Source and Update Component Data
    - Includes the new information from the conversation
    - Contains only valid data for this component type
 
-Return a JSON object with the following structure:
-\`\`\`json
-{
-  "source": "platform-name",
-  "data": {
-    // Component-specific fields
-    // e.g. username, username, displayName, etc.
-  }
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return an XML response with the following structure:
+<response>
+  <source>platform-name</source>
+  <data>
+    <username>username_value</username>
+    <displayName>display_name_value</displayName>
+    <!-- Add other component-specific fields as needed -->
+  </data>
+</response>
 
 Example outputs:
 1. For "my telegram username is @dev_guru":
-\`\`\`json
-{
-  "source": "telegram",
-  "data": {
-    "username": "dev_guru"
-  }
-}
-\`\`\`
+<response>
+  <source>telegram</source>
+  <data>
+    <username>dev_guru</username>
+  </data>
+</response>
 
 2. For "update my twitter handle to @tech_master":
-\`\`\`json
-{
-  "source": "twitter",
-  "data": {
-    "username": "tech_master"
-  }
-}
-\`\`\`
+<response>
+  <source>twitter</source>
+  <data>
+    <username>tech_master</username>
+  </data>
+</response>
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Action for updating contact details for a user entity.
@@ -274,14 +271,9 @@ export const updateEntityAction: Action = {
       // Parse the generated data
       let parsedResult: any;
       try {
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('No valid JSON found in the LLM response');
-        }
+        parsedResult = parseKeyValueXml(result);
 
-        parsedResult = JSON.parse(jsonMatch[0]);
-
-        if (!parsedResult.source || !parsedResult.data) {
+        if (!parsedResult || !parsedResult.source || !parsedResult.data) {
           throw new Error('Invalid response format - missing source or data');
         }
       } catch (error: any) {
