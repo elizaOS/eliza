@@ -1,5 +1,4 @@
 import { query } from '@anthropic-ai/claude-code';
-import { EventEmitter } from 'events';
 import { createMigrationGuideLoader, MigrationGuideLoader } from './migration-guide-loader';
 import { logger } from '@elizaos/core';
 
@@ -12,7 +11,8 @@ export interface SimpleMigrationResult {
   guidesUsed?: string[];
 }
 
-export class SimpleMigrationAgent extends EventEmitter {
+export class SimpleMigrationAgent extends EventTarget {
+  private handlers = new Map<string, Map<Function, EventListener>>();
   private repoPath: string;
   private abortController: AbortController;
   private verbose: boolean;
@@ -44,6 +44,22 @@ export class SimpleMigrationAgent extends EventEmitter {
       logger.warn('Failed to initialize migration guide loader', error);
       throw new Error('Cannot initialize migration system without guide access');
     }
+  }
+
+  // EventEmitter-like API using native EventTarget
+  private emit(event: string, data?: any) {
+    this.dispatchEvent(new CustomEvent(event, { detail: data }));
+  }
+
+  on(event: string, handler: (data?: any) => void) {
+    const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
+    
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Map());
+    }
+    this.handlers.get(event)!.set(handler, wrappedHandler);
+    
+    this.addEventListener(event, wrappedHandler);
   }
 
   private isImportantUpdate(text: string): boolean {
