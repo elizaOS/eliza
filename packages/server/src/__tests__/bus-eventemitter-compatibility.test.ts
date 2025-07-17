@@ -8,8 +8,9 @@ import internalMessageBus from '../bus';
 
 describe('InternalMessageBus EventEmitter Compatibility', () => {
   beforeEach(() => {
-    // Clean up any existing listeners
-    // Note: EventTarget doesn't have removeAllListeners, so we'll track and remove manually
+    // Clean up any existing listeners to ensure test isolation
+    // Cast to any to access the removeAllListeners method we added
+    (internalMessageBus as any).removeAllListeners();
   });
 
   describe('emit() method', () => {
@@ -190,58 +191,59 @@ describe('InternalMessageBus EventEmitter Compatibility', () => {
       let called1 = false;
       let called2 = false;
       let called3 = false;
-      let errorThrown = false;
+      let errorDetails = null as Error | null;
       
       // Store handlers so we can clean them up
       const handler1 = () => { called1 = true; };
       const handler2 = () => {
         called2 = true;
-        errorThrown = true;
-        // We'll verify the error behavior without actually throwing
-        // since Bun's test runner intercepts thrown errors
+        throw new Error('Test error from handler2');
       };
       const handler3 = () => { called3 = true; };
       
-      // First, let's test the actual EventTarget behavior outside of our bus
-      const testTarget = new EventTarget();
-      let testCalled1 = false;
-      let testCalled2 = false;
-      let testCalled3 = false;
+      // Intercept uncaught errors to verify they are thrown
+      const originalOnError = process.on('uncaughtException', () => {});
+      const errorHandler = (error: Error) => {
+        errorDetails = error;
+      };
+      process.removeAllListeners('uncaughtException');
+      process.once('uncaughtException', errorHandler);
       
-      testTarget.addEventListener('test', () => { testCalled1 = true; });
-      testTarget.addEventListener('test', () => { 
-        testCalled2 = true;
-        // In real EventTarget, this would throw but continue to next listener
-      });
-      testTarget.addEventListener('test', () => { testCalled3 = true; });
-      
-      testTarget.dispatchEvent(new Event('test'));
-      
-      // Verify EventTarget behavior
-      expect(testCalled1).toBe(true);
-      expect(testCalled2).toBe(true);
-      expect(testCalled3).toBe(true);
-      
-      // Now test our bus implementation
-      internalMessageBus.on('error-test', handler1);
-      internalMessageBus.on('error-test', handler2);
-      internalMessageBus.on('error-test', handler3);
-      
-      const result = internalMessageBus.emit('error-test', {});
-      
-      // The event dispatch should return true
-      expect(result).toBe(true);
-      
-      // All listeners should have been called
-      expect(called1).toBe(true);
-      expect(called2).toBe(true);
-      expect(called3).toBe(true);
-      expect(errorThrown).toBe(true);
-      
-      // Clean up handlers
-      internalMessageBus.off('error-test', handler1);
-      internalMessageBus.off('error-test', handler2);
-      internalMessageBus.off('error-test', handler3);
+      try {
+        // Register handlers
+        internalMessageBus.on('error-test-real', handler1);
+        internalMessageBus.on('error-test-real', handler2);
+        internalMessageBus.on('error-test-real', handler3);
+        
+        // Emit the event - handler2 will throw
+        const result = internalMessageBus.emit('error-test-real', {});
+        
+        // Give time for async error to be caught
+        Bun.sleepSync(10);
+        
+        // The event dispatch should still return true
+        expect(result).toBe(true);
+        
+        // All listeners should have been called despite the error
+        expect(called1).toBe(true);
+        expect(called2).toBe(true);
+        expect(called3).toBe(true);
+        
+        // Verify that an error was actually thrown and caught
+        expect(errorDetails).not.toBeNull();
+        expect(errorDetails?.message).toBe('Test error from handler2');
+      } finally {
+        // Clean up handlers
+        internalMessageBus.off('error-test-real', handler1);
+        internalMessageBus.off('error-test-real', handler2);
+        internalMessageBus.off('error-test-real', handler3);
+        
+        // Restore original error handling
+        process.removeListener('uncaughtException', errorHandler);
+        if (originalOnError) {
+          process.on('uncaughtException', originalOnError);
+        }
+      }
     });
 
     it('should handle complex data types', (done) => {
