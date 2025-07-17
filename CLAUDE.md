@@ -182,11 +182,11 @@ bun run release:alpha   # Release alpha version
   // ✅ CORRECT - Use EventTarget
   class MyClass extends EventTarget {
     private handlers = new Map<string, Map<Function, EventListener>>();
-    
+
     emit(event: string, data: any) {
       this.dispatchEvent(new CustomEvent(event, { detail: data }));
     }
-    
+
     on(event: string, handler: (data: any) => void) {
       const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
       if (!this.handlers.has(event)) {

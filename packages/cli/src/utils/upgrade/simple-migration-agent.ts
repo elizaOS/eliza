@@ -56,14 +56,14 @@ export class SimpleMigrationAgent extends EventTarget {
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
     }
-    
+
     const eventHandlers = this.handlers.get(event)!;
-    
+
     // If handler already exists, don't add it again
     if (eventHandlers.has(handler)) {
       return;
     }
-    
+
     // Wrap the handler to extract data from CustomEvent
     const wrappedHandler = ((e: Event) => {
       if (e instanceof CustomEvent) {
@@ -72,21 +72,21 @@ export class SimpleMigrationAgent extends EventTarget {
         handler(undefined);
       }
     }) as EventListener;
-    
+
     // Store mapping for removal later
     eventHandlers.set(handler, wrappedHandler);
-    
+
     this.addEventListener(event, wrappedHandler);
   }
 
   off(event: string, handler: (data?: any) => void) {
     const eventHandlers = this.handlers.get(event);
     const wrappedHandler = eventHandlers?.get(handler);
-    
+
     if (wrappedHandler) {
       this.removeEventListener(event, wrappedHandler);
       eventHandlers!.delete(handler);
-      
+
       // Clean up empty maps
       if (eventHandlers!.size === 0) {
         this.handlers.delete(event);
