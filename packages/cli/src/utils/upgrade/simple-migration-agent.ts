@@ -12,7 +12,7 @@ export interface SimpleMigrationResult {
 }
 
 export class SimpleMigrationAgent extends EventTarget {
-  private handlers = new Map<string, Map<Function, EventListener>>();
+  private handlers = new Map<string, Map<(data?: unknown) => void, EventListener>>();
   private repoPath: string;
   private abortController: AbortController;
   private verbose: boolean;
@@ -47,11 +47,11 @@ export class SimpleMigrationAgent extends EventTarget {
   }
 
   // EventEmitter-like API using native EventTarget
-  private emit(event: string, data?: any): boolean {
+  private emit(event: string, data?: unknown): boolean {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
-  on(event: string, handler: (data?: any) => void) {
+  on(event: string, handler: (data?: unknown) => void) {
     // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
@@ -79,7 +79,7 @@ export class SimpleMigrationAgent extends EventTarget {
     this.addEventListener(event, wrappedHandler);
   }
 
-  off(event: string, handler: (data?: any) => void) {
+  off(event: string, handler: (data?: unknown) => void) {
     const eventHandlers = this.handlers.get(event);
     const wrappedHandler = eventHandlers?.get(handler);
 
@@ -95,7 +95,7 @@ export class SimpleMigrationAgent extends EventTarget {
   }
 
   // Alias for EventEmitter compatibility
-  removeListener(event: string, handler: (data?: any) => void) {
+  removeListener(event: string, handler: (data?: unknown) => void) {
     return this.off(event, handler);
   }
 
@@ -124,7 +124,7 @@ export class SimpleMigrationAgent extends EventTarget {
     return this.handlers.get(event)?.size || 0;
   }
 
-  listeners(event: string): Function[] {
+  listeners(event: string): ((data?: unknown) => void)[] {
     const eventHandlers = this.handlers.get(event);
     return eventHandlers ? Array.from(eventHandlers.keys()) : [];
   }
@@ -227,7 +227,7 @@ export class SimpleMigrationAgent extends EventTarget {
     }
   }
 
-  private updateTokenTracking(usage: any): void {
+  private updateTokenTracking(usage: { input_tokens?: number; output_tokens?: number }): void {
     // Update token counts from Claude Code SDK usage data
     if (usage.input_tokens) {
       this.totalInputTokens += usage.input_tokens;
