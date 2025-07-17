@@ -57,7 +57,7 @@ export class SimpleMigrationAgent extends EventTarget {
   }
 
   // EventEmitter-like API using native EventTarget
-  private emit(event: string, data?: unknown): boolean {
+  emit(event: string, data?: unknown): boolean {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
