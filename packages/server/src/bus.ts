@@ -29,7 +29,13 @@ class InternalMessageBus extends EventTarget {
         }
         
         // Wrap the handler to extract data from CustomEvent
-        const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
+        const wrappedHandler = ((e: Event) => {
+            if (e instanceof CustomEvent) {
+                handler(e.detail);
+            } else {
+                handler(undefined);
+            }
+        }) as EventListener;
         
         // Store mapping for removal later
         eventHandlers.set(handler, wrappedHandler);
