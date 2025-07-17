@@ -11,6 +11,16 @@ export interface SimpleMigrationResult {
   guidesUsed?: string[];
 }
 
+/**
+ * SimpleMigrationAgent uses a class extending EventTarget rather than functional
+ * patterns because EventTarget is a native browser/Bun API that requires class inheritance.
+ * This is an intentional architectural decision to leverage Bun's native capabilities
+ * instead of Node.js EventEmitter for better compatibility.
+ * 
+ * NOTE: Unlike standard EventEmitter, this implementation prevents duplicate handler
+ * registration. This is an intentional design choice to prevent memory leaks and
+ * unintended multiple executions of the same handler.
+ */
 export class SimpleMigrationAgent extends EventTarget {
   private handlers = new Map<string, Map<(data?: unknown) => void, EventListener>>();
   private repoPath: string;

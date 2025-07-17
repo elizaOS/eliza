@@ -6,6 +6,15 @@
  * with a more robust solution like Redis Pub/Sub, Kafka, RabbitMQ, etc.
  *
  * Uses Bun-native EventTarget internally but maintains EventEmitter-like API.
+ * 
+ * NOTE: This implementation uses a class extending EventTarget rather than functional
+ * patterns because EventTarget is a native browser/Bun API that requires class inheritance.
+ * This is an intentional architectural decision to leverage Bun's native capabilities
+ * instead of Node.js EventEmitter for better compatibility.
+ * 
+ * NOTE: Unlike standard EventEmitter, this implementation prevents duplicate handler
+ * registration. This is an intentional design choice to prevent memory leaks and
+ * unintended multiple executions of the same handler.
  */
 class InternalMessageBus extends EventTarget {
   private maxListeners: number = 50;
@@ -50,10 +59,10 @@ class InternalMessageBus extends EventTarget {
 
     if (wrappedHandler) {
       this.removeEventListener(event, wrappedHandler);
-      eventHandlers!.delete(handler);
+      eventHandlers?.delete(handler);
 
       // Clean up empty maps
-      if (eventHandlers!.size === 0) {
+      if (eventHandlers && eventHandlers.size === 0) {
         this.handlers.delete(event);
       }
     }
