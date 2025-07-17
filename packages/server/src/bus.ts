@@ -64,6 +64,27 @@ class InternalMessageBus extends EventTarget {
     // EventTarget doesn't have a built-in max listeners concept,
     // but we keep this for API compatibility
   }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      // Remove all listeners for a specific event
+      const eventHandlers = this.handlers.get(event);
+      if (eventHandlers) {
+        for (const [handler, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(event, wrappedHandler);
+        }
+        this.handlers.delete(event);
+      }
+    } else {
+      // Remove all listeners for all events
+      for (const [eventName, eventHandlers] of this.handlers) {
+        for (const [handler, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(eventName, wrappedHandler);
+        }
+      }
+      this.handlers.clear();
+    }
+  }
 }
 
 const internalMessageBus = new InternalMessageBus();
