@@ -51,7 +51,7 @@ export class SimpleMigrationAgent extends EventTarget {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
-  on(event: string, handler: (data?: unknown) => void) {
+  on(event: string, handler: (data?: unknown) => void): this {
     // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
@@ -61,7 +61,7 @@ export class SimpleMigrationAgent extends EventTarget {
 
     // If handler already exists, don't add it again
     if (eventHandlers.has(handler)) {
-      return;
+      return this;
     }
 
     // Wrap the handler to extract data from CustomEvent
@@ -77,6 +77,7 @@ export class SimpleMigrationAgent extends EventTarget {
     eventHandlers.set(handler, wrappedHandler);
 
     this.addEventListener(event, wrappedHandler);
+    return this;
   }
 
   off(event: string, handler: (data?: unknown) => void) {
