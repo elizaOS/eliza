@@ -18,8 +18,8 @@
     "lint": "prettier --write ./src"
   },
   "dependencies": {
-    "@elizaos/api-client": "1.2.10",
-    "@elizaos/cli": "1.2.10",
+    "@elizaos/api-client": "workspace:*",
+    "@elizaos/cli": "workspace:*",
     "@tauri-apps/api": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.4.0",
     "@tauri-apps/plugin-shell": "^2.3.0",
