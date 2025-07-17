@@ -52,7 +52,7 @@
     "husky": "^9.1.7",
     "lerna": "8.1.4",
     "tsup": "8.5.0",
-    "turbo": "^2.5.4",
+    "turbo": "^2.5.5",
     "typescript": "5.8.2"
   },
   "resolutions": {

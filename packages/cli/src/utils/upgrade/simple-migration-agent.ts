@@ -1,5 +1,4 @@
 import { query } from '@anthropic-ai/claude-code';
-import { EventEmitter } from 'events';
 import { createMigrationGuideLoader, MigrationGuideLoader } from './migration-guide-loader';
 import { logger } from '@elizaos/core';
 
@@ -12,7 +11,8 @@ export interface SimpleMigrationResult {
   guidesUsed?: string[];
 }
 
-export class SimpleMigrationAgent extends EventEmitter {
+export class SimpleMigrationAgent extends EventTarget {
+  private handlers = new Map<string, Map<Function, EventListener>>();
   private repoPath: string;
   private abortController: AbortController;
   private verbose: boolean;
@@ -44,6 +44,89 @@ export class SimpleMigrationAgent extends EventEmitter {
       logger.warn('Failed to initialize migration guide loader', error);
       throw new Error('Cannot initialize migration system without guide access');
     }
+  }
+
+  // EventEmitter-like API using native EventTarget
+  private emit(event: string, data?: any): boolean {
+    return this.dispatchEvent(new CustomEvent(event, { detail: data }));
+  }
+
+  on(event: string, handler: (data?: any) => void) {
+    // Check if handler is already registered
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Map());
+    }
+    
+    const eventHandlers = this.handlers.get(event)!;
+    
+    // If handler already exists, don't add it again
+    if (eventHandlers.has(handler)) {
+      return;
+    }
+    
+    // Wrap the handler to extract data from CustomEvent
+    const wrappedHandler = ((e: Event) => {
+      if (e instanceof CustomEvent) {
+        handler(e.detail);
+      } else {
+        handler(undefined);
+      }
+    }) as EventListener;
+    
+    // Store mapping for removal later
+    eventHandlers.set(handler, wrappedHandler);
+    
+    this.addEventListener(event, wrappedHandler);
+  }
+
+  off(event: string, handler: (data?: any) => void) {
+    const eventHandlers = this.handlers.get(event);
+    const wrappedHandler = eventHandlers?.get(handler);
+    
+    if (wrappedHandler) {
+      this.removeEventListener(event, wrappedHandler);
+      eventHandlers!.delete(handler);
+      
+      // Clean up empty maps
+      if (eventHandlers!.size === 0) {
+        this.handlers.delete(event);
+      }
+    }
+  }
+
+  // Alias for EventEmitter compatibility
+  removeListener(event: string, handler: (data?: any) => void) {
+    return this.off(event, handler);
+  }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      // Remove all listeners for specific event
+      const eventHandlers = this.handlers.get(event);
+      if (eventHandlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(event, wrappedHandler);
+        }
+        this.handlers.delete(event);
+      }
+    } else {
+      // Remove all listeners for all events
+      for (const [eventName, eventHandlers] of this.handlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(eventName, wrappedHandler);
+        }
+      }
+      this.handlers.clear();
+    }
+  }
+
+  listenerCount(event: string): number {
+    return this.handlers.get(event)?.size || 0;
+  }
+
+  listeners(event: string): Function[] {
+    const eventHandlers = this.handlers.get(event);
+    return eventHandlers ? Array.from(eventHandlers.keys()) : [];
   }
 
   private isImportantUpdate(text: string): boolean {
