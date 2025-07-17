@@ -44,8 +44,6 @@ export * from './actions/index.ts';
 export * from './evaluators/index.ts';
 export * from './providers/index.ts';
 
-import fetch from 'node-fetch';
-
 /**
  * Represents media data containing a buffer of data and the media type.
  * @typedef {Object} MediaData
@@ -175,7 +173,8 @@ export async function processAttachments(
           const res = await fetch(url);
           if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
 
-          const buffer = await res.buffer();
+          const arrayBuffer = await res.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
           const contentType = res.headers.get('content-type') || 'application/octet-stream';
           imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
         }
