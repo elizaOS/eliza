@@ -14,7 +14,7 @@ mock.module('@anthropic-ai/claude-code', () => ({
       yield { type: 'system', subtype: 'init' };
       yield { type: 'result', subtype: 'success' };
     })();
-  }
+  },
 }));
 
 mock.module('../../../src/utils/upgrade/migration-guide-loader', () => ({
@@ -23,9 +23,9 @@ mock.module('../../../src/utils/upgrade/migration-guide-loader', () => ({
     generateMigrationContext: () => 'Mock context',
     getGuidesByCategory: () => [],
     getRelevantGuidesForIssue: () => [],
-    searchGuides: () => []
+    searchGuides: () => [],
   }),
-  MigrationGuideLoader: class {}
+  MigrationGuideLoader: class {},
 }));
 
 mock.module('@elizaos/core', () => ({
@@ -33,8 +33,8 @@ mock.module('@elizaos/core', () => ({
     info: () => {},
     debug: () => {},
     warn: () => {},
-    error: () => {}
-  }
+    error: () => {},
+  },
 }));
 
 describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
@@ -58,12 +58,16 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
 
     it('should support multiple listeners for same event', () => {
       let count = 0;
-      const handler1 = () => { count++; };
-      const handler2 = () => { count++; };
+      const handler1 = () => {
+        count++;
+      };
+      const handler2 = () => {
+        count++;
+      };
 
       agent.on('multi-listener', handler1);
       agent.on('multi-listener', handler2);
-      
+
       // Manually emit event
       agent.dispatchEvent(new CustomEvent('multi-listener', { detail: {} }));
 
@@ -72,11 +76,13 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
 
     it('should not add duplicate handlers', () => {
       let count = 0;
-      const handler = () => { count++; };
+      const handler = () => {
+        count++;
+      };
 
       agent.on('duplicate-test', handler);
       agent.on('duplicate-test', handler); // Try to add same handler again
-      
+
       // Manually emit event
       agent.dispatchEvent(new CustomEvent('duplicate-test', { detail: {} }));
 
@@ -101,7 +107,7 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
 
     it('should pass data correctly to handlers', (done) => {
       const testData = { foo: 'bar', num: 123, nested: { value: true } };
-      
+
       agent.on('data-test', (data) => {
         expect(data).toEqual(testData);
         expect(data.foo).toBe('bar');
@@ -117,11 +123,13 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
   describe('off() method', () => {
     it('should remove event listeners', () => {
       let called = false;
-      const handler = () => { called = true; };
+      const handler = () => {
+        called = true;
+      };
 
       agent.on('test-off', handler);
       agent.off('test-off', handler);
-      
+
       agent.dispatchEvent(new CustomEvent('test-off', { detail: {} }));
 
       expect(called).toBe(false);
@@ -130,13 +138,17 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
     it('should only remove specified handler', () => {
       let called1 = false;
       let called2 = false;
-      const handler1 = () => { called1 = true; };
-      const handler2 = () => { called2 = true; };
+      const handler1 = () => {
+        called1 = true;
+      };
+      const handler2 = () => {
+        called2 = true;
+      };
 
       agent.on('selective-off', handler1);
       agent.on('selective-off', handler2);
       agent.off('selective-off', handler1);
-      
+
       agent.dispatchEvent(new CustomEvent('selective-off', { detail: {} }));
 
       expect(called1).toBe(false);
@@ -153,20 +165,22 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
 
     it('should clean up internal maps when last handler is removed', () => {
       const handler = () => {};
-      
+
       agent.on('cleanup-test', handler);
       agent.off('cleanup-test', handler);
-      
+
       // The internal handlers map should no longer have this event
       // We can test this by checking if adding the same handler again works
       let count = 0;
-      const newHandler = () => { count++; };
-      
+      const newHandler = () => {
+        count++;
+      };
+
       agent.on('cleanup-test', newHandler);
       agent.on('cleanup-test', newHandler); // This should not add duplicate
-      
+
       agent.dispatchEvent(new CustomEvent('cleanup-test', { detail: {} }));
-      
+
       expect(count).toBe(1);
     });
   });
@@ -174,11 +188,13 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
   describe('removeListener() method', () => {
     it('should be an alias for off()', () => {
       let called = false;
-      const handler = () => { called = true; };
+      const handler = () => {
+        called = true;
+      };
 
       agent.on('test-removeListener', handler);
       agent.removeListener('test-removeListener', handler);
-      
+
       agent.dispatchEvent(new CustomEvent('test-removeListener', { detail: {} }));
 
       expect(called).toBe(false);
@@ -191,12 +207,18 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
       let called2 = false;
       let called3 = false;
 
-      agent.on('remove-all-specific', () => { called1 = true; });
-      agent.on('remove-all-specific', () => { called2 = true; });
-      agent.on('other-event', () => { called3 = true; });
+      agent.on('remove-all-specific', () => {
+        called1 = true;
+      });
+      agent.on('remove-all-specific', () => {
+        called2 = true;
+      });
+      agent.on('other-event', () => {
+        called3 = true;
+      });
 
       agent.removeAllListeners('remove-all-specific');
-      
+
       agent.dispatchEvent(new CustomEvent('remove-all-specific', { detail: {} }));
       agent.dispatchEvent(new CustomEvent('other-event', { detail: {} }));
 
@@ -210,12 +232,18 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
       let called2 = false;
       let called3 = false;
 
-      agent.on('event1', () => { called1 = true; });
-      agent.on('event2', () => { called2 = true; });
-      agent.on('event3', () => { called3 = true; });
+      agent.on('event1', () => {
+        called1 = true;
+      });
+      agent.on('event2', () => {
+        called2 = true;
+      });
+      agent.on('event3', () => {
+        called3 = true;
+      });
 
       agent.removeAllListeners();
-      
+
       agent.dispatchEvent(new CustomEvent('event1', { detail: {} }));
       agent.dispatchEvent(new CustomEvent('event2', { detail: {} }));
       agent.dispatchEvent(new CustomEvent('event3', { detail: {} }));
@@ -277,13 +305,13 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
   describe('EventEmitter-like behavior', () => {
     it('should execute listeners in order of registration', () => {
       const order: number[] = [];
-      
+
       agent.on('order-test', () => order.push(1));
       agent.on('order-test', () => order.push(2));
       agent.on('order-test', () => order.push(3));
-      
+
       agent.dispatchEvent(new CustomEvent('order-test', { detail: {} }));
-      
+
       expect(order).toEqual([1, 2, 3]);
     });
 
@@ -292,15 +320,15 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
         array: [1, 2, 3],
         nested: {
           deep: {
-            value: 'test'
-          }
+            value: 'test',
+          },
         },
         date: new Date(),
         nullValue: null,
         undefinedValue: undefined,
-        buffer: Buffer.from('test')
+        buffer: Buffer.from('test'),
       };
-      
+
       agent.on('complex-data', (data) => {
         expect(data).toEqual(complexData);
         expect(data.array).toEqual([1, 2, 3]);
@@ -308,13 +336,13 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
         expect(data.buffer.toString()).toBe('test');
         done();
       });
-      
+
       agent.dispatchEvent(new CustomEvent('complex-data', { detail: complexData }));
     });
 
     it('should handle events during migration lifecycle', (done) => {
       const events: string[] = [];
-      
+
       agent.on('start', () => events.push('start'));
       agent.on('progress', (count) => {
         events.push(`progress-${count}`);
@@ -323,7 +351,7 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
           done();
         }
       });
-      
+
       // Simulate migration lifecycle events
       agent.dispatchEvent(new CustomEvent('start'));
       agent.dispatchEvent(new CustomEvent('progress', { detail: 10 }));
@@ -334,51 +362,55 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
     it('should handle many listeners without issues', () => {
       const handlers: (() => void)[] = [];
       let totalCalls = 0;
-      
+
       // Add 100 listeners
       for (let i = 0; i < 100; i++) {
-        const handler = () => { totalCalls++; };
+        const handler = () => {
+          totalCalls++;
+        };
         handlers.push(handler);
         agent.on('many-listeners', handler);
       }
-      
+
       agent.dispatchEvent(new CustomEvent('many-listeners', { detail: {} }));
       expect(totalCalls).toBe(100);
-      
+
       // Clean up
-      handlers.forEach(handler => {
+      handlers.forEach((handler) => {
         agent.off('many-listeners', handler);
       });
-      
+
       expect(agent.listenerCount('many-listeners')).toBe(0);
     });
 
     it('should handle rapid fire events', () => {
       let count = 0;
-      agent.on('rapid-fire', () => { count++; });
-      
+      agent.on('rapid-fire', () => {
+        count++;
+      });
+
       for (let i = 0; i < 1000; i++) {
         agent.dispatchEvent(new CustomEvent('rapid-fire', { detail: { index: i } }));
       }
-      
+
       expect(count).toBe(1000);
     });
 
     it('should properly clean up memory when listeners are removed', () => {
       const handlers: (() => void)[] = [];
-      
+
       // Add and remove many listeners
       for (let i = 0; i < 100; i++) {
         const handler = () => {};
         handlers.push(handler);
         agent.on(`event-${i}`, handler);
       }
-      
+
       // Remove all listeners
       for (let i = 0; i < 100; i++) {
         agent.off(`event-${i}`, handlers[i]);
       }
-      
+
       // Verify all events have 0 listeners
       for (let i = 0; i < 100; i++) {
         expect(agent.listenerCount(`event-${i}`)).toBe(0);
@@ -389,11 +421,11 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
   describe('Integration with SimpleMigrationAgent', () => {
     it('should maintain compatibility during abort()', () => {
       let abortedCalled = false;
-      
+
       agent.on('aborted', () => {
         abortedCalled = true;
       });
-      
+
       // Note: We can't fully test abort() without mocking more internals,
       // but we can verify the event listener is properly registered
       expect(agent.listenerCount('aborted')).toBe(1);
@@ -401,21 +433,21 @@ describe('SimpleMigrationAgent EventEmitter Compatibility', () => {
 
     it('should allow listening to migration events', () => {
       const eventTypes = ['start', 'progress', 'complete', 'error', 'aborted'];
-      
-      eventTypes.forEach(eventType => {
+
+      eventTypes.forEach((eventType) => {
         agent.on(eventType, () => {});
       });
-      
+
       // Verify all event listeners were added
-      eventTypes.forEach(eventType => {
+      eventTypes.forEach((eventType) => {
         expect(agent.listenerCount(eventType)).toBe(1);
       });
-      
+
       // Clean up
       agent.removeAllListeners();
-      
+
       // Verify all were removed
-      eventTypes.forEach(eventType => {
+      eventTypes.forEach((eventType) => {
         expect(agent.listenerCount(eventType)).toBe(0);
       });
     });

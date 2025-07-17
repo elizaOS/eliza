@@ -9,9 +9,11 @@ Per the CLAUDE.md guidelines, ElizaOS uses Bun's native `EventTarget` API instea
 ## Test Files
 
 ### bus-eventemitter-compatibility.test.ts
+
 Tests the EventEmitter compatibility of the internal message bus (`/packages/server/src/bus.ts`).
 
 Key test areas:
+
 - `emit()` method functionality
 - `on()` method for adding listeners
 - `off()` method for removing listeners
@@ -20,9 +22,11 @@ Key test areas:
 - Memory management and performance
 
 ### simple-migration-agent-eventemitter-compatibility.test.ts
+
 Tests the EventEmitter compatibility of the SimpleMigrationAgent (`/packages/cli/src/utils/upgrade/simple-migration-agent.ts`).
 
 Additional test areas:
+
 - `removeListener()` alias method
 - `removeAllListeners()` method
 - `listenerCount()` method
@@ -78,7 +82,7 @@ class MyClass extends EventTarget {
 # Run bus compatibility tests
 bun test packages/server/src/__tests__/bus-eventemitter-compatibility.test.ts
 
-# Run SimpleMigrationAgent compatibility tests  
+# Run SimpleMigrationAgent compatibility tests
 bun test packages/cli/tests/unit/utils/simple-migration-agent-eventemitter-compatibility.test.ts
 
 # Run all server tests
@@ -91,6 +95,7 @@ cd packages/cli && bun test
 ## Test Coverage
 
 Both test suites achieve comprehensive coverage of the EventEmitter-like API:
+
 - All public methods are tested
 - Edge cases like duplicate handlers, non-existent handlers
 - Memory management and cleanup
