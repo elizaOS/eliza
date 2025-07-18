@@ -249,7 +249,7 @@ export async function createTEEProject(
 ): Promise<void> {
   // Clear any inherited PGLITE_DATA_DIR to prevent child projects from inheriting parent's database
   delete process.env.PGLITE_DATA_DIR;
-  
+
   const teeTargetDir = join(targetDir, projectName);
 
   // Validate target directory
@@ -312,7 +312,7 @@ export async function createProject(
 ): Promise<void> {
   // Clear any inherited PGLITE_DATA_DIR to prevent child projects from inheriting parent's database
   delete process.env.PGLITE_DATA_DIR;
-  
+
   // Handle current directory case
   const projectTargetDir = projectName === '.' ? targetDir : join(targetDir, projectName);
 
