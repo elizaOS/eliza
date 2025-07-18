@@ -1,5 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import * as path from 'node:path';
 import type { ServerProcess } from '../types';
 
 /**
@@ -46,11 +47,32 @@ export class DevServerManager implements ServerProcess {
     const nodeExecutable = process.execPath;
     const scriptPath = process.argv[1]; // Current script path
 
+    // Set up environment with proper module resolution paths
+    const env = { ...process.env };
+    
+    // Add local node_modules to NODE_PATH for proper module resolution
+    // This ensures spawned process can find local packages
+    const localModulesPath = path.join(process.cwd(), 'node_modules');
+    if (env.NODE_PATH) {
+      env.NODE_PATH = `${localModulesPath}${path.delimiter}${env.NODE_PATH}`;
+    } else {
+      env.NODE_PATH = localModulesPath;
+    }
+    
+    // Add local .bin to PATH to prioritize local executables
+    // This ensures local CLI tools are used over global ones
+    const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
+    env.PATH = `${localBinPath}${path.delimiter}${env.PATH}`;
+    
+    // Ensure color output
+    env.FORCE_COLOR = '1';
+
     // Use spawn to create a process
     this.process = spawn(nodeExecutable, [scriptPath, 'start', ...args], {
       stdio: 'inherit',
       detached: false, // We want to keep control of this process
-      env: { ...process.env, FORCE_COLOR: '1' }, // Ensure color output in CI
+      env: env,
+      cwd: process.cwd(), // Ensure proper working directory
     });
 
     // Handle process exit events
