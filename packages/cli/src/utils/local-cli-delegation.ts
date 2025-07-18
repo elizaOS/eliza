@@ -154,6 +154,7 @@ function isTestOrCiEnvironment(): boolean {
     process.env.ELIZA_TEST_MODE === 'true',
     process.env.ELIZA_TEST_MODE === '1',
     process.env.ELIZA_CLI_TEST_MODE === 'true',
+    process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION === 'true',
     process.env.BUN_TEST === 'true',
     process.env.VITEST === 'true',
     process.env.JEST_WORKER_ID !== undefined,

@@ -1,11 +1,22 @@
-import { describe, it, expect, mock, beforeEach, afterEach, jest, spyOn } from 'bun:test';
-import { spawn } from 'node:child_process';
-import * as path from 'node:path';
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
 import { DevServerManager } from '../../../src/commands/dev/utils/server-manager';
 
-// Mock child_process.spawn
+// Mock the child_process spawn function
+const mockSpawn = mock(() => ({
+  on: mock(),
+  kill: mock(() => true),
+  killed: false,
+}));
+
+// Mock node:child_process module
 mock.module('node:child_process', () => ({
-  spawn: jest.fn(),
+  spawn: mockSpawn,
+}));
+
+// Mock fs module for existsSync
+const mockExistsSync = mock(() => false);
+mock.module('fs', () => ({
+  existsSync: mockExistsSync,
 }));
 
 describe('DevServerManager', () => {
@@ -13,6 +24,9 @@ describe('DevServerManager', () => {
   let originalArgv: string[];
   let originalCwd: () => string;
   let originalEnv: NodeJS.ProcessEnv;
+  let consoleInfoSpy: any;
+  let consoleWarnSpy: any;
+  let consoleErrorSpy: any;
 
   beforeEach(() => {
     // Store original process values
@@ -24,35 +38,43 @@ describe('DevServerManager', () => {
     // Mock process values
     process.execPath = '/usr/bin/node';
     process.argv = ['/usr/bin/node', '/path/to/script.js'];
-    spyOn(process, 'cwd').mockReturnValue('/workspace');
+
+    // Mock process.cwd
+    const mockCwd = mock(() => '/workspace');
+    process.cwd = mockCwd;
 
     // Mock console methods
-    spyOn(console, 'info').mockImplementation(() => {});
-    spyOn(console, 'warn').mockImplementation(() => {});
-    spyOn(console, 'error').mockImplementation(() => {});
+    consoleInfoSpy = spyOn(console, 'info').mockImplementation(() => {});
+    consoleWarnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
     // Clear mock calls
-    (spawn as any).mockClear();
+    mockSpawn.mockClear();
+    mockExistsSync.mockClear();
   });
 
   afterEach(() => {
     // Restore original process values
     process.execPath = originalExecPath;
     process.argv = originalArgv;
+    process.cwd = originalCwd;
     process.env = originalEnv;
 
-    // Restore all mocks
-    mock.restore();
+    // Restore console methods
+    consoleInfoSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   describe('start()', () => {
     it('should handle PATH environment variable correctly when PATH exists', async () => {
-      const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: jest.fn(),
-        kill: jest.fn(() => true),
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false); // No local CLI
 
       // Set up env with both PATH and NODE_PATH
       process.env = {
@@ -83,12 +105,13 @@ describe('DevServerManager', () => {
     });
 
     it('should handle PATH environment variable correctly when PATH is undefined', async () => {
-      const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: jest.fn(),
-        kill: jest.fn(() => true),
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false); // No local CLI
 
       // Set up env without PATH
       process.env = {
@@ -118,12 +141,13 @@ describe('DevServerManager', () => {
     });
 
     it('should handle NODE_PATH environment variable correctly when NODE_PATH is undefined', async () => {
-      const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: jest.fn(),
-        kill: jest.fn(() => true),
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false); // No local CLI
 
       // Set up env without NODE_PATH
       process.env = {
@@ -153,12 +177,13 @@ describe('DevServerManager', () => {
     });
 
     it('should handle both PATH and NODE_PATH being undefined', async () => {
-      const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: jest.fn(),
-        kill: jest.fn(() => true),
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false); // No local CLI
 
       // Set up env without PATH and NODE_PATH
       process.env = {};
@@ -184,16 +209,87 @@ describe('DevServerManager', () => {
       expect(env.PATH).toBe('/workspace/node_modules/.bin');
       expect(env.NODE_PATH).toBe('/workspace/node_modules');
     });
+
+    it('should use local CLI when available', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(true); // Local CLI exists
+
+      process.env = {
+        PATH: '/usr/bin:/usr/local/bin',
+      };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        '/usr/bin/node',
+        ['/workspace/node_modules/@elizaos/cli/dist/index.js', 'start'],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            PATH: expect.stringContaining('/workspace/node_modules/.bin'),
+            NODE_PATH: '/workspace/node_modules',
+          }),
+        })
+      );
+
+      expect(consoleInfoSpy).toHaveBeenCalledWith('Using local @elizaos/cli installation');
+    });
+
+    it('should pass additional arguments to start command', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start(['--verbose', '--port', '3000']);
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        '/usr/bin/node',
+        ['/path/to/script.js', 'start', '--verbose', '--port', '3000'],
+        expect.anything()
+      );
+    });
+
+    it('should set up process event handlers', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      // Verify event handlers were set up
+      expect(mockChildProcess.on).toHaveBeenCalledWith('exit', expect.any(Function));
+      expect(mockChildProcess.on).toHaveBeenCalledWith('error', expect.any(Function));
+    });
   });
 
   describe('stop()', () => {
     it('should stop the running process', async () => {
-      const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: jest.fn(),
-        kill: jest.fn(() => true),
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
 
       // Set minimal env for test
       process.env = {
@@ -216,6 +312,118 @@ describe('DevServerManager', () => {
       const result = await manager.stop();
 
       expect(result).toBe(false);
+    });
+
+    it('should handle process that fails to kill gracefully', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => false), // Simulate failed kill
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      const result = await manager.stop();
+
+      expect(result).toBe(true);
+      expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGKILL');
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        'Failed to kill server process, trying force kill...'
+      );
+    });
+  });
+
+  describe('restart()', () => {
+    it('should restart the server process', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      // Clear spawn calls from start
+      mockSpawn.mockClear();
+
+      await manager.restart(['--debug']);
+
+      // Should have been called again for restart
+      expect(mockSpawn).toHaveBeenCalledWith(
+        '/usr/bin/node',
+        ['/path/to/script.js', 'start', '--debug'],
+        expect.anything()
+      );
+    });
+  });
+
+  describe('process event handling', () => {
+    it('should handle process exit event', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      // Simulate process exit
+      const exitHandler = mockChildProcess.on.mock.calls.find((call) => call[0] === 'exit')?.[1];
+      expect(exitHandler).toBeDefined();
+
+      // Test normal exit
+      exitHandler(0, null);
+      expect(consoleInfoSpy).toHaveBeenCalledWith('Server process exited normally');
+      expect(manager.process).toBeNull();
+
+      // Reset for next test
+      await manager.start();
+      mockSpawn.mockClear();
+
+      // Test error exit
+      exitHandler(1, null);
+      expect(consoleWarnSpy).toHaveBeenCalledWith('Server process exited with code 1');
+    });
+
+    it('should handle process error event', async () => {
+      const mockChildProcess = {
+        on: mock(),
+        kill: mock(() => true),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockChildProcess);
+      mockExistsSync.mockReturnValue(false);
+
+      process.env = { PATH: '/usr/bin' };
+
+      const manager = new DevServerManager();
+      await manager.start();
+
+      // Simulate process error
+      const errorHandler = mockChildProcess.on.mock.calls.find((call) => call[0] === 'error')?.[1];
+      expect(errorHandler).toBeDefined();
+
+      const testError = new Error('Test error');
+      errorHandler(testError);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Server process error: Test error');
+      expect(manager.process).toBeNull();
     });
   });
 });

@@ -87,7 +87,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -100,7 +100,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -113,7 +113,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -126,7 +126,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -139,7 +139,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -152,7 +152,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -165,7 +165,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -178,7 +178,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
     });
@@ -191,9 +191,95 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test environment, skipping local CLI delegation'
+        'Running in test or CI environment, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('should skip delegation when ELIZA_SKIP_LOCAL_CLI_DELEGATION is true', async () => {
+      process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION = 'true';
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Running in test or CI environment, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('should skip delegation when CI is true', async () => {
+      process.env.CI = 'true';
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Running in test or CI environment, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('should skip delegation when GITHUB_ACTIONS is true', async () => {
+      process.env.GITHUB_ACTIONS = 'true';
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Running in test or CI environment, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('should skip delegation when GITLAB_CI is true', async () => {
+      process.env.GITLAB_CI = 'true';
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Running in test or CI environment, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Update Command Detection', () => {
+    it('should skip delegation when update command is used', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['node', 'script.js', 'update'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Update command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
+    });
+
+    it('should skip delegation when update command is used with flags', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['node', 'script.js', 'update', '--check'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Update command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
     });
   });
 
