@@ -7,13 +7,13 @@ import { character as defaultCharacter } from '../../../characters/eliza';
  *
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  * @param {string} filePath - The path to the file to load.
- * @returns {string | null} The contents of the file as a string, or null if an error occurred.
+ * @returns {Promise<string | null>} The contents of the file as a string, or null if an error occurred.
  * @throws {Error} If an error occurs while loading the file.
  */
-export function tryLoadFile(filePath: string): string | null {
-  // Since this is a deprecated synchronous function delegating to server,
-  // we need to load the server module synchronously
-  const serverModule = loadModuleSync('@elizaos/server');
+export async function tryLoadFile(filePath: string): Promise<string | null> {
+  // Since this is a deprecated function delegating to server,
+  // we need to load the server module asynchronously
+  const serverModule = await loadModule('@elizaos/server');
   return serverModule.tryLoadFile(filePath);
 }
 
@@ -65,11 +65,12 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
 
 /**
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
+ * @returns {Promise<boolean>} A promise that resolves to true if valid remote URLs exist, false otherwise.
  */
-export function hasValidRemoteUrls(): boolean {
-  // Since this is a deprecated synchronous function delegating to server,
-  // we need to load the server module synchronously
-  const serverModule = loadModuleSync('@elizaos/server');
+export async function hasValidRemoteUrls(): Promise<boolean> {
+  // Since this is a deprecated function delegating to server,
+  // we need to load the server module asynchronously
+  const serverModule = await loadModule('@elizaos/server');
   return serverModule.hasValidRemoteUrls();
 }
 
