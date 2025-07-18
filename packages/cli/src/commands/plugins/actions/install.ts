@@ -48,14 +48,25 @@ export async function installPluginFromGitHub(
 
   const [, owner, repo, ref] = githubMatch;
   const githubSpecifier = `github:${owner}/${repo}${ref ? `#${ref}` : ''}`;
-  const pluginNameForPostInstall = repo;
 
   const success = await installPlugin(githubSpecifier, cwd, undefined, opts.skipVerification);
 
   if (success) {
-    logger.info(`Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`);
+    logger.info(`Successfully installed plugin from ${githubSpecifier}.`);
 
-    const packageName = extractPackageName(plugin);
+    // After installation, we need to find the actual package name that was installed,
+    // not guess it from the URL. We do this by re-reading the dependencies.
+    const updatedDependencies = getDependenciesFromDirectory(cwd);
+    const packageName =
+      findPluginPackageName(repo, updatedDependencies || {}) ||
+      findPluginPackageName(owner, updatedDependencies || {});
+
+    if (!packageName) {
+      logger.error(
+        `Could not determine the package name for the installed plugin. Please check your package.json.`
+      );
+      process.exit(1);
+    }
 
     // Prompt for environment variables if not skipped
     if (!opts.skipEnvPrompt) {
