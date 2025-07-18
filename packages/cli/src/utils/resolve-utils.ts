@@ -87,7 +87,10 @@ export async function resolvePgliteDir(
   // The fallbackDir passed from getElizaDirectories will be monorepoRoot + '.elizadb' or similar.
   // If fallbackDir is not provided (e.g. direct call to resolvePgliteDir),
   // then we construct the default path using projectRoot.
-  const defaultBaseDir = path.join(projectRoot, '.eliza', '.elizadb');
+  // If we're in project creation mode (targetProjectDir is provided), always use that as the base
+  const defaultBaseDir = targetProjectDir 
+    ? path.join(targetProjectDir, '.eliza', '.elizadb')
+    : path.join(projectRoot, '.eliza', '.elizadb');
 
   const base = dir ?? process.env.PGLITE_DATA_DIR ?? fallbackDir ?? defaultBaseDir;
 
