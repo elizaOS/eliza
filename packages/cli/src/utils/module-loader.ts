@@ -1,11 +1,9 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { v2 } from '@elizaos/core/specs';
+import { logger } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { UserEnvironment } from './user-environment';
-
-const logger = v2.logger;
 
 /**
  * ModuleLoader provides a clean way to load modules from the project's local node_modules
@@ -86,7 +84,7 @@ export class ModuleLoader {
       // Cache the loaded module
       this.asyncCache.set(moduleName, module);
 
-      logger.success(
+      logger.info(
         `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
       );
       return module;
@@ -144,7 +142,7 @@ export class ModuleLoader {
       // Cache the loaded module
       this.syncCache.set(moduleName, module);
 
-      logger.success(
+      logger.info(
         `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
       );
       return module;
