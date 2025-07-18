@@ -1,46 +1,64 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, mock, beforeEach, afterEach, jest, spyOn } from 'bun:test';
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
-import { DevServerManager } from '../../../../src/commands/dev/utils/server-manager';
+import { DevServerManager } from '../../../src/commands/dev/utils/server-manager';
 
 // Mock child_process.spawn
-vi.mock('node:child_process', () => ({
-  spawn: vi.fn(),
+mock.module('node:child_process', () => ({
+  spawn: jest.fn(),
 }));
 
-// Mock process
-const mockProcess = {
-  execPath: '/usr/bin/node',
-  argv: ['/usr/bin/node', '/path/to/script.js'],
-  cwd: vi.fn(() => '/workspace'),
-  env: {
-    NODE_PATH: '/existing/node/path',
-    PATH: '/usr/bin:/usr/local/bin',
-  },
-};
-
-// Mock console methods
-const originalConsole = { ...console };
-beforeEach(() => {
-  vi.spyOn(console, 'info').mockImplementation(() => {});
-  vi.spyOn(console, 'warn').mockImplementation(() => {});
-  vi.spyOn(console, 'error').mockImplementation(() => {});
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
-});
-
 describe('DevServerManager', () => {
+  let originalExecPath: string;
+  let originalArgv: string[];
+  let originalCwd: () => string;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    // Store original process values
+    originalExecPath = process.execPath;
+    originalArgv = [...process.argv];
+    originalCwd = process.cwd;
+    originalEnv = { ...process.env };
+
+    // Mock process values
+    process.execPath = '/usr/bin/node';
+    process.argv = ['/usr/bin/node', '/path/to/script.js'];
+    spyOn(process, 'cwd').mockReturnValue('/workspace');
+
+    // Mock console methods
+    spyOn(console, 'info').mockImplementation(() => {});
+    spyOn(console, 'warn').mockImplementation(() => {});
+    spyOn(console, 'error').mockImplementation(() => {});
+
+    // Clear mock calls
+    (spawn as any).mockClear();
+  });
+
+  afterEach(() => {
+    // Restore original process values
+    process.execPath = originalExecPath;
+    process.argv = originalArgv;
+    process.env = originalEnv;
+    
+    // Restore all mocks
+    mock.restore();
+  });
+
   describe('start()', () => {
     it('should handle PATH environment variable correctly when PATH exists', async () => {
       const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: vi.fn(),
-        kill: vi.fn(() => true),
+        on: jest.fn(),
+        kill: jest.fn(() => true),
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+
+      // Set up env with both PATH and NODE_PATH
+      process.env = {
+        NODE_PATH: '/existing/node/path',
+        PATH: '/usr/bin:/usr/local/bin',
+      };
 
       const manager = new DevServerManager();
       await manager.start();
@@ -67,20 +85,18 @@ describe('DevServerManager', () => {
     it('should handle PATH environment variable correctly when PATH is undefined', async () => {
       const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: vi.fn(),
-        kill: vi.fn(() => true),
+        on: jest.fn(),
+        kill: jest.fn(() => true),
       };
       mockSpawn.mockReturnValue(mockChildProcess);
 
-      // Create a copy of process.env without PATH
-      const originalEnv = { ...process.env };
-      delete process.env.PATH;
+      // Set up env without PATH
+      process.env = {
+        NODE_PATH: '/existing/node/path',
+      };
 
       const manager = new DevServerManager();
       await manager.start();
-
-      // Restore original env
-      process.env = originalEnv;
 
       expect(mockSpawn).toHaveBeenCalledWith(
         '/usr/bin/node',
@@ -98,26 +114,24 @@ describe('DevServerManager', () => {
       
       // Verify PATH is set to just the local bin path when original PATH was undefined
       expect(env.PATH).toBe('/workspace/node_modules/.bin');
-      expect(env.NODE_PATH).toBe('/workspace/node_modules');
+      expect(env.NODE_PATH).toBe('/workspace/node_modules:/existing/node/path');
     });
 
     it('should handle NODE_PATH environment variable correctly when NODE_PATH is undefined', async () => {
       const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: vi.fn(),
-        kill: vi.fn(() => true),
+        on: jest.fn(),
+        kill: jest.fn(() => true),
       };
       mockSpawn.mockReturnValue(mockChildProcess);
 
-      // Create a copy of process.env without NODE_PATH
-      const originalEnv = { ...process.env };
-      delete process.env.NODE_PATH;
+      // Set up env without NODE_PATH
+      process.env = {
+        PATH: '/usr/bin:/usr/local/bin',
+      };
 
       const manager = new DevServerManager();
       await manager.start();
-
-      // Restore original env
-      process.env = originalEnv;
 
       expect(mockSpawn).toHaveBeenCalledWith(
         '/usr/bin/node',
@@ -135,26 +149,22 @@ describe('DevServerManager', () => {
       
       // Verify NODE_PATH is set to just the local modules path when original NODE_PATH was undefined
       expect(env.NODE_PATH).toBe('/workspace/node_modules');
+      expect(env.PATH).toBe('/workspace/node_modules/.bin:/usr/bin:/usr/local/bin');
     });
 
     it('should handle both PATH and NODE_PATH being undefined', async () => {
       const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: vi.fn(),
-        kill: vi.fn(() => true),
+        on: jest.fn(),
+        kill: jest.fn(() => true),
       };
       mockSpawn.mockReturnValue(mockChildProcess);
 
-      // Create a copy of process.env without PATH and NODE_PATH
-      const originalEnv = { ...process.env };
-      delete process.env.PATH;
-      delete process.env.NODE_PATH;
+      // Set up env without PATH and NODE_PATH
+      process.env = {};
 
       const manager = new DevServerManager();
       await manager.start();
-
-      // Restore original env
-      process.env = originalEnv;
 
       expect(mockSpawn).toHaveBeenCalledWith(
         '/usr/bin/node',
@@ -180,10 +190,16 @@ describe('DevServerManager', () => {
     it('should stop the running process', async () => {
       const mockSpawn = spawn as any;
       const mockChildProcess = {
-        on: vi.fn(),
-        kill: vi.fn(() => true),
+        on: jest.fn(),
+        kill: jest.fn(() => true),
       };
       mockSpawn.mockReturnValue(mockChildProcess);
+
+      // Set minimal env for test
+      process.env = {
+        PATH: '/usr/bin:/usr/local/bin',
+        NODE_PATH: '/existing/node/path',
+      };
 
       const manager = new DevServerManager();
       await manager.start();
