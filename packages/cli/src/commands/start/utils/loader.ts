@@ -66,8 +66,10 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
 /**
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  */
-export async function hasValidRemoteUrls(): Promise<boolean> {
-  const serverModule = await loadModule('@elizaos/server');
+export function hasValidRemoteUrls(): boolean {
+  // Since this is a deprecated synchronous function delegating to server,
+  // we need to load the server module synchronously
+  const serverModule = require('@elizaos/server');
   return serverModule.hasValidRemoteUrls();
 }
 
