@@ -31,13 +31,7 @@ function isRunningFromLocalCli(): boolean {
     );
 
     // Compare exact paths to prevent infinite delegation
-    const currentResolved = path.resolve(currentScriptPath);
-    const expectedResolved = path.resolve(expectedLocalCliPath);
-    const isInLocalCli = currentResolved === expectedResolved;
-
-    logger.debug(
-      `Local CLI detection: current=${currentResolved}, expected=${expectedResolved}, match=${isInLocalCli}`
-    );
+    const isInLocalCli = path.resolve(currentScriptPath) === path.resolve(expectedLocalCliPath);
 
     return isInLocalCli;
   } catch (error) {
@@ -197,12 +191,6 @@ function isTestOrCiEnvironment(): boolean {
  */
 export async function tryDelegateToLocalCli(): Promise<boolean> {
   try {
-    // Fail-safe: check for explicit delegation skip
-    if (process.env.ELIZA_DISABLE_LOCAL_CLI_DELEGATION === 'true') {
-      logger.debug('Local CLI delegation explicitly disabled');
-      return false;
-    }
-
     // Skip delegation in test or CI environments
     if (isTestOrCiEnvironment()) {
       logger.debug('Running in test or CI environment, skipping local CLI delegation');
