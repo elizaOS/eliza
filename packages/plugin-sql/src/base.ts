@@ -1638,10 +1638,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
+            const metadataToUpdate =
+              typeof memory.metadata === 'string'
+                ? memory.metadata
+                : JSON.stringify(memory.metadata ?? {});
+
             await tx
               .update(memoryTable)
               .set({
-                metadata: sql`${memory.metadata}::jsonb`,
+                metadata: sql`${metadataToUpdate}::jsonb`,
               })
               .where(eq(memoryTable.id, memory.id));
           }
