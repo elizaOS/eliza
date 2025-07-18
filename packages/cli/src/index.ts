@@ -3,27 +3,6 @@ process.env.NODE_OPTIONS = '--no-deprecation';
 process.env.NODE_NO_WARNINGS = '1';
 process.env.QUIET_MODE = process.env.QUIET_MODE || 'true';
 
-// Set up module resolution for proper singleton behavior
-// This ensures all processes (including spawned ones) use the same module instances
-import * as path from 'node:path';
-
-// Set up environment for consistent module resolution
-const cwd = process.cwd();
-const localModulesPath = path.join(cwd, 'node_modules');
-if (process.env.NODE_PATH) {
-  process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
-} else {
-  process.env.NODE_PATH = localModulesPath;
-}
-
-// Add local .bin to PATH to prioritize local executables
-const localBinPath = path.join(cwd, 'node_modules', '.bin');
-if (process.env.PATH) {
-  process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
-} else {
-  process.env.PATH = localBinPath;
-}
-
 import { agent } from '@/src/commands/agent';
 import { create } from '@/src/commands/create';
 import { dev } from '@/src/commands/dev';

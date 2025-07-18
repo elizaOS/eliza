@@ -31,6 +31,7 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   // Load @elizaos/server from the project's node_modules
   const moduleLoader = new ModuleLoader();
   const serverModule = await moduleLoader.load('@elizaos/server');
+
   const { AgentServer, jsonToCharacter, loadCharacterTryPath } = serverModule;
 
   // Get the directory where the CLI is installed to find client files

@@ -1,9 +1,9 @@
 import { loadProject } from '@/src/project';
-import { createTask, displayBanner, handleError, runTasks } from '@/src/utils';
+import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { validatePort } from '@/src/utils/port-validation';
 import { ModuleLoader } from '@/src/utils/module-loader';
+import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
 import * as fs from 'node:fs';

@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { logger } from '@elizaos/core';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 /**
  * ModuleLoader provides a clean way to load modules from the project's local node_modules
@@ -17,12 +19,16 @@ export class ModuleLoader {
     // Create require function scoped to the project directory
     // This ensures module resolution starts from the project's package.json
     this.require = createRequire(pathToFileURL(projectPath + '/package.json').href);
+
+    // Set up environment with proper module resolution paths
+    // This ensures the same local-first guarantees as server-manager.ts
+    this.setupEnvironment();
   }
 
   /**
    * Load a module from the project's node_modules directory.
    * Uses caching to ensure the same instance is returned for repeated calls.
-   * 
+   *
    * @param moduleName - The name of the module to load (e.g., '@elizaos/server')
    * @returns The loaded module
    * @throws Error if the module cannot be found in the project
@@ -35,28 +41,71 @@ export class ModuleLoader {
     }
 
     try {
+      // First, explicitly check if local module exists (same as server-manager.ts logic)
+      const localModulePath = path.join(this.projectPath, 'node_modules', moduleName);
+      const isLocalModule = existsSync(localModulePath);
+
+      if (isLocalModule) {
+        logger.info(`Using local ${moduleName} installation`);
+      } else {
+        logger.info(`Using global ${moduleName} installation`);
+      }
+
       // Resolve the module path using project-scoped require
       const modulePath = this.require.resolve(moduleName);
       logger.debug(`Loading ${moduleName} from: ${modulePath}`);
-      
+
+      // Verify we're actually using local module when available
+      if (isLocalModule && !modulePath.includes(this.projectPath)) {
+        logger.warn(`Expected local module but resolved to global: ${modulePath}`);
+      }
+
       // Use dynamic import with file URL for cross-platform compatibility
       const module = await import(pathToFileURL(modulePath).href);
-      
+
       // Cache the loaded module
       this.cache.set(moduleName, module);
-      
-      logger.success(`Loaded ${moduleName} from project node_modules`);
+
+      logger.success(
+        `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
+      );
       return module;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to load module ${moduleName}: ${errorMessage}`);
-      
+
       throw new Error(
         `Cannot find module '${moduleName}' in project at ${this.projectPath}.\n` +
-        `Please ensure it's installed by running:\n` +
-        `  bun add ${moduleName}\n\n` +
-        `Original error: ${errorMessage}`
+          `Please ensure it's installed by running:\n` +
+          `  bun add ${moduleName}\n\n` +
+          `Original error: ${errorMessage}`
       );
+    }
+  }
+
+  /**
+   * Set up environment with proper module resolution paths.
+   * This ensures the same local-first guarantees as server-manager.ts.
+   */
+  private setupEnvironment(): void {
+    // Add local node_modules to NODE_PATH for proper module resolution
+    const localModulesPath = path.join(this.projectPath, 'node_modules');
+    if (existsSync(localModulesPath)) {
+      if (process.env.NODE_PATH) {
+        process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
+      } else {
+        process.env.NODE_PATH = localModulesPath;
+      }
+    }
+
+    // Add local .bin to PATH to prioritize local executables
+    const localBinPath = path.join(this.projectPath, 'node_modules', '.bin');
+    if (existsSync(localBinPath)) {
+      if (process.env.PATH) {
+        process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
+      } else {
+        process.env.PATH = localBinPath;
+      }
     }
   }
 
@@ -70,7 +119,7 @@ export class ModuleLoader {
   /**
    * Get the resolved path for a module without loading it.
    * Useful for debugging or verification.
-   * 
+   *
    * @param moduleName - The name of the module to resolve
    * @returns The resolved file path
    */
@@ -95,7 +144,7 @@ export function getModuleLoader(): ModuleLoader {
 
 /**
  * Convenience function to load a module using the default loader.
- * 
+ *
  * @param moduleName - The name of the module to load
  * @returns The loaded module
  */

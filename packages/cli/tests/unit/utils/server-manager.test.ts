@@ -40,7 +40,7 @@ describe('DevServerManager', () => {
     process.execPath = originalExecPath;
     process.argv = originalArgv;
     process.env = originalEnv;
-    
+
     // Restore all mocks
     mock.restore();
   });
@@ -76,7 +76,7 @@ describe('DevServerManager', () => {
 
       const spawnCall = mockSpawn.mock.calls[0];
       const env = spawnCall[2].env;
-      
+
       // Verify PATH is constructed correctly
       expect(env.PATH).toBe('/workspace/node_modules/.bin:/usr/bin:/usr/local/bin');
       expect(env.NODE_PATH).toBe('/workspace/node_modules:/existing/node/path');
@@ -111,7 +111,7 @@ describe('DevServerManager', () => {
 
       const spawnCall = mockSpawn.mock.calls[0];
       const env = spawnCall[2].env;
-      
+
       // Verify PATH is set to just the local bin path when original PATH was undefined
       expect(env.PATH).toBe('/workspace/node_modules/.bin');
       expect(env.NODE_PATH).toBe('/workspace/node_modules:/existing/node/path');
@@ -146,7 +146,7 @@ describe('DevServerManager', () => {
 
       const spawnCall = mockSpawn.mock.calls[0];
       const env = spawnCall[2].env;
-      
+
       // Verify NODE_PATH is set to just the local modules path when original NODE_PATH was undefined
       expect(env.NODE_PATH).toBe('/workspace/node_modules');
       expect(env.PATH).toBe('/workspace/node_modules/.bin:/usr/bin:/usr/local/bin');
@@ -179,7 +179,7 @@ describe('DevServerManager', () => {
 
       const spawnCall = mockSpawn.mock.calls[0];
       const env = spawnCall[2].env;
-      
+
       // Verify both are set to their respective local paths
       expect(env.PATH).toBe('/workspace/node_modules/.bin');
       expect(env.NODE_PATH).toBe('/workspace/node_modules');
@@ -203,9 +203,9 @@ describe('DevServerManager', () => {
 
       const manager = new DevServerManager();
       await manager.start();
-      
+
       const result = await manager.stop();
-      
+
       expect(result).toBe(true);
       expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
       expect(manager.process).toBeNull();
@@ -214,7 +214,7 @@ describe('DevServerManager', () => {
     it('should return false when no process is running', async () => {
       const manager = new DevServerManager();
       const result = await manager.stop();
-      
+
       expect(result).toBe(false);
     });
   });

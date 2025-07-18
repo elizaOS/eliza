@@ -44,11 +44,18 @@ export class DevServerManager implements ServerProcess {
     console.info('Starting server...');
 
     const nodeExecutable = process.execPath;
-    
+
     // Check if a local CLI exists and use it instead of the global one
-    const localCliPath = path.join(process.cwd(), 'node_modules', '@elizaos', 'cli', 'dist', 'index.js');
+    const localCliPath = path.join(
+      process.cwd(),
+      'node_modules',
+      '@elizaos',
+      'cli',
+      'dist',
+      'index.js'
+    );
     const fs = await import('fs');
-    
+
     let scriptPath: string;
     if (fs.existsSync(localCliPath)) {
       console.info('Using local @elizaos/cli installation');
@@ -60,7 +67,7 @@ export class DevServerManager implements ServerProcess {
 
     // Set up environment with proper module resolution paths
     const env = { ...process.env };
-    
+
     // Add local node_modules to NODE_PATH for proper module resolution
     // This ensures spawned process can find local packages
     const localModulesPath = path.join(process.cwd(), 'node_modules');
@@ -69,7 +76,7 @@ export class DevServerManager implements ServerProcess {
     } else {
       env.NODE_PATH = localModulesPath;
     }
-    
+
     // Add local .bin to PATH to prioritize local executables
     // This ensures local CLI tools are used over global ones
     const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
@@ -78,7 +85,7 @@ export class DevServerManager implements ServerProcess {
     } else {
       env.PATH = localBinPath;
     }
-    
+
     // Ensure color output
     env.FORCE_COLOR = '1';
 
