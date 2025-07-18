@@ -13,6 +13,8 @@ export * from './handle-error';
 export * from './helpers';
 export * from './install-plugin';
 export * from './load-plugin';
+export * from './local-cli-delegation';
+export * from './module-loader';
 export * from './package-manager';
 export * from './plugin-context';
 export * from './port-handling';
