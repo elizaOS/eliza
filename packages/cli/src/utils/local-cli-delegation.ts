@@ -144,12 +144,12 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 }
 
 /**
- * Detects if we're running in a test environment where delegation should be skipped
- * @returns true if in test environment, false otherwise
+ * Detects if we're running in a test or CI environment where delegation should be skipped
+ * @returns true if in test or CI environment, false otherwise
  */
-function isTestEnvironment(): boolean {
-  // Check for common test environment indicators
-  const testIndicators = [
+function isTestOrCiEnvironment(): boolean {
+  // Check for common test and CI environment indicators
+  const testAndCiIndicators = [
     process.env.NODE_ENV === 'test',
     process.env.ELIZA_TEST_MODE === 'true',
     process.env.ELIZA_TEST_MODE === '1',
@@ -163,9 +163,22 @@ function isTestEnvironment(): boolean {
     process.argv[1]?.includes('test') === true,
     // Check if parent process is a test runner
     process.env.npm_lifecycle_event === 'test',
+    // CI environment detection
+    process.env.CI === 'true',
+    process.env.CONTINUOUS_INTEGRATION === 'true',
+    process.env.GITHUB_ACTIONS === 'true',
+    process.env.GITLAB_CI === 'true',
+    process.env.JENKINS_URL !== undefined,
+    process.env.TRAVIS === 'true',
+    process.env.CIRCLECI === 'true',
+    process.env.BUILDKITE === 'true',
+    process.env.DRONE === 'true',
+    process.env.TEAMCITY_VERSION !== undefined,
+    process.env.APPVEYOR === 'true',
+    process.env.CODEBUILD_BUILD_ID !== undefined,
   ];
 
-  return testIndicators.some((indicator) => indicator === true);
+  return testAndCiIndicators.some((indicator) => indicator === true);
 }
 
 /**
@@ -176,9 +189,9 @@ function isTestEnvironment(): boolean {
  */
 export async function tryDelegateToLocalCli(): Promise<boolean> {
   try {
-    // Skip delegation in test environments
-    if (isTestEnvironment()) {
-      logger.debug('Running in test environment, skipping local CLI delegation');
+    // Skip delegation in test or CI environments
+    if (isTestOrCiEnvironment()) {
+      logger.debug('Running in test or CI environment, skipping local CLI delegation');
       return false;
     }
 
