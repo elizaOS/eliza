@@ -43,9 +43,20 @@ export class DevServerManager implements ServerProcess {
 
     console.info('Starting server...');
 
-    // We'll use the same executable that's currently running, with 'start' command
     const nodeExecutable = process.execPath;
-    const scriptPath = process.argv[1]; // Current script path
+    
+    // Check if a local CLI exists and use it instead of the global one
+    const localCliPath = path.join(process.cwd(), 'node_modules', '@elizaos', 'cli', 'dist', 'index.js');
+    const fs = await import('fs');
+    
+    let scriptPath: string;
+    if (fs.existsSync(localCliPath)) {
+      console.info('Using local @elizaos/cli installation');
+      scriptPath = localCliPath;
+    } else {
+      // Fallback to current script path (global CLI)
+      scriptPath = process.argv[1];
+    }
 
     // Set up environment with proper module resolution paths
     const env = { ...process.env };
