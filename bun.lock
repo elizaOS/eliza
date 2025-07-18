@@ -20,9 +20,9 @@
     },
     "packages/api-client": {
       "name": "@elizaos/api-client",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
-        "@elizaos/core": "^1.2.11-beta.6",
+        "@elizaos/core": "^1.2.11-beta.7",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -82,7 +82,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -258,7 +258,7 @@
     },
     "packages/config": {
       "name": "@elizaos/config",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "devDependencies": {
         "prettier": "^3.5.3",
         "typescript": "^5.8.2",
@@ -266,7 +266,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
         "@sentry/browser": "^9.22.0",
         "buffer": "^6.0.3",
@@ -349,7 +349,7 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -368,9 +368,9 @@
     },
     "packages/plugin-dummy-services": {
       "name": "@elizaos/plugin-dummy-services",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
-        "@elizaos/core": "^1.2.11-beta.6",
+        "@elizaos/core": "^1.2.11-beta.7",
         "uuid": "^9.0.0",
       },
       "devDependencies": {
@@ -399,7 +399,7 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -487,7 +487,7 @@
     },
     "packages/server": {
       "name": "@elizaos/server",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -514,9 +514,9 @@
     },
     "packages/test-utils": {
       "name": "@elizaos/test-utils",
-      "version": "1.2.11-beta.6",
+      "version": "1.2.11-beta.7",
       "dependencies": {
-        "@elizaos/core": "^1.2.11-beta.6",
+        "@elizaos/core": "^1.2.11-beta.7",
         "zod": "3.24.2",
       },
       "devDependencies": {
@@ -6371,7 +6371,7 @@
 
     "make-fetch-happen/minipass": ["minipass@5.0.0", "", {}, "sha512-3FnjYuehv9k6ovOEbyOswadCDPX1piCfhV8ncmYtHOjuPwylVWsghTLo7rabjC3Rx5xD4HDx8Wm1xnMF7S5qFQ=="],
 
-    "make-fetch-happen/negotiator": ["negotiator@0.6.4", "", {}, "sha512-myRT3DiWPHqho5PrJaIRyaMv2kgYf0mUVgBNOYMuCH5Ki1yEiQaf/ZJuQ62nvpc44wL5WDbTX7yGJi1Neevw8w=="],
+    "make-fetch-happen/negotiator": ["negotiator@0.6.3", "", {}, "sha512-+EUsqGPLsM+j/zdChZjsnX51g4XrHFOIXwfnCVPGlQk/k5giakcKsuxCObBRu6DSm9opw/O6slWbJdghQM4bBg=="],
 
     "make-fetch-happen/ssri": ["ssri@10.0.6", "", { "dependencies": { "minipass": "^7.0.3" } }, "sha512-MGrFH9Z4NP9Iyhqn16sDtBpRRNJ0Y2hNa6D65h736fVSaPCHr4DM4sWUNvVaSuC+0OBGhwsrydQwmgfg5LncqQ=="],
 

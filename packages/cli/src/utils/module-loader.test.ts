@@ -23,20 +23,20 @@ describe('ModuleLoader', () => {
     it('should cache modules for repeated calls', () => {
       // First load
       const firstLoad = loader.loadSync('path');
-      
+
       // Second load should return the same instance
       const secondLoad = loader.loadSync('path');
-      
+
       expect(firstLoad).toBe(secondLoad);
     });
 
     it('should share cache between sync and async loads', async () => {
       // Load synchronously first
       const syncLoad = loader.loadSync('path');
-      
+
       // Then load asynchronously
       const asyncLoad = await loader.load('path');
-      
+
       // They should be the same instance
       expect(syncLoad).toBe(asyncLoad);
     });
@@ -59,7 +59,7 @@ describe('ModuleLoader', () => {
       // Load using convenience functions
       const syncLoad = loadModuleSync('path');
       const asyncLoad = await loadModule('path');
-      
+
       // They should be the same instance
       expect(syncLoad).toBe(asyncLoad);
     });
@@ -69,14 +69,14 @@ describe('ModuleLoader', () => {
     it('getModuleLoader should return the same instance', () => {
       const loader1 = getModuleLoader();
       const loader2 = getModuleLoader();
-      
+
       expect(loader1).toBe(loader2);
     });
 
     it('modules loaded through singleton should be cached', () => {
       const load1 = loadModuleSync('path');
       const load2 = loadModuleSync('path');
-      
+
       expect(load1).toBe(load2);
     });
   });
