@@ -62,7 +62,11 @@ export class DevServerManager implements ServerProcess {
     // Add local .bin to PATH to prioritize local executables
     // This ensures local CLI tools are used over global ones
     const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
-    env.PATH = `${localBinPath}${path.delimiter}${env.PATH}`;
+    if (env.PATH) {
+      env.PATH = `${localBinPath}${path.delimiter}${env.PATH}`;
+    } else {
+      env.PATH = localBinPath;
+    }
     
     // Ensure color output
     env.FORCE_COLOR = '1';
