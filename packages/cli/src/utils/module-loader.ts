@@ -1,9 +1,11 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { logger } from '@elizaos/core';
+import { v2 } from '@elizaos/core/specs';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { UserEnvironment } from './user-environment';
+
+const logger = v2.logger;
 
 /**
  * ModuleLoader provides a clean way to load modules from the project's local node_modules
@@ -12,7 +14,8 @@ import { UserEnvironment } from './user-environment';
  */
 export class ModuleLoader {
   private require: NodeRequire;
-  private cache = new Map<string, any>();
+  private asyncCache = new Map<string, any>();
+  private syncCache = new Map<string, any>();
   private projectPath: string;
 
   constructor(projectPath?: string) {
@@ -52,9 +55,9 @@ export class ModuleLoader {
    */
   async load<T = any>(moduleName: string): Promise<T> {
     // Return cached module if already loaded
-    if (this.cache.has(moduleName)) {
+    if (this.asyncCache.has(moduleName)) {
       logger.debug(`Using cached module: ${moduleName}`);
-      return this.cache.get(moduleName);
+      return this.asyncCache.get(moduleName);
     }
 
     try {
@@ -81,7 +84,7 @@ export class ModuleLoader {
       const module = await import(pathToFileURL(modulePath).href);
 
       // Cache the loaded module
-      this.cache.set(moduleName, module);
+      this.asyncCache.set(moduleName, module);
 
       logger.success(
         `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
@@ -110,9 +113,9 @@ export class ModuleLoader {
    */
   loadSync<T = any>(moduleName: string): T {
     // Return cached module if already loaded
-    if (this.cache.has(moduleName)) {
+    if (this.syncCache.has(moduleName)) {
       logger.debug(`Using cached module: ${moduleName}`);
-      return this.cache.get(moduleName);
+      return this.syncCache.get(moduleName);
     }
 
     try {
@@ -139,7 +142,7 @@ export class ModuleLoader {
       const module = this.require(modulePath);
 
       // Cache the loaded module
-      this.cache.set(moduleName, module);
+      this.syncCache.set(moduleName, module);
 
       logger.success(
         `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
@@ -188,7 +191,8 @@ export class ModuleLoader {
    * Clear the module cache. Useful for testing or hot reloading scenarios.
    */
   clearCache(): void {
-    this.cache.clear();
+    this.asyncCache.clear();
+    this.syncCache.clear();
   }
 
   /**

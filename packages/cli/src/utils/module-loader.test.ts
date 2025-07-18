@@ -30,15 +30,16 @@ describe('ModuleLoader', () => {
       expect(firstLoad).toBe(secondLoad);
     });
 
-    it('should share cache between sync and async loads', async () => {
+    it('should maintain separate caches for sync and async loads', async () => {
       // Load synchronously first
       const syncLoad = loader.loadSync('path');
 
       // Then load asynchronously
       const asyncLoad = await loader.load('path');
 
-      // They should be the same instance
-      expect(syncLoad).toBe(asyncLoad);
+      // They should NOT be the same instance due to separate caches
+      // This prevents ESM/CJS conflicts
+      expect(syncLoad).not.toBe(asyncLoad);
     });
 
     it('should throw meaningful error for non-existent modules', () => {
@@ -55,13 +56,13 @@ describe('ModuleLoader', () => {
       expect(pathModule.join).toBeDefined();
     });
 
-    it('should maintain singleton pattern across sync and async loads', async () => {
+    it('should maintain separate caches for sync and async loads', async () => {
       // Load using convenience functions
       const syncLoad = loadModuleSync('path');
       const asyncLoad = await loadModule('path');
 
-      // They should be the same instance
-      expect(syncLoad).toBe(asyncLoad);
+      // They should NOT be the same instance due to separate caches
+      expect(syncLoad).not.toBe(asyncLoad);
     });
   });
 
