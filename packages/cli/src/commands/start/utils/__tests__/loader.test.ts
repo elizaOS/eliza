@@ -17,40 +17,43 @@ describe('loader utils', () => {
       }
     });
 
-    it('should return true for valid HTTP URLs', () => {
+    it('should return true for valid HTTP URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      const result = hasValidRemoteUrls();
+      const result = await hasValidRemoteUrls();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(true);
     });
 
-    it('should return false for empty URLs', () => {
+    it('should return false for empty URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = '';
-      const result = hasValidRemoteUrls();
+      const result = await hasValidRemoteUrls();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
-    it('should return false for non-HTTP URLs', () => {
+    it('should return false for non-HTTP URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'file:///local/path.json';
-      const result = hasValidRemoteUrls();
+      const result = await hasValidRemoteUrls();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
-    it('should return false when environment variable not set', () => {
-      const result = hasValidRemoteUrls();
+    it('should return false when environment variable not set', async () => {
+      const result = await hasValidRemoteUrls();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
-    it('should be synchronous and not return a Promise', () => {
+    it('should be asynchronous and return a Promise', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      const result = hasValidRemoteUrls();
-      // Verify it's not a Promise
-      expect(result).not.toHaveProperty('then');
-      expect(result).not.toHaveProperty('catch');
-      expect(result).not.toBeInstanceOf(Promise);
+      const resultPromise = hasValidRemoteUrls();
+      // Verify it's a Promise
+      expect(resultPromise).toHaveProperty('then');
+      expect(resultPromise).toHaveProperty('catch');
+      expect(resultPromise).toBeInstanceOf(Promise);
+      // Await the result to ensure it resolves properly
+      const result = await resultPromise;
+      expect(typeof result).toBe('boolean');
     });
   });
 });
