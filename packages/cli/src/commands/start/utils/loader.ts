@@ -1,5 +1,5 @@
 import { type Character, logger } from '@elizaos/core';
-import { loadModule } from '@/src/utils/module-loader';
+import { loadModule, loadModuleSync } from '@/src/utils/module-loader';
 import { character as defaultCharacter } from '../../../characters/eliza';
 
 /**
@@ -13,7 +13,7 @@ import { character as defaultCharacter } from '../../../characters/eliza';
 export function tryLoadFile(filePath: string): string | null {
   // Since this is a deprecated synchronous function delegating to server,
   // we need to load the server module synchronously
-  const serverModule = require('@elizaos/server');
+  const serverModule = loadModuleSync('@elizaos/server');
   return serverModule.tryLoadFile(filePath);
 }
 
@@ -69,7 +69,7 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
 export function hasValidRemoteUrls(): boolean {
   // Since this is a deprecated synchronous function delegating to server,
   // we need to load the server module synchronously
-  const serverModule = require('@elizaos/server');
+  const serverModule = loadModuleSync('@elizaos/server');
   return serverModule.hasValidRemoteUrls();
 }
 
