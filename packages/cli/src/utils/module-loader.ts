@@ -101,6 +101,64 @@ export class ModuleLoader {
   }
 
   /**
+   * Synchronously load a module from the project's node_modules directory.
+   * Uses caching to ensure the same instance is returned for repeated calls.
+   *
+   * @param moduleName - The name of the module to load (e.g., '@elizaos/server')
+   * @returns The loaded module
+   * @throws Error if the module cannot be found in the project
+   */
+  loadSync<T = any>(moduleName: string): T {
+    // Return cached module if already loaded
+    if (this.cache.has(moduleName)) {
+      logger.debug(`Using cached module: ${moduleName}`);
+      return this.cache.get(moduleName);
+    }
+
+    try {
+      // First, explicitly check if local module exists (same as server-manager.ts logic)
+      const localModulePath = path.join(this.projectPath, 'node_modules', moduleName);
+      const isLocalModule = existsSync(localModulePath);
+
+      if (isLocalModule) {
+        logger.info(`Using local ${moduleName} installation`);
+      } else {
+        logger.info(`Using global ${moduleName} installation`);
+      }
+
+      // Resolve the module path using project-scoped require
+      const modulePath = this.require.resolve(moduleName);
+      logger.debug(`Loading ${moduleName} from: ${modulePath}`);
+
+      // Verify we're actually using local module when available
+      if (isLocalModule && !modulePath.includes(this.projectPath)) {
+        logger.warn(`Expected local module but resolved to global: ${modulePath}`);
+      }
+
+      // Use require for synchronous loading
+      const module = this.require(modulePath);
+
+      // Cache the loaded module
+      this.cache.set(moduleName, module);
+
+      logger.success(
+        `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
+      );
+      return module;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Failed to load module ${moduleName}: ${errorMessage}`);
+
+      throw new Error(
+        `Cannot find module '${moduleName}' in project at ${this.projectPath}.\n` +
+          `Please ensure it's installed by running:\n` +
+          `  bun add ${moduleName}\n\n` +
+          `Original error: ${errorMessage}`
+      );
+    }
+  }
+
+  /**
    * Set up environment with proper module resolution paths.
    * This ensures the same local-first guarantees as server-manager.ts.
    */
@@ -167,4 +225,14 @@ export function getModuleLoader(): ModuleLoader {
  */
 export async function loadModule<T = any>(moduleName: string): Promise<T> {
   return getModuleLoader().load<T>(moduleName);
+}
+
+/**
+ * Convenience function to synchronously load a module using the default loader.
+ *
+ * @param moduleName - The name of the module to load
+ * @returns The loaded module
+ */
+export function loadModuleSync<T = any>(moduleName: string): T {
+  return getModuleLoader().loadSync<T>(moduleName);
 }

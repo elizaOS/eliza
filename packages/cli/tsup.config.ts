@@ -20,7 +20,7 @@ export default defineConfig({
   // Only externalize fs-extra which has native dependencies
   // We bundle most @elizaos packages but use ModuleLoader for @elizaos/server
   // to ensure singleton patterns work correctly
-  external: ['fs-extra'],
+  external: ['fs-extra', '@elizaos/server'],
   platform: 'node',
   minify: false,
   target: 'esnext',
