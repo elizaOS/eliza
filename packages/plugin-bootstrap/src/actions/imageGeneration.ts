@@ -8,6 +8,7 @@ import {
   ModelType,
   type State,
   ContentType,
+  parseKeyValueXml,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -21,14 +22,12 @@ const imageGenerationTemplate = `# Task: Generate an image prompt for {{agentNam
   # Instructions:
   Write a clear, concise, and visually descriptive prompt that should be used to generate an image representing {{agentName}}'s next action or visualization for the conversation.
   
-  Your response should be formatted in a valid JSON block like this:
-  \`\`\`json
-  {
-      "prompt": "<string>"
-  }
-  \`\`\`
+  Your response should be formatted in XML like this:
+  <response>
+    <prompt>Your image generation prompt here</prompt>
+  </response>
   
-  Your response should include the valid JSON block and nothing else.`;
+  Your response should include the valid XML block and nothing else.`;
 
 /**
  * Represents an action that allows the agent to generate an image using a generated prompt.
@@ -57,17 +56,17 @@ export const generateImageAction = {
 
     const prompt = composePromptFromState({
       state,
-      template: imageGenerationTemplate,
+      template: runtime.character.templates?.imageGenerationTemplate || imageGenerationTemplate,
     });
 
-    const promptResponse = await runtime.useModel(ModelType.OBJECT_LARGE, {
+    const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
     });
 
-    const imagePrompt =
-      typeof promptResponse === 'object' && promptResponse && 'prompt' in promptResponse
-        ? String(promptResponse.prompt)
-        : 'Unable to generate descriptive prompt for image';
+    // Parse XML response
+    const parsedXml = parseKeyValueXml(promptResponse);
+
+    const imagePrompt = parsedXml?.prompt || 'Unable to generate descriptive prompt for image';
 
     const imageResponse = await runtime.useModel(ModelType.IMAGE, {
       prompt: imagePrompt,

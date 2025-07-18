@@ -9,6 +9,7 @@ import {
   type State,
   type ActionResult,
   logger,
+  parseKeyValueXml,
 } from '@elizaos/core';
 
 /**
@@ -35,15 +36,16 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - If including inline code (short single words or function names), use single backticks (\`) as appropriate.
 - This ensures the user sees clearly formatted and copyable code when relevant.
 
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{
-    "thought": "<string>",
-    "message": "<string>"
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-Your response should include the valid JSON block and nothing else.`;
+Respond using XML format like this:
+<response>
+    <thought>Your thought here</thought>
+    <message>Your message here</message>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Represents an action that allows the agent to reply to the current conversation with a generated message.
@@ -94,17 +96,20 @@ export const replyAction = {
 
     const prompt = composePromptFromState({
       state,
-      template: replyTemplate,
+      template: runtime.character.templates?.replyTemplate || replyTemplate,
     });
 
     try {
-      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
       });
 
+      // Parse XML response
+      const parsedXml = parseKeyValueXml(response);
+
       const responseContent = {
-        thought: response.thought,
-        text: (response.message as string) || '',
+        thought: parsedXml?.thought || '',
+        text: parsedXml?.message || '',
         actions: ['REPLY'],
       };
 
@@ -117,12 +122,12 @@ export const replyAction = {
           responded: true,
           lastReply: responseContent.text,
           lastReplyTime: Date.now(),
-          thoughtProcess: response.thought,
+          thoughtProcess: parsedXml?.thought,
         },
         data: {
           actionName: 'REPLY',
           response: responseContent,
-          thought: response.thought,
+          thought: parsedXml?.thought,
           messageGenerated: true,
         },
         success: true,
