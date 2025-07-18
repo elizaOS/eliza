@@ -1,6 +1,6 @@
 import { loadProject } from '@/src/project';
 import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
-import { ModuleLoader } from '@/src/utils/module-loader';
+import { getModuleLoader } from '@/src/utils/module-loader';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent, Project } from '@elizaos/core';
 import * as dotenv from 'dotenv';
@@ -42,7 +42,7 @@ export async function runE2eTests(
     const projectAgents: ProjectAgent[] = [];
 
     // Load @elizaos/server from the project's node_modules
-    const moduleLoader = new ModuleLoader();
+    const moduleLoader = getModuleLoader();
     const serverModule = await moduleLoader.load('@elizaos/server');
     const { AgentServer, jsonToCharacter, loadCharacterTryPath } = serverModule;
 

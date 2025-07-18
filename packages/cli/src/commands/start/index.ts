@@ -2,7 +2,7 @@ import { loadProject } from '@/src/project';
 import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { ModuleLoader } from '@/src/utils/module-loader';
+import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
@@ -65,7 +65,7 @@ export const start = new Command()
 
       if (options.character && options.character.length > 0) {
         // Load @elizaos/server module for character loading
-        const moduleLoader = new ModuleLoader();
+        const moduleLoader = getModuleLoader();
         const serverModule = await moduleLoader.load('@elizaos/server');
         const { loadCharacterTryPath } = serverModule;
 
