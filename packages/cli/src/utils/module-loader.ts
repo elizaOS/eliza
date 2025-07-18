@@ -19,7 +19,7 @@ export class ModuleLoader {
     this.projectPath = projectPath || this.detectProjectPath();
     // Create require function scoped to the project directory
     // This ensures module resolution starts from the project's package.json
-    this.require = createRequire(pathToFileURL(this.projectPath + '/package.json').href);
+    this.require = createRequire(pathToFileURL(path.join(this.projectPath, 'package.json')).href);
 
     // Set up environment with proper module resolution paths
     // This ensures the same local-first guarantees as server-manager.ts
