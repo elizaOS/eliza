@@ -597,11 +597,10 @@ describe('Memory Integration Tests', () => {
     // This test specifically verifies the fix for the bug where metadata objects
     // were being sent as [object Object] instead of proper JSON
     const memory = {
-      entityId: adapter.agentId,
-      roomId: adapter.agentId,
-      worldId: adapter.agentId,
-      agentId: adapter.agentId,
-      userId: adapter.agentId,
+      entityId: testEntityId,
+      roomId: testRoomId,
+      worldId: testWorldId,
+      agentId: testAgentId,
       content: { text: 'Initial content' },
       embedding: Array.from({ length: 768 }, (_, i) => i / 768),
       metadata: {
