@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { hasValidRemoteUrls } from '../loader';
+import { hasValidRemoteUrlsAsync } from '../loader';
 
 describe('loader utils', () => {
-  describe('hasValidRemoteUrls', () => {
+  describe('hasValidRemoteUrlsAsync', () => {
     const originalEnv = process.env.REMOTE_CHARACTER_URLS;
 
     beforeEach(() => {
@@ -19,34 +19,34 @@ describe('loader utils', () => {
 
     it('should return true for valid HTTP URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      const result = await hasValidRemoteUrls();
+      const result = await hasValidRemoteUrlsAsync();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(true);
     });
 
     it('should return false for empty URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = '';
-      const result = await hasValidRemoteUrls();
+      const result = await hasValidRemoteUrlsAsync();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
     it('should return false for non-HTTP URLs', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'file:///local/path.json';
-      const result = await hasValidRemoteUrls();
+      const result = await hasValidRemoteUrlsAsync();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
     it('should return false when environment variable not set', async () => {
-      const result = await hasValidRemoteUrls();
+      const result = await hasValidRemoteUrlsAsync();
       expect(typeof result).toBe('boolean');
       expect(result).toBe(false);
     });
 
     it('should be asynchronous and return a Promise', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      const resultPromise = hasValidRemoteUrls();
+      const resultPromise = hasValidRemoteUrlsAsync();
       // Verify it's a Promise
       expect(resultPromise).toHaveProperty('then');
       expect(resultPromise).toHaveProperty('catch');

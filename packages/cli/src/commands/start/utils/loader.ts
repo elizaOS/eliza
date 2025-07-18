@@ -7,10 +7,24 @@ import { character as defaultCharacter } from '../../../characters/eliza';
  *
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  * @param {string} filePath - The path to the file to load.
+ * @returns {string | null} The contents of the file as a string, or null if an error occurred.
+ * @throws {Error} If an error occurs while loading the file.
+ */
+export function tryLoadFile(filePath: string): string | null {
+  // Use synchronous module loading to maintain backward compatibility
+  const serverModule = loadModuleSync('@elizaos/server');
+  return serverModule.tryLoadFile(filePath);
+}
+
+/**
+ * Attempts to load a file from the given file path asynchronously.
+ *
+ * @deprecated Use @elizaos/server implementation. This function delegates to server.
+ * @param {string} filePath - The path to the file to load.
  * @returns {Promise<string | null>} The contents of the file as a string, or null if an error occurred.
  * @throws {Error} If an error occurs while loading the file.
  */
-export async function tryLoadFile(filePath: string): Promise<string | null> {
+export async function tryLoadFileAsync(filePath: string): Promise<string | null> {
   // Since this is a deprecated function delegating to server,
   // we need to load the server module asynchronously
   const serverModule = await loadModule('@elizaos/server');
@@ -65,9 +79,19 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
 
 /**
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
+ * @returns {boolean} true if valid remote URLs exist, false otherwise.
+ */
+export function hasValidRemoteUrls(): boolean {
+  // Use synchronous module loading to maintain backward compatibility
+  const serverModule = loadModuleSync('@elizaos/server');
+  return serverModule.hasValidRemoteUrls();
+}
+
+/**
+ * @deprecated Use @elizaos/server implementation. This function delegates to server.
  * @returns {Promise<boolean>} A promise that resolves to true if valid remote URLs exist, false otherwise.
  */
-export async function hasValidRemoteUrls(): Promise<boolean> {
+export async function hasValidRemoteUrlsAsync(): Promise<boolean> {
   // Since this is a deprecated function delegating to server,
   // we need to load the server module asynchronously
   const serverModule = await loadModule('@elizaos/server');
