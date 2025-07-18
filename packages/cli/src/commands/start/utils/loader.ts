@@ -10,8 +10,10 @@ import { character as defaultCharacter } from '../../../characters/eliza';
  * @returns {string | null} The contents of the file as a string, or null if an error occurred.
  * @throws {Error} If an error occurs while loading the file.
  */
-export async function tryLoadFile(filePath: string): Promise<string | null> {
-  const serverModule = await loadModule('@elizaos/server');
+export function tryLoadFile(filePath: string): string | null {
+  // Since this is a deprecated synchronous function delegating to server,
+  // we need to load the server module synchronously
+  const serverModule = require('@elizaos/server');
   return serverModule.tryLoadFile(filePath);
 }
 
