@@ -3,8 +3,8 @@ import { createTask, displayBanner, handleError, runTasks } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { validatePort } from '@/src/utils/port-validation';
+import { ModuleLoader } from '@/src/utils/module-loader';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
-import { loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -47,6 +47,11 @@ export const start = new Command()
       let projectAgents: ProjectAgent[] = [];
 
       if (options.character && options.character.length > 0) {
+        // Load @elizaos/server module for character loading
+        const moduleLoader = new ModuleLoader();
+        const serverModule = await moduleLoader.load('@elizaos/server');
+        const { loadCharacterTryPath } = serverModule;
+
         // Validate and load characters from provided paths
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);

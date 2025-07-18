@@ -1,13 +1,5 @@
 import { type Character, logger } from '@elizaos/core';
-import {
-  tryLoadFile as serverTryLoadFile,
-  loadCharactersFromUrl as serverLoadCharactersFromUrl,
-  jsonToCharacter as serverJsonToCharacter,
-  loadCharacter as serverLoadCharacter,
-  loadCharacterTryPath as serverLoadCharacterTryPath,
-  hasValidRemoteUrls as serverHasValidRemoteUrls,
-  loadCharacters as serverLoadCharacters,
-} from '@elizaos/server';
+import { loadModule } from '@/src/utils/module-loader';
 import { character as defaultCharacter } from '../../../characters/eliza';
 
 /**
@@ -18,8 +10,9 @@ import { character as defaultCharacter } from '../../../characters/eliza';
  * @returns {string | null} The contents of the file as a string, or null if an error occurred.
  * @throws {Error} If an error occurs while loading the file.
  */
-export function tryLoadFile(filePath: string): string | null {
-  return serverTryLoadFile(filePath);
+export async function tryLoadFile(filePath: string): Promise<string | null> {
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.tryLoadFile(filePath);
 }
 
 /**
@@ -30,7 +23,8 @@ export function tryLoadFile(filePath: string): string | null {
  * @returns {Promise<Character[]>} - A promise that resolves with an array of Character objects.
  */
 export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
-  return serverLoadCharactersFromUrl(url);
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.loadCharactersFromUrl(url);
 }
 
 /**
@@ -42,7 +36,8 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
  * @throws {Error} If character validation fails.
  */
 export async function jsonToCharacter(character: unknown): Promise<Character> {
-  return serverJsonToCharacter(character);
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.jsonToCharacter(character);
 }
 
 /**
@@ -54,20 +49,25 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
  * @throws {Error} If the character file is not found, has invalid JSON, or fails validation.
  */
 export async function loadCharacter(filePath: string): Promise<Character> {
-  return serverLoadCharacter(filePath);
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.loadCharacter(filePath);
 }
 
 /**
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  */
 export async function loadCharacterTryPath(characterPath: string): Promise<Character> {
-  return serverLoadCharacterTryPath(characterPath);
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.loadCharacterTryPath(characterPath);
 }
 
 /**
  * @deprecated Use @elizaos/server implementation. This function delegates to server.
  */
-export const hasValidRemoteUrls = () => serverHasValidRemoteUrls();
+export async function hasValidRemoteUrls(): Promise<boolean> {
+  const serverModule = await loadModule('@elizaos/server');
+  return serverModule.hasValidRemoteUrls();
+}
 
 /**
  * Load characters from local paths or remote URLs based on configuration.
@@ -77,8 +77,9 @@ export const hasValidRemoteUrls = () => serverHasValidRemoteUrls();
  * @returns A promise that resolves to an array of loaded characters.
  */
 export async function loadCharacters(charactersArg: string): Promise<Character[]> {
+  const serverModule = await loadModule('@elizaos/server');
   // Delegate to server implementation for main loading logic
-  const loadedCharacters = await serverLoadCharacters(charactersArg);
+  const loadedCharacters = await serverModule.loadCharacters(charactersArg);
 
   // CLI-specific behavior: fallback to default character if no characters found
   if (loadedCharacters.length === 0) {
