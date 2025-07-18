@@ -31,7 +31,13 @@ function isRunningFromLocalCli(): boolean {
     );
 
     // Compare exact paths to prevent infinite delegation
-    const isInLocalCli = path.resolve(currentScriptPath) === path.resolve(expectedLocalCliPath);
+    const currentResolved = path.resolve(currentScriptPath);
+    const expectedResolved = path.resolve(expectedLocalCliPath);
+    const isInLocalCli = currentResolved === expectedResolved;
+
+    logger.debug(
+      `Local CLI detection: current=${currentResolved}, expected=${expectedResolved}, match=${isInLocalCli}`
+    );
 
     return isInLocalCli;
   } catch (error) {
@@ -155,6 +161,7 @@ function isTestOrCiEnvironment(): boolean {
     process.env.ELIZA_TEST_MODE === '1',
     process.env.ELIZA_CLI_TEST_MODE === 'true',
     process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION === 'true',
+    process.env.ELIZA_DISABLE_LOCAL_CLI_DELEGATION === 'true',
     process.env.BUN_TEST === 'true',
     process.env.VITEST === 'true',
     process.env.JEST_WORKER_ID !== undefined,
@@ -190,6 +197,12 @@ function isTestOrCiEnvironment(): boolean {
  */
 export async function tryDelegateToLocalCli(): Promise<boolean> {
   try {
+    // Fail-safe: check for explicit delegation skip
+    if (process.env.ELIZA_DISABLE_LOCAL_CLI_DELEGATION === 'true') {
+      logger.debug('Local CLI delegation explicitly disabled');
+      return false;
+    }
+
     // Skip delegation in test or CI environments
     if (isTestOrCiEnvironment()) {
       logger.debug('Running in test or CI environment, skipping local CLI delegation');
@@ -215,6 +228,18 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
       logger.debug('No local CLI found, using global installation');
       return false;
     }
+
+    // Final fail-safe: prevent delegation loops
+    if (process.env._ELIZA_CLI_DELEGATION_DEPTH) {
+      const depth = parseInt(process.env._ELIZA_CLI_DELEGATION_DEPTH, 10);
+      if (depth > 0) {
+        logger.debug('Delegation depth exceeded, preventing infinite loop');
+        return false;
+      }
+    }
+
+    // Set delegation depth tracking
+    process.env._ELIZA_CLI_DELEGATION_DEPTH = '1';
 
     // Delegate to local CLI
     await delegateToLocalCli(localCliPath);

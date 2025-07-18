@@ -91,18 +91,18 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   const env = setupEnvironment();
 
   // Use Bun.spawn directly for better control
-  const process = Bun.spawn([nodeExecutable, scriptPath, 'start', ...args], {
+  const childProcess = Bun.spawn([nodeExecutable, scriptPath, 'start', ...args], {
     stdio: ['inherit', 'inherit', 'inherit'],
     env,
     cwd: process.cwd(),
   });
 
   // Update server state
-  serverState.process = process;
+  serverState.process = childProcess;
   serverState.isRunning = true;
 
   // Handle process completion
-  process.exited
+  childProcess.exited
     .then((exitCode) => {
       if (exitCode !== 0) {
         console.warn(`Server process exited with code ${exitCode}`);
