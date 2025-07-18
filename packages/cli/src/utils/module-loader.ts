@@ -84,9 +84,7 @@ export class ModuleLoader {
       // Cache the loaded module
       this.asyncCache.set(moduleName, module);
 
-      logger.info(
-        `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
-      );
+      logger.info(`Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`);
       return module;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -142,9 +140,7 @@ export class ModuleLoader {
       // Cache the loaded module
       this.syncCache.set(moduleName, module);
 
-      logger.info(
-        `Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`
-      );
+      logger.info(`Loaded ${moduleName} from ${isLocalModule ? 'local' : 'global'} installation`);
       return module;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

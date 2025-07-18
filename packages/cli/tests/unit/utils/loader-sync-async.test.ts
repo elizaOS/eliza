@@ -196,13 +196,13 @@ describe('loader utils - synchronous and asynchronous functions', () => {
     test('synchronous functions should maintain the same API as before', () => {
       // Test that synchronous functions work without await
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      
+
       const urlResult = hasValidRemoteUrls();
       expect(urlResult).toBe(true);
-      
+
       const fileResult = tryLoadFile('/test/file.txt');
       expect(fileResult).toBe('test content');
-      
+
       // These would fail if the functions returned Promises
       expect(urlResult === true).toBe(true);
       expect(fileResult === 'test content').toBe(true);
@@ -210,10 +210,10 @@ describe('loader utils - synchronous and asynchronous functions', () => {
 
     test('async functions should be available for new code', async () => {
       process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
-      
+
       const urlResult = await hasValidRemoteUrlsAsync();
       expect(urlResult).toBe(true);
-      
+
       const fileResult = await tryLoadFileAsync('/test/file.txt');
       expect(fileResult).toBe('test content');
     });

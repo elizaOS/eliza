@@ -26,7 +26,7 @@ describe('loader utils - integration tests', () => {
         const start = Date.now();
         const result = hasValidRemoteUrls();
         const duration = Date.now() - start;
-        
+
         expect(result).toBe(true);
         expect(typeof result).toBe('boolean');
         // Synchronous call should be very fast (< 5ms)
@@ -36,15 +36,16 @@ describe('loader utils - integration tests', () => {
       test('returns boolean immediately for invalid URL', () => {
         process.env.REMOTE_CHARACTER_URLS = 'not-a-url';
         const result = hasValidRemoteUrls();
-        
+
         expect(result).toBe(false);
         expect(typeof result).toBe('boolean');
       });
 
       test('handles multiple URLs correctly', () => {
-        process.env.REMOTE_CHARACTER_URLS = 'https://example1.com/char.json,https://example2.com/char.json';
+        process.env.REMOTE_CHARACTER_URLS =
+          'https://example1.com/char.json,https://example2.com/char.json';
         const result = hasValidRemoteUrls();
-        
+
         expect(result).toBe(true);
       });
     });
@@ -53,9 +54,9 @@ describe('loader utils - integration tests', () => {
       test('returns Promise that resolves to boolean for valid HTTPS URL', async () => {
         process.env.REMOTE_CHARACTER_URLS = 'https://example.com/character.json';
         const resultPromise = hasValidRemoteUrlsAsync();
-        
+
         expect(resultPromise).toBeInstanceOf(Promise);
-        
+
         const result = await resultPromise;
         expect(result).toBe(true);
         expect(typeof result).toBe('boolean');
@@ -64,15 +65,16 @@ describe('loader utils - integration tests', () => {
       test('returns Promise that resolves to boolean for invalid URL', async () => {
         process.env.REMOTE_CHARACTER_URLS = 'not-a-url';
         const result = await hasValidRemoteUrlsAsync();
-        
+
         expect(result).toBe(false);
         expect(typeof result).toBe('boolean');
       });
 
       test('handles multiple URLs correctly', async () => {
-        process.env.REMOTE_CHARACTER_URLS = 'https://example1.com/char.json,https://example2.com/char.json';
+        process.env.REMOTE_CHARACTER_URLS =
+          'https://example1.com/char.json,https://example2.com/char.json';
         const result = await hasValidRemoteUrlsAsync();
-        
+
         expect(result).toBe(true);
       });
     });
@@ -90,28 +92,28 @@ describe('loader utils - integration tests', () => {
 
       test('handles empty string', () => {
         process.env.REMOTE_CHARACTER_URLS = '';
-        
+
         const syncResult = hasValidRemoteUrls();
         expect(syncResult).toBe(false);
       });
 
       test('handles empty string (async)', async () => {
         process.env.REMOTE_CHARACTER_URLS = '';
-        
+
         const asyncResult = await hasValidRemoteUrlsAsync();
         expect(asyncResult).toBe(false);
       });
 
       test('handles whitespace-only string', () => {
         process.env.REMOTE_CHARACTER_URLS = '   ';
-        
+
         const syncResult = hasValidRemoteUrls();
         expect(syncResult).toBe(false);
       });
 
       test('handles whitespace-only string (async)', async () => {
         process.env.REMOTE_CHARACTER_URLS = '   ';
-        
+
         const asyncResult = await hasValidRemoteUrlsAsync();
         expect(asyncResult).toBe(false);
       });
