@@ -195,6 +195,13 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
       return false;
     }
 
+    // Skip delegation for update command (should always use global CLI)
+    const args = process.argv.slice(2);
+    if (args.length > 0 && args[0] === 'update') {
+      logger.debug('Update command detected, skipping local CLI delegation');
+      return false;
+    }
+
     // Skip delegation if we're already running from local CLI
     if (isRunningFromLocalCli()) {
       logger.debug('Already running from local CLI, continuing execution');
