@@ -35,9 +35,8 @@ describe('ElizaOS Start Commands', () => {
     await killProcessOnPort(testServerPort);
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 
-    // Create temporary directory
+    // Create temporary directory but don't change to it (keep monorepo context)
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-start-'));
-    process.chdir(testTmpDir);
 
     // Setup CLI path
     const scriptDir = join(__dirname, '..');
@@ -47,6 +46,14 @@ describe('ElizaOS Start Commands', () => {
     process.env.LOCAL_SMALL_MODEL = 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf';
     process.env.LOCAL_MEDIUM_MODEL = process.env.LOCAL_SMALL_MODEL;
     process.env.TEST_SERVER_PORT = testServerPort.toString();
+
+    // Set test environment flags to skip local CLI delegation
+    process.env.NODE_ENV = 'test';
+    process.env.ELIZA_TEST_MODE = 'true';
+    process.env.BUN_TEST = 'true';
+
+    // Ensure these flags are available for all spawned processes
+    process.env.ELIZA_CLI_TEST_MODE = 'true';
   });
 
   afterEach(async () => {
@@ -57,6 +64,10 @@ describe('ElizaOS Start Commands', () => {
     delete process.env.LOCAL_SMALL_MODEL;
     delete process.env.LOCAL_MEDIUM_MODEL;
     delete process.env.TEST_SERVER_PORT;
+    delete process.env.NODE_ENV;
+    delete process.env.ELIZA_TEST_MODE;
+    delete process.env.BUN_TEST;
+    delete process.env.ELIZA_CLI_TEST_MODE;
 
     // Restore original ELIZA_TEST_MODE
     if (originalElizaTestMode !== undefined) {
@@ -93,10 +104,22 @@ describe('ElizaOS Start Commands', () => {
           LOG_LEVEL: 'debug',
           PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
           SERVER_PORT: testServerPort.toString(),
+          NODE_ENV: 'test',
+          ELIZA_TEST_MODE: 'true',
+          BUN_TEST: 'true',
+          ELIZA_CLI_TEST_MODE: 'true',
         },
-        cwd: testTmpDir,
+        cwd: originalCwd, // Use monorepo root as working directory
+        allowOutput: true, // Allow capturing output for debugging
       }
     );
+
+    // Add error handling to capture server startup failures
+    serverProcess.exited.then(() => {
+      if (serverProcess.exitCode !== 0) {
+        console.error(`Server process exited with code ${serverProcess.exitCode}`);
+      }
+    });
 
     // Wait for server to be ready
     await waitForServerReady(testServerPort, maxWaitTime);
@@ -113,7 +136,13 @@ describe('ElizaOS Start Commands', () => {
   it('start command shows help', async () => {
     const { stdout: result } = await bunExecSimple('bun', [elizaosPath, 'start', '--help'], {
       timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-      env: process.env,
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        ELIZA_TEST_MODE: 'true',
+        BUN_TEST: 'true',
+        ELIZA_CLI_TEST_MODE: 'true',
+      },
     });
     expect(result).toContain('Usage: elizaos start');
     expect(result).toContain('--character');
@@ -157,7 +186,13 @@ describe('ElizaOS Start Commands', () => {
               [elizaosPath, 'agent', 'list', '--remote-url', `http://localhost:${testServerPort}`],
               {
                 timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-                env: process.env,
+                env: {
+                  ...process.env,
+                  NODE_ENV: 'test',
+                  ELIZA_TEST_MODE: 'true',
+                  BUN_TEST: 'true',
+                  ELIZA_CLI_TEST_MODE: 'true',
+                },
               }
             );
             result = stdout;
@@ -225,8 +260,13 @@ describe('ElizaOS Start Commands', () => {
             ...process.env,
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb2'),
+            NODE_ENV: 'test',
+            ELIZA_TEST_MODE: 'true',
+            BUN_TEST: 'true',
+            ELIZA_CLI_TEST_MODE: 'true',
           },
-          cwd: testTmpDir,
+          cwd: originalCwd, // Use monorepo root as working directory
+          allowOutput: true,
         }
       );
 
@@ -258,7 +298,13 @@ describe('ElizaOS Start Commands', () => {
         [elizaosPath, 'start', '--character', `${adaPath}${fmt}${adaPath}`, '--help'],
         {
           timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-          env: process.env,
+          env: {
+            ...process.env,
+            NODE_ENV: 'test',
+            ELIZA_TEST_MODE: 'true',
+            BUN_TEST: 'true',
+            ELIZA_CLI_TEST_MODE: 'true',
+          },
         }
       );
       expect(result).toContain('start');
@@ -275,7 +321,13 @@ describe('ElizaOS Start Commands', () => {
       [elizaosPath, 'start', '--character', `${adaPath},does-not-exist.json`, '--help'],
       {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-        env: process.env,
+        env: {
+          ...process.env,
+          NODE_ENV: 'test',
+          ELIZA_TEST_MODE: 'true',
+          BUN_TEST: 'true',
+          ELIZA_CLI_TEST_MODE: 'true',
+        },
       }
     );
     expect(result).toContain('start');
@@ -288,7 +340,13 @@ describe('ElizaOS Start Commands', () => {
       [elizaosPath, 'start', '--build', '--help'],
       {
         timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
-        env: process.env,
+        env: {
+          ...process.env,
+          NODE_ENV: 'test',
+          ELIZA_TEST_MODE: 'true',
+          BUN_TEST: 'true',
+          ELIZA_CLI_TEST_MODE: 'true',
+        },
       }
     );
     expect(result).toContain('start');
@@ -311,8 +369,13 @@ describe('ElizaOS Start Commands', () => {
             ...process.env,
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: join(testTmpDir, 'elizadb3'),
+            NODE_ENV: 'test',
+            ELIZA_TEST_MODE: 'true',
+            BUN_TEST: 'true',
+            ELIZA_CLI_TEST_MODE: 'true',
           },
-          cwd: testTmpDir,
+          cwd: originalCwd, // Use monorepo root as working directory
+          allowOutput: true,
         }
       );
 

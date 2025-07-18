@@ -530,12 +530,12 @@ export class TestProcessManager {
    * Spawn a process with proper error handling and cleanup
    */
   spawn(command: string, args: string[], options: any = {}): any {
-    // Force stdio to 'ignore' to prevent hanging streams on Windows
+    // Force stdio to 'ignore' to prevent hanging streams on Windows, unless allowOutput is true
     const processOptions = {
       cwd: options.cwd || process.cwd(),
       env: options.env || process.env,
-      stdout: 'ignore',
-      stderr: 'ignore',
+      stdout: options.allowOutput ? 'inherit' : 'ignore',
+      stderr: options.allowOutput ? 'inherit' : 'ignore',
       stdin: 'ignore',
     };
 
