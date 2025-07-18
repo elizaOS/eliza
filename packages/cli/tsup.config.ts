@@ -17,9 +17,10 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  // Externalize problematic fs-related dependencies and all @elizaos packages
-  // This ensures the CLI uses the project's local versions instead of bundled ones
-  external: ['fs-extra', /^@elizaos\//],
+  // Only externalize fs-extra which has native dependencies
+  // We bundle most @elizaos packages but use ModuleLoader for @elizaos/server
+  // to ensure singleton patterns work correctly
+  external: ['fs-extra'],
   platform: 'node',
   minify: false,
   target: 'esnext',
