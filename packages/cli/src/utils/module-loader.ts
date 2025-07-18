@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { logger } from '@elizaos/core';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { UserEnvironment } from './user-environment';
 
 /**
  * ModuleLoader provides a clean way to load modules from the project's local node_modules
@@ -14,15 +15,31 @@ export class ModuleLoader {
   private cache = new Map<string, any>();
   private projectPath: string;
 
-  constructor(projectPath: string = process.cwd()) {
-    this.projectPath = projectPath;
+  constructor(projectPath?: string) {
+    this.projectPath = projectPath || this.detectProjectPath();
     // Create require function scoped to the project directory
     // This ensures module resolution starts from the project's package.json
-    this.require = createRequire(pathToFileURL(projectPath + '/package.json').href);
+    this.require = createRequire(pathToFileURL(this.projectPath + '/package.json').href);
 
     // Set up environment with proper module resolution paths
     // This ensures the same local-first guarantees as server-manager.ts
     this.setupEnvironment();
+  }
+
+  /**
+   * Detect the appropriate project path, preferring monorepo root over current working directory
+   */
+  private detectProjectPath(): string {
+    // Try to detect monorepo root using existing UserEnvironment utility
+    const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
+    if (monorepoRoot) {
+      logger.debug(`Using monorepo root: ${monorepoRoot}`);
+      return monorepoRoot;
+    }
+
+    // Fallback to current working directory
+    logger.debug(`Using current working directory: ${process.cwd()}`);
+    return process.cwd();
   }
 
   /**

@@ -26,6 +26,23 @@ export const start = new Command()
       // Load env config first before any character loading
       await loadEnvConfig();
 
+      // Setup proper module resolution environment variables
+      // This ensures consistent plugin loading between dev and start commands
+      const localModulesPath = path.join(process.cwd(), 'node_modules');
+      if (process.env.NODE_PATH) {
+        process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
+      } else {
+        process.env.NODE_PATH = localModulesPath;
+      }
+
+      // Add local .bin to PATH to prioritize local executables
+      const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
+      if (process.env.PATH) {
+        process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
+      } else {
+        process.env.PATH = localBinPath;
+      }
+
       // Build the project first (unless it's a monorepo)
       const cwd = process.cwd();
       const dirInfo = detectDirectoryType(cwd);
