@@ -1,6 +1,7 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
+import { getModuleLoader } from '@/src/utils/module-loader';
+import { UserEnvironment } from '@/src/utils/user-environment';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
 import path from 'node:path';
@@ -27,6 +28,13 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   if (postgresUrl) process.env.POSTGRES_URL = postgresUrl;
 
   const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
+
+  // Load @elizaos/server from the project's node_modules
+  // Use monorepo root when available to ensure proper module resolution
+  const moduleLoader = getModuleLoader();
+  const serverModule = await moduleLoader.load('@elizaos/server');
+
+  const { AgentServer, jsonToCharacter, loadCharacterTryPath } = serverModule;
 
   // Get the directory where the CLI is installed to find client files
   const __filename = fileURLToPath(import.meta.url);

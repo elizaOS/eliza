@@ -158,6 +158,46 @@ bun run release:alpha   # Release alpha version
 
   **IMPORTANT:** Even in test files, avoid using Node.js `execSync` or other child_process APIs. Use the bun-exec utilities or Bun.spawn directly.
 
+### Event Handling
+
+- **NEVER USE `EventEmitter` FROM NODE.JS**
+- **EventEmitter has compatibility issues with Bun and should be avoided**
+- **ALWAYS USE BUN'S NATIVE `EventTarget` API INSTEAD**
+- **When migrating from EventEmitter:**
+  - Extend `EventTarget` instead of `EventEmitter`
+  - Use `dispatchEvent(new CustomEvent(name, { detail: data }))` instead of `emit(name, data)`
+  - Wrap handlers to extract data from `CustomEvent.detail`
+  - Maintain backward-compatible API when possible
+- **Example migration:**
+
+  ```typescript
+  // ❌ WRONG - Don't use EventEmitter
+  import { EventEmitter } from 'events';
+  class MyClass extends EventEmitter {
+    doSomething() {
+      this.emit('event', { data: 'value' });
+    }
+  }
+
+  // ✅ CORRECT - Use EventTarget
+  class MyClass extends EventTarget {
+    private handlers = new Map<string, Map<Function, EventListener>>();
+
+    emit(event: string, data: any) {
+      this.dispatchEvent(new CustomEvent(event, { detail: data }));
+    }
+
+    on(event: string, handler: (data: any) => void) {
+      const wrappedHandler = ((e: CustomEvent) => handler(e.detail)) as EventListener;
+      if (!this.handlers.has(event)) {
+        this.handlers.set(event, new Map());
+      }
+      this.handlers.get(event)!.set(handler, wrappedHandler);
+      this.addEventListener(event, wrappedHandler);
+    }
+  }
+  ```
+
 ### Git & GitHub
 
 - **ALWAYS USE `gh` CLI FOR GIT AND GITHUB OPERATIONS**

@@ -1,10 +1,10 @@
 import { loadProject } from '@/src/project';
-import { createTask, displayBanner, handleError, runTasks } from '@/src/utils';
+import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
-import { loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -25,6 +25,23 @@ export const start = new Command()
     try {
       // Load env config first before any character loading
       await loadEnvConfig();
+
+      // Setup proper module resolution environment variables
+      // This ensures consistent plugin loading between dev and start commands
+      const localModulesPath = path.join(process.cwd(), 'node_modules');
+      if (process.env.NODE_PATH) {
+        process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
+      } else {
+        process.env.NODE_PATH = localModulesPath;
+      }
+
+      // Add local .bin to PATH to prioritize local executables
+      const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
+      if (process.env.PATH) {
+        process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
+      } else {
+        process.env.PATH = localBinPath;
+      }
 
       // Build the project first (unless it's a monorepo)
       const cwd = process.cwd();
@@ -47,6 +64,11 @@ export const start = new Command()
       let projectAgents: ProjectAgent[] = [];
 
       if (options.character && options.character.length > 0) {
+        // Load @elizaos/server module for character loading
+        const moduleLoader = getModuleLoader();
+        const serverModule = await moduleLoader.load('@elizaos/server');
+        const { loadCharacterTryPath } = serverModule;
+
         // Validate and load characters from provided paths
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);

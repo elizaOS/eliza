@@ -1,5 +1,4 @@
 import { query } from '@anthropic-ai/claude-code';
-import { EventEmitter } from 'events';
 import { createMigrationGuideLoader, MigrationGuideLoader } from './migration-guide-loader';
 import { logger } from '@elizaos/core';
 
@@ -12,7 +11,18 @@ export interface SimpleMigrationResult {
   guidesUsed?: string[];
 }
 
-export class SimpleMigrationAgent extends EventEmitter {
+/**
+ * SimpleMigrationAgent uses a class extending EventTarget rather than functional
+ * patterns because EventTarget is a native browser/Bun API that requires class inheritance.
+ * This is an intentional architectural decision to leverage Bun's native capabilities
+ * instead of Node.js EventEmitter for better compatibility.
+ *
+ * NOTE: Unlike standard EventEmitter, this implementation prevents duplicate handler
+ * registration. This is an intentional design choice to prevent memory leaks and
+ * unintended multiple executions of the same handler.
+ */
+export class SimpleMigrationAgent extends EventTarget {
+  private handlers = new Map<string, Map<(data?: unknown) => void, EventListener>>();
   private repoPath: string;
   private abortController: AbortController;
   private verbose: boolean;
@@ -44,6 +54,90 @@ export class SimpleMigrationAgent extends EventEmitter {
       logger.warn('Failed to initialize migration guide loader', error);
       throw new Error('Cannot initialize migration system without guide access');
     }
+  }
+
+  // EventEmitter-like API using native EventTarget
+  emit(event: string, data?: unknown): boolean {
+    return this.dispatchEvent(new CustomEvent(event, { detail: data }));
+  }
+
+  on(event: string, handler: (data?: unknown) => void): this {
+    // Check if handler is already registered
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, new Map());
+    }
+
+    const eventHandlers = this.handlers.get(event)!;
+
+    // If handler already exists, don't add it again
+    if (eventHandlers.has(handler)) {
+      return this;
+    }
+
+    // Wrap the handler to extract data from CustomEvent
+    const wrappedHandler = ((e: Event) => {
+      if (e instanceof CustomEvent) {
+        handler(e.detail);
+      } else {
+        handler(undefined);
+      }
+    }) as EventListener;
+
+    // Store mapping for removal later
+    eventHandlers.set(handler, wrappedHandler);
+
+    this.addEventListener(event, wrappedHandler);
+    return this;
+  }
+
+  off(event: string, handler: (data?: unknown) => void) {
+    const eventHandlers = this.handlers.get(event);
+    const wrappedHandler = eventHandlers?.get(handler);
+
+    if (wrappedHandler) {
+      this.removeEventListener(event, wrappedHandler);
+      eventHandlers!.delete(handler);
+
+      // Clean up empty maps
+      if (eventHandlers!.size === 0) {
+        this.handlers.delete(event);
+      }
+    }
+  }
+
+  // Alias for EventEmitter compatibility
+  removeListener(event: string, handler: (data?: unknown) => void) {
+    return this.off(event, handler);
+  }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      // Remove all listeners for specific event
+      const eventHandlers = this.handlers.get(event);
+      if (eventHandlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(event, wrappedHandler);
+        }
+        this.handlers.delete(event);
+      }
+    } else {
+      // Remove all listeners for all events
+      for (const [eventName, eventHandlers] of this.handlers) {
+        for (const [_, wrappedHandler] of eventHandlers) {
+          this.removeEventListener(eventName, wrappedHandler);
+        }
+      }
+      this.handlers.clear();
+    }
+  }
+
+  listenerCount(event: string): number {
+    return this.handlers.get(event)?.size || 0;
+  }
+
+  listeners(event: string): ((data?: unknown) => void)[] {
+    const eventHandlers = this.handlers.get(event);
+    return eventHandlers ? Array.from(eventHandlers.keys()) : [];
   }
 
   private isImportantUpdate(text: string): boolean {
@@ -144,7 +238,7 @@ export class SimpleMigrationAgent extends EventEmitter {
     }
   }
 
-  private updateTokenTracking(usage: any): void {
+  private updateTokenTracking(usage: { input_tokens?: number; output_tokens?: number }): void {
     // Update token counts from Claude Code SDK usage data
     if (usage.input_tokens) {
       this.totalInputTokens += usage.input_tokens;
