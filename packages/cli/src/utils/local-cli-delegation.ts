@@ -20,11 +20,18 @@ function isRunningFromLocalCli(): boolean {
     const currentScriptPath = process.argv[1];
     if (!currentScriptPath) return false;
 
-    // Convert to absolute path for comparison
-    const absoluteScriptPath = path.resolve(currentScriptPath);
+    // Get the expected local CLI path
+    const expectedLocalCliPath = path.join(
+      process.cwd(),
+      'node_modules',
+      '@elizaos',
+      'cli',
+      'dist',
+      'index.js'
+    );
 
-    // Check if current script is in a local node_modules/@elizaos/cli directory
-    const isInLocalCli = absoluteScriptPath.includes(path.join('node_modules', '@elizaos', 'cli'));
+    // Compare exact paths to prevent infinite delegation
+    const isInLocalCli = path.resolve(currentScriptPath) === path.resolve(expectedLocalCliPath);
 
     return isInLocalCli;
   } catch (error) {
