@@ -34,7 +34,8 @@
     "./typescript/tsconfig.test.json": "./src/typescript/tsconfig.test.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "devDependencies": {
     "prettier": "^3.5.3",
