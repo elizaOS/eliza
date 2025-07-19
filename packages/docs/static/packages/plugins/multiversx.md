@@ -54,5 +54,5 @@ const result = await eliza.execute({
 ## Links
 
 - [MultiversX Documentation](https://docs.multiversx.com/)
-- [MultiversX Developer Portal](https://docs.multiversx.com/developers/getting-started/introduction)
+- [MultiversX Developer Portal](https://docs.multiversx.com/developers/overview/)
 - [MultiversX GitHub Repository](https://github.com/multiversx/mx-sdk-js)
