@@ -36,6 +36,9 @@ describe('ElizaOS Dev Commands', () => {
           type: 'module',
           dependencies: {
             '@elizaos/core': '^1.0.0',
+            '@elizaos/server': '^1.0.0',
+            '@langchain/core': '>=0.3.0',
+            'dotenv': '^16.0.0',
           },
         },
         null,
@@ -44,6 +47,16 @@ describe('ElizaOS Dev Commands', () => {
     );
     await mkdir(join(projectDir, 'src'), { recursive: true });
     await writeFile(join(projectDir, 'src/index.ts'), 'export const test = "hello";');
+    
+    // Install dependencies in the test project
+    console.log('Installing dependencies in test project...');
+    const installProcess = Bun.spawn(['bun', 'install'], {
+      cwd: projectDir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    await installProcess.exited;
+    
     console.log('Minimal test project created at:', projectDir);
   });
 
@@ -620,8 +633,8 @@ describe('ElizaOS Dev Commands', () => {
 
     // Read output for a few seconds to capture the server start message
     const startTime = Date.now();
-    while (Date.now() - startTime < 5000) {
-      // Increased timeout
+    while (Date.now() - startTime < 10000) {
+      // Increased timeout to 10s for subprocess startup
       // Read from stdout
       const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
         if (!done && value) {
@@ -648,7 +661,9 @@ describe('ElizaOS Dev Commands', () => {
       const combinedOutput = output + stderrOutput;
 
       // More flexible port detection - check for the port number in various formats
-      if (combinedOutput.includes(specifiedPort.toString())) {
+      if (combinedOutput.includes(specifiedPort.toString()) || 
+          combinedOutput.includes(`AgentServer is listening on port ${specifiedPort}`) ||
+          combinedOutput.includes(`listening on port ${specifiedPort}`)) {
         break;
       }
     }
@@ -667,5 +682,5 @@ describe('ElizaOS Dev Commands', () => {
     // Clean up the dev process
     devProcess.kill('SIGTERM');
     await devProcess.exited;
-  }, 10000);
+  }, 20000);
 });

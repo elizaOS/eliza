@@ -91,8 +91,10 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   const env = setupEnvironment();
 
   // Use Bun.spawn directly for better control
+  // In test mode, use pipes to allow output capture
+  const isTestMode = process.env.ELIZA_TEST_MODE === 'true';
   const childProcess = Bun.spawn([nodeExecutable, scriptPath, 'start', ...args], {
-    stdio: ['inherit', 'inherit', 'inherit'],
+    stdio: isTestMode ? ['inherit', 'pipe', 'pipe'] : ['inherit', 'inherit', 'inherit'],
     env,
     cwd: process.cwd(),
   });
@@ -100,6 +102,24 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   // Update server state
   serverState.process = childProcess;
   serverState.isRunning = true;
+
+  // In test mode, pipe output to parent process
+  if (isTestMode && childProcess.stdout && childProcess.stderr) {
+    childProcess.stdout.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          process.stdout.write(chunk);
+        },
+      })
+    );
+    childProcess.stderr.pipeTo(
+      new WritableStream({
+        write(chunk) {
+          process.stderr.write(chunk);
+        },
+      })
+    );
+  }
 
   // Handle process completion
   childProcess.exited

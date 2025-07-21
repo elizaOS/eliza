@@ -44,7 +44,6 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.1",
-    "dotenv": "^16.5.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
     "tsx": "4.19.4",
@@ -59,6 +58,7 @@
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",
+    "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
