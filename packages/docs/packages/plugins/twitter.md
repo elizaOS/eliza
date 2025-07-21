@@ -45,12 +45,11 @@ TWITTER_ACCESS_TOKEN=your_access_token
 TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret
 
 # Optional - Feature Flags
-TWITTER_ENABLE_SEARCH=false      # Enable tweet search (default: false)
 TWITTER_POLL_INTERVAL=120        # Seconds between timeline checks (default: 120)
 TWITTER_MAX_TWEETS_PER_POLL=10   # Max tweets to process per poll (default: 10)
 TWITTER_POST_INTERVAL_MIN=90     # Min minutes between posts (default: 90)
 TWITTER_POST_INTERVAL_MAX=180    # Max minutes between posts (default: 180)
-TWITTER_POST_ENABLE=false        # Enable automatic posting (default: false)
+TWITTER_ENABLE_POST=false        # Enable automatic posting (default: false)
 TWITTER_DRY_RUN=false           # Test mode - logs but doesn't post (default: false)
 ```
 
@@ -73,7 +72,7 @@ Enable automatic posting to maintain an active Twitter presence:
 
 ```typescript
 // Enable in .env
-TWITTER_POST_ENABLE = true;
+TWITTER_ENABLE_POST = true;
 TWITTER_POST_INTERVAL_MIN = 90; // minimum minutes between posts
 TWITTER_POST_INTERVAL_MAX = 180; // maximum minutes between posts
 ```
