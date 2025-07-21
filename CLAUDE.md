@@ -270,6 +270,66 @@ elizaos test --skip-build    # Skip building before tests
 - **Services:** Enable AI agents to interact with external platforms
 - **Plugins:** Modular extensions for enhanced capabilities
 
+### CRITICAL: ElizaOS Component Clarifications
+
+**NEVER CONFUSE THESE CONCEPTS:**
+
+#### Services vs Providers
+- **Services** (`extends Service`):
+  - Manage state and external integrations
+  - Handle API connections, SDKs, databases
+  - Perform business logic and transactions
+  - Examples: `WalletService`, `DatabaseService`, `TwitterService`
+  - Accessed via: `runtime.getService('serviceName')`
+  
+- **Providers** (`extends Provider`):
+  - Supply READ-ONLY contextual information
+  - Format data for agent prompts
+  - Never modify state or call external APIs
+  - Examples: `TimeProvider`, `FactProvider`, `BoredomProvider`
+  - Return formatted strings via `get()` method
+
+#### Actions vs Evaluators
+- **Actions** (`extends Action`):
+  - Handle user commands and requests
+  - Parse user input and validate parameters
+  - Execute operations (via Services)
+  - Return responses to users
+  
+- **Evaluators** (`extends Evaluator`):
+  - Process AFTER interactions complete
+  - Enable agent learning and reflection
+  - Analyze interaction outcomes
+  - Update agent memory/knowledge
+  - NOT for parsing input or monitoring
+
+#### Correct Architecture Pattern
+```
+User Input → Action → Service → External API/SDK
+                ↓
+            Provider → Context for prompts
+                ↓
+        Post-interaction → Evaluator → Learning
+```
+
+#### Plugin Structure
+```typescript
+interface Plugin {
+  name: string;
+  description: string;
+  actions: Action[];        // User interactions
+  services: Service[];      // Stateful integrations (REQUIRED for external APIs)
+  providers: Provider[];    // Context suppliers (read-only)
+  evaluators?: Evaluator[]; // Post-interaction processors (optional)
+}
+```
+
+**Common Mistakes to Avoid:**
+- Using Providers to execute transactions → Use Services
+- Using Evaluators to parse user input → Use Actions
+- Direct Action → External API calls → Always go through Services
+- Providers with state-changing methods → Providers are read-only
+
 ### Database Architecture
 
 - **ORM:** Drizzle ORM with IDatabaseAdapter interface
