@@ -281,7 +281,7 @@ elizaos test --skip-build    # Skip building before tests
   - Perform business logic and transactions
   - Examples: `WalletService`, `DatabaseService`, `TwitterService`
   - Accessed via: `runtime.getService('serviceName')`
-  
+
 - **Providers** (`extends Provider`):
   - Supply READ-ONLY contextual information
   - Format data for agent prompts
@@ -295,7 +295,7 @@ elizaos test --skip-build    # Skip building before tests
   - Parse user input and validate parameters
   - Execute operations (via Services)
   - Return responses to users
-  
+
 - **Evaluators** (`extends Evaluator`):
   - Process AFTER interactions complete
   - Enable agent learning and reflection
@@ -346,6 +346,7 @@ interface Plugin {
 2. **Research all affected files and components**
 3. **Create detailed implementation plan**
 4. **Identify all possible risks and negative outcomes**
+5. **ALWAYS evaluate if parallel claude code agents can be used** - Run multiple Task agents concurrently whenever possible for maximum performance
 
 ### Implementation Process
 
