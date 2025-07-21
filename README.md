@@ -69,7 +69,7 @@ elizaos create my-agent --yes --type project
 ```bash
 cd my-agent
 
-# Edit your agent's character file
+# Edit your local env file
 elizaos env edit-local
 
 # Or manually edit the .env file with your preferred editor
