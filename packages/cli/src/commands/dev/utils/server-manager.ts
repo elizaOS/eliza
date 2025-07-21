@@ -98,7 +98,14 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   // Use Bun.spawn directly for better control
   // In test mode, use pipes to allow output capture
   const isTestMode = process.env.ELIZA_TEST_MODE === 'true';
-  const childProcess = Bun.spawn([nodeExecutable, scriptPath, 'start', ...args], {
+  const commandArgs = [nodeExecutable, scriptPath, 'start', ...args];
+  
+  // In test mode, log the command being executed
+  if (isTestMode) {
+    console.info(`Executing command: ${commandArgs.join(' ')}`);
+  }
+  
+  const childProcess = Bun.spawn(commandArgs, {
     stdio: isTestMode ? ['inherit', 'pipe', 'pipe'] : ['inherit', 'inherit', 'inherit'],
     env,
     cwd: process.cwd(),
