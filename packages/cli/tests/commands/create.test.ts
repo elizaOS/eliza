@@ -56,7 +56,10 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', () => {
-    const result = bunExecSync(`elizaos create --help`, getPlatformOptions({ encoding: 'utf8' })) as string;
+    const result = bunExecSync(
+      `elizaos create --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    ) as string;
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -68,10 +71,13 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform directory removal
       await crossPlatform.removeDir('my-default-app');
 
-      const result = bunExecSync('elizaos create my-default-app --yes', getPlatformOptions({
-        encoding: 'utf8',
-        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-      })) as string;
+      const result = bunExecSync(
+        'elizaos create my-default-app --yes',
+        getPlatformOptions({
+          encoding: 'utf8',
+          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+        })
+      ) as string;
 
       // Check for various success patterns since output might vary
       const successPatterns = [
@@ -345,10 +351,13 @@ describe('ElizaOS Create Commands', () => {
       async () => {
         await crossPlatform.removeDir('claude-md-test-project');
 
-        const result = bunExecSync('elizaos create claude-md-test-project --yes', getPlatformOptions({
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-        })) as string;
+        const result = bunExecSync(
+          'elizaos create claude-md-test-project --yes',
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          })
+        ) as string;
 
         expect(existsSync('claude-md-test-project')).toBe(true);
         expect(existsSync('claude-md-test-project/CLAUDE.md')).toBe(true);
@@ -372,10 +381,13 @@ describe('ElizaOS Create Commands', () => {
       async () => {
         await crossPlatform.removeDir('plugin-claude-md-test');
 
-        const result = bunExecSync('elizaos create claude-md-test --yes --type plugin', getPlatformOptions({
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-        })) as string;
+        const result = bunExecSync(
+          'elizaos create claude-md-test --yes --type plugin',
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          })
+        ) as string;
 
         const pluginDir = 'plugin-claude-md-test';
         expect(existsSync(pluginDir)).toBe(true);

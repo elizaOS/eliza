@@ -39,7 +39,7 @@ describe('ElizaOS Dev Commands', () => {
             '@elizaos/server': '^1.0.0',
             '@elizaos/plugin-sql': '^1.0.0',
             '@langchain/core': '>=0.3.0',
-            'dotenv': '^16.0.0',
+            dotenv: '^16.0.0',
           },
         },
         null,
@@ -48,7 +48,7 @@ describe('ElizaOS Dev Commands', () => {
     );
     await mkdir(join(projectDir, 'src'), { recursive: true });
     await writeFile(join(projectDir, 'src/index.ts'), 'export const test = "hello";');
-    
+
     // Install dependencies in the test project
     console.log('Installing dependencies in test project...');
     const installProcess = Bun.spawn(['bun', 'install'], {
@@ -57,13 +57,13 @@ describe('ElizaOS Dev Commands', () => {
       stderr: 'pipe',
     });
     const exitCode = await installProcess.exited;
-    
+
     // Check if bun install succeeded
     if (exitCode !== 0) {
       const stderr = await new Response(installProcess.stderr).text();
       throw new Error(`bun install failed with exit code ${exitCode}: ${stderr}`);
     }
-    
+
     console.log('Minimal test project created at:', projectDir);
   });
 
@@ -207,10 +207,10 @@ describe('ElizaOS Dev Commands', () => {
 
     // Check that process was created (has a PID)
     expect(devProcess.pid).toBeDefined();
-    
+
     // On Ubuntu, the process may exit quickly due to initialization issues,
     // but as long as it started (has a PID), the test passes
-    
+
     // Kill the process if it's still running
     if (!devProcess.killed) {
       devProcess.kill('SIGTERM');
@@ -317,7 +317,7 @@ describe('ElizaOS Dev Commands', () => {
     // More flexible pattern matching - check for any indication of project detection
     // In CI, we primarily care that the process starts successfully
     expect(devProcess.pid).toBeDefined();
-    
+
     // On Ubuntu, the process may exit quickly, but we got output showing it detected the project type
     // The key thing is we received the expected output, not whether the process is still running
 
@@ -625,12 +625,12 @@ describe('ElizaOS Dev Commands', () => {
 
     // This test is simpler - just verify that the dev command accepts --port argument
     // and passes it along. We don't need to wait for the server to fully start.
-    
+
     // Run dev command with --help to check if port option is supported
     const helpResult = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
     expect(helpResult).toContain('--port');
     expect(helpResult).toContain('Port to listen on');
-    
+
     // Now run the dev command with a port and verify it starts without error
     // We'll use a very short-lived process just to verify the port argument is accepted
     const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
@@ -652,7 +652,7 @@ describe('ElizaOS Dev Commands', () => {
     // Check that process started (has a PID and isn't immediately killed)
     expect(devProcess.pid).toBeDefined();
     expect(devProcess.killed).toBe(false);
-    
+
     // The fact that the process started without error means it accepted the --port argument
     // This is sufficient to verify the functionality without needing full server startup
 

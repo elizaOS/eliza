@@ -99,12 +99,12 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   // In test mode, use pipes to allow output capture
   const isTestMode = process.env.ELIZA_TEST_MODE === 'true';
   const commandArgs = [nodeExecutable, scriptPath, 'start', ...args];
-  
+
   // In test mode, log the command being executed
   if (isTestMode) {
     console.info(`Executing command: ${commandArgs.join(' ')}`);
   }
-  
+
   const childProcess = Bun.spawn(commandArgs, {
     stdio: isTestMode ? ['inherit', 'pipe', 'pipe'] : ['inherit', 'inherit', 'inherit'],
     env,
@@ -118,28 +118,32 @@ async function startServerProcess(args: string[] = []): Promise<void> {
   // In test mode, pipe output to parent process
   if (isTestMode && childProcess.stdout && childProcess.stderr) {
     // Handle stdout piping
-    childProcess.stdout.pipeTo(
-      new WritableStream({
-        write(chunk) {
-          process.stdout.write(chunk);
-          return Promise.resolve();
-        },
-      })
-    ).catch((error) => {
-      console.error('Error piping stdout:', error);
-    });
+    childProcess.stdout
+      .pipeTo(
+        new WritableStream({
+          write(chunk) {
+            process.stdout.write(chunk);
+            return Promise.resolve();
+          },
+        })
+      )
+      .catch((error) => {
+        console.error('Error piping stdout:', error);
+      });
 
     // Handle stderr piping
-    childProcess.stderr.pipeTo(
-      new WritableStream({
-        write(chunk) {
-          process.stderr.write(chunk);
-          return Promise.resolve();
-        },
-      })
-    ).catch((error) => {
-      console.error('Error piping stderr:', error);
-    });
+    childProcess.stderr
+      .pipeTo(
+        new WritableStream({
+          write(chunk) {
+            process.stderr.write(chunk);
+            return Promise.resolve();
+          },
+        })
+      )
+      .catch((error) => {
+        console.error('Error piping stderr:', error);
+      });
   }
 
   // Handle process completion

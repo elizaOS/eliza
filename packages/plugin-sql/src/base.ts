@@ -1556,14 +1556,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
-      typeof memory.content === 'string'
-        ? memory.content
-        : JSON.stringify(memory.content ?? {});
+      typeof memory.content === 'string' ? memory.content : JSON.stringify(memory.content ?? {});
 
     const metadataToInsert =
-      typeof memory.metadata === 'string'
-        ? memory.metadata
-        : JSON.stringify(memory.metadata ?? {});
+      typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
     await this.db.transaction(async (tx) => {
       await tx.insert(memoryTable).values([

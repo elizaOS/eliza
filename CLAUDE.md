@@ -275,7 +275,9 @@ elizaos test --skip-build    # Skip building before tests
 **NEVER CONFUSE THESE CONCEPTS:**
 
 #### Services vs Providers
+
 - **Services** (`extends Service`):
+
   - Manage state and external integrations
   - Handle API connections, SDKs, databases
   - Perform business logic and transactions
@@ -290,7 +292,9 @@ elizaos test --skip-build    # Skip building before tests
   - Return formatted strings via `get()` method
 
 #### Actions vs Evaluators
+
 - **Actions** (`extends Action`):
+
   - Handle user commands and requests
   - Parse user input and validate parameters
   - Execute operations (via Services)
@@ -307,6 +311,7 @@ elizaos test --skip-build    # Skip building before tests
   - NOT for parsing input or monitoring
 
 #### Correct Architecture Pattern
+
 ```
 User Input → Action → Service → External API/SDK
                 ↓
@@ -316,46 +321,49 @@ User Input → Action → Service → External API/SDK
 ```
 
 #### Plugin Structure
+
 ```typescript
 interface Plugin {
   name: string;
   description: string;
-  actions: Action[];        // User interactions
-  services: Service[];      // Stateful integrations (REQUIRED for external APIs)
-  providers: Provider[];    // Context suppliers (read-only)
+  actions: Action[]; // User interactions
+  services: Service[]; // Stateful integrations (REQUIRED for external APIs)
+  providers: Provider[]; // Context suppliers (read-only)
   evaluators?: Evaluator[]; // Post-interaction processors (optional)
 }
 ```
 
 #### Action Handler Example
+
 ```typescript
 handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
   try {
     // 1. Get service and process
-    const service = runtime.getService<MyService>("myService");
+    const service = runtime.getService<MyService>('myService');
     const result = await service.process(message.content);
-    
+
     // 2. Send message to user via callback
     await callback({
       text: `Processed successfully: ${result}`,
-      action: "MY_ACTION"
+      action: 'MY_ACTION',
     });
-    
+
     // 3. Return ActionResult for action chaining
     return {
       success: true,
-      text: "Operation completed",
+      text: 'Operation completed',
       values: { processedData: result },
-      data: { actionName: "MY_ACTION", result }
+      data: { actionName: 'MY_ACTION', result },
     };
   } catch (error) {
-    await callback({ text: "Error occurred", error: true });
+    await callback({ text: 'Error occurred', error: true });
     return { success: false, error };
   }
-}
+};
 ```
 
 **Common Mistakes to Avoid:**
+
 - Using Providers to execute transactions → Use Services
 - Using Evaluators to parse user input → Use Actions
 - Direct Action → External API calls → Always go through Services

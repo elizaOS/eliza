@@ -4,13 +4,13 @@
 
 ## 📋 Project Overview
 
-| Property | Value |
-|----------|-------|
-| **Project Type** | ElizaOS Agent Project |
-| **Package Manager** | `bun` (REQUIRED) |
-| **Runtime** | ElizaOS with plugin ecosystem |
-| **Configuration** | Character-based agent setup |
-| **Architecture** | Plugin composition pattern |
+| Property            | Value                         |
+| ------------------- | ----------------------------- |
+| **Project Type**    | ElizaOS Agent Project         |
+| **Package Manager** | `bun` (REQUIRED)              |
+| **Runtime**         | ElizaOS with plugin ecosystem |
+| **Configuration**   | Character-based agent setup   |
+| **Architecture**    | Plugin composition pattern    |
 
 ## 🏗️ Project Architecture
 
@@ -49,16 +49,16 @@ your-agent-project/
 
 ```typescript
 // src/character.ts
-import { Character } from "@elizaos/core";
+import { Character } from '@elizaos/core';
 
 export const character: Character = {
   // Basic Identity
-  name: "AssistantAgent",
-  username: "assistant",
-  
+  name: 'AssistantAgent',
+  username: 'assistant',
+
   // Personality & Behavior
-  bio: "A helpful AI assistant created to provide assistance and engage in meaningful conversations.",
-  
+  bio: 'A helpful AI assistant created to provide assistance and engage in meaningful conversations.',
+
   system: `You are a helpful, harmless, and honest AI assistant.
 Core principles:
 - Always strive to provide accurate and useful information
@@ -69,47 +69,53 @@ Core principles:
   // Conversation Examples (Training Data)
   messageExamples: [
     [
-      { name: "user", content: { text: "Hello! How are you today?" } },
-      { name: "AssistantAgent", content: { 
-        text: "Hello! I'm doing well, thank you for asking. I'm here and ready to help you with whatever you need. How can I assist you today?" 
-      }}
+      { name: 'user', content: { text: 'Hello! How are you today?' } },
+      {
+        name: 'AssistantAgent',
+        content: {
+          text: "Hello! I'm doing well, thank you for asking. I'm here and ready to help you with whatever you need. How can I assist you today?",
+        },
+      },
     ],
     [
-      { name: "user", content: { text: "Can you help me understand a complex topic?" } },
-      { name: "AssistantAgent", content: { 
-        text: "Absolutely! I'd be happy to help you understand any topic. Could you tell me which specific topic you'd like to explore? I'll break it down in a clear, easy-to-understand way." 
-      }}
-    ]
+      { name: 'user', content: { text: 'Can you help me understand a complex topic?' } },
+      {
+        name: 'AssistantAgent',
+        content: {
+          text: "Absolutely! I'd be happy to help you understand any topic. Could you tell me which specific topic you'd like to explore? I'll break it down in a clear, easy-to-understand way.",
+        },
+      },
+    ],
   ],
 
   // Communication Style
   style: {
     all: [
-      "Be helpful and friendly",
-      "Use clear and concise language", 
-      "Show genuine interest in helping",
-      "Maintain a professional yet approachable tone"
+      'Be helpful and friendly',
+      'Use clear and concise language',
+      'Show genuine interest in helping',
+      'Maintain a professional yet approachable tone',
     ],
     chat: [
-      "Respond naturally and conversationally",
-      "Use appropriate emojis sparingly for warmth",
-      "Ask follow-up questions to better understand needs"
+      'Respond naturally and conversationally',
+      'Use appropriate emojis sparingly for warmth',
+      'Ask follow-up questions to better understand needs',
     ],
     post: [
-      "Be informative and engaging",
-      "Structure information clearly",
-      "Include actionable insights when possible"
-    ]
+      'Be informative and engaging',
+      'Structure information clearly',
+      'Include actionable insights when possible',
+    ],
   },
 
   // Plugin Configuration
   plugins: [
     // REQUIRED: Core functionality
-    "@elizaos/plugin-bootstrap",    // Essential actions & handlers  
-    "@elizaos/plugin-sql",          // Memory & database management
+    '@elizaos/plugin-bootstrap', // Essential actions & handlers
+    '@elizaos/plugin-sql', // Memory & database management
 
     // REQUIRED: Model provider (choose one or more)
-    "@elizaos/plugin-openai",       // GPT-4, GPT-3.5, etc.
+    '@elizaos/plugin-openai', // GPT-4, GPT-3.5, etc.
     // "@elizaos/plugin-anthropic", // Claude models
     // "@elizaos/plugin-groq",      // Fast inference
 
@@ -118,20 +124,20 @@ Core principles:
     // "@elizaos/plugin-twitter",   // Twitter/X integration
     // "@elizaos/plugin-telegram",  // Telegram bot
 
-    // OPTIONAL: Specialized capabilities  
+    // OPTIONAL: Specialized capabilities
     // "@elizaos/plugin-solana",    // Solana blockchain
     // "@elizaos/plugin-evm",       // Ethereum/EVM chains
   ],
 
   // Agent Settings
   settings: {
-    voice: "en-US-Neural2-F",
-    model: "gpt-4o-mini",
-    embeddingModel: "text-embedding-3-small",
+    voice: 'en-US-Neural2-F',
+    model: 'gpt-4o-mini',
+    embeddingModel: 'text-embedding-3-small',
     secrets: {},
     intiface: false,
-    chains: []
-  }
+    chains: [],
+  },
 };
 
 export default character;
@@ -141,43 +147,39 @@ export default character;
 
 ```typescript
 // characters/variants.ts
-import { Character } from "@elizaos/core";
-import { baseCharacter } from "../src/character";
+import { Character } from '@elizaos/core';
+import { baseCharacter } from '../src/character';
 
 // Production character
 export const productionCharacter: Character = {
   ...baseCharacter,
-  name: "ProductionAgent",
+  name: 'ProductionAgent',
   settings: {
     ...baseCharacter.settings,
-    model: "gpt-4",  // More capable model for production
-  }
+    model: 'gpt-4', // More capable model for production
+  },
 };
 
-// Development character  
+// Development character
 export const devCharacter: Character = {
   ...baseCharacter,
-  name: "DevAgent",
+  name: 'DevAgent',
   settings: {
     ...baseCharacter.settings,
-    model: "gpt-4o-mini",  // Faster/cheaper for development
+    model: 'gpt-4o-mini', // Faster/cheaper for development
   },
   plugins: [
     ...baseCharacter.plugins,
     // Add development-only plugins
-  ]
+  ],
 };
 
 // Specialized character
 export const cryptoCharacter: Character = {
   ...baseCharacter,
-  name: "CryptoAgent", 
-  bio: "A cryptocurrency and blockchain expert assistant",
-  plugins: [
-    ...baseCharacter.plugins,
-    "@elizaos/plugin-solana",
-    "@elizaos/plugin-evm",
-  ]
+  name: 'CryptoAgent',
+  bio: 'A cryptocurrency and blockchain expert assistant',
+  plugins: [...baseCharacter.plugins, '@elizaos/plugin-solana', '@elizaos/plugin-evm'],
 };
 ```
 
@@ -185,26 +187,26 @@ export const cryptoCharacter: Character = {
 
 ### Required Plugins
 
-| Plugin | Purpose | Status |
-|--------|---------|---------|
+| Plugin                      | Purpose                        | Status       |
+| --------------------------- | ------------------------------ | ------------ |
 | `@elizaos/plugin-bootstrap` | Core actions, message handling | **REQUIRED** |
-| `@elizaos/plugin-sql` | Memory, database management | **REQUIRED** |
+| `@elizaos/plugin-sql`       | Memory, database management    | **REQUIRED** |
 
 ### Model Provider Plugins (Choose One or More)
 
-| Plugin | Models | Use Case |
-|--------|--------|----------|
-| `@elizaos/plugin-openai` | GPT-4, GPT-3.5, GPT-4o | General purpose, reliable |
-| `@elizaos/plugin-anthropic` | Claude 3.5 Sonnet, Haiku | Reasoning, analysis |
-| `@elizaos/plugin-groq` | Llama, Mixtral | Fast inference, cost-effective |
-| `@elizaos/plugin-llama` | Local Llama models | Privacy, offline operation |
+| Plugin                      | Models                   | Use Case                       |
+| --------------------------- | ------------------------ | ------------------------------ |
+| `@elizaos/plugin-openai`    | GPT-4, GPT-3.5, GPT-4o   | General purpose, reliable      |
+| `@elizaos/plugin-anthropic` | Claude 3.5 Sonnet, Haiku | Reasoning, analysis            |
+| `@elizaos/plugin-groq`      | Llama, Mixtral           | Fast inference, cost-effective |
+| `@elizaos/plugin-llama`     | Local Llama models       | Privacy, offline operation     |
 
 ### Communication Plugins (Optional)
 
 ```bash
 # Social platforms
 bun add @elizaos/plugin-discord      # Discord bot integration
-bun add @elizaos/plugin-twitter      # Twitter/X posting & monitoring  
+bun add @elizaos/plugin-twitter      # Twitter/X posting & monitoring
 bun add @elizaos/plugin-telegram     # Telegram bot functionality
 
 # Web interfaces
@@ -219,7 +221,7 @@ bun add @elizaos/plugin-rest         # REST API endpoints
 bun add @elizaos/plugin-solana       # Solana transactions & data
 bun add @elizaos/plugin-evm          # Ethereum & EVM chains
 
-# Data & Tools  
+# Data & Tools
 bun add @elizaos/plugin-web-search   # Web search capabilities
 bun add @elizaos/plugin-image        # Image generation & analysis
 ```
@@ -237,7 +239,7 @@ bun add @elizaos/plugin-image        # Image generation & analysis
 # OpenAI (recommended for general use)
 OPENAI_API_KEY=sk-your-openai-key-here
 
-# Anthropic (for Claude models)  
+# Anthropic (for Claude models)
 ANTHROPIC_API_KEY=your-anthropic-key-here
 
 # Groq (for fast inference)
@@ -268,7 +270,7 @@ SOLANA_PUBLIC_KEY=your-solana-public-key
 SOLANA_PRIVATE_KEY=your-solana-private-key
 
 # Ethereum
-EVM_PUBLIC_KEY=your-ethereum-public-key  
+EVM_PUBLIC_KEY=your-ethereum-public-key
 EVM_PRIVATE_KEY=your-ethereum-private-key
 
 # ================================
@@ -306,7 +308,7 @@ DATABASE_URL=sqlite://./data/dev.sqlite
 # 1. Install dependencies
 bun install
 
-# 2. Set up environment  
+# 2. Set up environment
 cp .env.example .env
 # Edit .env with your API keys
 
@@ -335,6 +337,7 @@ elizaos start --character characters/development.json
 ### Testing Your Agent
 
 #### **Method 1: Interactive Development**
+
 ```bash
 # Quick development mode (recommended for testing)
 elizaos dev
@@ -350,7 +353,8 @@ elizaos start --character characters/development.json --dev
 LOG_LEVEL=debug elizaos start --dev
 ```
 
-#### **Method 2: Automated Testing**  
+#### **Method 2: Automated Testing**
+
 ```bash
 # Run all tests
 elizaos test
@@ -363,6 +367,7 @@ elizaos test --character characters/test.json
 ```
 
 #### **Method 3: Production Testing**
+
 ```bash
 # Build and test production build
 bun run build
@@ -376,7 +381,7 @@ For project-specific functionality beyond available plugins:
 ### When to Create Custom Plugins
 
 - ✅ **Unique business logic** not available in existing plugins
-- ✅ **Proprietary API integrations** specific to your use case  
+- ✅ **Proprietary API integrations** specific to your use case
 - ✅ **Custom data sources** or specialized workflows
 - ❌ **NOT** for simple configuration changes (use character config)
 - ❌ **NOT** for combining existing plugins (use character composition)
@@ -385,80 +390,80 @@ For project-specific functionality beyond available plugins:
 
 ```typescript
 // src/plugin.ts
-import { Plugin, Action, ActionResult, Service } from "@elizaos/core";
+import { Plugin, Action, ActionResult, Service } from '@elizaos/core';
 
 // Custom service for your specific needs
 class CustomService extends Service {
-  static serviceType = "custom";
-  
+  static serviceType = 'custom';
+
   async initialize(runtime: IAgentRuntime): Promise<void> {
     // Initialize your custom integrations
   }
-  
+
   async processCustomRequest(message: any): Promise<any> {
     // Process the custom request
     // Add your custom logic here
     return {
       success: true,
-      message: "Custom request processed successfully",
-      data: message.content
+      message: 'Custom request processed successfully',
+      data: message.content,
     };
   }
 }
 
 // Custom action for specific commands
 const customAction: Action = {
-  name: "CUSTOM_ACTION",
-  description: "Handles custom functionality specific to this project",
-  
+  name: 'CUSTOM_ACTION',
+  description: 'Handles custom functionality specific to this project',
+
   validate: async (runtime, message) => {
-    return message.content.text.includes("custom");
+    return message.content.text.includes('custom');
   },
-  
+
   handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
     try {
-      const service = runtime.getService<CustomService>("custom");
+      const service = runtime.getService<CustomService>('custom');
       // Your custom logic here
       const result = await service.processCustomRequest(message);
-      
+
       // Callback sends message to user in chat
       await callback({
-        text: "Custom functionality executed successfully",
-        action: "CUSTOM_ACTION"
+        text: 'Custom functionality executed successfully',
+        action: 'CUSTOM_ACTION',
       });
-      
+
       // Return ActionResult for action chaining
       return {
         success: true,
-        text: "Custom action completed",
+        text: 'Custom action completed',
         values: {
           customResult: result,
-          processedAt: Date.now()
+          processedAt: Date.now(),
         },
         data: {
-          actionName: "CUSTOM_ACTION",
-          result
-        }
+          actionName: 'CUSTOM_ACTION',
+          result,
+        },
       };
     } catch (error) {
       await callback({
-        text: "Failed to execute custom action",
-        error: true
+        text: 'Failed to execute custom action',
+        error: true,
       });
-      
+
       return {
         success: false,
-        error: error instanceof Error ? error : new Error(String(error))
+        error: error instanceof Error ? error : new Error(String(error)),
       };
     }
-  }
+  },
 };
 
 export const customPlugin: Plugin = {
-  name: "custom-project-plugin",
-  description: "Project-specific functionality",
+  name: 'custom-project-plugin',
+  description: 'Project-specific functionality',
   services: [CustomService],
-  actions: [customAction]
+  actions: [customAction],
 };
 ```
 
@@ -466,21 +471,21 @@ export const customPlugin: Plugin = {
 
 ```typescript
 // src/character.ts
-import { customPlugin } from "./plugin";
+import { customPlugin } from './plugin';
 
 export const character: Character = {
   // ... other config
   plugins: [
     // Core plugins
-    "@elizaos/plugin-bootstrap",
-    "@elizaos/plugin-sql", 
-    "@elizaos/plugin-openai",
-    
+    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-openai',
+
     // Your custom plugin
     customPlugin,
-    
+
     // Other plugins...
-  ]
+  ],
 };
 ```
 
@@ -491,7 +496,7 @@ export const character: Character = {
 ```typescript
 // Agent automatically persists:
 // - Conversation history
-// - Learned patterns  
+// - Learned patterns
 // - User preferences
 // - Context relationships
 
@@ -499,14 +504,14 @@ export const character: Character = {
 const memories = await runtime.getMemories({
   roomId: currentRoomId,
   count: 10,
-  unique: true
+  unique: true,
 });
 
 // Add custom memory:
 await runtime.addMemory({
-  content: { text: "Important user preference noted" },
-  type: "preference",
-  roomId: currentRoomId
+  content: { text: 'Important user preference noted' },
+  type: 'preference',
+  roomId: currentRoomId,
 });
 ```
 
@@ -538,10 +543,6 @@ NODE_ENV=production elizaos start --character characters/production.json
 pm2 start "elizaos start --character characters/production.json" --name "my-agent"
 ```
 
-
-
-
-
 ## 🔧 Advanced Configuration
 
 ### Multi-Character Management
@@ -550,7 +551,7 @@ pm2 start "elizaos start --character characters/production.json" --name "my-agen
 // src/characters.ts
 export const characters = {
   assistant: assistantCharacter,
-  crypto: cryptoCharacter, 
+  crypto: cryptoCharacter,
   social: socialCharacter,
   researcher: researcherCharacter
 };
@@ -568,14 +569,14 @@ export const character: Character = {
   plugins: [
     {
       // Plugin with custom config
-      name: "@elizaos/plugin-openai",
+      name: '@elizaos/plugin-openai',
       config: {
-        model: "gpt-4o-mini",
+        model: 'gpt-4o-mini',
         temperature: 0.7,
-        maxTokens: 2000
-      }
-    }
-  ]
+        maxTokens: 2000,
+      },
+    },
+  ],
 };
 ```
 
@@ -587,17 +588,17 @@ export const character: Character = {
   // ... base config
   settings: {
     // Optimize for speed
-    model: "gpt-4o-mini",          // Faster model
-    embeddingModel: "text-embedding-3-small", // Smaller embeddings
-    
+    model: 'gpt-4o-mini', // Faster model
+    embeddingModel: 'text-embedding-3-small', // Smaller embeddings
+
     // Memory management
-    maxMemories: 1000,             // Limit memory size
-    memoryDecay: 0.95,            // Gradual forgetting
-    
-    // Response optimization  
-    streamingEnabled: true,        // Stream responses
-    batchSize: 5,                 // Batch API calls
-  }
+    maxMemories: 1000, // Limit memory size
+    memoryDecay: 0.95, // Gradual forgetting
+
+    // Response optimization
+    streamingEnabled: true, // Stream responses
+    batchSize: 5, // Batch API calls
+  },
 };
 ```
 
@@ -605,13 +606,13 @@ export const character: Character = {
 
 ### Common Issues & Solutions
 
-| Issue | Symptoms | Solution |
-|-------|----------|----------|
-| **Agent won't start** | "Plugin not found" errors | Check plugin installation: `bun install` |
-| **No responses** | Agent loads but doesn't respond | Verify API keys in `.env` file |
-| **Memory errors** | Database connection failed | Check `DATABASE_URL` configuration |
-| **Slow responses** | Long delays in replies | Switch to faster model (gpt-4o-mini) |
-| **Rate limits** | API quota exceeded | Implement rate limiting or upgrade plan |
+| Issue                 | Symptoms                        | Solution                                 |
+| --------------------- | ------------------------------- | ---------------------------------------- |
+| **Agent won't start** | "Plugin not found" errors       | Check plugin installation: `bun install` |
+| **No responses**      | Agent loads but doesn't respond | Verify API keys in `.env` file           |
+| **Memory errors**     | Database connection failed      | Check `DATABASE_URL` configuration       |
+| **Slow responses**    | Long delays in replies          | Switch to faster model (gpt-4o-mini)     |
+| **Rate limits**       | API quota exceeded              | Implement rate limiting or upgrade plan  |
 
 ### Debug Commands
 
@@ -619,7 +620,7 @@ export const character: Character = {
 # Maximum verbosity
 LOG_LEVEL=debug elizaos start
 
-# Test specific functionality  
+# Test specific functionality
 elizaos test --filter "openai" --verbose
 
 # Check plugin loading
@@ -644,6 +645,7 @@ GET /api/status      # Agent status and metrics
 Before deploying your agent to production:
 
 ### Security
+
 - [ ] API keys stored in environment variables
 - [ ] Database credentials secured
 - [ ] Rate limiting configured
@@ -651,13 +653,15 @@ Before deploying your agent to production:
 - [ ] Error messages don't leak sensitive data
 
 ### Performance
+
 - [ ] Appropriate model selected for use case
 - [ ] Memory limits configured
 - [ ] Database optimized (PostgreSQL for production)
 - [ ] Caching enabled where appropriate
 - [ ] Health monitoring set up
 
-### Reliability  
+### Reliability
+
 - [ ] Error handling covers edge cases
 - [ ] Graceful degradation for API failures
 - [ ] Database backups configured
@@ -665,6 +669,7 @@ Before deploying your agent to production:
 - [ ] Logging configured appropriately
 
 ### Testing
+
 - [ ] Core functionality tested
 - [ ] Integration tests pass
 - [ ] Load testing completed
@@ -673,15 +678,19 @@ Before deploying your agent to production:
 ## 🎯 Next Steps
 
 ### 1. **Start Simple**
+
 Begin with basic configuration and core plugins, then gradually add complexity.
 
-### 2. **Iterate Based on Usage**  
+### 2. **Iterate Based on Usage**
+
 Monitor your agent's performance and user interactions to guide improvements.
 
 ### 3. **Contribute Back**
+
 Share useful patterns and plugins with the ElizaOS community.
 
 ### 4. **Scale Thoughtfully**
+
 Plan for growth with proper infrastructure and monitoring.
 
 ---
