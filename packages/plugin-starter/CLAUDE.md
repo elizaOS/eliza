@@ -96,7 +96,7 @@ export const exampleAction: Action = {
         error: error instanceof Error ? error : new Error(String(error)),
         data: {
           actionName: "EXAMPLE_ACTION",
-          errorMessage: error.message || "Unknown error"
+          errorMessage: error instanceof Error ? error.message : "Unknown error"
         }
       };
     }
@@ -326,7 +326,7 @@ export const robustAction: Action = {
       };
       
     } catch (error) {
-      console.error(`Action failed: ${error.message}`);
+      console.error(`Action failed: ${error instanceof Error ? error.message : String(error)}`);
       
       await callback({
         text: "I'm sorry, I couldn't complete that request. Please try again.",
@@ -339,7 +339,7 @@ export const robustAction: Action = {
         error: error instanceof Error ? error : new Error(String(error)),
         data: {
           actionName: "ROBUST_ACTION",
-          errorMessage: error.message
+          errorMessage: error instanceof Error ? error.message : String(error)
         }
       };
     }
