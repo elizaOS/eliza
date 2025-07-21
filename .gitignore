@@ -180,3 +180,4 @@ tasks/
 **/.windsurfrules/
 .roomodes
 bun.lock
+/.kiro

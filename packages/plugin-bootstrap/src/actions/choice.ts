@@ -8,7 +8,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
   type ActionResult,
 } from '@elizaos/core';
@@ -35,48 +35,11 @@ import {
  * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
  * 4. If no clear selection is made, return null for both fields
  *
- * Return in JSON format:
- * ```json
- * {
- *   "taskId": "string" | null,
- *   "selectedOption": "OPTION_NAME" | null
- * }
- * ```
- *
- * Make sure to include the ```json``` tags around the JSON object.
- */
-/**
- * Task: Extract selected task and option from user message
- *
- * Available Tasks:
- * {{#each tasks}}
- * Task ID: {{taskId}} - {{name}}
- * Available options:
- * {{#each options}}
- * - {{name}}: {{description}}
- * {{/each}}
- * - ABORT: Cancel this task
- *
- * {{/each}}
- *
- * Recent Messages:
- * {{recentMessages}}
- *
- * Instructions:
- * 1. Review the user's message and identify which task and option they are selecting
- * 2. Match against the available tasks and their options, including ABORT
- * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
- * 4. If no clear selection is made, return null for both fields
- *
- * Return in JSON format:
- * ```json
- * {
- *   "taskId": "string" | null,
- *   "selectedOption": "OPTION_NAME" | null
- * }
- * ```
- *
- * Make sure to include the ```json``` tags around the JSON object.
+ * Return in XML format:
+ * <response>
+ *   <taskId>string_or_null</taskId>
+ *   <selectedOption>OPTION_NAME_or_null</selectedOption>
+ * </response>
  */
 const optionExtractionTemplate = `# Task: Extract selected task and option from user message
 
@@ -100,15 +63,16 @@ Available options:
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Return in JSON format:
-\`\`\`json
-{
-  "taskId": "string" | null,
-  "selectedOption": "OPTION_NAME" | null
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+Return in XML format:
+<response>
+  <taskId>string_or_null</taskId>
+  <selectedOption>OPTION_NAME_or_null</selectedOption>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Represents an action that allows selecting an option for a pending task that has multiple options.
@@ -251,7 +215,7 @@ export const choiceAction: Action = {
       stopSequences: [],
     });
 
-    const parsed = parseJSONObjectFromText(result);
+    const parsed = parseKeyValueXml(result);
     const { taskId, selectedOption } = parsed as any;
 
     if (taskId && selectedOption) {

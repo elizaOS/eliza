@@ -11,7 +11,7 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
   type ActionResult,
 } from '@elizaos/core';
@@ -28,79 +28,35 @@ import {
  * 2. The target platform/source (e.g. telegram, discord, etc)
  * 3. Any identifying information about the target
  *
- * Return a JSON object with:
- * {
- *   "targetType": "user|room",
- *   "source": "platform-name",
- *   "identifiers": {
- *     // Relevant identifiers for that target
- *     // e.g. username, roomName, etc.
- *   }
- * }
+ * Return an XML response with:
+ * <response>
+ *   <targetType>user|room</targetType>
+ *   <source>platform-name</source>
+ *   <identifiers>
+ *     <username>username_if_applicable</username>
+ *     <roomName>room_name_if_applicable</roomName>
+ *     <!-- Add other relevant identifiers as needed -->
+ *   </identifiers>
+ * </response>
  *
  * Example outputs:
  * For "send a message to @dev_guru on telegram":
- * {
- *   "targetType": "user",
- *   "source": "telegram",
- *   "identifiers": {
- *     "username": "dev_guru"
- *   }
- * }
+ * <response>
+ *   <targetType>user</targetType>
+ *   <source>telegram</source>
+ *   <identifiers>
+ *     <username>dev_guru</username>
+ *   </identifiers>
+ * </response>
  *
  * For "post this in #announcements":
- * {
- *   "targetType": "room",
- *   "source": "discord",
- *   "identifiers": {
- *     "roomName": "announcements"
- *   }
- * }
- *
- * Make sure to include the ```json``` tags around the JSON object.
- */
-/**
- * Task: Extract Target and Source Information
- *
- * Recent Messages:
- * {{recentMessages}}
- *
- * Instructions:
- * Analyze the conversation to identify:
- * 1. The target type (user or room)
- * 2. The target platform/source (e.g. telegram, discord, etc)
- * 3. Any identifying information about the target
- *
- * Return a JSON object with:
- * {
- *    "targetType": "user|room",
- *    "source": "platform-name",
- *    "identifiers": {
- *      // Relevant identifiers for that target
- *      // e.g. username, roomName, etc.
- *    }
- * }
- *
- * Example outputs:
- * 1. For "send a message to @dev_guru on telegram":
- * {
- *    "targetType": "user",
- *    "source": "telegram",
- *    "identifiers": {
- *      "username": "dev_guru"
- *    }
- * }
- *
- * 2. For "post this in #announcements":
- * {
- *    "targetType": "room",
- *    "source": "discord",
- *    "identifiers": {
- *      "roomName": "announcements"
- *    }
- * }
- *
- * Make sure to include the `json` tags around the JSON object.
+ * <response>
+ *   <targetType>room</targetType>
+ *   <source>discord</source>
+ *   <identifiers>
+ *     <roomName>announcements</roomName>
+ *   </identifiers>
+ * </response>
  */
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
 
@@ -113,41 +69,39 @@ Analyze the conversation to identify:
 2. The target platform/source (e.g. telegram, discord, etc)
 3. Any identifying information about the target
 
-Return a JSON object with:
-\`\`\`json
-{
-  "targetType": "user|room",
-  "source": "platform-name",
-  "identifiers": {
-    // Relevant identifiers for that target
-    // e.g. username, roomName, etc.
-  }
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return an XML response with:
+<response>
+  <targetType>user|room</targetType>
+  <source>platform-name</source>
+  <identifiers>
+    <username>username_if_applicable</username>
+    <roomName>room_name_if_applicable</roomName>
+  </identifiers>
+</response>
+
 Example outputs:
 1. For "send a message to @dev_guru on telegram":
-\`\`\`json
-{
-  "targetType": "user",
-  "source": "telegram",
-  "identifiers": {
-    "username": "dev_guru"
-  }
-}
-\`\`\`
+<response>
+  <targetType>user</targetType>
+  <source>telegram</source>
+  <identifiers>
+    <username>dev_guru</username>
+  </identifiers>
+</response>
 
 2. For "post this in #announcements":
-\`\`\`json
-{
-  "targetType": "room",
-  "source": "discord",
-  "identifiers": {
-    "roomName": "announcements"
-  }
-}
-\`\`\`
+<response>
+  <targetType>room</targetType>
+  <source>discord</source>
+  <identifiers>
+    <roomName>announcements</roomName>
+  </identifiers>
+</response>
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 /**
  * Represents an action to send a message to a user or room.
  *
@@ -260,7 +214,7 @@ export const sendMessageAction: Action = {
         stopSequences: [],
       });
 
-      const targetData = parseJSONObjectFromText(targetResult);
+      const targetData = parseKeyValueXml(targetResult);
       if (!targetData?.targetType || !targetData?.source) {
         await callback({
           text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",

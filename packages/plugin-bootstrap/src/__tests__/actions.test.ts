@@ -52,12 +52,29 @@ describe('Reply Action', () => {
   });
 
   it('should handle reply action successfully', async () => {
-    const specificUseModelMock = mock().mockImplementation(async (modelType, params) => {
-      console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
-      const result = {
+    // Import the actual module first
+    const coreModule = await import('@elizaos/core');
+
+    // Mock parseKeyValueXml for this test
+    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+      return {
         message: 'Hello there! How can I help you today?',
         thought: 'Responding to the user greeting.',
       };
+    });
+
+    // Override the module mock for this test
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+    }));
+
+    const specificUseModelMock = mock().mockImplementation(async (modelType, params) => {
+      console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
+      const result = `<response>
+  <thought>Responding to the user greeting.</thought>
+  <message>Hello there! How can I help you today?</message>
+</response>`;
       console.log('specificUseModelMock RETURNING:', result);
       return Promise.resolve(result);
     });
@@ -817,14 +834,10 @@ describe('Choice Action (Extended)', () => {
     // Mock realistic response that parses the task from message content
     mockRuntime.useModel = mock().mockImplementation((_modelType, params) => {
       if (params?.prompt?.includes('Extract selected task and option')) {
-        return Promise.resolve(`
-\`\`\`json
-{
-  "taskId": "task-1234",
-  "selectedOption": "OPTION_A"
-}
-\`\`\`
-        `);
+        return Promise.resolve(`<response>
+  <taskId>task-1234</taskId>
+  <selectedOption>OPTION_A</selectedOption>
+</response>`);
       }
       return Promise.resolve('default response');
     });

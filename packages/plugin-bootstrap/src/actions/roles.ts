@@ -13,8 +13,8 @@ import {
   type UUID,
   World,
   type ActionResult,
+  parseKeyValueXml,
 } from '@elizaos/core';
-import dedent from 'dedent';
 
 /**
  * Determines if the user with the current role can modify the role to the new role.
@@ -156,63 +156,60 @@ export const updateRoleAction: Action = {
         ...state.values,
         content: state.text,
       },
-      template: dedent`
-				# Task: Parse Role Assignment
+      template: `# Task: Parse Role Assignment
 
-				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
+I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
 
-				The available role types are:
-				- OWNER: Full control over the server and all settings
-				- ADMIN: Ability to manage channels and moderate content
-				- NONE: Regular user with no special permissions
+The available role types are:
+- OWNER: Full control over the server and all settings
+- ADMIN: Ability to manage channels and moderate content
+- NONE: Regular user with no special permissions
 
-				# Current context:
-				{{content}}
+# Current context:
+{{content}}
 
-				Format your response as a JSON array of objects, each with:
-				- entityId: The name or ID of the user
-				- newRole: The role to assign (OWNER, ADMIN, or NONE)
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-				Example:
-				\`\`\`json
-				[
-					{
-						"entityId": "John",
-						"newRole": "ADMIN"
-					},
-					{
-						"entityId": "Sarah",
-						"newRole": "OWNER"
-					}
-				]
-				\`\`\`
-			`,
+Format your response as XML with multiple assignments:
+<response>
+  <assignments>
+    <assignment>
+      <entityId>John</entityId>
+      <newRole>ADMIN</newRole>
+    </assignment>
+    <assignment>
+      <entityId>Sarah</entityId>
+      <newRole>OWNER</newRole>
+    </assignment>
+  </assignments>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`,
     });
 
-    // Extract role assignments using type-safe model call
-    const result = await runtime.useModel<typeof ModelType.OBJECT_LARGE, RoleAssignment[]>(
-      ModelType.OBJECT_LARGE,
-      {
-        prompt: extractionPrompt,
-        schema: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              entityId: { type: 'string' },
-              newRole: {
-                type: 'string',
-                enum: Object.values(Role),
-              },
-            },
-            required: ['entityId', 'newRole'],
-          },
-        },
-        output: 'array',
-      }
-    );
+    // Extract role assignments using text model with XML parsing
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: extractionPrompt,
+    });
 
-    if (!result?.length) {
+    const parsedXml = parseKeyValueXml(response);
+
+    // Handle the parsed XML structure
+    let assignments: RoleAssignment[] = [];
+    if (parsedXml?.assignments?.assignment) {
+      // Normalize to array
+      const assignmentArray = Array.isArray(parsedXml.assignments.assignment)
+        ? parsedXml.assignments.assignment
+        : [parsedXml.assignments.assignment];
+
+      assignments = assignmentArray.map((a: any) => ({
+        entityId: a.entityId,
+        newRole: a.newRole as Role,
+      }));
+    }
+
+    if (!assignments.length) {
       await callback?.({
         text: 'No valid role assignments found in the request.',
         actions: ['UPDATE_ROLE'],
@@ -237,7 +234,7 @@ export const updateRoleAction: Action = {
     const successfulUpdates: Array<{ entityId: string; entityName: string; newRole: Role }> = [];
     const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
-    for (const assignment of result) {
+    for (const assignment of assignments) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
         logger.error('Could not find an ID to assign to');
