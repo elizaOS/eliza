@@ -37,6 +37,7 @@ describe('ElizaOS Dev Commands', () => {
           dependencies: {
             '@elizaos/core': '^1.0.0',
             '@elizaos/server': '^1.0.0',
+            '@elizaos/plugin-sql': '^1.0.0',
             '@langchain/core': '>=0.3.0',
             'dotenv': '^16.0.0',
           },
@@ -606,6 +607,9 @@ describe('ElizaOS Dev Commands', () => {
 
     // Ensure elizadb directory exists
     await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+    
+    // Ensure project has elizadb directory too
+    await mkdir(join(projectDir, 'elizadb'), { recursive: true });
 
     // Run dev command with explicit port
     const devProcess = Bun.spawn(['elizaos', 'dev', '--port', specifiedPort.toString()], {
