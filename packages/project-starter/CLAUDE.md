@@ -385,7 +385,7 @@ For project-specific functionality beyond available plugins:
 
 ```typescript
 // src/plugin.ts
-import { Plugin, Action, Service } from "@elizaos/core";
+import { Plugin, Action, ActionResult, Service } from "@elizaos/core";
 
 // Custom service for your specific needs
 class CustomService extends Service {
@@ -405,14 +405,42 @@ const customAction: Action = {
     return message.content.text.includes("custom");
   },
   
-  handler: async (runtime, message, state, options, callback) => {
-    const service = runtime.getService<CustomService>("custom");
-    // Your custom logic here
-    
-    await callback({
-      text: "Custom functionality executed successfully",
-      action: "CUSTOM_ACTION"
-    });
+  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+    try {
+      const service = runtime.getService<CustomService>("custom");
+      // Your custom logic here
+      const result = await service.processCustomRequest(message);
+      
+      // Callback sends message to user in chat
+      await callback({
+        text: "Custom functionality executed successfully",
+        action: "CUSTOM_ACTION"
+      });
+      
+      // Return ActionResult for action chaining
+      return {
+        success: true,
+        text: "Custom action completed",
+        values: {
+          customResult: result,
+          processedAt: Date.now()
+        },
+        data: {
+          actionName: "CUSTOM_ACTION",
+          result
+        }
+      };
+    } catch (error) {
+      await callback({
+        text: "Failed to execute custom action",
+        error: true
+      });
+      
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error))
+      };
+    }
   }
 };
 

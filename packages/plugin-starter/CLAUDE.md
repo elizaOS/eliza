@@ -22,6 +22,11 @@ ElizaOS plugins follow a **component-based architecture** with four main types:
 ```typescript
 export class ExampleService extends Service {
   static serviceType = "example";
+  private apiClient: ExternalAPI;
+  
+  constructor() {
+    super();
+  }
   
   async initialize(runtime: IAgentRuntime): Promise<void> {
     // Initialize SDK connections, databases, etc.
@@ -46,6 +51,8 @@ export class ExampleService extends Service {
 **Purpose:** Handle user commands and generate responses
 
 ```typescript
+import { Action, ActionResult } from "@elizaos/core";
+
 export const exampleAction: Action = {
   name: "EXAMPLE_ACTION",
   description: "Processes user requests for example functionality",
@@ -55,7 +62,7 @@ export const exampleAction: Action = {
     return text.includes("example") || text.includes("demo");
   },
   
-  handler: async (runtime, message, state, options, callback) => {
+  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
     try {
       const service = runtime.getService<ExampleService>("example");
       const result = await service.processData(message.content);
@@ -64,11 +71,34 @@ export const exampleAction: Action = {
         text: `Here's your result: ${result}`,
         action: "EXAMPLE_ACTION"
       });
+      
+      return {
+        success: true,
+        text: `Successfully processed: ${result}`,
+        values: {
+          lastProcessed: result,
+          processedAt: Date.now()
+        },
+        data: { 
+          actionName: "EXAMPLE_ACTION",
+          result 
+        }
+      };
     } catch (error) {
       await callback({
         text: "I encountered an error processing your request.",
         error: true
       });
+      
+      return {
+        success: false,
+        text: "Failed to process request",
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: {
+          actionName: "EXAMPLE_ACTION",
+          errorMessage: error.message || "Unknown error"
+        }
+      };
     }
   }
 };
@@ -80,6 +110,11 @@ export const exampleAction: Action = {
 - ✅ Service coordination
 - ✅ Response generation
 - ❌ NOT direct API calls (use Services)
+
+**Important: Callbacks vs ActionResult:**
+- **`callback()`** → Sends messages to the user in chat
+- **`ActionResult` return** → Passes data/state to next action in chain
+- Both are used together: callback for user communication, return for action chaining
 
 ### 📊 **Providers** (Optional - Context Supply)
 **Purpose:** Supply read-only contextual information
@@ -254,8 +289,16 @@ describe("ExampleAction", () => {
 #### Error Handling Pattern
 ```typescript
 export const robustAction: Action = {
-  // ... other properties
-  handler: async (runtime, message, state, options, callback) => {
+  name: "ROBUST_ACTION",
+  description: "Demonstrates robust error handling",
+  
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // Validate user input before processing
+    const text = message.content.text.toLowerCase();
+    return text.includes("process") || text.includes("execute");
+  },
+  
+  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
     try {
       const service = runtime.getService<YourService>("yourService");
       if (!service) {
@@ -266,8 +309,21 @@ export const robustAction: Action = {
       
       await callback({
         text: `Operation completed: ${result}`,
-        action: "SUCCESS"
+        action: "ROBUST_ACTION"
       });
+      
+      return {
+        success: true,
+        text: `Successfully completed operation`,
+        values: {
+          operationResult: result,
+          processedAt: Date.now()
+        },
+        data: {
+          actionName: "ROBUST_ACTION",
+          result
+        }
+      };
       
     } catch (error) {
       console.error(`Action failed: ${error.message}`);
@@ -276,6 +332,16 @@ export const robustAction: Action = {
         text: "I'm sorry, I couldn't complete that request. Please try again.",
         error: true
       });
+      
+      return {
+        success: false,
+        text: "Failed to complete operation",
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: {
+          actionName: "ROBUST_ACTION",
+          errorMessage: error.message
+        }
+      };
     }
   }
 };
@@ -344,6 +410,7 @@ elizaos test --filter "action-name"
   "name": "@your-org/elizaos-plugin-example",
   "version": "1.0.0",
   "description": "ElizaOS plugin for example functionality",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],

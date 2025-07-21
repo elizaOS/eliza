@@ -295,6 +295,9 @@ elizaos test --skip-build    # Skip building before tests
   - Parse user input and validate parameters
   - Execute operations (via Services)
   - Return responses to users
+  - **MUST return `Promise<ActionResult>`** for proper action chaining
+  - Use `callback()` to send messages to users
+  - Return `ActionResult` to pass data to next action in chain
 
 - **Evaluators** (`extends Evaluator`):
   - Process AFTER interactions complete
@@ -324,11 +327,41 @@ interface Plugin {
 }
 ```
 
+#### Action Handler Example
+```typescript
+handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+  try {
+    // 1. Get service and process
+    const service = runtime.getService<MyService>("myService");
+    const result = await service.process(message.content);
+    
+    // 2. Send message to user via callback
+    await callback({
+      text: `Processed successfully: ${result}`,
+      action: "MY_ACTION"
+    });
+    
+    // 3. Return ActionResult for action chaining
+    return {
+      success: true,
+      text: "Operation completed",
+      values: { processedData: result },
+      data: { actionName: "MY_ACTION", result }
+    };
+  } catch (error) {
+    await callback({ text: "Error occurred", error: true });
+    return { success: false, error };
+  }
+}
+```
+
 **Common Mistakes to Avoid:**
 - Using Providers to execute transactions → Use Services
 - Using Evaluators to parse user input → Use Actions
 - Direct Action → External API calls → Always go through Services
 - Providers with state-changing methods → Providers are read-only
+- Forgetting to return ActionResult → Breaks action chaining
+- Confusing callback vs return → Callback for chat, return for chaining
 
 ### Database Architecture
 
