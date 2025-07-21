@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
-import { safeChangeDirectory, crossPlatform } from './test-utils';
+import { safeChangeDirectory, crossPlatform, getPlatformOptions } from './test-utils';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getAvailableAIModels } from '../../src/commands/create/utils/selection';
 import { isValidOllamaEndpoint } from '../../src/utils/get-config';
@@ -56,7 +56,7 @@ describe('ElizaOS Create Commands', () => {
   };
 
   it('create --help shows usage', () => {
-    const result = bunExecSync(`elizaos create --help`, { encoding: 'utf8' }) as string;
+    const result = bunExecSync(`elizaos create --help`, getPlatformOptions({ encoding: 'utf8' })) as string;
     expect(result).toContain('Usage: elizaos create');
     expect(result).toMatch(/(project|plugin|agent)/);
     expect(result).not.toContain('frobnicate');
@@ -68,10 +68,10 @@ describe('ElizaOS Create Commands', () => {
       // Use cross-platform directory removal
       await crossPlatform.removeDir('my-default-app');
 
-      const result = bunExecSync('elizaos create my-default-app --yes', {
+      const result = bunExecSync('elizaos create my-default-app --yes', getPlatformOptions({
         encoding: 'utf8',
         timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-      }) as string;
+      })) as string;
 
       // Check for various success patterns since output might vary
       const successPatterns = [
@@ -95,6 +95,8 @@ describe('ElizaOS Create Commands', () => {
       expect(existsSync('my-default-app/src')).toBe(true);
       expect(existsSync('my-default-app/.gitignore')).toBe(true);
       expect(existsSync('my-default-app/.npmignore')).toBe(true);
+      // Verify CLAUDE.md is copied from project-starter template
+      expect(existsSync('my-default-app/CLAUDE.md')).toBe(true);
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
@@ -132,6 +134,8 @@ describe('ElizaOS Create Commands', () => {
       expect(existsSync(pluginDir)).toBe(true);
       expect(existsSync(join(pluginDir, 'package.json'))).toBe(true);
       expect(existsSync(join(pluginDir, 'src/index.ts'))).toBe(true);
+      // Verify CLAUDE.md is copied from plugin-starter template
+      expect(existsSync(join(pluginDir, 'CLAUDE.md'))).toBe(true);
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
@@ -333,6 +337,64 @@ describe('ElizaOS Create Commands', () => {
       expect(isValidOllamaEndpoint(null as any)).toBe(false);
       expect(isValidOllamaEndpoint(undefined as any)).toBe(false);
     });
+  });
+
+  describe('CLAUDE.md File Creation', () => {
+    it(
+      'creates project with proper CLAUDE.md file',
+      async () => {
+        await crossPlatform.removeDir('claude-md-test-project');
+
+        const result = bunExecSync('elizaos create claude-md-test-project --yes', getPlatformOptions({
+          encoding: 'utf8',
+          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+        })) as string;
+
+        expect(existsSync('claude-md-test-project')).toBe(true);
+        expect(existsSync('claude-md-test-project/CLAUDE.md')).toBe(true);
+
+        // Verify CLAUDE.md content contains expected sections
+        const claudeMdContent = await readFile('claude-md-test-project/CLAUDE.md', 'utf8');
+        expect(claudeMdContent).toContain('ElizaOS Agent Project Development Guide for Claude');
+        expect(claudeMdContent).toContain('Project Type** | ElizaOS Agent Project');
+        expect(claudeMdContent).toContain('Character Configuration');
+        expect(claudeMdContent).toContain('Custom Plugin Development');
+        expect(claudeMdContent).toContain('Custom service for your specific needs');
+        expect(claudeMdContent).toContain('Custom action for specific commands');
+        expect(claudeMdContent).toContain('elizaos dev');
+        expect(claudeMdContent).toContain('elizaos start');
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+
+    it(
+      'creates plugin with proper CLAUDE.md file',
+      async () => {
+        await crossPlatform.removeDir('plugin-claude-md-test');
+
+        const result = bunExecSync('elizaos create claude-md-test --yes --type plugin', getPlatformOptions({
+          encoding: 'utf8',
+          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+        })) as string;
+
+        const pluginDir = 'plugin-claude-md-test';
+        expect(existsSync(pluginDir)).toBe(true);
+        expect(existsSync(join(pluginDir, 'CLAUDE.md'))).toBe(true);
+
+        // Verify CLAUDE.md content contains expected plugin-specific sections
+        const claudeMdContent = await readFile(join(pluginDir, 'CLAUDE.md'), 'utf8');
+        expect(claudeMdContent).toContain('ElizaOS Plugin Development Guide for Claude');
+        expect(claudeMdContent).toContain('Project Type** | ElizaOS Plugin');
+        expect(claudeMdContent).toContain('Plugin Architecture');
+        expect(claudeMdContent).toContain('Services** (Required for External APIs)');
+        expect(claudeMdContent).toContain('Actions** (Required for User Interactions)');
+        expect(claudeMdContent).toContain('Providers** (Optional - Context Supply)');
+        expect(claudeMdContent).toContain('Evaluators** (Optional - Post-Processing)');
+        expect(claudeMdContent).toContain('Plugin Export Pattern');
+        expect(claudeMdContent).toContain('elizaos dev');
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
   });
 
   describe('Cleanup on Interruption', () => {
