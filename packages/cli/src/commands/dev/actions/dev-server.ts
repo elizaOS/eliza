@@ -112,6 +112,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   // Start the server initially
+  if (process.env.ELIZA_TEST_MODE === 'true') {
+    console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
+  }
   await serverManager.start(cliArgs);
 
   // Set up file watching if we're in a project, plugin, or monorepo directory
