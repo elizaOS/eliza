@@ -56,7 +56,13 @@ describe('ElizaOS Dev Commands', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    await installProcess.exited;
+    const exitCode = await installProcess.exited;
+    
+    // Check if bun install succeeded
+    if (exitCode !== 0) {
+      const stderr = await new Response(installProcess.stderr).text();
+      throw new Error(`bun install failed with exit code ${exitCode}: ${stderr}`);
+    }
     
     console.log('Minimal test project created at:', projectDir);
   });
