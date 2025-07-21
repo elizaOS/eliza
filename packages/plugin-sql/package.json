@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.2.12",
+  "version": "1.3.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -27,7 +27,7 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
-    "@elizaos/core": "1.2.12",
+    "@elizaos/core": "1.3.0",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.44.2",
     "pg": "^8.13.3"
@@ -60,5 +60,5 @@
     "build:clean": "rm -rf dist",
     "lint:fix": "eslint . --fix"
   },
-  "gitHead": "991b811b95d08df421efc4f516d0cfb52c4a83b3"
+  "gitHead": "64bdc6d3b24236d214f743e3c966993c6f5268f7"
 }
