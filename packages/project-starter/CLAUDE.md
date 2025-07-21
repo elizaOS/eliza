@@ -394,6 +394,16 @@ class CustomService extends Service {
   async initialize(runtime: IAgentRuntime): Promise<void> {
     // Initialize your custom integrations
   }
+  
+  async processCustomRequest(message: any): Promise<any> {
+    // Process the custom request
+    // Add your custom logic here
+    return {
+      success: true,
+      message: "Custom request processed successfully",
+      data: message.content
+    };
+  }
 }
 
 // Custom action for specific commands
