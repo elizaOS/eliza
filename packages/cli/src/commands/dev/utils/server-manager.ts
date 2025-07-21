@@ -65,6 +65,11 @@ function setupEnvironment(): Record<string, string> {
   // Ensure color output
   env.FORCE_COLOR = '1';
 
+  // Preserve ELIZA_TEST_MODE for test environments
+  if (process.env.ELIZA_TEST_MODE) {
+    env.ELIZA_TEST_MODE = process.env.ELIZA_TEST_MODE;
+  }
+
   return env;
 }
 
@@ -105,20 +110,29 @@ async function startServerProcess(args: string[] = []): Promise<void> {
 
   // In test mode, pipe output to parent process
   if (isTestMode && childProcess.stdout && childProcess.stderr) {
+    // Handle stdout piping
     childProcess.stdout.pipeTo(
       new WritableStream({
         write(chunk) {
           process.stdout.write(chunk);
+          return Promise.resolve();
         },
       })
-    );
+    ).catch((error) => {
+      console.error('Error piping stdout:', error);
+    });
+
+    // Handle stderr piping
     childProcess.stderr.pipeTo(
       new WritableStream({
         write(chunk) {
           process.stderr.write(chunk);
+          return Promise.resolve();
         },
       })
-    );
+    ).catch((error) => {
+      console.error('Error piping stderr:', error);
+    });
   }
 
   // Handle process completion
