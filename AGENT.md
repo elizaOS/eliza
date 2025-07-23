@@ -2,10 +2,10 @@
 
 ## Build/Test Commands
 - **Build**: `bun run build` (all packages), `bun run build:core`, `bun run build:cli`, `bun run build:client`
-- **Test**: `bun test` (all), `bun run test:core`, `bun run test:client`, `elizaos test` (for projects)
+- **Test**: `bun test` (all), `bun run test:core`, `bun run test:client`
 - **Single Test**: `bun test src/path/to/file.test.ts` or `cd packages/core && bun test specific.test.ts`
-- **Lint**: `bun run lint`, **Format**: `bun run format`, **Type Check**: `bun run typecheck` (in packages)
-- **Development**: `elizaos start` (for projects), `bun start` (monorepo), `bun run dev` (watch mode)
+- **Lint**: `bun run lint`, **Format**: `bun run format`, **Type Check**: `cd packages/core && bun run typecheck`
+- **Development**: `bun start` (monorepo), `bun run dev` (watch mode)
 
 ## Architecture
 **Core Dependencies**: @elizaos/core (foundation) → plugins → services. No circular deps.
