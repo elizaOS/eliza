@@ -1,3 +1,0 @@
-#!/bin/bash
-
-docker run -i -p3001:3001 -e SERVER_PORT=3001 -e CENTRAL_MESSAGE_SERVER_URL=http://localhost:3001 -e POSTGRES_URL=postgresql://user:pass@0.0.0.0/eliza -e OPENAI_API_KEY=YoaS4LWzGHzFpfcc3i1pf7j_onGSlXjOXrdcgYYjv0 -e OPENAI_BASE_URL=https://api.venice.ai/api/v1 -e OPENAI_EMBEDDING_API_KEY=EXAMPLE_KEY -e OPENAI_EMBEDDING_URL=https://api.openai.com/v1 -e OPENAI_SMALL_MODEL=qwen3-4b -e OPENAI_LARGE_MODEL=qwen-2.5-qwq-32b -e KYBER_CLIENT_ID=levvai -e LOG_LEVEL=debug 55dd00bc58f5
