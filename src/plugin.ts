@@ -1,8 +1,7 @@
 import type { Plugin } from "@elizaos/core";
 import { EventType, logger } from "@elizaos/core";
 import { z } from "zod";
-import { swapTokens } from "./actions/swap";
-import { analyzeWallet } from "./actions/wallet";
+import { modules } from "./actions/modules";
 import { levvaProvider } from "./providers";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
@@ -99,7 +98,7 @@ const plugin: Plugin = {
     ],
   },
   services: [BrowserService, LevvaService],
-  actions: [swapTokens, analyzeWallet],
+  actions: modules.map((m) => m.action),
   providers: [levvaProvider, newsProvider],
 };
 

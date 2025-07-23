@@ -1,4 +1,5 @@
-import { and, eq } from "drizzle-orm";
+// todo move db helpers to service
+import { and, eq, inArray, InferSelectModel } from "drizzle-orm";
 import { getAddress } from "viem";
 import type { IAgentRuntime } from "@elizaos/core";
 import { getDb } from "./client";
@@ -8,9 +9,11 @@ import type { TokenData, TokenInfo } from "../../types/token";
 
 interface GetTokenParams {
   chainId: number;
-  address?: `0x${string}`;
+  address?: `0x${string}` | `0x${string}`[];
   symbol?: string;
 }
+
+export type TokenEntry = InferSelectModel<typeof erc20Table>;
 
 export const getToken = async (
   runtime: IAgentRuntime,
@@ -19,14 +22,15 @@ export const getToken = async (
   const db = getDb(runtime);
 
   if (params.address) {
-    const address = getAddress(params.address);
     return await db
       .select()
       .from(erc20Table)
       .where(
         and(
           eq(erc20Table.chainId, params.chainId),
-          eq(erc20Table.address, address)
+          Array.isArray(params.address)
+            ? inArray(erc20Table.address, params.address.map(getAddress))
+            : eq(erc20Table.address, getAddress(params.address))
         )
       );
   } else if (params.symbol) {
@@ -45,8 +49,6 @@ export const getToken = async (
       .from(erc20Table)
       .where(and(eq(erc20Table.chainId, params.chainId)));
   }
-
-  throw new Error("No address or symbol provided");
 };
 
 export const upsertToken = async (

@@ -1,13 +1,14 @@
+import { isHex } from "viem";
 import { Action, logger, ModelType } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { ILevvaService } from "../types/service";
-import { IGNORE_REPLY_MODIFIER } from "src/constants/prompt";
-import { selectLevvaState } from "src/providers";
-import { getChain } from "src/util/eth/client";
-import { isHex } from "viem";
-import { rephrase } from "src/util/generate";
+import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
+import { selectLevvaState } from "../providers";
+import type { LevvaService } from "../services/levva/class";
+import { getChain } from "../util/eth/client";
+import { rephrase } from "../util/generate";
+import { Suggestion } from "./types";
 
-export const analyzeWallet: Action = {
+export const action: Action = {
   name: LEVVA_ACTIONS.ANALYZE_WALLET,
   description: `Replies with wallet stats. ${IGNORE_REPLY_MODIFIER}.`,
   similes: ["ANALYZE_WALLET", "analyze wallet"],
@@ -18,9 +19,22 @@ export const analyzeWallet: Action = {
 
   handler: async (runtime, message, state, options, callback) => {
     try {
-      const service = runtime.getService<ILevvaService>(
+      const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
+
+      if (!service) {
+        throw new Error("Failed to get levva service, disable action");
+      }
+
+      if (!state) {
+        throw new Error("State not found, disable action");
+      }
+
+      if (!callback) {
+        throw new Error("Callback not found, disable action");
+      }
+
       const levvaState = selectLevvaState(state);
 
       if (!levvaState?.user) {
@@ -36,10 +50,10 @@ export const analyzeWallet: Action = {
         throw new Error("User not found");
       }
 
-      const [assets, news, pendleMarkets] = await Promise.all([
+      const [assets, news, strategies] = await Promise.all([
         service.getWalletAssets({ chainId, address }),
         service.getCryptoNews(),
-        service.getPendleMarkets({ chainId }),
+        service.getStrategies(chainId),
       ]);
 
       const result = await runtime.useModel(ModelType.OBJECT_LARGE, {
@@ -48,18 +62,19 @@ export const analyzeWallet: Action = {
 User has following tokens available in portfolio:
 ${service.formatWalletAssets(assets)}
 </portfolio>
-<markets>
-Pendle markets:
-${pendleMarkets.map((v) => `${v.name} - Expiration: ${v.expiry}; Details: ${JSON.stringify(v.details)}`).join("\n")}
-</markets>
+<strategies>
+Strategies:
+${strategies.map(service.formatStrategy).join("\n")}
+</strategies>
 <news>
 Latest news:
 ${news.map((v) => v.description).join("\n")}
 </news>
 <instructions>
+Ignore zero balances
 Display summary of user's holdings.
 Gain insights from the news and portfolio.
-Look at available markets and suggest actions.
+Look at available strategies and suggest actions.
 </instructions>
 <output>
 Respond using JSON format like this:
@@ -82,7 +97,9 @@ Your response should include the valid JSON block and nothing else.
       return true;
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
+      // @ts-expect-error fix typing
       const thought = `Action failed with error: ${error.message ?? "unknown"}. I should tell the user about the error.`;
+      // @ts-expect-error fix typing
       const text = `Failed to swap, reason: ${error.message ?? "unknown"}. Please try again.`;
 
       const responseContent = await rephrase({
@@ -93,10 +110,10 @@ Your response should include the valid JSON block and nothing else.
           actions: ["ANALYZE_WALLET"],
           source: message.content.source,
         },
-        state,
+        state: state!,
       });
 
-      await callback(responseContent);
+      await callback?.(responseContent);
       return false;
     }
   },
@@ -119,3 +136,5 @@ Your response should include the valid JSON block and nothing else.
     ],
   ],
 };
+
+export const suggest: Suggestion[] = [];

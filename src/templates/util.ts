@@ -1,4 +1,4 @@
-type EnumWithDescription = {
+export interface EnumWithDescription {
   name: string;
   description: string;
 }

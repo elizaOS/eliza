@@ -40,9 +40,9 @@ export const formatEstimation = (estimation: SwapEstimation) => {
   return estimationTemplate(usd)
     .replace("{{amountOut}}", amountOut)
     .replace("{{symbol}}", estimation.symbol)
-    .replace("{{amountOutUsd}}", estimation.amountOutUsd)
+    .replace("{{amountOutUsd}}", estimation.amountOutUsd ?? "")
     .replace("{{gas}}", gas)
-    .replace("{{gasUsd}}", estimation.gasUsd);
+    .replace("{{gasUsd}}", estimation.gasUsd ?? "");
 };
 
 interface SwapParams {
@@ -83,8 +83,8 @@ export function selectSwapRouter(
         clientId,
       });
 
-      const routeSummary = route?.data.routeSummary;
-      const routerAddress = route?.data.routerAddress;
+      const routeSummary = route?.data?.routeSummary;
+      const routerAddress = route?.data?.routerAddress;
 
       if (!isHex(routerAddress) || !routeSummary) {
         throw new Error(
@@ -99,7 +99,7 @@ export function selectSwapRouter(
         chainId: chain.id,
       });
 
-      if (!build.data) {
+      if (!build?.data) {
         throw new Error(
           `Failed to build swap route, received: ${JSON.stringify(build)}`
         );
@@ -173,9 +173,13 @@ export function selectSwapRouter(
         slippage: slippage?.toString() as `${number}`,
         enableAggregator: "true",
         amountIn: amountIn.toString() as `${number}`,
-        tokenIn: tokenIn.address ?? weth?.address,
-        tokenOut: tokenOut.address ?? weth?.address,
-      });
+        tokenIn: (tokenIn.address ?? weth?.address)!,
+        tokenOut: (tokenOut.address ?? weth?.address)!,
+      }) ?? {};
+
+      if (!swap || !tx) {
+        throw new Error("Failed to get pendle swap data");
+      }
 
       const { amountOut } = swap;
       const { to, data, value } = tx;
@@ -189,7 +193,7 @@ export function selectSwapRouter(
       const { approve, allowance } = await getAllowance({
         sender: address,
         spender: to,
-        token: tokenIn.address ?? weth?.address,
+        token: (tokenIn.address ?? weth?.address)!,
         amount: amountIn,
         client,
         decimals: tokenIn.decimals,

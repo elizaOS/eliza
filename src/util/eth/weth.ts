@@ -1,6 +1,6 @@
 import { IAgentRuntime } from "@elizaos/core";
 import { CalldataWithDescription } from "src/types/tx";
-import { getToken } from "../db";
+import { getToken, TokenEntry } from "../db";
 import { encodeFunctionData, formatUnits } from "viem";
 import { isHex } from "viem";
 import { oasisTestnet } from "viem/chains";
@@ -38,6 +38,24 @@ interface WethHelper {
   side: IsNative;
   address: `0x${string}`;
   getCall: (amount: bigint) => CalldataWithDescription;
+}
+
+export function wrapEth(amount: bigint, weth?: TokenEntry): CalldataWithDescription {
+  if (!weth) {
+    throw new Error("WETH token not found");
+  }
+
+  return {
+    to: weth.address as `0x${string}`,
+    data: encodeFunctionData({
+      abi,
+      functionName: "deposit",
+      args: [],
+    }),
+    value: amount.toString(),
+    title: `Wrap ${formatUnits(amount, weth.decimals)} ETH`,
+    description: `Wrap ${formatUnits(amount, weth.decimals)} ETH to WETH`,
+  }
 }
 
 export async function wethHelper(runtime: IAgentRuntime, params: WETHParams): Promise<WethHelper | undefined> {

@@ -8,14 +8,12 @@ import {
   logger,
 } from "@elizaos/core";
 import { schema } from "@elizaos/plugin-sql";
+import { modules } from "../actions/modules";
 import { LEVVA_SERVICE } from "../constants/enum";
-import { suggestTypes, suggestTypeTemplate } from "../templates/generate";
+import { suggestTypeTemplate } from "../templates/generate";
 import { CacheEntry } from "../types/core";
 import { ILevvaService } from "../types/service";
-import { getDb, getLevvaUser, getToken } from "../util/db";
-import { getChain } from "../util/eth/client";
-
-type SuggestType = (typeof suggestTypes)[number]["name"];
+import { getDb, getLevvaUser } from "../util/db";
 
 interface MessageEntry {
   authorId: string;
@@ -33,8 +31,16 @@ interface Suggestions {
   text: string;
 }
 
+const getChainId = (message?: MessageEntry): number | undefined => {
+  const value = message?.rawMessage.metadata?.chainId;
+
+  if (typeof value === "number") {
+    return value;
+  }
+};
+
 async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
-  const { address, channelId } = req.query;
+  const { address, chainId: _chainId, channelId } = req.query;
   const service = runtime.getService<ILevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
 
   try {
@@ -50,6 +56,16 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
 
     if (!user) {
       throw new Error("User not found");
+    }
+
+    if (!_chainId) {
+      throw new Error("Chain ID is required");
+    }
+
+    const chainId = Number(_chainId);
+
+    if (!Number.isFinite(chainId)) {
+      throw new Error("Invalid chain ID");
     }
 
     const db = getDb(runtime);
@@ -72,31 +88,35 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       return;
     }
 
-    // most recent chainId when present
-    let chainId: number | undefined;
     const recentMessages: (MessageEntry["rawMessage"] & {
       isAgent: boolean;
     })[] = [];
 
-    for (const message of messages) {
-      const raw = message.rawMessage;
+    let actionLookup: string | undefined;
+
+    for (let i = 0; i < messages.length; i++) {
+      const message = messages[i];
       const isAgent = message.authorId !== user.id;
-      recentMessages.push({ ...raw, isAgent });
 
-      if (
-        typeof chainId !== "number" &&
-        raw.metadata &&
-        "chainId" in raw.metadata
-      ) {
-        chainId = raw.metadata.chainId;
+      if (!actionLookup) {
+        actionLookup = message.rawMessage.actions[0];
       }
+
+      const messageChainId = isAgent
+        ? getChainId(messages[i + 1]) // or should lookup while chainid is not found or hit end of array?
+        : getChainId(message);
+
+      if (messageChainId && messageChainId !== chainId) {
+        continue;
+      }
+
+      const raw = message.rawMessage;
+      recentMessages.push({ ...raw, isAgent });
     }
 
-    if (typeof chainId !== "number") {
-      chainId = 1; // use mainnet as fallback
-    }
-
-    const chain = getChain(chainId);
+    const suggestions = modules.find(
+      (m) => m.action.name === actionLookup
+    )?.suggest;
 
     const conversation = recentMessages
       .map((item) => {
@@ -108,7 +128,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
     const conversationHash = sha256(toHex(conversation));
 
     const cached = await runtime.getCache<CacheEntry<Suggestions[]>>(
-      `suggestions:${user.address}`
+      `suggestions:${user.address}:${chainId}`
     );
 
     if (cached?.hash === conversationHash) {
@@ -120,152 +140,45 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       return;
     }
 
+    const defSuggest = {
+      name: "default",
+      description:
+        "in case the rest suggestion types do not fit, suggest conversation topics based on agent's capabilities",
+    };
+
     // todo register suggest types corresponding to actions
     // todo improve prompt to determine suggest type
     const gen = await runtime.useModel(ModelType.OBJECT_LARGE, {
-      prompt: suggestTypeTemplate
+      prompt: suggestTypeTemplate([
+        defSuggest,
+        ...(suggestions?.map(({ name, description }) => ({
+          name,
+          description,
+        })) ?? []),
+      ])
         .replace("{{userData}}", JSON.stringify(user))
         .replace("{{conversation}}", conversation),
     });
 
-    const type = gen.type as SuggestType;
+    const type = gen.type;
+    const suggest = suggestions?.find((s) => s.name === type);
+
     let result: { suggestions: Suggestions[] } | undefined;
 
-    if (type === "exchange-pairs") {
-      const assets = await service.getWalletAssets({
+    if (suggest) {
+      const model = suggest.model ?? ModelType.OBJECT_SMALL;
+
+      const prompt = await suggest.getPrompt(runtime, {
         address,
         chainId,
+        conversation,
+        decision: gen,
       });
 
-      const available = await getToken(runtime, { chainId });
-
-      available.push({
-        symbol: chain.nativeCurrency.symbol,
-        name: chain.nativeCurrency.name,
-        decimals: chain.nativeCurrency.decimals,
-        address: undefined,
-        info: undefined,
-        chainId,
+      result = await runtime.useModel(model, {
+        prompt,
       });
-
-      result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-        prompt: `<task>
-Generate suggestions for exchange pairs, given user's portfolio and available tokens
-</task>
-<decision>
-${JSON.stringify(gen)}
-</decision>
-<conversation>
-${conversation}
-</conversation>
-<portfolio>
-User has following tokens available in portfolio:
-${service.formatWalletAssets(assets)}
-</portfolio>
-<availableTokens>
-Tokens known to agent:
-${available.map((token) => token.symbol).join(", ")}
-</availableTokens>
-<instructions>
-Generate 5 suggestions for exchange pairs
-Please include exact token symbol for suggestion text.
-</instructions>
-<keys>
-- "suggestions" should be an array of objects with the following keys:
-  - "label"
-  - "text"
-</keys>
-<output>
-Respond using JSON format like this:
-{
-  "suggestions": [
-    {
-      "label": "USDT -> ETH",
-      "text": "I want to swap USDT to ETH",
-    },
-    {
-      "label": "ETH -> USDT",
-      "text": "Please, exchange ETH to USDT",
-    },
-    {
-      "label": "ETH -> USDC",
-      "text": "ETH for USDC",
-    }
-  ]
-}
-
-Your response should include the valid JSON block and nothing else.
-</output>`,
-      });
-    } else if (type === "exchange-amount") {
-      const assets = await service.getWalletAssets({
-        address,
-        chainId,
-      });
-
-      // todo move it to service
-      const available = await getToken(runtime, { chainId });
-
-      available.push({
-        symbol: chain.nativeCurrency.symbol,
-        name: chain.nativeCurrency.name,
-        decimals: chain.nativeCurrency.decimals,
-        address: undefined,
-        info: undefined,
-        chainId,
-      });
-
-      result = await runtime.useModel(ModelType.OBJECT_LARGE, {
-        prompt: `<task>Generate suggestions for exchange amount or alternative swap pairs, given user's portfolio and previous conversation
-</task>
-<decision>
-${JSON.stringify(gen)}
-</decision>
-<portfolio>
-User has following tokens available in portfolio:
-${service.formatWalletAssets(assets)}
-</portfolio>
-<availableTokens>
-Tokens known to agent:
-${available.map((token) => token.symbol).join(", ")}
-</availableTokens>
-<conversation>
-${conversation}
-</conversation>
-<instructions>
-User can either have the input token available or not, so consider cases:
-
-1. When input token NOT in portfolio:
-  - Generate 4 suggestions for another input token available in portfolio without token amount.
-  - Input token should NOT be the same as the output token, so "Swap ETH -> USDT" is CORRECT, but "Swap ETH -> ETH" is WRONG.
-  - Acknowledge missing input token in label, eg. "No {{tokenIn}}, swap {{availableToken}} -> {{tokenOut}}".
-  - Text should NOT include amount, eg. "I want to swap {{availableToken}} to {{tokenOut}}" is CORRECT, but "I want to swap 0.123456789987654321 {{availableToken}} to {{tokenOut}}" is WRONG.
-
-2. When input token IS in portfolio:
-  - Generate 4 suggestions for exchange amount, that corresponds to 100%(or 95% instead for native token or deduced value if present), 50%, 25%, 10% of the input token balance.
-  - User should be able to see trimmed swap amount in suggestion label, but not the percentage, eg. NOT "100% {{tokenIn}}", but "0.12 {{tokenIn}}".
-  - Trim amount in label to 6 decimal places if the value is less than 1. Use 2 decimal places otherwise, eg. "0.12 {{tokenIn}}".
-  - Do not trim amount in text, eg. "I want to swap 0.123456789987654321 {{tokenIn}}".
-
-Determine if user has input token available in portfolio and use appropriate case.
-</instructions>
-<keys>
-- "thought" should be a short description of what the agent is thinking about and planning.
-- "suggestions" should be an array of objects with the following keys:
-  - "label" - short description of the suggestion
-  - "text" - message containing untrimmed swap amount 
-</keys>
-<output>
-Respond using JSON format like this:
-{
-  "thought": "<string>",
-  "suggestions": <array>
-}
-
-Your response should include the valid JSON block and nothing else.
-</output>`,
-      });
-    } /* if (type === "default") */ else {
+    } else {
       result = await runtime.useModel(ModelType.OBJECT_SMALL, {
         prompt: `<task>
 Generate suggestions for user based on the conversation leading to the following action types
@@ -315,7 +228,7 @@ Your response should include the valid JSON block and nothing else.
       });
     }
 
-    await runtime.setCache(`suggestions:${user.address}`, {
+    await runtime.setCache(`suggestions:${user.address}:${chainId}`, {
       hash: conversationHash,
       value: result?.suggestions ?? [],
     });

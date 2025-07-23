@@ -1,42 +1,82 @@
 import assert from "node:assert";
 import EventEmitter from "node:events";
-import { sha256, toHex } from "viem";
+import { encodeFunctionData, formatUnits, isHex, parseUnits, sha256, toHex } from "viem";
 import {
   type IAgentRuntime,
   logger,
   Service,
   ServiceType,
 } from "@elizaos/core";
-import { BrowserService, PageContent } from "../browser.ts";
-import { LEVVA_SERVICE } from "../../constants/enum.ts";
+import { BrowserService } from "../browser";
+import { LEVVA_SERVICE } from "../../constants/enum";
+import { getActiveMarkets, PendleActiveMarkets } from "../../api/market/pendle";
+import { CacheEntry } from "../../types/core";
+import { ILevvaService } from "../../types/service";
+import { CalldataWithDescription } from "../../types/tx";
 import {
-  getActiveMarkets,
-  PendleActiveMarkets,
-} from "../../api/market/pendle.ts";
-import { CacheEntry } from "../../types/core.ts";
-import { ILevvaService } from "../../types/service.ts";
-import { CalldataWithDescription } from "../../types/tx.ts";
-import { blockexplorers, getChain, getToken } from "../../util/index.ts";
-import { xmlParser } from "../../util/xml.ts";
-import { delay, isRejected, isResolved } from "../../util/async.ts";
-import { getFeed, getFeedItemId, getLatestNews, isFeedItem, onFeedItem } from "./news.ts";
+  extractTokenData,
+  getAllowance,
+  getBalanceOf,
+  getChain,
+  getClient,
+  getTokenData,
+  getToken as getTokenImpl,
+  parseTokenInfo,
+  TokenEntry,
+  upsertToken,
+} from "../../util";
+import { delay, isRejected, isResolved } from "../../util/async";
+import { TokenData, TokenDataWithInfo } from "../../types/token";
+import { ETH_NULL_ADDR } from "../../constants/eth";
+import {
+  getFeed,
+  getFeedItemId,
+  getLatestNews,
+  isFeedItem,
+  onFeedItem,
+} from "./news";
+import {
+  LevvaPoolInterface,
+  PoolConstants,
+  Strategy,
+  StrategyEntry,
+  StrategyMapping,
+  VaultConstants,
+  getPoolConstants,
+  getPoolVariables as getPoolVariablesImpl,
+  getVaultConstants,
+  strategyVaultMapping,
+} from "./pool";
+import {
+  PendleInterface,
+  getPendleParams as getPendleParamsImpl,
+} from "./pendle";
+import {
+  BalanceEntry,
+  getBalance,
+  upsertBalance,
+  WalletInterface,
+} from "./wallet";
+import { wrapEth } from "src/util/eth/weth";
+import { getPendleSwap } from "src/api/swap/pendle";
+import { bundlerEnter } from "./tx";
+import poolAbi from "./abi/pool.abi";
+import vaultAbi from "./abi/vault.abi";
 
 const REQUIRED_PLUGINS = ["levva"];
-
-// todo config
-const PROXIES = [
-  { ip: "46.8.5.131", port: "8000", username: "FCCWKQ", password: "a7CxRa" },
-  { ip: "45.83.9.114", port: "8000", username: "FCCWKQ", password: "a7CxRa" },
-];
 
 function checkPlugins(runtime: IAgentRuntime) {
   const set = new Set(runtime.plugins.map((plugin) => plugin.name));
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
-const MAX_WAIT_TIME = 15000;
+// todo config
+const MAX_WAIT_TIME = 15000; // time after which put promise in background
 
-export class LevvaService extends Service implements ILevvaService {
+export class LevvaService
+  extends Service
+  implements ILevvaService, LevvaPoolInterface, PendleInterface, WalletInterface
+{
   static serviceType = LEVVA_SERVICE.LEVVA_COMMON;
   capabilityDescription =
     "Levva service should analyze the user's portfolio, suggest earning strategies, swap crypto assets, etc.";
@@ -77,16 +117,57 @@ export class LevvaService extends Service implements ILevvaService {
     return Promise.race([promise, delay(MAX_WAIT_TIME, undefined)]);
   };
 
+  private permanentCache = <P extends unknown[], V>(
+    getData: (...params: P) => Promise<V>,
+    getKey: (...params: P) => string
+  ) => {
+    return async (...params: P) => {
+      const cacheKey = getKey(...params);
+      const cached = await this.runtime.getCache<V>(cacheKey);
+
+      if (cached) {
+        return cached;
+      }
+
+      const result = await getData(...params);
+      await this.runtime.setCache(cacheKey, result);
+      return result;
+    };
+  };
+
+  private timedCache = <P extends unknown[], V>(
+    ttl: number,
+    getData: (...params: P) => Promise<V>,
+    getKey: (...params: P) => string
+  ) => {
+    return async (...params: P) => {
+      const cacheKey = getKey(...params);
+      const cached = await this.runtime.getCache<CacheEntry<V>>(cacheKey);
+      const now = Date.now();
+
+      if (cached?.timestamp && now - cached.timestamp < ttl) {
+        return cached.value;
+      }
+
+      const result = await getData(...params);
+      await this.runtime.setCache(cacheKey, { timestamp: now, value: result });
+      return result;
+    };
+  };
+
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     assert(checkPlugins(runtime), "Required plugins not found");
     this.handlerInterval = setInterval(this.bgHandler, 500);
 
     this.events.on("background:resolved", (event) => {
-      // logger.info(`Background promise resolved: ${event.id}`, event.value);
-
       if (isFeedItem(event.id)) {
+        // fixme handler invocations should have same call signature
         onFeedItem(this.runtime, event.id, event.value);
+      } else if (this.isBalanceId(event.id)) {
+        this.onUpdateBalance(event.id, event.value);
+      } else {
+        logger.warn(`Unknown event: ${event.id}`, JSON.stringify(event.value));
       }
     });
   }
@@ -118,19 +199,106 @@ export class LevvaService extends Service implements ILevvaService {
     }
   }
 
+  /** @deprecated fix typing, maybe consider making private */
+  getToken = getTokenImpl.bind(null, this.runtime) as (
+    params: Parameters<typeof getTokenImpl>[1]
+  ) => ReturnType<typeof getTokenImpl>;
+
+  getTokenDataWithInfo = async ({
+    chainId,
+    symbolOrAddress,
+  }: {
+    chainId: number;
+    symbolOrAddress?: string;
+  }) => {
+    const chain = getChain(chainId);
+    let tokenData: TokenDataWithInfo | undefined;
+
+    if (!isHex(symbolOrAddress)) {
+      const symbol = symbolOrAddress;
+
+      if (symbol?.toLowerCase() === chain.nativeCurrency.symbol.toLowerCase()) {
+        logger.info("Using native currency as token value");
+        tokenData = extractTokenData(chain.nativeCurrency);
+      } else {
+        const token = (await this.getToken({ chainId: chain.id, symbol }))[0];
+
+        if (!token) {
+          return;
+        }
+
+        tokenData = extractTokenData(token);
+        /* @ts-expect-error fix typing */
+        tokenData.info = parseTokenInfo(token.info);
+      }
+    } else {
+      tokenData = await getTokenData(chain.id, symbolOrAddress);
+      logger.info(`Saving ${symbolOrAddress} as ${tokenData.symbol}`);
+
+      // todo now we can get market from adapter contract for base token, can be used
+      await upsertToken(this.runtime, {
+        ...(tokenData as Required<TokenData>),
+        chainId: chain.id,
+      });
+    }
+
+    return tokenData;
+  };
+
+  getWETH = async (chainId: number) => {
+    const [weth] = await this.getToken({ chainId, symbol: "WETH" });
+
+    if (!weth) {
+      throw new Error(`WETH not found for chain ${chainId}`);
+    }
+
+    return weth;
+  };
+
+  private tokenMap = new Map<
+    `${number}:0x${string}`,
+    Omit<TokenEntry, "id"> | undefined
+  >();
+
+  private populateTokenMap = async (entries: Omit<TokenEntry, "id">[]) => {
+    for (const entry of entries) {
+      const key =
+        `${entry.chainId}:${entry.address}` as `${number}:0x${string}`;
+
+      if (!this.tokenMap.has(key)) {
+        this.tokenMap.set(key, entry);
+      }
+    }
+  };
+
+  private getTokenFromMap = (params: {
+    chainId: number;
+    address: `0x${string}`;
+  }) => {
+    const key =
+      `${params.chainId}:${params.address}` as `${number}:0x${string}`;
+
+    return this.tokenMap.get(key);
+  };
+
   async getAvailableTokens(params: { chainId: number }) {
     const chain = getChain(params.chainId);
-    const tokens = await getToken(this.runtime, { chainId: params.chainId });
+
+    const tokens: /* fixme type */ Omit<TokenEntry, "id">[] =
+      await this.getToken({
+        chainId: params.chainId,
+      });
 
     tokens.push({
       symbol: chain.nativeCurrency.symbol,
       name: chain.nativeCurrency.name,
       decimals: chain.nativeCurrency.decimals,
-      address: undefined,
+      address: ETH_NULL_ADDR,
       info: undefined,
       chainId: params.chainId,
     });
 
+    this.populateTokenMap(tokens);
     return tokens;
   }
 
@@ -139,116 +307,132 @@ export class LevvaService extends Service implements ILevvaService {
     name: string;
     address?: string;
     decimals: number;
-    info?: Record<string, any>;
+    info?: unknown;
   }) {
-    return `${token.symbol}(${token.name}) - ${token.address ? `Deployed as ${token.address}` : "Native token"}. Decimals: ${token.decimals}.${token.info ? ` Additional Info: ${JSON.stringify(token.info)}` : ""}`;
+    const isNative = !token.address || token.address === ETH_NULL_ADDR;
+    return `${token.symbol}(${token.name}) - ${isNative ? "Native token" : `${token.address}`}. Decimals: ${token.decimals}.`;
   }
 
   // -- Wallet assets --
-  // todo implement other balance sources, now simulating browser visit to blockexplorer
-  async getWalletAssets(params: { address: `0x${string}`; chainId: number }) {
-    const browser = await this.runtime.getService<BrowserService>(
-      ServiceType.BROWSER
-    );
+  private BALANCE_PREFIX = "balance:";
 
-    const explorer = blockexplorers.get(params.chainId);
+  private isBalanceId = (id: string) => {
+    return id.startsWith(this.BALANCE_PREFIX);
+  };
 
-    if (!explorer) {
-      throw new Error(
-        `Unsupported chain ${params.chainId}, reason = block explorer not found`
-      );
+  private createBalanceId = (params: {
+    address: `0x${string}`;
+    chainId: number;
+    token: `0x${string}` | undefined;
+  }) => {
+    return `${this.BALANCE_PREFIX}${params.address}:${params.chainId}:${params.token ?? "native"}`;
+  };
+
+  private onUpdateBalance = async (
+    id: string,
+    data: {
+      amount: bigint;
+      address: `0x${string}`;
+      token: `0x${string}`;
+      chainId: number;
+      value: bigint;
     }
+  ) => {
+    await upsertBalance(this.runtime, data);
+  };
 
-    const url = `${explorer}/address/${params.address}`;
-    const cacheKey = `portfolio:${params.address}:${params.chainId}`;
-    // timed cache, todo make util function
-    const cacheTime = 3600000;
-    const timestamp = Date.now();
-
-    const cached =
-      await this.runtime.getCache<
-        CacheEntry<
-          { symbol: string; balance: string; value: string; address?: string }[]
-        >
-      >(cacheKey);
-
-    if (cached?.timestamp && timestamp - cached.timestamp < cacheTime) {
-      return cached.value;
-    }
-
-    const portfolio = await browser.processPageContent(
-      url,
-      async (html) => {
-        const begin = html.indexOf("<!-- Content");
-        const end = html.indexOf("<!-- End Content");
-        return `<task>analyze given html and extract the wallet assets</task>
-        <html>
-          ${html.slice(begin, end)}
-        </html>
-        <instructions>
-          - Find the DIV block titled "ETH Balance" and extract the balance.
-          - Find the DIV block titled "Token Holdings" and extract the balances and addresses of tokens in dropdown.
-        </instructions>
-        <keys>
-          - "assets" should be an array of objects with the following keys:
-            - "symbol"
-            - "balance"
-            - "value"
-            - "address" (optional for native token)
-        </keys>
-        <output>
-          Respond using JSON format like this:
-          {
-            "assets": [
-              {
-                "symbol": "ETH",
-                "balance": "0.03400134",
-                "value": "80.2"
-              },
-              {
-                "symbol": "USDT",
-                "balance: "20.1234",
-                "value": "20.111223344",
-                "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
-              }
-            ]
-          }
-        </output>
-        `;
-      },
-      "html",
-      PROXIES
-    );
-
-    // todo type check
-    const assets: {
-      symbol: string;
-      balance: string;
-      value: string;
-      address?: string;
-    }[] = portfolio?.assets ?? [];
-
-    await this.runtime.setCache(cacheKey, {
-      timestamp,
-      value: assets,
+  private getBalanceOf = (
+    address: `0x${string}`,
+    chainId: number,
+    token: `0x${string}`
+  ) => {
+    // todo maybe always use 0x00..00 address for native token?
+    const id = this.createBalanceId({
+      address,
+      chainId,
+      token,
     });
 
-    return assets;
+    return this.inBackground(async () => {
+      const amount = await getBalanceOf(chainId, address, token);
+
+      // todo add prices
+      const value = BigInt(0);
+
+      return {
+        amount,
+        address,
+        token,
+        chainId,
+        value,
+      };
+    }, id);
+  };
+
+  // fixme update balances in db in another method
+  async getWalletAssets(params: { address: `0x${string}`; chainId: number }) {
+    const ttl = 900000; // update balance if older than 15 minutes
+    const now = new Date();
+
+    const [balances, tokens] = await Promise.all([
+      getBalance(this.runtime, {
+        address: params.address,
+        chainId: params.chainId,
+        ttl,
+      }),
+      this.getAvailableTokens({ chainId: params.chainId }),
+    ]);
+
+    const withBalance = new Set<string>(balances.map(({ token }) => token));
+
+    const outdated = await Promise.all(
+      tokens
+        .filter(({ address }) => !withBalance.has(address ?? ETH_NULL_ADDR))
+        .map(({ address }) => {
+          // fixme no type casting
+          const token = (address ?? ETH_NULL_ADDR) as `0x${string}`;
+          return this.getBalanceOf(params.address, params.chainId, token);
+        })
+    );
+
+    const result = outdated.reduce<Omit<BalanceEntry, "id">[]>((acc, data) => {
+      if (typeof data?.amount !== "bigint") {
+        return acc;
+      }
+
+      const entry: Omit<BalanceEntry, "id"> = {
+        ...data,
+        type: data.token && data.token !== ETH_NULL_ADDR ? "erc20" : "native",
+        updatedAt: now,
+      };
+
+      return [...acc, entry];
+    }, balances);
+
+    return result;
   }
 
   formatWalletAssets(
-    assets: {
-      symbol: string;
-      balance: string;
-      value: string;
-      address?: string;
-    }[]
+    _assets: Omit<BalanceEntry, "id">[],
+    hideZero?: boolean
   ): string {
+    const assets = hideZero ? _assets.filter((a) => a.amount > 0) : _assets;
+
     return assets
-      .map(
-        (asset) =>
-          `${asset.symbol} - ${asset.address ? `Token deployed as ${asset.address}` : "Native token"}. Balance: ${asset.balance}. Value: ${asset.value} USD.`
-      )
+      .map((asset) => {
+        const isNative = !asset.token || asset.token === ETH_NULL_ADDR;
+
+        const token = this.getTokenFromMap({
+          chainId: asset.chainId,
+          address: (asset.token ?? ETH_NULL_ADDR) as `0x${string}`,
+        });
+
+        const decimals = token?.decimals ?? 18;
+        const symbol = token?.symbol ?? "ETH";
+
+        // fixme add prices
+        return `${symbol} - ${isNative ? "Native token" : asset.token}. Balance: ${formatUnits(asset.amount, decimals)}.`;
+      })
       .join("\n");
   }
 
@@ -262,6 +446,10 @@ export class LevvaService extends Service implements ILevvaService {
     const browser = await this.runtime.getService<BrowserService>(
       ServiceType.BROWSER
     );
+
+    if (!browser) {
+      throw new Error("Browser service not found");
+    }
 
     try {
       logger.info(`Fetching feed: ${url}`);
@@ -279,8 +467,7 @@ export class LevvaService extends Service implements ILevvaService {
         })
       );
     } catch (error) {
-      console.error(error);
-      logger.info(error.stack);
+      logger.error("Failed to fetch feed", error);
     }
   };
 
@@ -289,10 +476,23 @@ export class LevvaService extends Service implements ILevvaService {
     return getLatestNews(this.runtime, limit);
   }
   // -- End of Crypto news --
+  private getPendleMarketsCacheKey = (
+    chainId: number,
+    {
+      baseToken,
+      quoteToken,
+    }: { baseToken: `0x${string}`; quoteToken: `0x${string}` }
+  ) => `pendle-markets:${chainId}:${baseToken}:${quoteToken}`;
+
+  getPendleParams = this.permanentCache(
+    getPendleParamsImpl,
+    this.getPendleMarketsCacheKey
+  );
 
   async getPendleMarkets(params: { chainId: number }) {
     const ttl = 3600000;
     const cacheKey = `pendle-markets:${params.chainId}`;
+
     const cached =
       await this.runtime.getCache<CacheEntry<PendleActiveMarkets>>(cacheKey);
 
@@ -339,5 +539,318 @@ export class LevvaService extends Service implements ILevvaService {
     }
 
     return cached;
+  }
+
+  private getPoolConstantsCacheKey = (
+    chainId: number,
+    address: `0x${string}`
+  ) => `pool-constants:${chainId}:${address}`;
+
+  getPoolConstants = this.permanentCache(
+    getPoolConstants,
+    this.getPoolConstantsCacheKey
+  );
+
+  private getPoolVariablesCacheKey = (
+    chainId: number,
+    address: `0x${string}`
+  ) => `pool-variables:${chainId}:${address}`;
+
+  invalidatePoolVariablesCache = (chainId: number, address: `0x${string}`) =>
+    this.runtime.deleteCache(this.getPoolVariablesCacheKey(chainId, address));
+
+  getPoolVariables = this.timedCache(
+    300000,
+    getPoolVariablesImpl,
+    this.getPoolVariablesCacheKey
+  );
+
+  private getVaultConstantsCacheKey = (
+    chainId: number,
+    address: `0x${string}`
+  ) => `vault-constants:${chainId}:${address}`;
+
+  getVaultConstants = this.permanentCache(
+    getVaultConstants,
+    this.getVaultConstantsCacheKey
+  );
+
+  /** @deprecated need api */
+  async getStrategies(chainId?: number) {
+    const result = (
+      Object.entries(strategyVaultMapping) as [Strategy, StrategyMapping[]][]
+    ).reduce((acc, [strategy, mappings]) => {
+      const filtered = mappings
+        .filter(({ vaultChainId }) => vaultChainId === chainId)
+        .map((mapping) => ({
+          ...mapping,
+          strategy,
+        }));
+
+      return [...acc, ...filtered];
+    }, [] as StrategyEntry[]);
+
+    return result;
+  }
+
+  formatStrategy(strategy: StrategyEntry) {
+    return `${strategy.strategy} - Contract: ${strategy.contractAddress}.Type: "${strategy.type}". ${strategy.description} `;
+  }
+
+  async getStrategyData(
+    strategy: StrategyEntry
+  ): Promise<
+    | { type: "vault"; data: VaultConstants }
+    | { type: "pool"; data: PoolConstants }
+  > {
+    if (strategy.type === "vault") {
+      return {
+        type: "vault",
+        data: await this.getVaultConstants(
+          strategy.vaultChainId,
+          strategy.contractAddress
+        ),
+      };
+    }
+
+    return {
+      type: "pool",
+      data: await this.getPoolConstants(
+        strategy.vaultChainId,
+        strategy.contractAddress
+      ),
+    };
+  }
+
+  async handlePoolStrategy(
+    strategy: StrategyEntry,
+    receiver: `0x${string}`,
+    tokenSymbolOrAddress: string,
+    amount: string,
+    _leverage?: number
+  ) {
+    if (!_leverage) {
+      logger.warn("No leverage provided, using default(x5)");
+    }
+
+    const leverage = _leverage ?? 5;
+    const {
+      type,
+      vaultChainId: chainId,
+      contractAddress: address,
+      bundler,
+    } = strategy;
+
+    if (type !== "pool") {
+      throw new Error(`Strategy ${address} is not a pool`);
+    }
+
+    const pool = await this.getPoolConstants(chainId, address);
+
+    const calls: CalldataWithDescription[] = [];
+
+    let tokenIn = await this.getTokenDataWithInfo({
+      chainId,
+      symbolOrAddress: tokenSymbolOrAddress,
+    });
+
+    let amountIn = parseUnits(amount, tokenIn?.decimals ?? 18);
+
+    const balance = await this.getBalanceOf(
+      receiver,
+      chainId,
+      tokenIn?.address ?? ETH_NULL_ADDR // todo fix native token
+    );
+
+    if ((balance?.amount ?? BigInt(0)) < amountIn) {
+      throw new Error("Insufficient balance");
+    }
+
+    if (!tokenIn?.address) {
+      logger.warn(`using WETH`);
+      const weth = await this.getWETH(chainId);
+
+      tokenIn = await this.getTokenDataWithInfo({
+        chainId,
+        symbolOrAddress: weth.symbol,
+      });
+
+      calls.push(wrapEth(amountIn, weth));
+      amountIn = parseUnits(amount, weth.decimals);
+    }
+
+    const client = getClient(getChain(chainId));
+
+    const basePriceX96 = await client.readContract({
+      address,
+      abi: poolAbi,
+      functionName: "getLiquidationPrice",
+    });
+
+    const limitPriceX96 = (basePriceX96.inner * BigInt(100)) / BigInt(95); // 5% slippage tolerance
+
+    if (bundler && tokenIn?.address !== pool.baseToken) {
+      // handling tokens other than base token if supported
+      // fixme make method
+      const pendle = await this.getPendleParams(chainId, {
+        baseToken: pool.baseToken,
+        quoteToken: pool.quoteToken,
+      });
+
+      const market = pendle?.market;
+
+      if (!market) {
+        throw new Error(
+          `Market not found for ${pool.baseToken} and ${pool.quoteToken}`
+        );
+      }
+
+      if (!tokenIn?.address) {
+        throw new Error("weth error");
+      }
+
+      const swap = await getPendleSwap({
+        chainId: chainId.toString() as `${number}`,
+        market,
+        receiver,
+        slippage: "0.01" as `${number}`,
+        enableAggregator: "true",
+        tokenIn: tokenIn.address,
+        tokenOut: pool.baseToken,
+        amountIn: amountIn.toString() as `${number}`,
+      });
+
+      if (!swap) {
+        throw new Error(
+          `Failed to swap ${amountIn.toString()} ${tokenIn?.symbol} to ${pool.baseToken}`
+        );
+      }
+
+      logger.debug(`Swap: ${JSON.stringify(swap, null, 2)}`);
+
+      if (leverage < 1) {
+        throw new Error("Leverage must be greater than 1");
+      }
+
+      const longAmount = BigInt(swap.data.amountOut) * BigInt(leverage - 1);
+
+      const { approve } = await getAllowance({
+        sender: receiver,
+        spender: bundler,
+        token: tokenIn.address,
+        amount: amountIn,
+        client,
+        decimals: tokenIn.decimals,
+        symbol: tokenIn.symbol,
+      });
+
+      if (approve) {
+        calls.push(approve);
+      }
+
+      const calldata = bundlerEnter(swap, {
+        pool: address,
+        longAmount,
+        limitPriceX96,
+      });
+
+      calls.push({
+        to: bundler,
+        data: calldata,
+        title: `Deposit ${amount} ${tokenIn.symbol}`,
+        description: `Entering pool ${address} with ${amountIn.toString()} ${tokenIn?.symbol} and x${leverage} leverage`,
+      });
+
+      return calls;
+    }
+
+    // todo handle pt token deposit
+
+    throw new Error(
+      `deposit of token ${tokenIn?.symbol} to pool ${address} is not supported, please swap into ${pool.baseToken} first`
+    );
+  }
+
+  async handleVaultStrategy(
+    strategy: StrategyEntry,
+    sender: `0x${string}`,
+    amount: string,
+    wrap?: boolean,
+  ) {
+    const {
+      type,
+      vaultChainId: chainId,
+      contractAddress: address,
+    } = strategy;
+
+    if (type !== "vault") {
+      throw new Error(`Strategy ${address} is not a vault`);
+    }
+
+    const vault = await this.getVaultConstants(chainId, address);
+    const calls: CalldataWithDescription[] = [];
+    
+    const tokenIn = await this.getTokenDataWithInfo({
+      chainId,
+      symbolOrAddress: vault.asset,
+    });
+
+    if (!tokenIn?.address) {
+      throw new Error(`Token ${vault.asset} not found`);
+    }
+
+    let amountIn = parseUnits(amount, tokenIn.decimals);
+
+    const balance = await this.getBalanceOf(
+      sender,
+      chainId,
+      tokenIn.address,
+    );
+
+    if (wrap) {
+      const weth = await this.getWETH(chainId);
+
+      if (weth.address !== vault.asset) {
+        throw new Error(`Vault ${address} is not a WETH vault`);
+      }
+
+      calls.push(wrapEth(amountIn, weth));
+      amountIn = parseUnits(amount, weth.decimals);
+    }
+
+    if ((balance?.amount ?? BigInt(0)) < amountIn) {
+      throw new Error(`Insufficient balance, consider swapping to ${tokenIn.symbol} first`);
+    }
+
+    const client = getClient(getChain(chainId));
+
+    const { approve } = await getAllowance({
+      sender,
+      spender: address,
+      token: tokenIn.address,
+      amount: amountIn,
+      client,
+      decimals: tokenIn.decimals,
+      symbol: tokenIn.symbol,
+    });
+
+    if (approve) {
+      calls.push(approve);
+    }
+
+    const calldata = encodeFunctionData({
+      abi: vaultAbi,
+      functionName: "deposit",
+      args: [amountIn, sender],
+    });
+
+    calls.push({
+      to: address,
+      data: calldata,
+      title: `Deposit ${amount} ${tokenIn.symbol}`,
+      description: `Depositing ${amountIn.toString()} ${tokenIn.symbol} to vault ${address}`,
+    });
+
+    return calls;
   }
 }

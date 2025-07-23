@@ -192,7 +192,6 @@ export class BrowserService extends Service {
 
     if (proxy) {
       key = `${proxy.ip}:${proxy.port}`;
-      console.log("using proxy", key);
 
       proxyOptions = {
         server: `http://${proxy.ip}:${proxy.port}`,
@@ -203,6 +202,10 @@ export class BrowserService extends Service {
 
     if (this.contexts[key]) {
       return this.contexts[key];
+    }
+
+    if (!this.browser) {
+      throw new Error("Browser not initialized");
     }
 
     const context = await this.browser.newContext({
@@ -263,7 +266,8 @@ export class BrowserService extends Service {
     let page: Page | undefined;
 
     for (let i = 0; i < proxies.length; i++) {
-      const context = await this.getContext(proxies[i]);
+      const proxy = proxies[i];
+      const context = await this.getContext(proxy);
 
       try {
         if (!context) {
@@ -287,10 +291,15 @@ export class BrowserService extends Service {
           throw new Error("Failed to load the page");
         }
 
-        if (response.status() === 200) {
+        const status = response.status();
+
+        if (status === 200) {
           break;
         }
 
+        logger.error(
+          `Failed to load the page, status: ${status}, url: ${url}, proxy: ${proxy.ip}:${proxy.port}`
+        );
         await page.close();
         page = undefined;
         await delay(1500); // wait before using next proxy, todo config
