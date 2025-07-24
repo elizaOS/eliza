@@ -36,6 +36,7 @@
     "dist",
     "README.md",
     ".npmignore",
+    ".gitignore",
     "package.json",
     "tsup.config.ts"
   ],

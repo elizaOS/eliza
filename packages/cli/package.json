@@ -20,7 +20,11 @@
   },
   "files": [
     "dist",
-    "templates"
+    "dist/**/.gitignore",
+    "dist/**/.npmignore",
+    "templates",
+    "templates/**/.gitignore",
+    "templates/**/.npmignore"
   ],
   "keywords": [],
   "type": "module",
