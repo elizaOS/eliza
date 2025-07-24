@@ -713,7 +713,7 @@ export class LevvaService
         chainId: chainId.toString() as `${number}`,
         market,
         receiver,
-        slippage: "0.01" as `${number}`,
+        slippage: "0.05" as `${number}`,
         enableAggregator: "true",
         tokenIn: tokenIn.address,
         tokenOut: pool.baseToken,
@@ -764,10 +764,51 @@ export class LevvaService
       return calls;
     }
 
-    // todo handle pt token deposit
+    if (tokenIn?.address === pool.baseToken) {
+      if (leverage < 1) {
+        throw new Error("Leverage must be greater than 1");
+      }
+
+      const longAmount = BigInt(amountIn) * BigInt(leverage - 1);
+
+      const { approve } = await getAllowance({
+        sender: receiver,
+        spender: address,
+        token: tokenIn.address,
+        amount: amountIn,
+        client,
+        decimals: tokenIn.decimals,
+        symbol: tokenIn.symbol,
+      });
+
+      if (approve) {
+        calls.push(approve);
+      }
+
+      const defaultSwapCalldata = await client.readContract({
+        abi: poolAbi,
+        address,
+        functionName: "defaultSwapCallData",
+      })
+
+      const calldata = encodeFunctionData({
+        abi: poolAbi,
+        functionName: "execute",
+        args: [0/* DEPOSIT_BASE */, amountIn, longAmount, limitPriceX96, false, ETH_NULL_ADDR, BigInt(defaultSwapCalldata)],
+      });
+
+      calls.push({
+        to: address,
+        data: calldata,
+        title: `Deposit ${amount} ${tokenIn.symbol}`,
+        description: `Depositing ${amountIn.toString()} ${tokenIn.symbol} to pool ${address} with x${leverage} leverage`,
+      });
+
+      return calls;
+    }
 
     throw new Error(
-      `deposit of token ${tokenIn?.symbol} to pool ${address} is not supported, please swap into ${pool.baseToken} first`
+      `deposit of token ${tokenIn?.symbol} to pool ${address} is not supported, please swap into ${pool.baseToken} first or use bundler`
     );
   }
 
