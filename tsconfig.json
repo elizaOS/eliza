@@ -6,7 +6,7 @@
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "strict": false,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,

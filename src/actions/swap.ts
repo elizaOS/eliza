@@ -1,73 +1,32 @@
 import {
   type Action,
   type Content,
-  IAgentRuntime,
   logger,
   ModelType,
 } from "@elizaos/core";
-import { Chain, erc20Abi, isHex, parseUnits } from "viem";
+import { erc20Abi, isHex, parseUnits } from "viem";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
+import { selectLevvaState } from "../providers";
+import { LevvaService } from "../services/levva/class";
 import { estimationTemplate, swapTemplate } from "../templates";
-import type { TokenData, TokenDataWithInfo } from "../types/token";
 import {
-  extractTokenData,
   getChain,
   getClient,
-  getToken,
-  getTokenData,
-  upsertToken,
 } from "../util";
 import { rephrase } from "../util/generate";
 import { formatEstimation, selectSwapRouter } from "../util/eth/swap";
-import { parseTokenInfo } from "../util/eth/token";
-import { selectLevvaState } from "src/providers";
-import { ILevvaService } from "src/types/service";
-
-async function getTokenDataWithInfo(
-  runtime: IAgentRuntime,
-  chain: Chain,
-  symbolOrAddress?: string
-) {
-  let tokenData: TokenDataWithInfo | undefined;
-
-  if (!isHex(symbolOrAddress)) {
-    const symbol = symbolOrAddress;
-
-    if (symbol.toLowerCase() === chain.nativeCurrency.symbol.toLowerCase()) {
-      logger.info("Using native currency as token in");
-      tokenData = extractTokenData(chain.nativeCurrency);
-    } else {
-      const token = (await getToken(runtime, { chainId: chain.id, symbol }))[0];
-
-      if (!token) {
-        return;
-      }
-
-      tokenData = extractTokenData(token);
-      tokenData.info = parseTokenInfo(token.info);
-    }
-  } else {
-    tokenData = await getTokenData(chain.id, symbolOrAddress);
-    logger.info(`Saving ${symbolOrAddress} as ${tokenData.symbol}`);
-
-    await upsertToken(runtime, {
-      ...(tokenData as Required<TokenData>),
-      chainId: chain.id,
-    });
-  }
-
-  return tokenData;
-}
+import { Suggestion } from "./types";
+import { selectSwapDataFromMessagesPrompt } from "src/prompts/swap";
 
 const description = [
-  "Help user to exchange tokens.",
-  "If user did not provide either tokens or amount this action should ask for this info.",
+  "Initiate token swap for user.",
+  "Ask user for exchange pair and amount if not provided.",
   "If all the info is provided, this action should respond with swap details and transaction calldata.",
   IGNORE_REPLY_MODIFIER,
 ].join(" ");
 
-export const swapTokens: Action = {
+export const action: Action = {
   name: LEVVA_ACTIONS.SWAP_TOKENS,
   description,
   similes: ["SWAP_TOKENS", "EXCHANGE_TOKENS", "swap tokens", "exchange tokens"],
@@ -79,7 +38,22 @@ export const swapTokens: Action = {
   handler: async (runtime, message, state, options, callback) => {
     try {
       logger.info("SWAP_TOKENS action called");
-      const service = runtime.getService<ILevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+
+      if (!service) {
+        throw new Error("Failed to get levva service, disable action");
+      }
+
+      if (!callback) {
+        throw new Error("Callback not found, disable action");
+      }
+
+      if (!state) {
+        throw new Error("State not found, disable action");
+      }
+
       const levvaState = selectLevvaState(state);
 
       if (!levvaState?.user) {
@@ -99,10 +73,10 @@ export const swapTokens: Action = {
         // fixme use ModelType.OBJECT_SMALL with grok
         ModelType.OBJECT_LARGE,
         {
-          prompt: swapTemplate.replace(
-            "{{recentMessages}}",
-            state.values.recentMessages
-          ).replace("{{tokens}}", state.values.tokens.join(", ")),
+          prompt: selectSwapDataFromMessagesPrompt({
+            recentMessages: state.values.recentMessages,
+            tokens: state.values.tokens,
+          }),
         }
       );
 
@@ -155,7 +129,10 @@ export const swapTokens: Action = {
         );
       }
 
-      const tokenIn = await getTokenDataWithInfo(runtime, chain, fromToken);
+      const tokenIn = await service.getTokenDataWithInfo({
+        chainId,
+        symbolOrAddress: fromToken,
+      });
 
       if (!tokenIn) {
         logger.info(
@@ -175,7 +152,10 @@ export const swapTokens: Action = {
         );
       }
 
-      const tokenOut = await getTokenDataWithInfo(runtime, chain, toToken);
+      const tokenOut = await service.getTokenDataWithInfo({
+        chainId,
+        symbolOrAddress: toToken,
+      });
 
       if (!tokenOut) {
         logger.info(
@@ -257,7 +237,9 @@ Please approve transactions in your wallet.`,
       return true;
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
+      // @ts-expect-error fix typing
       const thought = `Action failed with error: ${error.message ?? "unknown"}. I should tell the user about the error.`;
+      // @ts-expect-error fix typing
       const text = `Failed to swap, reason: ${error.message ?? "unknown"}. Please try again.`;
 
       const responseContent = await rephrase({
@@ -268,10 +250,10 @@ Please approve transactions in your wallet.`,
           actions: ["SWAP_TOKENS"],
           source: message.content.source,
         },
-        state,
+        state: state!,
       });
 
-      await callback(responseContent);
+      await callback?.(responseContent);
       return false;
     }
   },
@@ -344,7 +326,7 @@ Please approve transactions in your wallet.`,
     ],
     [
       {
-        name: "{{user1}}",
+        name: "{{name1}}",
         content: {
           text: "Token address is {{address}}",
         },
@@ -360,7 +342,7 @@ Please approve transactions in your wallet.`,
     [
       // fixme maybe needs another action type for this
       {
-        name: "{{user1}}",
+        name: "{{name1}}",
         content: {
           text: "Cancel transaction",
         },
@@ -375,3 +357,143 @@ Please approve transactions in your wallet.`,
     ],
   ],
 };
+
+export const suggest: Suggestion[] = [
+  {
+    name: "exchange-amount",
+    description:
+      "Use if user wants to swap tokens, and the agent knows what token to swap but the amount is not specified, suggest how much to swap based on user's portfolio, eg: known includes 'tokenIn' and 'tokenOut' and unknown includes 'amountIn'",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision }
+    ) => {
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      const assets = await service.getWalletAssets({ address, chainId });
+      const available = await service.getAvailableTokens({ chainId });
+
+      return `<task>Generate suggestions for exchange amount or alternative swap pairs, given user's portfolio and previous conversation
+</task>
+<decision>
+${JSON.stringify(decision)}
+</decision>
+<portfolio>
+User has following tokens available in portfolio:
+${service.formatWalletAssets(assets)}
+</portfolio>
+<availableTokens>
+Tokens known to agent:
+${available.map((token) => `${token.symbol} - ${token.address ?? "Native token"}`).join(", ")}
+</availableTokens>
+<conversation>
+${conversation}
+</conversation>
+<instructions>
+User can either have the input token available or not, so consider cases:
+
+1. When input token NOT in portfolio:
+  - Generate 4 suggestions for another input token available in portfolio without token amount.
+  - Input token should NOT be the same as the output token, so "Swap ETH -> USDT" is CORRECT, but "Swap ETH -> ETH" is WRONG.
+  - Acknowledge missing input token in label, eg. "No {{tokenIn}}, swap {{availableToken}} -> {{tokenOut}}".
+  - Text should NOT include amount, eg. "I want to swap {{availableToken}} to {{tokenOut}}" is CORRECT, but "I want to swap 0.123456789987654321 {{availableToken}} to {{tokenOut}}" is WRONG.
+
+2. When input token IS in portfolio:
+  - Generate 4 suggestions for exchange amount, that corresponds to 100%(or 95% instead for native token or deduced value if present), 50%, 25%, 10% of the input token balance.
+  - User should be able to see trimmed swap amount in suggestion label, but not the percentage, eg. NOT "100% {{tokenIn}}", but "0.12 {{tokenIn}}".
+  - Trim amount in label to 6 decimal places if the value is less than 1. Use 2 decimal places otherwise, eg. "0.12 {{tokenIn}}".
+  - Do not trim amount in text, eg. "I want to swap 0.123456789987654321 {{tokenIn}}".
+
+Determine if user has input token available in portfolio and use appropriate case.
+</instructions>
+<keys>
+- "thought" should be a short description of what the agent is thinking about and planning.
+- "suggestions" should be an array of objects with the following keys:
+  - "label" - short description of the suggestion
+  - "text" - message containing untrimmed swap amount 
+</keys>
+<output>
+Respond using JSON format like this:
+{
+  "thought": "<string>",
+  "suggestions": <array>
+}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+    },
+  },
+  {
+    name: "exchange-pairs",
+    description:
+      "Use if the user wants to swap tokens, and the agent does not know which ones, suggest preferred exchange pairs, eg. unknown includes 'tokenIn' and 'tokenOut'; also choose this suggestion if an agent does not recognize the token",
+    getPrompt: async (
+      runtime,
+      { address, chainId, conversation, decision }
+    ) => {
+      const service = runtime.getService<LevvaService>(
+        LEVVA_SERVICE.LEVVA_COMMON
+      );
+
+      if (!service) {
+        throw new Error("Failed to get levva service");
+      }
+
+      const assets = await service.getWalletAssets({ address, chainId });
+      const available = await service.getAvailableTokens({ chainId });
+
+      return `<task>
+Generate suggestions for exchange pairs, given user's portfolio and available tokens
+</task>
+<decision>
+${JSON.stringify(decision)}
+</decision>
+<conversation>
+${conversation}
+</conversation>
+<portfolio>
+User has following tokens available in portfolio:
+${service.formatWalletAssets(assets)}
+</portfolio>
+<availableTokens>
+Tokens known to agent:
+${available.map((token) => `${token.symbol} - ${token.address ?? "Native token"}`).join(", ")}
+</availableTokens>
+<instructions>
+Generate 5 suggestions for exchange pairs
+Please include exact token symbol for suggestion text.
+</instructions>
+<keys>
+- "suggestions" should be an array of objects with the following keys:
+  - "label"
+  - "text"
+</keys>
+<output>
+Respond using JSON format like this:
+{
+  "suggestions": [
+    {
+      "label": "USDT -> ETH",
+      "text": "I want to swap USDT to ETH",
+    },
+    {
+      "label": "ETH -> USDT",
+      "text": "Please, exchange ETH to USDT",
+    },
+    {
+      "label": "ETH -> USDC",
+      "text": "ETH for USDC",
+    }
+  ]
+}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+    },
+  },
+];

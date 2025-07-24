@@ -1,6 +1,29 @@
 import { erc20Abi, getAddress, isHex } from "viem";
 import type { TokenData, TokenInfo } from "../../types/token";
 import { getChain, getClient } from "./client";
+import { ETH_NULL_ADDR } from "src/constants/eth";
+
+export const getBalanceOf = async (
+  chainId: number,
+  address: `0x${string}`,
+  token?: `0x${string}`
+) => {
+  const chain = getChain(chainId);
+  const client = getClient(chain);
+
+  if (token && token !== ETH_NULL_ADDR) {
+    return client.readContract({
+      address: token,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [address],
+    });
+  }
+
+  return client.getBalance({
+    address,
+  });
+};
 
 export const getTokenData = async (
   chainId?: number,
@@ -8,7 +31,7 @@ export const getTokenData = async (
 ): Promise<TokenData> => {
   const chain = getChain(chainId);
 
-  if (!address) {
+  if (!address || address === ETH_NULL_ADDR) {
     const { name, symbol, decimals } = chain.nativeCurrency;
     return { name, symbol, decimals };
   }

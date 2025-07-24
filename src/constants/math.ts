@@ -1,0 +1,1 @@
+export const FP96_ONE = 2n ** 96n;

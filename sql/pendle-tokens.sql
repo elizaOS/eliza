@@ -144,4 +144,4 @@ values
     ('0x41BB4Fd34B191F9945888Eb33De792C42f7719CB', 1, 6, '{"swap":{"type":"pendle","market":"0xbb28865ffde901c705fb2fddb351424883a6a441"}}', 'PT Umbrella Stake Wrapped Aave Ethereum USDT v1 30OCT2025', 'PT-stkwaEthUSDT.v1-30OCT2025'),
     ('0x4987987240B2FcEfe07836Cba87fc4e32054e6Bc', 1, 6, '{"swap":{"type":"pendle","market":"0xbb28865ffde901c705fb2fddb351424883a6a441"}}', 'YT Umbrella Stake Wrapped Aave Ethereum USDT v1 30OCT2025', 'YT-stkwaEthUSDT.v1-30OCT2025'),
     ('0x43Ca553398042069786Fa20ffAc05F44A62d0FE5', 1, 18, '{"swap":{"type":"pendle","market":"0x28cef9526f3af7a96a10823f79dd7bce1940791f"}}', 'PT Umbrella Stake Gho Token v1 30OCT2025', 'PT-stkGHO.v1-30OCT2025'),
-    ('0xc1a51c6a7A199E1f2085f6521Bfb23e52C31D5dD', 1, 18, '{"swap":{"type":"pendle","market":"0x28cef9526f3af7a96a10823f79dd7bce1940791f"}}', 'YT Umbrella Stake Gho Token v1 30OCT2025', 'YT-stkGHO.v1-30OCT2025')
+    ('0xc1a51c6a7A199E1f2085f6521Bfb23e52C31D5dD', 1, 18, '{"swap":{"type":"pendle","market":"0x28cef9526f3af7a96a10823f79dd7bce1940791f"}}', 'YT Umbrella Stake Gho Token v1 30OCT2025', 'YT-stkGHO.v1-30OCT2025');

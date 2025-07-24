@@ -1,25 +1,58 @@
 import {
   composePromptFromState,
+  logger,
   ModelType,
+  ModelTypeName,
   type Content,
   type IAgentRuntime,
   type State,
 } from "@elizaos/core";
-import { rephraseTemplate } from "src/templates";
 
 interface RephraseParams {
   runtime: IAgentRuntime;
   content: Content;
   state: State;
+  model?: ModelTypeName;
 }
 
-export const rephrase = async ({ runtime, content, state }: RephraseParams) => {
+const template = `<task>
+Generate dialog for the character {{agentName}}
+</task>
+<providers>
+{{providers}}
+</providers>
+<initialThought>
+{{initialThought}}
+</initialThought>
+<initialText>
+{{initialText}}
+</initialText>
+<instructions>
+Rephrase message for the character {{agentName}} based on the initial text and thought, but in your own words.
+Do not include examples of data in your response.
+</instructions>
+<keys>
+- "thought" should be a short description of what the agent is thinking about and planning.
+- "message" should be the next message for {{agentName}} which they will send to the conversation, it should NOT be the same as the initial text.
+</keys>
+<output>
+Respond using JSON format like this:
+{
+  "thought": "<string>",
+  "message": "<string>"
+}
+
+Your response should include the valid JSON block and nothing else.
+</output>`;
+
+/** @deprecated needs refactor */
+export const rephrase = async ({ runtime, content, state, model }: RephraseParams) => {
   const {
     actions,
     attachments,
     text: initialText,
     thought: initialThought,
-    source
+    source,
   } = content;
 
   // fixme use more efficient way to clone state
@@ -29,14 +62,17 @@ export const rephrase = async ({ runtime, content, state }: RephraseParams) => {
 
   const prompt = composePromptFromState({
     state: clonedState,
-    template: rephraseTemplate,
+    template,
   });
 
-  const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  const response = await runtime.useModel(model ?? ModelType.OBJECT_SMALL, {
     prompt,
   });
 
-  // console.log("received response", response);
+  logger.debug(
+    "Rephrase result:",
+    JSON.stringify({ initialText, initialThought, response }, null, 2)
+  );
 
   const result: Content = {
     actions,
