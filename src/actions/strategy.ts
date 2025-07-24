@@ -18,6 +18,7 @@ import {
 import { StrategyEntry } from "src/services/levva/pool";
 
 const description = [
+  "Select optimal earning strategy for user",
   "Initiate deposit for leveraged farming pool for user",
   "Ask user for pool, input token, amount and leverage if not provided",
   IGNORE_REPLY_MODIFIER,
