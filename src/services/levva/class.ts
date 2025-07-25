@@ -1,6 +1,13 @@
 import assert from "node:assert";
 import EventEmitter from "node:events";
-import { encodeFunctionData, formatUnits, isHex, parseUnits, sha256, toHex } from "viem";
+import {
+  encodeFunctionData,
+  formatUnits,
+  isHex,
+  parseUnits,
+  sha256,
+  toHex,
+} from "viem";
 import {
   type IAgentRuntime,
   logger,
@@ -25,7 +32,7 @@ import {
   TokenEntry,
   upsertToken,
 } from "../../util";
-import { delay, isRejected, isResolved } from "../../util/async";
+import { delay, isRejected, isResolved, Mutex } from "../../util/async";
 import { TokenData, TokenDataWithInfo } from "../../types/token";
 import { ETH_NULL_ADDR } from "../../constants/eth";
 import {
@@ -70,6 +77,8 @@ function checkPlugins(runtime: IAgentRuntime) {
   return REQUIRED_PLUGINS.every((plugin) => set.has(plugin));
 }
 
+async function series<T>(promises: Promise<T>[]) {}
+
 // todo config
 const MAX_WAIT_TIME = 15000; // time after which put promise in background
 
@@ -110,11 +119,12 @@ export class LevvaService
 
   private inBackground = async <T>(
     fn: () => Promise<T>,
-    id?: string
+    id?: string,
+    waitTime = MAX_WAIT_TIME
   ): Promise<T | undefined> => {
     const promise = fn();
     this.background.push({ id, promise });
-    return Promise.race([promise, delay(MAX_WAIT_TIME, undefined)]);
+    return Promise.race([promise, delay(waitTime, undefined)]);
   };
 
   private permanentCache = <P extends unknown[], V>(
@@ -442,6 +452,7 @@ export class LevvaService
   // todo config
   private RSS_FEEDS = ["https://cryptopanic.com/news/rss/"];
 
+  private mutex = new Mutex();
   private fetchFeed = async (url: string) => {
     const browser = await this.runtime.getService<BrowserService>(
       ServiceType.BROWSER
@@ -461,7 +472,10 @@ export class LevvaService
 
           return this.inBackground(
             async () =>
-              browser.getPageContent(item.link, this.runtime, i * 1000),
+              // todo put mutex in browser
+              this.mutex.runExclusive(() =>
+                browser.getPageContent(item.link, this.runtime, 1000)
+              ),
             id
           );
         })
@@ -789,12 +803,20 @@ export class LevvaService
         abi: poolAbi,
         address,
         functionName: "defaultSwapCallData",
-      })
+      });
 
       const calldata = encodeFunctionData({
         abi: poolAbi,
         functionName: "execute",
-        args: [0/* DEPOSIT_BASE */, amountIn, longAmount, limitPriceX96, false, ETH_NULL_ADDR, BigInt(defaultSwapCalldata)],
+        args: [
+          0 /* DEPOSIT_BASE */,
+          amountIn,
+          longAmount,
+          limitPriceX96,
+          false,
+          ETH_NULL_ADDR,
+          BigInt(defaultSwapCalldata),
+        ],
       });
 
       calls.push({
@@ -816,13 +838,9 @@ export class LevvaService
     strategy: StrategyEntry,
     sender: `0x${string}`,
     amount: string,
-    wrap?: boolean,
+    wrap?: boolean
   ) {
-    const {
-      type,
-      vaultChainId: chainId,
-      contractAddress: address,
-    } = strategy;
+    const { type, vaultChainId: chainId, contractAddress: address } = strategy;
 
     if (type !== "vault") {
       throw new Error(`Strategy ${address} is not a vault`);
@@ -830,7 +848,7 @@ export class LevvaService
 
     const vault = await this.getVaultConstants(chainId, address);
     const calls: CalldataWithDescription[] = [];
-    
+
     const tokenIn = await this.getTokenDataWithInfo({
       chainId,
       symbolOrAddress: vault.asset,
@@ -842,11 +860,7 @@ export class LevvaService
 
     let amountIn = parseUnits(amount, tokenIn.decimals);
 
-    const balance = await this.getBalanceOf(
-      sender,
-      chainId,
-      tokenIn.address,
-    );
+    const balance = await this.getBalanceOf(sender, chainId, tokenIn.address);
 
     if (wrap) {
       const weth = await this.getWETH(chainId);
@@ -860,7 +874,9 @@ export class LevvaService
     }
 
     if ((balance?.amount ?? BigInt(0)) < amountIn) {
-      throw new Error(`Insufficient balance, consider swapping to ${tokenIn.symbol} first`);
+      throw new Error(
+        `Insufficient balance, consider swapping to ${tokenIn.symbol} first`
+      );
     }
 
     const client = getClient(getChain(chainId));
