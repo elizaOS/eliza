@@ -11,6 +11,14 @@ export const newsProvider: Provider = {
       LEVVA_SERVICE.LEVVA_COMMON
     );
 
+    if (!service) {
+      return {
+        text: "Dependency not found",
+        values: {},
+        data: {},
+      };
+    }
+
     const news = await service.getCryptoNews(20);
     const newsEntries = news.map((v) => `Title: ${v.title}\nDescription: ${v.description}\nLink: ${v.link}`);
 

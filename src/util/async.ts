@@ -1,5 +1,8 @@
-export const delay = <T>(ms: number = 0, value?: T): Promise<T> =>
-  new Promise((resolve) => setTimeout(() => resolve(value), ms));
+export const delay = <T = undefined>(
+  ms: number = 0,
+  value: T = undefined as T
+): Promise<T> =>
+  new Promise<T>((resolve) => setTimeout(() => resolve(value), ms));
 
 export async function isResolved(promise) {
   return await Promise.race([
@@ -29,4 +32,43 @@ export async function isFinished(promise) {
       () => true
     ),
   ]);
+}
+
+export class Mutex {
+  private locked: boolean;
+  private queue: (() => void)[];
+
+  constructor() {
+    this.locked = false;
+    this.queue = [];
+  }
+
+  async acquire() {
+    return new Promise<void>((resolve) => {
+      if (!this.locked) {
+        this.locked = true;
+        resolve();
+      } else {
+        this.queue.push(resolve);
+      }
+    });
+  }
+
+  release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      next!();
+    } else {
+      this.locked = false;
+    }
+  }
+
+  async runExclusive<T>(fn: () => Promise<T>) {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
 }
