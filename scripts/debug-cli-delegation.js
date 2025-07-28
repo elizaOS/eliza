@@ -172,6 +172,8 @@ const problematicArgs = [];
 if (cmdArgs.includes('--test')) problematicArgs.push('--test');
 if (cmdArgs.includes('test')) problematicArgs.push('test');
 if (cmdArgs.length > 0 && cmdArgs[0] === 'update') problematicArgs.push('update command');
+if (cmdArgs.length > 0 && (cmdArgs[0] === '-v' || cmdArgs[0] === '--version'))
+  problematicArgs.push('version command');
 if (process.argv[1] && process.argv[1].includes('test'))
   problematicArgs.push('test in script path');
 
