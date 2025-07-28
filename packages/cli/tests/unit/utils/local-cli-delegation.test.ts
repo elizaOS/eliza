@@ -283,6 +283,40 @@ describe('Local CLI Delegation', () => {
     });
   });
 
+  describe('Version Command Detection', () => {
+    it('should skip delegation when -v flag is used', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['node', 'script.js', '-v'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Version command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
+    });
+
+    it('should skip delegation when --version flag is used', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['node', 'script.js', '--version'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Version command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
+    });
+  });
+
   describe('Local CLI Detection', () => {
     it('should detect when running from local CLI', async () => {
       // Clear test environment variables to test local CLI detection
