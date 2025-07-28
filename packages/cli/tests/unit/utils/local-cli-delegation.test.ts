@@ -286,7 +286,7 @@ describe('Local CLI Delegation', () => {
   describe('Version Command Detection', () => {
     it('should skip delegation when -v flag is used', async () => {
       const originalArgv = process.argv;
-      process.argv = ['node', 'script.js', '-v'];
+      process.argv = ['bun', 'script.js', '-v'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -302,7 +302,7 @@ describe('Local CLI Delegation', () => {
 
     it('should skip delegation when --version flag is used', async () => {
       const originalArgv = process.argv;
-      process.argv = ['node', 'script.js', '--version'];
+      process.argv = ['bun', 'script.js', '--version'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
