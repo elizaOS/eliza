@@ -36,8 +36,7 @@ my-project/
 ├── postcss.config.js     # CSS processing configuration
 ├── tailwind.config.js    # Tailwind CSS configuration
 ├── tsup.config.ts        # Build tool configuration
-├── vite.config.ts        # Development server configuration
-└── vitest.config.ts      # Unit testing configuration
+└── vite.config.ts        # Development server configuration
 ```
 
 ## Key Directories and Files Explained
@@ -51,9 +50,9 @@ my-project/
 
 ElizaOS projects come with a robust, multi-layered testing setup.
 
-- **`__tests__/`**: This directory contains unit and integration tests for your agent. It uses `vitest`. You can test individual actions, character configurations, and more in isolation.
+- **`__tests__/`**: This directory contains unit and integration tests for your agent. It uses `bun:test`. You can test individual actions, character configurations, and more in isolation.
 - **`cypress/`**: For end-to-end (E2E) testing. Cypress tests interact with the running application's UI to simulate real user scenarios.
-- **`cypress.config.ts`**, **`vitest.config.ts`**: Configuration files for the respective test frameworks.
+- **`cypress.config.ts`**: Configuration file for the Cypress E2E testing framework.
 
 ### Knowledge (`knowledge/`)
 

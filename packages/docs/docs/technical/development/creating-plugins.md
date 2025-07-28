@@ -305,7 +305,7 @@ Your plugin's `package.json` must include specific metadata:
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run"
+    "test": "bun test"
   },
   "peerDependencies": {
     "@elizaos/core": "^1.0.0"
@@ -313,8 +313,7 @@ Your plugin's `package.json` must include specific metadata:
   "devDependencies": {
     "@elizaos/core": "^1.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "typescript": "^5.0.0"
   }
 }
 ```
@@ -354,7 +353,7 @@ Test individual components:
 
 ```typescript
 // src/__tests__/actions.test.ts
-import { describe, it, expect, vi } from 'vitest';
+// bun:test provides describe, it, expect as globals - no import needed
 import { myAction } from '../actions/myAction';
 import { createMockRuntime } from '@elizaos/core/test-utils';
 
@@ -381,7 +380,7 @@ describe('myAction', () => {
       agentId: 'test-agent',
     };
 
-    const callback = vi.fn();
+    const callback = mock();
     const result = await myAction.handler(runtime, message, {}, {}, callback);
 
     expect(result.text).toContain('awesome');
