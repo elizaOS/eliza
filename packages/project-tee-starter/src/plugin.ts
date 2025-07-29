@@ -7,6 +7,9 @@ import { keccak256 } from 'viem';
 import { Keypair } from '@solana/web3.js';
 import crypto from 'node:crypto';
 
+// Import frontend routes for integration  
+import { panels } from './frontend/panels';
+
 // Create a custom TEE Client to make calls to the TEE through the Dstack SDK.
 
 /**
@@ -132,6 +135,7 @@ const teeStarterPlugin: Plugin = {
         });
       },
     },
+    ...panels,
   ],
   events: {
     MESSAGE_RECEIVED: [
@@ -159,9 +163,7 @@ const teeStarterPlugin: Plugin = {
     ],
   },
   // Enable this service to run when TEE mode is enabled
-  services: [
-    /* StarterService */
-  ],
+  services: [StarterService],
   actions: [],
   providers: [],
 };
