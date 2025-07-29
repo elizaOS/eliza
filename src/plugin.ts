@@ -1,5 +1,5 @@
-import type { Plugin } from "@elizaos/core";
-import { EventType, logger } from "@elizaos/core";
+import type { Content, Memory, Plugin } from "@elizaos/core";
+import { createUniqueUuid, EventType, logger } from "@elizaos/core";
 import { z } from "zod";
 import { modules } from "./actions/modules";
 import { levvaProvider } from "./providers";
@@ -30,6 +30,8 @@ const configSchema = z.object({
     }),
 });
 
+const messages = new Map<string, Memory>();
+
 const plugin: Plugin = {
   name: "levva",
   description: "Levva plugin for Eliza",
@@ -58,42 +60,25 @@ const plugin: Plugin = {
   },
   routes: [calldataRoute, levvaUserRoute, suggestRoute],
   events: {
-    [EventType.MESSAGE_RECEIVED]: [
-      async ({ runtime, message, callback }) => {
-        logger.info("MESSAGE_RECEIVED event received");
-      },
-    ],
-    [EventType.ROOM_JOINED]: [
-      async (params) => {
-        logger.info("ROOM_JOINED event received");
-        // console.log({ params });
-      },
-    ],
-    [EventType.ENTITY_JOINED]: [
-      async (params) => {
-        logger.info("ENTITY_JOINED event received");
-        // console.log({ params });
-      },
-    ],
-    VOICE_MESSAGE_RECEIVED: [
-      async (params) => {
-        logger.info("VOICE_MESSAGE_RECEIVED event received");
-        // print the keys
-        logger.info(Object.keys(params));
-      },
-    ],
-    WORLD_CONNECTED: [
-      async (params) => {
-        logger.info("WORLD_CONNECTED event received");
-        // print the keys
-        logger.info(Object.keys(params));
-      },
-    ],
-    WORLD_JOINED: [
-      async (params) => {
-        logger.info("WORLD_JOINED event received");
-        // print the keys
-        logger.info(Object.keys(params));
+    [EventType.RUN_STARTED]: [
+      async ({ runtime, runId, entityId, messageId }) => {
+        const service = runtime.getService<LevvaService>(
+          LevvaService.serviceType
+        );
+
+        if (!service) {
+          logger.warn("Service not found");
+          return;
+        }
+
+        const { result, reason } = await service.checkEligibility(
+          await runtime.getEntityById(entityId)
+        );
+
+        if (!result) {
+          logger.warn("Entity is not eligible", { runId, entityId, reason });
+          // todo cancelRun(runId, reason)
+        }
       },
     ],
   },

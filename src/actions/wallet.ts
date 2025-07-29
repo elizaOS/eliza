@@ -94,7 +94,7 @@ Your response should include the valid JSON block and nothing else.
         source: message.content.source,
       });
 
-      return true;
+      return;
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
       // @ts-expect-error fix typing
@@ -114,7 +114,7 @@ Your response should include the valid JSON block and nothing else.
       });
 
       await callback?.(responseContent);
-      return false;
+      return;
     }
   },
 
