@@ -54,6 +54,14 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/bun.lock ./bun.lock
 COPY --from=builder /app/drizzle ./drizzle
+# now trying to rebuild at start, so include sources, todo need to disable build
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=builder /app/tsconfig.build.json ./tsconfig.build.json
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/tsup.config.ts ./tsup.config.ts
+COPY --from=builder /app/vitest.config.ts ./vitest.config.ts
+COPY --from=builder /app/src ./src
+
 RUN npx patchright install chromium
 
 ENV NODE_ENV=production
