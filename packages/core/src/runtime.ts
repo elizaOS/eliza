@@ -12,6 +12,7 @@ import { createLogger } from './logger';
 import {
   ChannelType,
   ModelType,
+  MODEL_SETTINGS,
   type Content,
   type MemoryMetadata,
   type Character,
@@ -1618,6 +1619,29 @@ export class AgentRuntime implements IAgentRuntime {
     return models[0].handler;
   }
 
+  /**
+   * Retrieves model configuration settings from character settings.
+   * @returns Object containing model parameters if they exist, or null if no settings are configured
+   */
+  private getModelSettings(): Record<string, number> | null {
+    const modelSettings: Record<string, number> = {};
+
+    // Read individual model settings
+    const maxTokens = this.getSetting(MODEL_SETTINGS.MAX_TOKENS);
+    const temperature = this.getSetting(MODEL_SETTINGS.TEMPERATURE);
+    const frequencyPenalty = this.getSetting(MODEL_SETTINGS.FREQUENCY_PENALTY);
+    const presencePenalty = this.getSetting(MODEL_SETTINGS.PRESENCE_PENALTY);
+
+    // Add settings if they exist
+    if (maxTokens !== null) modelSettings.maxTokens = Number(maxTokens);
+    if (temperature !== null) modelSettings.temperature = Number(temperature);
+    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = Number(frequencyPenalty);
+    if (presencePenalty !== null) modelSettings.presencePenalty = Number(presencePenalty);
+
+    // Return null if no settings were configured
+    return Object.keys(modelSettings).length > 0 ? modelSettings : null;
+  }
+
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any,
@@ -1649,10 +1673,23 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       paramsWithRuntime = params;
     } else {
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
+      // Include model settings from character configuration if available
+      const modelSettings = this.getModelSettings();
+
+      if (modelSettings) {
+        // Apply model settings if configured
+        paramsWithRuntime = {
+          ...modelSettings, // Apply default model settings first
+          ...params, // Then apply specific params (allowing overrides)
+          runtime: this,
+        };
+      } else {
+        // No model settings configured, use params as-is
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
     }
     const startTime = performance.now();
     try {

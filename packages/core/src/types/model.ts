@@ -35,6 +35,18 @@ export const ModelType = {
 } as const;
 
 /**
+ * Model configuration setting keys used in character settings.
+ * These constants define the keys for accessing model parameters
+ * like temperature, max tokens, etc. from character configuration.
+ */
+export const MODEL_SETTINGS = {
+  MAX_TOKENS: 'MODEL_MAX_TOKEN',
+  TEMPERATURE: 'MODEL_TEMPERATURE',
+  FREQUENCY_PENALTY: 'MODEL_FREQ_PENALTY',
+  PRESENCE_PENALTY: 'MODEL_PRESENCE_PENALTY',
+} as const;
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
