@@ -8,6 +8,7 @@
         "@elizaos/core": "^1.3.1",
         "@elizaos/plugin-bootstrap": "^1.3.1",
         "@elizaos/plugin-openai": "^1.0.8",
+        "@elizaos/plugin-openrouter": "^1.2.6",
         "@elizaos/plugin-sql": "^1.3.1",
         "fast-xml-parser": "^5.2.5",
         "patchright": "1.50.1",
@@ -69,6 +70,8 @@
     "@elizaos/plugin-bootstrap": ["@elizaos/plugin-bootstrap@1.3.1", "", { "dependencies": { "@elizaos/core": "1.3.1", "@elizaos/plugin-sql": "1.3.1", "bun": "^1.2.17" }, "peerDependencies": { "whatwg-url": "7.1.0" } }, "sha512-XEDRS4IxUYnJfinA2fRRWiYc3KKLsEvETOha5S7SmjCYUNANSQb8Zl5XA5F3O2ATVIT1hL/n+GrbtnNUe849ew=="],
 
     "@elizaos/plugin-openai": ["@elizaos/plugin-openai@1.0.8", "", { "dependencies": { "@ai-sdk/openai": "^1.3.20", "@elizaos/core": "^1.0.0", "ai": "^4.3.16", "js-tiktoken": "^1.0.18", "tsup": "8.5.0", "undici": "^7.10.0" } }, "sha512-x5LzYu5aYULZwiwAjXHDGnaumIoHt7v2cfnH/MkQZmItVREkzQsdgRbpc5tDoT2tu0mw4VgEIdfQlxiPUnR9BQ=="],
+
+    "@elizaos/plugin-openrouter": ["@elizaos/plugin-openrouter@1.2.6", "", { "dependencies": { "@ai-sdk/openai": "^1.3.22", "@ai-sdk/ui-utils": "1.2.11", "@elizaos/core": "^1.2.5", "@openrouter/ai-sdk-provider": "^0.4.5", "ai": "^4.3.15", "undici": "^7.9.0" } }, "sha512-xoSTKDuOvW8RSrpeBWYAUIgRoBCiU+FQM1rAAVnRnMmwUuYZS/98vB/KywquIuc2hAAeM4EFgYFdwGB394nGuw=="],
 
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@1.3.1", "", { "dependencies": { "@electric-sql/pglite": "^0.3.3", "@elizaos/core": "1.3.1", "drizzle-kit": "^0.31.1", "drizzle-orm": "^0.44.2", "pg": "^8.13.3" } }, "sha512-GKiby9OVMtYi5IiFzmDpEZI43vw1Hpnt8Ov9TA0nEgyhs6cOAIB16S5DcRyiS4YvG0HDs1xuUN436f98Gnr92Q=="],
 
@@ -209,6 +212,8 @@
     "@nodelib/fs.stat": ["@nodelib/fs.stat@2.0.5", "", {}, "sha512-RkhPPp2zrqDAQA/2jNhnztcPAlv64XdhIp7a7454A5ovI7Bukxgt7MX7udwAu3zg1DcpPU0rz3VV1SeaqvY4+A=="],
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
+
+    "@openrouter/ai-sdk-provider": ["@openrouter/ai-sdk-provider@0.4.6", "", { "dependencies": { "@ai-sdk/provider": "1.0.9", "@ai-sdk/provider-utils": "2.1.10" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-oUa8xtssyUhiKEU/aW662lsZ0HUvIUTRk8vVIF3Ha3KI/DnqX54zmVIuzYnaDpermqhy18CHqblAY4dDt1JW3g=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
@@ -545,6 +550,8 @@
     "eventemitter3": ["eventemitter3@5.0.1", "", {}, "sha512-GWkBvjiSZK87ELrYOSESUYeVIc9mvLLf/nXalMOS5dYrgZq9o5OVkbZAVM06CVxYsCwH9BDZFPlQTlPA1j4ahA=="],
 
     "events": ["events@3.3.0", "", {}, "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q=="],
+
+    "eventsource-parser": ["eventsource-parser@3.0.3", "", {}, "sha512-nVpZkTMM9rF6AQ9gPJpFsNAMt48wIzB5TQgiTLdHiuO8XEDhUgZEhqKlZWXbIzo9VmJ/HvysHqEaVeD5v9TPvA=="],
 
     "evp_bytestokey": ["evp_bytestokey@1.0.3", "", { "dependencies": { "md5.js": "^1.3.4", "safe-buffer": "^5.1.1" } }, "sha512-/f2Go4TognH/KvCISP7OUsHn85hT9nUkxxA9BEWxFn+Oj9o8ZNLm/40hdlgSLyuOimsrTKLUMEorQexp/aPQeA=="],
 
@@ -1145,6 +1152,10 @@
     "@langchain/core/zod": ["zod@3.25.73", "", {}, "sha512-fuIKbQAWQl22Ba5d1quwEETQYjqnpKVyZIWAhbnnHgnDd3a+z4YgEfkI5SZ2xMELnLAXo/Flk2uXgysZNf0uaA=="],
 
     "@langchain/openai/zod": ["zod@3.25.73", "", {}, "sha512-fuIKbQAWQl22Ba5d1quwEETQYjqnpKVyZIWAhbnnHgnDd3a+z4YgEfkI5SZ2xMELnLAXo/Flk2uXgysZNf0uaA=="],
+
+    "@openrouter/ai-sdk-provider/@ai-sdk/provider": ["@ai-sdk/provider@1.0.9", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-jie6ZJT2ZR0uVOVCDc9R2xCX5I/Dum/wEK28lx21PJx6ZnFAN9EzD2WsPhcDWfCgGx3OAZZ0GyM3CEobXpa9LA=="],
+
+    "@openrouter/ai-sdk-provider/@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@2.1.10", "", { "dependencies": { "@ai-sdk/provider": "1.0.9", "eventsource-parser": "^3.0.0", "nanoid": "^3.3.8", "secure-json-parse": "^2.7.0" }, "peerDependencies": { "zod": "^3.0.0" }, "optionalPeers": ["zod"] }, "sha512-4GZ8GHjOFxePFzkl3q42AU0DQOtTQ5w09vmaWUf/pKFXJPizlnzKSUkF0f+VkapIUfDugyMqPMT1ge8XQzVI7Q=="],
 
     "@vitest/expect/tinyrainbow": ["tinyrainbow@2.0.0", "", {}, "sha512-op4nsTR47R6p0vMUUoYl/a+ljLFVtlfaXkLQmqfLR1qHma1h/ysYk4hEXZ880bf2CYgTskvTa/e196Vd5dDQXw=="],
 
