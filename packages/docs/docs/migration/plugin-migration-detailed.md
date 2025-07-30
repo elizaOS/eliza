@@ -1345,7 +1345,7 @@ const relevantKnowledge = await runtime.searchMemories({
 ```json
 {
   "scripts": {
-    "test": "jest",
+    "test": "bun test",
     "lint": "biome check .",
     "format": "biome format --write ."
   },
@@ -1361,7 +1361,7 @@ const relevantKnowledge = await runtime.searchMemories({
 ```json
 {
   "scripts": {
-    "test": "vitest",
+    "test": "bun test",
     "test:plugins": "elizaos test",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -1369,7 +1369,6 @@ const relevantKnowledge = await runtime.searchMemories({
     "build": "tsc"
   },
   "devDependencies": {
-    "vitest": "latest",
     "prettier": "latest",
     "eslint": "latest",
     "typescript": "latest",
@@ -1383,7 +1382,7 @@ const relevantKnowledge = await runtime.searchMemories({
 **Example Test Migration:**
 
 ```typescript
-// OLD Jest test
+// OLD Jest test (now use bun:test)
 describe('OpenAI Plugin', () => {
   it('should generate text', async () => {
     const response = await generateText({
@@ -1395,17 +1394,15 @@ describe('OpenAI Plugin', () => {
   });
 });
 
-// NEW Vitest test
-import { describe, it, expect, vi } from 'vitest';
-
+// NEW bun:test (describe, it, expect are globals)
 describe('OpenAI Plugin', () => {
   it('should handle text generation through model system', async () => {
     const mockRuntime = {
-      getSetting: vi.fn((key) => {
+      getSetting: mock((key) => {
         if (key === 'OPENAI_API_KEY') return 'test-key';
         return null;
       }),
-      useModel: vi.fn(),
+      useModel: mock(),
     };
 
     // Test the model handler directly
@@ -1432,7 +1429,7 @@ describe('OpenAI Plugin', () => {
    ```bash
    bun remove @elizaos/core@0.x
    bun add @elizaos/core@1.x
-   bun add -d vitest prettier eslint
+   bun add -d prettier eslint
    bun remove @biomejs/biome jest
    ```
 
@@ -1479,7 +1476,7 @@ describe('OpenAI Plugin', () => {
 
 9. **Update Tests**
 
-   - Convert to Vitest
+   - Convert to bun:test
    - Update mocks for new architecture
    - Add plugin integration tests
 
@@ -1500,7 +1497,7 @@ describe('OpenAI Plugin', () => {
 - [ ] Memory operations use table names
 - [ ] No manual embedding generation
 - [ ] Events properly registered
-- [ ] Tests migrated to Vitest
+- [ ] Tests migrated to bun:test
 - [ ] Plugin includes own utilities
 - [ ] Build system updated
 - [ ] All tests passing

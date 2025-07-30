@@ -67,7 +67,7 @@ cat package.json | grep -E '"name"|"version"'
 find src -name "*.ts" -type f | sort
 
 # Check for deprecated files
-ls -la | grep -E "biome|vitest|\.lock"
+ls -la | grep -E "biome|\.lock"
 ```
 
 ### REQUIRED OUTPUT - COMPLETE THIS:
@@ -79,7 +79,7 @@ Version: [current version]
 
 1. FILES TO DELETE (check migration-guide.md Step 2):
    □ biome.json: [EXISTS/NOT FOUND]
-   □ vitest.config.ts: [EXISTS/NOT FOUND]
+   □ vitest.config.ts: [EXISTS/NOT FOUND] - DEPRECATED, should be removed
    □ *.lock files: [list any found]
 
 2. PACKAGE NAME (check migration-guide.md Step 3.1.5):
@@ -112,7 +112,7 @@ Version: [current version]
 
 8. EXISTING TESTS:
    □ Test files: [list or "NONE"]
-   □ Framework: [vitest/bun/none]
+   □ Framework: [bun:test/legacy]
 === END ANALYSIS ===
 ```
 
@@ -127,7 +127,7 @@ Version: [current version]
 ### 2.1 Clean Files (migration-guide.md Step 2)
 
 ```bash
-rm -f biome.json vitest.config.ts
+rm -f biome.json vitest.config.ts  # vitest.config.ts is deprecated - ElizaOS uses bun:test
 rm -f *.lock *.yml.lock
 ```
 
