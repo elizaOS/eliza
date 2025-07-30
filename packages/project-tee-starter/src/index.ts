@@ -6,10 +6,10 @@ const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info(`Initializing character: ${character.name}`);
 };
 
+/* Import the TEE plugin if you want to use it for a custom TEE agent */
 export const projectAgent: ProjectAgent = {
   character,
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
-  // plugins: [mrTeePlugin],
 };
 
 const project: Project = {
