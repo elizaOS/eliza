@@ -19,7 +19,7 @@ RUN npm install -g bun@1.2.5 turbo@2.3.3
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-COPY bunfig.toml cypress.config.ts index.html package.json postcss.config.js tailwind.config.js tsconfig.json tsconfig.build.json tsup.config.ts vite.config.ts ./
+COPY bunfig.toml index.html package.json postcss.config.js tailwind.config.js tsconfig.json tsconfig.build.json tsup.config.ts vite.config.ts ./
 COPY src ./src
 COPY assets ./assets
 COPY scripts ./scripts
@@ -47,7 +47,7 @@ RUN apt-get update && \
 RUN npm install -g bun@1.2.5 turbo@2.3.3
 
 COPY --from=builder /app/bunfig.toml ./bunfig.toml
-COPY --from=builder /app/cypress.config.ts ./cypress.config.ts
+# Cypress config removed
 COPY --from=builder /app/index.html ./index.html
 COPY --from=builder /app/postcss.config.js ./postcss.config.js
 COPY --from=builder /app/package.json ./

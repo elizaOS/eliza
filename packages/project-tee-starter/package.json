@@ -50,10 +50,12 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^24.1.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^26.1.0",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
     "typescript": "^5.6.3",
@@ -66,21 +68,16 @@
     "lint": "prettier --write ./src",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
-    "test:component": "bun run test:install && bun test",
-    "test:e2e": "bun run test:install && bun test",
-    "test": "bun run test:install && bun run test:component && bun run test:e2e",
+    "test:component": "bun test",
+    "test:e2e": "bun test __tests__/integration.test.ts",
+    "test:frontend": "bun test __tests__/frontend.test.ts",
+    "test": "bun run test:component && bun run test:e2e && bun run test:frontend",
     "test:coverage": "bun run test:install && bun test --coverage",
     "test:watch": "bun run test:install && bun test --watch",
     "test:install": "node scripts/install-test-deps.js",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "check-all": "bun run type-check && bun run format:check && bun run test",
-    "cy:open": "bun run test:install && cypress open",
-    "cy:run": "bun run test:install && cypress run --component",
-    "cy:test": "bun run test:install && cypress run --component --reporter spec",
-    "cypress:component": "bun run test:install && cypress run --component",
-    "cypress:e2e": "bun run test:install && cypress run --e2e",
-    "cypress:open": "bun run test:install && cypress open"
+    "check-all": "bun run type-check && bun run format:check && bun run test"
   },
   "publishConfig": {
     "access": "public"

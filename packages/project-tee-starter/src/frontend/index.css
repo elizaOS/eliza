@@ -89,3 +89,18 @@ body {
 .tee-status-badge.disconnected {
     @apply bg-red-900 text-red-300;
 }
+
+.tee-status-badge.loading {
+    @apply bg-yellow-900 text-yellow-300;
+}
+
+/* Loading animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

@@ -37,8 +37,7 @@ build/
 **/*.test.tsx
 **/*.spec.ts
 **/*.spec.tsx
-cypress/
-.cypress/
+# Cypress directories removed
 
 # Development files
 **/*.map

@@ -78,35 +78,149 @@ interface PanelProps {
     agentId: string;
 }
 
+// Error types for better error handling
+type TEEError = {
+    type: 'network' | 'timeout' | 'server' | 'parse' | 'unknown';
+    message: string;
+    details?: string;
+    retryable: boolean;
+};
+
+type TEEStatus = {
+    connected: boolean;
+    loading: boolean;
+    mode?: string;
+    vendor?: string;
+    error?: TEEError;
+    lastUpdated?: string;
+};
+
+// Create a network error helper
+const createNetworkError = (error: Error): TEEError => {
+    // Network failure detection
+    if (error.name === 'NetworkError' || error.message.includes('Failed to fetch')) {
+        return {
+            type: 'network',
+            message: 'Network connection failed',
+            details: 'Unable to reach the TEE service. Please check your connection.',
+            retryable: true,
+        };
+    }
+
+    // Timeout detection
+    if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        return {
+            type: 'timeout',
+            message: 'Request timeout',
+            details: 'The TEE service is taking too long to respond.',
+            retryable: true,
+        };
+    }
+
+    // Server error detection
+    if (error.message.includes('5')) {
+        return {
+            type: 'server',
+            message: 'Server error',
+            details: 'The TEE service encountered an internal error.',
+            retryable: true,
+        };
+    }
+
+    return {
+        type: 'unknown',
+        message: error.message || 'An unknown error occurred',
+        details: 'Please try again or contact support if the problem persists.',
+        retryable: true,
+    };
+};
+
+// Fetch with timeout and retry logic
+const fetchWithRetry = async (url: string, options: { timeout?: number; retries?: number } = {}): Promise<Response> => {
+    const { timeout = 10000, retries = 3 } = options;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return response;
+        } catch (error) {
+            if (attempt === retries) {
+                throw error;
+            }
+
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
+        }
+    }
+
+    throw new Error('Max retries exceeded');
+};
+
 /**
  * TEE Status panel component that shows TEE connection status and information
  */
 const TEEStatusPanel: React.FC<PanelProps> = ({ agentId }) => {
-    const [teeStatus, setTeeStatus] = React.useState<{
-        connected: boolean;
-        mode?: string;
-        vendor?: string;
-        error?: string;
-    }>({ connected: false });
+    const [teeStatus, setTeeStatus] = React.useState<TEEStatus>({
+        connected: false,
+        loading: true,
+    });
+
+    // Function to fetch TEE status with improved error handling
+    const fetchTEEStatus = React.useCallback(async () => {
+        try {
+            setTeeStatus(prev => ({ ...prev, loading: true, error: undefined }));
+
+            const response = await fetchWithRetry('/mr-tee-status', {
+                timeout: 10000,
+                retries: 3,
+            });
+
+            const data = await response.json();
+
+            setTeeStatus({
+                connected: true,
+                loading: false,
+                mode: data.tee_mode,
+                vendor: data.tee_vendor,
+                lastUpdated: new Date().toISOString(),
+            });
+        } catch (error) {
+            const teeError = createNetworkError(error as Error);
+            setTeeStatus({
+                connected: false,
+                loading: false,
+                error: teeError,
+                lastUpdated: new Date().toISOString(),
+            });
+        }
+    }, []);
+
+    // Auto-retry function
+    const retryConnection = React.useCallback(() => {
+        fetchTEEStatus();
+    }, [fetchTEEStatus]);
 
     React.useEffect(() => {
-        // Fetch TEE status from the backend
-        fetch(`/mr-tee-status`)
-            .then(res => res.json())
-            .then(data => {
-                setTeeStatus({
-                    connected: true,
-                    mode: data.tee_mode,
-                    vendor: data.tee_vendor,
-                });
-            })
-            .catch(err => {
-                setTeeStatus({
-                    connected: false,
-                    error: err.message,
-                });
-            });
-    }, []);
+        fetchTEEStatus();
+
+        // Set up periodic refresh every 30 seconds
+        const interval = setInterval(fetchTEEStatus, 30000);
+
+        return () => clearInterval(interval);
+    }, [fetchTEEStatus]);
 
     return (
         <div className="p-6">
@@ -121,12 +235,20 @@ const TEEStatusPanel: React.FC<PanelProps> = ({ agentId }) => {
                 <div className="grid gap-6 md:grid-cols-2">
                     {/* Connection Status Card */}
                     <div className="bg-card rounded-lg p-6 border border-border">
-                        <h2 className="text-xl font-semibold mb-4">TEE Connection</h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-semibold">TEE Connection</h2>
+                            {teeStatus.loading && (
+                                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+                            )}
+                        </div>
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-muted-foreground">Status</span>
-                                <span className={`tee-status-badge ${teeStatus.connected ? 'connected' : 'disconnected'}`}>
-                                    {teeStatus.connected ? 'Connected' : 'Disconnected'}
+                                <span className={`tee-status-badge ${teeStatus.loading ? 'loading' :
+                                        teeStatus.connected ? 'connected' : 'disconnected'
+                                    }`}>
+                                    {teeStatus.loading ? 'Connecting...' :
+                                        teeStatus.connected ? 'Connected' : 'Disconnected'}
                                 </span>
                             </div>
                             {teeStatus.mode && (
@@ -141,9 +263,40 @@ const TEEStatusPanel: React.FC<PanelProps> = ({ agentId }) => {
                                     <span className="text-foreground">{teeStatus.vendor}</span>
                                 </div>
                             )}
+                            {teeStatus.lastUpdated && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Last Updated</span>
+                                    <span className="text-foreground text-sm">
+                                        {new Date(teeStatus.lastUpdated).toLocaleTimeString()}
+                                    </span>
+                                </div>
+                            )}
                             {teeStatus.error && (
-                                <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded">
-                                    <p className="text-sm text-destructive">{teeStatus.error}</p>
+                                <div className="mt-4 space-y-3">
+                                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-sm font-medium text-destructive">
+                                                {teeStatus.error.message}
+                                            </p>
+                                            <span className="text-xs px-2 py-1 bg-destructive/20 text-destructive rounded">
+                                                {teeStatus.error.type}
+                                            </span>
+                                        </div>
+                                        {teeStatus.error.details && (
+                                            <p className="text-xs text-destructive/80">
+                                                {teeStatus.error.details}
+                                            </p>
+                                        )}
+                                    </div>
+                                    {teeStatus.error.retryable && (
+                                        <button
+                                            onClick={retryConnection}
+                                            disabled={teeStatus.loading}
+                                            className="w-full px-3 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {teeStatus.loading ? 'Retrying...' : 'Retry Connection'}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>

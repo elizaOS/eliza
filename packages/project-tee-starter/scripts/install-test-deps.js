@@ -4,10 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const testDependencies = {
-    '@cypress/react': '^9.0.1',
-    '@cypress/vite-dev-server': '^6.0.3',
-    '@testing-library/cypress': '^10.0.3',
-    cypress: '^14.4.1',
+    // Cypress dependencies removed - using bun test instead
 };
 
 function isInstalled(packageName) {

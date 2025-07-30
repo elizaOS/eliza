@@ -56,17 +56,9 @@ else
     echo -e "${BLUE}Skipping E2E tests (server not running on port 3000)${NC}"
 fi
 
-# 5. Component tests with Cypress
-if command -v cypress &> /dev/null; then
-    if ! run_test "Component tests" "cypress run --component"; then
-        all_passed=false
-    fi
-else
-    echo -e "${BLUE}Installing Cypress for component tests...${NC}"
-    bun run install-test-deps
-    if ! run_test "Component tests" "cypress run --component"; then
-        all_passed=false
-    fi
+# 5. Component tests with bun test
+if ! run_test "Component tests" "bun test __tests__/frontend.test.ts"; then
+    all_passed=false
 fi
 
 # 6. Build validation
