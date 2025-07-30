@@ -1632,11 +1632,23 @@ export class AgentRuntime implements IAgentRuntime {
     const frequencyPenalty = this.getSetting(MODEL_SETTINGS.FREQUENCY_PENALTY);
     const presencePenalty = this.getSetting(MODEL_SETTINGS.PRESENCE_PENALTY);
 
-    // Add settings if they exist
-    if (maxTokens !== null) modelSettings.maxTokens = Number(maxTokens);
-    if (temperature !== null) modelSettings.temperature = Number(temperature);
-    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = Number(frequencyPenalty);
-    if (presencePenalty !== null) modelSettings.presencePenalty = Number(presencePenalty);
+    // Add settings if they exist and are valid numbers
+    if (maxTokens !== null) {
+      const value = Number(maxTokens);
+      if (!isNaN(value)) modelSettings.maxTokens = value;
+    }
+    if (temperature !== null) {
+      const value = Number(temperature);
+      if (!isNaN(value)) modelSettings.temperature = value;
+    }
+    if (frequencyPenalty !== null) {
+      const value = Number(frequencyPenalty);
+      if (!isNaN(value)) modelSettings.frequencyPenalty = value;
+    }
+    if (presencePenalty !== null) {
+      const value = Number(presencePenalty);
+      if (!isNaN(value)) modelSettings.presencePenalty = value;
+    }
 
     // Return null if no settings were configured
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;

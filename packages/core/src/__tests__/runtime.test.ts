@@ -663,5 +663,85 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(runtime.actions).toContain(action2);
       });
     });
+
+    describe('model settings from character configuration', () => {
+      it('should apply character model settings as defaults and allow overrides', async () => {
+        // Create character with model settings
+        const characterWithSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            MODEL_MAX_TOKEN: 4096,
+            MODEL_TEMPERATURE: 0.5,
+            MODEL_FREQ_PENALTY: 0.8,
+            MODEL_PRESENCE_PENALTY: 0.9,
+            // Test invalid values that should be ignored
+            MODEL_INVALID: 'not-a-number',
+          },
+        };
+
+        // Create runtime with character settings
+        const runtimeWithSettings = new AgentRuntime({
+          character: characterWithSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        // Register the mock model
+        runtimeWithSettings.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test 1: Model settings are applied as defaults
+        await runtimeWithSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+        });
+
+        expect(capturedParams.maxTokens).toBe(4096);
+        expect(capturedParams.temperature).toBe(0.5);
+        expect(capturedParams.frequencyPenalty).toBe(0.8);
+        expect(capturedParams.presencePenalty).toBe(0.9);
+        expect(capturedParams.prompt).toBe('test prompt');
+
+        // Test 2: Explicit parameters override character defaults
+        await runtimeWithSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt 2',
+          temperature: 0.2,
+          maxTokens: 2048,
+        });
+
+        expect(capturedParams.temperature).toBe(0.2);
+        expect(capturedParams.maxTokens).toBe(2048);
+        expect(capturedParams.frequencyPenalty).toBe(0.8); // Still from character
+        expect(capturedParams.presencePenalty).toBe(0.9); // Still from character
+
+        // Test 3: No settings configured - use only provided params
+        const characterNoSettings: Character = {
+          ...mockCharacter,
+          name: 'TestAgentNoSettings',
+        };
+        const runtimeNoSettings = new AgentRuntime({
+          character: characterNoSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        // Use same mockHandler for the second test
+        mockHandler.mockClear();
+        runtimeNoSettings.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        await runtimeNoSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt 3',
+          temperature: 0.7,
+        });
+
+        expect(capturedParams.temperature).toBe(0.7);
+        expect(capturedParams.maxTokens).toBeUndefined();
+        expect(capturedParams.frequencyPenalty).toBeUndefined();
+        expect(capturedParams.presencePenalty).toBeUndefined();
+      });
+    });
   });
 }); // End of main describe block
