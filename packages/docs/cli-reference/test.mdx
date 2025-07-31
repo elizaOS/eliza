@@ -1,0 +1,428 @@
+---
+title: Test Command
+description: Run and manage tests for elizaOS projects and plugins
+icon: flask
+---
+
+<Tabs>
+  <Tab title="Overview">
+    ## Usage
+
+    ```bash
+    elizaos test [options] [path]
+    ```
+
+    ## Arguments
+
+    | Argument | Description |
+    | -------- | ----------- |
+    | `[path]` | Optional path to project or plugin to test |
+
+    ## Options
+
+    | Option | Description |
+    | ------ | ----------- |
+    | `-t, --type <type>` | Type of test to run (choices: "component", "e2e", "all", default: "all") |
+    | `--port <port>` | Server port for e2e tests |
+    | `--name <n>` | Filter tests by name (matches file names or test suite names) |
+    | `--skip-build` | Skip building before running tests |
+    | `--skip-type-check` | Skip TypeScript type checking for faster test runs |
+  </Tab>
+
+  <Tab title="Examples">
+    ## Examples
+
+    ### Basic Test Execution
+
+    ```bash
+    # Run all tests (component and e2e) - default behavior
+    elizaos test
+
+    # Explicitly run all tests
+    elizaos test --type all
+
+    # Run only component tests
+    elizaos test --type component
+
+    # Run only end-to-end tests
+    elizaos test --type e2e
+
+    # Test a specific project or plugin path
+    elizaos test ./plugins/my-plugin
+    ```
+
+    ### Test Filtering
+
+    ```bash
+    # Filter component tests by name
+    elizaos test --type component --name auth
+
+    # Filter e2e tests by name
+    elizaos test --type e2e --name database
+
+    # Filter all tests by name
+    elizaos test --name plugin
+    ```
+
+    ### Advanced Options
+
+    ```bash
+    # Run tests on custom port for e2e
+    elizaos test --type e2e --port 4000
+
+    # Skip building before running tests
+    elizaos test --skip-build
+
+    # Skip type checking for faster test runs
+    elizaos test --skip-type-check
+
+    # Combine options
+    elizaos test --type e2e --port 3001 --name integration --skip-build
+    ```
+
+    ## Test Types
+
+    ### Component Tests
+
+    **Location**: `__tests__/` directory  
+    **Framework**: Vitest  
+    **Purpose**: Unit and integration testing of individual components
+
+    ### End-to-End Tests
+
+    **Location**: `e2e/` directory  
+    **Framework**: Custom elizaOS test runner  
+    **Purpose**: Runtime behavior testing with full agent context
+  </Tab>
+
+  <Tab title="Writing Tests">
+    ## Test Structure
+
+    elizaOS follows standard testing conventions with two main categories:
+
+    ### Component Tests (`__tests__/`)
+
+    Component tests focus on testing individual modules, functions, and components in isolation.
+
+    ```typescript
+    // __tests__/myPlugin.test.ts
+    import { describe, it, expect } from 'vitest';
+    import { MyPlugin } from '../src/myPlugin';
+
+    describe('MyPlugin', () => {
+      it('should initialize correctly', () => {
+        const plugin = new MyPlugin();
+        expect(plugin.name).toBe('MyPlugin');
+      });
+
+      it('should handle actions', async () => {
+        const plugin = new MyPlugin();
+        const result = await plugin.handleAction('test');
+        expect(result).toBeDefined();
+      });
+    });
+    ```
+
+    ### End-to-End Tests (`e2e/`)
+
+    E2E tests verify the complete flow of your agent with all integrations.
+
+    ```typescript
+    // e2e/agent-flow.test.ts
+    import { createTestAgent } from '@elizaos/core/test-utils';
+
+    describe('Agent Flow', () => {
+      it('should respond to messages', async () => {
+        const agent = await createTestAgent({
+          character: './test-character.json'
+        });
+
+        const response = await agent.sendMessage('Hello');
+        expect(response).toContain('Hi');
+      });
+    });
+    ```
+
+    ## Test Configuration
+
+    ### Vitest Configuration
+
+    Component tests use Vitest, which is configured in your project's `vitest.config.ts`:
+
+    ```typescript
+    import { defineConfig } from 'vitest/config';
+
+    export default defineConfig({
+      test: {
+        globals: true,
+        environment: 'node',
+        include: ['__tests__/**/*.test.ts'],
+      },
+    });
+    ```
+
+    ### E2E Test Configuration
+
+    E2E tests can be configured via environment variables:
+
+    ```bash
+    # Set test environment
+    export TEST_ENV=ci
+    export TEST_PORT=3001
+
+    # Run E2E tests
+    elizaos test --type e2e
+    ```
+
+    ## Coverage Reports
+
+    Generate and view test coverage:
+
+    ```bash
+    # Run tests (coverage generation depends on your test configuration)
+    elizaos test
+
+    # Note: Coverage reporting is handled by your test framework configuration,
+    # not by the CLI directly. Configure coverage in your vitest.config.ts
+    ```
+
+    ## Continuous Integration
+
+    Example GitHub Actions workflow:
+
+    ```yaml
+    name: Tests
+    on: [push, pull_request]
+
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: oven-sh/setup-bun@v1
+          
+          - name: Install dependencies
+            run: bun install
+          
+          - name: Run tests
+            run: elizaos test
+          
+          - name: Upload coverage
+            uses: codecov/codecov-action@v3
+    ```
+  </Tab>
+
+  <Tab title="Best Practices">
+    ## Testing Best Practices
+
+    ### 1. Test Organization
+
+    - Keep tests close to the code they test
+    - Use descriptive test names
+    - Group related tests with `describe` blocks
+    - Follow the AAA pattern (Arrange, Act, Assert)
+
+    ### 2. Test Isolation
+
+    - Each test should be independent
+    - Clean up resources after tests
+    - Use test fixtures for consistent data
+    - Mock external dependencies
+
+    ### 3. Performance
+
+    - Use `--skip-build` during development for faster feedback
+    - Run focused tests with `--name` filter
+    - Use `--skip-type-check` for faster test runs when type safety is already verified
+    - Parallelize tests when possible
+
+    ### 4. Coverage Goals
+
+    - Aim for 80%+ code coverage
+    - Focus on critical paths
+    - Don't sacrifice test quality for coverage
+    - Test edge cases and error scenarios
+
+    ## Common Testing Patterns
+
+    ### Testing Plugins
+
+    ```typescript
+    import { createMockRuntime } from '@elizaos/core/test-utils';
+
+    describe('MyPlugin', () => {
+      let runtime;
+
+      beforeEach(() => {
+        runtime = createMockRuntime();
+      });
+
+      it('should register actions', () => {
+        const plugin = new MyPlugin();
+        plugin.init(runtime);
+        
+        expect(runtime.actions).toContain('myAction');
+      });
+    });
+    ```
+
+    ### Testing Actions
+
+    ```typescript
+    describe('MyAction', () => {
+      it('should validate input', async () => {
+        const action = new MyAction();
+        const isValid = await action.validate({
+          text: 'test input'
+        });
+        
+        expect(isValid).toBe(true);
+      });
+    });
+    ```
+
+    ### Testing with Mock Data
+
+    ```typescript
+    import { mockCharacter, mockMessage } from '@elizaos/core/test-utils';
+
+    describe('Message Handler', () => {
+      it('should process messages', async () => {
+        const character = mockCharacter({
+          name: 'TestBot'
+        });
+        
+        const message = mockMessage({
+          text: 'Hello',
+          userId: 'user123'
+        });
+        
+        const response = await handler.process(message, character);
+        expect(response).toBeDefined();
+      });
+    });
+    ```
+
+    ## Debugging Tests
+
+    ### Verbose Output
+
+    ```bash
+    # Run with detailed logging
+    LOG_LEVEL=debug elizaos test
+
+    # Show test execution details
+    elizaos test --verbose
+    ```
+
+    ### Running Specific Tests
+
+    ```bash
+    # Run a single test file
+    elizaos test component --name specific-test
+
+    # Run tests matching a pattern
+    elizaos test --name "auth|user"
+    ```
+
+    ### Debugging in VS Code
+
+    Add to `.vscode/launch.json`:
+
+    ```json
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Tests",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["test"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+    ```
+  </Tab>
+
+  <Tab title="Troubleshooting">
+    ## Troubleshooting
+
+    ### Test Failures
+
+    ```bash
+    # Check for TypeScript errors first
+    bun run build
+
+    # Run tests with more verbose output
+    elizaos test --verbose
+
+    # Skip type checking if types are causing issues
+    elizaos test --skip-type-check
+    ```
+
+    ### Port Conflicts
+
+    ```bash
+    # E2E tests failing due to port in use
+    # Use a different port
+    elizaos test e2e --port 4001
+
+    # Or kill the process using the port
+    lsof -ti:3000 | xargs kill -9
+    ```
+
+    ### Build Issues
+
+    ```bash
+    # If tests fail due to build issues
+    # Clean and rebuild
+    rm -rf dist
+    bun run build
+    elizaos test
+
+    # Or skip build if testing source files
+    elizaos test --skip-build
+    ```
+
+    ### Watch Mode Issues
+
+    ```bash
+    # If watch mode isn't detecting changes
+    # Check that you're modifying files in watched directories
+    # Restart watch mode
+    elizaos test --watch
+
+    # Or use Vitest directly for component tests
+    bunx vitest --watch
+    ```
+
+    ### Coverage Issues
+
+    ```bash
+    # If coverage seems incorrect
+    # Clear coverage data
+    rm -rf coverage
+
+    # Regenerate coverage
+    elizaos test --coverage
+
+    # Check coverage config in vitest.config.ts
+    ```
+
+    ### Environment Issues
+
+    ```bash
+    # Set test environment variables
+    export NODE_ENV=test
+    export TEST_TIMEOUT=30000
+
+    # Or create a test .env file
+    cp .env.example .env.test
+    elizaos test
+    ```
+
+    ## Related Commands
+
+    - [`dev`](/cli-reference/dev): Run development mode with test watching
+    - [`create`](/cli-reference/create): Create projects with test structure
+    - [`start`](/cli-reference/start): Start project after tests pass
+  </Tab>
+</Tabs>

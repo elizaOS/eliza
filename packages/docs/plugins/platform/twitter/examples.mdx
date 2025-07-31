@@ -1,0 +1,798 @@
+---
+title: "Examples"
+description: "This document provides practical examples of using the @elizaos/plugin-twitter package in various scenarios."
+---
+
+This document provides practical examples of using the @elizaos/plugin-twitter package in various scenarios.
+
+## Basic Bot Setup
+
+### Simple Posting Bot
+
+Create a basic Twitter bot that posts autonomously:
+
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { twitterPlugin } from '@elizaos/plugin-twitter';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+
+const character = {
+  name: "SimpleTwitterBot",
+  description: "A simple Twitter bot that posts updates",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  postExamples: [
+    "Just thinking about the future of technology...",
+    "Building something new today! 🚀",
+    "The best code is no code, but sometimes you need to write some.",
+    "Learning something new every day keeps the mind sharp."
+  ],
+  settings: {
+    TWITTER_API_KEY: process.env.TWITTER_API_KEY,
+    TWITTER_API_SECRET_KEY: process.env.TWITTER_API_SECRET_KEY,
+    TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_ACCESS_TOKEN_SECRET,
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_IMMEDIATELY: "true",
+    TWITTER_POST_INTERVAL_MIN: "120",
+    TWITTER_POST_INTERVAL_MAX: "240"
+  }
+};
+
+// Create and start the runtime
+const runtime = new AgentRuntime({ character });
+await runtime.start();
+
+console.log('Twitter bot is running and will post every 2-4 hours!');
+```
+
+### Content Creator Bot
+
+Bot focused on creating engaging content:
+
+```typescript
+const contentCreatorBot = {
+  name: "ContentCreator",
+  description: "Creates engaging Twitter content",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  postExamples: [
+    "🧵 Thread: Let's talk about why decentralization matters...",
+    "Hot take: The future of AI isn't about replacing humans, it's about augmentation",
+    "Day 30 of building in public: Today I learned...",
+    "Unpopular opinion: Simplicity > Complexity in system design",
+    "What's your biggest challenge in tech right now? Let's discuss 👇"
+  ],
+  topics: [
+    "artificial intelligence",
+    "web3 and blockchain",
+    "software engineering",
+    "startups and entrepreneurship",
+    "future of technology"
+  ],
+  style: {
+    tone: "thought-provoking but approachable",
+    format: "mix of threads, questions, and insights",
+    emoji: "use sparingly for emphasis"
+  },
+  settings: {
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_INTERVAL_MIN: "90",
+    TWITTER_POST_INTERVAL_MAX: "180",
+    TWITTER_POST_INTERVAL_VARIANCE: "0.3",
+    TWITTER_MAX_TWEET_LENGTH: "280"  // Keep it concise
+  }
+};
+```
+
+### Thread Poster
+
+Bot that creates detailed threads:
+
+```typescript
+const threadPosterBot = {
+  name: "ThreadMaster",
+  description: "Creates informative Twitter threads",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  postExamples: [
+    "🧵 A thread on system design principles:\n\n1/ Start with the problem, not the solution",
+    "🧵 How to build a successful side project:\n\n1/ Pick something you'll use yourself",
+    "🧵 Lessons learned from 10 years in tech:\n\n1/ Technology changes, principles remain"
+  ],
+  settings: {
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_MAX_TWEET_LENGTH: "4000",  // Support for longer threads
+    // Custom action for thread creation
+    customActions: ["CREATE_THREAD"]
+  }
+};
+
+// Custom thread creation action
+const createThreadAction: Action = {
+  name: "CREATE_THREAD",
+  description: "Creates a Twitter thread",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const topic = options.topic || "technology trends";
+    
+    // Generate thread content
+    const threadContent = await runtime.generateText({
+      messages: [{
+        role: "system",
+        content: `Create a Twitter thread about ${topic}. Format as numbered tweets (1/, 2/, etc). Make it informative and engaging.`
+      }],
+      maxTokens: 1000
+    });
+    
+    // Split into individual tweets
+    const tweets = threadContent.text.split(/\d+\//).filter(t => t.trim());
+    
+    // Post as thread
+    let previousTweetId = null;
+    for (const tweet of tweets) {
+      const response = await runtime.getService('twitter').client.tweet(
+        tweet.trim(),
+        previousTweetId ? { reply: { in_reply_to_tweet_id: previousTweetId } } : {}
+      );
+      previousTweetId = response.id;
+    }
+    
+    await callback({
+      text: `Thread posted! First tweet: ${tweets[0].substring(0, 50)}...`
+    });
+    
+    return true;
+  }
+};
+```
+
+## Interaction Bots
+
+### Reply Bot
+
+Bot that responds to mentions and replies:
+
+```typescript
+const replyBot = {
+  name: "ReplyBot",
+  description: "Responds to mentions and conversations",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_POST_ENABLE: "false",  // Don't post autonomously
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_AUTO_RESPOND_MENTIONS: "true",
+    TWITTER_AUTO_RESPOND_REPLIES: "true",
+    TWITTER_POLL_INTERVAL: "60",  // Check every minute
+    TWITTER_INTERACTION_INTERVAL_MIN: "5",
+    TWITTER_INTERACTION_INTERVAL_MAX: "15"
+  },
+  responseExamples: [
+    {
+      input: "What do you think about AI?",
+      output: "AI is a tool that amplifies human capability. The key is ensuring it serves humanity's best interests."
+    },
+    {
+      input: "Can you help me with coding?",
+      output: "I'd be happy to help! What specific coding challenge are you working on?"
+    }
+  ]
+};
+```
+
+### Mention Handler
+
+Bot that processes specific mentions:
+
+```typescript
+const mentionHandler = {
+  name: "MentionBot",
+  description: "Handles mentions with specific commands",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_AUTO_RESPOND_MENTIONS: "true"
+  }
+};
+
+// Custom mention handler
+const handleMentionAction: Action = {
+  name: "HANDLE_MENTION",
+  description: "Process mention commands",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const text = message.content.text.toLowerCase();
+    const twitterService = runtime.getService('twitter');
+    
+    // Command: @bot summarize [url]
+    if (text.includes('summarize')) {
+      const urlMatch = text.match(/https?:\/\/[^\s]+/);
+      if (urlMatch) {
+        const summary = await summarizeUrl(urlMatch[0]);
+        await callback({
+          text: `Summary: ${summary}`,
+          replyTo: message.id
+        });
+      }
+    }
+    
+    // Command: @bot remind me [message] in [time]
+    else if (text.includes('remind me')) {
+      const reminderMatch = text.match(/remind me (.+) in (\d+) (minutes?|hours?)/);
+      if (reminderMatch) {
+        const [, message, amount, unit] = reminderMatch;
+        const delay = unit.startsWith('hour') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+        
+        setTimeout(async () => {
+          await twitterService.client.tweet(
+            `@${message.username} Reminder: ${message}`,
+            { reply: { in_reply_to_tweet_id: message.id } }
+          );
+        }, delay);
+        
+        await callback({
+          text: `I'll remind you in ${amount} ${unit}! ⏰`,
+          replyTo: message.id
+        });
+      }
+    }
+    
+    return true;
+  }
+};
+```
+
+### Quote Tweet Bot
+
+Bot that quotes interesting tweets:
+
+```typescript
+const quoteTweetBot = {
+  name: "QuoteTweeter",
+  description: "Quotes and comments on interesting tweets",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_TIMELINE_ALGORITHM: "weighted",
+    TWITTER_TIMELINE_RELEVANCE_WEIGHT: "7",  // Prioritize relevant content
+    TWITTER_TARGET_USERS: "sama,pmarca,naval,elonmusk"  // Quote these users
+  }
+};
+
+// Quote tweet evaluation
+const quoteEvaluator = {
+  shouldQuote: (tweet: Tweet): boolean => {
+    // Check if tweet is quotable
+    if (tweet.text.length < 50) return false;  // Too short
+    if (tweet.public_metrics.retweet_count < 10) return false;  // Not popular enough
+    if (hasAlreadyQuoted(tweet.id)) return false;
+    
+    // Check content relevance
+    const relevantKeywords = ['AI', 'future', 'technology', 'innovation'];
+    return relevantKeywords.some(keyword => 
+      tweet.text.toLowerCase().includes(keyword.toLowerCase())
+    );
+  },
+  
+  generateQuoteComment: async (tweet: Tweet, runtime: IAgentRuntime): Promise<string> => {
+    const response = await runtime.generateText({
+      messages: [{
+        role: "system",
+        content: "Add insightful commentary to this tweet. Be thoughtful and add value."
+      }, {
+        role: "user",
+        content: tweet.text
+      }],
+      maxTokens: 100
+    });
+    
+    return response.text;
+  }
+};
+```
+
+## Search & Monitor Bots
+
+### Keyword Monitor
+
+Bot that monitors specific keywords:
+
+```typescript
+const keywordMonitor = {
+  name: "KeywordTracker",
+  description: "Monitors and responds to keyword mentions",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  keywords: ["#AIagents", "#elizaOS", "autonomous agents", "AI automation"],
+  settings: {
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_POST_ENABLE: "false"
+  }
+};
+
+// Custom search action
+const searchKeywordsAction: Action = {
+  name: "SEARCH_KEYWORDS",
+  description: "Search for specific keywords",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const twitterService = runtime.getService('twitter');
+    const keywords = runtime.character.keywords;
+    
+    for (const keyword of keywords) {
+      const results = await twitterService.client.search(keyword, {
+        max_results: 10,
+        'tweet.fields': ['created_at', 'public_metrics', 'author_id']
+      });
+      
+      for (const tweet of results.data || []) {
+        // Process relevant tweets
+        if (shouldEngageWith(tweet)) {
+          await engageWithTweet(tweet, runtime);
+        }
+      }
+    }
+    
+    return true;
+  }
+};
+```
+
+### Hashtag Tracker
+
+Bot that tracks trending hashtags:
+
+```typescript
+const hashtagTracker = {
+  name: "HashtagBot",
+  description: "Tracks and engages with trending hashtags",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  trackedHashtags: ["#Web3", "#AI", "#BuildInPublic", "#100DaysOfCode"],
+  settings: {
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_INTERACTION_INTERVAL_MIN: "30",  // Don't spam
+    TWITTER_MAX_INTERACTIONS_PER_RUN: "5"    // Limit interactions
+  }
+};
+```
+
+### User Monitor
+
+Bot that monitors specific users:
+
+```typescript
+const userMonitor = {
+  name: "UserTracker",
+  description: "Monitors and interacts with specific users",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_TARGET_USERS: "vitalikbuterin,balajis,cdixon",
+    TWITTER_TIMELINE_ALGORITHM: "weighted",
+    TWITTER_TIMELINE_USER_BASED_WEIGHT: "10",  // Heavily prioritize target users
+    TWITTER_AUTO_RESPOND_MENTIONS: "false",    // Only interact with targets
+    TWITTER_AUTO_RESPOND_REPLIES: "false"
+  }
+};
+```
+
+## Advanced Bots
+
+### Full Engagement Bot
+
+Bot with all features enabled:
+
+```typescript
+const fullEngagementBot = {
+  name: "FullEngagement",
+  description: "Complete Twitter engagement bot",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  postExamples: [
+    "What's the most underrated technology right now?",
+    "Building in public update: Just crossed 1000 users!",
+    "The best developers I know are constantly learning"
+  ],
+  settings: {
+    // Posting
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_INTERVAL_MIN: "180",
+    TWITTER_POST_INTERVAL_MAX: "360",
+    
+    // Interactions
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_AUTO_RESPOND_MENTIONS: "true",
+    TWITTER_AUTO_RESPOND_REPLIES: "true",
+    
+    // Timeline processing
+    TWITTER_ENABLE_ACTION_PROCESSING: "true",
+    TWITTER_ACTION_INTERVAL: "240",
+    
+    // Algorithm configuration
+    TWITTER_TIMELINE_ALGORITHM: "weighted",
+    TWITTER_TIMELINE_USER_BASED_WEIGHT: "4",
+    TWITTER_TIMELINE_TIME_BASED_WEIGHT: "3",
+    TWITTER_TIMELINE_RELEVANCE_WEIGHT: "6"
+  }
+};
+```
+
+### Multi-Account Bot
+
+Managing multiple Twitter accounts:
+
+```typescript
+const multiAccountSetup = async (runtime: IAgentRuntime) => {
+  const twitterService = runtime.getService('twitter') as TwitterService;
+  
+  // Main account
+  const mainAccount = await twitterService.createClient(
+    runtime,
+    'main-account',
+    {
+      TWITTER_API_KEY: process.env.MAIN_API_KEY,
+      TWITTER_API_SECRET_KEY: process.env.MAIN_API_SECRET,
+      TWITTER_ACCESS_TOKEN: process.env.MAIN_ACCESS_TOKEN,
+      TWITTER_ACCESS_TOKEN_SECRET: process.env.MAIN_ACCESS_SECRET,
+      TWITTER_POST_ENABLE: "true"
+    }
+  );
+  
+  // Support account
+  const supportAccount = await twitterService.createClient(
+    runtime,
+    'support-account',
+    {
+      TWITTER_API_KEY: process.env.SUPPORT_API_KEY,
+      TWITTER_API_SECRET_KEY: process.env.SUPPORT_API_SECRET,
+      TWITTER_ACCESS_TOKEN: process.env.SUPPORT_ACCESS_TOKEN,
+      TWITTER_ACCESS_TOKEN_SECRET: process.env.SUPPORT_ACCESS_SECRET,
+      TWITTER_POST_ENABLE: "false",
+      TWITTER_SEARCH_ENABLE: "true"
+    }
+  );
+  
+  // News account
+  const newsAccount = await twitterService.createClient(
+    runtime,
+    'news-account',
+    {
+      TWITTER_API_KEY: process.env.NEWS_API_KEY,
+      TWITTER_API_SECRET_KEY: process.env.NEWS_API_SECRET,
+      TWITTER_ACCESS_TOKEN: process.env.NEWS_ACCESS_TOKEN,
+      TWITTER_ACCESS_TOKEN_SECRET: process.env.NEWS_ACCESS_SECRET,
+      TWITTER_POST_ENABLE: "true",
+      TWITTER_POST_INTERVAL_MIN: "60"  // More frequent posts
+    }
+  );
+  
+  console.log('Multi-account setup complete!');
+};
+```
+
+### Analytics Bot
+
+Bot that tracks and reports analytics:
+
+```typescript
+const analyticsBot = {
+  name: "AnalyticsBot",
+  description: "Tracks Twitter performance metrics",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_SEARCH_ENABLE: "false"  // Focus on analytics
+  }
+};
+
+// Analytics action
+const analyticsAction: Action = {
+  name: "TWITTER_ANALYTICS",
+  description: "Generate Twitter analytics report",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const twitterService = runtime.getService('twitter');
+    const client = twitterService.getClient(runtime.agentId);
+    
+    // Get recent tweets
+    const tweets = await client.client.getUserTweets(client.profile.id, {
+      max_results: 100,
+      'tweet.fields': ['created_at', 'public_metrics']
+    });
+    
+    // Calculate metrics
+    const metrics = {
+      totalTweets: tweets.data.length,
+      totalLikes: 0,
+      totalRetweets: 0,
+      totalReplies: 0,
+      avgEngagement: 0
+    };
+    
+    tweets.data.forEach(tweet => {
+      metrics.totalLikes += tweet.public_metrics.like_count;
+      metrics.totalRetweets += tweet.public_metrics.retweet_count;
+      metrics.totalReplies += tweet.public_metrics.reply_count;
+    });
+    
+    metrics.avgEngagement = 
+      (metrics.totalLikes + metrics.totalRetweets + metrics.totalReplies) / 
+      metrics.totalTweets;
+    
+    // Generate report
+    const report = `
+📊 Twitter Analytics Report
+
+📝 Total Tweets: ${metrics.totalTweets}
+❤️ Total Likes: ${metrics.totalLikes}
+🔄 Total Retweets: ${metrics.totalRetweets}
+💬 Total Replies: ${metrics.totalReplies}
+📈 Avg Engagement: ${metrics.avgEngagement.toFixed(2)}
+
+Top performing tweets coming in next thread...
+    `;
+    
+    await callback({ text: report });
+    return true;
+  }
+};
+```
+
+## Testing Examples
+
+### Dry Run Bot
+
+Test without actually posting:
+
+```typescript
+const testBot = {
+  name: "TestBot",
+  description: "Bot for testing configurations",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  postExamples: [
+    "This is a test tweet that won't actually post",
+    "Testing the Twitter integration..."
+  ],
+  settings: {
+    TWITTER_DRY_RUN: "true",  // Simulate all actions
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_IMMEDIATELY: "true",
+    TWITTER_SEARCH_ENABLE: "true"
+  }
+};
+
+// Monitor dry run output
+runtime.on('twitter:dryRun', (action) => {
+  console.log(`[DRY RUN] Would ${action.type}:`, action.content);
+});
+```
+
+### Debug Bot
+
+Bot with extensive logging:
+
+```typescript
+const debugBot = {
+  name: "DebugBot",
+  description: "Bot with debug logging enabled",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    DEBUG: "eliza:twitter:*",  // Enable all Twitter debug logs
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_RETRY_LIMIT: "1",  // Fail fast for debugging
+    TWITTER_POST_INTERVAL_MIN: "1"  // Quick testing
+  }
+};
+```
+
+## Error Handling Examples
+
+### Resilient Bot
+
+Bot with comprehensive error handling:
+
+```typescript
+const resilientBot = {
+  name: "ResilientBot",
+  description: "Bot with robust error handling",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  settings: {
+    TWITTER_RETRY_LIMIT: "5",
+    TWITTER_POST_ENABLE: "true"
+  }
+};
+
+// Error handling wrapper
+const safeTwitterAction = (action: Action): Action => ({
+  ...action,
+  handler: async (runtime, message, state, options, callback) => {
+    try {
+      return await action.handler(runtime, message, state, options, callback);
+    } catch (error) {
+      runtime.logger.error(`Twitter action failed: ${action.name}`, error);
+      
+      // Handle specific errors
+      if (error.code === 403) {
+        await callback({
+          text: "I don't have permission to do that. Please check my Twitter app permissions."
+        });
+      } else if (error.code === 429) {
+        await callback({
+          text: "I'm being rate limited. I'll try again later."
+        });
+      } else {
+        await callback({
+          text: "Something went wrong with Twitter. I'll try again soon."
+        });
+      }
+      
+      return false;
+    }
+  }
+});
+```
+
+## Integration Examples
+
+### With Other Platforms
+
+```typescript
+import { discordPlugin } from '@elizaos/plugin-discord';
+import { telegramPlugin } from '@elizaos/plugin-telegram';
+
+const crossPlatformBot = {
+  name: "CrossPlatform",
+  description: "Bot that posts across platforms",
+  plugins: [bootstrapPlugin, twitterPlugin, discordPlugin, telegramPlugin],
+  clients: ["twitter", "discord", "telegram"],
+  postExamples: [
+    "New blog post: Understanding distributed systems",
+    "What's your favorite programming language and why?"
+  ],
+  settings: {
+    // Twitter settings
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_INTERVAL_MIN: "180",
+    
+    // Discord settings
+    DISCORD_API_TOKEN: process.env.DISCORD_TOKEN,
+    
+    // Telegram settings
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_TOKEN
+  }
+};
+
+// Cross-platform posting action
+const crossPostAction: Action = {
+  name: "CROSS_POST",
+  description: "Post to all platforms",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const content = options.content || "Hello from all platforms!";
+    
+    // Post to Twitter
+    const twitterService = runtime.getService('twitter');
+    await twitterService.client.tweet(content);
+    
+    // Post to Discord
+    const discordService = runtime.getService('discord');
+    await discordService.sendMessage(CHANNEL_ID, content);
+    
+    // Post to Telegram
+    const telegramService = runtime.getService('telegram');
+    await telegramService.sendMessage(CHAT_ID, content);
+    
+    await callback({
+      text: "Posted to all platforms successfully!"
+    });
+    
+    return true;
+  }
+};
+```
+
+## Best Practices Example
+
+### Production Bot
+
+Complete production-ready configuration:
+
+```typescript
+import { twitterPlugin } from '@elizaos/plugin-twitter';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+import { AgentRuntime } from '@elizaos/core';
+
+const productionBot = {
+  name: "ProductionTwitterBot",
+  description: "Production-ready Twitter bot",
+  plugins: [bootstrapPlugin, twitterPlugin],
+  clients: ["twitter"],
+  
+  // Diverse post examples
+  postExamples: [
+    // Questions to drive engagement
+    "What's the biggest challenge you're facing in your project right now?",
+    "If you could automate one thing in your workflow, what would it be?",
+    
+    // Insights and observations
+    "The best code is the code you don't have to write",
+    "Sometimes the simplest solution is the hardest to find",
+    
+    // Personal updates
+    "Working on something exciting today. Can't wait to share more soon!",
+    "Learning from yesterday's debugging session: always check the obvious first",
+    
+    // Threads
+    "Thread: 5 lessons from building production systems 🧵\n\n1/",
+    
+    // Reactions to trends
+    "Interesting to see how AI is changing the way we think about software development"
+  ],
+  
+  settings: {
+    // Credentials from environment
+    TWITTER_API_KEY: process.env.TWITTER_API_KEY,
+    TWITTER_API_SECRET_KEY: process.env.TWITTER_API_SECRET_KEY,
+    TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
+    TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_ACCESS_TOKEN_SECRET,
+    
+    // Conservative posting schedule
+    TWITTER_POST_ENABLE: "true",
+    TWITTER_POST_INTERVAL_MIN: "240",  // 4 hours
+    TWITTER_POST_INTERVAL_MAX: "480",  // 8 hours
+    TWITTER_POST_INTERVAL_VARIANCE: "0.2",
+    
+    // Moderate interaction settings
+    TWITTER_SEARCH_ENABLE: "true",
+    TWITTER_INTERACTION_INTERVAL_MIN: "30",
+    TWITTER_INTERACTION_INTERVAL_MAX: "60",
+    TWITTER_MAX_INTERACTIONS_PER_RUN: "5",
+    
+    // Quality over quantity
+    TWITTER_TIMELINE_ALGORITHM: "weighted",
+    TWITTER_TIMELINE_RELEVANCE_WEIGHT: "7",
+    
+    // Safety settings
+    TWITTER_RETRY_LIMIT: "3",
+    TWITTER_DRY_RUN: process.env.NODE_ENV === 'development' ? "true" : "false"
+  }
+};
+
+// Initialize with monitoring
+const runtime = new AgentRuntime({ character: productionBot });
+
+// Add monitoring
+runtime.on('error', (error) => {
+  console.error('Runtime error:', error);
+  // Send to monitoring service
+});
+
+runtime.on('twitter:post', (tweet) => {
+  console.log('Posted tweet:', tweet.id);
+  // Track metrics
+});
+
+runtime.on('twitter:rateLimit', (info) => {
+  console.warn('Rate limit warning:', info);
+  // Alert if critical
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('Shutting down gracefully...');
+  await runtime.stop();
+  process.exit(0);
+});
+
+// Start the bot
+await runtime.start();
+console.log('Production bot is running!');
+```
