@@ -787,7 +787,7 @@ const messageReceivedHandler = async ({
         const date = new Date()
 
         // get available actions
-        const availableActions = state.data.providers.ACTIONS.data.actionsData.map(a => a.name)
+        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(a => a.name) || [-1]
 
         // generate data of interest
         const logData = {
@@ -1135,7 +1135,7 @@ const postGeneratedHandler = async ({
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-        runtime.logger.log('[Bootstrap] Already recently posted that, retrying', cleanedText);
+        runtime.logger.info('[Bootstrap] Already recently posted that, retrying', cleanedText);
         postGeneratedHandler({
           runtime,
           callback,
@@ -1166,7 +1166,7 @@ const postGeneratedHandler = async ({
     googleRefusalRegex.test(cleanedText) ||
     generalRefusalRegex.test(cleanedText)
   ) {
-    logger.log('[Bootstrap] Got prompt moderation refusal, retrying', cleanedText);
+    runtime.logger.info('[Bootstrap] Got prompt moderation refusal, retrying', cleanedText);
     postGeneratedHandler({
       runtime,
       callback,
