@@ -74,6 +74,7 @@ import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
 import { getMessages } from "./messages";
 import { getStrategies as getStrategiesApi } from "../../api/levva";
+import { checkSecret } from "./secrets";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -215,7 +216,8 @@ export class LevvaService
   }
 
   // do we need it? or better to use runtime.getMemoryById?
-  private getMessages = getMessages.bind(null, this.runtime);
+  getMessages = getMessages.bind(null, this.runtime);
+  checkSecret = checkSecret.bind(null, this.runtime);
 
   /** @deprecated fix typing, maybe consider making private */
   getToken = getTokenImpl.bind(null, this.runtime) as (

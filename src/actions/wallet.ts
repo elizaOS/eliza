@@ -18,6 +18,7 @@ export const action: Action = {
   },
 
   handler: async (runtime, message, state, options, callback) => {
+    // todo refactor action that it can be chained properly: [REPLY, ANALYZE_WALLET], not just [ANALYZE_WALLET]
     try {
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON

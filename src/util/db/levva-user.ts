@@ -36,14 +36,14 @@ export const getLevvaUser = async (
 
 export const createLevvaUser = async (
   runtime: IAgentRuntime,
-  params: { address: `0x${string}` }
+  params: { address: `0x${string}`; creatorId: UUID }
 ) => {
   const address = getAddress(params.address);
   const db = getDb(runtime);
 
   const result = await db
     .insert(levvaUserTable)
-    .values({ address })
+    .values({ address, creatorId: params.creatorId })
     .returning();
 
   return result[0];

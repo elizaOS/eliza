@@ -10,11 +10,11 @@ import {
 import { schema } from "@elizaos/plugin-sql";
 import { modules } from "../actions/modules";
 import { LEVVA_SERVICE } from "../constants/enum";
+import { defaultSuggestionPrompt } from "../prompts/default";
+import { LevvaService } from "../services/levva/class";
 import { suggestTypeTemplate } from "../templates/generate";
 import { CacheEntry } from "../types/core";
-import { ILevvaService } from "../types/service";
-import { getDb, getLevvaUser } from "../util/db";
-import { defaultSuggestionPrompt } from "src/prompts/default";
+import { getLevvaUser } from "../util/db";
 
 interface MessageEntry {
   authorId: string;
@@ -42,9 +42,13 @@ const getChainId = (message?: MessageEntry): number | undefined => {
 
 async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
   const { address, chainId: _chainId, channelId } = req.query;
-  const service = runtime.getService<ILevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
+  const service = runtime.getService<LevvaService>(LEVVA_SERVICE.LEVVA_COMMON);
 
   try {
+    if (!service) {
+      throw new Error("Service not found");
+    }
+
     if (!isHex(address)) {
       throw new Error("Invalid address");
     }
@@ -69,21 +73,20 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       throw new Error("Invalid chain ID");
     }
 
-    const db = getDb(runtime);
-
-    const messages = (await db
-      .select()
-      .from(schema.messageTable)
-      .where(eq(schema.messageTable.channelId, channelId))
-      .orderBy(desc(schema.messageTable.createdAt))
-      .limit(10)) as MessageEntry[];
+    const messages = await service.getMessages({
+      where: eq(schema.messageTable.channelId, channelId),
+      orderBy: desc(schema.messageTable.createdAt),
+      limit: 10,
+    });
 
     const needsSuggest = !messages.length || messages[0].authorId !== user.id;
 
     if (!needsSuggest) {
       res.status(200).json({
         success: true,
-        suggestions: [],
+        data: {
+          suggestions: [],
+        },
       });
 
       return;
@@ -135,7 +138,9 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
     if (cached?.hash === conversationHash) {
       res.status(200).json({
         success: true,
-        suggestions: cached.value,
+        data: {
+          suggestions: cached.value,
+        },
       });
 
       return;
@@ -148,7 +153,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       const gen = await runtime.useModel(ModelType.OBJECT_LARGE, {
         prompt: suggestTypeTemplate(
           suggestions.map(({ name, description }) => ({
-                name,
+            name,
             description,
           }))
         )
@@ -188,14 +193,19 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
 
     res.status(200).json({
       success: true,
-      suggestions: result?.suggestions ?? [],
+      data: {
+        suggestions: result?.suggestions ?? [],
+      },
     });
   } catch (error) {
     logger.error(error);
 
     res.status(500).json({
       success: false,
-      message: error instanceof Error ? error.message : "Unknown error",
+      error: {
+        code: "SERVER_ERROR",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
     });
   }
 }

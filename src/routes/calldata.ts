@@ -7,7 +7,13 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
   const { hash } = req.query;
 
   if (!hash) {
-    res.status(400).json({ error: "Hash is required" });
+    res.status(400).json({
+      success: false,
+      error: {
+        code: "WRONG_REQUEST",
+        message: "Hash is required",
+      },
+    });
     return;
   }
 
@@ -16,16 +22,23 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       LEVVA_SERVICE.LEVVA_COMMON
     );
 
+    if (!service) {
+      throw new Error("Service not found");
+    }
+
     const calldata = await service.getCalldata(hash as `0x${string}`);
 
     res.status(200).json({
       success: true,
-      calldata,
+      data: calldata,
     });
   } catch (e) {
     res.status(500).json({
       success: false,
-      error: e.message ?? "Unknown error",
+      error: {
+        code: "ERROR_500",
+        message: (e as Error).message ?? "Unknown error",
+      },
     });
   }
 }

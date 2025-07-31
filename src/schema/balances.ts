@@ -10,7 +10,6 @@ import {
   index,
   timestamp,
 } from "drizzle-orm/pg-core";
-import { ETH_NULL_ADDR } from "src/constants/eth";
 
 export const assetType = pgEnum("asset_type", ["native", "erc20"]);
 

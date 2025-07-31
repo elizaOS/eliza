@@ -85,6 +85,7 @@ export const action: Action = {
         )
         .join("\n");
 
+      // todo make a dynamic provider for tx param extraction
       const data: ExtractedDataForStrategy = await runtime.useModel(
         ModelType.OBJECT_SMALL,
         {
