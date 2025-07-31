@@ -1,0 +1,399 @@
+# Yield Farming Basics
+
+## Introduction
+
+Yield farming is the art and science of maximizing returns by deploying capital across DeFi protocols like a chess grandmaster positioning pieces across the board. It represents the evolution from simple "buy and hold" to dynamic capital allocation, where farmers hunt yield across lending protocols, liquidity pools, and governance incentives. Modern yield farming combines multiple income streams—lending interest, trading fees, liquidity mining rewards, and governance tokens—into sophisticated strategies that can generate 10-200%+ APY. For Levva's framework, yield farming forms the foundation of both Diversified DeFi Yield strategies (conservative, stable approaches) and Custom strategies (aggressive, higher-risk farming opportunities).
+
+## Key Concepts, Ideas, and Formulas
+
+### Fundamental Yield Sources
+
+**Base Layer Yields:**
+```
+Protocol_Yield = Interest_Rate + Trading_Fees + Governance_Rewards
+```
+
+**Lending Protocols:**
+```
+APY = Base_Interest_Rate × (1 + Utilization_Bonus) + Protocol_Token_Emissions
+```
+
+**Liquidity Mining Calculation:**
+```
+Token_Rewards_APY = (Token_Emission_Rate × Token_Price × 365) / Total_TVL
+```
+
+**Compounding Formula:**
+```
+Final_Value = Principal × (1 + APY/n)^(n×t)
+```
+Where `n` = compounding frequency, `t` = time in years
+
+### Advanced Yield Stacking
+
+**Multi-Layer Strategy:**
+```python
+def calculate_stacked_yield(base_asset, strategies):
+    total_yield = 0
+    current_value = base_asset
+    
+    for strategy in strategies:
+        strategy_yield = strategy.calculate_yield(current_value)
+        total_yield += strategy_yield
+        current_value += strategy_yield
+    
+    return total_yield, current_value
+```
+
+**Example Stack (ETH → wstETH → Aave → Euler):**
+1. ETH staking: 4% APY
+2. Aave lending: +3% APY  
+3. Euler vault: +2% APY
+4. **Total**: ~9% APY (before compounding)
+
+### Risk-Adjusted Yield Metrics
+
+**Sharpe Ratio for DeFi:**
+```
+DeFi_Sharpe = (Strategy_APY - Risk_Free_Rate) / Strategy_Volatility
+```
+
+**Maximum Drawdown Protection:**
+```
+Kelly_Fraction = (Win_Probability × Average_Win - Loss_Probability × Average_Loss) / Average_Win
+```
+
+**Capital Efficiency Ratio:**
+```
+Efficiency = Yield_Generated / Capital_At_Risk
+```
+
+## Examples and Applications
+
+### Conservative Yield Stack (Diversified DeFi Yield)
+
+**Target**: 8-15% APY with minimal impermanent loss
+
+**Asset Allocation:**
+- **40% Stablecoin Lending** (Aave USDC): 4% APY
+- **30% Liquid Staking** (Lido wstETH): 5% APY  
+- **20% Curve Stable Pools** (3pool): 8% APY
+- **10% Emergency Buffer**: 0% APY
+
+**Calculation:**
+```
+Portfolio_APY = (0.4 × 4%) + (0.3 × 5%) + (0.2 × 8%) + (0.1 × 0%) = 4.7%
+```
+
+**Risk Profile:**
+- **Impermanent Loss**: <1% annually
+- **Smart Contract Risk**: Low (battle-tested protocols)
+- **Liquidation Risk**: None
+
+### Moderate Yield Strategy
+
+**Target**: 15-25% APY with controlled risk
+
+**Asset Allocation:**
+- **25% Pendle PT Tokens**: 12% APY (fixed)
+- **25% Uniswap V3 LP** (correlated pairs): 18% APY  
+- **25% Convex Staking**: 15% APY
+- **25% Morpho Enhanced Lending**: 8% APY
+
+**Advanced Calculation:**
+```python
+def calculate_portfolio_metrics(allocations, yields, correlations):
+    portfolio_yield = sum(allocation * yield for allocation, yield in zip(allocations, yields))
+    
+    portfolio_variance = 0
+    for i in range(len(allocations)):
+        for j in range(len(allocations)):
+            portfolio_variance += allocations[i] * allocations[j] * correlations[i][j]
+    
+    portfolio_volatility = sqrt(portfolio_variance)
+    return portfolio_yield, portfolio_volatility
+```
+
+### Aggressive Custom Strategy
+
+**Target**: 30-100%+ APY with high risk tolerance
+
+**Strategy Components:**
+1. **Leveraged PT Farming**: 3x leverage on PT-sUSDe
+2. **Volatile Pair LP**: ETH/MATIC on Uniswap V3
+3. **Governance Token Farming**: Early protocol participation
+4. **Cross-Chain Arbitrage**: Yield differentials across L2s
+
+**Example Leveraged Calculation:**
+```
+Base_Position = 100,000 USDC
+Leverage_Ratio = 3x
+Borrowed_Amount = 200,000 USDC
+Total_Position = 300,000 USDC
+
+PT_Yield = 12% APY
+Leveraged_Yield = 12% × 3 = 36% APY
+Borrowing_Cost = 5% × 2 = 10% APY
+Net_Yield = 36% - 10% = 26% APY
+```
+
+### Seasonal Yield Optimization
+
+**Q1 Strategy (Post-Holiday Recovery):**
+- Focus on oversold governance tokens
+- Increase leverage as volatility normalizes
+- Target emerging L2 incentives
+
+**Q2-Q3 Strategy (Bull Market Peak):**
+- Reduce leverage, increase stable farming
+- Harvest governance tokens before unlock events
+- Prepare for potential market corrections
+
+**Q4 Strategy (Holiday Season):**
+- Conservative positioning ahead of low volume
+- Focus on interest-bearing stable strategies
+- Accumulate positions for next cycle
+
+## Risks and Mitigations
+
+### Primary Risk Categories
+
+**Smart Contract Risk:**
+- **Protocol Risk**: Bugs in lending/AMM contracts
+- **Composability Risk**: Interactions between multiple protocols
+- **Upgrade Risk**: Malicious or buggy protocol upgrades
+
+**Market Risk:**
+- **Impermanent Loss**: Asset price divergence in LP positions
+- **Token Risk**: Governance token price volatility
+- **Liquidation Risk**: Leveraged position management
+
+**Operational Risk:**
+- **Key Management**: Private key security
+- **Transaction Risk**: MEV attacks and sandwich trading
+- **Oracle Risk**: Price feed manipulation
+
+### Risk Mitigation Framework
+
+**Diversification Strategy:**
+```python
+def diversification_score(portfolio):
+    protocol_concentration = max(allocation for allocation in portfolio.protocols)
+    asset_concentration = max(allocation for allocation in portfolio.assets)
+    strategy_concentration = max(allocation for allocation in portfolio.strategies)
+    
+    return 1 - max(protocol_concentration, asset_concentration, strategy_concentration)
+```
+
+**Position Size Limits:**
+- Maximum 20% in any single protocol
+- Maximum 30% in any single asset  
+- Maximum 15% in any leveraged strategy
+
+**Automated Risk Management:**
+```solidity
+contract YieldFarmProtection {
+    uint256 public maxDrawdown = 20; // 20% max drawdown
+    uint256 public emergencyThreshold = 15; // 15% emergency exit
+    
+    function checkRiskLimits() external view returns (bool) {
+        uint256 currentDrawdown = calculateDrawdown();
+        return currentDrawdown < maxDrawdown;
+    }
+    
+    function emergencyExit() external {
+        require(calculateDrawdown() > emergencyThreshold, "Not in emergency");
+        // Execute emergency liquidation
+    }
+}
+```
+
+## Unconventional Wisdom and Insights
+
+### The Yield Mirage Effect
+
+**Traditional Thinking**: Higher APY = Better strategy
+**Reality**: Sustainable yield requires fundamental value creation
+
+**Sustainable Yield Sources:**
+1. **Real Economic Activity**: Trading fees from genuine volume
+2. **Protocol Revenue Sharing**: Fees from productive protocol usage  
+3. **Productive Staking**: Network security provision (ETH staking)
+
+**Unsustainable Yield Sources:**
+1. **Token Inflation**: Excessive governance token emissions
+2. **Ponzi Mechanics**: Yield paid from new investor deposits
+3. **Subsidized Bootstrapping**: Temporary VC-funded incentives
+
+### The Correlation-Time Decay Function
+
+**Insight**: Asset correlations aren't static—they decay predictably over time:
+
+```python
+def correlation_decay(initial_correlation, time_days, half_life=30):
+    return initial_correlation * exp(-time_days / half_life)
+```
+
+**Strategic Application**: 
+- Short-term strategies can assume higher correlations
+- Long-term strategies must account for correlation decay
+- Rebalancing frequency should match correlation half-life
+
+### The Yield Farming Profit Curve
+
+**Discovery**: Yield farming profits follow a power law distribution:
+
+```
+Profit_Percentile = (Capital^0.7) × (Information_Advantage^1.3) × (Execution_Speed^0.9)
+```
+
+**Implications**:
+- Information advantages matter more than capital size
+- Fast execution creates exponential benefits
+- Diminishing returns to capital scale
+
+### Gas-Weighted Portfolio Optimization
+
+**Standard Approach**: Optimize for yield alone
+**Advanced Approach**: Optimize for yield minus gas costs
+
+```python
+def gas_adjusted_yield(strategy_yield, gas_cost, position_size, rebalance_frequency):
+    annual_gas_cost = gas_cost * rebalance_frequency * 365
+    gas_impact = annual_gas_cost / position_size
+    return strategy_yield - gas_impact
+```
+
+**Practical Rule**: Strategies requiring frequent rebalancing need 10x the gas costs in extra yield to justify complexity.
+
+### The Liquidity Cascade Pattern
+
+**Observation**: TVL follows predictable patterns during market stress:
+
+1. **Phase 1**: Governance token farmers exit first
+2. **Phase 2**: Leveraged positions get liquidated  
+3. **Phase 3**: Conservative LPs withdraw
+4. **Phase 4**: Only HODLers remain
+
+**Strategy**: Position according to expected exit phase during stress scenarios.
+
+### Yield Farming Alpha Decay
+
+**Empirical Finding**: New yield opportunities follow this decay curve:
+
+```
+APY(t) = Initial_APY × e^(-t/decay_constant)
+```
+
+Where `decay_constant` ≈ 45 days for most protocols.
+
+**Strategic Implication**: Enter new strategies early, but have clear exit criteria as yields normalize.
+
+## Further Links and Knowledge Base
+
+### Essential Yield Farming Platforms
+
+**Yield Aggregators:**
+- **Yearn Finance**: Automated vault strategies with professional management
+- **Beefy Finance**: Multi-chain yield optimization
+- **Harvest Finance**: High-APY farming with auto-compounding
+- **Convex**: Curve LP token staking with boosted rewards
+
+**Analytics Platforms:**
+- **DefiLlama**: TVL and yield tracking across 200+ protocols
+- **DefiPulse**: DeFi protocol rankings and yield analytics  
+- **Zapper**: Portfolio tracking and yield opportunity discovery
+- **DeBank**: Cross-chain DeFi portfolio management
+
+### Protocol-Specific Resources
+
+**Pendle Finance:**
+- **Docs**: [Pendle Documentation](https://docs.pendle.finance/)
+- **Analytics**: [Pendle Analytics Dashboard](https://app.pendle.finance/)
+- **Strategy Guides**: PT vs YT optimization techniques
+
+**Curve Finance:**
+- **Understanding CRV**: [Curve DAO Documentation](https://resources.curve.fi/)
+- **Gauge System**: Voting and reward optimization
+- **Pool Analytics**: [Curve Pool Data](https://curve.fi/pools)
+
+**Convex Finance:**
+- **CRV Boosting**: [Convex Strategy Guide](https://docs.convexfinance.com/)
+- **vlCVX Mechanics**: Long-term incentive alignment
+- **Yield Calculations**: Detailed APY breakdowns
+
+### Risk Management Tools
+
+**Portfolio Tracking:**
+- **Zerion**: Multi-protocol portfolio analytics
+- **Rotki**: Privacy-focused portfolio tracking
+- **DefiSaver**: Automated risk management and protection
+
+**Risk Analytics:**
+- **Gauntlet**: Protocol risk parameter optimization
+- **Chaos Labs**: Simulation-based risk modeling
+- **Risk Harbor**: DeFi insurance and protection
+
+### Academic Research
+
+- **"Yield Farming in Decentralized Finance"** (Gudgeon et al.)
+- **"The Economics of DeFi Liquidity Mining"** (Liu et al.)
+- **"Automated Market Making and Loss-Versus-Rebalancing"** (Milionis et al.)
+
+### Development Resources
+
+**Smart Contract Templates:**
+```solidity
+// Basic yield farming vault
+interface IYieldVault {
+    function deposit(uint256 amount) external;
+    function withdraw(uint256 shares) external;
+    function harvest() external;
+    function compound() external;
+}
+```
+
+**Python Libraries:**
+- **Web3.py**: Ethereum interaction
+- **Brownie**: Smart contract development
+- **DeFiPy**: DeFi analytics and modeling
+
+### Levva Strategy Integration
+
+**Strategy Classification Matrix:**
+
+| Strategy Type | Risk Level | Target APY | Suitable For |
+|---------------|------------|------------|--------------|
+| Stablecoin Lending | Ultra-Safe | 3-8% | All risk categories |
+| Liquid Staking | Safe | 5-10% | Safe, Brave categories |
+| LP Farming | Brave | 10-30% | Brave, Custom categories |
+| Leveraged Farming | Custom | 20-100%+ | Custom only |
+
+**Automation Framework:**
+```python
+class LevvaYieldStrategy:
+    def __init__(self, risk_category):
+        self.risk_category = risk_category
+        self.max_protocol_allocation = self.get_max_allocation()
+        self.rebalance_threshold = self.get_rebalance_threshold()
+    
+    def get_max_allocation(self):
+        allocations = {
+            'ultra_safe': 0.25,  # Max 25% per protocol
+            'safe': 0.30,        # Max 30% per protocol  
+            'brave': 0.40,       # Max 40% per protocol
+            'custom': 0.60       # Max 60% per protocol
+        }
+        return allocations[self.risk_category]
+    
+    def optimize_allocation(self, available_strategies):
+        # Implement portfolio optimization logic
+        pass
+```
+
+### Related Knowledge Base Files
+- `impermanent-loss-explained.md` - Understanding LP risks in yield farming
+- `position-sizing.md` - Optimal capital allocation across strategies
+- `portfolio-theory.md` - Modern portfolio theory applied to DeFi
+- `pendle-pt-mechanics.md` - Advanced yield tokenization strategies
+- `lending-protocols.md` - Understanding lending-based yield sources
