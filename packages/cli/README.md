@@ -280,7 +280,7 @@ If any character files fail to load, ElizaOS will:
 Run tests for Eliza agent plugins and projects.
 
 - **Subcommands:**
-  - `component`: Run component tests (via Vitest)
+  - `component`: Run component tests (via bun:test)
   - `e2e`: Run end-to-end runtime tests
   - `all`: Run both component and e2e tests (default)
 - **Options:**

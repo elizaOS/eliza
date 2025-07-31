@@ -21,20 +21,20 @@ Clean up deprecated tooling and configuration files:
 ### Files to Remove:
 
 - **`biome.json`** - Deprecated linter configuration
-- **`vitest.config.ts`** - Replaced by Bun test runner
+- **`vitest.config.ts`** - DEPRECATED: Remove this file, ElizaOS uses bun:test
 - **Lock files** - Any `lock.json` or `yml.lock` files
 
 ### Quick Cleanup Commands:
 
 ```bash
-rm -rf vitest.config.ts
+rm -rf vitest.config.ts  # DEPRECATED: ElizaOS uses bun:test exclusively
 rm -rf biome.json
 rm -f *.lock.json *.yml.lock
 ```
 
 > **Why?** The ElizaOS ecosystem has standardized on:
 >
-> - **Bun's built-in test runner** (replacing Vitest) - All plugins must now use `bun test`
+> - **bun:test** (replacing Vitest/Jest) - All plugins must now use `bun test`
 > - **Prettier** for code formatting (replacing Biome)
 >
 > This ensures consistency across all ElizaOS plugins and simplifies the development toolchain.
@@ -65,7 +65,7 @@ Check if your package name contains the old namespace and update it:
 
 ### 3.2 Dependencies
 
-- **Remove**: `biome`, `vitest` (if present)
+- **Remove**: `biome`, `vitest`, `jest` (if present) - ElizaOS uses bun:test exclusively
 - **Add**: Core and plugin-specific dependencies
 
 ### 3.3 Dev Dependencies
@@ -82,7 +82,7 @@ Add the following development dependencies:
 }
 ```
 
-> **Important**: `bun` and `@types/bun` are **REQUIRED** dependencies for all plugins in v1.x. The ElizaOS ecosystem has standardized on Bun's built-in test runner, replacing Vitest. Without these dependencies, your tests will not run properly.
+> **Important**: `bun` and `@types/bun` are **REQUIRED** dependencies for all plugins in v1.x. The ElizaOS ecosystem has standardized on bun:test, replacing Vitest and Jest completely. Without these dependencies, your tests will not run properly.
 
 ### 3.4 Scripts Section
 

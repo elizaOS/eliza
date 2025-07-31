@@ -158,7 +158,7 @@ For detailed instructions on creating and registering plugins and actions, refer
 
 ### Running Tests
 
-The `@elizaos/core` package uses **Vitest** for testing.
+The `@elizaos/core` package uses **bun:test** for testing.
 
 1.  **Prerequisites**:
 

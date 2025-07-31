@@ -102,7 +102,7 @@ Third, find your client connections (Discord, Telegram, etc.). Ask yourself: "Wh
 
 ### Step 2: Setting Up Your New Development Environment
 
-Let's start with the practical matter of updating your development environment. The build system has changed from Biome to the more standard Prettier and ESLint, and the test framework has moved from Jest to Vitest. These aren't arbitrary changes; they align Eliza with more widely-used tools in the TypeScript ecosystem.
+Let's start with the practical matter of updating your development environment. The build system has changed from Biome to the more standard Prettier and ESLint, and the test framework has moved from Jest to bun:test. These aren't arbitrary changes; they align Eliza with more widely-used tools in the TypeScript ecosystem.
 
 First, update your package.json file. Remove the old dependencies:
 
@@ -118,7 +118,6 @@ And add the new ones:
 // Add these new tools
 "devDependencies": {
     "@elizaos/core": "^1.0.0",  // The new core version
-    "vitest": "latest",         // Modern, fast test runner
     "prettier": "latest",       // Code formatting
     "eslint": "latest",         // Code linting
     "typescript": "latest"      // Keep TypeScript updated
@@ -129,7 +128,7 @@ But more importantly, update your scripts section to reflect the new workflow:
 
 ```json
 "scripts": {
-    "test": "vitest",                    // Run unit tests
+    "test": "bun test",                  // Run unit tests
     "test:plugins": "elizaos test",      // Run Eliza plugin tests
     "lint": "eslint .",                  // Check code quality
     "format": "prettier --write .",      // Format code
@@ -615,7 +614,7 @@ This hierarchical structure better represents reality. On Discord, channels (roo
 
 ### Step 10: Migrating Your Tests
 
-Testing is crucial for a successful migration, and the move from Jest to Vitest brings some changes. Vitest is faster and more modern, but the syntax is very similar to Jest, making migration straightforward.
+Testing is crucial for a successful migration, and the move from Jest to bun:test brings some changes. Bun:test is faster and more modern, but the syntax is very similar to Jest, making migration straightforward.
 
 Here's how to migrate a typical test:
 
@@ -626,7 +625,7 @@ import { generateText } from '@elizaos/core';
 describe('My Plugin', () => {
   it('should generate text correctly', async () => {
     const mockRuntime = {
-      getSetting: jest.fn().mockReturnValue('api-key'),
+      getSetting: mock().mockReturnValue('api-key'),
     };
 
     const result = await generateText({
@@ -641,18 +640,17 @@ describe('My Plugin', () => {
 });
 ```
 
-Here's the Vitest version:
+Here's the bun:test version:
 
 ```typescript
-// New Vitest test
-import { describe, it, expect, vi } from 'vitest';
+// New bun:test (describe, it, expect are global - no imports needed)
 import { myPlugin } from '../index';
 
 describe('My Plugin', () => {
   it('should handle model calls correctly', async () => {
-    // Vitest uses 'vi' instead of 'jest' for mocks
+    // bun:test uses built-in mocking
     const mockRuntime = {
-      getSetting: vi.fn((key) => {
+      getSetting: mock((key) => {
         if (key === 'API_KEY') return 'test-key';
         return null;
       }),
@@ -672,8 +670,8 @@ describe('My Plugin', () => {
   it('should register services correctly', async () => {
     const mockRuntime = {
       // Mock the methods your service needs
-      getSetting: vi.fn(),
-      emitEvent: vi.fn(),
+      getSetting: mock(),
+      emitEvent: mock(),
     };
 
     // Test service lifecycle
@@ -692,8 +690,8 @@ describe('My Plugin', () => {
 
 The key differences are:
 
-- Import mocking utilities from 'vitest' instead of using global Jest functions
-- Use `vi` instead of `jest` for mocking
+- Use bun:test's built-in `mock()` function instead of Jest/Vitest functions
+- Use `mock()` for creating mock functions (bun:test provides built-in mocking)
 - Test your plugin's components directly rather than testing runtime functions
 
 ## Part 3: Putting It All Together
@@ -1081,7 +1079,7 @@ As we conclude this journey, let me leave you with some key insights and best pr
 
 ### Test Continuously
 
-Set up your tests early and run them often. The new test structure with Vitest makes it easy to test individual components of your plugin. Test your service lifecycle, your model handlers, your action handlers, and your event handlers independently.
+Set up your tests early and run them often. The new test structure with bun:test makes it easy to test individual components of your plugin. Test your service lifecycle, your model handlers, your action handlers, and your event handlers independently.
 
 ### Use Types Effectively
 
