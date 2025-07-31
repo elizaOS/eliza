@@ -1,0 +1,2707 @@
+---
+title: Plugin Developer Guide
+description: Comprehensive guide covering all aspects of plugin development in the elizaOS system
+icon: code
+---
+
+This comprehensive guide covers all aspects of plugin development in the elizaOS system, consolidating patterns and best practices from platform plugins, LLM plugins, and DeFi plugins.
+
+<Note>
+This guide uses `bun` as the package manager, which is the preferred tool for elizaOS development. Bun provides faster installation times and built-in TypeScript support.
+</Note>
+
+## Table of Contents
+
+1. [Introduction](#introduction)
+2. [Quick Start: Scaffolding Plugins with CLI](#quick-start-scaffolding-plugins-with-cli)
+3. [Plugin Architecture Overview](#plugin-architecture-overview)
+4. [Core Plugin Components](#core-plugin-components)
+   - [Services](#1-services)
+   - [Actions](#2-actions)
+   - [Providers](#3-providers)
+   - [Evaluators](#4-evaluators)
+   - [Model Handlers](#5-model-handlers-llm-plugins)
+   - [HTTP Routes](#6-http-routes-and-api-endpoints)
+5. [Advanced: Creating Plugins Manually](#advanced-creating-plugins-manually)
+6. [Plugin Types and Patterns](#plugin-types-and-patterns)
+7. [Advanced Configuration](#advanced-configuration)
+8. [Testing Strategies](#testing-strategies)
+9. [Security Best Practices](#security-best-practices)
+10. [Publishing and Distribution](#publishing-and-distribution)
+11. [Reference Examples](#reference-examples)
+
+## Introduction
+
+elizaOS plugins are modular extensions that enhance AI agents with new capabilities, integrations, and behaviors. The plugin system follows a consistent architecture that enables:
+
+- **Modularity**: Add or remove functionality without modifying core code
+- **Reusability**: Share plugins across different agents
+- **Type Safety**: Full TypeScript support for robust development
+- **Flexibility**: Support for various plugin types (platform, LLM, DeFi, etc.)
+
+### What Can Plugins Do?
+
+- **Platform Integrations**: Connect to Discord, Telegram, Slack, Twitter, etc.
+- **LLM Providers**: Integrate different AI models (OpenAI, Anthropic, Google, etc.)
+- **Blockchain/DeFi**: Execute transactions, manage wallets, interact with smart contracts
+- **Data Sources**: Connect to databases, APIs, or external services
+- **Custom Actions**: Define new agent behaviors and capabilities
+
+## Quick Start: Scaffolding Plugins with CLI
+
+The easiest way to create a new plugin is using the elizaOS CLI, which provides interactive scaffolding with pre-configured templates. This is the recommended approach for most developers.
+
+### Using `elizaos create`
+
+The CLI offers two plugin templates to get you started quickly:
+
+```bash
+# Interactive plugin creation
+elizaos create
+
+# Or specify the name directly
+elizaos create my-plugin --type plugin
+```
+
+When creating a plugin, you'll be prompted to choose between:
+
+1. **Quick Plugin (Backend Only)** - Simple backend-only plugin without frontend
+
+   - Perfect for: API integrations, blockchain actions, data providers
+   - Includes: Basic plugin structure, actions, providers, services
+   - No frontend components or UI routes
+
+2. **Full Plugin (with Frontend)** - Complete plugin with React frontend and API routes
+   - Perfect for: Plugins that need web UI, dashboards, or visual components
+   - Includes: Everything from Quick Plugin + React frontend, Vite setup, API routes
+   - Tailwind CSS pre-configured for styling
+
+### Quick Plugin Structure
+
+After running `elizaos create` and selecting "Quick Plugin", you'll get:
+
+```
+plugin-my-plugin/
+├── src/
+│   ├── index.ts           # Plugin manifest
+│   ├── actions/           # Your agent actions
+│   │   └── example.ts
+│   ├── providers/         # Context providers
+│   │   └── example.ts
+│   └── types/             # TypeScript types
+│       └── index.ts
+├── package.json           # Pre-configured with elizaos deps
+├── tsconfig.json          # TypeScript config
+├── tsup.config.ts         # Build configuration
+└── README.md              # Plugin documentation
+```
+
+### Full Plugin Structure
+
+Selecting "Full Plugin" adds frontend capabilities:
+
+```
+plugin-my-plugin/
+├── src/
+│   ├── index.ts           # Plugin manifest with routes
+│   ├── actions/
+│   ├── providers/
+│   ├── types/
+│   └── frontend/          # React frontend
+│       ├── App.tsx
+│       ├── main.tsx
+│       └── components/
+├── public/                # Static assets
+├── index.html             # Frontend entry
+├── vite.config.ts         # Vite configuration
+├── tailwind.config.js     # Tailwind setup
+└── [other config files]
+```
+
+### After Scaffolding
+
+Once your plugin is created:
+
+```bash
+# Navigate to your plugin
+cd plugin-my-plugin
+
+# Install dependencies (automatically done by CLI)
+bun install
+
+# Start development mode with hot reloading
+elizaos dev
+
+# Or start in production mode
+elizaos start
+
+# Build your plugin for distribution
+bun run build
+```
+
+The scaffolded plugin includes:
+
+- ✅ Proper TypeScript configuration
+- ✅ Build setup with tsup (and Vite for full plugins)
+- ✅ Example action and provider to extend
+- ✅ Integration with `@elizaos/core`
+- ✅ Development scripts ready to use
+- ✅ Basic tests structure
+
+<Tip>
+The CLI templates follow all elizaOS conventions and best practices, making it easy to get started without worrying about configuration.
+</Tip>
+
+### Using Your Plugin in Projects
+
+Plugins don't necessarily need to be in the elizaOS monorepo. You have two options for using your plugin in a project:
+
+#### Option 1: Plugin Inside the Monorepo
+
+If you're developing your plugin within the elizaOS monorepo (in the `packages/` directory), you need to add it as a workspace dependency:
+
+1. Add your plugin to the root `package.json` as a workspace dependency:
+
+```json
+{
+  "dependencies": {
+    "@elizaos/plugin-knowledge": "workspace:*",
+    "@yourorg/plugin-myplugin": "workspace:*"
+  }
+}
+```
+
+2. Run `bun install` in the root directory to link the workspace dependency
+
+3. Use the plugin in your project:
+
+```typescript
+import { myPlugin } from '@yourorg/plugin-myplugin';
+
+const agent = {
+  name: 'MyAgent',
+  plugins: [myPlugin],
+};
+```
+
+#### Option 2: Plugin Outside the Monorepo
+
+If you're creating a plugin outside of the elizaOS monorepo (recommended for most users), use `bun link`:
+
+1. In your plugin directory, build and link it:
+
+```bash
+# In your plugin directory (e.g., plugin-myplugin/)
+bun install
+bun run build
+bun link
+```
+
+2. In your project directory (e.g., using project-starter), link the plugin:
+
+```bash
+# In your project directory
+cd packages/project-starter  # or wherever your agent project is
+bun link @yourorg/plugin-myplugin
+```
+
+3. Add the plugin to your project's `package.json` dependencies:
+
+```json
+{
+  "dependencies": {
+    "@yourorg/plugin-myplugin": "link:@yourorg/plugin-myplugin"
+  }
+}
+```
+
+4. Use the plugin in your project:
+
+```typescript
+import { myPlugin } from '@yourorg/plugin-myplugin';
+
+const agent = {
+  name: 'MyAgent',
+  plugins: [myPlugin],
+};
+```
+
+<Note>
+When using `bun link`, remember to rebuild your plugin (`bun run build`) after making changes for them to be reflected in your project.
+</Note>
+
+## Plugin Architecture Overview
+
+### Plugin Interface
+
+Every plugin must implement the core `Plugin` interface:
+
+```typescript
+import type { Plugin } from '@elizaos/core';
+
+export interface Plugin {
+  name: string;
+  description: string;
+
+  // Initialize plugin with runtime services
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+
+  // Configuration
+  config?: { [key: string]: any };
+
+  // Services - Note: This is (typeof Service)[] not Service[]
+  services?: (typeof Service)[];
+
+  // Entity component definitions
+  componentTypes?: {
+    name: string;
+    schema: Record<string, unknown>;
+    validator?: (data: any) => boolean;
+  }[];
+
+  // Optional plugin features
+  actions?: Action[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+  adapter?: IDatabaseAdapter;
+  models?: {
+    [key: string]: (...args: any[]) => Promise<any>;
+  };
+  events?: PluginEvents;
+  routes?: Route[];
+  tests?: TestSuite[];
+
+  // Dependencies
+  dependencies?: string[];
+  testDependencies?: string[];
+
+  // Plugin priority (higher priority plugins are loaded first)
+  priority?: number;
+
+  // Schema for validation
+  schema?: any;
+}
+```
+
+### Directory Structure
+
+Standard plugin structure:
+
+```
+packages/plugin-<name>/
+├── src/
+│   ├── index.ts           # Plugin manifest and exports
+│   ├── service.ts         # Main service implementation
+│   ├── actions/           # Agent capabilities
+│   │   └── *.ts
+│   ├── providers/         # Context providers
+│   │   └── *.ts
+│   ├── evaluators/        # Post-processing
+│   │   └── *.ts
+│   ├── handlers/          # LLM model handlers
+│   │   └── *.ts
+│   ├── types/             # TypeScript definitions
+│   │   └── index.ts
+│   ├── constants/         # Configuration constants
+│   │   └── index.ts
+│   ├── utils/             # Helper functions
+│   │   └── *.ts
+│   └── tests.ts           # Test suite
+├── __tests__/             # Unit tests
+├── package.json
+├── tsconfig.json
+├── tsup.config.ts
+└── README.md
+```
+
+## Core Plugin Components
+
+### 1. Services
+
+Services manage stateful connections and provide core functionality. They are singleton instances that persist throughout the agent's lifecycle.
+
+```typescript
+import { Service, IAgentRuntime, logger } from '@elizaos/core';
+
+export class MyService extends Service {
+  static serviceType = 'my-service';
+  capabilityDescription = 'Description of what this service provides';
+
+  private client: any;
+  private refreshInterval: NodeJS.Timer | null = null;
+
+  constructor(protected runtime: IAgentRuntime) {
+    super();
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<MyService> {
+    logger.info('Initializing MyService');
+    const service = new MyService(runtime);
+
+    // Initialize connections, clients, etc.
+    await service.initialize();
+
+    // Set up periodic tasks if needed
+    service.refreshInterval = setInterval(
+      () => service.refreshData(),
+      60000 // 1 minute
+    );
+
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    // Cleanup resources
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+    }
+    // Close connections
+    if (this.client) {
+      await this.client.disconnect();
+    }
+    logger.info('MyService stopped');
+  }
+
+  private async initialize(): Promise<void> {
+    // Service initialization logic
+    const apiKey = this.runtime.getSetting('MY_API_KEY');
+    if (!apiKey) {
+      throw new Error('MY_API_KEY not configured');
+    }
+
+    this.client = new MyClient({ apiKey });
+    await this.client.connect();
+  }
+}
+```
+
+### Service Lifecycle Patterns
+
+Services have a specific lifecycle that plugins must respect:
+
+#### 1. Delayed Initialization
+
+Sometimes services need to wait for other services or perform startup tasks:
+
+```typescript
+export class MyService extends Service {
+  static serviceType = 'my-service';
+
+  static async start(runtime: IAgentRuntime): Promise<MyService> {
+    const service = new MyService(runtime);
+
+    // Immediate initialization
+    await service.initialize();
+
+    // Delayed initialization for non-critical tasks
+    setTimeout(async () => {
+      try {
+        await service.loadCachedData();
+        await service.syncWithRemote();
+        logger.info('MyService: Delayed initialization complete');
+      } catch (error) {
+        logger.error('MyService: Delayed init failed', error);
+        // Don't throw - service is still functional
+      }
+    }, 5000);
+
+    return service;
+  }
+}
+```
+
+### 2. Actions
+
+Actions are the heart of what your agent can DO. They're intelligent, context-aware operations that can make decisions, interact with services, and chain together for complex workflows.
+
+#### Quick Reference
+
+| Component     | Purpose                              | Required | Returns                 |
+| ------------- | ------------------------------------ | -------- | ----------------------- |
+| `name`        | Unique identifier                    | ✅       | -                       |
+| `description` | Help LLM understand when to use      | ✅       | -                       |
+| `similes`     | Alternative names for fuzzy matching | ❌       | -                       |
+| `validate`    | Check if action can run              | ✅       | `Promise<boolean>`      |
+| `handler`     | Execute the action logic             | ✅       | `Promise<ActionResult>` |
+| `examples`    | Teach LLM through scenarios          | ✅       | -                       |
+
+**Key Concepts:**
+
+- Actions MUST return `ActionResult` with `success` field
+- Actions receive composed state from providers
+- Actions can chain together, passing values through state
+- Actions can use callbacks for intermediate responses
+- Actions are selected by the LLM based on validation and examples
+
+#### Action Anatomy
+
+```typescript
+import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  ModelType,
+  composePromptFromState,
+  logger,
+} from '@elizaos/core';
+
+export const myAction: Action = {
+  name: 'MY_ACTION',
+  description: 'Clear, concise description for the LLM to understand when to use this',
+
+  // Similes help with fuzzy matching - be creative!
+  similes: ['SIMILAR_ACTION', 'ANOTHER_NAME', 'CASUAL_REFERENCE'],
+
+  // Validation: Can this action run in the current context?
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    // Check permissions, settings, current state, etc.
+    const hasPermission = await checkUserPermissions(runtime, message);
+    const serviceAvailable = runtime.getService('my-service') !== null;
+
+    return hasPermission && serviceAvailable;
+  },
+
+  // Handler: The brain of your action
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: { [key: string]: unknown },
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ): Promise<ActionResult> => {
+    // ALWAYS return ActionResult with success field!
+    try {
+      // Access previous action results from multi-step chains
+      const context = options?.context;
+      const previousResults = context?.previousResults || [];
+
+      // Get your state (providers have already run)
+      if (!state) {
+        state = await runtime.composeState(message, [
+          'RECENT_MESSAGES',
+          'CHARACTER',
+          'ACTION_STATE', // Includes previous action results
+        ]);
+      }
+
+      // Your action logic here
+      const result = await doSomethingAmazing();
+
+      // Use callback for intermediate responses
+      if (callback) {
+        await callback({
+          text: `Working on it...`,
+          actions: ['MY_ACTION'],
+        });
+      }
+
+      // Return structured result
+      return {
+        success: true, // REQUIRED field
+        text: `Action completed: ${result.summary}`,
+        values: {
+          // These merge into state for next actions
+          lastActionTime: Date.now(),
+          resultData: result.data,
+        },
+        data: {
+          // Raw data for logging/debugging
+          actionName: 'MY_ACTION',
+          fullResult: result,
+        },
+      };
+    } catch (error) {
+      logger.error('Action failed:', error);
+
+      return {
+        success: false, // REQUIRED field
+        text: 'Failed to complete action',
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: {
+          actionName: 'MY_ACTION',
+          errorDetails: error.message,
+        },
+      };
+    }
+  },
+
+  // Examples: Teach the LLM through scenarios
+  examples: [
+    [
+      {
+        name: '{{user1}}',
+        content: { text: 'Can you do the thing?' },
+      },
+      {
+        name: '{{agent}}',
+        content: {
+          text: "I'll do that for you right away!",
+          actions: ['MY_ACTION'],
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+```
+
+#### Real-World Action Patterns
+
+##### 1. Decision-Making Actions
+
+Actions can use the LLM to make intelligent decisions based on context:
+
+```typescript
+export const muteRoomAction: Action = {
+  name: 'MUTE_ROOM',
+  similes: ['SHUT_UP', 'BE_QUIET', 'STOP_TALKING', 'SILENCE'],
+  description: 'Mutes a room if asked to or if the agent is being annoying',
+
+  validate: async (runtime, message) => {
+    // Check if already muted
+    const roomState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
+    return roomState !== 'MUTED';
+  },
+
+  handler: async (runtime, message, state) => {
+    // Create a decision prompt
+    const shouldMuteTemplate = `# Task: Should {{agentName}} mute this room?
+
+{{recentMessages}}
+
+Should {{agentName}} mute and stop responding unless mentioned?
+
+Respond YES if:
+- User asked to stop/be quiet
+- Agent responses are annoying users
+- Conversation is hostile
+
+Otherwise NO.`;
+
+    const prompt = composePromptFromState({ state, template: shouldMuteTemplate });
+    const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+      runtime,
+    });
+
+    if (decision.toLowerCase().includes('yes')) {
+      await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'MUTED');
+
+      return {
+        success: true,
+        text: 'Going silent in this room',
+        values: { roomMuted: true },
+      };
+    }
+
+    return {
+      success: true,
+      text: 'Continuing to participate',
+      values: { roomMuted: false },
+    };
+  },
+};
+```
+
+##### 2. Multi-Target Actions
+
+Actions can handle complex targeting and routing:
+
+```typescript
+export const sendMessageAction: Action = {
+  name: 'SEND_MESSAGE',
+  similes: ['DM', 'MESSAGE', 'PING', 'TELL', 'NOTIFY'],
+  description: 'Send a message to a user or room on any platform',
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Extract target using LLM
+    const targetPrompt = composePromptFromState({
+      state,
+      template: `Extract message target from: {{recentMessages}}
+Return JSON:
+{
+  "targetType": "user|room",
+  "source": "platform",
+  "identifiers": { "username": "...", "roomName": "..." }
+}`,
+    });
+
+    const targetData = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      prompt: targetPrompt,
+      schema: targetSchema,
+    });
+
+    // Route to appropriate service
+    if (targetData.targetType === 'user') {
+      const user = await findEntityByName(runtime, message, state);
+      const service = runtime.getService(targetData.source);
+
+      await service.sendDirectMessage(runtime, user.id, message.content.text);
+
+      return {
+        success: true,
+        text: `Message sent to ${user.names[0]}`,
+        values: { messageSent: true, targetUser: user.names[0] },
+      };
+    }
+
+    // Handle room messages similarly...
+  },
+};
+```
+
+##### 3. Stateful Reply Action
+
+The simplest yet most important action - generating contextual responses:
+
+```typescript
+export const replyAction: Action = {
+  name: 'REPLY',
+  similes: ['RESPOND', 'ANSWER', 'SPEAK', 'SAY'],
+  description: 'Generate and send a response to the conversation',
+
+  validate: async () => true, // Always valid
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Access chain context
+    const previousActions = options?.context?.previousResults || [];
+
+    // Include dynamic providers from previous actions
+    const dynamicProviders = responses?.flatMap((r) => r.content?.providers ?? []) ?? [];
+
+    // Compose state with action results
+    state = await runtime.composeState(message, [
+      ...dynamicProviders,
+      'RECENT_MESSAGES',
+      'ACTION_STATE', // Includes previous action results
+    ]);
+
+    const replyTemplate = `# Generate response as {{agentName}}
+
+{{providers}}
+
+Previous actions taken: {{actionResults}}
+
+Generate thoughtful response considering the context and any actions performed.
+
+\`\`\`json
+{
+  "thought": "reasoning about response",
+  "message": "the actual response"
+}
+\`\`\``;
+
+    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      prompt: composePromptFromState({ state, template: replyTemplate }),
+    });
+
+    await callback({
+      text: response.message,
+      thought: response.thought,
+      actions: ['REPLY'],
+    });
+
+    return {
+      success: true,
+      text: 'Reply sent',
+      values: {
+        lastReply: response.message,
+        thoughtProcess: response.thought,
+      },
+    };
+  },
+};
+```
+
+##### 4. Permission-Based Actions
+
+Actions that modify system state with permission checks:
+
+```typescript
+export const updateRoleAction: Action = {
+  name: 'UPDATE_ROLE',
+  similes: ['MAKE_ADMIN', 'CHANGE_PERMISSIONS', 'PROMOTE', 'DEMOTE'],
+  description: 'Update user roles with permission validation',
+
+  validate: async (runtime, message) => {
+    // Only in group contexts with server ID
+    return message.content.channelType === ChannelType.GROUP && !!message.content.serverId;
+  },
+
+  handler: async (runtime, message, state) => {
+    // Get requester's role
+    const world = await runtime.getWorld(worldId);
+    const requesterRole = world.metadata?.roles[message.entityId] || Role.NONE;
+
+    // Extract role changes using LLM
+    const changes = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      prompt: 'Extract role assignments from: ' + state.text,
+      schema: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            entityId: { type: 'string' },
+            newRole: {
+              type: 'string',
+              enum: ['OWNER', 'ADMIN', 'NONE'],
+            },
+          },
+        },
+      },
+    });
+
+    // Validate each change
+    const results = [];
+    for (const change of changes) {
+      if (canModifyRole(requesterRole, currentRole, change.newRole)) {
+        world.metadata.roles[change.entityId] = change.newRole;
+        results.push({ success: true, ...change });
+      } else {
+        results.push({
+          success: false,
+          reason: 'Insufficient permissions',
+          ...change,
+        });
+      }
+    }
+
+    await runtime.updateWorld(world);
+
+    return {
+      success: results.some((r) => r.success),
+      text: `Updated ${results.filter((r) => r.success).length} roles`,
+      data: { results },
+    };
+  },
+};
+```
+
+#### Action Best Practices
+
+1. **Always Return ActionResult**
+
+   ```typescript
+   // ❌ Old style - DON'T DO THIS
+   return true;
+
+   // ✅ New style - ALWAYS DO THIS
+   return {
+     success: true,
+     text: 'Action completed',
+     values: {
+       /* state updates */
+     },
+     data: {
+       /* raw data */
+     },
+   };
+   ```
+
+2. **Use Callbacks for User Feedback**
+
+   ```typescript
+   // Acknowledge immediately
+   await callback?.({
+     text: "I'm working on that...",
+     actions: ['MY_ACTION'],
+   });
+
+   // Do the work
+   const result = await longRunningOperation();
+
+   // Final response
+   await callback?.({
+     text: `Done! ${result.summary}`,
+     actions: ['MY_ACTION_COMPLETE'],
+   });
+   ```
+
+3. **Chain Actions with Context**
+
+   ```typescript
+   // Access previous results
+   const previousResults = options?.context?.previousResults || [];
+   const lastResult = previousResults[previousResults.length - 1];
+
+   if (lastResult?.data?.needsFollowUp) {
+     // Continue the chain
+   }
+   ```
+
+4. **Validate Thoughtfully**
+
+   ```typescript
+   validate: async (runtime, message, state) => {
+     // Check multiple conditions
+     const hasPermission = await checkPermissions(runtime, message);
+     const hasRequiredService = !!runtime.getService('required-service');
+     const isRightContext = message.content.channelType === ChannelType.GROUP;
+
+     return hasPermission && hasRequiredService && isRightContext;
+   };
+   ```
+
+5. **Write Teaching Examples**
+   ```typescript
+   examples: [
+     // Show the happy path
+     [
+       { name: '{{user}}', content: { text: 'Please do X' } },
+       {
+         name: '{{agent}}',
+         content: {
+           text: 'Doing X now!',
+           actions: ['DO_X'],
+         },
+       },
+     ],
+     // Show edge cases
+     [
+       { name: '{{user}}', content: { text: 'Do X without permission' } },
+       {
+         name: '{{agent}}',
+         content: {
+           text: "I don't have permission for that",
+           actions: ['REPLY'],
+         },
+       },
+     ],
+     // Show the action being ignored when not relevant
+     [
+       { name: '{{user}}', content: { text: 'Unrelated conversation' } },
+       {
+         name: '{{agent}}',
+         content: {
+           text: 'Responding normally',
+           actions: ['REPLY'],
+         },
+       },
+     ],
+   ];
+   ```
+
+#### Understanding ActionResult
+
+The `ActionResult` interface is crucial for action interoperability:
+
+```typescript
+interface ActionResult {
+  // REQUIRED: Indicates if the action succeeded
+  success: boolean;
+
+  // Optional: User-facing message about what happened
+  text?: string;
+
+  // Optional: Values to merge into state for subsequent actions
+  values?: Record<string, any>;
+
+  // Optional: Raw data for logging/debugging
+  data?: Record<string, any>;
+
+  // Optional: Error information if action failed
+  error?: string | Error;
+}
+```
+
+**Why ActionResult Matters:**
+
+1. **State Propagation**: Values from one action flow to the next
+2. **Error Handling**: Consistent error reporting across all actions
+3. **Logging**: Structured data for debugging and analytics
+4. **Action Chaining**: Success/failure determines flow control
+
+#### Action Execution Lifecycle
+
+```typescript
+// 1. Provider phase - gather context
+const state = await runtime.composeState(message, ['ACTIONS']);
+
+// 2. Action selection - LLM chooses based on available actions
+const validActions = await getValidActions(runtime, message, state);
+
+// 3. Action execution - may include multiple actions
+await runtime.processActions(message, responses, state, callback);
+
+// 4. State accumulation - each action's values merge into state
+// Action 1 returns: { values: { step1Complete: true } }
+// Action 2 receives: state.values.step1Complete === true
+
+// 5. Evaluator phase - post-processing
+await runtime.evaluate(message, state, true, callback, responses);
+```
+
+#### Advanced Action Techniques
+
+##### Dynamic Action Registration
+
+```typescript
+// Actions can register other actions dynamically
+export const pluginLoaderAction: Action = {
+  name: 'LOAD_PLUGIN',
+
+  handler: async (runtime, message, state) => {
+    const pluginName = extractPluginName(state);
+    const plugin = await import(pluginName);
+
+    // Register new actions from the loaded plugin
+    if (plugin.actions) {
+      for (const action of plugin.actions) {
+        runtime.registerAction(action);
+      }
+    }
+
+    return {
+      success: true,
+      text: `Loaded ${plugin.actions.length} new actions`,
+      values: {
+        loadedPlugin: pluginName,
+        newActions: plugin.actions.map((a) => a.name),
+      },
+    };
+  },
+};
+```
+
+##### Conditional Action Chains
+
+```typescript
+export const conditionalWorkflow: Action = {
+  name: 'SMART_WORKFLOW',
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Step 1: Analyze
+    const analysis = await analyzeRequest(state);
+
+    if (analysis.requiresApproval) {
+      // Trigger approval action
+      await callback({
+        text: 'This requires approval',
+        actions: ['REQUEST_APPROVAL'],
+      });
+
+      return {
+        success: true,
+        values: {
+          workflowPaused: true,
+          pendingApproval: true,
+        },
+      };
+    }
+
+    // Step 2: Execute
+    if (analysis.complexity === 'simple') {
+      return await executeSimpleTask(runtime, analysis);
+    } else {
+      // Trigger complex workflow
+      await callback({
+        text: 'Starting complex workflow',
+        actions: ['COMPLEX_WORKFLOW'],
+      });
+
+      return {
+        success: true,
+        values: {
+          workflowType: 'complex',
+          analysisData: analysis,
+        },
+      };
+    }
+  },
+};
+```
+
+##### Action Composition
+
+```typescript
+// Compose multiple actions into higher-level operations
+export const compositeAction: Action = {
+  name: 'SEND_AND_TRACK',
+  description: 'Send a message and track its delivery',
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Execute sub-actions
+    const sendResult = await sendMessageAction.handler(runtime, message, state, options, callback);
+
+    if (!sendResult.success) {
+      return sendResult; // Propagate failure
+    }
+
+    // Track the sent message
+    const trackingId = generateTrackingId();
+    await runtime.createMemory(
+      {
+        id: trackingId,
+        entityId: message.entityId,
+        roomId: message.roomId,
+        content: {
+          type: 'message_tracking',
+          sentTo: sendResult.data.targetId,
+          sentAt: Date.now(),
+          messageContent: sendResult.data.messageContent,
+        },
+      },
+      'tracking'
+    );
+
+    return {
+      success: true,
+      text: `Message sent and tracked (${trackingId})`,
+      values: {
+        ...sendResult.values,
+        trackingId,
+        tracked: true,
+      },
+      data: {
+        sendResult,
+        trackingId,
+      },
+    };
+  },
+};
+```
+
+##### Self-Modifying Actions
+
+```typescript
+export const learningAction: Action = {
+  name: 'ADAPTIVE_RESPONSE',
+
+  handler: async (runtime, message, state) => {
+    // Retrieve past performance
+    const history = await runtime.getMemories({
+      tableName: 'action_feedback',
+      roomId: message.roomId,
+      count: 100,
+    });
+
+    // Analyze what worked well
+    const analysis = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: `Analyze these past interactions and identify patterns:
+${JSON.stringify(history)}
+What response strategies were most effective?`,
+    });
+
+    // Adapt behavior based on learning
+    const strategy = determineStrategy(analysis);
+    const response = await generateResponse(state, strategy);
+
+    // Store for future learning
+    await runtime.createMemory(
+      {
+        id: generateId(),
+        content: {
+          type: 'action_feedback',
+          strategy: strategy.name,
+          context: state.text,
+          response: response.text,
+        },
+      },
+      'action_feedback'
+    );
+
+    return {
+      success: true,
+      text: response.text,
+      values: {
+        strategyUsed: strategy.name,
+        confidence: strategy.confidence,
+      },
+    };
+  },
+};
+```
+
+#### Testing Actions
+
+Actions should be thoroughly tested to ensure they behave correctly in various scenarios:
+
+```typescript
+// __tests__/myAction.test.ts
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { myAction } from '../src/actions/myAction';
+import { createMockRuntime } from '@elizaos/test-utils';
+import { ActionResult, Memory, State } from '@elizaos/core';
+
+describe('MyAction', () => {
+  let mockRuntime: any;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime({
+      settings: { MY_API_KEY: 'test-key' },
+    });
+
+    mockMessage = {
+      id: 'test-id',
+      entityId: 'user-123',
+      roomId: 'room-456',
+      content: { text: 'Do the thing' },
+    };
+
+    mockState = {
+      values: { recentMessages: 'test context' },
+      data: { room: { name: 'Test Room' } },
+      text: 'State text',
+    };
+  });
+
+  describe('validation', () => {
+    it('should validate when all requirements are met', async () => {
+      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+      expect(isValid).toBe(true);
+    });
+
+    it('should not validate without required service', async () => {
+      mockRuntime.getService = () => null;
+      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+      expect(isValid).toBe(false);
+    });
+  });
+
+  describe('handler', () => {
+    it('should return success ActionResult on successful execution', async () => {
+      const mockCallback = jest.fn();
+
+      const result = await myAction.handler(mockRuntime, mockMessage, mockState, {}, mockCallback);
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain('completed');
+      expect(result.values).toHaveProperty('lastActionTime');
+      expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('should handle errors gracefully', async () => {
+      // Make service throw error
+      mockRuntime.getService = () => {
+        throw new Error('Service unavailable');
+      };
+
+      const result = await myAction.handler(mockRuntime, mockMessage, mockState);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.text).toContain('Failed');
+    });
+
+    it('should access previous action results', async () => {
+      const previousResults: ActionResult[] = [
+        {
+          success: true,
+          values: { previousData: 'test' },
+          data: { actionName: 'PREVIOUS_ACTION' },
+        },
+      ];
+
+      const result = await myAction.handler(mockRuntime, mockMessage, mockState, {
+        context: { previousResults },
+      });
+
+      // Verify it used previous results
+      expect(result.values?.usedPreviousData).toBe(true);
+    });
+  });
+
+  describe('examples', () => {
+    it('should have valid example structure', () => {
+      expect(myAction.examples).toBeDefined();
+      expect(Array.isArray(myAction.examples)).toBe(true);
+
+      // Each example should be a conversation array
+      for (const example of myAction.examples!) {
+        expect(Array.isArray(example)).toBe(true);
+
+        // Each message should have name and content
+        for (const message of example) {
+          expect(message).toHaveProperty('name');
+          expect(message).toHaveProperty('content');
+        }
+      }
+    });
+  });
+});
+```
+
+##### E2E Testing Actions
+
+For integration testing with a live runtime:
+
+```typescript
+// tests/e2e/myAction.e2e.ts
+export const myActionE2ETests = {
+  name: 'MyAction E2E Tests',
+  tests: [
+    {
+      name: 'should execute full action flow',
+      fn: async (runtime: IAgentRuntime) => {
+        // Create test message
+        const message: Memory = {
+          id: generateId(),
+          entityId: 'test-user',
+          roomId: runtime.agentId,
+          content: {
+            text: 'Please do the thing',
+            source: 'test',
+          },
+        };
+
+        // Store message
+        await runtime.createMemory(message, 'messages');
+
+        // Compose state
+        const state = await runtime.composeState(message);
+
+        // Execute action
+        const result = await myAction.handler(runtime, message, state, {}, async (response) => {
+          // Verify callback responses
+          expect(response.text).toBeDefined();
+        });
+
+        // Verify result
+        expect(result.success).toBe(true);
+
+        // Verify side effects
+        const memories = await runtime.getMemories({
+          roomId: message.roomId,
+          tableName: 'action_results',
+          count: 1,
+        });
+
+        expect(memories.length).toBeGreaterThan(0);
+      },
+    },
+  ],
+};
+```
+
+### 3. Providers
+
+Providers supply contextual information to the agent's state before it makes decisions. They act as the agent's "senses", gathering relevant data that helps the LLM understand the current context.
+
+```typescript
+import { Provider, ProviderResult, IAgentRuntime, Memory, State, addHeader } from '@elizaos/core';
+
+export const myProvider: Provider = {
+  name: 'myProvider',
+  description: 'Provides contextual information about X',
+
+  // Optional: Set to true if this provider should only run when explicitly requested
+  dynamic: false,
+
+  // Optional: Control execution order (lower numbers run first, can be negative)
+  position: 100,
+
+  // Optional: Set to true to exclude from default provider list
+  private: false,
+
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
+    try {
+      const service = runtime.getService('my-service') as MyService;
+      const data = await service.getCurrentData();
+
+      // Format data for LLM context
+      const formattedText = addHeader(
+        '# Current System Status',
+        `Field 1: ${data.field1}
+Field 2: ${data.field2}
+Last updated: ${new Date(data.timestamp).toLocaleString()}`
+      );
+
+      return {
+        // Text that will be included in the LLM prompt
+        text: formattedText,
+
+        // Values that can be accessed by other providers/actions
+        values: {
+          currentField1: data.field1,
+          currentField2: data.field2,
+          lastUpdate: data.timestamp,
+        },
+
+        // Raw data for internal use
+        data: {
+          raw: data,
+          processed: true,
+        },
+      };
+    } catch (error) {
+      return {
+        text: 'Unable to retrieve current status',
+        values: {},
+        data: { error: error.message },
+      };
+    }
+  },
+};
+```
+
+#### Provider Properties
+
+- **`name`** (required): Unique identifier for the provider
+- **`description`** (optional): Human-readable description of what the provider does
+- **`dynamic`** (optional, default: false): If true, the provider is not included in default state composition and must be explicitly requested
+- **`position`** (optional, default: 0): Controls execution order. Lower numbers execute first. Can be negative for early execution
+- **`private`** (optional, default: false): If true, the provider is excluded from regular provider lists and must be explicitly included
+
+#### Provider Execution Flow
+
+1. Providers are executed during `runtime.composeState()`
+2. By default, all non-private, non-dynamic providers are included
+3. Providers are sorted by position and executed in order
+4. Results are aggregated into a unified state object
+5. The composed state is passed to actions and the LLM for decision-making
+
+#### Common Provider Patterns
+
+**Recent Messages Provider (position: 100)**
+
+```typescript
+export const recentMessagesProvider: Provider = {
+  name: 'RECENT_MESSAGES',
+  description: 'Recent messages, interactions and other memories',
+  position: 100, // Runs after most other providers
+
+  get: async (runtime, message) => {
+    const messages = await runtime.getMemories({
+      roomId: message.roomId,
+      count: runtime.getConversationLength(),
+      unique: false,
+    });
+
+    const formattedMessages = formatMessages(messages);
+
+    return {
+      text: addHeader('# Conversation Messages', formattedMessages),
+      values: { recentMessages: formattedMessages },
+      data: { messages },
+    };
+  },
+};
+```
+
+**Actions Provider (position: -1)**
+
+```typescript
+export const actionsProvider: Provider = {
+  name: 'ACTIONS',
+  description: 'Possible response actions',
+  position: -1, // Runs early to inform other providers
+
+  get: async (runtime, message, state) => {
+    // Get all valid actions for this context
+    const validActions = await Promise.all(
+      runtime.actions.map(async (action) => {
+        const isValid = await action.validate(runtime, message, state);
+        return isValid ? action : null;
+      })
+    );
+
+    const actions = validActions.filter(Boolean);
+    const actionNames = formatActionNames(actions);
+
+    return {
+      text: `Possible response actions: ${actionNames}`,
+      values: { actionNames },
+      data: { actionsData: actions },
+    };
+  },
+};
+```
+
+**Dynamic Knowledge Provider**
+
+```typescript
+export const knowledgeProvider: Provider = {
+  name: 'KNOWLEDGE',
+  description: 'Knowledge from the knowledge base',
+  dynamic: true, // Only runs when explicitly requested
+
+  get: async (runtime, message) => {
+    const knowledgeService = runtime.getService('knowledge');
+    const relevantKnowledge = await knowledgeService.search(message.content.text);
+
+    if (!relevantKnowledge.length) {
+      return { text: '', values: {}, data: {} };
+    }
+
+    return {
+      text: addHeader('# Relevant Knowledge', formatKnowledge(relevantKnowledge)),
+      values: { knowledgeUsed: true },
+      data: { knowledge: relevantKnowledge },
+    };
+  },
+};
+```
+
+### 4. Evaluators
+
+Evaluators run after the agent generates a response, allowing for analysis, learning, and side effects. They use the same handler pattern as actions but run post-response.
+
+```typescript
+import { Evaluator, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+
+export const myEvaluator: Evaluator = {
+  name: 'myEvaluator',
+  description: 'Analyzes responses for quality and extracts insights',
+
+  // Examples help the LLM understand when to use this evaluator
+  examples: [
+    {
+      prompt: 'User asks about product pricing',
+      messages: [
+        { name: 'user', content: { text: 'How much does it cost?' } },
+        { name: 'assistant', content: { text: 'The price is $99' } },
+      ],
+      outcome: 'Extract pricing information for future reference',
+    },
+  ],
+
+  // Similar descriptions for fuzzy matching
+  similes: ['RESPONSE_ANALYZER', 'QUALITY_CHECK'],
+
+  // Optional: Run even if the agent didn't respond
+  alwaysRun: false,
+
+  // Validation: Determines if evaluator should run
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    // Example: Only run for certain types of responses
+    return message.content?.text?.includes('transaction') || false;
+  },
+
+  // Handler: Main evaluation logic
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: { [key: string]: unknown },
+    callback?: HandlerCallback,
+    responses?: Memory[]
+  ): Promise<void> => {
+    try {
+      // Analyze the response
+      const responseText = responses?.[0]?.content?.text || '';
+
+      if (responseText.includes('transaction')) {
+        // Extract and store transaction data
+        const txHash = extractTransactionHash(responseText);
+
+        if (txHash) {
+          // Store for future reference
+          await runtime.createMemory(
+            {
+              id: generateId(),
+              entityId: message.entityId,
+              roomId: message.roomId,
+              content: {
+                text: `Transaction processed: ${txHash}`,
+                type: 'transaction_record',
+                data: { txHash, timestamp: Date.now() },
+              },
+            },
+            'facts'
+          );
+
+          // Log the evaluation
+          await runtime.adapter.log({
+            entityId: message.entityId,
+            roomId: message.roomId,
+            type: 'evaluator',
+            body: {
+              evaluator: 'myEvaluator',
+              result: 'transaction_extracted',
+              txHash,
+            },
+          });
+        }
+      }
+
+      // Can also trigger follow-up actions via callback
+      if (callback) {
+        callback({
+          text: 'Analysis complete',
+          content: { analyzed: true },
+        });
+      }
+    } catch (error) {
+      runtime.logger.error('Evaluator error:', error);
+    }
+  },
+};
+```
+
+#### Common Evaluator Patterns
+
+**Fact Extraction Evaluator**
+
+```typescript
+export const factExtractor: Evaluator = {
+  name: 'FACT_EXTRACTOR',
+  description: 'Extracts facts from conversations for long-term memory',
+  alwaysRun: true, // Run after every response
+
+  validate: async () => true, // Always valid
+
+  handler: async (runtime, message, state, options, callback, responses) => {
+    const facts = await extractFactsFromConversation(runtime, message, responses);
+
+    for (const fact of facts) {
+      await runtime.createMemory(
+        {
+          id: generateId(),
+          entityId: message.entityId,
+          roomId: message.roomId,
+          content: {
+            text: fact.statement,
+            type: 'fact',
+            confidence: fact.confidence,
+          },
+        },
+        'facts',
+        true
+      ); // unique = true to avoid duplicates
+    }
+  },
+};
+```
+
+**Response Quality Evaluator**
+
+```typescript
+export const qualityEvaluator: Evaluator = {
+  name: 'QUALITY_CHECK',
+  description: 'Evaluates response quality and coherence',
+
+  validate: async (runtime, message) => {
+    // Only evaluate responses to direct questions
+    return message.content?.text?.includes('?') || false;
+  },
+
+  handler: async (runtime, message, state, options, callback, responses) => {
+    const quality = await assessResponseQuality(responses[0]);
+
+    if (quality.score < 0.7) {
+      // Log low quality response for review
+      await runtime.adapter.log({
+        entityId: message.entityId,
+        roomId: message.roomId,
+        type: 'quality_alert',
+        body: {
+          score: quality.score,
+          issues: quality.issues,
+          responseId: responses[0].id,
+        },
+      });
+    }
+  },
+};
+```
+
+### Understanding the Agent Lifecycle: Providers, Actions, and Evaluators
+
+When an agent receives a message, components execute in this order:
+
+1. **Providers** gather context by calling `runtime.composeState()`
+
+   - Non-private, non-dynamic providers run automatically
+   - Sorted by position (lower numbers first)
+   - Results aggregated into state object
+
+2. **Actions** are validated and presented to the LLM
+
+   - The actions provider lists available actions
+   - LLM decides which actions to execute
+   - Actions execute with the composed state
+
+3. **Evaluators** run after response generation
+   - Process the response for insights
+   - Can store memories, log events, or trigger follow-ups
+   - Use `alwaysRun: true` to run even without a response
+
+```typescript
+// Example flow in pseudocode
+async function processMessage(message: Memory) {
+  // 1. Compose state with providers
+  const state = await runtime.composeState(message, ['RECENT_MESSAGES', 'CHARACTER', 'ACTIONS']);
+
+  // 2. Generate response using LLM with composed state
+  const response = await generateResponse(state);
+
+  // 3. Execute any actions the LLM chose
+  if (response.actions?.length > 0) {
+    await runtime.processActions(message, [response], state);
+  }
+
+  // 4. Run evaluators on the response
+  await runtime.evaluate(message, state, true, callback, [response]);
+}
+```
+
+### Accessing Provider Data in Actions
+
+Actions receive the composed state containing all provider data. Here's how to access it:
+
+```typescript
+export const myAction: Action = {
+  name: 'MY_ACTION',
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Access provider values
+    const recentMessages = state.values?.recentMessages;
+    const actionNames = state.values?.actionNames;
+
+    // Access raw provider data
+    const providerData = state.data?.providers;
+    if (providerData) {
+      // Get specific provider's data
+      const knowledgeData = providerData['KNOWLEDGE']?.data;
+      const characterData = providerData['CHARACTER']?.data;
+    }
+
+    // Access action execution context
+    const previousResults = state.data?.actionResults || [];
+    const actionPlan = state.data?.actionPlan;
+
+    // Use the data to make decisions
+    if (state.values?.knowledgeUsed) {
+      // Knowledge was found, incorporate it
+    }
+  },
+};
+```
+
+### Custom Provider Inclusion
+
+To include specific providers when composing state:
+
+```typescript
+// Include only specific providers
+const state = await runtime.composeState(message, ['CHARACTER', 'KNOWLEDGE'], true);
+
+// Add extra providers to the default set
+const state = await runtime.composeState(message, ['KNOWLEDGE', 'CUSTOM_PROVIDER']);
+
+// Skip cache and regenerate
+const state = await runtime.composeState(message, null, false, true);
+```
+
+### 5. Model Handlers (LLM Plugins)
+
+For LLM plugins, implement model handlers for different model types:
+
+```typescript
+import { ModelType, GenerateTextParams, EventType } from '@elizaos/core';
+
+export const models = {
+  [ModelType.TEXT_SMALL]: async (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams
+  ): Promise<string> => {
+    const client = createClient(runtime);
+    const { text, usage } = await client.generateText({
+      model: getSmallModel(runtime),
+      prompt: params.prompt,
+      temperature: params.temperature ?? 0.7,
+      maxTokens: params.maxTokens ?? 4096,
+    });
+
+    // Emit usage event
+    runtime.emitEvent(EventType.MODEL_USED, {
+      provider: 'my-llm',
+      type: ModelType.TEXT_SMALL,
+      tokens: usage,
+    });
+
+    return text;
+  },
+
+  [ModelType.TEXT_EMBEDDING]: async (
+    runtime: IAgentRuntime,
+    params: TextEmbeddingParams | string | null
+  ): Promise<number[]> => {
+    if (params === null) {
+      // Return test embedding
+      return Array(1536).fill(0);
+    }
+
+    const text = typeof params === 'string' ? params : params.text;
+    const embedding = await client.createEmbedding(text);
+    return embedding;
+  },
+};
+```
+
+### 6. HTTP Routes and API Endpoints
+
+Plugins can expose HTTP endpoints for webhooks, APIs, or web interfaces. Routes are defined using the `Route` type and exported as part of the plugin:
+
+```typescript
+import { Plugin, Route, IAgentRuntime } from '@elizaos/core';
+
+// Define route handlers
+async function statusHandler(req: any, res: any, runtime: IAgentRuntime) {
+  try {
+    const service = runtime.getService('my-service') as MyService;
+    const status = await service.getStatus();
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        success: true,
+        data: status,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  } catch (error) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: error.message,
+      })
+    );
+  }
+}
+
+// Export routes array
+export const myPluginRoutes: Route[] = [
+  {
+    type: 'GET',
+    path: '/api/status',
+    handler: statusHandler,
+    public: true, // Makes this route discoverable in UI
+    name: 'API Status', // Display name for UI tab
+  },
+  {
+    type: 'POST',
+    path: '/api/webhook',
+    handler: webhookHandler,
+  },
+];
+
+// Include routes in plugin definition
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  description: 'My plugin with HTTP routes',
+  services: [MyService],
+  routes: myPluginRoutes, // Add routes here
+};
+```
+
+#### Response Helpers
+
+Create consistent API responses:
+
+```typescript
+// Helper functions for standardized responses
+function sendSuccess(res: any, data: any, status = 200) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ success: true, data }));
+}
+
+function sendError(res: any, status: number, message: string, details?: any) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(
+    JSON.stringify({
+      success: false,
+      error: { message, details },
+    })
+  );
+}
+
+// Use in handlers
+async function apiHandler(req: any, res: any, runtime: IAgentRuntime) {
+  try {
+    const result = await processRequest(req.body);
+    sendSuccess(res, result);
+  } catch (error) {
+    sendError(res, 500, 'Processing failed', error.message);
+  }
+}
+```
+
+#### Authentication Patterns
+
+Implement authentication in route handlers:
+
+```typescript
+async function authenticatedHandler(req: any, res: any, runtime: IAgentRuntime) {
+  // Check API key from headers
+  const apiKey = req.headers['x-api-key'];
+  const validKey = runtime.getSetting('API_KEY');
+
+  if (!apiKey || apiKey !== validKey) {
+    sendError(res, 401, 'Unauthorized');
+    return;
+  }
+
+  // Process authenticated request
+  const data = await processAuthenticatedRequest(req);
+  sendSuccess(res, data);
+}
+```
+
+#### File Upload Support
+
+Handle multipart form data:
+
+```typescript
+// The server automatically applies multer middleware for multipart routes
+export const uploadRoute: Route = {
+  type: 'POST',
+  path: '/api/upload',
+  handler: async (req: any, res: any, runtime: IAgentRuntime) => {
+    // Access uploaded files via req.files
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      sendError(res, 400, 'No files uploaded');
+      return;
+    }
+
+    // Process uploaded files
+    for (const file of files) {
+      await processFile(file.buffer, file.originalname);
+    }
+
+    sendSuccess(res, { processed: files.length });
+  },
+  isMultipart: true, // Enable multipart handling
+};
+```
+
+## Advanced: Creating Plugins Manually
+
+For developers working within the elizaOS monorepo or those who need complete control over their plugin structure, you can create plugins manually. This approach is useful when:
+
+- Contributing directly to the elizaOS monorepo
+- Creating highly customized plugin structures
+- Integrating with existing codebases
+- Learning the internals of plugin architecture
+
+### Step 1: Set Up the Project
+
+```bash
+# Create plugin directory
+mkdir packages/plugin-myplugin
+cd packages/plugin-myplugin
+
+# Initialize package.json
+bun init -y
+
+# Install dependencies
+bun add @elizaos/core zod
+bun add -d typescript tsup @types/node @types/bun
+
+# Create directory structure
+mkdir -p src/{actions,providers,types,constants}
+```
+
+### Step 2: Configure package.json
+
+```json
+{
+  "name": "@yourorg/plugin-myplugin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "lint": "eslint ./src --ext .ts",
+    "format": "prettier --write ./src"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "tsup": "^8.4.0",
+    "@types/bun": "^1.2.16",
+    "@types/node": "^22.15.3"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MY_API_KEY": {
+        "type": "string",
+        "description": "API key for MyPlugin",
+        "required": true,
+        "sensitive": true
+      }
+    }
+  }
+}
+```
+
+### Step 3: Create TypeScript Configuration
+
+```typescript
+// tsconfig.json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+```typescript
+// tsup.config.ts
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm'],
+  dts: true,
+  splitting: false,
+  sourcemap: true,
+  clean: true,
+  external: ['@elizaos/core'],
+});
+```
+
+```toml
+# bunfig.toml
+[install]
+# Optional: Configure registry
+# registry = "https://registry.npmjs.org"
+
+# Optional: Save exact versions
+save-exact = true
+
+# Optional: Configure trusted dependencies for postinstall scripts
+# trustedDependencies = ["package-name"]
+```
+
+### Step 4: Implement the Plugin
+
+```typescript
+// src/index.ts
+import type { Plugin } from '@elizaos/core';
+import { MyService } from './service';
+import { myAction } from './actions/myAction';
+import { myProvider } from './providers/myProvider';
+
+export const myPlugin: Plugin = {
+  name: 'myplugin',
+      description: 'My custom plugin for elizaOS',
+  services: [MyService], // Pass the class constructor, not an instance
+  actions: [myAction],
+  providers: [myProvider],
+  routes: myPluginRoutes, // Optional: HTTP endpoints
+
+  init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Optional initialization logic
+    logger.info('MyPlugin initialized');
+  },
+};
+
+export default myPlugin;
+```
+
+## Plugin Types and Patterns
+
+### Plugin Dependencies and Priority
+
+Plugins can declare dependencies on other plugins and control their loading order:
+
+```typescript
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  description: 'Plugin that depends on other plugins',
+
+  // Required dependencies - plugin won't load without these
+  dependencies: ['plugin-sql', 'plugin-bootstrap'],
+
+  // Optional test dependencies
+  testDependencies: ['plugin-test-utils'],
+
+  // Higher priority = loads earlier (default: 0)
+  priority: 100,
+
+  async init(config, runtime) {
+    // Dependencies are guaranteed to be loaded
+    const sqlService = runtime.getService('sql');
+    if (!sqlService) {
+      throw new Error('SQL service not found despite dependency');
+    }
+  },
+};
+```
+
+#### Checking for Optional Dependencies
+
+```typescript
+async init(config, runtime) {
+  // Check if optional plugin is available
+  const hasKnowledgePlugin = runtime.getService('knowledge') !== null;
+
+  if (hasKnowledgePlugin) {
+    logger.info('Knowledge plugin detected, enabling enhanced features');
+    this.enableKnowledgeIntegration = true;
+  }
+}
+```
+
+### Platform Plugins
+
+Platform plugins connect agents to communication platforms:
+
+```typescript
+// Key patterns for platform plugins:
+// 1. Entity mapping (server → world, channel → room, user → entity)
+// 2. Message conversion
+// 3. Event handling
+// 4. Rate limiting
+
+export class PlatformService extends Service {
+  private client: PlatformClient;
+  private messageManager: MessageManager;
+
+  async handleIncomingMessage(platformMessage: any) {
+    // 1. Sync entities
+    const { worldId, roomId, userId } = await this.syncEntities(platformMessage);
+
+    // 2. Convert to Memory
+    const memory = await this.messageManager.convertToMemory(platformMessage, roomId, userId);
+
+    // 3. Process through runtime
+    await this.runtime.processMemory(memory);
+
+    // 4. Emit events
+    await this.runtime.emit(EventType.MESSAGE_RECEIVED, memory);
+  }
+}
+```
+
+### LLM Plugins
+
+LLM plugins integrate different AI model providers:
+
+```typescript
+// Key patterns for LLM plugins:
+// 1. Model type handlers
+// 2. Configuration management
+// 3. Usage tracking
+// 4. Error handling
+
+export const llmPlugin: Plugin = {
+  name: 'my-llm',
+  models: {
+    [ModelType.TEXT_LARGE]: async (runtime, params) => {
+      const client = createClient(runtime);
+      const response = await client.generate(params);
+
+      // Track usage
+      runtime.emitEvent(EventType.MODEL_USED, {
+        provider: 'my-llm',
+        tokens: response.usage,
+      });
+
+      return response.text;
+    },
+  },
+};
+```
+
+### Event Handling
+
+Plugins can register event handlers to react to system events:
+
+```typescript
+import { EventType, EventHandler } from '@elizaos/core';
+
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+
+  events: {
+    // Handle message events
+    [EventType.MESSAGE_CREATED]: [
+      async (params) => {
+        logger.info('New message created:', params.message.id);
+        // React to new messages
+      },
+    ],
+
+    // Handle custom events
+    'custom:data-sync': [
+      async (params) => {
+        await syncDataWithExternal(params);
+      },
+    ],
+  },
+
+  async init(config, runtime) {
+    // Emit custom events
+    runtime.emitEvent('custom:data-sync', {
+      timestamp: Date.now(),
+      source: 'my-plugin',
+    });
+  },
+};
+```
+
+### DeFi Plugins
+
+DeFi plugins enable blockchain interactions:
+
+```typescript
+// Key patterns for DeFi plugins:
+// 1. Wallet management
+// 2. Transaction handling
+// 3. Gas optimization
+// 4. Security validation
+
+export class DeFiService extends Service {
+  private walletClient: WalletClient;
+  private publicClient: PublicClient;
+
+  async executeTransaction(params: TransactionParams) {
+    // 1. Validate inputs
+    validateAddress(params.to);
+    validateAmount(params.amount);
+
+    // 2. Estimate gas
+    const gasLimit = await this.estimateGas(params);
+
+    // 3. Execute with retry
+    return await withRetry(() =>
+      this.walletClient.sendTransaction({
+        ...params,
+        gasLimit,
+      })
+    );
+  }
+}
+```
+
+
+## Advanced Configuration
+
+### Configuration Hierarchy
+
+elizaOS follows a specific hierarchy for configuration resolution. Understanding this is critical for proper plugin behavior:
+
+```typescript
+// Configuration resolution order (first found wins):
+// 1. Runtime settings (via runtime.getSetting())
+// 2. Environment variables (process.env)
+// 3. Plugin config defaults
+// 4. Hardcoded defaults
+
+// IMPORTANT: During init(), runtime might not be fully available!
+export async function getConfigValue(
+  key: string,
+  runtime?: IAgentRuntime,
+  defaultValue?: string
+): Promise<string | undefined> {
+  // Try runtime first (if available)
+  if (runtime) {
+    const runtimeValue = runtime.getSetting(key);
+    if (runtimeValue !== undefined) return runtimeValue;
+  }
+
+  // Fall back to environment
+  const envValue = process.env[key];
+  if (envValue !== undefined) return envValue;
+
+  // Use default
+  return defaultValue;
+}
+```
+
+### Init-time vs Runtime Configuration
+
+During plugin initialization, configuration access is different:
+
+```typescript
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+
+  // Plugin-level config defaults
+  config: {
+    DEFAULT_TIMEOUT: 30000,
+    RETRY_ATTEMPTS: 3,
+  },
+
+  async init(config: Record<string, string>, runtime?: IAgentRuntime) {
+    // During init, runtime might not be available or fully initialized
+    // Always check multiple sources:
+
+    const apiKey =
+      config.API_KEY || // From agent character config
+      runtime?.getSetting('API_KEY') || // From runtime (may be undefined)
+      process.env.API_KEY; // From environment
+
+    if (!apiKey) {
+      throw new Error('API_KEY required for my-plugin');
+    }
+
+    // For boolean values, be careful with string parsing
+    const isEnabled =
+      config.FEATURE_ENABLED === 'true' ||
+      runtime?.getSetting('FEATURE_ENABLED') === 'true' ||
+      process.env.FEATURE_ENABLED === 'true';
+  },
+};
+```
+
+### Configuration Validation
+
+Use Zod for runtime validation:
+
+```typescript
+import { z } from 'zod';
+
+export const configSchema = z.object({
+  API_KEY: z.string().min(1, 'API key is required'),
+  ENDPOINT_URL: z.string().url().optional(),
+  TIMEOUT: z.number().positive().default(30000),
+});
+
+export async function validateConfig(runtime: IAgentRuntime) {
+  const config = {
+    API_KEY: runtime.getSetting('MY_API_KEY'),
+    ENDPOINT_URL: runtime.getSetting('MY_ENDPOINT_URL'),
+    TIMEOUT: Number(runtime.getSetting('MY_TIMEOUT') || 30000),
+  };
+
+  return configSchema.parse(config);
+}
+```
+
+### agentConfig in package.json
+
+Declare plugin parameters:
+
+```json
+{
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MY_API_KEY": {
+        "type": "string",
+        "description": "API key for authentication",
+        "required": true,
+        "sensitive": true
+      },
+      "MY_TIMEOUT": {
+        "type": "number",
+        "description": "Request timeout in milliseconds",
+        "required": false,
+        "default": 30000
+      }
+    }
+  }
+}
+```
+
+## Testing Strategies
+
+Bun provides a built-in test runner that's fast and compatible with Jest-like syntax. No need for additional testing frameworks.
+
+### Unit Tests
+
+Test individual components:
+
+```typescript
+// __tests__/myAction.test.ts
+import { describe, it, expect, mock, beforeEach } from 'bun:test';
+import { myAction } from '../src/actions/myAction';
+import { createMockRuntime } from '@elizaos/test-utils';
+
+describe('MyAction', () => {
+  beforeEach(() => {
+    // Reset all mocks before each test
+    mock.restore();
+  });
+
+  it('should validate when configured', async () => {
+    const mockRuntime = createMockRuntime({
+      settings: {
+        MY_API_KEY: 'test-key',
+      },
+    });
+
+    const isValid = await myAction.validate(mockRuntime);
+    expect(isValid).toBe(true);
+  });
+
+  it('should handle action execution', async () => {
+    const mockRuntime = createMockRuntime();
+    const mockService = {
+      executeAction: mock().mockResolvedValue({ success: true }),
+    };
+
+    mockRuntime.getService = mock().mockReturnValue(mockService);
+
+    const callback = mock();
+    const result = await myAction.handler(mockRuntime, mockMessage, mockState, {}, callback);
+
+    expect(result).toBe(true);
+    expect(callback).toHaveBeenCalledWith({
+      text: expect.stringContaining('Successfully'),
+      content: expect.objectContaining({ success: true }),
+    });
+  });
+});
+```
+
+### Integration Tests
+
+Test component interactions:
+
+```typescript
+describe('Plugin Integration', () => {
+  let runtime: IAgentRuntime;
+  let service: MyService;
+
+  beforeAll(async () => {
+    runtime = await createTestRuntime({
+      settings: {
+        MY_API_KEY: process.env.TEST_API_KEY,
+      },
+    });
+
+    service = await MyService.start(runtime);
+  });
+
+  it('should handle complete flow', async () => {
+    const message = createTestMessage('Execute my action');
+    const response = await runtime.processMessage(message);
+
+    expect(response.success).toBe(true);
+  });
+});
+```
+
+### Test Suite Implementation
+
+Include tests in your plugin:
+
+```typescript
+export class MyPluginTestSuite implements TestSuite {
+  name = 'myplugin';
+  tests: Array<{ name: string; fn: (runtime: IAgentRuntime) => Promise<void> }>;
+
+  constructor() {
+    this.tests = [
+      {
+        name: 'Test initialization',
+        fn: this.testInitialization.bind(this),
+      },
+      {
+        name: 'Test action execution',
+        fn: this.testActionExecution.bind(this),
+      },
+    ];
+  }
+
+  private async testInitialization(runtime: IAgentRuntime): Promise<void> {
+    const service = runtime.getService('my-service') as MyService;
+    if (!service) {
+      throw new Error('Service not initialized');
+    }
+
+    const isConnected = await service.isConnected();
+    if (!isConnected) {
+      throw new Error('Failed to connect');
+    }
+  }
+}
+```
+
+## Security Best Practices
+
+### 1. Credential Management
+
+```typescript
+// Never hardcode credentials
+// ❌ BAD
+const apiKey = 'sk-1234...';
+
+// ✅ GOOD
+const apiKey = runtime.getSetting('API_KEY');
+if (!apiKey) {
+  throw new Error('API_KEY not configured');
+}
+```
+
+### 2. Input Validation
+
+```typescript
+function validateInput(input: any): ValidatedInput {
+  // Validate types
+  if (typeof input.address !== 'string') {
+    throw new Error('Invalid address type');
+  }
+
+  // Validate format
+  if (!isValidAddress(input.address)) {
+    throw new Error('Invalid address format');
+  }
+
+  // Sanitize input
+  const sanitized = {
+    address: input.address.toLowerCase().trim(),
+    amount: Math.abs(parseFloat(input.amount)),
+  };
+
+  return sanitized;
+}
+```
+
+### 3. Rate Limiting
+
+```typescript
+class RateLimiter {
+  private requests = new Map<string, number[]>();
+
+  canExecute(userId: string, limit = 10, window = 60000): boolean {
+    const now = Date.now();
+    const userRequests = this.requests.get(userId) || [];
+
+    const recentRequests = userRequests.filter((time) => now - time < window);
+
+    if (recentRequests.length >= limit) {
+      return false;
+    }
+
+    recentRequests.push(now);
+    this.requests.set(userId, recentRequests);
+    return true;
+  }
+}
+```
+
+### 4. Error Handling
+
+```typescript
+export class PluginError extends Error {
+  constructor(message: string, public code: string, public details?: any) {
+    super(message);
+    this.name = 'PluginError';
+  }
+}
+
+async function handleOperation<T>(operation: () => Promise<T>, context: string): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    logger.error(`Error in ${context}:`, error);
+
+    if (error.code === 'NETWORK_ERROR') {
+      throw new PluginError('Network connection failed', 'NETWORK_ERROR', { context });
+    }
+
+    throw new PluginError('An unexpected error occurred', 'UNKNOWN_ERROR', {
+      context,
+      originalError: error,
+    });
+  }
+}
+```
+
+## Publishing and Distribution
+
+For detailed information on publishing your plugin to npm and the elizaOS registry, see our [Plugin Publishing Guide](/guides/plugin-publishing-guide).
+
+### Quick Reference
+
+```bash
+# Test your plugin
+elizaos test
+
+# Dry run to verify everything
+elizaos publish --test
+
+# Publish to npm and registry
+elizaos publish --npm
+```
+
+<Note>
+The Plugin Publishing Guide covers the complete process including:
+- Pre-publication validation
+- npm authentication
+- GitHub repository setup
+- Registry PR submission
+- Post-publication updates
+</Note>
+
+## Reference Examples
+
+### Minimal Plugin
+
+```typescript
+// Minimal viable plugin
+import { Plugin } from '@elizaos/core';
+
+export const minimalPlugin: Plugin = {
+  name: 'minimal',
+  description: 'A minimal plugin example',
+  actions: [
+    {
+      name: 'HELLO',
+      description: 'Says hello',
+      validate: async () => true,
+      handler: async (runtime, message, state, options, callback) => {
+        callback?.({ text: 'Hello from minimal plugin!' });
+        return true;
+      },
+      examples: [],
+    },
+  ],
+};
+
+export default minimalPlugin;
+```
+
+### Complete Templates
+
+- **Quick Start Templates**: Use `elizaos create` for instant plugin scaffolding with pre-configured TypeScript, build tools, and example components
+
+## Common Patterns and Utilities
+
+### Retry Logic
+
+```typescript
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> {
+  let lastError: Error;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
+      }
+    }
+  }
+
+  throw lastError!;
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Plugin not loading**: Check that the plugin is properly exported and listed in the agent's plugins array
+2. **Configuration errors**: Verify all required settings are provided
+3. **Type errors**: Ensure @elizaos/core version matches other plugins
+4. **Runtime errors**: Check service initialization and error handling
+
+### Debug Tips
+
+```typescript
+// Enable detailed logging
+import { elizaLogger } from '@elizaos/core';
+
+elizaLogger.level = 'debug';
+
+// Add debug logging
+elizaLogger.debug('Plugin state:', {
+  service: !!runtime.getService('my-service'),
+  settings: runtime.getSetting('MY_API_KEY') ? 'set' : 'missing',
+});
+```
+
+## Bun-Specific Tips
+
+When developing plugins with Bun:
+
+1. **Fast Installation**: Bun's package installation is significantly faster than npm
+2. **Built-in TypeScript**: No need for separate TypeScript compilation during development
+3. **Native Test Runner**: Use `bun test` for running tests without additional setup (no vitest needed)
+4. **Workspace Support**: Bun handles monorepo workspaces efficiently
+5. **Lock File**: Bun uses `bun.lockb` (binary format) for faster dependency resolution
+
+### Bun Test Features
+
+Bun's built-in test runner provides:
+
+- Jest-compatible API (`describe`, `it`, `expect`, `mock`)
+- Built-in mocking with `mock()` from 'bun:test'
+- Fast execution with no compilation step
+- Coverage reports with `--coverage` flag
+- Watch mode with `--watch` flag
+- Snapshot testing support
+
+### Test File Conventions
+
+Bun automatically discovers test files matching these patterns:
+
+- `*.test.ts` or `*.test.js`
+- `*.spec.ts` or `*.spec.js`
+- Files in `__tests__/` directories
+- Files in `test/` or `tests/` directories
+
+### Useful Bun Commands for Plugin Development
+
+```bash
+# Install all dependencies
+bun install
+
+# Add a new dependency
+bun add <package-name>
+
+# Add a dev dependency
+bun add -d <package-name>
+
+# Run scripts
+bun run <script-name>
+
+# Run tests
+bun test
+
+# Update dependencies
+bun update
+
+# Clean install (remove node_modules and reinstall)
+bun install --force
+```
+
+## Best Practices Summary
+
+1. **Architecture**: Follow the standard plugin structure
+2. **Type Safety**: Use TypeScript strictly
+3. **Error Handling**: Always handle errors gracefully
+4. **Configuration**: Use runtime.getSetting() for all config
+5. **Testing**: Write comprehensive unit and integration tests
+6. **Security**: Never hardcode sensitive data
+7. **Documentation**: Provide clear usage examples
+8. **Performance**: Implement caching and rate limiting
+9. **Logging**: Use appropriate log levels
+10. **Versioning**: Follow semantic versioning
+
+## Getting Help
+
+- **Documentation**: Check the main elizaOS docs
+- **Examples**: Study existing plugins in `packages/`
+- **Community**: Join the elizaOS Discord
+- **Issues**: Report bugs on GitHub
+
+Remember: The plugin system is designed to be flexible and extensible. When in doubt, look at existing plugins for patterns and inspiration.

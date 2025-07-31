@@ -1,0 +1,346 @@
+---
+title: Publish Command
+description: Publish a plugin to npm, create a GitHub repository, and submit to the elizaOS registry
+icon: cloud-arrow-up
+---
+
+The `elizaos publish` command is the all-in-one tool for releasing your plugin. It handles packaging, publishing to npm, creating a source repository, and submitting your plugin to the official elizaOS registry for discovery.
+
+<Tabs>
+  <Tab title="Overview">
+    ## What It Does
+
+    The `publish` command automates the entire release process:
+
+    - **Validates Your Plugin:** Checks your `package.json` and directory structure against registry requirements
+    - **Publishes Your Package:** Pushes your plugin to npm
+    - **Creates GitHub Repository:** Initializes a public GitHub repository for your plugin's source code
+    - **Submits to Registry:** Opens a Pull Request to the official [elizaOS Plugin Registry](https://github.com/elizaos-plugins/registry)
+
+    ## Usage
+
+    ```bash
+    elizaos publish [options]
+    ```
+
+    ## Options
+
+    | Option | Description |
+    | ------ | ----------- |
+    | `--npm` | Publish to npm only (skip GitHub and registry) |
+    | `-t, --test` | Test publish process without making changes |
+    | `-d, --dry-run` | Generate registry files locally without publishing |
+    | `--skip-registry` | Skip publishing to the registry |
+  </Tab>
+
+  <Tab title="Examples">
+    ## Standard Publishing
+
+    This is the most common workflow. It publishes your package to npm, creates a GitHub repository, and opens a PR to the registry.
+
+    ```bash
+    # Navigate to your plugin's root directory
+    cd my-awesome-plugin
+
+    # Publish to npm and the registry
+    elizaos publish
+    ```
+
+    ## Testing and Dry Runs
+
+    Use these options to validate your plugin before a real publish.
+
+    ```bash
+    # Simulate the entire publish process without making changes
+    # Great for checking authentication and validation rules
+    elizaos publish --test
+
+    # Generate registry submission files locally for inspection
+    elizaos publish --dry-run
+    ```
+
+    ## Advanced Publishing
+
+    Use these for specific scenarios, like managing a private plugin or handling the registry submission manually.
+
+    ```bash
+    # Publish to npm but do not open a PR to the registry
+    elizaos publish --skip-registry
+
+    # Test npm-only publishing (skip GitHub and registry)
+    elizaos publish --test --npm
+    ```
+  </Tab>
+
+  <Tab title="Publishing Process">
+    ## Development Lifecycle
+
+    A typical journey from creation to publishing:
+
+    ### 1. Create & Develop
+
+    ```bash
+    # Create a new plugin from the template
+    elizaos create -t plugin my-awesome-plugin
+    cd my-awesome-plugin
+
+    # Install dependencies and start development
+    bun install
+    elizaos dev
+    ```
+
+    ### 2. Test & Validate
+
+    ```bash
+    # Run your plugin's tests
+    elizaos test
+
+    # Simulate publish to catch issues early
+    elizaos publish --test
+    ```
+
+    ### 3. Publish
+
+    ```bash
+    # Ensure you're logged into npm
+    bunx npm login
+
+    # Publish your plugin
+    elizaos publish
+    ```
+
+    ## Process Steps
+
+    When you run `elizaos publish`, the CLI performs these actions:
+
+    1. **Validation:** Checks CLI version, plugin structure, and `package.json`
+    2. **Authentication:** Prompts for npm and GitHub credentials if needed
+    3. **Build:** Compiles TypeScript by running `bun run build`
+    4. **Publish Package:** Pushes to npm
+    5. **Create GitHub Repo:** Creates public repository (if it doesn't exist)
+    6. **Submit to Registry:** Opens a Pull Request for discovery
+
+    ## Post-Publishing Updates
+
+    <Warning>
+    The `elizaos publish` command is for **initial release only**. Use standard tools for updates.
+    </Warning>
+
+    For subsequent updates:
+
+    ```bash
+    # Bump version in package.json
+    bun version patch  # or minor/major
+
+    # Push new version to npm
+    bun publish
+
+    # Push code and tags to GitHub
+    git push && git push --tags
+    ```
+
+    The elizaOS registry automatically detects new npm versions.
+  </Tab>
+
+  <Tab title="Requirements">
+    ## Authentication
+
+    ### npm Authentication
+    
+    You must be logged in to npm:
+
+    ```bash
+    bunx npm login
+    ```
+
+    ### GitHub Authentication
+
+    A Personal Access Token (PAT) is required. You can either:
+
+    1. Set environment variable: `export GITHUB_TOKEN=your_pat_here`
+    2. Enter when prompted by the CLI
+
+    Required PAT scopes: `repo`, `read:org`, `workflow`
+
+    ## Plugin Structure
+
+    The CLI validates these requirements before publishing:
+
+    | Requirement | Description | Fix |
+    | ----------- | ----------- | --- |
+    | **Plugin Name** | Must start with `plugin-` | Auto-checked |
+    | **Images Directory** | Must have `images/` directory | Auto-created |
+    | **Logo Image** | `images/logo.jpg` (400x400px, max 500KB) | Manual |
+    | **Banner Image** | `images/banner.jpg` (1280x640px, max 1MB) | Manual |
+    | **Description** | Meaningful description | Prompted |
+    | **Repository URL** | Format: `github:username/repo` | Auto-fixed |
+    | **agentConfig** | Required in package.json | Auto-fixed |
+
+    ## Sample package.json
+
+    ```json
+    {
+      "name": "plugin-example",
+      "version": "1.0.0",
+              "description": "An example elizaOS plugin that demonstrates best practices",
+      "main": "dist/index.js",
+      "types": "dist/index.d.ts",
+      "author": "Your Name <your.email@example.com>",
+      "license": "MIT",
+      "repository": "github:yourusername/plugin-example",
+      "keywords": ["elizaos-plugin", "eliza-plugin"],
+      "scripts": {
+        "build": "tsc",
+        "test": "vitest",
+        "dev": "tsc --watch"
+      },
+      "dependencies": {
+        "@elizaos/core": "^1.0.0"
+      },
+      "devDependencies": {
+        "typescript": "^5.0.0",
+        "vitest": "^1.0.0"
+      },
+      "agentConfig": {
+        "actions": ["exampleAction"],
+        "providers": ["exampleProvider"],
+        "evaluators": ["exampleEvaluator"],
+        "models": ["gpt-4", "gpt-3.5-turbo"],
+        "services": ["discord", "telegram"]
+      }
+    }
+    ```
+
+    <Note>
+    The `agentConfig` section tells elizaOS agents how to load your plugin.
+    </Note>
+  </Tab>
+
+  <Tab title="Troubleshooting">
+    ## Authentication Errors
+
+    ### npm Login Issues
+
+    ```bash
+    # Refresh credentials
+    bunx npm logout
+    bunx npm login
+    ```
+
+    ### GitHub Token Issues
+
+    Generate a new PAT with `repo`, `read:org`, and `workflow` scopes:
+
+    ```bash
+    # Set token
+    export GITHUB_TOKEN=your_new_token
+
+    # Or enter when prompted
+    elizaos publish
+    ```
+
+    ## Validation Failures
+
+    Use `--test` to identify issues:
+
+    ```bash
+    elizaos publish --test
+    ```
+
+    Common problems:
+    - Plugin name doesn't start with `plugin-`
+    - Missing or incorrectly sized images
+    - Invalid repository URL format
+
+    ## Build Failures
+
+    Debug TypeScript errors:
+
+    ```bash
+    # Ensure dependencies are installed
+    bun install
+
+    # Run build manually
+    bun run build
+    ```
+
+    ## Version Conflicts
+
+    Cannot publish over existing versions:
+
+    ```bash
+    # Check current version
+    bunx npm view your-plugin version
+
+    # Bump version
+    bun version patch
+
+    # Retry
+    elizaos publish
+    ```
+
+    ## GitHub Repository Exists
+
+    If repository already exists:
+
+    ```bash
+    # Verify it's correct
+    gh repo view yourusername/plugin-name
+
+    # Publish to npm only (skip GitHub and registry)
+    elizaos publish --npm
+    ```
+
+    ## Registry Submission Issues
+
+    ```bash
+    # Test registry generation
+    elizaos publish --dry-run
+
+    # Check generated files
+    ls packages/registry/
+
+    # Skip registry if needed
+    elizaos publish --skip-registry
+    ```
+
+    ## CI/CD Integration
+
+    Example GitHub Actions workflow:
+
+    ```yaml
+    name: Publish
+    on:
+      release:
+        types: [created]
+
+    jobs:
+      publish:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v3
+          - uses: oven-sh/setup-bun@v1
+          
+          - name: Install dependencies
+            run: bun install
+          
+          - name: Build
+            run: bun run build
+          
+          - name: Test
+            run: bun test
+          
+          - name: Publish to npm
+            run: bun publish
+            env:
+              NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    ```
+
+    ## Related Commands
+
+    - [`create`](/cli-reference/create): Create a new plugin
+    - [`plugins`](/cli-reference/plugins): Manage plugins
+    - [`test`](/cli-reference/test): Test before publishing
+    - [Plugin Publishing Guide](/guides/plugin-publishing-guide): Complete walkthrough
+  </Tab>
+</Tabs>

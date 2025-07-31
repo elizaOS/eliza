@@ -1,0 +1,146 @@
+---
+title: 'Evaluators'
+description: 'Assess and filter agent responses'
+---
+
+## What are Evaluators?
+
+Evaluators = post-processors that analyze and extract information from conversations.
+
+## Evaluator Interface
+
+```typescript
+interface Evaluator {
+  name: string;              // Unique identifier
+  description: string;       // What it evaluates
+  similes?: string[];       // Alternative names
+  alwaysRun?: boolean;      // Run on every message?
+  examples: EvaluationExample[];  // Training examples
+  validate: Validator;       // Should this run?
+  handler: Handler;          // Process the response
+}
+```
+
+## Core Evaluators (Bootstrap Plugin)
+
+| Evaluator | Purpose | Extracts |
+|-----------|---------|----------|
+| `reflectionEvaluator` | Self-awareness | Insights about interactions |
+| `factEvaluator` | Fact extraction | Important information |
+| `goalEvaluator` | Goal tracking | User objectives |
+
+## Plugin Evaluator Examples
+
+| Evaluator | Plugin | Purpose |
+|-----------|--------|---------|
+| `sentimentEvaluator` | plugin-sentiment | Track conversation mood |
+| `toxicityEvaluator` | plugin-moderation | Filter harmful content |
+| `tokenPriceEvaluator` | plugin-dexscreener | Detect price queries |
+| `summaryEvaluator` | plugin-knowledge | Summarize conversations |
+
+## Evaluator Flow
+
+```mermaid
+graph LR
+    Response[Agent Response] --> Validate[validate()]
+    Validate -->|true| Handler[handler()]
+    Validate -->|false| Skip[Skip]
+    Handler --> Extract[Extract Info]
+    Extract --> Store[Store in Memory]
+    Store --> Continue[Continue]
+    Skip --> Continue
+```
+
+## Common Use Cases
+
+<Tabs>
+  <Tab title="Memory Building">
+    - Extract facts from conversations
+    - Track user preferences
+    - Update relationship status
+    - Record important events
+  </Tab>
+  
+  <Tab title="Content Filtering">
+    - Remove sensitive data
+    - Filter profanity
+    - Ensure compliance
+    - Validate accuracy
+  </Tab>
+  
+  <Tab title="Analytics">
+    - Track sentiment
+    - Measure engagement
+    - Monitor topics
+    - Analyze patterns
+  </Tab>
+</Tabs>
+
+## Creating Evaluators
+
+### Basic Evaluator
+
+```typescript
+const evaluator: Evaluator = {
+  name: 'my-evaluator',
+  description: 'Processes responses',
+  examples: [],  // Training examples
+  
+  validate: async (runtime, message) => {
+    return true;  // Run on all messages
+  },
+  
+  handler: async (runtime, message) => {
+    // Process and extract
+    const result = await analyze(message);
+    // Store findings
+    await storeResult(result);
+    return result;
+  }
+};
+```
+
+### With Examples
+
+```typescript
+const evaluator: Evaluator = {
+  name: 'fact-extractor',
+  description: 'Extracts facts from conversations',
+  examples: [{
+    prompt: 'Extract facts from this conversation',
+    messages: [
+      { name: 'user', content: { text: 'I live in NYC' } },
+      { name: 'agent', content: { text: 'NYC is a great city!' } }
+    ],
+    outcome: 'User lives in New York City'
+  }],
+  validate: async () => true,
+  handler: async (runtime, message, state) => {
+    const facts = await extractFacts(state);
+    for (const fact of facts) {
+      await runtime.factsManager.addFact(fact);
+    }
+    return facts;
+  }
+};
+```
+
+## Best Practices
+
+- Run evaluators async (don't block responses)
+- Store extracted data for future context
+- Use `alwaysRun: true` sparingly
+- Provide clear examples for training
+- Keep handlers lightweight
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Complete Plugins" icon="puzzle" href="/core-concepts/plugins">
+    See how all components work together
+  </Card>
+  
+  <Card title="Build Projects" icon="folder-tree" href="/core-concepts/projects">
+    Create multi-agent systems
+  </Card>
+</CardGroup>

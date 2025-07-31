@@ -1,0 +1,439 @@
+---
+title: Architecture & Flow Diagrams
+description: Visual guide to the Knowledge plugin's internal architecture and data flows
+---
+
+This guide provides detailed visual representations of the Knowledge plugin's architecture, processing flows, and component interactions.
+
+## High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "User Interactions"
+        U1[Chat Messages]
+        U2[File Uploads]
+        U3[URL Processing]
+        U4[Direct Knowledge]
+    end
+    
+    subgraph "Knowledge Plugin"
+        KS[Knowledge Service]
+        DP[Document Processor]
+        EP[Embedding Provider]
+        VS[Vector Store]
+        DS[Document Store]
+        WI[Web Interface]
+    end
+    
+    subgraph "Core Runtime"
+        AM[Agent Memory]
+        AP[Action Processor]
+        PR[Providers]
+    end
+    
+    U1 --> AP
+    U2 --> WI
+    U3 --> AP
+    U4 --> KS
+    
+    WI --> KS
+    AP --> KS
+    KS --> DP
+    DP --> EP
+    EP --> VS
+    KS --> DS
+    
+    PR --> VS
+    VS --> AM
+    DS --> AM
+```
+
+## Document Processing Flow
+
+```mermaid
+flowchart TD
+    Start([Document Input]) --> Type{Input Type?}
+    
+    Type -->|File Upload| Extract[Extract Text]
+    Type -->|URL| Fetch[Fetch Content]
+    Type -->|Direct Text| Validate[Validate Text]
+    
+    Extract --> Clean[Clean & Normalize]
+    Fetch --> Clean
+    Validate --> Clean
+    
+    Clean --> Hash[Generate Content Hash]
+    Hash --> Dedupe{Duplicate?}
+    
+    Dedupe -->|Yes| End1([Skip Processing])
+    Dedupe -->|No| Chunk[Chunk Text]
+    
+    Chunk --> Enrich{CTX Enabled?}
+    Enrich -->|Yes| Context[Add Context]
+    Enrich -->|No| Embed[Generate Embeddings]
+    Context --> Embed
+    
+    Embed --> Store[Store Vectors]
+    Store --> Meta[Store Metadata]
+    Meta --> End2([Processing Complete])
+```
+
+## Retrieval Flow
+
+```mermaid
+flowchart TD
+    Query([User Query]) --> Embed[Generate Query Embedding]
+    Embed --> Search[Vector Similarity Search]
+    
+    Search --> Filter{Apply Filters?}
+    Filter -->|Yes| ApplyF[Filter by Metadata]
+    Filter -->|No| Rank[Rank Results]
+    ApplyF --> Rank
+    
+    Rank --> Threshold{Score > 0.7?}
+    Threshold -->|No| Discard[Discard Result]
+    Threshold -->|Yes| Include[Include in Results]
+    
+    Include --> Limit{Result Count}
+    Limit -->|< Limit| More[Get More Results]
+    Limit -->|= Limit| Build[Build Context]
+    More --> Search
+    
+    Build --> Inject[Inject into Agent Context]
+    Inject --> Response([Agent Response])
+```
+
+## Component Interactions
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent
+    participant KnowledgeService
+    participant DocumentProcessor
+    participant EmbeddingProvider
+    participant VectorStore
+    participant DocumentStore
+    
+    User->>Agent: Ask question
+    Agent->>KnowledgeService: searchKnowledge(query)
+    KnowledgeService->>EmbeddingProvider: embed(query)
+    EmbeddingProvider-->>KnowledgeService: queryEmbedding
+    
+    KnowledgeService->>VectorStore: searchSimilar(queryEmbedding)
+    VectorStore-->>KnowledgeService: matches[]
+    
+    KnowledgeService->>DocumentStore: getDocuments(ids)
+    DocumentStore-->>KnowledgeService: documents[]
+    
+    KnowledgeService-->>Agent: relevantKnowledge[]
+    Agent->>Agent: buildContext(knowledge)
+    Agent-->>User: Informed response
+```
+
+## Data Flow Architecture
+
+```mermaid
+graph LR
+    subgraph "Storage Layer"
+        subgraph "Vector Store"
+            VS1[Embeddings Table]
+            VS2[Metadata Index]
+            VS3[Similarity Index]
+        end
+        
+        subgraph "Document Store"
+            DS1[Documents Table]
+            DS2[Content Hash Index]
+            DS3[Timestamp Index]
+        end
+    end
+    
+    subgraph "Memory Types"
+        M1[Document Memory]
+        M2[Fragment Memory]
+        M3[Context Memory]
+    end
+    
+    VS1 --> M2
+    DS1 --> M1
+    M1 --> M3
+    M2 --> M3
+```
+
+## Processing Pipeline Details
+
+### Text Extraction Flow
+
+```mermaid
+graph TD
+    File[Input File] --> Detect[Detect MIME Type]
+    Detect --> PDF{PDF?}
+    Detect --> DOCX{DOCX?}
+    Detect --> Text{Text?}
+    
+    PDF -->|Yes| PDFLib[PDF Parser]
+    DOCX -->|Yes| DOCXLib[DOCX Parser]
+    Text -->|Yes| UTF8[UTF-8 Decode]
+    
+    PDFLib --> Clean[Clean Text]
+    DOCXLib --> Clean
+    UTF8 --> Clean
+    
+    Clean --> Output[Extracted Text]
+```
+
+### Chunking Strategy
+
+```mermaid
+graph TD
+    Text[Full Text] --> Tokenize[Tokenize]
+    Tokenize --> Window[Sliding Window]
+    
+    Window --> Chunk1[Chunk 1: 0-500]
+    Window --> Chunk2[Chunk 2: 400-900]
+    Window --> Chunk3[Chunk 3: 800-1300]
+    Window --> More[...]
+    
+    Chunk1 --> Boundary1[Adjust to Boundaries]
+    Chunk2 --> Boundary2[Adjust to Boundaries]
+    Chunk3 --> Boundary3[Adjust to Boundaries]
+    
+    Boundary1 --> Final1[Final Chunk 1]
+    Boundary2 --> Final2[Final Chunk 2]
+    Boundary3 --> Final3[Final Chunk 3]
+```
+
+### Contextual Enrichment
+
+```mermaid
+graph TD
+    Chunk[Text Chunk] --> Extract[Extract Key Info]
+    Doc[Full Document] --> Summary[Generate Summary]
+    
+    Extract --> Combine[Combine Context]
+    Summary --> Combine
+    
+    Combine --> Template[Apply Template]
+    Template --> Enriched[Enriched Chunk]
+    
+    Template --> |Template| T["Context: {summary}<br/>Section: {title}<br/>Content: {chunk}"]
+```
+
+## Rate Limiting & Concurrency
+
+```mermaid
+graph TD
+    subgraph "Request Queue"
+        R1[Request 1]
+        R2[Request 2]
+        R3[Request 3]
+        RN[Request N]
+    end
+    
+    subgraph "Rate Limiter"
+        RL1[Token Bucket<br/>150k tokens/min]
+        RL2[Request Bucket<br/>60 req/min]
+        RL3[Concurrent Limit<br/>30 operations]
+    end
+    
+    subgraph "Processing Pool"
+        P1[Worker 1]
+        P2[Worker 2]
+        P3[Worker 3]
+        P30[Worker 30]
+    end
+    
+    R1 --> RL1
+    R2 --> RL1
+    R3 --> RL1
+    
+    RL1 --> RL2
+    RL2 --> RL3
+    
+    RL3 --> P1
+    RL3 --> P2
+    RL3 --> P3
+```
+
+## Caching Architecture
+
+```mermaid
+graph TD
+    subgraph "Request Flow"
+        Req[Embedding Request] --> Cache{In Cache?}
+        Cache -->|Yes| Return[Return Cached]
+        Cache -->|No| Generate[Generate New]
+        Generate --> Store[Store in Cache]
+        Store --> Return
+    end
+    
+    subgraph "Cache Management"
+        CM1[LRU Eviction]
+        CM2[TTL: 24 hours]
+        CM3[Max Size: 10k entries]
+    end
+    
+    subgraph "Cost Savings"
+        CS1[OpenRouter + Claude: 90% reduction]
+        CS2[OpenRouter + Gemini: 90% reduction]
+        CS3[Direct API: 0% reduction]
+    end
+```
+
+## Web Interface Architecture
+
+```mermaid
+graph TD
+    subgraph "Frontend"
+        UI[React UI]
+        UP[Upload Component]
+        DL[Document List]
+        SR[Search Results]
+    end
+    
+    subgraph "API Layer"
+        REST[REST Endpoints]
+        MW[Middleware]
+        Auth[Auth Check]
+    end
+    
+    subgraph "Backend"
+        KS[Knowledge Service]
+        FS[File Storage]
+        PS[Processing Queue]
+    end
+    
+    UI --> REST
+    UP --> REST
+    DL --> REST
+    SR --> REST
+    
+    REST --> MW
+    MW --> Auth
+    Auth --> KS
+    
+    KS --> FS
+    KS --> PS
+```
+
+## Error Handling Flow
+
+```mermaid
+flowchart TD
+    Op[Operation] --> Try{Try Operation}
+    Try -->|Success| Complete[Return Result]
+    Try -->|Error| Type{Error Type?}
+    
+    Type -->|Rate Limit| Wait[Exponential Backoff]
+    Type -->|Network| Retry[Retry 3x]
+    Type -->|Parse Error| Log[Log & Skip]
+    Type -->|Out of Memory| Chunk[Reduce Chunk Size]
+    
+    Wait --> Try
+    Retry --> Try
+    Chunk --> Try
+    
+    Log --> Notify[Notify User]
+    Retry -->|Max Retries| Notify
+    
+    Notify --> End[Operation Failed]
+```
+
+## Performance Characteristics
+
+### Processing Times
+
+```mermaid
+gantt
+    title Document Processing Timeline
+    dateFormat X
+    axisFormat %s
+    
+    section Small Doc (< 1MB)
+    Text Extraction     :0, 1
+    Chunking           :1, 2
+    Embedding          :2, 5
+    Storage            :5, 6
+    
+    section Medium Doc (1-10MB)
+    Text Extraction     :0, 3
+    Chunking           :3, 5
+    Embedding          :5, 15
+    Storage            :15, 17
+    
+    section Large Doc (10-50MB)
+    Text Extraction     :0, 10
+    Chunking           :10, 15
+    Embedding          :15, 45
+    Storage            :45, 50
+```
+
+### Storage Requirements
+
+```mermaid
+pie title Storage Distribution
+    "Document Text" : 40
+    "Vector Embeddings" : 35
+    "Metadata" : 15
+    "Indexes" : 10
+```
+
+## Scaling Considerations
+
+```mermaid
+graph TD
+    subgraph "Horizontal Scaling"
+        LB[Load Balancer]
+        N1[Node 1]
+        N2[Node 2]
+        N3[Node 3]
+    end
+    
+    subgraph "Shared Resources"
+        VS[Vector Store<br/>PostgreSQL + pgvector]
+        DS[Document Store<br/>PostgreSQL]
+        Cache[Redis Cache]
+    end
+    
+    LB --> N1
+    LB --> N2
+    LB --> N3
+    
+    N1 --> VS
+    N1 --> DS
+    N1 --> Cache
+    
+    N2 --> VS
+    N2 --> DS
+    N2 --> Cache
+    
+    N3 --> VS
+    N3 --> DS
+    N3 --> Cache
+```
+
+## Summary
+
+The Knowledge plugin's architecture is designed for:
+
+<CardGroup cols={2}>
+  <Card title="Scalability" icon="chart-line">
+    Handles large document collections efficiently
+  </Card>
+  <Card title="Performance" icon="gauge-max">
+    Optimized processing and retrieval paths
+  </Card>
+  <Card title="Reliability" icon="shield-check">
+    Robust error handling and recovery
+  </Card>
+  <Card title="Cost Efficiency" icon="dollar-sign">
+    90% savings with intelligent caching
+  </Card>
+</CardGroup>
+
+Understanding these flows helps you:
+- Optimize configuration for your use case
+- Debug issues effectively
+- Plan for scale
+- Integrate with other systems
