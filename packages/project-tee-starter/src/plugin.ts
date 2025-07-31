@@ -1,5 +1,5 @@
 import type { Plugin } from '@elizaos/core';
-import { type IAgentRuntime, Service, logger } from '@elizaos/core';
+import { type IAgentRuntime, logger } from '@elizaos/core';
 import { z } from 'zod';
 import { type DeriveKeyResponse, TappdClient } from '@phala/dstack-sdk';
 import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
@@ -28,68 +28,105 @@ const configSchema = z.object({
     }),
 });
 
-export class StarterService extends Service {
-  static serviceType = 'starter';
-  capabilityDescription = 'This is a starter service, can be customized for Mr. TEE.';
-  private teeClient: TappdClient;
-  private secretSalt: string;
-  constructor(protected runtime: IAgentRuntime) {
-    super(runtime);
-    this.teeClient = new TappdClient();
-    this.secretSalt = process.env.WALLET_SECRET_SALT || 'secret_salt';
-  }
+// Functional TEE service configuration
+type TeeServiceConfig = {
+  teeClient: TappdClient;
+  secretSalt: string;
+  runtime: IAgentRuntime;
+};
 
-  static async start(runtime: IAgentRuntime) {
-    logger.info("*** Starting Mr. TEE's custom service (StarterService) ***");
-    const service = new StarterService(runtime);
-    try {
-      const deriveKeyResponse: DeriveKeyResponse = await service.teeClient.deriveKey(
-        service.secretSalt
-      );
+/**
+ * Creates a TEE service configuration object
+ */
+const createTeeServiceConfig = (runtime: IAgentRuntime): TeeServiceConfig => ({
+  teeClient: new TappdClient(),
+  secretSalt: process.env.WALLET_SECRET_SALT || 'secret_salt',
+  runtime,
+});
 
-      // ECDSA Key
-      const hex = keccak256(deriveKeyResponse.asUint8Array());
-      const ecdsaKeypair: PrivateKeyAccount = privateKeyToAccount(hex);
+/**
+ * Derives ECDSA keypair from TEE response
+ */
+const deriveEcdsaKeypair = (deriveKeyResponse: DeriveKeyResponse): PrivateKeyAccount => {
+  const hex = keccak256(deriveKeyResponse.asUint8Array());
+  return privateKeyToAccount(hex);
+};
 
-      // ED25519 Key
-      const uint8ArrayDerivedKey = deriveKeyResponse.asUint8Array();
-      const hash = crypto.createHash('sha256');
-      hash.update(uint8ArrayDerivedKey);
-      const seed = hash.digest();
-      const seedArray = new Uint8Array(seed);
-      const ed25519Keypair = Keypair.fromSeed(seedArray.slice(0, 32));
+/**
+ * Derives ED25519 keypair from TEE response
+ */
+const deriveEd25519Keypair = (deriveKeyResponse: DeriveKeyResponse): Keypair => {
+  const uint8ArrayDerivedKey = deriveKeyResponse.asUint8Array();
+  const hash = crypto.createHash('sha256');
+  hash.update(uint8ArrayDerivedKey);
+  const seed = hash.digest();
+  const seedArray = new Uint8Array(seed);
+  return Keypair.fromSeed(seedArray.slice(0, 32));
+};
 
-      logger.log('ECDSA Key Derived Successfully!');
-      logger.log('ECDSA Keypair:', ecdsaKeypair.address);
-      logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
-      const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
-      logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
-    } catch (error) {
-      // Handle TEE connection errors gracefully
-      if (error instanceof Error && error.message.includes('ENOENT')) {
-        logger.warn('TEE daemon not available - running in non-TEE mode for testing');
-        logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
-      } else {
-        logger.error('Error connecting to TEE:', error);
-      }
-      // Continue without TEE functionality for testing
+/**
+ * Handles TEE key derivation and logging
+ */
+const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> => {
+  try {
+    const deriveKeyResponse: DeriveKeyResponse = await config.teeClient.deriveKey(
+      config.secretSalt
+    );
+
+    // ECDSA Key
+    const ecdsaKeypair = deriveEcdsaKeypair(deriveKeyResponse);
+
+    // ED25519 Key
+    const ed25519Keypair = deriveEd25519Keypair(deriveKeyResponse);
+
+    logger.log('ECDSA Key Derived Successfully!');
+    logger.log('ECDSA Keypair:', ecdsaKeypair.address);
+    logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
+    
+    const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
+    logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
+  } catch (error) {
+    // Handle TEE connection errors gracefully
+    if (error instanceof Error && error.message.includes('ENOENT')) {
+      logger.warn('TEE daemon not available - running in non-TEE mode for testing');
+      logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
+    } else {
+      logger.error('Error connecting to TEE:', error);
     }
-    return service;
+    // Continue without TEE functionality for testing
   }
+};
 
-  static async stop(runtime: IAgentRuntime) {
-    logger.info("*** Stopping Mr. TEE's custom service (StarterService) ***");
-    const service = runtime.getService(StarterService.serviceType);
-    if (!service) {
-      throw new Error('Mr. TEE custom service (StarterService) not found');
-    }
-    service.stop();
-  }
+/**
+ * Starts the TEE starter service using functional approach
+ */
+const startTeeService = async (runtime: IAgentRuntime): Promise<TeeServiceConfig> => {
+  logger.info("*** Starting Mr. TEE's custom service (Functional) ***");
+  
+  const config = createTeeServiceConfig(runtime);
+  await handleTeeKeyDerivation(config);
+  
+  return config;
+};
 
-  async stop() {
-    logger.info("*** Stopping Mr. TEE's custom service instance (StarterService) ***");
-  }
-}
+/**
+ * Stops the TEE starter service using functional approach
+ */
+const stopTeeService = async (runtime: IAgentRuntime): Promise<void> => {
+  logger.info("*** Stopping Mr. TEE's custom service (Functional) ***");
+  // In functional approach, cleanup is handled here if needed
+  // No explicit service instance to stop
+};
+
+/**
+ * TEE starter service factory function
+ */
+export const createTeeStarterService = () => ({
+  serviceType: 'starter',
+  capabilityDescription: 'This is a starter service, can be customized for Mr. TEE.',
+  start: startTeeService,
+  stop: stopTeeService,
+});
 
 const teeStarterPlugin: Plugin = {
   name: 'mr-tee-starter-plugin',
@@ -160,7 +197,7 @@ const teeStarterPlugin: Plugin = {
   },
   // Enable this service to run when TEE mode is enabled
   services: [
-    /* StarterService */
+    /* createTeeStarterService() */
   ],
   actions: [],
   providers: [],
