@@ -523,7 +523,7 @@ describe('MyCustomAction', () => {
   });
 
   it('should execute handler successfully', async () => {
-    const callback = jest.fn();
+    const callback = mock();
     const result = await myCustomAction.handler(
       runtime,
       message,

@@ -2,7 +2,7 @@
 sidebar_position: 6
 title: Test Command
 description: Run and manage tests for ElizaOS projects and plugins
-keywords: [testing, component tests, e2e tests, Vitest, test runner, development]
+keywords: [testing, component tests, e2e tests, bun:test, test runner, development]
 image: /img/cli.jpg
 ---
 
@@ -26,7 +26,7 @@ elizaos test [options] [command]
 
 | Subcommand  | Description                                |
 | ----------- | ------------------------------------------ |
-| `component` | Run component tests (via Vitest)           |
+| `component` | Run component tests (via bun:test)         |
 | `e2e`       | Run end-to-end runtime tests               |
 | `all`       | Run both component and e2e tests (default) |
 
@@ -99,7 +99,7 @@ elizaos test e2e --port 3001 --name integration --skip-build
 ### Component Tests
 
 **Location**: `__tests__/` directory  
-**Framework**: Vitest  
+**Framework**: bun:test  
 **Purpose**: Unit and integration testing of individual components
 
 ### End-to-End Tests
