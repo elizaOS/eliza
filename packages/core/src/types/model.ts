@@ -35,6 +35,83 @@ export const ModelType = {
 } as const;
 
 /**
+ * Model configuration setting keys used in character settings.
+ * These constants define the keys for accessing model parameters
+ * from character configuration with support for per-model-type settings.
+ *
+ * Setting Precedence (highest to lowest):
+ * 1. Parameters passed directly to useModel()
+ * 2. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
+ * 3. Default settings (e.g., DEFAULT_TEMPERATURE)
+ *
+ * Example character settings:
+ * ```
+ * settings: {
+ *   DEFAULT_TEMPERATURE: 0.7,              // Applies to all models
+ *   TEXT_SMALL_TEMPERATURE: 0.5,           // Overrides default for TEXT_SMALL
+ *   TEXT_LARGE_MAX_TOKENS: 4096,           // Specific to TEXT_LARGE
+ *   OBJECT_SMALL_TEMPERATURE: 0.3,         // Specific to OBJECT_SMALL
+ * }
+ * ```
+ */
+export const MODEL_SETTINGS = {
+  // Default settings - apply to all model types unless overridden
+  DEFAULT_MAX_TOKENS: 'DEFAULT_MAX_TOKENS',
+  DEFAULT_TEMPERATURE: 'DEFAULT_TEMPERATURE',
+  DEFAULT_FREQUENCY_PENALTY: 'DEFAULT_FREQUENCY_PENALTY',
+  DEFAULT_PRESENCE_PENALTY: 'DEFAULT_PRESENCE_PENALTY',
+
+  // TEXT_SMALL specific settings
+  TEXT_SMALL_MAX_TOKENS: 'TEXT_SMALL_MAX_TOKENS',
+  TEXT_SMALL_TEMPERATURE: 'TEXT_SMALL_TEMPERATURE',
+  TEXT_SMALL_FREQUENCY_PENALTY: 'TEXT_SMALL_FREQUENCY_PENALTY',
+  TEXT_SMALL_PRESENCE_PENALTY: 'TEXT_SMALL_PRESENCE_PENALTY',
+
+  // TEXT_LARGE specific settings
+  TEXT_LARGE_MAX_TOKENS: 'TEXT_LARGE_MAX_TOKENS',
+  TEXT_LARGE_TEMPERATURE: 'TEXT_LARGE_TEMPERATURE',
+  TEXT_LARGE_FREQUENCY_PENALTY: 'TEXT_LARGE_FREQUENCY_PENALTY',
+  TEXT_LARGE_PRESENCE_PENALTY: 'TEXT_LARGE_PRESENCE_PENALTY',
+
+  // OBJECT_SMALL specific settings
+  OBJECT_SMALL_MAX_TOKENS: 'OBJECT_SMALL_MAX_TOKENS',
+  OBJECT_SMALL_TEMPERATURE: 'OBJECT_SMALL_TEMPERATURE',
+  OBJECT_SMALL_FREQUENCY_PENALTY: 'OBJECT_SMALL_FREQUENCY_PENALTY',
+  OBJECT_SMALL_PRESENCE_PENALTY: 'OBJECT_SMALL_PRESENCE_PENALTY',
+
+  // OBJECT_LARGE specific settings
+  OBJECT_LARGE_MAX_TOKENS: 'OBJECT_LARGE_MAX_TOKENS',
+  OBJECT_LARGE_TEMPERATURE: 'OBJECT_LARGE_TEMPERATURE',
+  OBJECT_LARGE_FREQUENCY_PENALTY: 'OBJECT_LARGE_FREQUENCY_PENALTY',
+  OBJECT_LARGE_PRESENCE_PENALTY: 'OBJECT_LARGE_PRESENCE_PENALTY',
+
+  // Legacy keys for backwards compatibility (will be treated as defaults)
+  MODEL_MAX_TOKEN: 'MODEL_MAX_TOKEN',
+  MODEL_TEMPERATURE: 'MODEL_TEMPERATURE',
+  MODEL_FREQ_PENALTY: 'MODEL_FREQ_PENALTY',
+  MODEL_PRESENCE_PENALTY: 'MODEL_PRESENCE_PENALTY',
+} as const;
+
+/**
+ * Helper to get the model-specific setting key for a given model type and parameter.
+ * @param modelType The model type (e.g., TEXT_SMALL, TEXT_LARGE)
+ * @param param The parameter name (e.g., MAX_TOKENS, TEMPERATURE)
+ * @returns The appropriate setting key or null if not a supported model type
+ */
+export function getModelSpecificSettingKey(
+  modelType: ModelTypeName,
+  param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY'
+): string | null {
+  const supportedModelTypes = ['TEXT_SMALL', 'TEXT_LARGE', 'OBJECT_SMALL', 'OBJECT_LARGE'];
+
+  if (!supportedModelTypes.includes(modelType)) {
+    return null;
+  }
+
+  return `${modelType}_${param}`;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
