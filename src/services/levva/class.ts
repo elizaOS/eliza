@@ -50,6 +50,7 @@ import {
   Strategy,
   StrategyEntry,
   StrategyMapping,
+  StrategyType,
   VaultConstants,
   getPoolConstants,
   getPoolVariables as getPoolVariablesImpl,
@@ -72,6 +73,7 @@ import { bundlerEnter } from "./tx";
 import poolAbi from "./abi/pool.abi";
 import vaultAbi from "./abi/vault.abi";
 import { getMessages } from "./messages";
+import { getStrategies as getStrategiesApi } from "../../api/levva";
 
 const REQUIRED_PLUGINS = ["levva"];
 
@@ -595,9 +597,10 @@ export class LevvaService
     this.getVaultConstantsCacheKey
   );
 
-  /** @deprecated need api */
-  async getStrategies(chainId?: number) {
-    const result = (
+  private getStrategiesKey = (chainId: number = 1) => `strategies:${chainId}`;
+
+  getStrategies = this.permanentCache(async (chainId: number = 1) => {
+    /*const result = (
       Object.entries(strategyVaultMapping) as [Strategy, StrategyMapping[]][]
     ).reduce((acc, [strategy, mappings]) => {
       const filtered = mappings
@@ -609,9 +612,39 @@ export class LevvaService
 
       return [...acc, ...filtered];
     }, [] as StrategyEntry[]);
+    */
 
-    return result;
-  }
+    const result = await getStrategiesApi(chainId);
+
+    if (!result.success) {
+      logger.error("Failed to get strategies", result.error);
+      throw new Error("Failed to get strategies");
+    }
+
+    return result.data.map((x) => {
+      const type: StrategyType = "vault";
+      const strategy: Strategy =
+        x.type === "UltraSafe"
+          ? "ultra-safe"
+          : x.type === "Safe"
+            ? "safe"
+            : x.type === "Brave" ? "brave" : "custom";
+
+      const contractAddress = x.vault?.address;
+
+      if (!isHex(contractAddress)) {
+        throw new Error(`Invalid contract address: ${contractAddress}`);
+      }
+
+      return {
+        type,
+        vaultChainId: x.vault?.publicChainId ?? 1,
+        contractAddress: contractAddress as `0x${string}`,
+        strategy,
+        description: x.description,
+      };
+    });
+  }, this.getStrategiesKey);
 
   formatStrategy(strategy: StrategyEntry) {
     return `${strategy.strategy} - Contract: ${strategy.contractAddress}.Type: "${strategy.type}". ${strategy.description} `;

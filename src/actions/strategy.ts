@@ -242,7 +242,7 @@ Please select your strategy`,
 I've prepared transactions to deposit ${data.amount} ${token} to pool ${strategy.contractAddress} with x${data.leverage} leverage.
 Confirm the following transaction steps:
 ${detailedSteps}`,
-          actions: ["CONFIRM_STRATEGY"],
+          actions: ["SELECT_STRATEGY"],
           attachments: [json],
         };
 
@@ -276,7 +276,7 @@ ${detailedSteps}`,
 I've prepared transactions to deposit ${data.amount} ${token} to vault ${strategy.contractAddress}.
 Confirm the following transaction steps:
 ${detailedSteps}`,
-          actions: ["CONFIRM_STRATEGY"],
+          actions: ["SELECT_STRATEGY"],
           attachments: [json],
         };
 

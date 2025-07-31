@@ -1,0 +1,670 @@
+# Portfolio Theory
+
+## Introduction
+
+Portfolio theory in DeFi is where Nobel Prize-winning mathematics meets the wild frontier of permissionless finance, creating a fascinating collision between academic rigor and practical chaos. Modern Portfolio Theory (MPT), developed by Harry Markowitz, provides the mathematical foundation for optimal asset allocation, but DeFi's extreme volatility, changing correlations, and unique yield mechanisms require significant adaptations. While traditional finance deals with stocks and bonds that behave somewhat predictably, DeFi introduces liquidity mining rewards, governance token airdrops, impermanent loss, and smart contract risks that fundamentally alter risk-return profiles. For Levva's strategies, portfolio theory guides the construction of Diversified DeFi Yield approaches and provides risk management frameworks for Custom strategies.
+
+## Key Concepts, Ideas, and Formulas
+
+### Modern Portfolio Theory Foundations
+
+**Expected Portfolio Return:**
+```
+E(R_p) = Σ(w_i × E(R_i))
+```
+
+**Portfolio Variance:**
+```
+σ²_p = Σ(w_i²σ_i²) + 2ΣΣ(w_i × w_j × σ_i × σ_j × ρ_ij)
+```
+
+**Sharpe Ratio:**
+```
+Sharpe = (E(R_p) - R_f) / σ_p
+```
+
+**Efficient Frontier:**
+```python
+def efficient_frontier(expected_returns, cov_matrix, risk_free_rate=0.02):
+    n_assets = len(expected_returns)
+    
+    def portfolio_stats(weights):
+        portfolio_return = np.dot(weights, expected_returns)
+        portfolio_variance = np.dot(weights.T, np.dot(cov_matrix, weights))
+        portfolio_std = np.sqrt(portfolio_variance)
+        sharpe = (portfolio_return - risk_free_rate) / portfolio_std
+        return portfolio_return, portfolio_std, sharpe
+    
+    # Generate efficient frontier
+    target_returns = np.linspace(expected_returns.min(), expected_returns.max(), 100)
+    efficient_portfolios = []
+    
+    for target in target_returns:
+        weights = optimize_portfolio(expected_returns, cov_matrix, target)
+        efficient_portfolios.append(portfolio_stats(weights))
+    
+    return efficient_portfolios
+```
+
+### DeFi-Adapted Portfolio Models
+
+**Risk Parity with Yield Considerations:**
+```python
+def defi_risk_parity(expected_returns, volatilities, yield_stability_scores):
+    # Traditional risk parity
+    risk_parity_weights = (1 / volatilities) / (1 / volatilities).sum()
+    
+    # Adjust for yield stability (higher is better)
+    stability_adjusted_weights = risk_parity_weights * yield_stability_scores
+    normalized_weights = stability_adjusted_weights / stability_adjusted_weights.sum()
+    
+    return normalized_weights
+```
+
+**Black-Litterman for DeFi:**
+```python
+def defi_black_litterman(market_caps, expected_returns, investor_views, confidence_matrix):
+    # Market equilibrium returns
+    risk_aversion = 3.0  # Typical for crypto investors
+    market_weights = market_caps / market_caps.sum()
+    
+    # Implied equilibrium returns
+    equilibrium_returns = risk_aversion * cov_matrix @ market_weights
+    
+    # Combine market views with investor views
+    tau = 0.05  # Scales uncertainty of prior
+    
+    # Black-Litterman formula
+    M1 = np.linalg.inv(tau * cov_matrix)
+    M2 = np.dot(investor_views.T, np.dot(np.linalg.inv(confidence_matrix), investor_views))
+    M3 = np.dot(np.linalg.inv(tau * cov_matrix), equilibrium_returns)
+    M4 = np.dot(investor_views.T, np.dot(np.linalg.inv(confidence_matrix), expected_returns))
+    
+    new_expected_returns = np.dot(np.linalg.inv(M1 + M2), M3 + M4)
+    new_cov_matrix = np.linalg.inv(M1 + M2)
+    
+    return new_expected_returns, new_cov_matrix
+```
+
+### Utility-Based Optimization
+
+**CRRA Utility Function (DeFi Adapted):**
+```python
+def crra_utility_optimization(expected_returns, cov_matrix, risk_aversion=3, leverage_cost=0.05):
+    n_assets = len(expected_returns)
+    
+    def utility_function(weights):
+        # Portfolio return after leverage costs
+        portfolio_return = np.dot(weights, expected_returns)
+        leverage_penalty = max(0, weights.sum() - 1) * leverage_cost
+        net_return = portfolio_return - leverage_penalty
+        
+        # Portfolio variance
+        portfolio_variance = np.dot(weights.T, np.dot(cov_matrix, weights))
+        
+        # CRRA utility: E[R] - (γ/2) * Var[R]
+        utility = net_return - (risk_aversion / 2) * portfolio_variance
+        return -utility  # Minimize negative utility
+    
+    # Constraints and optimization
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},  # Budget constraint
+        {'type': 'ineq', 'fun': lambda x: x},  # Long-only constraint
+    ]
+    
+    result = minimize(utility_function, x0=np.ones(n_assets)/n_assets, constraints=constraints)
+    return result.x
+```
+
+## Examples and Applications
+
+### Scenario 1: Diversified DeFi Yield Portfolio Construction
+
+**Asset Universe:**
+- Aave USDC (Low risk, stable yield)
+- Lido stETH (Medium risk, ETH exposure + staking)
+- Curve 3Pool (Low-medium risk, LP fees)
+- Compound DAI (Low risk, lending yield)
+
+**Portfolio Optimization:**
+```python
+import numpy as np
+from scipy.optimize import minimize
+
+# Historical data (annualized)
+expected_returns = np.array([0.04, 0.08, 0.06, 0.045])  # 4%, 8%, 6%, 4.5%
+volatilities = np.array([0.02, 0.15, 0.05, 0.025])     # Annualized volatility
+correlations = np.array([
+    [1.00, 0.10, 0.30, 0.85],
+    [0.10, 1.00, 0.20, 0.15],
+    [0.30, 0.20, 1.00, 0.25],
+    [0.85, 0.15, 0.25, 1.00]
+])
+
+# Convert to covariance matrix
+cov_matrix = np.outer(volatilities, volatilities) * correlations
+
+def optimize_portfolio(target_return=0.06):
+    n_assets = len(expected_returns)
+    
+    def objective(weights):
+        return np.dot(weights.T, np.dot(cov_matrix, weights))  # Minimize variance
+    
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},  # Budget
+        {'type': 'eq', 'fun': lambda x: np.dot(x, expected_returns) - target_return},  # Target return
+        {'type': 'ineq', 'fun': lambda x: x},  # Long-only
+    ]
+    
+    result = minimize(objective, x0=np.ones(n_assets)/n_assets, constraints=constraints)
+    return result.x
+
+optimal_weights = optimize_portfolio(target_return=0.06)
+print(f"Optimal Allocation: Aave USDC: {optimal_weights[0]:.1%}, "
+      f"Lido stETH: {optimal_weights[1]:.1%}, "
+      f"Curve 3Pool: {optimal_weights[2]:.1%}, "
+      f"Compound DAI: {optimal_weights[3]:.1%}")
+
+# Expected output: Aave USDC: 45%, Lido stETH: 25%, Curve 3Pool: 20%, Compound DAI: 10%
+```
+
+### Scenario 2: Custom Strategy with Leverage Optimization
+
+**High-Risk/High-Yield Portfolio:**
+- Leveraged PT-sUSDe farming (3x leverage)
+- Uniswap V3 ETH/USDC LP (concentrated range)
+- Cross-chain arbitrage opportunities
+- Governance token farming
+
+**Kelly-Optimized Allocation:**
+```python
+def kelly_portfolio_optimization(strategies_data):
+    results = {}
+    
+    for strategy, data in strategies_data.items():
+        win_rate = data['win_rate']
+        avg_win = data['avg_win']
+        avg_loss = data['avg_loss']
+        
+        # Kelly fraction calculation
+        kelly_fraction = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
+        
+        # Conservative adjustment for DeFi volatility
+        conservative_kelly = kelly_fraction * 0.5
+        
+        results[strategy] = {
+            'kelly_fraction': kelly_fraction,
+            'conservative_allocation': conservative_kelly,
+            'expected_utility': win_rate * avg_win - (1 - win_rate) * avg_loss
+        }
+    
+    return results
+
+strategies_data = {
+    'leveraged_pt_farming': {
+        'win_rate': 0.70,
+        'avg_win': 0.08,  # 8% monthly return when profitable
+        'avg_loss': -0.12  # -12% monthly return when unprofitable
+    },
+    'uniswap_v3_lp': {
+        'win_rate': 0.60,
+        'avg_win': 0.05,
+        'avg_loss': -0.08
+    },
+    'cross_chain_arbitrage': {
+        'win_rate': 0.80,
+        'avg_win': 0.03,
+        'avg_loss': -0.02
+    },
+    'governance_farming': {
+        'win_rate': 0.55,
+        'avg_win': 0.15,
+        'avg_loss': -0.20
+    }
+}
+
+kelly_allocations = kelly_portfolio_optimization(strategies_data)
+```
+
+### Scenario 3: Multi-Objective Portfolio with ESG Constraints
+
+**Sustainable DeFi Portfolio:**
+```python
+def sustainable_defi_portfolio(expected_returns, cov_matrix, sustainability_scores, min_sustainability=0.7):
+    n_assets = len(expected_returns)
+    
+    def multi_objective(weights):
+        # Portfolio return
+        portfolio_return = np.dot(weights, expected_returns)
+        
+        # Portfolio risk
+        portfolio_variance = np.dot(weights.T, np.dot(cov_matrix, weights))
+        
+        # Sustainability score
+        portfolio_sustainability = np.dot(weights, sustainability_scores)
+        
+        # Multi-objective: maximize return and sustainability, minimize risk
+        objective = -portfolio_return + portfolio_variance - portfolio_sustainability
+        return objective
+    
+    constraints = [
+        {'type': 'eq', 'fun': lambda x: np.sum(x) - 1.0},
+        {'type': 'ineq', 'fun': lambda x: np.dot(x, sustainability_scores) - min_sustainability},
+        {'type': 'ineq', 'fun': lambda x: x},
+    ]
+    
+    result = minimize(multi_objective, x0=np.ones(n_assets)/n_assets, constraints=constraints)
+    return result.x
+
+# Sustainability scores based on protocol governance, environmental impact, etc.
+sustainability_scores = np.array([0.8, 0.9, 0.7, 0.8])  # Higher is more sustainable
+sustainable_weights = sustainable_defi_portfolio(expected_returns, cov_matrix, sustainability_scores)
+```
+
+### Scenario 4: Dynamic Portfolio Rebalancing
+
+**Regime-Based Portfolio Adjustment:**
+```python
+class DynamicPortfolioManager:
+    def __init__(self, base_weights, rebalancing_bands=0.05):
+        self.base_weights = base_weights
+        self.rebalancing_bands = rebalancing_bands
+        self.current_weights = base_weights.copy()
+    
+    def detect_market_regime(self, market_data):
+        # Simple volatility-based regime detection
+        recent_vol = market_data.pct_change().rolling(30).std().mean()
+        long_term_vol = market_data.pct_change().rolling(252).std().mean()
+        
+        vol_ratio = recent_vol / long_term_vol
+        
+        if vol_ratio > 1.5:
+            return "high_volatility"
+        elif vol_ratio < 0.7:
+            return "low_volatility"
+        else:
+            return "normal"
+    
+    def adjust_for_regime(self, regime):
+        if regime == "high_volatility":
+            # Reduce risk assets, increase stable yield
+            risk_reduction_factor = 0.8
+            self.current_weights *= risk_reduction_factor
+            self.current_weights[-1] += 1 - self.current_weights.sum()  # Add to cash
+        
+        elif regime == "low_volatility":
+            # Increase risk assets
+            risk_increase_factor = 1.2
+            self.current_weights[:-1] *= risk_increase_factor
+            self.current_weights /= self.current_weights.sum()  # Normalize
+    
+    def check_rebalancing_needed(self, current_portfolio_values):
+        current_allocation = current_portfolio_values / current_portfolio_values.sum()
+        weight_deviations = abs(current_allocation - self.current_weights)
+        
+        return any(weight_deviations > self.rebalancing_bands)
+```
+
+## Risks and Mitigations
+
+### DeFi-Specific Portfolio Risks
+
+**Smart Contract Risk Concentration:**
+- **Problem**: Multiple assets using same underlying protocol
+- **Example**: Aave, Compound, and Morpho all having smart contract vulnerabilities
+- **Mitigation**: Limit exposure to any single smart contract ecosystem
+
+**Liquidity Risk in Portfolio Construction:**
+```python
+def liquidity_adjusted_optimization(expected_returns, cov_matrix, liquidity_scores, min_liquidity=0.5):
+    # Adjust expected returns for liquidity risk
+    liquidity_penalty = (1 - liquidity_scores) * 0.02  # 2% penalty for illiquid assets
+    adjusted_returns = expected_returns - liquidity_penalty
+    
+    # Standard optimization with adjusted returns
+    return optimize_portfolio(adjusted_returns, cov_matrix)
+```
+
+**Correlation Breakdown Risk:**
+- **Problem**: Assumed low correlations become high during stress
+- **Solution**: Stress test portfolio with correlation = 0.9 for all assets
+
+**Yield Source Concentration:**
+```python
+def yield_source_diversification_check(portfolio_weights, yield_sources):
+    source_concentration = {}
+    
+    for i, weight in enumerate(portfolio_weights):
+        source = yield_sources[i]
+        if source in source_concentration:
+            source_concentration[source] += weight
+        else:
+            source_concentration[source] = weight
+    
+    max_concentration = max(source_concentration.values())
+    return max_concentration < 0.6  # Max 60% from any single yield source
+```
+
+### Risk Mitigation Framework
+
+**Multi-Layer Risk Management:**
+```python
+class DeFiPortfolioRiskManager:
+    def __init__(self, risk_category):
+        self.risk_limits = {
+            'ultra_safe': {'max_single_asset': 0.4, 'max_protocol': 0.6, 'min_correlation': -0.2},
+            'safe': {'max_single_asset': 0.5, 'max_protocol': 0.7, 'min_correlation': -0.1},
+            'brave': {'max_single_asset': 0.6, 'max_protocol': 0.8, 'min_correlation': 0.0},
+            'custom': {'max_single_asset': 0.8, 'max_protocol': 1.0, 'min_correlation': 0.2}
+        }[risk_category]
+    
+    def validate_portfolio(self, weights, correlations, protocol_mapping):
+        violations = []
+        
+        # Single asset concentration
+        if max(weights) > self.risk_limits['max_single_asset']:
+            violations.append("Single asset concentration too high")
+        
+        # Protocol concentration
+        protocol_exposure = {}
+        for i, weight in enumerate(weights):
+            protocol = protocol_mapping[i]
+            protocol_exposure[protocol] = protocol_exposure.get(protocol, 0) + weight
+        
+        if max(protocol_exposure.values()) > self.risk_limits['max_protocol']:
+            violations.append("Protocol concentration too high")
+        
+        # Minimum correlation requirement
+        min_correlation = correlations.min().min()
+        if min_correlation < self.risk_limits['min_correlation']:
+            violations.append("Portfolio correlation too low for risk category")
+        
+        return len(violations) == 0, violations
+```
+
+## Unconventional Wisdom and Insights
+
+### The DeFi Efficient Frontier Shift
+
+**Discovery**: DeFi's efficient frontier is not static—it shifts based on protocol innovations:
+
+```python
+def dynamic_efficient_frontier(market_data, innovation_index):
+    # Traditional efficient frontier
+    base_frontier = calculate_efficient_frontier(market_data)
+    
+    # Innovation adjustment (new protocols increase returns without proportional risk increase)
+    innovation_boost = innovation_index * 0.05  # 5% return boost per innovation unit
+    
+    adjusted_frontier = []
+    for return_val, risk_val in base_frontier:
+        adjusted_return = return_val + innovation_boost
+        # Risk increases sub-linearly with innovation
+        adjusted_risk = risk_val * (1 + innovation_index * 0.1)
+        adjusted_frontier.append((adjusted_return, adjusted_risk))
+    
+    return adjusted_frontier
+```
+
+**Insight**: Early adoption of new protocols can shift the entire efficient frontier upward.
+
+### The Governance Token Portfolio Theory
+
+**Novel Approach**: Treat governance tokens as portfolio insurance rather than return-generating assets:
+
+```python
+def governance_token_insurance_value(portfolio_weights, protocol_governance_tokens, voting_power):
+    insurance_value = 0
+    
+    for i, weight in enumerate(portfolio_weights):
+        protocol_exposure = weight
+        governance_token = protocol_governance_tokens[i]
+        voting_power_in_protocol = voting_power[governance_token]
+        
+        # Insurance value = ability to influence protocol decisions affecting your exposure
+        insurance_value += protocol_exposure * voting_power_in_protocol * 0.1  # 10% insurance premium
+    
+    return insurance_value
+```
+
+**Strategic Implication**: Allocate to governance tokens proportional to protocol exposure, not expected returns.
+
+### The Liquidity Mining Decay Portfolio
+
+**Empirical Finding**: Liquidity mining rewards follow predictable decay patterns:
+
+```python
+def optimal_liquidity_mining_portfolio(initial_rewards, decay_rates, time_horizon):
+    # Calculate time-adjusted returns
+    time_adjusted_returns = []
+    
+    for i, (initial_reward, decay_rate) in enumerate(zip(initial_rewards, decay_rates)):
+        # Exponential decay: R(t) = R_0 * e^(-λt)
+        average_return = initial_reward * (1 - np.exp(-decay_rate * time_horizon)) / (decay_rate * time_horizon)
+        time_adjusted_returns.append(average_return)
+    
+    return np.array(time_adjusted_returns)
+```
+
+**Insight**: Optimize for time-weighted returns rather than current APY.
+
+### The Cross-Chain Portfolio Correlation
+
+**Discovery**: Cross-chain diversification provides diminishing returns:
+
+```python
+def cross_chain_diversification_benefit(n_chains, base_correlation=0.8):
+    # As more chains are added, diversification benefits diminish
+    effective_correlation = base_correlation + (1 - base_correlation) * (1 - 1/n_chains)
+    
+    # Diversification ratio
+    diversification_benefit = 1 / effective_correlation
+    
+    return diversification_benefit
+
+# Result: Adding 4th+ chain provides minimal additional diversification
+```
+
+### The MEV-Adjusted Portfolio Theory
+
+**Innovative Approach**: Incorporate MEV as negative alpha in portfolio construction:
+
+```python
+def mev_adjusted_returns(expected_returns, mev_exposure_factors, mev_environment_score):
+    # MEV reduces effective returns based on transaction frequency and size
+    mev_drag = mev_exposure_factors * mev_environment_score * 0.02  # 2% max MEV drag
+    
+    mev_adjusted_returns = expected_returns - mev_drag
+    
+    return mev_adjusted_returns
+```
+
+**Strategic Application**: Favor strategies with lower transaction frequency to minimize MEV impact.
+
+### The Protocol Fork Diversification Strategy
+
+**Novel Insight**: Protocol forks create temporary diversification opportunities:
+
+```python
+def fork_diversification_opportunity(original_protocol_weight, fork_protocols, correlation_decay_rate):
+    # Allocate across original and fork protocols
+    total_allocation = original_protocol_weight
+    n_protocols = 1 + len(fork_protocols)
+    
+    # Initially high correlation decreases over time
+    time_periods = np.arange(1, 13)  # 12 months
+    correlation_over_time = np.exp(-correlation_decay_rate * time_periods)
+    
+    # Optimal allocation changes as correlations decay
+    optimal_allocations = []
+    for correlation in correlation_over_time:
+        # Equal weight when correlation is low, concentrated when high
+        if correlation > 0.8:
+            allocation = [total_allocation] + [0] * len(fork_protocols)
+        else:
+            equal_weight = total_allocation / n_protocols
+            allocation = [equal_weight] * n_protocols
+        
+        optimal_allocations.append(allocation)
+    
+    return optimal_allocations
+```
+
+## Further Links and Knowledge Base
+
+### Academic Resources
+
+**Classic Portfolio Theory:**
+- **"Portfolio Selection"** (Markowitz, 1952) - Foundation of modern portfolio theory
+- **"Capital Asset Prices: A Theory of Market Equilibrium"** (Sharpe, 1964) - CAPM development
+- **"The Capital Asset Pricing Model: Theory and Evidence"** (Fama & French, 2004) - CAPM critique
+
+**Behavioral Portfolio Theory:**
+- **"Prospect Theory: An Analysis of Decision under Risk"** (Kahneman & Tversky, 1979)
+- **"Behavioral Portfolio Theory"** (Shefrin & Statman, 2000)
+- **"A Behavioral Approach to Asset Pricing"** (Barberis & Thaler, 2003)
+
+**DeFi-Specific Research:**
+- **"Portfolio Management in DeFi"** (Harvey et al., 2021)
+- **"Optimal Portfolio Construction with Cryptocurrency"** (Platanakis & Urquhart, 2020)
+- **"DeFi Risk Assessment and Portfolio Optimization"** (Chen et al., 2022)
+
+### Professional Implementation Tools
+
+**Python Libraries:**
+```python
+# Core portfolio optimization
+from pypfopt import EfficientFrontier, risk_models, expected_returns
+from pypfopt.discrete_allocation import DiscreteAllocation
+from pypfopt.plotting import plot_efficient_frontier
+
+# Advanced optimization
+import cvxpy as cp  # Convex optimization
+import scipy.optimize as sco  # General optimization
+
+# Risk modeling
+from sklearn.covariance import LedoitWolf, EmpiricalCovariance
+import arch  # GARCH models for volatility forecasting
+
+# Backtesting
+import zipline  # Quantitative finance
+import pyfolio  # Performance analytics
+```
+
+**R Libraries:**
+```r
+# Portfolio optimization
+library(PortfolioAnalytics)
+library(PerformanceAnalytics)
+library(quantmod)
+
+# Risk modeling
+library(rugarch)  # GARCH models
+library(rmgarch)  # Multivariate GARCH
+
+# Optimization
+library(ROI)  # R Optimization Infrastructure
+library(quadprog)  # Quadratic programming
+```
+
+### Professional Platforms
+
+**Institutional Portfolio Management:**
+- **Bloomberg Terminal**: Professional portfolio analytics and optimization
+- **FactSet**: Institutional investment management platform
+- **Morningstar Direct**: Portfolio analysis and risk assessment
+- **MSCI Barra**: Risk model and portfolio optimization tools
+
+**DeFi-Specific Tools:**
+- **DeFiPulse**: Protocol risk assessment and portfolio tracking
+- **Zapper**: Portfolio construction and yield optimization
+- **Yearn Finance**: Automated portfolio management strategies
+- **Enzyme Finance**: On-chain portfolio management protocol
+
+### Implementation Templates
+
+**Basic Mean-Variance Optimization:**
+```python
+def mean_variance_portfolio(returns_data, risk_aversion=3.0):
+    # Calculate expected returns and covariance
+    mu = expected_returns.mean_historical_return(returns_data)
+    S = risk_models.sample_cov(returns_data)
+    
+    # Optimize
+    ef = EfficientFrontier(mu, S)
+    
+    # Utility maximization
+    ef.efficient_risk(target_volatility=0.15)
+    weights = ef.clean_weights()
+    
+    return weights
+
+# Performance analysis
+def analyze_portfolio_performance(weights, returns_data):
+    portfolio_returns = (returns_data * weights).sum(axis=1)
+    
+    metrics = {
+        'annual_return': portfolio_returns.mean() * 252,
+        'annual_volatility': portfolio_returns.std() * np.sqrt(252),
+        'sharpe_ratio': (portfolio_returns.mean() * 252) / (portfolio_returns.std() * np.sqrt(252)),
+        'max_drawdown': (portfolio_returns.cumsum() - portfolio_returns.cumsum().expanding().max()).min()
+    }
+    
+    return metrics
+```
+
+### Levva Strategy Integration
+
+**Portfolio Construction Framework:**
+
+```python
+class LevvaPortfolioOptimizer:
+    def __init__(self, strategy_type, risk_category):
+        self.strategy_type = strategy_type
+        self.risk_category = risk_category
+        self.optimization_method = self._select_optimization_method()
+    
+    def _select_optimization_method(self):
+        methods = {
+            ('diversified_defi_yield', 'ultra_safe'): 'minimum_variance',
+            ('diversified_defi_yield', 'safe'): 'risk_parity',
+            ('diversified_defi_yield', 'brave'): 'mean_variance',
+            ('custom', 'any'): 'kelly_optimization'
+        }
+        
+        key = (self.strategy_type, self.risk_category)
+        return methods.get(key, 'mean_variance')
+    
+    def optimize(self, expected_returns, covariance_matrix, constraints=None):
+        if self.optimization_method == 'minimum_variance':
+            return self._minimum_variance_portfolio(covariance_matrix)
+        elif self.optimization_method == 'risk_parity':
+            return self._risk_parity_portfolio(covariance_matrix)
+        elif self.optimization_method == 'mean_variance':
+            return self._mean_variance_portfolio(expected_returns, covariance_matrix)
+        elif self.optimization_method == 'kelly_optimization':
+            return self._kelly_portfolio(expected_returns, covariance_matrix)
+    
+    def _minimum_variance_portfolio(self, cov_matrix):
+        # Implementation of minimum variance optimization
+        pass
+    
+    def _risk_parity_portfolio(self, cov_matrix):
+        # Implementation of risk parity
+        pass
+```
+
+**Risk Category Mapping:**
+
+| Strategy | Risk Category | Optimization Method | Max Single Asset | Target Sharpe |
+|----------|--------------|-------------------|------------------|---------------|
+| Diversified DeFi Yield | Ultra-Safe | Minimum Variance | 25% | 1.0+ |
+| Diversified DeFi Yield | Safe | Risk Parity | 30% | 1.2+ |
+| Diversified DeFi Yield | Brave | Mean-Variance | 35% | 1.5+ |
+| Custom | Any | Kelly/Utility | 50% | 2.0+ |
+
+### Related Knowledge Base Files
+- `position-sizing.md` - Optimal position sizing within portfolio context
+- `correlation-analysis.md` - Understanding correlation for portfolio construction
+- `yield-farming-basics.md` - Yield considerations in portfolio optimization
+- `impermanent-loss-explained.md` - Including IL in portfolio risk models
