@@ -1,0 +1,329 @@
+# Pendle PT Mechanics
+
+## Introduction
+
+Pendle revolutionizes DeFi by tokenizing yield through Principal Tokens (PT) and Yield Tokens (YT), enabling users to trade time-value and yield exposure separately. This yield tokenization primitive transforms how we think about fixed income in DeFi, allowing strategies ranging from yield speculation to interest rate hedging. For Levva's strategies, Pendle PT mechanics enable leveraged yield farming through time-locked positions and provide building blocks for sophisticated structured products that can amplify returns while managing temporal risk.
+
+## Key Concepts, Ideas, and Formulas
+
+### Core Tokenization Mechanics
+
+**Asset Splitting Formula:**
+```
+Yield-Bearing Asset → SY (Standardized Yield) → PT + YT
+```
+
+**PT Valuation:**
+```
+PT_Price = Underlying_Asset_Price × Discount_Factor
+Discount_Factor = 1 / (1 + Fixed_Rate)^(Time_to_Maturity)
+```
+
+**YT Value Calculation:**
+```
+YT_Value = SY_Value - PT_Value
+YT_Yield = (Underlying_Yield - Fixed_Rate) × Leverage_Factor
+```
+
+### AMM Mechanics for PT Trading
+
+**Pendle AMM Invariant:**
+```python
+def pendle_amm_invariant(pt_reserves, sy_reserves, time_to_maturity, rate_anchor):
+    # Simplified representation
+    ln_implied_rate = ln(sy_reserves / pt_reserves) / time_to_maturity
+    invariant = rate_anchor - ln_implied_rate
+    return invariant
+```
+
+**Time Decay Calculation:**
+```
+Time_Decay_Rate = (1 - PT_Price / SY_Price) / Time_to_Maturity
+```
+
+### Yield Extraction Mechanisms
+
+**PT Fixed Yield:**
+```
+Fixed_APY = (1 / PT_Price - 1) / Time_to_Maturity × 365
+```
+
+**YT Leveraged Exposure:**
+```
+YT_Multiplier = SY_Price / YT_Price
+Effective_Yield = Underlying_Yield × YT_Multiplier
+```
+
+## Examples and Applications
+
+### Scenario 1: Conservative Fixed Yield Strategy
+
+**Setup:**
+- Asset: 100 stETH (4% staking yield)
+- Wrap to SY-stETH, split to PT + YT
+- PT-stETH-2024-12-26 trading at 0.92 discount
+
+**Fixed Yield Calculation:**
+```
+Time_to_Maturity = 127 days = 0.348 years
+Fixed_APY = (1/0.92 - 1) / 0.348 = 25% APY
+```
+
+**Outcome:**
+- Lock in 25% fixed return over 127 days
+- No exposure to staking rate fluctuations
+- Suitable for Levva's "Safe" risk category
+
+### Scenario 2: Leveraged YT Farming Strategy
+
+**Setup:**
+- Buy YT-stETH-2024-12-26 at 0.08 (YT price)
+- SY-stETH trading at 1.00
+- Current stETH yield: 4% APY
+
+**Leverage Calculation:**
+```
+YT_Multiplier = 1.00 / 0.08 = 12.5x
+Leveraged_Yield = 4% × 12.5 = 50% APY
+```
+
+**Risk Scenario:**
+- If stETH yield drops to 2%: 2% × 12.5 = 25% APY
+- If stETH yield rises to 6%: 6% × 12.5 = 75% APY
+
+### Scenario 3: Levva Leveraged PT Farming
+
+**Integration with Levva Pools:**
+- Deposit: 100,000 USDC
+- Borrow: 200,000 USDC (3x leverage)
+- Total: 300,000 USDC → PT-weETH
+
+**Yield Amplification:**
+```
+PT_Base_Yield = 22% APY
+Leveraged_Yield = 22% × 3 = 66% APY
+Borrowing_Cost = 4.5% × 2 = 9% APY (on borrowed amount)
+Net_Yield = 66% - 9% = 57% APY
+```
+
+### Scenario 4: PT/YT Arbitrage Strategy
+
+**Market Inefficiency:**
+- SY-weETH: $2,500
+- PT-weETH: $2,300 (8% discount)
+- YT-weETH: $250
+- Sum: $2,550 > $2,500 (2% arbitrage opportunity)
+
+**Execution:**
+1. Buy SY-weETH at $2,500
+2. Split to PT + YT
+3. Sell PT at $2,300 + YT at $250 = $2,550
+4. Profit: $50 per unit (2% return)
+
+## Risks and Mitigations
+
+### Primary Risk Factors
+
+**Yield Rate Risk:**
+- **PT holders**: Protected from yield decreases but miss yield increases
+- **YT holders**: Amplified exposure to yield volatility
+- **Mitigation**: Dynamic hedging with complementary positions
+
+**Time Decay Risk:**
+- YT value decays to zero at maturity regardless of yield performance
+- Theta decay accelerates as maturity approaches
+- **Mitigation**: Active position management and roll strategies
+
+**Liquidity Risk:**
+- Fragmented liquidity across different maturities
+- Wider spreads during market stress
+- **Mitigation**: Focus on high-TVL pools and shorter maturities
+
+**Smart Contract Risk:**
+- Complex yield tokenization mechanics
+- Oracle dependencies for underlying yields
+- **Mitigation**: Protocol audits and diversified oracle sources
+
+### Levva-Specific Risk Management
+
+**Liquidation Protection:**
+```python
+def calculate_liquidation_risk(pt_price, underlying_price, leverage, ltv_threshold):
+    price_decline_threshold = (1 - 1/leverage) * 0.9
+    liquidation_price = underlying_price * (1 - price_decline_threshold)
+    safety_margin = (pt_price - liquidation_price) / pt_price
+    
+    if safety_margin < 0.1:  # 10% safety buffer
+        return "HIGH_RISK"
+    elif safety_margin < 0.2:
+        return "MEDIUM_RISK"
+    else:
+        return "LOW_RISK"
+```
+
+**Temporal Risk Controls:**
+- Maximum 90-day maturity for leveraged positions
+- Automatic roll strategies before expiry
+- Position size limits based on time to maturity
+
+## Unconventional Wisdom and Insights
+
+### The Yield Curve Arbitrage
+
+Most users focus on absolute yields, but sophisticated strategies exploit the yield curve shape:
+
+```python
+def yield_curve_arbitrage_signal(short_term_pt, long_term_pt, time_diff):
+    short_yield = calculate_implied_yield(short_term_pt)
+    long_yield = calculate_implied_yield(long_term_pt)
+    
+    curve_steepness = (long_yield - short_yield) / time_diff
+    
+    if curve_steepness > 0.1:  # Steep curve
+        return "LONG_SHORT_TERM_PT"  # Rates likely to fall
+    elif curve_steepness < -0.05:  # Inverted curve
+        return "LONG_LONG_TERM_PT"   # Rates likely to rise
+    else:
+        return "NEUTRAL"
+```
+
+### The PT Premium Decay Pattern
+
+**Empirical Finding**: PT premiums follow predictable decay patterns based on yield volatility:
+
+```python
+def pt_premium_decay_model(time_to_maturity, yield_volatility, market_sentiment):
+    base_decay = 1 - np.exp(-0.1 * time_to_maturity)
+    vol_adjustment = yield_volatility * 0.5
+    sentiment_factor = 1 + market_sentiment * 0.2
+    
+    expected_premium = base_decay * vol_adjustment * sentiment_factor
+    return expected_premium
+```
+
+**Strategic Implication**: Buy PT when premiums exceed model predictions, sell when below.
+
+### Cross-Asset Yield Correlations
+
+**Discovery**: Pendle PT yields across different underlying assets show regime-dependent correlations:
+
+```python
+def cross_asset_pt_correlation(eth_lrt_yields, btc_lrt_yields, stable_yields, regime):
+    if regime == "bull_market":
+        # High correlation during risk-on periods
+        return np.corrcoef([eth_lrt_yields, btc_lrt_yields])[0,1]  # ~0.8-0.9
+    elif regime == "bear_market":
+        # Divergence during flight-to-quality
+        return np.corrcoef([eth_lrt_yields, stable_yields])[0,1]   # ~0.3-0.5
+    else:
+        # Normal correlation
+        return np.corrcoef([eth_lrt_yields, btc_lrt_yields])[0,1]  # ~0.6-0.7
+```
+
+### The SY Wrapper Efficiency
+
+**Insight**: Not all yield-bearing assets are equal when wrapped in SY:
+
+```python
+def sy_efficiency_score(underlying_asset, gas_cost, yield_frequency, composability):
+    # Higher frequency compounds better but costs more gas
+    compound_benefit = yield_frequency * 0.01  # 1% per compounding event
+    gas_drag = gas_cost / underlying_asset.tvl * 365  # Annualized gas cost
+    
+    efficiency = compound_benefit - gas_drag + composability * 0.05
+    return efficiency
+```
+
+**Strategic Application**: Favor high-TVL, auto-compounding assets like stETH over manual-compound alternatives.
+
+### Maturity Date Clustering Effects
+
+**Unconventional Observation**: PT liquidity concentrates around quarterly expiries:
+
+```python
+def liquidity_clustering_premium(days_to_expiry):
+    # Quarterly expiries (90, 180, 270, 360 days) have higher liquidity
+    quarterly_proximity = min([abs(days_to_expiry - q) for q in [90, 180, 270, 360]])
+    
+    if quarterly_proximity <= 7:  # Within a week of quarterly
+        liquidity_premium = 0.02  # 2% better pricing
+    else:
+        liquidity_premium = 0
+        
+    return liquidity_premium
+```
+
+**Strategy**: Time entries around quarterly cycles for better execution.
+
+### YT Options-Like Payoff
+
+**Advanced Insight**: YT tokens behave like leveraged call options on yield rates:
+
+```python
+def yt_options_delta(current_yield, strike_yield, time_to_maturity, yt_multiplier):
+    # YT sensitivity to yield changes
+    delta = yt_multiplier * time_to_maturity / 365
+    
+    # Gamma effect: sensitivity increases with yield level
+    gamma = delta * (current_yield / strike_yield - 1)
+    
+    return delta + gamma
+```
+
+**Portfolio Application**: Use YT positions to hedge interest rate exposure in broader DeFi portfolios.
+
+## Further Links and Knowledge Base
+
+### Protocol Documentation
+- **Pendle Docs**: [https://docs.pendle.finance/](https://docs.pendle.finance/)
+- **Technical Whitepaper**: Pendle V2 architecture and AMM mechanics
+- **Developer Resources**: SDK documentation and integration guides
+
+### Analytics and Tools
+- **Pendle Analytics**: [https://app.pendle.finance/analytics](https://app.pendle.finance/analytics)
+- **DefiLlama Pendle**: TVL and yield tracking across all Pendle markets
+- **Dune Analytics**: Community dashboards for PT/YT performance analysis
+
+### Academic Research
+- **"Yield Tokenization in DeFi"** (Gudgeon et al., 2023)
+- **"Fixed Income Primitives in Decentralized Finance"** (Harvey & Chen, 2023)
+- **"Interest Rate Risk Management in DeFi"** (Krishnamurthy & Li, 2024)
+
+### Development Libraries
+```python
+# Pendle SDK integration example
+from pendle_sdk import PendleRouter, MarketData
+
+router = PendleRouter(chain_id=1)
+market_data = MarketData("PT-weETH-2024-12-26")
+
+# Calculate optimal swap routes
+swap_data = router.get_swap_data(
+    token_in="USDC",
+    token_out="PT-weETH-2024-12-26", 
+    amount_in=100000,
+    slippage=0.005
+)
+```
+
+### Risk Management Tools
+- **Gauntlet**: Parameter optimization and risk modeling for Pendle markets
+- **Chaos Labs**: Simulation-based stress testing of PT/YT strategies
+- **Risk Harbor**: Insurance coverage for smart contract risks
+
+### Integration Frameworks
+- **ERC-4626 Compatibility**: Using PT tokens in vault strategies
+- **Cross-Protocol Composability**: Integrating with Aave, Compound, Morpho
+- **Automated Position Management**: Strategies for expiry handling and rolling
+
+### Levva Integration Points
+- **Strategy Classification**: PT farming for "Leveraged Yield Farming" category
+- **Risk Mapping**: Time-locked liquidity with "High" risk designation
+- **Automation Requirements**: Maturity monitoring and position rolling
+- **Portfolio Allocation**: Integration with diversified DeFi yield strategies
+
+### Related Knowledge Base Files
+- `yield-farming-basics.md` - Foundation concepts for PT farming
+- `liquidation-mechanics.md` - Managing leveraged PT positions
+- `position-sizing.md` - Optimal allocation to time-limited strategies
+- `correlation-analysis.md` - PT yield correlation patterns across assets

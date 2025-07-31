@@ -14,6 +14,7 @@ import { suggestTypeTemplate } from "../templates/generate";
 import { CacheEntry } from "../types/core";
 import { ILevvaService } from "../types/service";
 import { getDb, getLevvaUser } from "../util/db";
+import { defaultSuggestionPrompt } from "src/prompts/default";
 
 interface MessageEntry {
   authorId: string;
@@ -99,7 +100,7 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       const isAgent = message.authorId !== user.id;
 
       if (!actionLookup) {
-        actionLookup = message.rawMessage.actions[0];
+        actionLookup = message.rawMessage?.actions?.[0];
       }
 
       const messageChainId = isAgent
@@ -140,91 +141,43 @@ async function handler(req: Request, res: Response, runtime: IAgentRuntime) {
       return;
     }
 
-    const defSuggest = {
-      name: "default",
-      description:
-        "in case the rest suggestion types do not fit, suggest conversation topics based on agent's capabilities",
-    };
-
-    // todo register suggest types corresponding to actions
-    // todo improve prompt to determine suggest type
-    const gen = await runtime.useModel(ModelType.OBJECT_LARGE, {
-      prompt: suggestTypeTemplate([
-        defSuggest,
-        ...(suggestions?.map(({ name, description }) => ({
-          name,
-          description,
-        })) ?? []),
-      ])
-        .replace("{{userData}}", JSON.stringify(user))
-        .replace("{{conversation}}", conversation),
-    });
-
-    const type = gen.type;
-    const suggest = suggestions?.find((s) => s.name === type);
-
     let result: { suggestions: Suggestions[] } | undefined;
 
-    if (suggest) {
-      const model = suggest.model ?? ModelType.OBJECT_SMALL;
-
-      const prompt = await suggest.getPrompt(runtime, {
-        address,
-        chainId,
-        conversation,
-        decision: gen,
+    if (suggestions?.length) {
+      // todo improve prompt to determine suggest type
+      const gen = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        prompt: suggestTypeTemplate(
+          suggestions.map(({ name, description }) => ({
+                name,
+            description,
+          }))
+        )
+          .replace("{{userData}}", JSON.stringify(user))
+          .replace("{{conversation}}", conversation),
       });
 
-      result = await runtime.useModel(model, {
-        prompt,
-      });
-    } else {
-      result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-        prompt: `<task>
-Generate suggestions for user based on the conversation leading to the following action types
-</task>
-<decision>
-${JSON.stringify(gen)}
-</decision>
-<conversation>
-${conversation}
-</conversation>
-<actionTypes>
-- Analyze portfolio
-- Suggest strategy
-- Swap tokens
-- Crypto news
-</actionTypes>
-<instructions>
-Generate 4 suggestions for chat with agent
-</instructions>
-<keys>
-- "suggestions" should be an array of objects with the following keys:
-  - "label"
-  - "text"
-</keys>
-<output>
-Respond using JSON format like this:
-{
-  "suggestions": [
-    {
-      "label": "What's new?",
-      "text": "What's the latest crypto news?",
-    }, {
-      "label": "Find preferred stragegy",
-      "text": "Can you suggest an optimal strategy for me?",
-    }, {
-      "label": "Exchange tokens",
-      "text": "I want to swap tokens, please help",
-    }, {
-      "label": "Analyze my wallet",
-      "text": "Please, tell me about my portfolio",
+      const type = gen.type;
+      const suggest = suggestions?.find((s) => s.name === type);
+
+      if (suggest) {
+        const model = suggest.model ?? ModelType.OBJECT_SMALL;
+
+        const prompt = await suggest.getPrompt(runtime, {
+          address,
+          chainId,
+          conversation,
+          decision: gen,
+        });
+
+        result = await runtime.useModel(model, {
+          prompt,
+        });
+      }
     }
-  ]
-}
 
-Your response should include the valid JSON block and nothing else.
-</output>`,
+    if (!result) {
+      result = await runtime.useModel(ModelType.OBJECT_SMALL, {
+        prompt: defaultSuggestionPrompt({ conversation }),
       });
     }
 

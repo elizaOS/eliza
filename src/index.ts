@@ -21,6 +21,7 @@ export const character: Character = {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-openrouter",
     "@elizaos/plugin-openai",
+    "@elizaos/plugin-knowledge",
     "@elizaos/plugin-bootstrap",
     //...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
     //...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),

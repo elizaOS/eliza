@@ -1,0 +1,172 @@
+# Impermanent Loss Explained
+
+## Introduction
+
+Impermanent loss (IL) is the silent profit killer in DeFi that separates the wheat from the chaff in automated market making. It represents the opportunity cost of providing liquidity to AMM pools versus simply holding the underlying assets. While called "impermanent" because it can theoretically reverse if prices return to initial levels, in practice it often becomes permanent when liquidity is withdrawn during price divergence. Understanding IL mechanics is crucial for Levva's Custom strategies involving liquidity provision, as it directly impacts the risk-return profile of AMM-based yield strategies.
+
+## Key Concepts, Ideas, and Formulas
+
+### Mathematical Foundation
+
+**Uniswap V2 Constant Product Formula:**
+```
+x × y = k (where k is constant)
+```
+
+**Impermanent Loss Formula:**
+```
+IL = (2√r)/(1 + r) - 1
+```
+Where `r` is the price ratio change (new_price/initial_price)
+
+**Practical Calculation:**
+```javascript
+function calculateIL(priceChange) {
+    const r = priceChange; // e.g., 2 for 100% price increase
+    return (2 * Math.sqrt(r)) / (1 + r) - 1;
+}
+```
+
+### IL Curve Characteristics
+
+The IL curve is concave and non-linear:
+- **Small divergences (<10%)**: Minimal IL, typically <0.5%
+- **50% price change**: ~2.8% IL
+- **100% price increase (2x)**: ~5.7% IL  
+- **300% price increase (4x)**: ~20% IL
+- **Asymptotic behavior**: Approaches 100% as divergence → ∞
+
+### Protocol-Specific Variations
+
+**Uniswap V3 Concentrated Liquidity:**
+```
+IL_concentrated = IL_v2 × (price_range_factor)
+```
+Where price_range_factor amplifies IL within concentrated ranges but eliminates it outside ranges.
+
+**Balancer Weighted Pools:**
+For 80/20 pools, IL is reduced by ~60% compared to 50/50 pools due to asymmetric weighting.
+
+**Curve StableSwap:**
+```
+A × n^n × Σ(xi) + D = A × D × n^n + D^(n+1)/(n^n × Π(xi))
+```
+The amplification parameter A keeps IL minimal (<0.1%) for small deviations but increases exponentially for large depegs.
+
+## Examples and Applications
+
+### Scenario 1: ETH/USDC Pool (50/50 Uniswap V2)
+- **Initial**: 1 ETH ($2,000) + 2,000 USDC
+- **ETH rises to $3,000**: Portfolio becomes 0.816 ETH + 2,449 USDC = $4,898
+- **HODLing**: 1 ETH ($3,000) + 2,000 USDC = $5,000  
+- **IL**: ($5,000 - $4,898)/$5,000 = 2.04%
+
+### Scenario 2: Correlated Assets (weETH/PT-weETH)
+- **Correlation**: ~0.95-0.98
+- **Expected IL**: <0.5% over typical farming periods
+- **Levva Application**: Ideal for Brave tier "Diversified DeFi Yield" with minimal IL exposure
+
+### Scenario 3: Volatile Meme Coin (Custom Strategy)
+- **Asset volatility**: 200%+ annually
+- **Potential IL**: 20-80% during extreme moves
+- **Mitigation**: Use Balancer 80/20 pools or automated rebalancing
+
+## Risks and Mitigations
+
+### Primary Risks
+
+1. **Directional Price Movement**: Any sustained price divergence creates IL
+2. **Volatility Amplification**: Higher volatility = higher expected IL
+3. **Correlation Breakdown**: Previously correlated assets can diverge unexpectedly
+
+### Mitigation Strategies
+
+**Asset Selection:**
+- Prioritize highly correlated pairs (correlation >0.9)
+- Use LST/LRT pairs where both assets accrue similar yields
+- Consider wrapped versions of the same asset
+
+**Pool Design:**
+- Weighted pools (80/20) reduce IL for the majority asset
+- Concentrated liquidity requires active management but offers higher fees
+- Stable pools (Curve) minimize IL for pegged assets
+
+**Dynamic Hedging:**
+```
+Hedge_Ratio = -Δ × Pool_Share
+```
+Use perpetual contracts to hedge directional exposure and maintain delta neutrality.
+
+**Automated Range Management:**
+- Implement bots for V3 position rebalancing
+- Use services like Arrakis or Gamma for professional management
+- Set stop-loss triggers for extreme IL scenarios
+
+## Unconventional Wisdom and Insights
+
+### The IL-Volume Sweet Spot
+
+Most analysis focuses on IL in isolation, but the real metric is **IL-adjusted returns**:
+```
+Net_APY = Fee_APY - IL_Rate - Gas_Costs
+```
+
+**Insight**: High-volume, low-correlation pairs often outperform despite higher IL because fee generation exceeds IL costs.
+
+### Batch Correlation Analysis
+
+Instead of using simple Pearson correlation, implement rolling window correlation with volatility adjustments:
+```python
+def enhanced_correlation(returns1, returns2, window=30):
+    rolling_corr = returns1.rolling(window).corr(returns2)
+    vol_adjustment = (returns1.rolling(window).std() * returns2.rolling(window).std())
+    return rolling_corr / vol_adjustment
+```
+
+This captures regime changes better than static correlation.
+
+### MEV-Resistant IL Calculation
+
+Traditional IL calculations ignore MEV extraction. A more accurate formula includes sandwich attack impact:
+```
+True_IL = Calculated_IL + MEV_Extraction_Rate + Slippage_Costs
+```
+
+### The Reflexivity Factor
+
+In practice, IL creates trading opportunities that can reduce future IL through:
+- Arbitrage bots that profit from rebalancing
+- Reduced price impact due to deeper liquidity
+- Self-correcting mechanisms in mature pools
+
+### Time-Weighted IL Optimization
+
+IL compounds over time but isn't linear. The optimal strategy varies by time horizon:
+- **Short-term (<1 week)**: Focus on high-fee pools regardless of IL
+- **Medium-term (1-4 weeks)**: Balance fee generation with IL mitigation  
+- **Long-term (>1 month)**: Prioritize IL minimization over absolute fees
+
+## Further Links and Knowledge Base
+
+### Essential Tools
+- **IL Calculator**: [Impermanent Loss Calculator](https://dailydefi.org/tools/impermanent-loss-calculator/)
+- **Pool Analytics**: DefiLlama, DefiPulse for real-time IL tracking
+- **Backtesting**: Create historical IL scenarios using pool data
+
+### Advanced Reading
+- **Uniswap V3 Math**: [Concentrated Liquidity Technical Paper](https://uniswap.org/whitepaper-v3.pdf)
+- **Curve Mechanics**: [StableSwap Invariant Analysis](https://curve.fi/files/stableswap-paper.pdf)
+- **Academic Research**: "An Analysis of Uniswap Markets" (Angeris et al.)
+
+### Levva Integration Points
+- **Risk Categories**: Map IL tolerance to Levva's risk tiers
+  - **Diversified DeFi Yield**: <2% expected IL annually
+  - **Custom Strategies**: 2-20% IL acceptable for higher yields
+- **Automated Monitoring**: Implement real-time IL tracking in Levva vaults
+- **Dynamic Allocation**: Adjust pool exposure based on correlation changes
+
+### Related Knowledge Base Files
+- `correlation-analysis.md` - Understanding asset correlation patterns
+- `uniswap-v3-lp.md` - Concentrated liquidity mechanics
+- `portfolio-theory.md` - IL in the context of modern portfolio theory
+- `yield-farming-basics.md` - IL mitigation in yield strategies
