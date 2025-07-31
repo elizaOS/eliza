@@ -23,6 +23,7 @@ RUN bun install --no-cache
 
 COPY drizzle ./drizzle
 COPY src ./src
+COPY docs ./docs
 RUN bun run build
 
 FROM node:23.3.0-slim
@@ -61,6 +62,7 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/tsup.config.ts ./tsup.config.ts
 COPY --from=builder /app/vitest.config.ts ./vitest.config.ts
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/docs ./docs
 
 RUN npx patchright install chromium
 
