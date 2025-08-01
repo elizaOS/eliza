@@ -1,4 +1,4 @@
-import { logger, validateUuid, type UUID, type IAgentRuntime } from '@elizaos/core';
+import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import internalMessageBus from '../../bus';
@@ -131,7 +131,7 @@ export function createSessionsRouter(
             await serverInstance.createChannel({
                 id: channelId,
                 name: `session-${sessionId}`,
-                type: 'direct',
+                type: ChannelType.DM,
                 messageServerId: DEFAULT_SERVER_ID,
                 metadata: {
                     sessionId,
@@ -142,7 +142,7 @@ export function createSessionsRouter(
             });
 
             // Add agent as participant
-            await serverInstance.addChannelParticipants(channelId, [body.agentId as UUID]);
+            await serverInstance.addParticipantsToChannel(channelId, [body.agentId as UUID]);
 
             // Create session
             const session: Session = {
@@ -168,7 +168,7 @@ export function createSessionsRouter(
             res.status(201).json(response);
 
         } catch (error) {
-            errorResponse(res, 500, 'Failed to create session', error);
+            errorResponse(res, 500, 'Failed to create session', error instanceof Error ? error.message : String(error));
         }
     });
 
@@ -214,7 +214,7 @@ export function createSessionsRouter(
             try {
                 validateContent(body.content);
             } catch (error) {
-                return errorResponse(res, 400, error.message);
+                return errorResponse(res, 400, error instanceof Error ? error.message : String(error));
             }
 
             // Validate metadata if provided
@@ -272,7 +272,7 @@ export function createSessionsRouter(
             });
 
         } catch (error) {
-            errorResponse(res, 500, 'Failed to send message', error);
+            errorResponse(res, 500, 'Failed to send message', error instanceof Error ? error.message : String(error));
         }
     });
 
@@ -351,7 +351,7 @@ export function createSessionsRouter(
                         ? JSON.parse(msg.rawMessage) 
                         : msg.rawMessage || {};
                 } catch (error) {
-                    logger.warn(`[Sessions API] Failed to parse rawMessage for message ${msg.id}`, error);
+                    logger.warn(`[Sessions API] Failed to parse rawMessage for message ${msg.id}`, error instanceof Error ? error.message : String(error));
                 }
 
                 return {
@@ -376,7 +376,7 @@ export function createSessionsRouter(
             res.json(response);
 
         } catch (error) {
-            errorResponse(res, 500, 'Failed to fetch messages', error);
+            errorResponse(res, 500, 'Failed to fetch messages', error instanceof Error ? error.message : String(error));
         }
     });
 
@@ -402,7 +402,7 @@ export function createSessionsRouter(
             res.json({ success: true });
 
         } catch (error) {
-            errorResponse(res, 500, 'Failed to delete session', error);
+            errorResponse(res, 500, 'Failed to delete session', error instanceof Error ? error.message : String(error));
         }
     });
 
