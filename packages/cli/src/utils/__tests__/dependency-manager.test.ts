@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -13,29 +13,29 @@ import {
 
 // Mock external dependencies
 mock.module('node:fs', () => ({
-  existsSync: jest.fn(),
-  readFileSync: jest.fn(),
-  writeFileSync: jest.fn(),
+  existsSync: mock(),
+  readFileSync: mock(),
+  writeFileSync: mock(),
 }));
 
 mock.module('../bun-exec', () => ({
-  bunExec: jest.fn(),
+  bunExec: mock(),
 }));
 
 mock.module('../spinner-utils', () => ({
-  runBunWithSpinner: jest.fn(),
+  runBunWithSpinner: mock(),
 }));
 
 mock.module('../directory-detection', () => ({
-  detectDirectoryType: jest.fn(),
+  detectDirectoryType: mock(),
 }));
 
 mock.module('@elizaos/core', () => ({
   logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+    debug: mock(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
   },
 }));
 
@@ -51,7 +51,12 @@ const mockDetectDirectoryType = detectDirectoryType as any;
 describe('dependency-manager', () => {
   beforeEach(() => {
     // Reset all mocks
-    jest.clearAllMocks();
+    mockFs.existsSync.mockRestore();
+    mockFs.readFileSync.mockRestore();
+    mockFs.writeFileSync.mockRestore();
+    mockBunExec.mockRestore();
+    mockRunBunWithSpinner.mockRestore();
+    mockDetectDirectoryType.mockRestore();
 
     // Reset environment variables
     delete process.env.ELIZA_NO_AUTO_INSTALL;
@@ -60,7 +65,12 @@ describe('dependency-manager', () => {
   });
 
   afterEach(() => {
-    jest.clearAllMocks();
+    mockFs.existsSync.mockRestore();
+    mockFs.readFileSync.mockRestore();
+    mockFs.writeFileSync.mockRestore();
+    mockBunExec.mockRestore();
+    mockRunBunWithSpinner.mockRestore();
+    mockDetectDirectoryType.mockRestore();
   });
 
   describe('hasElizaOSCli', () => {
