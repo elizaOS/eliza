@@ -15,7 +15,7 @@
     "dev": "bun run scripts/dev-watch.js",
     "dev:docs": "turbo run dev --filter=@elizaos/docs",
     "build:docs": "turbo run build --filter=@elizaos/docs",
-    "build": "turbo run build --filter=!@elizaos/docs",
+    "build": "turbo run build ",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format --filter=./packages/*",
     "format:check": "turbo run format:check --filter=./packages/*",
