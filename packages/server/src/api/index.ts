@@ -147,7 +147,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
     logger.debug('Plugin Request Path', baselessReqPath)
     // might need to ensure /
 
-    function findRouteInRuntime(runtime) {
+    function findRouteInRuntime(runtime: IAgentRuntime) {
       for (const route of runtime.routes) {
         if (handled) break;
 
