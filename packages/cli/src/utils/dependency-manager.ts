@@ -9,6 +9,13 @@ import { detectDirectoryType } from './directory-detection';
  * Dependency management utilities for ElizaOS CLI
  */
 
+interface BunExecResult {
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
 interface PackageJson {
   name?: string;
   dependencies?: Record<string, string>;
@@ -25,7 +32,14 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
       return false;
     }
 
-    const packageJson: PackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    let packageJson: PackageJson;
+    try {
+      packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    } catch (parseError) {
+      logger.debug(`Error parsing JSON in package.json at ${packageJsonPath}:`, parseError);
+      return false;
+    }
+
     const dependencies = packageJson.dependencies || {};
     const devDependencies = packageJson.devDependencies || {};
 
@@ -138,11 +152,18 @@ export async function ensureElizaOSCli(cwd: string = process.cwd()): Promise<voi
  */
 export async function getLatestElizaOSCliVersion(): Promise<string | null> {
   try {
-    const result = await bunExec('bun', ['info', '@elizaos/cli', '--json'], { stdio: 'pipe' });
+    const result: BunExecResult = await bunExec('bun', ['info', '@elizaos/cli', '--json'], {
+      stdio: 'pipe',
+    });
 
     if (result.success && result.stdout) {
-      const info = JSON.parse(result.stdout);
-      return info.version || info.dist?.version || 'latest';
+      try {
+        const info = JSON.parse(result.stdout);
+        return info.version || info.dist?.version || 'latest';
+      } catch (parseError) {
+        logger.debug('Error parsing JSON from bun info command:', parseError);
+        return null;
+      }
     }
 
     return null;
@@ -174,9 +195,19 @@ export async function ensurePackageJson(cwd: string = process.cwd()): Promise<bo
   }
 
   try {
+    // Validate and sanitize directory name for package name
+    const rawDirName = path.basename(cwd);
+    const sanitizedName = rawDirName
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '-') // Replace invalid chars with hyphens
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      .replace(/-+/g, '-'); // Collapse multiple hyphens
+
+    const packageName = sanitizedName || 'eliza-project';
+
     // Create a minimal package.json optimized for bun
     const minimal = {
-      name: path.basename(cwd) || 'eliza-project',
+      name: packageName,
       version: '1.0.0',
       type: 'module',
       scripts: {

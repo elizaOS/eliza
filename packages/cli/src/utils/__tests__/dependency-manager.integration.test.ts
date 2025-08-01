@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -12,19 +12,19 @@ import {
 
 // Mock external dependencies but allow some real operations for integration testing
 mock.module('../bun-exec', () => ({
-  bunExec: jest.fn(),
+  bunExec: mock(),
 }));
 
 mock.module('../spinner-utils', () => ({
-  runBunWithSpinner: jest.fn(),
+  runBunWithSpinner: mock(),
 }));
 
 mock.module('@elizaos/core', () => ({
   logger: {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+    debug: mock(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
   },
 }));
 
@@ -47,8 +47,9 @@ describe('dependency-manager integration', () => {
     // Save original environment
     originalEnv = { ...process.env };
 
-    // Reset mocks
-    jest.clearAllMocks();
+    // Clear all mocks
+    mockBunExec.mockClear();
+    mockRunBunWithSpinner.mockClear();
   });
 
   afterEach(async () => {
@@ -62,7 +63,8 @@ describe('dependency-manager integration', () => {
       // Ignore cleanup errors
     }
 
-    jest.clearAllMocks();
+    mockBunExec.mockClear();
+    mockRunBunWithSpinner.mockClear();
   });
 
   describe('real file system operations', () => {
@@ -176,6 +178,30 @@ describe('dependency-manager integration', () => {
       const packageJsonPath = path.join(projectDir, 'package.json');
       const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8'));
       expect(packageJson.name).toBe('my-awesome-project');
+    });
+
+    it('should sanitize directory name with special characters for package name', async () => {
+      const projectDir = path.join(testDir, 'My@Project#Name$With%Special&Chars!');
+      await fs.promises.mkdir(projectDir);
+
+      const result = await ensurePackageJson(projectDir);
+      expect(result).toBe(true);
+
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8'));
+      expect(packageJson.name).toBe('my-project-name-with-special-chars');
+    });
+
+    it('should handle directory names with only special characters', async () => {
+      const projectDir = path.join(testDir, '@#$%&!');
+      await fs.promises.mkdir(projectDir);
+
+      const result = await ensurePackageJson(projectDir);
+      expect(result).toBe(true);
+
+      const packageJsonPath = path.join(projectDir, 'package.json');
+      const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8'));
+      expect(packageJson.name).toBe('eliza-project'); // Should fallback to default
     });
   });
 

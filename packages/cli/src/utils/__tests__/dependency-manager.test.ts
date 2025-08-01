@@ -50,13 +50,13 @@ const mockDetectDirectoryType = detectDirectoryType as any;
 
 describe('dependency-manager', () => {
   beforeEach(() => {
-    // Reset all mocks
-    mockFs.existsSync.mockRestore();
-    mockFs.readFileSync.mockRestore();
-    mockFs.writeFileSync.mockRestore();
-    mockBunExec.mockRestore();
-    mockRunBunWithSpinner.mockRestore();
-    mockDetectDirectoryType.mockRestore();
+    // Clear all mocks
+    mockFs.existsSync.mockClear();
+    mockFs.readFileSync.mockClear();
+    mockFs.writeFileSync.mockClear();
+    mockBunExec.mockClear();
+    mockRunBunWithSpinner.mockClear();
+    mockDetectDirectoryType.mockClear();
 
     // Reset environment variables
     delete process.env.ELIZA_NO_AUTO_INSTALL;
@@ -65,12 +65,12 @@ describe('dependency-manager', () => {
   });
 
   afterEach(() => {
-    mockFs.existsSync.mockRestore();
-    mockFs.readFileSync.mockRestore();
-    mockFs.writeFileSync.mockRestore();
-    mockBunExec.mockRestore();
-    mockRunBunWithSpinner.mockRestore();
-    mockDetectDirectoryType.mockRestore();
+    mockFs.existsSync.mockClear();
+    mockFs.readFileSync.mockClear();
+    mockFs.writeFileSync.mockClear();
+    mockBunExec.mockClear();
+    mockRunBunWithSpinner.mockClear();
+    mockDetectDirectoryType.mockClear();
   });
 
   describe('hasElizaOSCli', () => {
@@ -130,7 +130,16 @@ describe('dependency-manager', () => {
 
     it('should handle malformed JSON gracefully', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue('invalid json');
+      mockFs.readFileSync.mockReturnValue('{ "name": "test", invalid json }');
+
+      const result = hasElizaOSCli('/fake/path/package.json');
+
+      expect(result).toBe(false);
+    });
+
+    it('should handle JSON parsing errors with detailed logging', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue('{"incomplete": json');
 
       const result = hasElizaOSCli('/fake/path/package.json');
 
@@ -357,12 +366,23 @@ describe('dependency-manager', () => {
     it('should return null if JSON parsing fails', async () => {
       mockBunExec.mockResolvedValue({
         success: true,
-        stdout: 'invalid json',
+        stdout: '{"incomplete": json',
       });
 
       const result = await getLatestElizaOSCliVersion();
 
       expect(result).toBe(null);
+    });
+
+    it('should handle empty JSON response gracefully', async () => {
+      mockBunExec.mockResolvedValue({
+        success: true,
+        stdout: '{}',
+      });
+
+      const result = await getLatestElizaOSCliVersion();
+
+      expect(result).toBe('latest');
     });
   });
 
