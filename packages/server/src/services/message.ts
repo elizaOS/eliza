@@ -380,11 +380,12 @@ export class MessageBusService extends Service {
         : undefined,
     };
 
-    // Generate a unique memory ID by combining message ID, agent ID and timestamp
-    // This ensures each agent creates a unique memory even for the same message
+    // Generate a deterministic memory ID by combining message ID and agent ID
+    // This ensures each agent creates a unique memory for the same message
+    // but the same agent will always generate the same ID for the same message
     const uniqueMemoryId = createUniqueUuid(
       this.runtime, 
-      `${message.id}-${this.runtime.agentId}-${Date.now()}`
+      `${message.id}-${this.runtime.agentId}`
     );
 
     return {
@@ -409,7 +410,26 @@ export class MessageBusService extends Service {
   }
 
   public async handleIncomingMessage(data: unknown) {
-    const message = data as MessageServiceMessage;
+    // Validate the incoming data structure
+    if (!data || typeof data !== 'object') {
+      logger.error(`[${this.runtime.character.name}] MessageBusService: Invalid message data received`);
+      return;
+    }
+    
+    const messageData = data as any;
+    
+    // Validate required fields
+    if (!messageData.id || !messageData.channel_id || !messageData.author_id || !messageData.content) {
+      logger.error(`[${this.runtime.character.name}] MessageBusService: Message missing required fields`, {
+        hasId: !!messageData.id,
+        hasChannelId: !!messageData.channel_id,
+        hasAuthorId: !!messageData.author_id,
+        hasContent: !!messageData.content
+      });
+      return;
+    }
+    
+    const message = messageData as MessageServiceMessage;
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
       { messageId: message.id }

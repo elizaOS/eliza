@@ -3,21 +3,76 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
+import type {
+    Session,
+    SessionMetadata,
+    CreateSessionRequest,
+    CreateSessionResponse,
+    SendMessageRequest,
+    GetMessagesQuery,
+    SimplifiedMessage,
+    GetMessagesResponse,
+    SessionInfoResponse,
+    HealthCheckResponse
+} from '../../types/sessions';
 
-// Session management for simplified messaging
-interface Session {
-    id: string;
-    agentId: UUID;
-    channelId: UUID;
-    userId: UUID;
-    metadata: Record<string, any>;
-    createdAt: Date;
-    lastActivity: Date;
-}
-
-// In-memory session store (consider Redis for production)
+// Session management with configurable timeout
+const SESSION_TIMEOUT_MS = parseInt(process.env.SESSION_TIMEOUT_MINUTES || '30') * 60 * 1000;
 const sessions = new Map<string, Session>();
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+
+// Input validation constants
+const MAX_CONTENT_LENGTH = 4000;
+const MAX_METADATA_SIZE = 1024 * 10; // 10KB
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 50;
+
+/**
+ * Validates session metadata
+ */
+function validateMetadata(metadata: any): metadata is SessionMetadata {
+    if (!metadata || typeof metadata !== 'object') {
+        return true; // Empty metadata is valid
+    }
+    
+    // Check metadata size
+    const metadataStr = JSON.stringify(metadata);
+    if (metadataStr.length > MAX_METADATA_SIZE) {
+        throw new Error(`Metadata exceeds maximum size of ${MAX_METADATA_SIZE} bytes`);
+    }
+    
+    return true;
+}
+
+/**
+ * Validates message content
+ */
+function validateContent(content: any): content is string {
+    if (typeof content !== 'string') {
+        throw new Error('Content must be a string');
+    }
+    
+    if (content.length === 0) {
+        throw new Error('Content cannot be empty');
+    }
+    
+    if (content.length > MAX_CONTENT_LENGTH) {
+        throw new Error(`Content exceeds maximum length of ${MAX_CONTENT_LENGTH} characters`);
+    }
+    
+    return true;
+}
+
+/**
+ * Standardized error response
+ */
+function errorResponse(res: express.Response, status: number, message: string, details?: any) {
+    logger.error(`[Sessions API] Error: ${message}`, details);
+    return res.status(status).json({
+        error: message,
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+    });
+}
 
 /**
  * Creates a unified sessions router for simplified messaging
@@ -30,24 +85,44 @@ export function createSessionsRouter(
     const router = express.Router();
 
     /**
+     * Health check - placed before parameterized routes to avoid conflicts
+     * GET /api/messaging/sessions/health
+     */
+    router.get('/sessions/health', (_req, res) => {
+        const response: HealthCheckResponse = {
+            status: 'healthy',
+            activeSessions: sessions.size,
+            timestamp: new Date().toISOString()
+        };
+        res.json(response);
+    });
+
+    /**
      * Create a new messaging session
      * POST /api/messaging/sessions
      */
     router.post('/sessions', async (req, res) => {
-        const { agentId, userId, metadata = {} } = req.body;
-
-        if (!validateUuid(agentId) || !validateUuid(userId)) {
-            return res.status(400).json({ 
-                error: 'Invalid agentId or userId format' 
-            });
-        }
-
-        const agent = agents.get(agentId as UUID);
-        if (!agent) {
-            return res.status(404).json({ error: 'Agent not found' });
-        }
-
         try {
+            const body = req.body as CreateSessionRequest;
+            
+            if (!body.agentId || !body.userId) {
+                return errorResponse(res, 400, 'Missing required fields: agentId and userId');
+            }
+
+            if (!validateUuid(body.agentId) || !validateUuid(body.userId)) {
+                return errorResponse(res, 400, 'Invalid UUID format for agentId or userId');
+            }
+
+            const agent = agents.get(body.agentId as UUID);
+            if (!agent) {
+                return errorResponse(res, 404, 'Agent not found');
+            }
+
+            // Validate metadata
+            if (body.metadata && !validateMetadata(body.metadata)) {
+                return errorResponse(res, 400, 'Invalid metadata');
+            }
+
             // Create a unique session ID
             const sessionId = uuidv4();
             const channelId = uuidv4() as UUID;
@@ -60,39 +135,40 @@ export function createSessionsRouter(
                 messageServerId: DEFAULT_SERVER_ID,
                 metadata: {
                     sessionId,
-                    agentId,
-                    userId,
-                    ...metadata
+                    agentId: body.agentId,
+                    userId: body.userId,
+                    ...(body.metadata || {})
                 }
             });
 
             // Add agent as participant
-            await serverInstance.addChannelParticipants(channelId, [agentId as UUID]);
+            await serverInstance.addChannelParticipants(channelId, [body.agentId as UUID]);
 
             // Create session
             const session: Session = {
                 id: sessionId,
-                agentId: agentId as UUID,
+                agentId: body.agentId as UUID,
                 channelId,
-                userId: userId as UUID,
-                metadata,
+                userId: body.userId as UUID,
+                metadata: body.metadata || {},
                 createdAt: new Date(),
                 lastActivity: new Date()
             };
 
             sessions.set(sessionId, session);
 
-            res.json({
+            const response: CreateSessionResponse = {
                 sessionId,
-                agentId,
-                userId,
+                agentId: session.agentId,
+                userId: session.userId,
                 createdAt: session.createdAt,
-                metadata
-            });
+                metadata: session.metadata
+            };
+
+            res.status(201).json(response);
 
         } catch (error) {
-            logger.error('[Sessions API] Error creating session:', error);
-            res.status(500).json({ error: 'Failed to create session' });
+            errorResponse(res, 500, 'Failed to create session', error);
         }
     });
 
@@ -105,17 +181,19 @@ export function createSessionsRouter(
         const session = sessions.get(sessionId);
 
         if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
+            return errorResponse(res, 404, 'Session not found');
         }
 
-        res.json({
+        const response: SessionInfoResponse = {
             sessionId: session.id,
             agentId: session.agentId,
             userId: session.userId,
             createdAt: session.createdAt,
             lastActivity: session.lastActivity,
             metadata: session.metadata
-        });
+        };
+
+        res.json(response);
     });
 
     /**
@@ -123,19 +201,27 @@ export function createSessionsRouter(
      * POST /api/messaging/sessions/:sessionId/messages
      */
     router.post('/sessions/:sessionId/messages', async (req, res) => {
-        const { sessionId } = req.params;
-        const { content, attachments, metadata = {} } = req.body;
-
-        const session = sessions.get(sessionId);
-        if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
-        }
-
-        if (!content || typeof content !== 'string') {
-            return res.status(400).json({ error: 'Content is required' });
-        }
-
         try {
+            const { sessionId } = req.params;
+            const body = req.body as SendMessageRequest;
+
+            const session = sessions.get(sessionId);
+            if (!session) {
+                return errorResponse(res, 404, 'Session not found');
+            }
+
+            // Validate content
+            try {
+                validateContent(body.content);
+            } catch (error) {
+                return errorResponse(res, 400, error.message);
+            }
+
+            // Validate metadata if provided
+            if (body.metadata && !validateMetadata(body.metadata)) {
+                return errorResponse(res, 400, 'Invalid metadata');
+            }
+
             // Update session activity
             session.lastActivity = new Date();
 
@@ -143,12 +229,15 @@ export function createSessionsRouter(
             const message = await serverInstance.createMessage({
                 channelId: session.channelId,
                 authorId: session.userId,
-                content,
-                rawMessage: { content, attachments },
+                content: body.content,
+                rawMessage: { 
+                    content: body.content, 
+                    attachments: body.attachments 
+                },
                 sourceType: 'user',
                 metadata: {
                     sessionId,
-                    ...metadata
+                    ...(body.metadata || {})
                 }
             });
 
@@ -158,19 +247,23 @@ export function createSessionsRouter(
                 channel_id: session.channelId,
                 server_id: DEFAULT_SERVER_ID,
                 author_id: session.userId,
-                content,
+                content: body.content,
                 created_at: message.createdAt.getTime(),
                 source_type: 'user',
-                raw_message: { content, attachments },
+                raw_message: { 
+                    content: body.content, 
+                    attachments: body.attachments 
+                },
                 metadata: {
                     sessionId,
-                    ...metadata
+                    ...(body.metadata || {})
                 }
             };
 
-            internalMessageBus.emit('central_new_message', messageForBus);
+            // Use consistent event name
+            internalMessageBus.emit('new_message', messageForBus);
 
-            res.json({
+            res.status(201).json({
                 id: message.id,
                 content: message.content,
                 authorId: message.authorId,
@@ -179,8 +272,7 @@ export function createSessionsRouter(
             });
 
         } catch (error) {
-            logger.error('[Sessions API] Error sending message:', error);
-            res.status(500).json({ error: 'Failed to send message' });
+            errorResponse(res, 500, 'Failed to send message', error);
         }
     });
 
@@ -189,37 +281,78 @@ export function createSessionsRouter(
      * GET /api/messaging/sessions/:sessionId/messages
      */
     router.get('/sessions/:sessionId/messages', async (req, res) => {
-        const { sessionId } = req.params;
-        const { limit = 50, before, after } = req.query;
-
-        const session = sessions.get(sessionId);
-        if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
-        }
-
         try {
-            // Parse query parameters
-            const messageLimit = Math.min(parseInt(limit as string) || 50, 100);
-            const beforeDate = before ? new Date(parseInt(before as string)) : undefined;
-            const afterDate = after ? new Date(parseInt(after as string)) : undefined;
+            const { sessionId } = req.params;
+            const query = req.query as GetMessagesQuery;
 
-            // Get messages from the channel
-            const messages = await serverInstance.getMessagesForChannel(
-                session.channelId,
-                messageLimit,
-                beforeDate || afterDate
-            );
+            const session = sessions.get(sessionId);
+            if (!session) {
+                return errorResponse(res, 404, 'Session not found');
+            }
 
-            // Filter messages based on after parameter if provided
-            const filteredMessages = afterDate 
-                ? messages.filter(msg => msg.createdAt > afterDate)
-                : messages;
+            // Parse and validate query parameters
+            let messageLimit = DEFAULT_LIMIT;
+            if (query.limit) {
+                const parsedLimit = parseInt(query.limit, 10);
+                if (isNaN(parsedLimit) || parsedLimit < 1) {
+                    return errorResponse(res, 400, 'Invalid limit parameter');
+                }
+                messageLimit = Math.min(parsedLimit, MAX_LIMIT);
+            }
+
+            let beforeDate: Date | undefined;
+            let afterDate: Date | undefined;
+
+            if (query.before) {
+                const beforeTimestamp = parseInt(query.before, 10);
+                if (isNaN(beforeTimestamp)) {
+                    return errorResponse(res, 400, 'Invalid before parameter');
+                }
+                beforeDate = new Date(beforeTimestamp);
+            }
+
+            if (query.after) {
+                const afterTimestamp = parseInt(query.after, 10);
+                if (isNaN(afterTimestamp)) {
+                    return errorResponse(res, 400, 'Invalid after parameter');
+                }
+                afterDate = new Date(afterTimestamp);
+            }
+
+            // Fix: Handle both before and after correctly
+            let messages;
+            if (afterDate) {
+                // When after is specified, we want messages newer than afterDate
+                // Get more messages than limit to filter properly
+                messages = await serverInstance.getMessagesForChannel(
+                    session.channelId,
+                    messageLimit * 2, // Get extra to ensure we have enough after filtering
+                    undefined // Don't use beforeDate for initial query
+                );
+                
+                // Filter messages after the specified date
+                messages = messages
+                    .filter(msg => msg.createdAt > afterDate)
+                    .slice(0, messageLimit);
+            } else {
+                // Use beforeDate if specified, otherwise get latest messages
+                messages = await serverInstance.getMessagesForChannel(
+                    session.channelId,
+                    messageLimit,
+                    beforeDate
+                );
+            }
 
             // Transform to simplified format
-            const simplifiedMessages = filteredMessages.map((msg) => {
-                const rawMessage = typeof msg.rawMessage === 'string' 
-                    ? JSON.parse(msg.rawMessage) 
-                    : msg.rawMessage;
+            const simplifiedMessages: SimplifiedMessage[] = messages.map((msg) => {
+                let rawMessage: any = {};
+                try {
+                    rawMessage = typeof msg.rawMessage === 'string' 
+                        ? JSON.parse(msg.rawMessage) 
+                        : msg.rawMessage || {};
+                } catch (error) {
+                    logger.warn(`[Sessions API] Failed to parse rawMessage for message ${msg.id}`, error);
+                }
 
                 return {
                     id: msg.id,
@@ -229,20 +362,21 @@ export function createSessionsRouter(
                     createdAt: msg.createdAt,
                     metadata: {
                         ...msg.metadata,
-                        thought: rawMessage?.thought,
-                        actions: rawMessage?.actions
+                        thought: rawMessage.thought,
+                        actions: rawMessage.actions
                     }
                 };
             });
 
-            res.json({
+            const response: GetMessagesResponse = {
                 messages: simplifiedMessages,
-                hasMore: simplifiedMessages.length === messageLimit
-            });
+                hasMore: messages.length === messageLimit
+            };
+
+            res.json(response);
 
         } catch (error) {
-            logger.error('[Sessions API] Error fetching messages:', error);
-            res.status(500).json({ error: 'Failed to fetch messages' });
+            errorResponse(res, 500, 'Failed to fetch messages', error);
         }
     });
 
@@ -251,14 +385,14 @@ export function createSessionsRouter(
      * DELETE /api/messaging/sessions/:sessionId
      */
     router.delete('/sessions/:sessionId', async (req, res) => {
-        const { sessionId } = req.params;
-        const session = sessions.get(sessionId);
-
-        if (!session) {
-            return res.status(404).json({ error: 'Session not found' });
-        }
-
         try {
+            const { sessionId } = req.params;
+            const session = sessions.get(sessionId);
+
+            if (!session) {
+                return errorResponse(res, 404, 'Session not found');
+            }
+
             // Remove session from memory
             sessions.delete(sessionId);
 
@@ -268,8 +402,7 @@ export function createSessionsRouter(
             res.json({ success: true });
 
         } catch (error) {
-            logger.error('[Sessions API] Error deleting session:', error);
-            res.status(500).json({ error: 'Failed to delete session' });
+            errorResponse(res, 500, 'Failed to delete session', error);
         }
     });
 
@@ -293,30 +426,22 @@ export function createSessionsRouter(
         });
     });
 
-    /**
-     * Health check
-     * GET /api/messaging/sessions/health
-     */
-    router.get('/sessions/health', (_req, res) => {
-        res.json({
-            status: 'healthy',
-            activeSessions: sessions.size,
-            timestamp: new Date().toISOString()
-        });
-    });
-
-    // Cleanup old sessions periodically (every 5 minutes)
-    setInterval(() => {
+    // Cleanup old sessions periodically
+    const cleanupInterval = setInterval(() => {
         const now = new Date();
-        const sessionTimeout = 30 * 60 * 1000; // 30 minutes
 
         for (const [sessionId, session] of sessions.entries()) {
-            if (now.getTime() - session.lastActivity.getTime() > sessionTimeout) {
+            if (now.getTime() - session.lastActivity.getTime() > SESSION_TIMEOUT_MS) {
                 sessions.delete(sessionId);
                 logger.info(`[Sessions API] Cleaned up inactive session: ${sessionId}`);
             }
         }
-    }, 5 * 60 * 1000);
+    }, 5 * 60 * 1000); // Run every 5 minutes
+
+    // Clean up interval on server shutdown
+    process.on('SIGTERM', () => {
+        clearInterval(cleanupInterval);
+    });
 
     return router;
 }
