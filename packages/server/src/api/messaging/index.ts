@@ -4,6 +4,7 @@ import type { AgentServer } from '../../index';
 import { createMessagingCoreRouter } from './core';
 import { createServersRouter } from './servers';
 import { createChannelsRouter } from './channels';
+import { createSimpleMessagingRouter } from './simple';
 
 /**
  * Creates the messaging router for all communication functionality
@@ -26,6 +27,9 @@ export function messagingRouter(
 
   // Mount channel management functionality
   router.use('/', createChannelsRouter(agents, serverInstance));
+
+  // Mount simple messaging functionality for Discord activity
+  router.use('/', createSimpleMessagingRouter(agents, serverInstance));
 
   return router;
 }

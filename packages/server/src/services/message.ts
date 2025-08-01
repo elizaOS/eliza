@@ -33,7 +33,7 @@ export class MessageBusService extends Service {
   static serviceType = 'message-bus-service';
   capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
-  private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
+  private boundHandleIncomingMessage: (data: unknown) => void;
   private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
@@ -41,7 +41,11 @@ export class MessageBusService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
+    this.boundHandleIncomingMessage = ((data: unknown) => {
+      this.handleIncomingMessage(data).catch(error => {
+        logger.error(`[${this.runtime.character.name}] Error handling incoming message:`, error);
+      });
+    });
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
     this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
     this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
@@ -376,8 +380,15 @@ export class MessageBusService extends Service {
         : undefined,
     };
 
+    // Generate a unique memory ID by combining message ID, agent ID and timestamp
+    // This ensures each agent creates a unique memory even for the same message
+    const uniqueMemoryId = createUniqueUuid(
+      this.runtime, 
+      `${message.id}-${this.runtime.agentId}-${Date.now()}`
+    );
+
     return {
-      id: createUniqueUuid(this.runtime, message.id),
+      id: uniqueMemoryId,
       entityId: agentAuthorEntityId,
       agentId: this.runtime.agentId,
       roomId: agentRoomId,
@@ -397,7 +408,8 @@ export class MessageBusService extends Service {
     };
   }
 
-  public async handleIncomingMessage(message: MessageServiceMessage) {
+  public async handleIncomingMessage(data: unknown) {
+    const message = data as MessageServiceMessage;
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
       { messageId: message.id }
