@@ -14,7 +14,7 @@ import { logger } from '@elizaos/core';
 export async function startDevMode(options: DevOptions): Promise<void> {
   const cwd = process.cwd();
 
-  // Auto-install @elizaos/cli if needed (for non-monorepo projects)
+  // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
   await ensureElizaOSCli(cwd);
 
   const context = createDevContext(cwd);

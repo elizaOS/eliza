@@ -5,7 +5,6 @@ import {
   hasElizaOSCli,
   shouldAutoInstallCli,
   installElizaOSCli,
-  isBunAvailable,
   ensureElizaOSCli,
   getLatestElizaOSCliVersion,
   hasElizaOSDependencies,
@@ -195,11 +194,13 @@ describe('dependency-manager', () => {
       });
 
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({
-        devDependencies: {
-          '@elizaos/cli': '^1.0.0',
-        },
-      }));
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          devDependencies: {
+            '@elizaos/cli': '^1.0.0',
+          },
+        })
+      );
 
       const result = shouldAutoInstallCli('/test/dir');
 
@@ -213,11 +214,13 @@ describe('dependency-manager', () => {
       });
 
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({
-        dependencies: {
-          'other-package': '^1.0.0',
-        },
-      }));
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          dependencies: {
+            'other-package': '^1.0.0',
+          },
+        })
+      );
 
       const result = shouldAutoInstallCli('/test/dir');
 
@@ -238,7 +241,7 @@ describe('dependency-manager', () => {
         ['add', '--dev', '@elizaos/cli'],
         '/test/dir',
         expect.objectContaining({
-          spinnerText: 'Installing @elizaos/cli...',
+          spinnerText: 'Installing @elizaos/cli with bun...',
           successText: '✓ @elizaos/cli installed successfully',
         })
       );
@@ -264,37 +267,6 @@ describe('dependency-manager', () => {
     });
   });
 
-  describe('isBunAvailable', () => {
-    it('should return true if bun is available', async () => {
-      mockBunExec.mockResolvedValue({
-        success: true,
-      });
-
-      const result = await isBunAvailable();
-
-      expect(result).toBe(true);
-      expect(mockBunExec).toHaveBeenCalledWith('bun', ['--version'], { stdio: 'ignore' });
-    });
-
-    it('should return false if bun is not available', async () => {
-      mockBunExec.mockResolvedValue({
-        success: false,
-      });
-
-      const result = await isBunAvailable();
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false if bun check throws', async () => {
-      mockBunExec.mockRejectedValue(new Error('Command not found'));
-
-      const result = await isBunAvailable();
-
-      expect(result).toBe(false);
-    });
-  });
-
   describe('ensureElizaOSCli', () => {
     it('should do nothing if conditions are not met', async () => {
       process.env.ELIZA_NO_AUTO_INSTALL = 'true';
@@ -302,22 +274,6 @@ describe('dependency-manager', () => {
       await ensureElizaOSCli();
 
       expect(mockBunExec).not.toHaveBeenCalled();
-      expect(mockRunBunWithSpinner).not.toHaveBeenCalled();
-    });
-
-    it('should do nothing if bun is not available', async () => {
-      mockDetectDirectoryType.mockReturnValue({
-        type: 'elizaos-project',
-        hasPackageJson: true,
-      });
-
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
-
-      mockBunExec.mockResolvedValue({ success: false });
-
-      await ensureElizaOSCli();
-
       expect(mockRunBunWithSpinner).not.toHaveBeenCalled();
     });
 
@@ -330,7 +286,6 @@ describe('dependency-manager', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(JSON.stringify({}));
 
-      mockBunExec.mockResolvedValue({ success: true });
       mockRunBunWithSpinner.mockResolvedValue({ success: true });
 
       await ensureElizaOSCli();
@@ -357,11 +312,9 @@ describe('dependency-manager', () => {
       const result = await getLatestElizaOSCliVersion();
 
       expect(result).toBe('1.2.3');
-      expect(mockBunExec).toHaveBeenCalledWith(
-        'bun',
-        ['info', '@elizaos/cli', '--json'],
-        { stdio: 'pipe' }
-      );
+      expect(mockBunExec).toHaveBeenCalledWith('bun', ['info', '@elizaos/cli', '--json'], {
+        stdio: 'pipe',
+      });
     });
 
     it('should return dist.version if version not available', async () => {

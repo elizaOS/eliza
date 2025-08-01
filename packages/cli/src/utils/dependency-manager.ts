@@ -83,22 +83,18 @@ export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
 }
 
 /**
- * Install @elizaos/cli as a dev dependency
+ * Install @elizaos/cli as a dev dependency using bun
  */
 export async function installElizaOSCli(cwd: string = process.cwd()): Promise<boolean> {
   try {
     logger.info('Adding @elizaos/cli as dev dependency for enhanced development experience...');
 
-    const result = await runBunWithSpinner(
-      ['add', '--dev', '@elizaos/cli'],
-      cwd,
-      {
-        spinnerText: 'Installing @elizaos/cli...',
-        successText: '✓ @elizaos/cli installed successfully',
-        errorText: 'Failed to install @elizaos/cli',
-        showOutputOnError: false, // Don't show verbose output for this
-      }
-    );
+    const result = await runBunWithSpinner(['add', '--dev', '@elizaos/cli'], cwd, {
+      spinnerText: 'Installing @elizaos/cli with bun...',
+      successText: '✓ @elizaos/cli installed successfully',
+      errorText: 'Failed to install @elizaos/cli',
+      showOutputOnError: false, // Don't show verbose output for this
+    });
 
     if (result.success) {
       logger.info('✓ @elizaos/cli added as dev dependency');
@@ -116,20 +112,9 @@ export async function installElizaOSCli(cwd: string = process.cwd()): Promise<bo
 }
 
 /**
- * Check if bun is available for dependency installation
- */
-export async function isBunAvailable(): Promise<boolean> {
-  try {
-    const result = await bunExec('bun', ['--version'], { stdio: 'ignore' });
-    return result.success;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Auto-install @elizaos/cli if conditions are met
  * This is the main function that should be called from start/dev commands
+ * Uses bun as the package manager (ElizaOS standard)
  */
 export async function ensureElizaOSCli(cwd: string = process.cwd()): Promise<void> {
   // Quick check if we should proceed
@@ -137,15 +122,9 @@ export async function ensureElizaOSCli(cwd: string = process.cwd()): Promise<voi
     return;
   }
 
-  // Check if bun is available
-  if (!(await isBunAvailable())) {
-    logger.debug('Bun not available, skipping @elizaos/cli auto-install');
-    return;
-  }
-
   logger.debug('Auto-installing @elizaos/cli for enhanced development experience');
 
-  // Attempt to install
+  // Attempt to install using bun
   const success = await installElizaOSCli(cwd);
 
   if (success) {
@@ -168,7 +147,7 @@ export async function getLatestElizaOSCliVersion(): Promise<string | null> {
 
     return null;
   } catch (error) {
-    logger.debug('Error getting @elizaos/cli version:', error);
+    logger.debug('Error getting @elizaos/cli version with bun:', error);
     return null;
   }
 }
@@ -185,6 +164,7 @@ export function hasElizaOSDependencies(cwd: string = process.cwd()): boolean {
 /**
  * Create a package.json if it doesn't exist (for standalone usage)
  * This is a fallback for cases where someone wants to use elizaos in a new directory
+ * Uses bun as the package manager
  */
 export async function ensurePackageJson(cwd: string = process.cwd()): Promise<boolean> {
   const packageJsonPath = path.join(cwd, 'package.json');
@@ -194,19 +174,19 @@ export async function ensurePackageJson(cwd: string = process.cwd()): Promise<bo
   }
 
   try {
-    // Create a minimal package.json
+    // Create a minimal package.json optimized for bun
     const minimal = {
       name: path.basename(cwd) || 'eliza-project',
       version: '1.0.0',
       type: 'module',
       scripts: {
         start: 'elizaos start',
-        dev: 'elizaos dev'
-      }
+        dev: 'elizaos dev',
+      },
     };
 
     fs.writeFileSync(packageJsonPath, JSON.stringify(minimal, null, 2));
-    logger.info('Created package.json for ElizaOS project');
+    logger.info('Created package.json for ElizaOS project (bun ready)');
     return true;
   } catch (error) {
     logger.warn('Could not create package.json:', error);

@@ -27,7 +27,7 @@ export const start = new Command()
       // Load env config first before any character loading
       await loadEnvConfig();
 
-      // Auto-install @elizaos/cli if needed (for non-monorepo projects)
+      // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
       await ensureElizaOSCli();
 
       // Setup proper module resolution environment variables

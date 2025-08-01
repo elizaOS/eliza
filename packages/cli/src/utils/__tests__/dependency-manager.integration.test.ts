@@ -219,7 +219,7 @@ describe('dependency-manager integration', () => {
         ['add', '--dev', '@elizaos/cli'],
         testDir,
         expect.objectContaining({
-          spinnerText: 'Installing @elizaos/cli...',
+          spinnerText: 'Installing @elizaos/cli with bun...',
           successText: '✓ @elizaos/cli installed successfully',
         })
       );
@@ -246,7 +246,7 @@ describe('dependency-manager integration', () => {
   describe('simplified end-to-end functionality', () => {
     it('should handle ensureElizaOSCli without errors', async () => {
       // Test that the main function doesn't throw errors
-      // In real usage, it would check conditions and potentially install
+      // In real usage, it would check conditions and potentially install using bun
       await expect(ensureElizaOSCli(testDir)).resolves.toBeUndefined();
     });
 
