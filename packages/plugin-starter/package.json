@@ -64,6 +64,7 @@
     "dev": "elizaos dev",
     "build": "tsc --noEmit && vite build && tsup",
     "lint": "prettier --write ./src",
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test:component": "bun run test:install && bun test",
     "test:e2e": "bun run test:install && bun test",
     "test:e2e:manual": "bun run test:install && node scripts/test-e2e-manual.js",

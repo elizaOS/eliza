@@ -55,6 +55,7 @@
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "tsc --noEmit && tsup",
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test": "bun test",
     "format": "prettier --write ./src"
   },
@@ -62,7 +63,7 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "^3.24.4"
+    "zod": "3.24.2"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
