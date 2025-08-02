@@ -39,7 +39,10 @@ const EvaluationSchema = z.discriminatedUnion('type', [
 const MockSchema = z.object({
     service: z.string(),
     method: z.string(),
-    when: z.record(z.any()).optional(),
+    // The 'when' clause specifically checks arguments now.
+    when: z.object({
+        args: z.array(z.any())
+    }).optional(),
     response: z.any(),
 });
 
@@ -49,10 +52,10 @@ const SetupSchema = z.object({
 });
 
 const RunStepSchema = z.object({
-  name: z.string().optional(),
-  lang: z.string(),
-  code: z.string(),
-  evaluations: z.array(EvaluationSchema),
+    name: z.string().optional(),
+    lang: z.string(),
+    code: z.string(),
+    evaluations: z.array(EvaluationSchema),
 });
 
 const JudgmentSchema = z.object({

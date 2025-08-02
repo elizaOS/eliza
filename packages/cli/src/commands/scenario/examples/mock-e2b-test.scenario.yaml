@@ -1,0 +1,43 @@
+name: "Test MockEngine with E2B Environment"
+description: "Verifies the MockEngine can intercept service calls in a real runtime environment"
+environment:
+  type: e2b
+setup:
+  mocks:
+    # Mock the E2B service's executeCode method
+    - service: "e2b"
+      method: "executeCode"
+      when:
+        args: ["console.log('Hello from mock!');", "javascript"]
+      response:
+        text: "Hello from mock!"
+        logs:
+          stdout: ["Hello from mock!"]
+          stderr: []
+        error: null
+    # Generic mock for any other executeCode calls
+    - service: "e2b"
+      method: "executeCode"
+      response:
+        text: "Generic mock response"
+        logs:
+          stdout: ["Generic mock response"]
+          stderr: []
+        error: null
+  virtual_fs:
+    "test.js": "console.log('This should be mocked');"
+run:
+  # Expected: Should trigger conditional mock for specific code
+  - lang: javascript
+    code: "console.log('Hello from mock!');"
+    evaluations: []
+  # Expected: Should trigger generic mock for different code
+  - lang: javascript
+    code: "console.log('Different code');"
+    evaluations: []
+  # Expected: Should trigger generic mock for Python code
+  - lang: python
+    code: "print('Python code');"
+    evaluations: []
+judgment:
+  strategy: all_pass 

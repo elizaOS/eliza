@@ -8,6 +8,7 @@ import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvid
 import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
 import { createE2BRuntime } from '../../scenarios/runtime-factory';
+import { MockEngine } from '../../scenarios/MockEngine';
 
 export const scenario = new Command()
     .name('scenario')
@@ -22,6 +23,7 @@ export const scenario = new Command()
                 logger.info(`Starting scenario run with args: ${JSON.stringify({ filePath, ...options })}`);
                 let provider: EnvironmentProvider | null = null;
                 let runtime: any = null;
+                let mockEngine: MockEngine | null = null;
                 try {
                     const fullPath = path.resolve(filePath);
                     logger.info(`Attempting to read scenario file from: ${fullPath}`);
@@ -53,6 +55,14 @@ export const scenario = new Command()
                         process.exit(1);
                     }
 
+                    // Initialize MockEngine if we have a runtime and mocks are defined
+                    if (runtime && scenario.setup?.mocks && !options.live) {
+                        logger.info('Initializing MockEngine...');
+                        mockEngine = new MockEngine(runtime);
+                        logger.info('Applying mocks...');
+                        mockEngine.applyMocks(scenario.setup.mocks);
+                    }
+
                     logger.info(`Setting up '${scenario.environment.type}' environment...`);
                     await provider.setup(scenario);
                     logger.info('Executing run block...');
@@ -67,6 +77,12 @@ export const scenario = new Command()
                     logger.error('An error occurred during scenario execution:', error);
                     process.exit(1);
                 } finally {
+                    // Revert mocks first to ensure clean state
+                    if (mockEngine) {
+                        logger.info('Reverting mocks...');
+                        mockEngine.revertMocks();
+                    }
+
                     if (provider) {
                         logger.info('Tearing down environment...');
                         await provider.teardown();
