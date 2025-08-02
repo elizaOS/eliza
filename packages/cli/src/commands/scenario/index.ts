@@ -9,6 +9,7 @@ import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
 import { createE2BRuntime } from '../../scenarios/runtime-factory';
 import { MockEngine } from '../../scenarios/MockEngine';
+import { EvaluationEngine } from '../../scenarios/EvaluationEngine';
 
 export const scenario = new Command()
     .name('scenario')
@@ -73,6 +74,27 @@ export const scenario = new Command()
                         console.log(JSON.stringify(result, null, 2));
                     });
                     console.log('-------------------------');
+
+                    // Run evaluations for each step
+                    if (runtime) {
+                        const evaluationEngine = new EvaluationEngine(runtime);
+                        logger.info('Running evaluations...');
+
+                        for (let i = 0; i < results.length; i++) {
+                            const step = scenario.run[i];
+                            const result = results[i];
+
+                            if (step.evaluations && step.evaluations.length > 0) {
+                                console.log(`--- Evaluation Results for Step ${i + 1} ---`);
+                                const evaluationResults = await evaluationEngine.runEvaluations(step.evaluations, result);
+                                evaluationResults.forEach(res => {
+                                    const status = res.success ? '✅ PASS' : '❌ FAIL';
+                                    console.log(`${status}: ${res.message}`);
+                                });
+                                console.log('----------------------------------------');
+                            }
+                        }
+                    }
                 } catch (error) {
                     logger.error('An error occurred during scenario execution:', error);
                     process.exit(1);

@@ -25,6 +25,43 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         }
     }
 
+    private async captureFileSystem(): Promise<Record<string, string>> {
+        if (!this.tempDir) {
+            return {};
+        }
+
+        const files: Record<string, string> = {};
+
+        try {
+            // Recursively read all files in the temp directory
+            const readDirRecursive = async (dirPath: string, basePath: string = '') => {
+                const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+                for (const entry of entries) {
+                    const fullPath = path.join(dirPath, entry.name);
+                    const relativePath = path.join(basePath, entry.name);
+
+                    if (entry.isDirectory()) {
+                        await readDirRecursive(fullPath, relativePath);
+                    } else if (entry.isFile()) {
+                        try {
+                            const content = await fs.readFile(fullPath, 'utf-8');
+                            files[relativePath] = content;
+                        } catch (error) {
+                            files[relativePath] = '[binary or unreadable]';
+                        }
+                    }
+                }
+            };
+
+            await readDirRecursive(this.tempDir);
+            return files;
+        } catch (error) {
+            console.warn('Failed to capture file system state:', error);
+            return {};
+        }
+    }
+
     async run(scenario: Scenario): Promise<ExecutionResult[]> {
         if (!this.tempDir) {
             throw new Error('Setup must be called before run.');
@@ -57,12 +94,20 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
 
             try {
                 const { stdout, stderr } = await execAsync(command, { cwd: this.tempDir });
-                results.push({ exitCode: 0, stdout, stderr });
+
+                // Capture file system state after this step
+                const files = await this.captureFileSystem();
+
+                results.push({ exitCode: 0, stdout, stderr, files });
             } catch (error: any) {
+                // Capture file system state even on error
+                const files = await this.captureFileSystem();
+
                 results.push({
                     exitCode: error.code || 1,
                     stdout: error.stdout || '',
                     stderr: error.stderr || error.message || '',
+                    files: files
                 });
             }
         }

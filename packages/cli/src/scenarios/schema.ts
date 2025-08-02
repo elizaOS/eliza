@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Base schema for any evaluation
-type EvaluationType = 'string_contains' | 'regex_match' | 'trajectory_contains_action' | 'llm_judge';
+type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge';
 
 const BaseEvaluationSchema = z.object({
     type: z.string(),
@@ -18,6 +18,11 @@ const RegexMatchEvaluationSchema = BaseEvaluationSchema.extend({
     pattern: z.string(),
 });
 
+const FileExistsEvaluationSchema = BaseEvaluationSchema.extend({
+    type: z.literal('file_exists'),
+    path: z.string(),
+});
+
 const TrajectoryContainsActionSchema = BaseEvaluationSchema.extend({
     type: z.literal('trajectory_contains_action'),
     action: z.string(),
@@ -32,6 +37,7 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
 const EvaluationSchema = z.discriminatedUnion('type', [
     StringContainsEvaluationSchema,
     RegexMatchEvaluationSchema,
+    FileExistsEvaluationSchema,
     TrajectoryContainsActionSchema,
     LLMJudgeEvaluationSchema,
 ]);
@@ -75,3 +81,4 @@ export const ScenarioSchema = z.object({
 });
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
+export type Evaluation = z.infer<typeof EvaluationSchema>;

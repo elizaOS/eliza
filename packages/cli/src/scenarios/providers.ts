@@ -7,7 +7,8 @@ export interface ExecutionResult {
     exitCode: number;
     stdout: string;
     stderr: string;
-    // Future: add more fields (e.g., file outputs)
+    // A map of all file paths to their string content within the execution environment.
+    files: Record<string, string>;
 }
 
 /**

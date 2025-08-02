@@ -45,6 +45,33 @@ print(f"Created file: ${filePath}")
         }
     }
 
+    private async captureFileSystem(e2bService: any): Promise<Record<string, string>> {
+        // Use Python code to capture all files in the sandbox
+        const captureCode = `
+import os
+import json
+files = {}
+for root, dirs, files_list in os.walk('.'):
+    for file in files_list:
+        path = os.path.join(root, file)
+        try:
+            with open(path, 'r') as f:
+                files[path] = f.read()
+        except Exception as e:
+            files[path] = f"[binary or unreadable: {str(e)}]"
+print(json.dumps(files))
+`;
+
+        try {
+            const result = await e2bService.executeCode(captureCode, 'python');
+            const filesJson = result.text || result.logs?.stdout?.join('\n') || '{}';
+            return JSON.parse(filesJson);
+        } catch (error) {
+            console.warn('Failed to capture file system state:', error);
+            return {};
+        }
+    }
+
     async run(scenario: Scenario): Promise<ExecutionResult[]> {
         const e2bService = this.runtime.getService('e2b') as any;
 
@@ -56,11 +83,15 @@ print(f"Created file: ${filePath}")
             // Use the correct executeCode API: executeCode(code: string, language?: string)
             const result = await e2bService.executeCode(step.code, step.lang);
 
+            // Capture file system state after this step
+            const files = await this.captureFileSystem(e2bService);
+
             // Map E2B result format to ExecutionResult format
             results.push({
                 exitCode: result.error ? 1 : 0,
                 stdout: result.text || result.logs?.stdout?.join('\n') || '',
-                stderr: result.error?.value || result.logs?.stderr?.join('\n') || ''
+                stderr: result.error?.value || result.logs?.stderr?.join('\n') || '',
+                files: files
             });
         }
         return results;
