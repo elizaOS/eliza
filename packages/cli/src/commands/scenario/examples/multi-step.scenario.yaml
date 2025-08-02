@@ -1,0 +1,13 @@
+name: "Multi-step Local Scenario"
+description: "Test multiple commands in sequence."
+environment:
+  type: local
+run:
+  - input: "echo step1"
+    evaluations: []
+  - input: "echo step2"
+    evaluations: []
+  - input: "echo step3"
+    evaluations: []
+judgment:
+  strategy: all_pass
