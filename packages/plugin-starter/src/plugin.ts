@@ -151,13 +151,13 @@ export class StarterService extends Service {
   }
 
   static async start(runtime: IAgentRuntime) {
-    logger.info(`*** Starting starter service - MODIFIED: ${new Date().toISOString()} ***`);
+          logger.debug('Starting starter service');
     const service = new StarterService(runtime);
     return service;
   }
 
   static async stop(runtime: IAgentRuntime) {
-    logger.info('*** TESTING DEV MODE - STOP MESSAGE CHANGED! ***');
+          logger.debug('Stopping starter service');
     // get the service from the runtime
     const service = runtime.getService(StarterService.serviceType);
     if (!service) {
@@ -167,7 +167,7 @@ export class StarterService extends Service {
   }
 
   async stop() {
-    logger.info('*** THIRD CHANGE - TESTING FILE WATCHING! ***');
+          logger.error('Service not running');
   }
 }
 
@@ -178,7 +178,7 @@ export const starterPlugin: Plugin = {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
   },
   async init(config: Record<string, string>) {
-    logger.info('*** TESTING DEV MODE - PLUGIN MODIFIED AND RELOADED! ***');
+    logger.debug('Plugin initialized');
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 
