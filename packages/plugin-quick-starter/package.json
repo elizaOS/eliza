@@ -63,7 +63,11 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "^3.24.4"
+    "zod": "^3.24.4",
+    "langchain": "0.3.30"
+  },
+  "overrides": {
+    "@langchain/core": "0.3.62"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
