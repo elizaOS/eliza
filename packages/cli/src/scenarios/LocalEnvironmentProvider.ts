@@ -32,7 +32,29 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
 
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
-            const command = step.input;
+            // Construct appropriate command based on language
+            let command: string;
+            const escapedCode = step.code.replace(/"/g, '\\"');
+
+            switch (step.lang) {
+                case 'bash':
+                case 'sh':
+                    command = step.code;
+                    break;
+                case 'node':
+                case 'javascript':
+                    command = `node -e "${escapedCode}"`;
+                    break;
+                case 'python':
+                case 'python3':
+                    command = `${step.lang} -c "${escapedCode}"`;
+                    break;
+                default:
+                    // For other languages, try the -c flag pattern
+                    command = `${step.lang} -c "${escapedCode}"`;
+                    break;
+            }
+
             try {
                 const { stdout, stderr } = await execAsync(command, { cwd: this.tempDir });
                 results.push({ exitCode: 0, stdout, stderr });

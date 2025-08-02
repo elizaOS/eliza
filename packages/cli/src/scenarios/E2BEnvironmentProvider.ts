@@ -8,8 +8,8 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
     private sandboxId: string | null = null;
 
     constructor(runtime: AgentRuntime) {
-            this.runtime = runtime;
-    this.e2bService = runtime.getService('e2b');
+        this.runtime = runtime;
+        this.e2bService = runtime.getService('e2b');
 
         if (!this.e2bService) {
             throw new Error(
@@ -19,7 +19,7 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
     }
 
     async setup(scenario: Scenario): Promise<void> {
-        // Use existing E2B service methods
+        // Create a sandbox for this scenario execution
         this.sandboxId = await this.e2bService.createSandbox({
             timeoutMs: 300000, // 5 minutes default
             metadata: {
@@ -28,32 +28,42 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
             }
         });
 
+        // Set up virtual filesystem by writing files using code execution
         const virtualFs = scenario.setup?.virtual_fs;
         if (virtualFs && this.sandboxId) {
             for (const [filePath, content] of Object.entries(virtualFs)) {
-                await this.e2bService.writeFileToSandbox(this.sandboxId, filePath, content);
+                // Use Python code to write files since the service manages sandboxes internally
+                const writeFileCode = `
+with open("${filePath}", "w") as f:
+    f.write("""${content}""")
+print(f"Created file: ${filePath}")
+`;
+                await this.e2bService.executeCode(writeFileCode, 'python');
             }
         }
     }
 
     async run(scenario: Scenario): Promise<ExecutionResult[]> {
-        if (!this.sandboxId) {
-            throw new Error('E2B sandbox not initialized');
-        }
-
+        // The E2B service manages sandboxes internally, no need to check sandboxId here
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
-                                    const result = await this.e2bService.executeCode(this.sandboxId, step.code, { language: step.lang });
+            console.log('Executing E2B step:', JSON.stringify(step, null, 2));
+
+            // Use the correct executeCode API: executeCode(code: string, language?: string)
+            const result = await this.e2bService.executeCode(step.code, step.lang);
+
+            // Map E2B result format to ExecutionResult format
             results.push({
-                exitCode: result.exitCode,
-                stdout: result.stdout,
-                stderr: result.stderr
+                exitCode: result.error ? 1 : 0,
+                stdout: result.text || result.logs?.stdout?.join('\n') || '',
+                stderr: result.error?.value || result.logs?.stderr?.join('\n') || ''
             });
         }
         return results;
     }
 
     async teardown(): Promise<void> {
+        // Clean up the sandbox if we created one explicitly
         if (this.sandboxId) {
             await this.e2bService.killSandbox(this.sandboxId);
             this.sandboxId = null;

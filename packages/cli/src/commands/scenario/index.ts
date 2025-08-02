@@ -42,15 +42,9 @@ export const scenario = new Command()
 
                     // Determine environment provider based on scenario type
                     if (scenario.environment.type === 'e2b') {
-                        try {
-                            runtime = await createE2BRuntime();
-                            provider = new E2BEnvironmentProvider(runtime);
-                            logger.info('Using E2B sandbox environment');
-                        } catch (error: any) {
-                            logger.warn(`E2B environment not available: ${error.message}`);
-                            logger.info('Falling back to local environment...');
-                            provider = new LocalEnvironmentProvider();
-                        }
+                        runtime = await createE2BRuntime();
+                        provider = new E2BEnvironmentProvider(runtime);
+                        logger.info('Using E2B sandbox environment');
                     } else if (scenario.environment.type === 'local') {
                         provider = new LocalEnvironmentProvider();
                         logger.info('Using local environment');
@@ -78,8 +72,17 @@ export const scenario = new Command()
                         await provider.teardown();
                     }
                     if (runtime) {
+                        // Explicitly stop the E2B service to ensure clean shutdown
+                        const e2bService = runtime.getService('e2b');
+                        if (e2bService && typeof e2bService.stop === 'function') {
+                            logger.info('Stopping E2B service...');
+                            await e2bService.stop();
+                        }
                         await runtime.close();
+                        logger.info('Runtime shutdown complete');
                     }
+                    // Force exit to ensure clean termination
+                    process.exit(0);
                 }
             })
     );

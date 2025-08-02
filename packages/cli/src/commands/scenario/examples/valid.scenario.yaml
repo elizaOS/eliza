@@ -1,11 +1,22 @@
-name: "Initial Test Scenario"
-description: "A simple file for testing the CLI scaffolding."
+name: "Local Environment Test"
+description: "Tests the LocalEnvironmentProvider with basic shell commands."
 environment:
   type: local
 run:
-  - input: "Say hello"
-    evaluations:
-      - type: string_contains
-        value: "hello"
+  # Expected: Test basic echo command
+  # Output: "Hello from local environment!"
+  - lang: bash
+    code: "echo 'Hello from local environment!'"
+    evaluations: []
+  # Expected: Simple JavaScript execution with Node.js
+  # Output: "JavaScript works locally too!"
+  - lang: javascript
+    code: "console.log('JavaScript works locally too!')"
+    evaluations: []
+  # Expected: Simple Python execution
+  # Output: "Python works locally too!"
+  - lang: python3
+    code: "print('Python works locally too!')"
+    evaluations: []
 judgment:
   strategy: all_pass

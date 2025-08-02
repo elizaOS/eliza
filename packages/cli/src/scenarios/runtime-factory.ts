@@ -1,5 +1,18 @@
-import { AgentRuntime, Character, stringToUuid } from '@elizaos/core';
-import { loadEnvConfig } from '../commands/start/utils/config-utils';
+import { AgentRuntime, Character, stringToUuid, RuntimeSettings } from '@elizaos/core';
+import { loadEnvironmentVariables } from './env-loader';
+
+// --- Start of Pre-emptive Environment Loading ---
+// This block MUST execute before any plugin imports to ensure
+// environment variables are available system-wide.
+
+console.log('[ENV] Loading environment configuration...');
+loadEnvironmentVariables();
+
+// Get the loaded environment settings
+const envSettings = process.env as RuntimeSettings;
+console.log(`[ENV] Environment loaded with ${Object.keys(envSettings).length} variables`);
+// --- End of Pre-emptive Environment Loading ---
+
 import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 import { e2bPlugin } from '@elizaos/plugin-e2b';
 import { openaiPlugin } from '@elizaos/plugin-openai';
@@ -20,11 +33,11 @@ export async function createE2BRuntime(): Promise<AgentRuntime> {
     ]
   };
 
-  // Create minimal runtime with SQL, E2B, and OpenAI plugins
+  // Use the loaded environment settings
   const runtime = new AgentRuntime({
     character,
     plugins: [sqlPlugin, e2bPlugin, openaiPlugin],
-    settings: await loadEnvConfig() // Load E2B_API_KEY, E2B_MODE, etc.
+    settings: envSettings
   });
 
   // Initialize the runtime to set up services
