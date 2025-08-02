@@ -7,6 +7,7 @@ import { ScenarioSchema, Scenario } from '../../scenarios/schema';
 import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
+import { createE2BRuntime } from '../../scenarios/runtime-factory';
 
 export const scenario = new Command()
     .name('scenario')
@@ -38,18 +39,13 @@ export const scenario = new Command()
                         process.exit(1);
                     }
                     const scenario: Scenario = validationResult.data;
-                    
+
                     // Determine environment provider based on scenario type
                     if (scenario.environment.type === 'e2b') {
                         try {
-                            // TODO: Create runtime with E2B plugin - we'll implement this later
-                            // For now, we'll throw an error to test fallback
-                            throw new Error('E2B runtime not yet implemented');
-                            
-                            // When implemented, this will be:
-                            // runtime = await createE2BRuntime();
-                            // provider = new E2BEnvironmentProvider(runtime);
-                            // logger.info('Using E2B sandbox environment');
+                            runtime = await createE2BRuntime();
+                            provider = new E2BEnvironmentProvider(runtime);
+                            logger.info('Using E2B sandbox environment');
                         } catch (error: any) {
                             logger.warn(`E2B environment not available: ${error.message}`);
                             logger.info('Falling back to local environment...');
@@ -62,7 +58,7 @@ export const scenario = new Command()
                         logger.error(`Unsupported environment type: '${scenario.environment.type}'`);
                         process.exit(1);
                     }
-                    
+
                     logger.info(`Setting up '${scenario.environment.type}' environment...`);
                     await provider.setup(scenario);
                     logger.info('Executing run block...');
