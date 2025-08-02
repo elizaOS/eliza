@@ -3,11 +3,14 @@ description: "Test multiple commands in sequence."
 environment:
   type: local
 run:
-  - input: "echo step1"
+  - lang: javascript
+    code: "console.log('step1');"
     evaluations: []
-  - input: "echo step2"
+  - lang: javascript
+    code: "console.log('step2');"
     evaluations: []
-  - input: "echo step3"
+  - lang: javascript
+    code: "console.log('step3');"
     evaluations: []
 judgment:
   strategy: all_pass

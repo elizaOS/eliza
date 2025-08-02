@@ -3,11 +3,18 @@ description: "Test scenario with success, failure, and success steps."
 environment:
   type: local
 run:
-  - input: "echo 'Step 1: Success'"
+  - lang: python
+    code: |
+      print("Step 1: Success")
     evaluations: []
-  - input: "invalid_command_that_will_fail"
+  - lang: python
+    code: |
+      print("Step 2: This will fail")
+      invalid_syntax_that_will_fail
     evaluations: []
-  - input: "echo 'Step 3: Success'"
+  - lang: python
+    code: |
+      print("Step 3: Success")
     evaluations: []
 judgment:
   strategy: all_pass 

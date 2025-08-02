@@ -6,9 +6,14 @@ setup:
   virtual_fs:
     "test.txt": "This should work in local fallback mode"
 run:
-  - input: "cat test.txt"
+  - lang: python
+    code: |
+      with open("test.txt", "r") as f:
+          print(f.read())
     evaluations: []
-  - input: "echo 'Fallback test successful'"
+  - lang: python
+    code: |
+      print("Fallback test successful")
     evaluations: []
 judgment:
   strategy: all_pass 
