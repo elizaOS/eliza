@@ -83,7 +83,7 @@ export async function runComponentTests(
       env: {
         ...process.env,
         FORCE_COLOR: '1', // Force color output
-        CI: 'false', // Ensure we're not in CI mode which might buffer
+        CI: '', // Empty string is falsy, ensuring we're not in CI mode
       },
     });
 
