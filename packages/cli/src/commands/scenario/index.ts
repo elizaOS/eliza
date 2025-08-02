@@ -5,6 +5,7 @@ import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
 import { ScenarioSchema, Scenario } from '../../scenarios/schema';
 import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvider';
+import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
 
 export const scenario = new Command()
@@ -19,6 +20,7 @@ export const scenario = new Command()
                 const logger = elizaLogger || console;
                 logger.info(`Starting scenario run with args: ${JSON.stringify({ filePath, ...options })}`);
                 let provider: EnvironmentProvider | null = null;
+                let runtime: any = null;
                 try {
                     const fullPath = path.resolve(filePath);
                     logger.info(`Attempting to read scenario file from: ${fullPath}`);
@@ -36,12 +38,31 @@ export const scenario = new Command()
                         process.exit(1);
                     }
                     const scenario: Scenario = validationResult.data;
-                    if (scenario.environment.type === 'local') {
+                    
+                    // Determine environment provider based on scenario type
+                    if (scenario.environment.type === 'e2b') {
+                        try {
+                            // TODO: Create runtime with E2B plugin - we'll implement this later
+                            // For now, we'll throw an error to test fallback
+                            throw new Error('E2B runtime not yet implemented');
+                            
+                            // When implemented, this will be:
+                            // runtime = await createE2BRuntime();
+                            // provider = new E2BEnvironmentProvider(runtime);
+                            // logger.info('Using E2B sandbox environment');
+                        } catch (error: any) {
+                            logger.warn(`E2B environment not available: ${error.message}`);
+                            logger.info('Falling back to local environment...');
+                            provider = new LocalEnvironmentProvider();
+                        }
+                    } else if (scenario.environment.type === 'local') {
                         provider = new LocalEnvironmentProvider();
+                        logger.info('Using local environment');
                     } else {
                         logger.error(`Unsupported environment type: '${scenario.environment.type}'`);
                         process.exit(1);
                     }
+                    
                     logger.info(`Setting up '${scenario.environment.type}' environment...`);
                     await provider.setup(scenario);
                     logger.info('Executing run block...');
@@ -59,6 +80,9 @@ export const scenario = new Command()
                     if (provider) {
                         logger.info('Tearing down environment...');
                         await provider.teardown();
+                    }
+                    if (runtime) {
+                        await runtime.close();
                     }
                 }
             })

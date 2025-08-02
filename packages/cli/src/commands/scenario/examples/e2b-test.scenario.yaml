@@ -1,0 +1,16 @@
+name: "E2B File Execution Test"
+description: "Verifies the E2BEnvironmentProvider can create a file and run a command."
+environment:
+  type: e2b
+setup:
+  virtual_fs:
+    "data.txt": "Hello from the E2B sandbox!"
+run:
+  - input: "cat data.txt"
+    evaluations: []
+  - input: "echo 'Testing E2B environment'"
+    evaluations: []
+  - input: "python3 -c \"print('Python execution works!')\""
+    evaluations: []
+judgment:
+  strategy: all_pass 

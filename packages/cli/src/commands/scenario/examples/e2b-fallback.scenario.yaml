@@ -1,0 +1,14 @@
+name: "E2B Fallback Test"
+description: "Tests fallback to local environment when E2B is not available."
+environment:
+  type: e2b
+setup:
+  virtual_fs:
+    "test.txt": "This should work in local fallback mode"
+run:
+  - input: "cat test.txt"
+    evaluations: []
+  - input: "echo 'Fallback test successful'"
+    evaluations: []
+judgment:
+  strategy: all_pass 
