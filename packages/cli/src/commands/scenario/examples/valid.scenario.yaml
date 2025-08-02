@@ -1,2 +1,11 @@
 name: "Initial Test Scenario"
 description: "A simple file for testing the CLI scaffolding."
+environment:
+  type: local
+run:
+  - input: "Say hello"
+    evaluations:
+      - type: string_contains
+        value: "hello"
+judgment:
+  strategy: all_pass

@@ -3,6 +3,7 @@ import yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
+import { ScenarioSchema, Scenario } from '../../scenarios/schema';
 
 export const scenario = new Command()
     .name('scenario')
@@ -23,11 +24,19 @@ export const scenario = new Command()
                         process.exit(1);
                     }
                     const fileContents = fs.readFileSync(fullPath, 'utf8');
-                    const scenario = yaml.load(fileContents);
-                    console.log('--- Parsed Scenario Content ---');
+                    const rawScenario = yaml.load(fileContents);
+                    // Validate using Zod
+                    const validationResult = ScenarioSchema.safeParse(rawScenario);
+                    if (!validationResult.success) {
+                        logger.error('Scenario file validation failed:');
+                        console.error(JSON.stringify(validationResult.error.format(), null, 2));
+                        process.exit(1);
+                    }
+                    const scenario: Scenario = validationResult.data;
+                    console.log('--- Validated Scenario Object ---');
                     console.log(JSON.stringify(scenario, null, 2));
-                    console.log('-----------------------------');
-                    logger.info('Scenario file parsed successfully.');
+                    console.log('-------------------------------');
+                    logger.info('Scenario file parsed and validated successfully.');
                 } catch (error) {
                     logger.error('An error occurred during scenario execution:', error);
                     process.exit(1);
