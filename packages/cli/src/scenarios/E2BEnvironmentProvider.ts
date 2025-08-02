@@ -8,8 +8,8 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
     private sandboxId: string | null = null;
 
     constructor(runtime: AgentRuntime) {
-        this.runtime = runtime;
-        this.e2bService = runtime.getService('e2b');
+            this.runtime = runtime;
+    this.e2bService = runtime.getService('e2b');
 
         if (!this.e2bService) {
             throw new Error(
@@ -43,7 +43,7 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
 
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
-            const result = await this.e2bService.runCommand(this.sandboxId, step.input);
+                                    const result = await this.e2bService.executeCode(this.sandboxId, step.code, { language: step.lang });
             results.push({
                 exitCode: result.exitCode,
                 stdout: result.stdout,

@@ -6,11 +6,14 @@ setup:
   virtual_fs:
     "data.txt": "Hello from the E2B sandbox!"
 run:
-  - input: "cat data.txt"
+  - lang: bash
+    code: "cat data.txt"
     evaluations: []
-  - input: "echo 'Testing E2B environment'"
+  - lang: bash
+    code: "echo 'Testing E2B environment'"
     evaluations: []
-  - input: "python3 -c \"print('Python execution works!')\""
+  - lang: python
+    code: "print('Python execution works!')"
     evaluations: []
 judgment:
-  strategy: all_pass 
+  strategy: all_pass

@@ -49,9 +49,10 @@ const SetupSchema = z.object({
 });
 
 const RunStepSchema = z.object({
-    name: z.string().optional(),
-    input: z.string(),
-    evaluations: z.array(EvaluationSchema),
+  name: z.string().optional(),
+  lang: z.string(),
+  code: z.string(),
+  evaluations: z.array(EvaluationSchema),
 });
 
 const JudgmentSchema = z.object({
