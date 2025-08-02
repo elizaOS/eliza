@@ -63,7 +63,7 @@
     "glob": "11.0.3",
     "handlebars": "^4.7.8",
     "js-sha1": "0.7.0",
-    "langchain": "^0.3.15",
+    "langchain": "^0.3.30",
     "pdfjs-dist": "^5.2.133",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
