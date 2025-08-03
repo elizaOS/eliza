@@ -7,7 +7,7 @@ import { ScenarioSchema, Scenario } from '../../scenarios/schema';
 import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
-import { createE2BRuntime } from '../../scenarios/runtime-factory';
+import { createE2BRuntime, createTestRuntime } from '../../scenarios/runtime-factory';
 import { MockEngine } from '../../scenarios/MockEngine';
 import { EvaluationEngine } from '../../scenarios/EvaluationEngine';
 
@@ -45,9 +45,19 @@ export const scenario = new Command()
 
                     // Determine environment provider based on scenario type
                     if (scenario.environment.type === 'e2b') {
-                        runtime = await createE2BRuntime();
+                        // Check if this scenario has LLM evaluations that need testing
+                        const hasLLMEvaluations = scenario.run?.some(step =>
+                            step.evaluations?.some(evaluation => evaluation.type === 'llm_judge')
+                        );
+
+                        if (hasLLMEvaluations) {
+                            runtime = await createTestRuntime();
+                            logger.info('Using test runtime for LLM evaluations');
+                        } else {
+                            runtime = await createE2BRuntime();
+                            logger.info('Using E2B sandbox environment');
+                        }
                         provider = new E2BEnvironmentProvider(runtime);
-                        logger.info('Using E2B sandbox environment');
                     } else if (scenario.environment.type === 'local') {
                         provider = new LocalEnvironmentProvider();
                         logger.info('Using local environment');

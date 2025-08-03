@@ -32,6 +32,9 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
     type: z.literal('llm_judge'),
     prompt: z.string(),
     expected: z.string(),
+    model_type: z.string().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    json_schema: z.record(z.any()).optional(), // JSON schema object for response validation
 });
 
 const EvaluationSchema = z.discriminatedUnion('type', [

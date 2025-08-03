@@ -52,7 +52,7 @@ async function runAllScenarios(): Promise<void> {
             execSync(command, {
                 stdio: 'pipe',
                 cwd: path.join(__dirname, '..', '..', '..'), // Root of monorepo
-                timeout: 60000 // 60 second timeout per scenario
+                timeout: 300000 // 5 minute timeout per scenario (for LLM calls and E2B)
             });
 
             success = true;
