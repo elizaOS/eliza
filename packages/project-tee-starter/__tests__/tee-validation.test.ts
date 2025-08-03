@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { logger } from '@elizaos/core';
+import { logger, type IAgentRuntime } from '@elizaos/core';
 
 // Mock logger to avoid console noise during tests
 const mockLogger = {
@@ -11,6 +11,9 @@ const mockLogger = {
 
 // We'll test the validation logic by importing the plugin and testing its init method
 import teeStarterPlugin from '../src/plugin';
+
+// Mock runtime for testing
+const mockRuntime = {} as IAgentRuntime;
 
 describe('TEE Environment Validation', () => {
     // Store original environment variables
@@ -46,7 +49,7 @@ describe('TEE Environment Validation', () => {
 
                 // Attempt to initialize plugin - should fail
                 await expect(async () => {
-                    await teeStarterPlugin.init?.({});
+                    await teeStarterPlugin.init?.({}, mockRuntime);
                 }).toThrow(`TEE_MODE must be one of: OFF, LOCAL, DOCKER, PRODUCTION`);
             }
         });
@@ -64,7 +67,7 @@ describe('TEE Environment Validation', () => {
                 // Should not throw
                 let error = null;
                 try {
-                    await teeStarterPlugin.init?.({});
+                    await teeStarterPlugin.init?.({}, mockRuntime);
                 } catch (e) {
                     error = e;
                 }
@@ -87,7 +90,7 @@ describe('TEE Environment Validation', () => {
                 process.env.WALLET_SECRET_SALT = 'test_salt_123';
 
                 try {
-                    await teeStarterPlugin.init?.({});
+                    await teeStarterPlugin.init?.({}, mockRuntime);
                     expect.unreachable('Should have thrown validation error');
                 } catch (error) {
                     expect(error instanceof Error).toBe(true);
@@ -111,7 +114,7 @@ describe('TEE Environment Validation', () => {
                 process.env.WALLET_SECRET_SALT = 'test_salt_123';
 
                 await expect(async () => {
-                    await teeStarterPlugin.init?.({});
+                    await teeStarterPlugin.init?.({}, mockRuntime);
                 }).toThrow('TEE_VENDOR must be: phala');
             }
         });
@@ -124,7 +127,7 @@ describe('TEE Environment Validation', () => {
 
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -150,7 +153,7 @@ describe('TEE Environment Validation', () => {
 
                 try {
                     await expect(async () => {
-                        await teeStarterPlugin.init?.({});
+                        await teeStarterPlugin.init?.({}, mockRuntime);
                     }).toThrow('Wallet secret salt must be at least 8 characters long for security');
                 } finally {
                     // Restore original argv
@@ -168,7 +171,7 @@ describe('TEE Environment Validation', () => {
 
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -185,7 +188,7 @@ describe('TEE Environment Validation', () => {
             process.env.WALLET_SECRET_SALT = longSalt;
 
             await expect(async () => {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             }).toThrow('Wallet secret salt must not exceed 128 characters');
         });
     });
@@ -203,7 +206,7 @@ describe('TEE Environment Validation', () => {
             // Should not throw - test environment provides defaults
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -219,7 +222,7 @@ describe('TEE Environment Validation', () => {
             // Should not throw and should use the explicit values
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -240,7 +243,7 @@ describe('TEE Environment Validation', () => {
             // Should use defaults and not throw in test environment
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -257,7 +260,7 @@ describe('TEE Environment Validation', () => {
             // Should NOT throw because defaults are applied for falsy values in test mode
             let error = null;
             try {
-                await teeStarterPlugin.init?.({});
+                await teeStarterPlugin.init?.({}, mockRuntime);
             } catch (e) {
                 error = e;
             }
@@ -280,7 +283,7 @@ describe('TEE Environment Validation', () => {
 
                 // Whitespace should cause validation failure (no auto-trim)
                 await expect(async () => {
-                    await teeStarterPlugin.init?.({});
+                    await teeStarterPlugin.init?.({}, mockRuntime);
                 }).toThrow();
             } finally {
                 // Restore original values
