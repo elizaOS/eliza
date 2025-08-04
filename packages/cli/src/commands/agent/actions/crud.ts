@@ -53,7 +53,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     }
 
     // Display agent details if not using output option
-    displayAgent(agent, 'Agent Details');
+    displayAgent(agent as any, 'Agent Details');
 
     // Display JSON if requested
     if (opts.json) {
