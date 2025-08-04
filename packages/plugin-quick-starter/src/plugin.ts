@@ -74,23 +74,18 @@ const helloWorldAction: Action = {
     _responses?: Memory[]
   ): Promise<ActionResult> => {
     try {
-      logger.info('Handling HELLO_WORLD action');
+      const response = 'Hello world!';
 
-      // Simple response content for callback
-      const responseContent: Content = {
-        text: 'hello world!',
-        actions: ['HELLO_WORLD'],
-        source: message.content.source,
-      };
-
-      // Call back with the hello world message if callback is provided
       if (callback) {
-        await callback(responseContent);
+        await callback({
+          text: response,
+          actions: ['HELLO_WORLD'],
+          source: message.content.source,
+        });
       }
 
-      // Return ActionResult
       return {
-        text: 'hello world!',
+        text: response,
         success: true,
         data: {
           actions: ['HELLO_WORLD'],
@@ -98,7 +93,6 @@ const helloWorldAction: Action = {
         },
       };
     } catch (error) {
-      logger.error('Error in HELLO_WORLD action:', error);
       return {
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),

@@ -19,7 +19,7 @@ afterAll(() => {
 });
 
 // Skip in CI environments or when running automated tests without interaction
-const isCI = Boolean(process.env.CI) || process.env.NODE_ENV === 'test';
+const isCI = Boolean(process.env.CI);
 
 /**
  * Integration tests demonstrate how multiple components of the project work together.

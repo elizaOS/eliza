@@ -2,6 +2,7 @@ import { logger } from '@elizaos/core';
 import { getAgentRuntimeUrl } from '../commands/agent';
 import { OptionValues } from 'commander';
 import colors from 'yoctocolors';
+import { getAuthHeaders } from '../commands/shared';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -43,7 +44,10 @@ export function handleError(error: unknown) {
 
 export async function checkServer(opts: OptionValues) {
   try {
-    const response = await fetch(`${getAgentRuntimeUrl(opts)}/api/agents`);
+    const authHeaders = getAuthHeaders(opts);
+    const response = await fetch(`${getAgentRuntimeUrl(opts)}/api/agents`, {
+      headers: authHeaders,
+    });
     if (!response.ok) {
       throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
     }

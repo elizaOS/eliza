@@ -1,0 +1,130 @@
+---
+title: "Knowledge & RAG System"
+description: "The core RAG (Retrieval-Augmented Generation) system for elizaOS agents"
+---
+
+The Knowledge Plugin is elizaOS's core RAG system, providing intelligent document management and retrieval capabilities. It enables agents to maintain long-term memory, answer questions from uploaded documents, and learn from conversations.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Zero Configuration" icon="gauge-max">
+    Works out of the box with sensible defaults
+  </Card>
+  <Card title="Multiple Formats" icon="file-lines">
+    Supports PDF, TXT, MD, DOCX, CSV, and more
+  </Card>
+  <Card title="Intelligent Processing" icon="brain">
+    Smart chunking and contextual embeddings
+  </Card>
+  <Card title="Cost Optimization" icon="dollar-sign">
+    90% cost reduction with caching
+  </Card>
+</CardGroup>
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/plugins/knowledge/quick-start">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="Configuration" icon="cog" href="/plugins/knowledge/complete-documentation#installation">
+    Essential settings and options
+  </Card>
+  <Card title="Complete Reference" icon="book" href="/plugins/knowledge/complete-documentation">
+    Comprehensive technical documentation
+  </Card>
+  <Card title="Examples" icon="code" href="/plugins/knowledge/examples">
+    Recipes and code samples
+  </Card>
+</CardGroup>
+
+## What is the Knowledge Plugin?
+
+The Knowledge Plugin transforms your elizaOS agent into an intelligent knowledge base that can:
+
+- **Store and retrieve documents** in multiple formats
+- **Answer questions** using semantic search
+- **Learn from conversations** automatically
+- **Process web content** via URL ingestion
+- **Manage documents** through a built-in web interface
+
+## Core Capabilities
+
+### Document Processing
+- Automatic text extraction from PDFs, Word docs, and more
+- Smart chunking with configurable overlap
+- Content-based deduplication
+- Metadata preservation and enrichment
+
+### Retrieval & RAG
+- Semantic search with vector embeddings
+- Automatic context injection into conversations
+- Relevance scoring and ranking
+- Multi-modal retrieval support
+
+### Management Interface
+- Web-based document browser
+- Upload, view, and delete documents
+- Search and filter capabilities
+- Real-time processing status
+
+## Installation
+
+<Tabs>
+  <Tab title="elizaos">
+    ```bash
+    elizaos plugins add @elizaos/plugin-knowledge
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add @elizaos/plugin-knowledge
+    ```
+  </Tab>
+</Tabs>
+
+## Supported File Types
+
+<CardGroup cols={3}>
+  <Card title="Documents" icon="file-alt">
+    PDF, DOCX, TXT, MD
+  </Card>
+  <Card title="Data" icon="table">
+    CSV, JSON, XML
+  </Card>
+  <Card title="Web" icon="globe">
+    URLs, HTML
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+<CardGroup cols={2}>
+  <Card title="Architecture & Flow" icon="diagram-project" href="/plugins/knowledge/architecture-flow">
+    Understand the internal workings
+  </Card>
+  <Card title="Contextual Embeddings" icon="link" href="/plugins/knowledge/contextual-embeddings">
+    50% better retrieval accuracy
+  </Card>
+  <Card title="Testing Guide" icon="vial" href="/plugins/knowledge/complete-documentation#troubleshooting">
+    Test your knowledge base
+  </Card>
+  <Card title="API Reference" icon="terminal" href="/plugins/knowledge/complete-documentation#api-reference">
+    REST endpoints and TypeScript interfaces
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Follow the Quick Start">
+    Set up your first knowledge-enabled agent in minutes
+  </Step>
+  <Step title="Configure Your Settings">
+    Optimize for your specific use case
+  </Step>
+  <Step title="Explore Examples">
+    Learn from practical implementations
+  </Step>
+</Steps>

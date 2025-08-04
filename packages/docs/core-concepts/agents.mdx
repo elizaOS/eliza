@@ -1,0 +1,248 @@
+---
+title: 'Agents'
+description: 'AI personalities in elizaOS'
+---
+
+## What are Agents?
+
+Agents = AI personalities with memory, actions, and unique behaviors.
+
+## Character Interface
+
+The complete TypeScript interface for agents:
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | ✅ | Agent's display name |
+| `bio` | string \| string[] | ✅ | Background/personality description |
+| `adjectives` | string[] | ❌ | Character traits (e.g., "helpful", "creative") |
+| `topics` | string[] | ❌ | Conversation topics the agent knows |
+| `knowledge` | array | ❌ | Facts, files, or directories of knowledge |
+| `messageExamples` | array[][] | ❌ | Example conversations (2D array) |
+| `postExamples` | string[] | ❌ | Example social media posts |
+| `style` | object | ❌ | Writing style for different contexts |
+| `plugins` | string[] | ❌ | Enabled plugin packages |
+| `settings` | object | ❌ | Configuration values |
+| `secrets` | object | ❌ | Sensitive configuration |
+| `id` | UUID | ❌ | Unique identifier |
+| `username` | string | ❌ | Social media username |
+| `system` | string | ❌ | System prompt override |
+| `templates` | object | ❌ | Custom prompt templates |
+
+### Style Object Structure
+
+```typescript
+style: {
+  all?: string[];        // General style rules
+  chat?: string[];       // Chat-specific style
+  post?: string[];       // Post-specific style
+}
+```
+
+### Templates Object Structure
+
+```typescript
+templates?: Templates;     // Custom prompt templates
+```
+
+## Working Example
+
+```typescript
+export const character: Character = {
+  name: "Eliza",
+  bio: [
+    "Helpful AI assistant",
+    "Expert in technical topics",
+    "Friendly conversationalist"
+  ],
+  adjectives: ["helpful", "knowledgeable", "friendly"],
+  topics: ["technology", "programming", "general knowledge"],
+  
+  // 2D array: each sub-array is a conversation
+  messageExamples: [[
+    {
+      name: "{{user}}",
+      content: { text: "Can you help me debug this?" }
+    },
+    {
+      name: "Eliza",
+      content: { text: "I'd be happy to help! Can you share the error message?" }
+    }
+  ]],
+  
+  style: {
+    all: ["be concise", "use examples"],
+    chat: ["be conversational"],
+    post: ["use emojis sparingly"]
+  },
+  
+  // Plugins loaded based on environment
+  plugins: [
+    "@elizaos/plugin-bootstrap", // Core functionality
+    ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+    ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : [])
+  ]
+};
+```
+
+## Knowledge Configuration
+
+```typescript
+// String facts
+knowledge: ["I am an AI assistant", "I help with coding"]
+```
+
+## Memory & Runtime
+
+Agents remember:
+- Recent conversations
+- Important facts about users
+- Context from previous interactions
+
+At runtime, characters become `Agent` instances with status tracking:
+```typescript
+interface Agent extends Character {
+  enabled?: boolean;
+  status?: 'active' | 'inactive';
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+## Character Definition
+
+Characters can be defined in TypeScript (recommended) or JSON:
+
+<Tabs>
+  <Tab title="TypeScript (Recommended)">
+    ```typescript
+    import { Character } from '@elizaos/core';
+    
+    export const character: Character = {
+      name: "TechHelper",
+      bio: [
+        "AI assistant specialized in technology",
+        "Expert in web development"
+      ],
+      // ... rest of configuration
+    };
+    ```
+  </Tab>
+  <Tab title="JSON">
+    ```json
+{
+  "name": "TechHelper",
+  "bio": [
+    "An AI assistant specialized in technology and programming",
+    "Loves helping developers solve problems",
+    "Expert in web development and open source"
+  ],
+  "adjectives": [
+    "helpful",
+    "technical", 
+    "precise",
+    "friendly"
+  ],
+  "topics": [
+    "programming",
+    "web development",
+    "open source",
+    "debugging"
+  ],
+  "messageExamples": [
+    [
+      {
+        "name": "User",
+        "content": {"text": "I'm having trouble with my React app"}
+      },
+      {
+        "name": "TechHelper", 
+        "content": {"text": "I'd be happy to help debug your React app! Can you describe what specific issue you're encountering?"}
+      }
+    ]
+  ],
+  "postExamples": [
+    "Just discovered an awesome new debugging technique for React apps! Thread below:",
+    "Open source tip: Always read the contributing guidelines before submitting a PR"
+  ],
+  "style": {
+    "all": [
+      "use technical terms accurately",
+      "provide code examples when relevant",
+      "be encouraging and supportive"
+    ],
+    "chat": [
+      "ask clarifying questions",
+      "break down complex topics",
+      "offer step-by-step guidance"
+    ],
+    "post": [
+      "share useful tips and tricks",
+      "use relevant emojis sparingly",
+      "create engaging technical content"
+    ]
+  },
+  "knowledge": [
+    "I specialize in modern web development frameworks",
+    {"path": "./knowledge/react-guide.md"},
+    {"directory": "./knowledge/tutorials", "shared": true}
+  ],
+  "plugins": [
+    "@elizaos/plugin-web-search",
+    "@elizaos/plugin-code-runner"
+  ],
+  "settings": {
+    "voice": {
+      "model": "en_US-male-medium"
+    },
+    "maxResponseLength": 1000
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+## Creating an Agent
+
+<Steps>
+  <Step title="Define your character">
+    Create `character.ts` or `character.json`
+  </Step>
+  
+  <Step title="Add plugins">
+    ```typescript
+    plugins: [
+      "@elizaos/plugin-bootstrap",
+      "@elizaos/plugin-discord" 
+    ]
+    ```
+  </Step>
+  
+  <Step title="Start the agent">
+    ```bash
+    elizaos start
+    ```
+  </Step>
+</Steps>
+
+## Best Practices
+
+- Keep personality traits consistent
+- Provide diverse message examples
+- Focus knowledge on the agent's purpose
+- Test conversations before deploying
+- Use TypeScript for better type safety
+- Load plugins conditionally based on environment
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add Plugins" icon="puzzle" href="/core-concepts/plugins">
+    Extend your agent's capabilities
+  </Card>
+  
+  <Card title="Build Projects" icon="folder-tree" href="/core-concepts/projects">
+    Create multi-agent systems
+  </Card>
+</CardGroup>

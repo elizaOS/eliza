@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { mrTeeCharacter as character } from '../src/character';
-import * as dotenv from 'dotenv';
+import dotenv from 'dotenv';
 import * as path from 'node:path';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -44,26 +44,28 @@ describe('Mr. TEE Character Configuration', () => {
 
   it('should have TEE-related message examples', () => {
     let foundTeeExample = false;
-    for (const ex of character.messageExamples) {
-      const dialogue = ex.map((msg) => msg.content.text.toLowerCase()).join(' ');
-      if (
-        dialogue.includes('attestation') ||
-        dialogue.includes('enclave') ||
-        dialogue.includes('tee')
-      ) {
-        foundTeeExample = true;
-        const mrTeeResponse = ex.find((msg) => msg.name === 'Mr. TEE');
-        expect(mrTeeResponse).toBeDefined();
-        if (mrTeeResponse) {
-          expect(mrTeeResponse.content.text.length).toBeGreaterThan(10);
-          if (mrTeeResponse.content.actions) {
-            expect(Array.isArray(mrTeeResponse.content.actions)).toBe(true);
+    if (character.messageExamples) {
+      for (const ex of character.messageExamples) {
+        const dialogue = ex.map((msg) => msg.content.text?.toLowerCase() || '').join(' ');
+        if (
+          dialogue.includes('attestation') ||
+          dialogue.includes('enclave') ||
+          dialogue.includes('tee')
+        ) {
+          foundTeeExample = true;
+          const mrTeeResponse = ex.find((msg) => msg.name === 'Mr. TEE');
+          expect(mrTeeResponse).toBeDefined();
+          if (mrTeeResponse && mrTeeResponse.content.text) {
+            expect(mrTeeResponse.content.text.length).toBeGreaterThan(10);
+            if (mrTeeResponse.content.actions) {
+              expect(Array.isArray(mrTeeResponse.content.actions)).toBe(true);
+            }
           }
+          break;
         }
-        break;
       }
     }
-    expect(foundTeeExample, 'Expected at least one TEE-related message example').toBe(true);
+    expect(foundTeeExample).toBe(true);
   });
 
   it('should have TEE-related post examples', () => {

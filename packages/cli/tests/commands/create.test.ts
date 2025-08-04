@@ -365,7 +365,9 @@ describe('ElizaOS Create Commands', () => {
         // Verify CLAUDE.md content contains expected sections
         const claudeMdContent = await readFile('claude-md-test-project/CLAUDE.md', 'utf8');
         expect(claudeMdContent).toContain('ElizaOS Agent Project Development Guide for Claude');
-        expect(claudeMdContent).toContain('Project Type** | ElizaOS Agent Project');
+        expect(claudeMdContent).toContain(
+          '| **Project Type**    | ElizaOS Agent Project         |'
+        ); // Match actual template format
         expect(claudeMdContent).toContain('Character Configuration');
         expect(claudeMdContent).toContain('Custom Plugin Development');
         expect(claudeMdContent).toContain('Custom service for your specific needs');
@@ -396,7 +398,7 @@ describe('ElizaOS Create Commands', () => {
         // Verify CLAUDE.md content contains expected plugin-specific sections
         const claudeMdContent = await readFile(join(pluginDir, 'CLAUDE.md'), 'utf8');
         expect(claudeMdContent).toContain('ElizaOS Plugin Development Guide for Claude');
-        expect(claudeMdContent).toContain('Project Type** | ElizaOS Plugin');
+        expect(claudeMdContent).toContain('| **Project Type**    | ElizaOS Plugin        |'); // Match actual template format
         expect(claudeMdContent).toContain('Plugin Architecture');
         expect(claudeMdContent).toContain('Services** (Required for External APIs)');
         expect(claudeMdContent).toContain('Actions** (Required for User Interactions)');

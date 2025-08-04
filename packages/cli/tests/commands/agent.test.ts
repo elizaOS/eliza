@@ -94,7 +94,6 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     // Capture server output for debugging
-    let serverStarted = false;
     let serverError: Error | null = null;
 
     // Handle Bun.spawn's ReadableStream for stdout/stderr
@@ -122,7 +121,7 @@ describe('ElizaOS Agent Commands', () => {
           } else {
             console.log(`[SERVER STDOUT] ${text}`);
             if (text.includes('Server started') || text.includes('listening')) {
-              serverStarted = true;
+              console.log(`[DEBUG] Server is ready based on output: ${text.trim()}`);
             }
           }
         }
@@ -144,13 +143,13 @@ describe('ElizaOS Agent Commands', () => {
 
     // Handle process exit
     serverProcess.exited
-      .then((code) => {
+      .then((code: number | null) => {
         console.log(`[SERVER EXIT] code: ${code}`);
         if (code !== 0 && !serverError) {
           serverError = new Error(`Server exited with code ${code}`);
         }
       })
-      .catch((error) => {
+      .catch((error: Error) => {
         console.error('[SERVER ERROR]', error);
         serverError = error;
       });
@@ -178,34 +177,8 @@ describe('ElizaOS Agent Commands', () => {
       throw error;
     }
 
-    // Pre-load additional test characters (ada is already loaded by server)
-    const charactersDir = join(__dirname, '../test-characters');
-    for (const character of ['max', 'shaw']) {
-      const characterPath = join(charactersDir, `${character}.json`);
-      console.log(`[DEBUG] Loading character: ${character}`);
-
-      try {
-        const platformOptions = getPlatformOptions({
-          stdio: 'pipe',
-          timeout: 30000, // 30 second timeout for loading each character
-        });
-
-        bunExecSync(
-          `elizaos agent start --remote-url ${testServerUrl} --path "${characterPath}"`,
-          platformOptions
-        );
-        console.log(`[DEBUG] Successfully loaded character: ${character}`);
-
-        // Small wait between loading characters to avoid overwhelming the server
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      } catch (e) {
-        console.error(`[ERROR] Failed to load character ${character}:`, e);
-        throw e;
-      }
-    }
-
-    // Give characters time to register
-    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+    // Character preloading removed - individual tests will handle character creation as needed
+    console.log('[DEBUG] Server setup complete. Individual tests will handle character loading.');
   });
 
   afterAll(async () => {
