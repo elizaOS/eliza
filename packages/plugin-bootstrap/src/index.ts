@@ -332,7 +332,9 @@ const messageReceivedHandler = async ({
     // Log when we're updating the response ID
     const previousResponseId = agentResponses.get(message.roomId);
     if (previousResponseId) {
-      logger.warn(`[Bootstrap] Updating response ID for room ${message.roomId} from ${previousResponseId} to ${responseId} - this may discard in-progress responses`);
+      logger.warn(
+        `[Bootstrap] Updating response ID for room ${message.roomId} from ${previousResponseId} to ${responseId} - this may discard in-progress responses`
+      );
     }
 
     // Set this as the latest response ID for this agent+room
@@ -386,7 +388,7 @@ const messageReceivedHandler = async ({
 
         // First, save the incoming message
         logger.debug('[Bootstrap] Saving message to memory and embeddings');
-        
+
         // Check if memory already exists (it might have been created by MessageBusService)
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);

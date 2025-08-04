@@ -82,7 +82,7 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
     logger.log('ECDSA Key Derived Successfully!');
     logger.log('ECDSA Keypair:', ecdsaKeypair.address);
     logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
-    
+
     const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
     logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
   } catch (error) {
@@ -102,10 +102,10 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
  */
 const startTeeService = async (runtime: IAgentRuntime): Promise<TeeServiceConfig> => {
   logger.info("*** Starting Mr. TEE's custom service (Functional) ***");
-  
+
   const config = createTeeServiceConfig(runtime);
   await handleTeeKeyDerivation(config);
-  
+
   return config;
 };
 

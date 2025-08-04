@@ -41,11 +41,11 @@ export class MessageBusService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.boundHandleIncomingMessage = ((data: unknown) => {
-      this.handleIncomingMessage(data).catch(error => {
+    this.boundHandleIncomingMessage = (data: unknown) => {
+      this.handleIncomingMessage(data).catch((error) => {
         logger.error(`[${this.runtime.character.name}] Error handling incoming message:`, error);
       });
-    });
+    };
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
     this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
     this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
@@ -383,10 +383,7 @@ export class MessageBusService extends Service {
     // Generate a deterministic memory ID by combining message ID and agent ID
     // This ensures each agent creates a unique memory for the same message
     // but the same agent will always generate the same ID for the same message
-    const uniqueMemoryId = createUniqueUuid(
-      this.runtime, 
-      `${message.id}-${this.runtime.agentId}`
-    );
+    const uniqueMemoryId = createUniqueUuid(this.runtime, `${message.id}-${this.runtime.agentId}`);
 
     return {
       id: uniqueMemoryId,
@@ -412,23 +409,33 @@ export class MessageBusService extends Service {
   public async handleIncomingMessage(data: unknown) {
     // Validate the incoming data structure
     if (!data || typeof data !== 'object') {
-      logger.error(`[${this.runtime.character.name}] MessageBusService: Invalid message data received`);
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Invalid message data received`
+      );
       return;
     }
-    
+
     const messageData = data as any;
-    
+
     // Validate required fields
-    if (!messageData.id || !messageData.channel_id || !messageData.author_id || !messageData.content) {
-      logger.error(`[${this.runtime.character.name}] MessageBusService: Message missing required fields`, {
-        hasId: !!messageData.id,
-        hasChannelId: !!messageData.channel_id,
-        hasAuthorId: !!messageData.author_id,
-        hasContent: !!messageData.content
-      });
+    if (
+      !messageData.id ||
+      !messageData.channel_id ||
+      !messageData.author_id ||
+      !messageData.content
+    ) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Message missing required fields`,
+        {
+          hasId: !!messageData.id,
+          hasChannelId: !!messageData.channel_id,
+          hasAuthorId: !!messageData.author_id,
+          hasContent: !!messageData.content,
+        }
+      );
       return;
     }
-    
+
     const message = messageData as MessageServiceMessage;
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
