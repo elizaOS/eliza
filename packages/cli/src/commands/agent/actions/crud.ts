@@ -37,7 +37,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     // Save to file if output option is specified - exit early
     if (opts.output !== undefined) {
       // Extract config without metadata fields
-      const { id, createdAt, updatedAt, ...agentConfig } = agent;
+      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
 
       // Create filename with appropriate .json extension
       const filename =
@@ -57,7 +57,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 
     // Display JSON if requested
     if (opts.json) {
-      const { id, createdAt, updatedAt, ...agentConfig } = agent;
+      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
       console.log(JSON.stringify(agentConfig, null, 2));
     }
 
