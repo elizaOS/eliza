@@ -1,0 +1,708 @@
+---
+title: "Examples"
+description: "This document provides practical examples of using the @elizaos/plugin-discord package in various scenarios."
+---
+
+# Discord Plugin Examples
+
+This document provides practical examples of using the @elizaos/plugin-discord package in various scenarios.
+
+## Basic Bot Setup
+
+### Simple Message Bot
+
+Create a basic Discord bot that responds to messages:
+
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { discordPlugin } from '@elizaos/plugin-discord';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+
+const character = {
+  name: "SimpleBot",
+  description: "A simple Discord bot",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN
+  },
+  // Message examples for the bot's personality
+  messageExamples: [
+    {
+      user: "user",
+      content: { text: "Hello!" },
+      response: { text: "Hello! How can I help you today?" }
+    },
+    {
+      user: "user", 
+      content: { text: "What can you do?" },
+      response: { text: "I can chat with you, answer questions, and help with various tasks!" }
+    }
+  ]
+};
+
+// Create and start the runtime
+const runtime = new AgentRuntime({ character });
+await runtime.start();
+```
+
+### Channel-Restricted Bot
+
+Limit the bot to specific channels:
+
+```typescript
+const channelRestrictedBot = {
+  name: "RestrictedBot",
+  description: "A bot that only works in specific channels",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN,
+    // Only respond in these channels
+    CHANNEL_IDS: "123456789012345678,987654321098765432"
+  }
+};
+```
+
+## Voice Channel Bot
+
+### Basic Voice Bot
+
+Create a bot that can join voice channels:
+
+```typescript
+import { Action } from '@elizaos/core';
+
+const voiceBot = {
+  name: "VoiceAssistant",
+  description: "A voice-enabled Discord bot",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN,
+    // Auto-join this voice channel on startup
+    DISCORD_VOICE_CHANNEL_ID: process.env.DISCORD_VOICE_CHANNEL_ID
+  }
+};
+
+// Custom action to join voice on command
+const joinVoiceAction: Action = {
+  name: "JOIN_VOICE_COMMAND",
+  description: "Join the user's voice channel",
+  similes: ["join voice", "come to voice", "join vc"],
+  
+  validate: async (runtime, message) => {
+    // Check if user is in a voice channel
+    const discordService = runtime.getService('discord');
+    const member = await discordService.getMember(message.userId, message.serverId);
+    return member?.voice?.channel != null;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const discordService = runtime.getService('discord');
+    const member = await discordService.getMember(message.userId, message.serverId);
+    
+    if (member?.voice?.channel) {
+      await discordService.voiceManager.joinChannel(member.voice.channel);
+      await callback({
+        text: `Joined ${member.voice.channel.name}!`
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+### Voice Transcription Bot
+
+Bot that transcribes voice conversations:
+
+```typescript
+const transcriptionBot = {
+  name: "TranscriptionBot",
+  description: "Transcribes voice channel conversations",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN,
+    ENABLE_VOICE_TRANSCRIPTION: "true",
+    VOICE_ACTIVITY_THRESHOLD: "0.5"
+  },
+  // Custom templates for voice interactions
+  templates: {
+    voiceMessageTemplate: `Respond to this voice message from {{user}}:
+    
+    Transcription: {{transcript}}
+    
+    Keep your response brief and conversational.`
+  }
+};
+
+// Handle transcribed voice messages
+runtime.on('VOICE_MESSAGE_RECEIVED', async (event) => {
+  const { message, transcript } = event;
+  console.log(`Voice message from ${message.userName}: ${transcript}`);
+});
+```
+
+## Slash Command Bot
+
+### Basic Slash Commands
+
+Implement Discord slash commands:
+
+```typescript
+import { SlashCommandBuilder } from 'discord.js';
+
+const slashCommandBot = {
+  name: "CommandBot",
+  description: "Bot with slash commands",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN
+  }
+};
+
+// Custom slash command registration
+runtime.on('DISCORD_READY', async (event) => {
+  const { client } = event;
+  
+  const commands = [
+    new SlashCommandBuilder()
+      .setName('ask')
+      .setDescription('Ask the bot a question')
+      .addStringOption(option =>
+        option.setName('question')
+          .setDescription('Your question')
+          .setRequired(true)
+      ),
+    
+    new SlashCommandBuilder()
+      .setName('summarize')
+      .setDescription('Summarize recent conversation')
+      .addIntegerOption(option =>
+        option.setName('messages')
+          .setDescription('Number of messages to summarize')
+          .setMinValue(5)
+          .setMaxValue(50)
+          .setRequired(false)
+      )
+  ];
+  
+  // Register commands globally
+  await client.application.commands.set(commands);
+});
+```
+
+### Advanced Command Handling
+
+Handle complex slash command interactions:
+
+```typescript
+const advancedCommandAction: Action = {
+  name: "HANDLE_SLASH_COMMAND",
+  description: "Process slash command interactions",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const { commandName, options: cmdOptions } = message.content;
+    
+    switch (commandName) {
+      case 'ask':
+        const question = cmdOptions.getString('question');
+        // Process question through the agent
+        const response = await runtime.processMessage({
+          ...message,
+          content: { text: question }
+        });
+        await callback(response);
+        break;
+        
+      case 'summarize':
+        const count = cmdOptions.getInteger('messages') || 20;
+        const summary = await summarizeConversation(runtime, message.channelId, count);
+        await callback({
+          text: `Summary of last ${count} messages:\n\n${summary}`
+        });
+        break;
+        
+      case 'settings':
+        // Show interactive settings menu
+        await callback({
+          text: "Bot Settings",
+          components: [{
+            type: 'ACTION_ROW',
+            components: [{
+              type: 'SELECT_MENU',
+              customId: 'settings_menu',
+              placeholder: 'Choose a setting',
+              options: [
+                { label: 'Response Style', value: 'style' },
+                { label: 'Language', value: 'language' },
+                { label: 'Notifications', value: 'notifications' }
+              ]
+            }]
+          }]
+        });
+        break;
+    }
+    
+    return true;
+  }
+};
+```
+
+## Image Analysis Bot
+
+### Vision-Enabled Bot
+
+Bot that can analyze images:
+
+```typescript
+const imageAnalysisBot = {
+  name: "VisionBot",
+  description: "Analyzes images using vision capabilities",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  modelProvider: "openai",
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY
+  }
+};
+
+// Custom image analysis action
+const analyzeImageAction: Action = {
+  name: "ANALYZE_IMAGE",
+  description: "Analyze attached images",
+  
+  validate: async (runtime, message) => {
+    return message.attachments?.some(att => 
+      att.contentType?.startsWith('image/')
+    ) ?? false;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const imageAttachment = message.attachments.find(att =>
+      att.contentType?.startsWith('image/')
+    );
+    
+    if (imageAttachment) {
+      // The Discord plugin automatically processes images
+      // and adds descriptions to the message content
+      const description = imageAttachment.description;
+      
+      await callback({
+        text: `I can see: ${description}\n\nWhat would you like to know about this image?`
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+## Reaction Bot
+
+### Emoji Reaction Handler
+
+Bot that responds to reactions:
+
+```typescript
+const reactionBot = {
+  name: "ReactionBot",
+  description: "Responds to emoji reactions",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN
+  }
+};
+
+// Handle reaction events
+runtime.on('REACTION_RECEIVED', async (event) => {
+  const { reaction, user, message } = event;
+  
+  // Respond to specific emojis
+  switch (reaction.emoji.name) {
+    case '👍':
+      await message.reply(`Thanks for the thumbs up, ${user.username}!`);
+      break;
+    case '❓':
+      await message.reply(`Do you have a question about this message?`);
+      break;
+    case '📌':
+      // Pin important messages
+      if (!message.pinned) {
+        await message.pin();
+        await message.reply(`Pinned this message!`);
+      }
+      break;
+  }
+});
+```
+
+## Multi-Server Bot
+
+### Server-Specific Configuration
+
+Bot with per-server settings:
+
+```typescript
+const multiServerBot = {
+  name: "MultiServerBot",
+  description: "Bot that adapts to different servers",
+  plugins: [bootstrapPlugin, discordPlugin],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN
+  }
+};
+
+// Server-specific settings storage
+const serverSettings = new Map();
+
+// Initialize server settings on join
+runtime.on('WORLD_JOINED', async (event) => {
+  const { world } = event;
+  const serverId = world.serverId;
+  
+  // Load or create server settings
+  if (!serverSettings.has(serverId)) {
+    serverSettings.set(serverId, {
+      prefix: '!',
+      language: 'en',
+      responseStyle: 'friendly',
+      allowedChannels: [],
+      moderatorRoles: []
+    });
+  }
+});
+
+// Use server-specific settings
+const serverAwareAction: Action = {
+  name: "SERVER_AWARE_RESPONSE",
+  description: "Respond based on server settings",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const settings = serverSettings.get(message.serverId);
+    
+    // Apply server-specific behavior
+    const response = await generateResponse(message, {
+      style: settings.responseStyle,
+      language: settings.language
+    });
+    
+    await callback(response);
+    return true;
+  }
+};
+```
+
+## Media Downloader
+
+### Download and Process Media
+
+Bot that downloads and processes media files:
+
+```typescript
+const mediaDownloaderAction: Action = {
+  name: "DOWNLOAD_MEDIA",
+  description: "Download media from messages",
+  similes: ["download this", "save this media", "get this file"],
+  
+  validate: async (runtime, message) => {
+    return message.attachments?.length > 0;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const results = [];
+    
+    for (const attachment of message.attachments) {
+      try {
+        // Use the Discord plugin's download action
+        const downloadResult = await runtime.executeAction(
+          "DOWNLOAD_MEDIA",
+          message,
+          { url: attachment.url }
+        );
+        
+        results.push({
+          name: attachment.filename,
+          size: attachment.size,
+          path: downloadResult.path
+        });
+      } catch (error) {
+        results.push({
+          name: attachment.filename,
+          error: error.message
+        });
+      }
+    }
+    
+    const summary = results.map(r => 
+      r.error 
+        ? `❌ ${r.name}: ${r.error}`
+        : `✅ ${r.name} (${formatBytes(r.size)}) saved to ${r.path}`
+    ).join('\n');
+    
+    await callback({
+      text: `Media download results:\n\n${summary}`
+    });
+    
+    return true;
+  }
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+```
+
+## Custom Actions
+
+### Creating Discord-Specific Actions
+
+```typescript
+const customDiscordAction: Action = {
+  name: "DISCORD_SERVER_INFO",
+  description: "Get information about the current Discord server",
+  similes: ["server info", "guild info", "about this server"],
+  
+  validate: async (runtime, message) => {
+    // Only works in guild channels
+    return message.serverId != null;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const discordService = runtime.getService('discord');
+    const guild = await discordService.client.guilds.fetch(message.serverId);
+    
+    const info = {
+      name: guild.name,
+      description: guild.description || 'No description',
+      memberCount: guild.memberCount,
+      created: guild.createdAt.toLocaleDateString(),
+      boostLevel: guild.premiumTier,
+      features: guild.features.join(', ') || 'None'
+    };
+    
+    await callback({
+      text: `**Server Information**\n` +
+            `Name: ${info.name}\n` +
+            `Description: ${info.description}\n` +
+            `Members: ${info.memberCount}\n` +
+            `Created: ${info.created}\n` +
+            `Boost Level: ${info.boostLevel}\n` +
+            `Features: ${info.features}`
+    });
+    
+    return true;
+  }
+};
+
+// Register the custom action
+runtime.registerAction(customDiscordAction);
+```
+
+## Integration Examples
+
+### With Other Plugins
+
+Integrate Discord with other elizaOS plugins:
+
+```typescript
+import { discordPlugin } from '@elizaos/plugin-discord';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+import { webSearchPlugin } from '@elizaos/plugin-websearch';
+import { imageGenerationPlugin } from '@elizaos/plugin-image-generation';
+
+const integratedBot = {
+  name: "IntegratedBot",
+  description: "Bot with multiple plugin integrations",
+  plugins: [
+    bootstrapPlugin,
+    discordPlugin,
+    webSearchPlugin,
+    imageGenerationPlugin
+  ],
+  clients: ["discord"],
+  settings: {
+    DISCORD_APPLICATION_ID: process.env.DISCORD_APPLICATION_ID,
+    DISCORD_API_TOKEN: process.env.DISCORD_API_TOKEN,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    GOOGLE_SEARCH_API_KEY: process.env.GOOGLE_SEARCH_API_KEY
+  }
+};
+
+// Action that combines multiple plugins
+const searchAndShareAction: Action = {
+  name: "SEARCH_AND_SHARE",
+  description: "Search the web and share results",
+  similes: ["search for", "look up", "find information about"],
+  
+  handler: async (runtime, message, state, options, callback) => {
+    // Extract search query
+    const query = extractQuery(message.content.text);
+    
+    // Use web search plugin
+    const searchResults = await runtime.executeAction(
+      "WEB_SEARCH",
+      message,
+      { query }
+    );
+    
+    // Format results for Discord
+    const embed = {
+      title: `Search Results for "${query}"`,
+      fields: searchResults.slice(0, 5).map(result => ({
+        name: result.title,
+        value: `${result.snippet}\n[Read more](${result.link})`,
+        inline: false
+      })),
+      color: 0x0099ff,
+      timestamp: new Date()
+    };
+    
+    await callback({
+      embeds: [embed]
+    });
+    
+    return true;
+  }
+};
+```
+
+## Error Handling Examples
+
+### Graceful Error Handling
+
+```typescript
+const errorHandlingAction: Action = {
+  name: "SAFE_ACTION",
+  description: "Action with comprehensive error handling",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    try {
+      // Attempt the main operation
+      const result = await riskyOperation();
+      await callback({ text: `Success: ${result}` });
+    } catch (error) {
+      // Log the error
+      runtime.logger.error('Action failed:', error);
+      
+      // Provide user-friendly error message
+      if (error.code === 50013) {
+        await callback({
+          text: "I don't have permission to do that in this channel."
+        });
+      } else if (error.code === 50001) {
+        await callback({
+          text: "I can't access that channel or message."
+        });
+      } else {
+        await callback({
+          text: "Something went wrong. Please try again later."
+        });
+      }
+    }
+    
+    return true;
+  }
+};
+```
+
+## Testing Examples
+
+### Test Suite for Discord Bot
+
+```typescript
+import { DiscordTestSuite } from '@elizaos/plugin-discord';
+
+const testSuite = new DiscordTestSuite();
+
+// Configure test environment
+testSuite.configure({
+  testChannelId: process.env.DISCORD_TEST_CHANNEL_ID,
+  testVoiceChannelId: process.env.DISCORD_TEST_VOICE_CHANNEL_ID
+});
+
+// Run tests
+await testSuite.run();
+```
+
+## Best Practices Examples
+
+### Rate Limiting
+
+```typescript
+import { RateLimiter } from '@elizaos/core';
+
+const rateLimitedAction: Action = {
+  name: "RATE_LIMITED_ACTION",
+  description: "Action with rate limiting",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const limiter = new RateLimiter({
+      windowMs: 60000, // 1 minute
+      max: 5 // 5 requests per minute per user
+    });
+    
+    if (!limiter.tryConsume(message.userId)) {
+      await callback({
+        text: "Please wait a moment before using this command again."
+      });
+      return false;
+    }
+    
+    // Proceed with action
+    await performAction();
+    return true;
+  }
+};
+```
+
+### Caching
+
+```typescript
+import { LRUCache } from 'lru-cache';
+
+const cachedDataAction: Action = {
+  name: "CACHED_DATA",
+  description: "Action that uses caching",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const cache = runtime.getCache('discord-data');
+    const cacheKey = `user-data-${message.userId}`;
+    
+    // Try to get from cache
+    let userData = cache.get(cacheKey);
+    
+    if (!userData) {
+      // Fetch fresh data
+      userData = await fetchUserData(message.userId);
+      // Cache for 5 minutes
+      cache.set(cacheKey, userData, { ttl: 300000 });
+    }
+    
+    await callback({
+      text: `Your data: ${JSON.stringify(userData)}`
+    });
+    
+    return true;
+  }
+};
+```

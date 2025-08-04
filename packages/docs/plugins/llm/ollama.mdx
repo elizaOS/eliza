@@ -1,0 +1,125 @@
+---
+title: "Ollama Plugin"
+description: "Local model execution via Ollama for elizaOS"
+---
+
+The Ollama plugin provides local model execution and can serve as a fallback option when cloud-based LLM providers are not configured. It requires running an Ollama server locally.
+
+## Features
+
+- **Local execution** - No API keys or internet required
+- **Multiple models** - Support for Llama, Mistral, Gemma, and more
+- **Full model types** - Text, embeddings, and objects
+- **Cost-free** - No API charges
+- **Fallback option** - Can serve as a local fallback when cloud providers are unavailable
+
+## Prerequisites
+
+1. Install [Ollama](https://ollama.ai)
+2. Pull desired models:
+   ```bash
+   ollama pull llama3.1
+   ollama pull nomic-embed-text
+   ```
+
+## Installation
+
+```bash
+elizaos plugins add @elizaos/plugin-ollama
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required
+OLLAMA_API_ENDPOINT=http://localhost:11434/api
+
+# Model configuration
+# You can use any model available in your Ollama installation
+OLLAMA_SMALL_MODEL=llama3.2                # Default: llama3.2
+OLLAMA_MEDIUM_MODEL=llama3.1               # Default: llama3.1
+OLLAMA_LARGE_MODEL=llama3.1:70b            # Default: llama3.1:70b
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text    # Default: nomic-embed-text
+
+# Examples of other available models:
+# OLLAMA_SMALL_MODEL=mistral:7b
+# OLLAMA_MEDIUM_MODEL=mixtral:8x7b
+# OLLAMA_LARGE_MODEL=llama3.3:70b
+# OLLAMA_EMBEDDING_MODEL=mxbai-embed-large
+# OLLAMA_EMBEDDING_MODEL=all-minilm
+
+# Optional parameters
+OLLAMA_TEMPERATURE=0.7
+```
+
+### Character Configuration
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-ollama"]
+}
+```
+
+## Supported Operations
+
+| Operation | Models | Notes |
+|-----------|--------|-------|
+| TEXT_GENERATION | llama3, mistral, gemma | Various sizes available |
+| EMBEDDING | nomic-embed-text, mxbai-embed-large | Local embeddings |
+| OBJECT_GENERATION | All text models | JSON generation |
+
+## Model Configuration
+
+The plugin uses three model tiers:
+
+- **SMALL_MODEL**: Quick responses, lower resource usage
+- **MEDIUM_MODEL**: Balanced performance
+- **LARGE_MODEL**: Best quality, highest resource needs
+
+You can use any model from Ollama's library:
+- Llama models (3, 3.1, 3.2, 3.3)
+- Mistral/Mixtral models
+- Gemma models
+- Phi models
+- Any custom models you've created
+
+For embeddings, popular options include:
+- `nomic-embed-text` - Balanced performance
+- `mxbai-embed-large` - Higher quality
+- `all-minilm` - Lightweight option
+
+## Performance Tips
+
+1. **GPU Acceleration** - Dramatically improves speed
+2. **Model Quantization** - Use Q4/Q5 versions for better performance
+3. **Context Length** - Limit context for faster responses
+
+## Hardware Requirements
+
+| Model Size | RAM Required | GPU Recommended |
+|------------|--------------|-----------------|
+| 7B | 8GB | Optional |
+| 13B | 16GB | Yes |
+| 70B | 64GB+ | Required |
+
+## Common Issues
+
+### "Connection refused"
+Ensure Ollama is running:
+```bash
+ollama serve
+```
+
+### Slow Performance
+- Use smaller models or quantized versions
+- Enable GPU acceleration
+- Reduce context length
+
+## External Resources
+
+- [Plugin Source](https://github.com/elizaos/eliza/tree/main/packages/plugin-ollama)
+- [Ollama Documentation](https://github.com/jmorganca/ollama)
+- [Model Library](https://ollama.ai/library)

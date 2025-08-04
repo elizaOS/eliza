@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -36,6 +36,7 @@
     "dist",
     "README.md",
     ".npmignore",
+    ".gitignore",
     "package.json",
     "tsup.config.ts"
   ],
@@ -49,7 +50,7 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
-    "@elizaos/cli": "1.2.10",
+    "@elizaos/cli": "workspace:*",
     "@tailwindcss/vite": "^4.1.10",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "dotenv": "16.4.5",

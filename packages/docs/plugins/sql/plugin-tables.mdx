@@ -1,0 +1,465 @@
+---
+title: "Plugin Tables Guide"
+description: "How plugins can define their own database tables"
+---
+
+# Plugin Tables Guide
+
+This guide shows plugin developers how to add database tables to their elizaOS plugins. The plugin-sql system automatically handles schema creation, migrations, and namespacing.
+
+## Overview
+
+Any elizaOS plugin can define its own database tables by:
+
+1. Creating table definitions using Drizzle ORM
+2. Exporting a `schema` property from the plugin
+3. That's it! Tables are created automatically on startup
+
+## Step-by-Step Guide
+
+### 1. Set Up Your Plugin Structure
+
+```
+packages/my-plugin/
+├── src/
+│   ├── schema/
+│   │   ├── index.ts       # Export all tables
+│   │   ├── users.ts       # User table definition
+│   │   └── settings.ts    # Settings table definition
+│   ├── actions/
+│   ├── services/
+│   └── index.ts          # Plugin entry point
+├── package.json
+└── tsconfig.json
+```
+
+### 2. Define Your Tables
+
+Create table definitions using Drizzle ORM:
+
+```typescript
+// packages/my-plugin/src/schema/users.ts
+import { pgTable, uuid, text, timestamp, boolean, jsonb } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+export const pluginUsersTable = pgTable('plugin_users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Basic fields
+  username: text('username').notNull().unique(),
+  email: text('email').notNull(),
+  isActive: boolean('is_active').default(true),
+
+  // JSONB for flexible data
+  profile: jsonb('profile')
+    .$type<{
+      avatar?: string;
+      bio?: string;
+      preferences?: Record<string, any>;
+    }>()
+    .default(sql`'{}'::jsonb`),
+
+  // Standard timestamps
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .default(sql`now()`)
+    .notNull(),
+});
+```
+
+### 3. Create Schema Index
+
+Export all your tables from a central location:
+
+```typescript
+// packages/my-plugin/src/schema/index.ts
+export { pluginUsersTable } from './users';
+export { pluginSettingsTable } from './settings';
+// Export all other tables...
+```
+
+### 4. Export Schema from Plugin
+
+The critical step - export your schema from the plugin:
+
+```typescript
+// packages/my-plugin/src/index.ts
+import { type Plugin } from '@elizaos/core';
+import * as schema from './schema';
+
+export const myPlugin: Plugin = {
+  name: '@company/my-plugin',
+  description: 'My plugin with custom database tables',
+
+  // This enables automatic migrations!
+  schema,
+
+  init: async (config, runtime) => {
+    // Plugin initialization
+    console.log('Plugin initialized with database tables');
+  },
+
+  // Other plugin properties...
+  actions: [],
+  services: [],
+  providers: [],
+};
+
+export default myPlugin;
+```
+
+## Schema Namespacing
+
+Your plugin's tables are automatically created in a dedicated PostgreSQL schema:
+
+```typescript
+// Plugin name: @company/my-plugin
+// Schema name: company_my_plugin
+// Full table name: company_my_plugin.plugin_users
+```
+
+This prevents naming conflicts between plugins.
+
+## Working with Foreign Keys
+
+### Reference Core Tables
+
+To reference tables from the core plugin:
+
+```typescript
+// Import core schema
+import { agentTable } from '@elizaos/plugin-sql/schema';
+
+export const pluginMemoriesTable = pgTable('plugin_memories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Reference core agent table
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => agentTable.id, { onDelete: 'cascade' }),
+
+  content: text('content').notNull(),
+  metadata: jsonb('metadata').default(sql`'{}'::jsonb`),
+});
+```
+
+### Reference Your Own Tables
+
+For relationships within your plugin:
+
+```typescript
+export const pluginPostsTable = pgTable('plugin_posts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Reference user in same plugin
+  authorId: uuid('author_id')
+    .notNull()
+    .references(() => pluginUsersTable.id, { onDelete: 'cascade' }),
+
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+});
+```
+
+### Cross-Plugin References
+
+To reference tables from other plugins:
+
+```typescript
+// Reference using fully qualified name
+userId: uuid('user_id')
+  .notNull()
+  .references(() => sql`"other_plugin"."users"("id")`),
+```
+
+## Table Design Patterns
+
+### User Tables
+
+```typescript
+export const pluginUsersTable = pgTable('plugin_users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Link to core agent
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => agentTable.id),
+  
+  // User identification
+  externalId: text('external_id').unique(),
+  username: text('username').notNull().unique(),
+  email: text('email'),
+  
+  // User state
+  status: text('status').default('active'),
+  lastSeenAt: timestamp('last_seen_at'),
+  
+  // Flexible data
+  profile: jsonb('profile').default(sql`'{}'::jsonb`),
+  settings: jsonb('settings').default(sql`'{}'::jsonb`),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').default(sql`now()`).notNull(),
+  updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
+}, (table) => ({
+  // Indexes for performance
+  agentIdIdx: index('plugin_users_agent_id_idx').on(table.agentId),
+  emailIdx: index('plugin_users_email_idx').on(table.email),
+}));
+```
+
+### Event/Log Tables
+
+```typescript
+export const pluginEventsTable = pgTable('plugin_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Event classification
+  type: text('type').notNull(),
+  category: text('category'),
+  severity: text('severity').default('info'),
+  
+  // Event context
+  userId: uuid('user_id').references(() => pluginUsersTable.id),
+  agentId: uuid('agent_id').references(() => agentTable.id),
+  
+  // Event data
+  data: jsonb('data').notNull(),
+  metadata: jsonb('metadata').default(sql`'{}'::jsonb`),
+  
+  // Timestamp (no updatedAt needed for immutable logs)
+  createdAt: timestamp('created_at').default(sql`now()`).notNull(),
+}, (table) => ({
+  // Indexes for querying
+  typeIdx: index('plugin_events_type_idx').on(table.type),
+  userIdIdx: index('plugin_events_user_id_idx').on(table.userId),
+  createdAtIdx: index('plugin_events_created_at_idx').on(table.createdAt),
+}));
+```
+
+### Configuration Tables
+
+```typescript
+export const pluginConfigTable = pgTable('plugin_config', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Scope the configuration
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => agentTable.id, { onDelete: 'cascade' }),
+  
+  // Configuration identification
+  key: text('key').notNull(),
+  namespace: text('namespace').default('default'),
+  
+  // Configuration data
+  value: jsonb('value').notNull(),
+  description: text('description'),
+  
+  // Configuration metadata
+  isSecret: boolean('is_secret').default(false),
+  isActive: boolean('is_active').default(true),
+  
+  // Timestamps
+  createdAt: timestamp('created_at').default(sql`now()`).notNull(),
+  updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
+}, (table) => ({
+  // Unique constraint for key per agent/namespace
+  uniqueKeyPerAgent: unique('plugin_config_agent_namespace_key_unique')
+    .on(table.agentId, table.namespace, table.key),
+}));
+```
+
+## Advanced Features
+
+### Composite Primary Keys
+
+```typescript
+export const pluginUserRolesTable = pgTable('plugin_user_roles', {
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => pluginUsersTable.id, { onDelete: 'cascade' }),
+  
+  roleId: uuid('role_id')
+    .notNull()
+    .references(() => pluginRolesTable.id, { onDelete: 'cascade' }),
+  
+  assignedAt: timestamp('assigned_at').default(sql`now()`).notNull(),
+  assignedBy: uuid('assigned_by').references(() => pluginUsersTable.id),
+}, (table) => ({
+  // Composite primary key
+  pk: primaryKey({ columns: [table.userId, table.roleId] }),
+}));
+```
+
+### Check Constraints
+
+```typescript
+export const pluginProductsTable = pgTable('plugin_products', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+  discountPrice: numeric('discount_price', { precision: 10, scale: 2 }),
+}, (table) => ({
+  // Ensure discount price is less than regular price
+  priceCheck: check(
+    'plugin_products_price_check',
+    sql`${table.discountPrice} < ${table.price} OR ${table.discountPrice} IS NULL`
+  ),
+}));
+```
+
+### Generated Columns
+
+```typescript
+export const pluginOrdersTable = pgTable('plugin_orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  
+  // Regular columns
+  subtotal: numeric('subtotal').notNull(),
+  tax: numeric('tax').notNull(),
+  shipping: numeric('shipping').notNull(),
+  
+  // Generated column
+  total: numeric('total').generatedAlwaysAs(
+    sql`${subtotal} + ${tax} + ${shipping}`
+  ),
+});
+```
+
+## Querying Your Tables
+
+Once your tables are created, you can query them using Drizzle:
+
+```typescript
+import { db } from '@elizaos/plugin-sql';
+import { pluginUsersTable } from './schema/users';
+
+// In your plugin service or action
+export class UserService {
+  async createUser(data: any) {
+    const [user] = await db
+      .insert(pluginUsersTable)
+      .values({
+        username: data.username,
+        email: data.email,
+        profile: data.profile,
+      })
+      .returning();
+    
+    return user;
+  }
+
+  async getUserById(id: string) {
+    const [user] = await db
+      .select()
+      .from(pluginUsersTable)
+      .where(eq(pluginUsersTable.id, id));
+    
+    return user;
+  }
+}
+```
+
+## Best Practices
+
+### 1. Prefix Table Names
+
+Use a consistent prefix for your plugin's tables:
+
+```typescript
+// Good
+export const pluginUsersTable = pgTable('plugin_users', {...});
+export const pluginSettingsTable = pgTable('plugin_settings', {...});
+
+// Avoid generic names
+export const usersTable = pgTable('users', {...}); // Too generic
+```
+
+### 2. Always Include Timestamps
+
+```typescript
+createdAt: timestamp('created_at', { withTimezone: true })
+  .default(sql`now()`)
+  .notNull(),
+updatedAt: timestamp('updated_at', { withTimezone: true })
+  .default(sql`now()`)
+  .notNull(),
+```
+
+### 3. Use JSONB Wisely
+
+JSONB is great for flexibility but don't overuse it:
+
+```typescript
+// Good - structured data with flexibility
+profile: jsonb('profile').$type<{
+  avatar?: string;
+  bio?: string;
+  social?: {
+    twitter?: string;
+    github?: string;
+  };
+}>(),
+
+// Avoid - everything in JSONB
+data: jsonb('data'), // Too vague
+```
+
+### 4. Index Foreign Keys
+
+Always index columns used in joins:
+
+```typescript
+(table) => ({
+  userIdIdx: index('plugin_posts_user_id_idx').on(table.userId),
+  createdAtIdx: index('plugin_posts_created_at_idx').on(table.createdAt),
+})
+```
+
+### 5. Handle Cascading Deletes
+
+Be explicit about deletion behavior:
+
+```typescript
+// Cascade delete - removes dependent records
+.references(() => userTable.id, { onDelete: 'cascade' })
+
+// Set null - preserves records but clears reference
+.references(() => userTable.id, { onDelete: 'set null' })
+
+// Restrict - prevents deletion if dependencies exist
+.references(() => userTable.id, { onDelete: 'restrict' })
+```
+
+## Troubleshooting
+
+### Tables Not Created
+
+1. Ensure your plugin exports the schema:
+   ```typescript
+   export const plugin: Plugin = {
+     schema, // Required!
+   };
+   ```
+
+2. Check the logs for migration errors:
+   ```
+   [ERROR] Failed to run migrations for plugin @company/my-plugin
+   ```
+
+3. Verify table names don't conflict with PostgreSQL keywords
+
+### Foreign Key Errors
+
+1. Ensure referenced tables exist
+2. Check that data types match exactly
+3. Verify the referenced column has a unique constraint
+
+### Performance Issues
+
+1. Add indexes for frequently queried columns
+2. Use partial indexes for filtered queries
+3. Consider partitioning for large tables
