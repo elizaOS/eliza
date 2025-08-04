@@ -300,6 +300,39 @@ export function shouldBypassShouldRespond(
   return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
 }
 
+export class CancelRunSignal {
+  private static byRunId: Map<UUID, CancelRunSignal> = new Map();
+  private resolve?: (content: Content) => void;
+  private promise: Promise<Content>;
+  public isCancelled = false;
+  constructor() {
+    this.promise = new Promise<Content>((resolve) => {
+      this.resolve = resolve;
+    });
+  }
+
+  cancel(content: Content) {
+    this.isCancelled = true;
+    this.resolve?.(content);
+  }
+
+  wait() {
+    return this.promise;
+  }
+
+  static getSignal(runId: UUID) {
+    if (!this.byRunId.has(runId)) {
+      this.byRunId.set(runId, new CancelRunSignal());
+    }
+
+    return this.byRunId.get(runId)!;
+  }
+
+  static clear(runId: UUID) {
+    this.byRunId.delete(runId);
+  }
+}
+
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
@@ -348,8 +381,14 @@ const messageReceivedHandler = async ({
       source: 'messageHandler',
     });
 
+    const cancelPromise = (async () => {
+      const content = await CancelRunSignal.getSignal(runId).wait();
+      CancelRunSignal.clear(runId);
+    })();
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(async () => {
+        CancelRunSignal.clear(runId);
         await runtime.emitEvent(EventType.RUN_TIMEOUT, {
           runtime,
           runId,
@@ -700,10 +739,12 @@ const messageReceivedHandler = async ({
           error: error.message,
           source: 'messageHandler',
         });
+      } finally {
+        CancelRunSignal.clear(runId);
       }
     })();
 
-    await Promise.race([processingPromise, timeoutPromise]);
+    await Promise.race([processingPromise, timeoutPromise, cancelPromise]);
   } finally {
     clearTimeout(timeoutId);
     onComplete?.();
