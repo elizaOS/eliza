@@ -91,7 +91,7 @@ export function createTestState(overrides: Partial<State> = {}): State {
 export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   const agentId = overrides.agentId || createUUID();
   const character = overrides.character || createTestCharacter();
-  
+
   // Create base runtime object with all required properties
   const mockRuntime: IAgentRuntime = {
     // Properties
@@ -112,7 +112,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
       debug: mock(() => {}),
     },
     db: {},
-    
+
     // Database methods
     initialize: mock().mockResolvedValue(undefined),
     init: mock().mockResolvedValue(undefined),
@@ -120,18 +120,19 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     isReady: mock().mockResolvedValue(true),
     close: mock().mockResolvedValue(undefined),
     getConnection: mock().mockResolvedValue({}),
-    
+
     // Agent methods
     getAgent: mock().mockResolvedValue(null),
     getAgents: mock().mockResolvedValue([]),
     createAgent: mock().mockResolvedValue(true),
     updateAgent: mock().mockResolvedValue(true),
     deleteAgent: mock().mockResolvedValue(true),
-    
+
     // Memory methods
-    createMemory: mock().mockImplementation(async (memory: Memory) => 
-      ({ ...memory, id: memory.id || createUUID() })
-    ),
+    createMemory: mock().mockImplementation(async (memory: Memory) => ({
+      ...memory,
+      id: memory.id || createUUID(),
+    })),
     getMemories: mock().mockResolvedValue([]),
     getMemoryById: mock().mockResolvedValue(null),
     getMemoriesByIds: mock().mockResolvedValue([]),
@@ -145,7 +146,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     deleteManyMemories: mock().mockResolvedValue(undefined),
     deleteAllMemories: mock().mockResolvedValue(undefined),
     countMemories: mock().mockResolvedValue(0),
-    
+
     // Entity methods
     getEntitiesByIds: mock().mockResolvedValue([]),
     getEntitiesForRoom: mock().mockResolvedValue([]),
@@ -153,7 +154,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     updateEntity: mock().mockResolvedValue(undefined),
     createEntity: mock().mockResolvedValue(true),
     getEntityById: mock().mockResolvedValue(null),
-    
+
     // Room methods
     createRoom: mock().mockImplementation(async () => createUUID()),
     createRooms: mock().mockImplementation(async () => [createUUID()]),
@@ -173,7 +174,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     getParticipantsForRoom: mock().mockResolvedValue([]),
     getParticipantUserState: mock().mockResolvedValue(null),
     setParticipantUserState: mock().mockResolvedValue(undefined),
-    
+
     // Service methods
     getService: mock().mockReturnValue(null),
     getServicesByType: mock().mockReturnValue([]),
@@ -181,13 +182,13 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     registerService: mock().mockResolvedValue(undefined),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
-    
+
     // Plugin/Action/Provider methods
     registerPlugin: mock().mockResolvedValue(undefined),
     registerProvider: mock().mockReturnValue(undefined),
     registerAction: mock().mockReturnValue(undefined),
     registerEvaluator: mock().mockReturnValue(undefined),
-    
+
     // Model methods
     registerModel: mock().mockReturnValue(undefined),
     getModel: mock().mockReturnValue(undefined),
@@ -199,19 +200,19 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
       }
       return 'Default model response';
     }),
-    
+
     // Event methods
     registerEvent: mock().mockReturnValue(undefined),
     getEvent: mock().mockReturnValue(undefined),
     emitEvent: mock().mockResolvedValue(undefined),
-    
+
     // Settings methods
     setSetting: mock().mockReturnValue(undefined),
     getSetting: mock().mockImplementation((key: string) => {
       if (key === 'EXAMPLE_PLUGIN_VARIABLE') return 'test-value';
       return null;
     }),
-    
+
     // Other methods
     processActions: mock().mockResolvedValue(undefined),
     evaluate: mock().mockResolvedValue(null),
@@ -239,44 +240,44 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     log: mock().mockResolvedValue(undefined),
     getLogs: mock().mockResolvedValue([]),
     deleteLog: mock().mockResolvedValue(undefined),
-    
+
     // Component methods (from IDatabaseAdapter)
     getComponent: mock().mockResolvedValue(null),
     getComponents: mock().mockResolvedValue([]),
     createComponent: mock().mockResolvedValue(true),
     updateComponent: mock().mockResolvedValue(undefined),
     deleteComponent: mock().mockResolvedValue(undefined),
-    
+
     // Relationship methods
     createRelationship: mock().mockResolvedValue(true),
     getRelationships: mock().mockResolvedValue([]),
     getRelationship: mock().mockResolvedValue(null),
     updateRelationship: mock().mockResolvedValue(undefined),
-    
+
     // Embedding methods
     ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
     getCachedEmbeddings: mock().mockResolvedValue([]),
-    
+
     // World methods
     getWorld: mock().mockResolvedValue(null),
     createWorld: mock().mockImplementation(async () => createUUID()),
     updateWorld: mock().mockResolvedValue(undefined),
     removeWorld: mock().mockResolvedValue(undefined),
     getAllWorlds: mock().mockResolvedValue([]),
-    
+
     // Required method that was missing
     ensureParticipantInRoom: mock().mockResolvedValue(undefined),
     ensureWorldExists: mock().mockResolvedValue(undefined),
     ensureRoomExists: mock().mockResolvedValue(undefined),
-    
+
     // Cache methods
     getCache: mock().mockResolvedValue(undefined),
     setCache: mock().mockResolvedValue(true),
     deleteCache: mock().mockResolvedValue(true),
-    
+
     // Other missing database methods
     getMemoriesByWorldId: mock().mockResolvedValue([]),
-    
+
     // Apply any overrides
     ...overrides,
   };
@@ -307,7 +308,7 @@ export const testFixtures = {
     source: 'test',
     ...overrides,
   }),
-  
+
   worldPayload: (overrides: any = {}) => ({
     content: {
       text: 'World event',
@@ -335,9 +336,9 @@ export function assertSpyCalledWith(spy: any, ...args: any[]) {
   if (!isMockFunction(spy)) {
     throw new Error('Not a mock function');
   }
-  
+
   const calls = spy.mock.calls;
-  const found = calls.some((call: any[]) => 
+  const found = calls.some((call: any[]) =>
     args.every((arg, index) => {
       if (typeof arg === 'object' && arg !== null) {
         return JSON.stringify(arg) === JSON.stringify(call[index]);
@@ -345,7 +346,7 @@ export function assertSpyCalledWith(spy: any, ...args: any[]) {
       return arg === call[index];
     })
   );
-  
+
   if (!found) {
     throw new Error(`Spy was not called with expected arguments: ${JSON.stringify(args)}`);
   }

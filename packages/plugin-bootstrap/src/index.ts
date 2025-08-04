@@ -318,7 +318,9 @@ const messageReceivedHandler = async ({
   let timeoutId: NodeJS.Timeout | undefined = undefined;
 
   try {
-    runtime.logger.info(`[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`);
+    runtime.logger.info(
+      `[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`
+    );
     // Generate a new response ID
     const responseId = v4();
     // Get or create the agent-specific map
@@ -421,9 +423,9 @@ const messageReceivedHandler = async ({
         );
 
         // default LLM to off
-        const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'))
+        const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'));
         if (defLllmOff && agentUserState === null) {
-          runtime.logger.debug('bootstrap - LLM is off by default')
+          runtime.logger.debug('bootstrap - LLM is off by default');
           // allow some other subsystem to handle this event
           // maybe emit an event
 
@@ -544,7 +546,9 @@ const messageReceivedHandler = async ({
         if (shouldRespond) {
           state = await runtime.composeState(message, ['ACTIONS']);
           if (!state.values.actionNames) {
-            runtime.logger.warn('actionNames data missing from state, even though it was requested');
+            runtime.logger.warn(
+              'actionNames data missing from state, even though it was requested'
+            );
           }
 
           const prompt = composePromptFromState({
@@ -612,7 +616,6 @@ const messageReceivedHandler = async ({
             //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
             // This ensures consistent, clear behavior and preserves reply speed optimizations.
             if (responseContent.actions && responseContent.actions.length > 1) {
-
               // filter out all NONE actions, there's nothing to be done with them
               // oh but there is a none action in bootstrap
               //responseContent.actions = responseContent.actions.filter(a => a !== 'NONE')
@@ -681,35 +684,46 @@ const messageReceivedHandler = async ({
           if (responseContent && responseContent.simple && responseContent.text) {
             // Log provider usage for simple responses
             if (responseContent.providers && responseContent.providers.length > 0) {
-              runtime.logger.debug('[Bootstrap] Simple response used providers', responseContent.providers);
+              runtime.logger.debug(
+                '[Bootstrap] Simple response used providers',
+                responseContent.providers
+              );
             }
 
             // without actions there can't be more than one message
             await callback(responseContent);
           } else {
             await runtime.processActions(message, responseMessages, state, async (content) => {
-              runtime.logger.debug('action callback', content)
+              runtime.logger.debug('action callback', content);
               if (responseContent) {
-                responseContent.actionCallbacks = content
+                responseContent.actionCallbacks = content;
               }
-              return callback(content)
+              return callback(content);
             });
           }
-          await runtime.evaluate(message, state, shouldRespond, async (content) => {
-            runtime.logger.debug('evaluate callback', content)
-            if (responseContent) {
-              responseContent.evalCallbacks = content
-            }
-            return callback(content)
-          }, responseMessages);
+          await runtime.evaluate(
+            message,
+            state,
+            shouldRespond,
+            async (content) => {
+              runtime.logger.debug('evaluate callback', content);
+              if (responseContent) {
+                responseContent.evalCallbacks = content;
+              }
+              return callback(content);
+            },
+            responseMessages
+          );
         } else {
           // Handle the case where the agent decided not to respond
-          runtime.logger.debug('[Bootstrap] Agent decided not to respond (shouldRespond is false).');
+          runtime.logger.debug(
+            '[Bootstrap] Agent decided not to respond (shouldRespond is false).'
+          );
 
           // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
           // helpful for swarms
-          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'))
+          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
@@ -731,7 +745,9 @@ const messageReceivedHandler = async ({
           }
 
           if (!message.id) {
-            runtime.logger.error('[Bootstrap] Message ID is missing, cannot create ignore response.');
+            runtime.logger.error(
+              '[Bootstrap] Message ID is missing, cannot create ignore response.'
+            );
             // Emit run ended event on successful completion
             await runtime.emitEvent(EventType.RUN_ENDED, {
               runtime,
@@ -789,35 +805,37 @@ const messageReceivedHandler = async ({
           entityName = (message.metadata as any).entityName;
         }
 
-        const isDM = message.content?.channelType?.toUpperCase() === 'DM'
-        let roomName = entityName
+        const isDM = message.content?.channelType?.toUpperCase() === 'DM';
+        let roomName = entityName;
         if (!isDM) {
-          const roomDatas = await runtime.getRoomsByIds([message.roomId])
+          const roomDatas = await runtime.getRoomsByIds([message.roomId]);
           if (roomDatas?.length) {
-            const roomData = roomDatas[0]
+            const roomData = roomDatas[0];
             if (roomData.name) {
               // server/guild name?
-              roomName = roomData.name
+              roomName = roomData.name;
             }
             // how do I get worldName
             if (roomData.worldId) {
-              const worldData = await runtime.getWorld(roomData.worldId)
+              const worldData = await runtime.getWorld(roomData.worldId);
               if (worldData) {
-                roomName = worldData.name + '-' + roomName
+                roomName = worldData.name + '-' + roomName;
               }
             }
           }
         }
 
-        const date = new Date()
+        const date = new Date();
 
         // get available actions
-        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(a => a.name) || [-1]
+        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
+          (a) => a.name
+        ) || [-1];
 
         // generate data of interest
         const logData = {
           at: date.toString(),
-          timestamp: parseInt('' + (date.getTime() / 1000)),
+          timestamp: parseInt('' + date.getTime() / 1000),
           messageId: message.id, // can extract roomId or whatever
           userEntityId: message.entityId,
           input: message.content.text,
@@ -833,7 +851,7 @@ const messageReceivedHandler = async ({
           source: message.content.source,
           channelType: message.content.channelType,
           roomName,
-        }
+        };
 
         // Emit run ended event on successful completion
         await runtime.emitEvent(EventType.RUN_ENDED, {
@@ -924,7 +942,12 @@ const messageDeletedHandler = async ({
       return;
     }
 
-    runtime.logger.info('[Bootstrap] Deleting memory for message', message.id, 'from room', message.roomId);
+    runtime.logger.info(
+      '[Bootstrap] Deleting memory for message',
+      message.id,
+      'from room',
+      message.roomId
+    );
     await runtime.deleteMemory(message.id);
     runtime.logger.debug('[Bootstrap] Successfully deleted memory for message', message.id);
   } catch (error: unknown) {
@@ -1401,10 +1424,14 @@ const controlMessageHandler = async ({
           `[controlMessageHandler] Control message ${message.payload.action} sent successfully`
         );
       } else {
-        runtime.logger.error('[controlMessageHandler] WebSocket service does not have sendMessage method');
+        runtime.logger.error(
+          '[controlMessageHandler] WebSocket service does not have sendMessage method'
+        );
       }
     } else {
-      runtime.logger.error('[controlMessageHandler] No WebSocket service found to send control message');
+      runtime.logger.error(
+        '[controlMessageHandler] No WebSocket service found to send control message'
+      );
     }
   } catch (error) {
     runtime.logger.error(`[controlMessageHandler] Error processing control message: ${error}`);
@@ -1497,7 +1524,9 @@ const events = {
 
   [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
-      payload.runtime.logger.debug(`[Bootstrap] ENTITY_JOINED event received for entity ${payload.entityId}`);
+      payload.runtime.logger.debug(
+        `[Bootstrap] ENTITY_JOINED event received for entity ${payload.entityId}`
+      );
 
       if (!payload.worldId) {
         payload.runtime.logger.error('[Bootstrap] No worldId provided for entity joined');
@@ -1536,7 +1565,9 @@ const events = {
           };
           await payload.runtime.updateEntity(entity);
         }
-        payload.runtime.logger.info(`[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`);
+        payload.runtime.logger.info(
+          `[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`
+        );
       } catch (error: any) {
         payload.runtime.logger.error(`[Bootstrap] Error handling user left: ${error.message}`);
       }

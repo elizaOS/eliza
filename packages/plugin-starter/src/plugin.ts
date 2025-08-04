@@ -71,12 +71,12 @@ const helloWorldAction: Action = {
   ): Promise<ActionResult> => {
     try {
       const response = 'Hello world!';
-      
+
       if (callback) {
         await callback({
           text: response,
           actions: ['HELLO_WORLD'],
-          source: message.content.source
+          source: message.content.source,
         });
       }
 
@@ -85,14 +85,14 @@ const helloWorldAction: Action = {
         success: true,
         data: {
           actions: ['HELLO_WORLD'],
-          source: message.content.source
-        }
+          source: message.content.source,
+        },
       };
     } catch (error) {
       logger.error('Error in HelloWorld action:', error);
       return {
         success: false,
-        error: error instanceof Error ? error : new Error(String(error))
+        error: error instanceof Error ? error : new Error(String(error)),
       };
     }
   },

@@ -32,7 +32,7 @@ const configSchema = z.object({
       if (!val) return true; // Allow undefined in non-test environments
       return ['OFF', 'LOCAL', 'DOCKER', 'PRODUCTION'].includes(val);
     }, 'TEE_MODE must be one of: OFF, LOCAL, DOCKER, PRODUCTION'),
-  
+
   TEE_VENDOR: z
     .string()
     .optional()
@@ -47,7 +47,7 @@ const configSchema = z.object({
       if (!val) return true; // Allow undefined in non-test environments
       return val === 'phala';
     }, 'TEE_VENDOR must be: phala'),
-  
+
   WALLET_SECRET_SALT: z
     .string()
     .optional()
@@ -63,21 +63,24 @@ const configSchema = z.object({
       }
       return val;
     })
-    .refine((val) => {
-      if (!val) return true; // Allow undefined in non-test environments
-      const trimmedVal = val.trim();
-      return trimmedVal.length >= 8 && trimmedVal.length <= 128;
-    }, (val) => {
-      if (!val) return { message: 'Wallet secret salt is required' };
-      const trimmedVal = val.trim();
-      if (trimmedVal.length < 8) {
-        return { message: 'Wallet secret salt must be at least 8 characters long for security' };
+    .refine(
+      (val) => {
+        if (!val) return true; // Allow undefined in non-test environments
+        const trimmedVal = val.trim();
+        return trimmedVal.length >= 8 && trimmedVal.length <= 128;
+      },
+      (val) => {
+        if (!val) return { message: 'Wallet secret salt is required' };
+        const trimmedVal = val.trim();
+        if (trimmedVal.length < 8) {
+          return { message: 'Wallet secret salt must be at least 8 characters long for security' };
+        }
+        if (trimmedVal.length > 128) {
+          return { message: 'Wallet secret salt must not exceed 128 characters' };
+        }
+        return { message: 'Invalid wallet secret salt' };
       }
-      if (trimmedVal.length > 128) {
-        return { message: 'Wallet secret salt must not exceed 128 characters' };
-      }
-      return { message: 'Invalid wallet secret salt' };
-    }),
+    ),
 });
 
 // Functional TEE service configuration
@@ -214,24 +217,27 @@ const teeStarterPlugin: Plugin = {
       };
 
       // Apply test defaults if in test environment
-      const isTestEnvironment =
-        process.env.NODE_ENV === 'test' ||
-        process.argv.includes('test');
+      const isTestEnvironment = process.env.NODE_ENV === 'test' || process.argv.includes('test');
 
       if (isTestEnvironment) {
         // Apply test-only defaults - NEVER use these in production
         mergedConfig.TEE_MODE = mergedConfig.TEE_MODE || 'OFF';
         mergedConfig.TEE_VENDOR = mergedConfig.TEE_VENDOR || 'phala';
         // Test salt - this is ONLY for test environments and should NEVER be used in production
-        mergedConfig.WALLET_SECRET_SALT = mergedConfig.WALLET_SECRET_SALT || 'test_default_salt_12345';
+        mergedConfig.WALLET_SECRET_SALT =
+          mergedConfig.WALLET_SECRET_SALT || 'test_default_salt_12345';
       }
 
       const validatedConfig = await configSchema.parseAsync(mergedConfig);
 
       // Production safety check - ensure test defaults aren't used in production
-      if (process.env.NODE_ENV === 'production' && 
-          validatedConfig.WALLET_SECRET_SALT === 'test_default_salt_12345') {
-        throw new Error('CRITICAL: Test salt detected in production environment. Please provide a secure WALLET_SECRET_SALT.');
+      if (
+        process.env.NODE_ENV === 'production' &&
+        validatedConfig.WALLET_SECRET_SALT === 'test_default_salt_12345'
+      ) {
+        throw new Error(
+          'CRITICAL: Test salt detected in production environment. Please provide a secure WALLET_SECRET_SALT.'
+        );
       }
 
       // Set all environment variables at once

@@ -67,7 +67,7 @@ describe('Plugin Configuration', () => {
 
   it('should handle initialization without config', async () => {
     const runtime = createMockRuntime();
-    
+
     if (starterPlugin.init) {
       // Init should not throw even with empty config
       await starterPlugin.init({}, runtime);
@@ -79,8 +79,9 @@ describe('Plugin Configuration', () => {
     const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: 123 }; // Should be string
 
     if (starterPlugin.init) {
-      await expect(starterPlugin.init(invalidConfig as any, runtime))
-        .rejects.toThrow('Invalid plugin configuration');
+      await expect(starterPlugin.init(invalidConfig as any, runtime)).rejects.toThrow(
+        'Invalid plugin configuration'
+      );
     }
   });
 });
@@ -109,12 +110,7 @@ describe('Hello World Action', () => {
       throw new Error('Hello world action validate not found');
     }
 
-    const validMessages = [
-      'say hello',
-      'hello world',
-      'Please say HELLO',
-      'can you say hello?',
-    ];
+    const validMessages = ['say hello', 'hello world', 'Please say HELLO', 'can you say hello?'];
 
     // The current implementation always returns true
     // This test documents the actual behavior
@@ -152,7 +148,7 @@ describe('Hello World Action', () => {
       const isValid = await helloWorldAction.validate(runtime, message);
       expect(isValid).toBe(true);
     }
-    
+
     // Test empty string - also returns true
     const emptyMessage = createTestMemory({
       content: { text: '', source: 'test' },
@@ -161,7 +157,7 @@ describe('Hello World Action', () => {
     expect(isEmptyValid).toBe(true);
   });
 
-    it('should validate even without text content', async () => {
+  it('should validate even without text content', async () => {
     if (!helloWorldAction?.validate) {
       throw new Error('Hello world action validate not found');
     }
@@ -183,20 +179,14 @@ describe('Hello World Action', () => {
     const message = createTestMemory({
       content: { text: 'say hello', source: 'test' },
     });
-    
+
     let callbackContent: any = null;
     const callback: HandlerCallback = async (content: Content) => {
       callbackContent = content;
       return [];
     };
 
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      undefined,
-      undefined,
-      callback
-    );
+    const result = await helloWorldAction.handler(runtime, message, undefined, undefined, callback);
 
     expect(result).toHaveProperty('text', 'Hello world!');
     expect(result).toHaveProperty('success', true);
@@ -267,18 +257,12 @@ describe('Hello World Action', () => {
     const message = createTestMemory({
       content: { text: 'say hello', source: 'test' },
     });
-    
+
     const state = createTestState({
       values: { customValue: 'test-state' },
     });
 
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      state,
-      undefined,
-      undefined
-    );
+    const result = await helloWorldAction.handler(runtime, message, state, undefined, undefined);
 
     expect(result).toHaveProperty('success', true);
   });
@@ -287,11 +271,11 @@ describe('Hello World Action', () => {
 describe('Hello World Provider', () => {
   const provider = starterPlugin.providers?.[0];
   let runtime: IAgentRuntime;
-  
+
   beforeEach(() => {
     runtime = createMockRuntime();
   });
-  
+
   it('should have hello world provider', () => {
     expect(provider).toBeDefined();
     expect(provider?.name).toBe('HELLO_WORLD_PROVIDER');
@@ -334,7 +318,7 @@ describe('Hello World Provider', () => {
 
 describe('Model Handlers', () => {
   let runtime: IAgentRuntime;
-  
+
   beforeEach(() => {
     runtime = createMockRuntime();
   });
@@ -345,10 +329,7 @@ describe('Model Handlers', () => {
       throw new Error('TEXT_SMALL model handler not found');
     }
 
-    const result = await handler(
-      runtime,
-      { prompt: 'Test prompt' }
-    );
+    const result = await handler(runtime, { prompt: 'Test prompt' });
 
     expect(result).toContain('Never gonna give you up');
   });
@@ -359,16 +340,13 @@ describe('Model Handlers', () => {
       throw new Error('TEXT_LARGE model handler not found');
     }
 
-    const result = await handler(
-      runtime,
-      {
-        prompt: 'Test prompt with custom settings',
-        maxTokens: 1000,
-        temperature: 0.5,
-        frequencyPenalty: 0.5,
-        presencePenalty: 0.5,
-      }
-    );
+    const result = await handler(runtime, {
+      prompt: 'Test prompt with custom settings',
+      maxTokens: 1000,
+      temperature: 0.5,
+      frequencyPenalty: 0.5,
+      presencePenalty: 0.5,
+    });
 
     expect(result).toContain('Never gonna make you cry');
   });
@@ -379,10 +357,7 @@ describe('Model Handlers', () => {
       throw new Error('TEXT_SMALL model handler not found');
     }
 
-    const result = await handler(
-      runtime,
-      { prompt: '' }
-    );
+    const result = await handler(runtime, { prompt: '' });
 
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
@@ -394,10 +369,7 @@ describe('Model Handlers', () => {
       throw new Error('TEXT_LARGE model handler not found');
     }
 
-    const result = await handler(
-      runtime,
-      { prompt: 'Test prompt' }
-    );
+    const result = await handler(runtime, { prompt: 'Test prompt' });
 
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
@@ -406,7 +378,7 @@ describe('Model Handlers', () => {
 
 describe('API Routes', () => {
   let runtime: IAgentRuntime;
-  
+
   beforeEach(() => {
     runtime = createMockRuntime();
   });
@@ -434,7 +406,7 @@ describe('API Routes', () => {
 
   it('should validate route configuration', () => {
     const statusRoute = starterPlugin.routes?.[0];
-    
+
     expect(statusRoute).toBeDefined();
     expect(statusRoute?.path).toBe('/api/status');
     expect(statusRoute?.type).toBe('GET');
@@ -513,7 +485,7 @@ describe('Event Handlers', () => {
     const payload = testFixtures.messagePayload({
       content: {},
     });
-    
+
     await handler(payload);
     expect(logger.debug).toHaveBeenCalled();
   });
@@ -542,7 +514,7 @@ describe('StarterService', () => {
   it('should stop service correctly', async () => {
     // Start service
     const service = await StarterService.start(runtime);
-    
+
     // Create a new runtime with the service registered
     const runtimeWithService = createMockRuntime({
       getService: () => service as any,
@@ -565,7 +537,7 @@ describe('StarterService', () => {
     // First cycle
     const service1 = await StarterService.start(runtime);
     expect(service1).toBeInstanceOf(StarterService);
-    
+
     const runtimeWithService1 = createMockRuntime({
       getService: () => service1 as any,
     });
@@ -574,7 +546,7 @@ describe('StarterService', () => {
     // Second cycle
     const service2 = await StarterService.start(runtime);
     expect(service2).toBeInstanceOf(StarterService);
-    
+
     const runtimeWithService2 = createMockRuntime({
       getService: () => service2 as any,
     });
@@ -583,6 +555,8 @@ describe('StarterService', () => {
 
   it('should provide capability description', async () => {
     const service = await StarterService.start(runtime);
-    expect(service.capabilityDescription).toBe('This is a starter service which is attached to the agent through the starter plugin.');
+    expect(service.capabilityDescription).toBe(
+      'This is a starter service which is attached to the agent through the starter plugin.'
+    );
   });
 });
