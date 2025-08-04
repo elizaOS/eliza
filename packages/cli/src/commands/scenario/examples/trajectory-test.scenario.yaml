@@ -1,0 +1,49 @@
+name: Trajectory Action Test
+description: Tests the trajectory_contains_action evaluator with actual bootstrap actions
+
+environment:
+  type: e2b
+setup:
+  virtual_fs:
+    test.txt: "Hello World"
+
+run:
+  - name: Test with ignore action
+    lang: python
+    code: |
+      print("This step should trigger an ignore action")
+      # This will likely trigger the ignore action since no specific action is requested
+    evaluations:
+      - type: trajectory_contains_action
+        action: ignore
+        description: Verify that the ignore action was executed (this should fail since no actions are triggered in scenario execution)
+
+  - name: Test with reply action
+    lang: python
+    code: |
+      print("This step should trigger a reply action")
+      # This will likely trigger the reply action
+    evaluations:
+      - type: trajectory_contains_action
+        action: reply
+        description: Verify that the reply action was executed (this should fail since no actions are triggered in scenario execution)
+
+  - name: Test file operations
+    lang: python
+    code: |
+      with open('test.txt', 'r') as f:
+          content = f.read()
+      print(f"Read content: {content}")
+      with open('output.txt', 'w') as f:
+          f.write("New content")
+      print("File operations completed")
+    evaluations:
+      - type: file_exists
+        path: output.txt
+        description: Verify that the output file was created
+      - type: string_contains
+        value: "Read content"
+        description: Verify that the read operation was logged
+
+judgment:
+  strategy: all_pass 

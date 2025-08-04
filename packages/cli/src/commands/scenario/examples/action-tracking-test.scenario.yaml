@@ -1,0 +1,36 @@
+name: Action Tracking Test
+description: Tests the trajectory_contains_action evaluator by checking for specific actions in the execution path
+
+environment:
+  type: e2b
+  setup:
+    virtual_fs:
+      input.txt: |
+        Hello, World!
+
+run:
+  - name: Read file and verify action
+    lang: python
+    code: |
+      with open('input.txt', 'r') as f:
+          print(f.read())
+    evaluations:
+      - type: trajectory_contains_action
+        action: read_file
+        description: Verify that the read_file action was executed
+
+  - name: Write file and verify action
+    lang: python
+    code: |
+      with open('output.txt', 'w') as f:
+          f.write('Hello from Python!')
+    evaluations:
+      - type: trajectory_contains_action
+        action: write_file
+        description: Verify that the write_file action was executed
+      - type: file_exists
+        path: output.txt
+        description: Verify that the file was actually created
+
+judgment:
+  strategy: all_pass
