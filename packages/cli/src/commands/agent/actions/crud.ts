@@ -1,4 +1,3 @@
-import type { Agent } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { writeFileSync, readFileSync } from 'node:fs';
@@ -28,10 +27,7 @@ async function safeJsonParse<T>(response: Response): Promise<T | null> {
  * @param response - The fetch Response object
  * @param defaultMessage - Default error message if JSON parsing fails
  */
-async function handleErrorResponse(response: Response, defaultMessage: string): Promise<never> {
-  const errorData = await safeJsonParse<ApiResponse<unknown>>(response);
-  throw new Error(errorData?.error?.message || defaultMessage);
-}
+
 
 /**
  * Get command implementation - retrieves and displays agent details
@@ -162,20 +158,12 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     }
 
     // API Endpoint: PATCH /agents/:agentId
-    const httpClient = createAgentHttpClient(opts);
-    const response = await httpClient.patch(resolvedAgentId, config);
+    const clientConfig = createApiClientConfig(opts);
+    const agentsService = new AgentsService(clientConfig);
 
-    if (!response.ok) {
-      await handleErrorResponse(
-        response,
-        `Failed to update agent configuration: ${response.statusText}`
-      );
-    }
+    const updatedAgent = await agentsService.updateAgent(resolvedAgentId, config);
 
-    const data = await safeJsonParse<ApiResponse<{ id: string }>>(response);
-    const result = data?.data || null;
-
-    console.log(`Successfully updated configuration for agent ${result?.id || resolvedAgentId}`);
+    console.log(`Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`);
   } catch (error) {
     await checkServer(opts);
     handleError(error);
