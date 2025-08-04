@@ -1,5 +1,6 @@
 import type { Content, Memory, Plugin } from "@elizaos/core";
 import { createUniqueUuid, EventType, logger } from "@elizaos/core";
+import { CancelRunSignal } from "@elizaos/plugin-bootstrap"
 import { z } from "zod";
 import { modules } from "./actions/modules";
 import { levvaProvider } from "./providers";
@@ -77,7 +78,8 @@ const plugin: Plugin = {
 
         if (!result) {
           logger.warn("Entity is not eligible", { runId, entityId, reason });
-          // todo cancelRun(runId, reason)
+          const signal = CancelRunSignal.getSignal(runId);
+          signal.cancel(reason);
         }
       },
     ],

@@ -18,7 +18,7 @@ RUN apt-get update && \
 RUN npm install -g bun@1.2.5 turbo@2.3.3
 RUN ln -s /usr/bin/python3 /usr/bin/python
 COPY bun.lock drizzle.config.ts package.json tsconfig.build.json tsconfig.json tsup.config.ts vitest.config.ts ./
-# COPY patches ./patches
+COPY patches ./patches
 RUN bun install --no-cache
 
 COPY drizzle ./drizzle

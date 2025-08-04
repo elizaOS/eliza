@@ -25,6 +25,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@elizaos/plugin-bootstrap@1.3.1": "patches/@elizaos%2Fplugin-bootstrap@1.3.1.patch",
+  },
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.0", "", {}, "sha512-/3DDPKHqqIqxUULp8yP4zODUY1i+2xvVWsv8A79xGWdCAG+8sb0hRh0Rk2QyOJUnnbyPUAZYcpBuRe3nS2OIUg=="],
 

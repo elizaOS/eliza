@@ -984,7 +984,7 @@ export class LevvaService
 
     const content: Content = {
       type: "text",
-      text: "No balance found",
+      text: `No balance found, please top up your ETH balance. [View on Etherscan](https://etherscan.io/address/${address})`,
     };
 
     return { result: false, reason: content };
