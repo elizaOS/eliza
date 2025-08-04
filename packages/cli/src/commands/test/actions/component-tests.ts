@@ -7,7 +7,6 @@ import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
 // Bun test doesn't need separate config creation
-import { existsSync } from 'node:fs';
 
 /**
  * Run component tests using bun test
