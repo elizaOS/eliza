@@ -67,7 +67,13 @@ jobs:
 
       - name: Link packages globally
         run: |
-          # Link server package first (CLI depends on it)
+          # Link core package first (everything depends on it)
+          cd packages/core
+          bun link
+          cd ../..
+          echo "Linked @elizaos/core package globally"
+          
+          # Link server package (CLI depends on it)
           cd packages/server
           bun link
           cd ../..

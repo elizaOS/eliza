@@ -14,12 +14,7 @@ export const AgentBasicSchema = z
   .passthrough(); // Allow additional properties
 
 export const AgentsListResponseSchema = z.object({
-  success: z.boolean(),
-  data: z
-    .object({
-      agents: z.array(AgentBasicSchema),
-    })
-    .optional(),
+  agents: z.array(AgentBasicSchema),
 });
 
 /**
@@ -30,9 +25,9 @@ export async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
   const agentsService = new AgentsService(config);
   const result = await agentsService.listAgents();
 
-  const rawData = { data: result };
-  const validatedData = AgentsListResponseSchema.parse(rawData);
-  return (validatedData.data?.agents || []) as AgentBasic[];
+  // The AgentsService returns { agents: Agent[] } directly after BaseApiClient unwraps the server response
+  const validatedData = AgentsListResponseSchema.parse(result);
+  return validatedData.agents as AgentBasic[];
 }
 
 /**
