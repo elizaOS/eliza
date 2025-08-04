@@ -52,8 +52,10 @@ const configSchema = z.object({
     .string()
     .optional()
     .transform((val) => {
-      // Provide test defaults when NODE_ENV is test
+      // SECURITY WARNING: Test defaults are ONLY for test environments
+      // NEVER use these defaults in production - always provide a secure salt
       if (process.env.NODE_ENV === 'test' && !val) {
+        logger.debug('Using test default for WALLET_SECRET_SALT - NEVER use in production');
         return 'test_default_salt_12345';
       }
       if (!val) {
@@ -217,12 +219,20 @@ const teeStarterPlugin: Plugin = {
         process.argv.includes('test');
 
       if (isTestEnvironment) {
+        // Apply test-only defaults - NEVER use these in production
         mergedConfig.TEE_MODE = mergedConfig.TEE_MODE || 'OFF';
         mergedConfig.TEE_VENDOR = mergedConfig.TEE_VENDOR || 'phala';
-        mergedConfig.WALLET_SECRET_SALT = mergedConfig.WALLET_SECRET_SALT || 'test_salt_12345678';
+        // Test salt - this is ONLY for test environments and should NEVER be used in production
+        mergedConfig.WALLET_SECRET_SALT = mergedConfig.WALLET_SECRET_SALT || 'test_default_salt_12345';
       }
 
       const validatedConfig = await configSchema.parseAsync(mergedConfig);
+
+      // Production safety check - ensure test defaults aren't used in production
+      if (process.env.NODE_ENV === 'production' && 
+          validatedConfig.WALLET_SECRET_SALT === 'test_default_salt_12345') {
+        throw new Error('CRITICAL: Test salt detected in production environment. Please provide a secure WALLET_SECRET_SALT.');
+      }
 
       // Set all environment variables at once
       for (const [key, value] of Object.entries(validatedConfig)) {
