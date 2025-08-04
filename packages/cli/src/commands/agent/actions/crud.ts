@@ -1,6 +1,6 @@
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import { AgentsService, MemoryService } from '@elizaos/api-client';
-import { asUUID } from '@elizaos/core';
+import { asUUID, UUID } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -28,7 +28,13 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     console.info(`Getting agent ${resolvedAgentId}`);
 
     // API Endpoint: GET /agents/:agentId
-    const agent = await agentsService.getAgent(asUUID(resolvedAgentId));
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+    }
+    const agent = await agentsService.getAgent(agentId);
 
     if (!agent) {
       throw new Error('No agent data received from server');
