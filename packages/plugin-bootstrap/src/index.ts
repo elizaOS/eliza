@@ -329,6 +329,12 @@ const messageReceivedHandler = async ({
       throw new Error('Agent responses map not found');
     }
 
+    // Log when we're updating the response ID
+    const previousResponseId = agentResponses.get(message.roomId);
+    if (previousResponseId) {
+      logger.warn(`[Bootstrap] Updating response ID for room ${message.roomId} from ${previousResponseId} to ${responseId} - this may discard in-progress responses`);
+    }
+
     // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
@@ -380,10 +386,28 @@ const messageReceivedHandler = async ({
 
         // First, save the incoming message
         logger.debug('[Bootstrap] Saving message to memory and embeddings');
-        await Promise.all([
-          runtime.addEmbeddingToMemory(message),
-          runtime.createMemory(message, 'messages'),
-        ]);
+        
+        // Check if memory already exists (it might have been created by MessageBusService)
+        if (message.id) {
+          const existingMemory = await runtime.getMemoryById(message.id);
+          if (existingMemory) {
+            logger.debug('[Bootstrap] Memory already exists, skipping creation');
+            // Still add embedding if needed
+            await runtime.addEmbeddingToMemory(message);
+          } else {
+            // Create memory if it doesn't exist
+            await Promise.all([
+              runtime.addEmbeddingToMemory(message),
+              runtime.createMemory(message, 'messages'),
+            ]);
+          }
+        } else {
+          // No ID, create new memory
+          await Promise.all([
+            runtime.addEmbeddingToMemory(message),
+            runtime.createMemory(message, 'messages'),
+          ]);
+        }
 
         const agentUserState = await runtime.getParticipantUserState(
           message.roomId,
@@ -529,7 +553,7 @@ const messageReceivedHandler = async ({
           const currentResponseId = agentResponses.get(message.roomId);
           if (currentResponseId !== responseId) {
             logger.info(
-              `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+              `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}, original responseId: ${responseId}, current responseId: ${currentResponseId}`
             );
             return;
           }
