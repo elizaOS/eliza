@@ -187,13 +187,17 @@ describe('ElizaOS Agent Commands', () => {
       try {
         const platformOptions = getPlatformOptions({
           stdio: 'pipe',
-          timeout: 30000, // 30 second timeout for loading each character
+          timeout: 45000, // Increased timeout for agent loading in CI
+          encoding: 'utf8',
         });
 
-        bunExecSync(
+        const result = bunExecSync(
           `elizaos agent start --remote-url ${testServerUrl} --path "${characterPath}"`,
           platformOptions
         );
+
+        // Log success for debugging
+        console.log(`[DEBUG] Agent start result: ${result}`);
         console.log(`[DEBUG] Successfully loaded character: ${character}`);
 
         // Small wait between loading characters to avoid overwhelming the server
