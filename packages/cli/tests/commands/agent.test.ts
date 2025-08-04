@@ -177,38 +177,8 @@ describe('ElizaOS Agent Commands', () => {
       throw error;
     }
 
-    // Pre-load additional test characters (ada is already loaded by server)
-    const charactersDir = join(__dirname, '../test-characters');
-    for (const character of ['max', 'shaw']) {
-      const characterPath = join(charactersDir, `${character}.json`);
-      console.log(`[DEBUG] Loading character: ${character}`);
-
-      try {
-        const platformOptions = getPlatformOptions({
-          stdio: 'pipe',
-          timeout: 45000, // Increased timeout for agent loading in CI
-          encoding: 'utf8',
-        });
-
-        const result = bunExecSync(
-          `elizaos agent start --remote-url ${testServerUrl} --path "${characterPath}"`,
-          platformOptions
-        );
-
-        // Log success for debugging
-        console.log(`[DEBUG] Agent start result: ${result}`);
-        console.log(`[DEBUG] Successfully loaded character: ${character}`);
-
-        // Small wait between loading characters to avoid overwhelming the server
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      } catch (e) {
-        console.error(`[ERROR] Failed to load character ${character}:`, e);
-        throw e;
-      }
-    }
-
-    // Give characters time to register
-    await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+    // Character preloading removed - individual tests will handle character creation as needed
+    console.log('[DEBUG] Server setup complete. Individual tests will handle character loading.');
   });
 
   afterAll(async () => {
