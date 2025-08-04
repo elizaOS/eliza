@@ -94,7 +94,6 @@ describe('ElizaOS Agent Commands', () => {
     }
 
     // Capture server output for debugging
-    let serverStarted = false;
     let serverError: Error | null = null;
 
     // Handle Bun.spawn's ReadableStream for stdout/stderr
@@ -122,7 +121,7 @@ describe('ElizaOS Agent Commands', () => {
           } else {
             console.log(`[SERVER STDOUT] ${text}`);
             if (text.includes('Server started') || text.includes('listening')) {
-              serverStarted = true;
+              console.log(`[DEBUG] Server is ready based on output: ${text.trim()}`);
             }
           }
         }
@@ -144,13 +143,13 @@ describe('ElizaOS Agent Commands', () => {
 
     // Handle process exit
     serverProcess.exited
-      .then((code) => {
+      .then((code: number | null) => {
         console.log(`[SERVER EXIT] code: ${code}`);
         if (code !== 0 && !serverError) {
           serverError = new Error(`Server exited with code ${code}`);
         }
       })
-      .catch((error) => {
+      .catch((error: Error) => {
         console.error('[SERVER ERROR]', error);
         serverError = error;
       });
@@ -216,7 +215,7 @@ describe('ElizaOS Agent Commands', () => {
     if (serverProcess && serverProcess.exitCode === null) {
       try {
         // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => {});
+        const exitPromise = serverProcess.exited.catch(() => { });
 
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
