@@ -268,7 +268,9 @@ describe('ElizaOS Update Commands', () => {
         expect(existsSync(join(tmpDir, 'yarn.lock'))).toBe(false);
 
         // Output should mention CLI update, not package updates
-        expect(result).toMatch(/CLI.*update|updat.*CLI|Version: monorepo|Version: 1\.[2-9]\.\d+|CLI is already at the latest version/i);
+        expect(result).toMatch(
+          /CLI.*update|updat.*CLI|Version: monorepo|Version: 1\.[2-9]\.\d+|CLI is already at the latest version/i
+        );
         expect(result).not.toMatch(/packages.*installed/i);
       } finally {
         // Change back to original directory

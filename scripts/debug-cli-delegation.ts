@@ -56,14 +56,20 @@ interface DebugResult {
 
 // Custom error types for better error handling
 class DebugToolError extends Error {
-  constructor(message: string, public readonly code: string) {
+  constructor(
+    message: string,
+    public readonly code: string
+  ) {
     super(message);
     this.name = 'DebugToolError';
   }
 }
 
 class PackageInstallError extends DebugToolError {
-  constructor(message: string, public readonly stderr: string) {
+  constructor(
+    message: string,
+    public readonly stderr: string
+  ) {
     super(message, 'PACKAGE_INSTALL_ERROR');
   }
 }
@@ -113,10 +119,10 @@ function checkLocalCli(): { exists: boolean; path: string } {
     'dist',
     'index.js'
   );
-  
+
   return {
     exists: existsSync(localCliPath),
-    path: localCliPath
+    path: localCliPath,
   };
 }
 
@@ -127,7 +133,7 @@ function isRunningFromLocalCli(localCliPath: string): boolean {
   const currentScriptPath = process.argv[1];
   const expectedLocalCliPath = path.resolve(localCliPath);
   const currentResolvedPath = currentScriptPath ? path.resolve(currentScriptPath) : 'unknown';
-  
+
   return currentResolvedPath === expectedLocalCliPath;
 }
 
@@ -161,7 +167,7 @@ function checkProblematicEnvVars(): string[] {
   ];
 
   const problematicEnvVars: string[] = [];
-  
+
   envVarsToCheck.forEach((envVar) => {
     const value = process.env[envVar];
     if (value !== undefined) {
@@ -206,7 +212,7 @@ function checkProblematicEnvVars(): string[] {
 function checkProblematicArgs(): string[] {
   const cmdArgs = process.argv.slice(2);
   const problematicArgs: string[] = [];
-  
+
   if (cmdArgs.includes('--test')) problematicArgs.push('--test');
   if (cmdArgs.includes('test')) problematicArgs.push('test');
   if (cmdArgs.length > 0 && cmdArgs[0] === 'update') problematicArgs.push('update command');
@@ -224,13 +230,15 @@ function checkProblematicArgs(): string[] {
 function analyzePackageJson(): void {
   console.log(`\n${colors.blue}📋 Project Type Detection:${colors.reset}`);
   const packageJsonPath = path.join(process.cwd(), 'package.json');
-  
+
   if (existsSync(packageJsonPath)) {
     try {
       const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
       const packageJson: PackageJson = JSON.parse(packageJsonContent);
-      
-      console.log(`   ${colors.bright}Package name:${colors.reset} ${packageJson.name || 'unknown'}`);
+
+      console.log(
+        `   ${colors.bright}Package name:${colors.reset} ${packageJson.name || 'unknown'}`
+      );
       // Fix: Use packageJson.type instead of packageJson.packageType
       console.log(
         `   ${colors.bright}Package type:${colors.reset} ${packageJson.type || 'not specified'}`
@@ -255,12 +263,12 @@ function analyzePackageJson(): void {
  */
 async function installLocalCli(): Promise<void> {
   console.log(`${colors.yellow}→ Installing @elizaos/cli locally...${colors.reset}`);
-  
+
   try {
     const result: ExecResult = await bunExecInherit('bun', ['install', '@elizaos/cli'], {
-      cwd: process.cwd()
+      cwd: process.cwd(),
     });
-    
+
     if (result.success) {
       console.log(`${colors.green}✅ Successfully installed @elizaos/cli${colors.reset}`);
     } else {
@@ -311,7 +319,7 @@ async function performAutoFix(debugResult: DebugResult): Promise<void> {
  */
 function displayRecommendations(debugResult: DebugResult): void {
   console.log(`\n${colors.blue}💡 Recommendations:${colors.reset}`);
-  
+
   if (!debugResult.hasLocalCli && !shouldFix) {
     console.log(
       `   ${colors.bright}•${colors.reset} Install @elizaos/cli locally: ${colors.cyan}bun install @elizaos/cli${colors.reset}`
@@ -334,7 +342,9 @@ function displayRecommendations(debugResult: DebugResult): void {
     console.log(
       `   ${colors.bright}•${colors.reset} Delegation should work. Try running with ${colors.cyan}DEBUG=*${colors.reset} to see more details`
     );
-    console.log(`   ${colors.bright}•${colors.reset} Or check if the local CLI binary is executable`);
+    console.log(
+      `   ${colors.bright}•${colors.reset} Or check if the local CLI binary is executable`
+    );
     console.log(
       `   ${colors.bright}•${colors.reset} Test with: ${colors.cyan}elizaos --help${colors.reset} (should show "Using local @elizaos/cli installation")`
     );
@@ -349,7 +359,11 @@ function displayRecommendations(debugResult: DebugResult): void {
  * Display quick test suggestion
  */
 function displayQuickTest(debugResult: DebugResult): void {
-  if (debugResult.hasLocalCli && debugResult.problematicEnvVars.length === 0 && debugResult.problematicArgs.length === 0) {
+  if (
+    debugResult.hasLocalCli &&
+    debugResult.problematicEnvVars.length === 0 &&
+    debugResult.problematicArgs.length === 0
+  ) {
     console.log(`\n${colors.blue}🧪 Quick Test:${colors.reset}`);
     console.log(`   Run: ${colors.cyan}elizaos --help${colors.reset}`);
     console.log(
@@ -395,7 +409,7 @@ async function runDebug(): Promise<void> {
     // 3. Check if running from local CLI
     const isRunningFromLocal = isRunningFromLocalCli(localCliCheck.path);
     const currentScriptPath = process.argv[1];
-    
+
     console.log(`${colors.blue}🔄 Current script:${colors.reset} ${currentScriptPath}`);
     console.log(
       `${colors.blue}🔄 Running from local CLI:${colors.reset} ${isRunningFromLocal ? `${colors.green}✅${colors.reset}` : `${colors.red}❌${colors.reset}`}`
@@ -415,13 +429,13 @@ async function runDebug(): Promise<void> {
 
     // 6. Analyze delegation outcome
     console.log(`\n${colors.blue}🎯 Delegation Analysis:${colors.reset}`);
-    
+
     const debugResult: DebugResult = {
       hasLocalCli: localCliCheck.exists,
       isRunningFromLocal,
       problematicEnvVars,
       problematicArgs,
-      delegationWouldSucceed: false
+      delegationWouldSucceed: false,
     };
 
     if (!debugResult.hasLocalCli) {

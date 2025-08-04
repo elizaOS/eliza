@@ -189,7 +189,8 @@ describe('ElizaOS Start Commands', () => {
                 throw new Error(`Server health check failed with status ${response.status}`);
               }
             } catch (fetchError) {
-              const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+              const errorMsg =
+                fetchError instanceof Error ? fetchError.message : String(fetchError);
               throw new Error(`Server is not responsive: ${errorMsg}`);
             }
 
@@ -226,7 +227,7 @@ describe('ElizaOS Start Commands', () => {
               errorMessage: error.message,
               serverExitCode: serverProcess.exitCode,
               serverKilled: serverProcess.killed,
-              errorStack: error.stack?.split('\n')[0] // First line only
+              errorStack: error.stack?.split('\n')[0], // First line only
             });
 
             // If command failed and we have retries left, wait and retry
@@ -264,7 +265,7 @@ describe('ElizaOS Start Commands', () => {
               serverProcess.exited,
               new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Graceful shutdown timeout')), 5000)
-              )
+              ),
             ]);
           } catch {
             // Force kill if graceful shutdown fails

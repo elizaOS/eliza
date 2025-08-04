@@ -247,13 +247,15 @@ describe('CLI Delegation Debug Tool', () => {
   describe('Package.json Analysis', () => {
     it('should analyze package.json correctly', async () => {
       mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify({
-        name: '@test/project',
-        type: 'module',
-        dependencies: {
-          '@elizaos/core': '^1.0.0'
-        }
-      }));
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          name: '@test/project',
+          type: 'module',
+          dependencies: {
+            '@elizaos/core': '^1.0.0',
+          },
+        })
+      );
 
       const { spawn } = await import('bun');
       const proc = spawn(['bun', 'scripts/debug-cli-delegation.ts'], {
@@ -352,7 +354,7 @@ describe('CLI Delegation Debug Tool', () => {
   describe('Auto-fix Mode', () => {
     it('should attempt to install CLI when --fix is used', async () => {
       mockExistsSync.mockReturnValue(false); // No local CLI exists
-      
+
       const { spawn } = await import('bun');
       const proc = spawn(['bun', 'scripts/debug-cli-delegation.ts', '--fix'], {
         cwd: '/home/runner/work/eliza/eliza',

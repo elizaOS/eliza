@@ -1,7 +1,6 @@
 import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type {
   Session,
