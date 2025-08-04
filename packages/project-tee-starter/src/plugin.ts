@@ -214,8 +214,7 @@ const teeStarterPlugin: Plugin = {
       // Apply test defaults if in test environment
       const isTestEnvironment =
         process.env.NODE_ENV === 'test' ||
-        process.argv.includes('test') ||
-        typeof (global as any).expect !== 'undefined';
+        process.argv.includes('test');
 
       if (isTestEnvironment) {
         mergedConfig.TEE_MODE = mergedConfig.TEE_MODE || 'OFF';
