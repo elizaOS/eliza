@@ -86,7 +86,13 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
     console.info(`Removing agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /agents/:agentId
-    await agentsService.deleteAgent(asUUID(resolvedAgentId));
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+    }
+    await agentsService.deleteAgent(agentId);
 
     console.log(`Successfully removed agent ${opts.name}`);
     return;
@@ -108,10 +114,16 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     console.info(`Clearing all memories for agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /api/memory/:agentId/memories
-    const result = await memoryService.clearAgentMemories(asUUID(resolvedAgentId));
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+    }
+    const result = await memoryService.clearAgentMemories(agentId);
 
     console.log(
-      `Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`
+      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
     );
     return;
   } catch (error) {
@@ -154,7 +166,13 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     const clientConfig = createApiClientConfig(opts);
     const agentsService = new AgentsService(clientConfig);
 
-    const updatedAgent = await agentsService.updateAgent(asUUID(resolvedAgentId), config);
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+    }
+    const updatedAgent = await agentsService.updateAgent(agentId, config);
 
     console.log(`Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`);
   } catch (error) {
