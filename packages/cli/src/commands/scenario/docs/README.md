@@ -94,7 +94,7 @@ bun run src/index.ts scenario run src/commands/scenario/examples/mixed-results.s
 bun run src/index.ts scenario run src/commands/scenario/examples/trajectory-test.scenario.yaml
 ```
 
-> Note: When the CLI is installed globally, you can use `elizaos scenario run` instead of `bun run src/index.ts scenario run`
+> Note: Once this is merged into develop the CLI command will be installed globally, so you can use `elizaos scenario run` instead of `bun run src/index.ts scenario run`
 
 > **Future**: Once the ElizaOS CLI is published, you'll be able to use `elizaos scenario run <file>` directly without the `bun run src/index.ts` prefix.
 
