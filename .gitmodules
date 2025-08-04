@@ -3,4 +3,4 @@
 	url = https://github.com/elizaOS/.cursor
 [submodule "packages/docs"]
 	path = packages/docs
-	url = https://github.com/elizaos/docs.git
+	url = https://github.com/elizaos/docs
