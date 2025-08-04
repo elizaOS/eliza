@@ -73,7 +73,7 @@ describe('ElizaOS Update Commands', () => {
 
       const result = bunExecSync('elizaos update --check', { encoding: 'utf8' });
 
-      expect(result).toMatch(/Version: 1\.[23]\.\d+/);
+      expect(result).toMatch(/Version: 1\.[2-9]\.\d+/); // Support 1.2.x through 1.9.x versions
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );
