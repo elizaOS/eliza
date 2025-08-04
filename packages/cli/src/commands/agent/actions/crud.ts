@@ -126,7 +126,7 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     const result = await memoryService.clearAgentMemories(agentId);
 
     console.log(
-      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
+      `Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`
     );
     return;
   } catch (error) {

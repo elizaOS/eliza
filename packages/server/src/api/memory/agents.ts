@@ -43,9 +43,9 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -109,9 +109,9 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-            ...memory,
-            embedding: undefined,
-          }));
+          ...memory,
+          embedding: undefined,
+        }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);
@@ -206,10 +206,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
-      const deletedCount = (await runtime.getAllMemories()).length;
+      const deleted = (await runtime.getAllMemories()).length;
       await runtime.clearAllAgentMemories();
 
-      sendSuccess(res, { deletedCount, message: 'All agent memories cleared successfully' });
+      sendSuccess(res, { deleted, message: 'All agent memories cleared successfully' });
     } catch (error) {
       logger.error('[DELETE ALL AGENT MEMORIES] Error deleting all agent memories:', error);
       sendError(
