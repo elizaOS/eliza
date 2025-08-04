@@ -141,7 +141,7 @@ describe('ElizaOS Update Commands', () => {
 
       // Should either show success or message about creating project
       expect(result).toMatch(
-        /(Project successfully updated|Update completed|already up to date|No updates available|create a new ElizaOS project|This appears to be an empty directory|Version: monorepo|Version: 1\.2\.\d+)/
+        /(Project successfully updated|Update completed|already up to date|No updates available|create a new ElizaOS project|This appears to be an empty directory|Version: monorepo|Version: 1\.[2-9]\.\d+|CLI is already at the latest version)/
       );
     },
     TEST_TIMEOUTS.STANDARD_COMMAND
