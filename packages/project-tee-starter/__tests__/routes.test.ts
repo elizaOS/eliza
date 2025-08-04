@@ -8,13 +8,13 @@ describe('Plugin Routes', () => {
     expect(teeStarterPlugin.routes?.length).toBe(2);
 
     // Check for mr-tee-status route
-    const statusRoute = teeStarterPlugin.routes?.find(r => r.name === 'mr-tee-status-route');
+    const statusRoute = teeStarterPlugin.routes?.find((r) => r.name === 'mr-tee-status-route');
     expect(statusRoute).toBeDefined();
     expect(statusRoute?.path).toBe('/mr-tee-status');
     expect(statusRoute?.type).toBe('GET');
 
     // Check for TEE Status panel route
-    const panelRoute = teeStarterPlugin.routes?.find(r => r.name === 'TEE Status');
+    const panelRoute = teeStarterPlugin.routes?.find((r) => r.name === 'TEE Status');
     expect(panelRoute).toBeDefined();
     expect(panelRoute?.path).toBe('/public/tee-status');
     expect(panelRoute?.type).toBe('GET');

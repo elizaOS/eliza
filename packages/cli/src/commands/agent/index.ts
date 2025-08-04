@@ -22,6 +22,7 @@ agent
   .option('-j, --json', 'output as JSON')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(listAgents);
 
 agent
@@ -33,6 +34,7 @@ agent
   .option('-o, --output [file]', 'save agent config to JSON (defaults to {name}.json)')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(getAgent);
 
 agent
@@ -44,6 +46,7 @@ agent
   .option('--remote-character <url>', 'URL to remote character JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .addHelpText(
     'after',
     `
@@ -91,6 +94,7 @@ agent
   .option('--all', 'stop all running agents')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(stopAgent);
 
 agent
@@ -100,6 +104,7 @@ agent
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(removeAgent);
 
 agent
@@ -110,6 +115,7 @@ agent
   .option('-f, --file <path>', 'path to agent configuration JSON file')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(setAgentConfig);
 
 agent
@@ -119,4 +125,5 @@ agent
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
+  .option('--auth-token <token>', 'API authentication token')
   .action(clearAgentMemories);

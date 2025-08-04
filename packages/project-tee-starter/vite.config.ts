@@ -7,33 +7,33 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vite.dev/config/
 export default defineConfig({
-    plugins: [react()],
-    root: 'src/frontend',
-    build: {
-        outDir: '../../dist/frontend',
-        emptyOutDir: true,
-        rollupOptions: {
-            input: {
-                main: path.resolve(__dirname, 'src/frontend/index.html'),
-            },
-        },
+  plugins: [react()],
+  root: 'src/frontend',
+  build: {
+    outDir: '../../dist/frontend',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'src/frontend/index.html'),
+      },
     },
-    optimizeDeps: {
-        include: ['react', 'react-dom', '@tanstack/react-query'],
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', '@tanstack/react-query'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '@elizaos/core': path.resolve(__dirname, '../../core/src'),
     },
-    resolve: {
-        alias: {
-            '@': path.resolve(__dirname, './src'),
-            '@elizaos/core': path.resolve(__dirname, '../../core/src'),
-        },
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
-    server: {
-        port: 5173,
-        proxy: {
-            '/api': {
-                target: 'http://localhost:3000',
-                changeOrigin: true,
-            },
-        },
-    },
-}); 
+  },
+});

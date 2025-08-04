@@ -23,6 +23,9 @@ bun.lockb
 out
 *.min.js
 
+# Documentation (not a node package)
+packages/docs
+
 # Misc
 .DS_Store
 .env
