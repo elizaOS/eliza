@@ -1,11 +1,11 @@
-import { AgentRuntime, Character, stringToUuid, RuntimeSettings } from '@elizaos/core';
+import { Character, stringToUuid, IAgentRuntime, RuntimeSettings, encryptedCharacter, AgentRuntime } from '@elizaos/core';
 import { loadEnvironmentVariables } from './env-loader';
 import { IDatabaseAdapter, Agent, Entity, Room, UUID } from '@elizaos/core';
+import { setDefaultSecretsFromEnv, startAgent } from '../commands/start';
+import { configureDatabaseSettings, resolvePgliteDir } from '../utils';
+import { AgentServer } from '@elizaos/server';
 
 // --- Start of Pre-emptive Environment Loading ---
-// This block MUST execute before any plugin imports to ensure
-// environment variables are available system-wide.
-
 console.log('[ENV] Loading environment configuration...');
 loadEnvironmentVariables();
 
@@ -402,60 +402,67 @@ class MockDatabaseAdapter implements IDatabaseAdapter {
 /**
  * Creates a minimal runtime with E2B, SQL, and OpenAI plugins loaded for scenario execution
  */
+export async function initializeAgent(): Promise<IAgentRuntime> {
+  // Create minimal character for E2B operations
+  const character: Character = {
+    name: 'scenario-runner',
+    id: stringToUuid('scenario-runner'),
+    bio: 'A minimal character for running scenarios',
+    plugins: [
+      '@elizaos/plugin-sql',
+      '@elizaos/plugin-e2b',
+      '@elizaos/plugin-openai',
+      '@elizaos/plugin-bootstrap'
+    ]
+  };
+  console.log('[DEBUG] initializeAgent: Character created');
+
+  // Ensure secrets are set from env if not present
+  await setDefaultSecretsFromEnv(character);
+  console.log('[DEBUG] initializeAgent: Secrets set from env');
+
+  console.log('[DEBUG] initializeAgent: Creating AgentRuntime...');
+  const postgresUrl = await configureDatabaseSettings(false);
+  if (postgresUrl) process.env.POSTGRES_URL = postgresUrl;
+
+  const pgliteDataDir = postgresUrl ? undefined : await resolvePgliteDir();
+
+  // Use a real AgentServer instance
+  const server = new AgentServer();
+  await server.initialize({
+    dataDir: pgliteDataDir,
+    postgresUrl: postgresUrl || undefined,
+  });
+  // Use startAgent for full, real initialization
+  const runtime = await startAgent(
+    encryptedCharacter(character),
+    server,
+    undefined,
+    [], // 
+    { isTestMode: false }
+  );
+
+  console.log('[DEBUG] initializeAgent: Runtime initialized successfully');
+
+  return runtime;
+}
+
 export async function createE2BRuntime(): Promise<AgentRuntime> {
   // Create minimal character for E2B operations
   const character: Character = {
     name: 'scenario-runner',
     id: stringToUuid('scenario-runner'),
-    bio: 'A minimal character for running E2B scenarios',
+    bio: 'A minimal character for running scenarios',
     plugins: [
       '@elizaos/plugin-sql',
       '@elizaos/plugin-e2b',
-      '@elizaos/plugin-openai'
+      '@elizaos/plugin-openai',
     ]
   };
-
-  // Use the loaded environment settings
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [sqlPlugin, e2bPlugin, openaiPlugin],
-    settings: envSettings
-  });
-
-  // Initialize the runtime to set up services
-  await runtime.initialize();
-
-  return runtime;
-}
-
-/**
- * Creates a minimal runtime with only E2B and OpenAI plugins for testing LLM functionality
- */
-export async function createTestRuntime(): Promise<AgentRuntime> {
-  // Create minimal character for testing
-  const character: Character = {
-    name: 'test-runner',
-    id: stringToUuid('test-runner'),
-    bio: 'A minimal character for testing scenarios',
-    plugins: [
-      '@elizaos/plugin-e2b',
-      '@elizaos/plugin-openai'
-    ]
-  };
-
-  // Create a mock database adapter for testing
   const mockAdapter = new MockDatabaseAdapter();
-
-  // Use the loaded environment settings
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [e2bPlugin, openaiPlugin],
-    settings: envSettings,
-    adapter: mockAdapter
-  });
-
-  // Initialize the runtime to set up services
+  const runtime = new AgentRuntime({ character, plugins: [sqlPlugin, e2bPlugin, openaiPlugin], settings: envSettings, adapter: mockAdapter });
   await runtime.initialize();
-
   return runtime;
 }
+
+

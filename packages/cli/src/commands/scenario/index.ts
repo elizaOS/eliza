@@ -7,9 +7,12 @@ import { ScenarioSchema, Scenario } from '../../scenarios/schema';
 import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../../scenarios/providers';
-import { createE2BRuntime, createTestRuntime } from '../../scenarios/runtime-factory';
+import { createE2BRuntime } from '../../scenarios/runtime-factory';
+// import { initializeAgent } from '../../scenarios/runtime-factory';
+
 import { MockEngine } from '../../scenarios/MockEngine';
 import { EvaluationEngine } from '../../scenarios/EvaluationEngine';
+import { Reporter } from '../../scenarios/Reporter';
 
 export const scenario = new Command()
     .name('scenario')
@@ -25,6 +28,9 @@ export const scenario = new Command()
                 let provider: EnvironmentProvider | null = null;
                 let runtime: any = null;
                 let mockEngine: MockEngine | null = null;
+                let finalStatus = false; // Default to fail
+                let reporter: Reporter | null = null;
+
                 try {
                     const fullPath = path.resolve(filePath);
                     logger.info(`Attempting to read scenario file from: ${fullPath}`);
@@ -43,20 +49,17 @@ export const scenario = new Command()
                     }
                     const scenario: Scenario = validationResult.data;
 
+                    // Initialize Reporter
+                    reporter = new Reporter();
+                    reporter.reportStart(scenario);
+
                     // Determine environment provider based on scenario type
                     if (scenario.environment.type === 'e2b') {
                         // Check if this scenario has LLM evaluations that need testing
-                        const hasLLMEvaluations = scenario.run?.some(step =>
-                            step.evaluations?.some(evaluation => evaluation.type === 'llm_judge')
-                        );
-
-                        if (hasLLMEvaluations) {
-                            runtime = await createTestRuntime();
-                            logger.info('Using test runtime for LLM evaluations');
-                        } else {
-                            runtime = await createE2BRuntime();
-                            logger.info('Using E2B sandbox environment');
-                        }
+                        console.log('[DEBUG] About to create agent runtime...');
+                        // runtime = await initializeAgent();
+                        runtime = await createE2BRuntime();
+                        console.log('[DEBUG] Agent runtime created successfully');
                         provider = new E2BEnvironmentProvider(runtime);
                     } else if (scenario.environment.type === 'local') {
                         provider = new LocalEnvironmentProvider();
@@ -78,32 +81,77 @@ export const scenario = new Command()
                     await provider.setup(scenario);
                     logger.info('Executing run block...');
                     const results = await provider.run(scenario);
-                    console.log('--- Execution Results ---');
+
+                    // Report execution results using Reporter
                     results.forEach((result, idx) => {
-                        console.log(`Step ${idx + 1}:`);
-                        console.log(JSON.stringify(result, null, 2));
+                        reporter?.reportExecutionResult(result);
                     });
-                    console.log('-------------------------');
 
                     // Run evaluations for each step
+                    const allEvaluationResults: any[] = [];
+
                     if (runtime) {
+                        // Full evaluation engine with runtime for complex evaluators
                         const evaluationEngine = new EvaluationEngine(runtime);
-                        logger.info('Running evaluations...');
+                        logger.info('Running evaluations with runtime...');
 
                         for (let i = 0; i < results.length; i++) {
                             const step = scenario.run[i];
                             const result = results[i];
 
                             if (step.evaluations && step.evaluations.length > 0) {
-                                console.log(`--- Evaluation Results for Step ${i + 1} ---`);
                                 const evaluationResults = await evaluationEngine.runEvaluations(step.evaluations, result);
-                                evaluationResults.forEach(res => {
-                                    const status = res.success ? '✅ PASS' : '❌ FAIL';
-                                    console.log(`${status}: ${res.message}`);
-                                });
-                                console.log('----------------------------------------');
+                                allEvaluationResults.push(...evaluationResults);
                             }
                         }
+                    } else {
+                        // Simple evaluators that don't require runtime
+                        logger.info('Running basic evaluations without runtime...');
+
+                        for (let i = 0; i < results.length; i++) {
+                            const step = scenario.run[i];
+                            const result = results[i];
+
+                            if (step.evaluations && step.evaluations.length > 0) {
+                                for (const evaluation of step.evaluations) {
+                                    let evaluationResult: any;
+
+                                    // Handle basic evaluators that don't need runtime
+                                    if (evaluation.type === 'string_contains') {
+                                        const success = result.stdout.includes(evaluation.value);
+                                        evaluationResult = {
+                                            success,
+                                            message: `Checked if stdout contains "${evaluation.value}". Result: ${success}`,
+                                        };
+                                    } else if (evaluation.type === 'regex_match') {
+                                        const success = new RegExp(evaluation.pattern).test(result.stdout);
+                                        evaluationResult = {
+                                            success,
+                                            message: `Checked if stdout matches regex "${evaluation.pattern}". Result: ${success}`,
+                                        };
+                                    } else {
+                                        // Unknown evaluator type
+                                        evaluationResult = {
+                                            success: false,
+                                            message: `Unknown evaluator type: '${evaluation.type}' (requires runtime)`,
+                                        };
+                                    }
+
+                                    allEvaluationResults.push(evaluationResult);
+                                }
+                            }
+                        }
+                    }
+
+                    // Report evaluation results using Reporter
+                    reporter?.reportEvaluationResults(allEvaluationResults);
+
+                    // Apply judgment logic
+                    if (scenario.judgment?.strategy === 'all_pass') {
+                        finalStatus = allEvaluationResults.every(res => res.success);
+                    } else {
+                        // Default to fail for unknown strategies
+                        finalStatus = false;
                     }
                 } catch (error) {
                     logger.error('An error occurred during scenario execution:', error);
@@ -129,8 +177,10 @@ export const scenario = new Command()
                         await runtime.close();
                         logger.info('Runtime shutdown complete');
                     }
-                    // Force exit to ensure clean termination
-                    process.exit(0);
+
+                    // Report final result and exit with appropriate code
+                    reporter?.reportFinalResult(finalStatus);
+                    process.exit(finalStatus ? 0 : 1);
                 }
             })
     );
