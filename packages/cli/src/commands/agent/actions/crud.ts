@@ -7,14 +7,11 @@ import path from 'node:path';
 import { createApiClientConfig } from '../../shared';
 import { resolveAgentId } from '../utils';
 
-
-
 /**
  * Parse error response and throw appropriate error
  * @param response - The fetch Response object
  * @param defaultMessage - Default error message if JSON parsing fails
  */
-
 
 /**
  * Get command implementation - retrieves and displays agent details
@@ -32,7 +29,9 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     try {
       agentId = asUUID(resolvedAgentId);
     } catch (error) {
-      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
     const agent = await agentsService.getAgent(agentId);
 
@@ -90,7 +89,9 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
     try {
       agentId = asUUID(resolvedAgentId);
     } catch (error) {
-      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
     await agentsService.deleteAgent(agentId);
 
@@ -118,7 +119,9 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     try {
       agentId = asUUID(resolvedAgentId);
     } catch (error) {
-      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
     const result = await memoryService.clearAgentMemories(agentId);
 
@@ -170,11 +173,15 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     try {
       agentId = asUUID(resolvedAgentId);
     } catch (error) {
-      throw new Error(`Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`);
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
     const updatedAgent = await agentsService.updateAgent(agentId, config);
 
-    console.log(`Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`);
+    console.log(
+      `Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`
+    );
   } catch (error) {
     await checkServer(opts);
     handleError(error);

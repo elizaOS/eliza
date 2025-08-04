@@ -54,7 +54,9 @@ export async function startAgent(options: OptionValues): Promise<void> {
           const agent = await agentsService.createAgent(payload);
           return agent.name || agent.id;
         } catch (error) {
-          logger.error(`Failed to create agent: ${error instanceof Error ? error.message : String(error)}`);
+          logger.error(
+            `Failed to create agent: ${error instanceof Error ? error.message : String(error)}`
+          );
           return null;
         }
       }
