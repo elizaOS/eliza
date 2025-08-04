@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
-import { getAgentsBaseUrl } from '../../shared';
+import { createAgentHttpClient } from '../../shared';
 import type { AgentStartPayload } from '../types';
 import { getAgents, resolveAgentId } from '../utils';
 
@@ -12,6 +12,7 @@ import { getAgents, resolveAgentId } from '../utils';
  * Start command implementation - starts an agent with character configuration
  */
 export async function startAgent(options: OptionValues): Promise<void> {
+  const httpClient = createAgentHttpClient(options);
   try {
     // Consolidated error handling for missing/invalid inputs
     // First check if we have enough info to start an agent
@@ -44,17 +45,10 @@ export async function startAgent(options: OptionValues): Promise<void> {
     // API Endpoint: POST /agents
     const response: Response = await (async () => {
       const payload: AgentStartPayload = {};
-      const headers = { 'Content-Type': 'application/json' };
-      const baseUrl = getAgentsBaseUrl(options);
-
       let characterName = null;
 
       async function createCharacter(payload: any) {
-        const response = await fetch(baseUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        });
+        const response = await httpClient.post('', payload);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -117,10 +111,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
       if (characterName) {
         try {
           const agentId = await resolveAgentId(characterName, options);
-          return await fetch(`${baseUrl}/${agentId}/start`, {
-            method: 'POST',
-            headers,
-          });
+          return await httpClient.post(`${agentId}/start`);
         } catch (error) {
           // If agent resolution fails, throw to the outer error handler
           throw error;
@@ -128,11 +119,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
       }
 
       // Default behavior: Start a default agent if no specific option is provided
-      return await fetch(baseUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({}), // Empty body for default agent start
-      });
+      return await httpClient.post('', {});
     })();
 
     if (!response.ok) {
@@ -208,6 +195,8 @@ export async function startAgent(options: OptionValues): Promise<void> {
  * Stop command implementation - stops a running agent
  */
 export async function stopAgent(opts: OptionValues): Promise<void> {
+  const httpClient = createAgentHttpClient(opts);
+
   try {
     // Validate that either --name or --all is provided
     const hasValidName = opts.name && opts.name !== true && opts.name !== '';
@@ -271,12 +260,11 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
 
     // Stop individual agent by name/ID
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
 
     console.info(`Stopping agent ${resolvedAgentId}`);
 
     // API Endpoint: POST /agents/:agentId/stop
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
+    const response = await httpClient.post(`${resolvedAgentId}/stop`);
 
     if (!response.ok) {
       const errorData = (await response.json()) as ApiResponse<unknown>;

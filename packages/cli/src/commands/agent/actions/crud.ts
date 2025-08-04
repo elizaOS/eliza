@@ -5,7 +5,8 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import type { ApiResponse } from '../../shared';
-import { getAgentsBaseUrl } from '../../shared';
+import { createApiClientConfig } from '../../shared';
+import { AgentsService, MemoryService } from '@elizaos/api-client';
 import { resolveAgentId } from '../utils';
 
 /**
@@ -38,23 +39,14 @@ async function handleErrorResponse(response: Response, defaultMessage: string): 
 export async function getAgent(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const agentsService = new AgentsService(config);
 
     console.info(`Getting agent ${resolvedAgentId}`);
 
     // API Endpoint: GET /agents/:agentId
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
-    if (!response.ok) {
-      logger.error(`Failed to get agent`);
-      process.exit(1);
-    }
+    const agent = await agentsService.getAgent(resolvedAgentId);
 
-    const responseData = await safeJsonParse<ApiResponse<Agent>>(response);
-    if (!responseData) {
-      throw new Error('Failed to parse agent data from server response');
-    }
-
-    const agent = responseData.data;
     if (!agent) {
       throw new Error('No agent data received from server');
     }
@@ -99,20 +91,14 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 export async function removeAgent(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const agentsService = new AgentsService(config);
 
     console.info(`Removing agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /agents/:agentId
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}`, {
-      method: 'DELETE',
-    });
+    await agentsService.deleteAgent(resolvedAgentId);
 
-    if (!response.ok) {
-      await handleErrorResponse(response, `Failed to remove agent: ${response.statusText}`);
-    }
-
-    // Server returns 204 No Content for successful deletion, no need to parse response
     console.log(`Successfully removed agent ${opts.name}`);
     return;
   } catch (error) {
@@ -127,24 +113,16 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 export async function clearAgentMemories(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const memoryService = new MemoryService(config);
 
     console.info(`Clearing all memories for agent ${resolvedAgentId}`);
 
-    // API Endpoint: DELETE /agents/:agentId/memories
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      await handleErrorResponse(response, `Failed to clear agent memories: ${response.statusText}`);
-    }
-
-    const data = await safeJsonParse<ApiResponse<{ deletedCount: number }>>(response);
-    const result = data?.data || null;
+    // API Endpoint: DELETE /api/memory/:agentId/memories
+    const result = await memoryService.clearAgentMemories(resolvedAgentId);
 
     console.log(
-      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
+      `Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`
     );
     return;
   } catch (error) {
@@ -184,11 +162,8 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     }
 
     // API Endpoint: PATCH /agents/:agentId
-    const response = await fetch(`${getAgentsBaseUrl(opts)}/${resolvedAgentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
+    const httpClient = createAgentHttpClient(opts);
+    const response = await httpClient.patch(resolvedAgentId, config);
 
     if (!response.ok) {
       await handleErrorResponse(

@@ -1,7 +1,7 @@
 import type { OptionValues } from 'commander';
 import { z } from 'zod';
 import type { AgentBasic } from '../../shared';
-import { getAgentsBaseUrl } from '../../shared';
+import { createAgentHttpClient } from '../../shared';
 
 // Zod schemas for validation
 export const AgentBasicSchema = z
@@ -25,8 +25,9 @@ export const AgentsListResponseSchema = z.object({
  * Asynchronously fetches a list of basic agent information from the server.
  */
 export async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
-  const baseUrl = getAgentsBaseUrl(opts);
-  const response = await fetch(baseUrl);
+  const httpClient = createAgentHttpClient(opts);
+  const response = await httpClient.get();
+
   if (!response.ok) {
     throw new Error(`Failed to fetch agents list: ${response.statusText}`);
   }
