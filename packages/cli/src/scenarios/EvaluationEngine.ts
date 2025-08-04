@@ -25,6 +25,7 @@ export class EvaluationEngine {
         this.register('string_contains', new StringContainsEvaluator());
         this.register('regex_match', new RegexMatchEvaluator());
         this.register('file_exists', new FileExistsEvaluator());
+        this.register('trajectory_contains_action', new TrajectoryContainsActionEvaluator());
         this.register('llm_judge', new LLMJudgeEvaluator());
     }
 
@@ -96,6 +97,56 @@ class FileExistsEvaluator implements Evaluator {
             success,
             message: `Checked if file "${params.path}" exists. Result: ${success}`,
         };
+    }
+}
+
+export class TrajectoryContainsActionEvaluator implements Evaluator {
+    async evaluate(params: EvaluationSchema, runResult: ExecutionResult, runtime: AgentRuntime): Promise<EvaluationResult> {
+        if (params.type !== 'trajectory_contains_action') throw new Error('Mismatched evaluator');
+
+        const actionName = params.action;
+
+        try {
+            // Get action memories from database
+            const actionMemories = await runtime.getMemories({
+                tableName: 'messages',
+                agentId: runtime.agentId,
+                count: 50, // Get recent actions
+                unique: false,
+            });
+
+            // Filter for action_result memories
+            const actionResults = actionMemories.filter(
+                (mem) => mem.content?.type === 'action_result' && mem.metadata?.type === 'action_result'
+            );
+
+            // Check if any action matches the specified name
+            const matchingAction = actionResults.find(
+                (mem) => mem.content?.actionName === actionName
+            );
+
+            if (!matchingAction) {
+                return {
+                    success: false,
+                    message: `Action '${actionName}' was not found in the execution trajectory`,
+                };
+            }
+
+            const actionStatus = matchingAction.content?.actionStatus || 'unknown';
+            const message = actionStatus === 'completed'
+                ? `Action '${actionName}' was executed successfully`
+                : `Action '${actionName}' was executed but failed: ${matchingAction.content?.error || 'Unknown error'}`;
+
+            return {
+                success: true, // Success means the action was found
+                message,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Failed to check action trajectory: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
     }
 }
 
