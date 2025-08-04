@@ -226,6 +226,7 @@ export function createSessionsRouter(
             session.lastActivity = new Date();
 
             // Create message in database
+            // Note: createMessage automatically broadcasts to the internal message bus
             const message = await serverInstance.createMessage({
                 channelId: session.channelId,
                 authorId: session.userId,
@@ -240,28 +241,6 @@ export function createSessionsRouter(
                     ...(body.metadata || {})
                 }
             });
-
-            // Broadcast to agents via internal bus
-            const messageForBus = {
-                id: message.id,
-                channel_id: session.channelId,
-                server_id: DEFAULT_SERVER_ID,
-                author_id: session.userId,
-                content: body.content,
-                created_at: message.createdAt.getTime(),
-                source_type: 'user',
-                raw_message: { 
-                    content: body.content, 
-                    attachments: body.attachments 
-                },
-                metadata: {
-                    sessionId,
-                    ...(body.metadata || {})
-                }
-            };
-
-            // Use consistent event name
-            internalMessageBus.emit('new_message', messageForBus);
 
             res.status(201).json({
                 id: message.id,
