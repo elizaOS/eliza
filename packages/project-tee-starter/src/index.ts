@@ -1,5 +1,5 @@
 import { logger, type IAgentRuntime, type Project, type ProjectAgent } from '@elizaos/core';
-// import mrTeePlugin from './plugin.ts';
+import teeStarterPlugin, { StarterService } from './plugin.ts';
 import { mrTeeCharacter as character } from './character.ts';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
@@ -16,5 +16,5 @@ const project: Project = {
   agents: [projectAgent],
 };
 
-export { character };
+export { character, teeStarterPlugin, StarterService };
 export default project;

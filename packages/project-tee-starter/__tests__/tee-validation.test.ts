@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { logger } from '@elizaos/core';
+import { logger, type IAgentRuntime } from '@elizaos/core';
 
 // Mock logger to avoid console noise during tests
 const mockLogger = {
@@ -11,6 +11,9 @@ const mockLogger = {
 
 // We'll test the validation logic by importing the plugin and testing its init method
 import teeStarterPlugin from '../src/plugin';
+
+// Mock runtime for testing
+const mockRuntime = {} as IAgentRuntime;
 
 describe('TEE Environment Validation', () => {
   // Store original environment variables
