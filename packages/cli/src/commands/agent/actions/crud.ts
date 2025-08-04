@@ -1,11 +1,10 @@
-import { logger } from '@elizaos/core';
-import type { OptionValues } from 'commander';
-import { writeFileSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
-import type { ApiResponse } from '../../shared';
-import { createApiClientConfig } from '../../shared';
 import { AgentsService, MemoryService } from '@elizaos/api-client';
+import { asUUID } from '@elizaos/core';
+import type { OptionValues } from 'commander';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { createApiClientConfig } from '../../shared';
 import { resolveAgentId } from '../utils';
 
 /**
@@ -41,7 +40,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     console.info(`Getting agent ${resolvedAgentId}`);
 
     // API Endpoint: GET /agents/:agentId
-    const agent = await agentsService.getAgent(resolvedAgentId);
+    const agent = await agentsService.getAgent(asUUID(resolvedAgentId));
 
     if (!agent) {
       throw new Error('No agent data received from server');
