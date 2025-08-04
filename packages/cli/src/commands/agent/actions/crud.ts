@@ -7,19 +7,7 @@ import path from 'node:path';
 import { createApiClientConfig } from '../../shared';
 import { resolveAgentId } from '../utils';
 
-/**
- * Safely parse JSON response with error handling
- * @param response - The fetch Response object
- * @returns Parsed JSON data or null if parsing fails
- */
-async function safeJsonParse<T>(response: Response): Promise<T | null> {
-  try {
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to parse response as JSON:', error);
-    return null;
-  }
-}
+
 
 /**
  * Parse error response and throw appropriate error
@@ -49,7 +37,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     // Save to file if output option is specified - exit early
     if (opts.output !== undefined) {
       // Extract config without metadata fields
-      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+      const { id, createdAt, updatedAt, ...agentConfig } = agent;
 
       // Create filename with appropriate .json extension
       const filename =
@@ -69,7 +57,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 
     // Display JSON if requested
     if (opts.json) {
-      const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
+      const { id, createdAt, updatedAt, ...agentConfig } = agent;
       console.log(JSON.stringify(agentConfig, null, 2));
     }
 
@@ -92,7 +80,7 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
     console.info(`Removing agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /agents/:agentId
-    await agentsService.deleteAgent(resolvedAgentId);
+    await agentsService.deleteAgent(asUUID(resolvedAgentId));
 
     console.log(`Successfully removed agent ${opts.name}`);
     return;
@@ -114,7 +102,7 @@ export async function clearAgentMemories(opts: OptionValues): Promise<void> {
     console.info(`Clearing all memories for agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /api/memory/:agentId/memories
-    const result = await memoryService.clearAgentMemories(resolvedAgentId);
+    const result = await memoryService.clearAgentMemories(asUUID(resolvedAgentId));
 
     console.log(
       `Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`
@@ -160,7 +148,7 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     const clientConfig = createApiClientConfig(opts);
     const agentsService = new AgentsService(clientConfig);
 
-    const updatedAgent = await agentsService.updateAgent(resolvedAgentId, config);
+    const updatedAgent = await agentsService.updateAgent(asUUID(resolvedAgentId), config);
 
     console.log(`Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`);
   } catch (error) {

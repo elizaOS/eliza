@@ -1,4 +1,4 @@
-import { logger } from '@elizaos/core';
+import { logger, asUUID } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -104,7 +104,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
       if (characterName) {
         try {
           const agentId = await resolveAgentId(characterName, options);
-          const result = await agentsService.startAgent(agentId);
+          const result = await agentsService.startAgent(asUUID(agentId));
           // Convert to Response-like object for consistency with existing code
           return { ok: true, json: async () => ({ data: result }) } as Response;
         } catch (error) {
@@ -265,7 +265,7 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
     console.info(`Stopping agent ${resolvedAgentId}`);
 
     // API Endpoint: POST /agents/:agentId/stop
-    await agentsService.stopAgent(resolvedAgentId);
+    await agentsService.stopAgent(asUUID(resolvedAgentId));
 
     logger.success(`Successfully stopped agent ${opts.name}`);
     // Add direct console log for higher visibility
