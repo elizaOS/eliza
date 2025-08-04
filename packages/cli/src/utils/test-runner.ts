@@ -10,12 +10,13 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Ensure logger has all required methods with fallbacks
+// Bind methods to preserve pino logger context
 const safeLogger = {
-  debug: logger?.debug || console.log,
-  info: logger?.info || console.log,
-  warn: logger?.warn || console.warn,
-  error: logger?.error || console.error,
-  success: logger?.success || console.log,
+  debug: logger?.debug?.bind(logger) || console.log,
+  info: logger?.info?.bind(logger) || console.log,
+  warn: logger?.warn?.bind(logger) || console.warn,
+  error: logger?.error?.bind(logger) || console.error,
+  success: logger?.success?.bind(logger) || console.log,
 };
 
 interface TestStats {
@@ -134,6 +135,8 @@ export class TestRunner {
 
       try {
         safeLogger.info(`  Running test: ${test.name}`);
+        
+        // Pass the runtime directly to avoid pino logger context issues
         await test.fn(this.runtime);
         this.stats.passed++;
         safeLogger.success(`  [✓] ${test.name}`);
