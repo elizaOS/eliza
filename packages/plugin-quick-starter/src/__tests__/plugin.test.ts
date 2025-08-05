@@ -102,7 +102,7 @@ describe('Hello World Action', () => {
 
   it('should have hello world action', () => {
     expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction?.name).toBe('HELLO_WORLD');
+    expect(helloWorldAction?.name).toBe('QUICK_ACTION');
   });
 
   it('should always validate messages (current implementation)', async () => {
@@ -191,12 +191,12 @@ describe('Hello World Action', () => {
     expect(result).toHaveProperty('text', 'Hello world!');
     expect(result).toHaveProperty('success', true);
     expect(result).toHaveProperty('data');
-    expect((result as any).data).toHaveProperty('actions', ['HELLO_WORLD']);
+    expect((result as any).data).toHaveProperty('actions', ['QUICK_ACTION']);
     expect((result as any).data).toHaveProperty('source', 'test');
 
     expect(callbackContent).toEqual({
       text: 'Hello world!',
-      actions: ['HELLO_WORLD'],
+      actions: ['QUICK_ACTION'],
       source: 'test',
     });
   });
@@ -278,7 +278,7 @@ describe('Hello World Provider', () => {
 
   it('should have hello world provider', () => {
     expect(provider).toBeDefined();
-    expect(provider?.name).toBe('HELLO_WORLD_PROVIDER');
+    expect(provider?.name).toBe('QUICK_PROVIDER');
   });
 
   it('should provide hello world data', async () => {
@@ -310,9 +310,9 @@ describe('Hello World Provider', () => {
     const result2 = await provider.get(runtime, message, state);
 
     // Text and structure should be consistent
-    expect(result1.text).toBe(result2.text);
-    expect(result1.values).toEqual(result2.values);
-    expect(result1.data).toEqual(result2.data);
+    expect(result1.text || '').toBe(result2.text || '');
+    expect(result1.values || {}).toEqual(result2.values || {});
+    expect(result1.data || {}).toEqual(result2.data || {});
   });
 });
 
