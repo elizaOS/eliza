@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 // Ensure logger has all required methods with fallbacks
 // Bind methods to preserve pino logger context
 const safeLogger = {
-  debug: logger?.debug?.bind(logger) || console.log,
+  debug: logger?.debug?.bind(logger) || console.debug,
   info: logger?.info?.bind(logger) || console.log,
   warn: logger?.warn?.bind(logger) || console.warn,
   error: logger?.error?.bind(logger) || console.error,
