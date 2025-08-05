@@ -1,0 +1,68 @@
+# scenarios/definitions/analyze-past-trade.scenario.yaml
+
+name: "Verify Agent Can Analyze and Explain Past Trades"
+description: "Tests the agent's ability to act as a trading journal, looking up its own history and source code to explain its reasoning for a past action."
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-evm"
+  - "@elizaos/plugin-node"
+
+environment:
+  type: e2b
+
+setup:
+  mocks:
+    # 1. Mock the 'searchHistory' action. We assume the motivation for the trade
+    #    is stored directly in the event log record itself.
+    - service: "evm-service"
+      method: "searchHistory"
+      when:
+        input:
+          action_name: "make_trade"
+          limit: 1
+      response:
+        - event_id: "evt_123"
+          timestamp: "2024-07-15T10:00:00Z"
+          action_name: "make_trade"
+          action_input: { "token": "ETH", "amount": 5, "direction": "BUY" }
+          # This is the simplified motivation. The agent doesn't need to look up
+          # market data; it just needs to report what's in the log.
+          metadata:
+            motivation: "Positive market sentiment based on news about Tech Corp's record profits."
+
+    # 2. Mock the 'readFile' action to simulate the agent looking up the code,
+    #    which could be used to add more color to its explanation.
+    - service: "node-service"
+      method: "readFile"
+      when:
+        path: "/app/packages/plugin-evm/src/actions/make_trade.ts"
+      response:
+        content: |
+          // This action buys a token if the news sentiment is positive.
+          export function make_trade(context: ActionContext): ActionResult {
+            const news = context.providers.find(p => p.type === 'news_headline');
+            if (news && news.content.includes('optimistic')) {
+              // ... execute buy order ...
+              return { success: true };
+            }
+            return { success: false, error: 'No positive signal' };
+          }
+
+run:
+  - name: "Ask agent to explain its last trade"
+    input: "Can you explain the reasoning for your last 'make_trade' action?"
+    evaluations:
+      # Check that the agent correctly used the necessary tools.
+      - type: "trajectory_contains_action"
+        action: "evm-service.searchHistory"
+      - type: "trajectory_contains_action"
+        action: "node-service.readFile"
+
+      # The LLM Judge verifies the agent correctly synthesized the information.
+      - type: "llm_judge"
+        prompt: "Did the agent correctly explain its motivation for the last trade by referencing the information found in its event log?"
+        expected: "yes"
+
+judgment:
+  strategy: "all_pass" 
