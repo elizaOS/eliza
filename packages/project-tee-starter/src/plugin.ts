@@ -142,11 +142,11 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
     logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
   } catch (error) {
     // Handle TEE connection errors gracefully
-    if (error instanceof Error && error.message.includes('ENOENT')) {
+    if (error instanceof Error && (error.message.includes('ENOENT') || error.message.includes('Failed to connect'))) {
       logger.warn('TEE daemon not available - running in non-TEE mode for testing');
       logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
     } else {
-      logger.error('Error connecting to TEE:', error);
+      logger.warn('TEE connection failed, running in non-TEE mode:', error);
     }
     // Continue without TEE functionality for testing
   }
