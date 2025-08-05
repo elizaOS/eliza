@@ -282,7 +282,7 @@ export const myPlugin = {
           .flatMap((entry) =>
             entry.isDirectory()
               ? walk(path.join(dir, entry.name))
-              : entry.name.match(/\.(test|e2e)\.(t|j)sx?$/)
+              : entry.name.match(/\.(test|spec|e2e)\.(ts|js|tsx|jsx)$/)
                 ? [path.join(dir, entry.name)]
                 : []
           );
