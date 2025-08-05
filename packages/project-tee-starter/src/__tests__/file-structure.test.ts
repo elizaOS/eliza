@@ -15,7 +15,7 @@ function directoryExists(dirPath: string): boolean {
 }
 
 describe('Project Structure Validation', () => {
-  const rootDir = path.resolve(__dirname, '..');
+  const rootDir = path.resolve(__dirname, '..', '..');
   const distDir = path.join(rootDir, 'dist');
 
   beforeAll(async () => {
@@ -29,7 +29,7 @@ describe('Project Structure Validation', () => {
   describe('Directory Structure', () => {
     it('should have the expected directory structure', () => {
       expect(directoryExists(path.join(rootDir, 'src'))).toBe(true);
-      expect(directoryExists(path.join(rootDir, '__tests__'))).toBe(true);
+      expect(directoryExists(path.join(rootDir, 'src', '__tests__'))).toBe(true);
     });
 
     it('should have a dist directory after building', () => {

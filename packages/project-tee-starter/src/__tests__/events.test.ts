@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 
 describe('Plugin Events', () => {
   it('should not have custom events (relies on plugin-tee for TEE events)', () => {

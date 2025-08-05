@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(__dirname, '..', '..');
 
 describe('Environment Setup', () => {
   it('should verify configuration files exist', () => {

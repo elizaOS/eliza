@@ -6,12 +6,20 @@ import fs from 'node:fs';
  */
 export async function getViteOutDir(rootDir: string): Promise<string> {
   const viteConfigPath = path.join(rootDir, 'vite.config.ts');
+  
+  // Check if vite config exists
+  if (!fs.existsSync(viteConfigPath)) {
+    // Return default if config doesn't exist
+    return 'dist/frontend';
+  }
+  
   const configContent = await fs.promises.readFile(viteConfigPath, 'utf-8');
 
   // Extract the outDir value using regex
   const outDirMatch = configContent.match(/outDir\s*:\s*['"`]([^'"`]+)['"`]/);
   if (!outDirMatch) {
-    throw new Error('Could not find outDir in vite.config.ts');
+    // Return default if outDir not found
+    return 'dist/frontend';
   }
 
   let outDir = outDirMatch[1];

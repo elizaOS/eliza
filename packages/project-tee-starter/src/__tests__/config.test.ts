@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 
 describe('Plugin Configuration', () => {
   it('should not have custom configuration (relies on character settings)', () => {

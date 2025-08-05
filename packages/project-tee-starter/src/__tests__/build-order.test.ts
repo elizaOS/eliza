@@ -5,7 +5,7 @@ import { $ } from 'bun';
 import { getViteOutDir } from './vite-config-utils';
 
 describe('Build Order Integration Test', () => {
-  const rootDir = path.resolve(__dirname, '..');
+  const rootDir = path.resolve(__dirname, '..', '..');
   const distDir = path.join(rootDir, 'dist');
   let viteBuildDir: string;
   const tsupBuildMarker = path.join(distDir, 'index.js'); // TSup creates this
