@@ -146,7 +146,7 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
       logger.warn('TEE daemon not available - running in non-TEE mode for testing');
       logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
     } else {
-      logger.warn('TEE connection failed, running in non-TEE mode:', error);
+      logger.warn('TEE daemon connection failed, running in non-TEE mode:', error);
     }
     // Continue without TEE functionality for testing
   }
