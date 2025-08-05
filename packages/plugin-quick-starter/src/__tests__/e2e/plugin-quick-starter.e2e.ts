@@ -1,4 +1,4 @@
-import { type Content, type HandlerCallback, type Memory, type UUID, type Plugin, type Action, type Provider } from '@elizaos/core';
+import { type Content, type HandlerCallback, type Memory, type UUID, type Plugin, type Action, type Provider, logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -88,7 +88,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           throw new Error('Plugin quick-starter is not loaded in the runtime');
         }
         
-        console.log('✓ Plugin quick-starter loaded successfully');
+        logger.info('✓ Plugin quick-starter loaded successfully');
       },
     },
     {
@@ -110,7 +110,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           throw new Error('Action handler is not a function');
         }
         
-        console.log('✓ QUICK_ACTION registered correctly');
+        logger.info('✓ QUICK_ACTION registered correctly');
       },
     },
     {
@@ -176,7 +176,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           throw new Error('Response text is empty');
         }
 
-        console.log(`✓ Quick action executed successfully with response: "${responseText}"`);
+        logger.info(`✓ Quick action executed successfully with response: "${responseText}"`);
       },
     },
     {
@@ -210,21 +210,21 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           throw new Error('Provider returned empty text');
         }
 
-        console.log(`✓ Quick provider returned data: "${result.text}"`);
+        logger.info(`✓ Quick provider returned data: "${result.text}"`);
       },
     },
     {
       name: 'quick_service_should_be_available',
       fn: async (runtime) => {
-        // Check if the quick service is available
-        const service = runtime.getService('quick');
+        // Check if the starter service is available
+        const service = runtime.getService('starter');
         
         if (!service) {
-          console.warn('⚠ Quick service not available (optional service)');
+          logger.warn('⚠ Starter service not available (optional service)');
           return;
         }
 
-        console.log('✓ Quick service is available');
+        logger.info('✓ Starter service is available');
       },
     },
     {
@@ -262,10 +262,10 @@ export const QuickStarterPluginTestSuite: TestSuite = {
 
         // Basic integration check - agent should process messages
         if (!responseReceived) {
-          console.warn('⚠ No response received (this may be normal if no action was triggered)');
+          logger.warn('⚠ No response received (this may be normal if no action was triggered)');
         }
 
-        console.log('✓ Plugin integrates with agent runtime correctly');
+        logger.info('✓ Plugin integrates with agent runtime correctly');
       },
     },
     {
@@ -278,13 +278,13 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           // Try to get the connection - this should exist
           const connection = await runtime.getConnection();
           if (connection) {
-            console.log('✓ Plugin can access database connection');
+            logger.info('✓ Plugin can access database connection');
           } else {
             throw new Error('No database connection available');
           }
         } catch (error) {
           // If there's an error getting connection, it might be expected in test environment
-          console.log('⚠ Database connection test skipped (test environment limitation)');
+          logger.info('⚠ Database connection test skipped (test environment limitation)');
         }
       },
     },
@@ -306,10 +306,10 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           await runtime.createMemory(invalidMessage as any, 'messages', false);
           
           // If we get here without error, that's also acceptable
-          console.log('✓ Plugin handled invalid input without crashing');
+                      logger.info('✓ Plugin handled invalid input without crashing');
         } catch (error) {
           // Error handling is working
-          console.log('✓ Plugin properly handles errors:', error instanceof Error ? error.message : String(error));
+          logger.info('✓ Plugin properly handles errors:', error instanceof Error ? error.message : String(error));
         }
       },
     },
