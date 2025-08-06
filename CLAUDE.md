@@ -577,7 +577,6 @@ SOLANA_PRIVATE_KEY=
 
 ### Compatibility
 
-- Plugin compatibility through `/specs` (currently defaulting to v2)
 - Maintain backwards compatibility in changes
 - Consider migration paths for proposed changes
 

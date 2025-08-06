@@ -15,18 +15,6 @@
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
       }
-    },
-    "./v1": {
-      "import": {
-        "types": "./dist/specs/v1/index.d.ts",
-        "default": "./dist/specs/v1/index.js"
-      }
-    },
-    "./v2": {
-      "import": {
-        "types": "./dist/specs/v2/index.d.ts",
-        "default": "./dist/specs/v2/index.js"
-      }
     }
   },
   "files": [
