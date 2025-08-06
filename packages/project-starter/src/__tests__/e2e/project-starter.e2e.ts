@@ -1,4 +1,4 @@
-import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, type Action, type Provider, type Evaluator, type State, ChannelType } from '@elizaos/core';
+import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, type Action, type Provider, type Evaluator, type State, ChannelType, logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -107,7 +107,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('Character is not loaded');
         }
 
-        console.log(`✓ Project initialized with agent ID: ${runtime.agentId}`);
+        logger.info(`✓ Project initialized with agent ID: ${runtime.agentId}`);
       },
     },
 
@@ -134,11 +134,11 @@ export const ProjectStarterTestSuite: TestSuite = {
 
         // Topics and adjectives are optional
         if (character.topics) {
-          console.log(`  - Has ${character.topics.length} topics`);
+          logger.info(`  - Has ${character.topics.length} topics`);
         }
 
         if (character.adjectives) {
-          console.log(`  - Has ${character.adjectives.length} adjectives`);
+          logger.info(`  - Has ${character.adjectives.length} adjectives`);
         }
 
         // Check settings object
@@ -151,7 +151,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('Character plugins is not an array');
         }
 
-        console.log(`✓ Character "${character.name}" loaded successfully with all required fields`);
+        logger.info(`✓ Character "${character.name}" loaded successfully with all required fields`);
       },
     },
 
@@ -198,10 +198,10 @@ export const ProjectStarterTestSuite: TestSuite = {
           
           // In a real scenario with an LLM, we would process the message
           // For now, we just verify the system can handle it
-          console.log('✓ Agent can receive and store messages');
+          logger.info('✓ Agent can receive and store messages');
         } catch (error) {
           // If connection setup fails, it's a test environment limitation
-          console.log('⚠ Message processing test skipped (test environment limitation)');
+          logger.info('⚠ Message processing test skipped (test environment limitation)');
         }
       },
     },
@@ -217,11 +217,11 @@ export const ProjectStarterTestSuite: TestSuite = {
         );
         
         if (!helloWorldAction) {
-          console.log('⚠ HELLO_WORLD action not found, skipping test');
+          logger.info('⚠ HELLO_WORLD action not found, skipping test');
           return;
         }
         
-        console.log('✓ HELLO_WORLD action is available');
+        logger.info('✓ HELLO_WORLD action is available');
       },
     },
 
@@ -252,7 +252,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           }
         }
         
-        console.log('✓ Can handle various greeting formats');
+        logger.info('✓ Can handle various greeting formats');
       },
     },
 
@@ -271,9 +271,9 @@ export const ProjectStarterTestSuite: TestSuite = {
             text: 'Testing conversation context',
           };
           
-          console.log('✓ Conversation context system is available');
+          logger.info('✓ Conversation context system is available');
         } catch (error) {
-          console.log('⚠ Conversation context test skipped (test environment limitation)');
+          logger.info('⚠ Conversation context test skipped (test environment limitation)');
         }
       },
     },
@@ -288,7 +288,7 @@ export const ProjectStarterTestSuite: TestSuite = {
         );
 
         if (!helloWorldAction) {
-          console.log('⚠ HELLO_WORLD action not found, skipping direct execution test');
+          logger.info('⚠ HELLO_WORLD action not found, skipping direct execution test');
           return;
         }
 
@@ -334,7 +334,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('HELLO_WORLD action did not produce expected response');
         }
 
-        console.log('✓ HELLO_WORLD action executed successfully');
+        logger.info('✓ HELLO_WORLD action executed successfully');
       },
     },
 
@@ -344,7 +344,7 @@ export const ProjectStarterTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Test provider functionality if available
         if (!runtime.providers || runtime.providers.length === 0) {
-          console.log('⚠ No providers found, skipping provider test');
+          logger.info('⚠ No providers found, skipping provider test');
           return;
         }
 
@@ -354,7 +354,7 @@ export const ProjectStarterTestSuite: TestSuite = {
         );
 
         if (!helloWorldProvider) {
-          console.log('⚠ HELLO_WORLD_PROVIDER not found, skipping provider test');
+          logger.info('⚠ HELLO_WORLD_PROVIDER not found, skipping provider test');
           return;
         }
 
@@ -386,7 +386,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('Provider did not return valid data');
         }
 
-        console.log('✓ HELLO_WORLD_PROVIDER returned data successfully');
+        logger.info('✓ HELLO_WORLD_PROVIDER returned data successfully');
       },
     },
 
@@ -398,13 +398,13 @@ export const ProjectStarterTestSuite: TestSuite = {
         const starterService = runtime.getService('starter');
 
         if (!starterService) {
-          console.log('⚠ Starter service not found, skipping service test');
+          logger.info('⚠ Starter service not found, skipping service test');
           return;
         }
 
         // Services have static start/stop methods, not instance methods
         // Just verify the service exists
-        console.log('✓ Starter service is available');
+        logger.info('✓ Starter service is available');
       },
     },
 
@@ -460,10 +460,10 @@ export const ProjectStarterTestSuite: TestSuite = {
             throw new Error('No messages retrieved from memory system');
           }
           
-          console.log(`✓ Memory system stored and retrieved ${retrievedMessages.length} messages`);
+          logger.info(`✓ Memory system stored and retrieved ${retrievedMessages.length} messages`);
         } catch (error) {
           // Memory operations might fail in test environment
-          console.log('⚠ Memory system test skipped (test environment limitation)');
+          logger.info('⚠ Memory system test skipped (test environment limitation)');
         }
       },
     },
@@ -497,9 +497,9 @@ export const ProjectStarterTestSuite: TestSuite = {
           // Wait for all messages to be created
           await Promise.all(messagePromises);
           
-          console.log('✓ Successfully handled concurrent message creation');
+          logger.info('✓ Successfully handled concurrent message creation');
         } catch (error) {
-          console.log('⚠ Concurrent message test skipped (test environment limitation)');
+          logger.info('⚠ Concurrent message test skipped (test environment limitation)');
         }
       },
     },
@@ -512,10 +512,10 @@ export const ProjectStarterTestSuite: TestSuite = {
         try {
           const connection = await runtime.getConnection();
           if (connection) {
-            console.log('✓ Database connection is working');
+            logger.info('✓ Database connection is working');
           }
         } catch (error) {
-          console.log('⚠ Database connection test skipped');
+          logger.info('⚠ Database connection test skipped');
         }
 
         // Verify basic runtime configuration
@@ -527,7 +527,7 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('Runtime character is not configured');
         }
 
-        console.log('✓ Project configuration is valid');
+        logger.info('✓ Project configuration is valid');
       },
     },
 
@@ -545,11 +545,11 @@ export const ProjectStarterTestSuite: TestSuite = {
           throw new Error('Plugins is not an array');
         }
 
-        console.log('✓ Plugin system allows registration');
+        logger.info('✓ Plugin system allows registration');
 
         // Count loaded plugins
         const pluginCount = runtime.plugins.length;
-        console.log(`✓ Found ${pluginCount} plugins loaded`);
+        logger.info(`✓ Found ${pluginCount} plugins loaded`);
 
         // Test specific plugin features if available
         const hasActions = runtime.actions && runtime.actions.length > 0;
@@ -557,13 +557,13 @@ export const ProjectStarterTestSuite: TestSuite = {
         const hasEvaluators = runtime.evaluators && runtime.evaluators.length > 0;
 
         if (hasActions) {
-          console.log(`  - ${runtime.actions.length} actions registered`);
+          logger.info(`  - ${runtime.actions.length} actions registered`);
         }
         if (hasProviders) {
-          console.log(`  - ${runtime.providers.length} providers registered`);
+          logger.info(`  - ${runtime.providers.length} providers registered`);
         }
         if (hasEvaluators) {
-          console.log(`  - ${runtime.evaluators.length} evaluators registered`);
+          logger.info(`  - ${runtime.evaluators.length} evaluators registered`);
         }
       },
     },

@@ -1,4 +1,4 @@
-import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, ChannelType } from '@elizaos/core';
+import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, ChannelType, logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -71,7 +71,7 @@ export class ProjectTeeStarterTestSuite {
           throw new Error('Agent ID is not set');
         }
 
-        console.log(`✓ TEE Project initialized with agent ID: ${runtime.agentId}`);
+        logger.info(`✓ TEE Project initialized with agent ID: ${runtime.agentId}`);
       },
     },
 
@@ -87,7 +87,7 @@ export class ProjectTeeStarterTestSuite {
           throw new Error('Character bio is not set');
         }
 
-        console.log(`✓ TEE Character "${runtime.character.name}" loaded successfully`);
+        logger.info(`✓ TEE Character "${runtime.character.name}" loaded successfully`);
       },
     },
 
@@ -99,9 +99,9 @@ export class ProjectTeeStarterTestSuite {
         const env = await this.detectTeeEnvironment(runtime);
         
         if (env.hasService) {
-          console.log('✓ TEE service is available and registered');
+          logger.info('✓ TEE service is available and registered');
         } else {
-          console.log('⚠ TEE service not available (expected in non-TEE environments)');
+          logger.info('⚠ TEE service not available (expected in non-TEE environments)');
         }
         
         // This test always passes - it's just informational
@@ -119,11 +119,11 @@ export class ProjectTeeStarterTestSuite {
           p.toLowerCase().includes('attestation')
         );
 
-        console.log(`✓ Found ${teePlugins.length} TEE-related plugins: ${teePlugins.join(', ')}`);
-        console.log(`✓ TEE mode configured: ${env.isFullTee ? 'FULL' : 'OFF'}`);
+        logger.info(`✓ Found ${teePlugins.length} TEE-related plugins: ${teePlugins.join(', ')}`);
+        logger.info(`✓ TEE mode configured: ${env.isFullTee ? 'FULL' : 'OFF'}`);
         
         if (!env.hasEndpoint) {
-          console.log('⚠ TEE_ATTESTATION_ENDPOINT not configured (expected in development)');
+          logger.info('⚠ TEE_ATTESTATION_ENDPOINT not configured (expected in development)');
         }
       },
     },
@@ -139,9 +139,9 @@ export class ProjectTeeStarterTestSuite {
         );
 
         if (hasTeePlugin) {
-          console.log('✓ TEE plugin is loaded in character configuration');
+          logger.info('✓ TEE plugin is loaded in character configuration');
         } else {
-          console.log('⚠ No TEE plugin in character configuration');
+          logger.info('⚠ No TEE plugin in character configuration');
         }
       },
     },
@@ -154,7 +154,7 @@ export class ProjectTeeStarterTestSuite {
         const env = await this.detectTeeEnvironment(runtime);
         
         if (!env.isFullTee) {
-          console.log('⚠ Skipping attestation test (requires full TEE environment)');
+          logger.info('⚠ Skipping attestation test (requires full TEE environment)');
           return;
         }
 
@@ -167,7 +167,7 @@ export class ProjectTeeStarterTestSuite {
           throw new Error('Attestation action not found in TEE environment');
         }
 
-        console.log('✓ Attestation flow validated');
+        logger.info('✓ Attestation flow validated');
       },
     },
 
@@ -178,7 +178,7 @@ export class ProjectTeeStarterTestSuite {
         const env = await this.detectTeeEnvironment(runtime);
         
         if (!env.hasEmbeddings) {
-          console.log('⚠ Skipping embedding test (requires embedding model)');
+          logger.info('⚠ Skipping embedding test (requires embedding model)');
           return;
         }
 
@@ -200,9 +200,9 @@ export class ProjectTeeStarterTestSuite {
           };
 
           await runtime.createMemory(testMemory, 'messages', false);
-          console.log('✓ Secure memory operations with embeddings working');
+          logger.info('✓ Secure memory operations with embeddings working');
         } catch (error) {
-          console.log(`⚠ Embedding test failed: ${error.message}`);
+          logger.info(`⚠ Embedding test failed: ${error.message}`);
         }
       },
     },
@@ -214,7 +214,7 @@ export class ProjectTeeStarterTestSuite {
         const env = await this.detectTeeEnvironment(runtime);
         
         if (!env.isFullTee) {
-          console.log('⚠ Skipping message processing test (requires full TEE environment)');
+          logger.info('⚠ Skipping message processing test (requires full TEE environment)');
           return;
         }
 
@@ -233,9 +233,9 @@ export class ProjectTeeStarterTestSuite {
           };
 
           await runtime.createMemory(testMessage, 'messages', false);
-          console.log('✓ TEE message processing completed');
+          logger.info('✓ TEE message processing completed');
         } catch (error) {
-          console.log(`⚠ Message processing test failed: ${error.message}`);
+          logger.info(`⚠ Message processing test failed: ${error.message}`);
         }
       },
     },
@@ -254,13 +254,13 @@ export class ProjectTeeStarterTestSuite {
             tableName: 'messages'
           });
 
-          console.log('✓ Database connection is working');
+          logger.info('✓ Database connection is working');
         } catch (error) {
           // Check if it's a schema issue
           if (error.message?.includes('embeddings.dim_384')) {
-            console.log('⚠ Database schema missing embedding columns (expected without embedding model)');
+            logger.info('⚠ Database schema missing embedding columns (expected without embedding model)');
           } else {
-            console.log(`⚠ Database test failed: ${error.message}`);
+            logger.info(`⚠ Database test failed: ${error.message}`);
           }
         }
       },
