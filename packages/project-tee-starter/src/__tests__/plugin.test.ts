@@ -1,5 +1,5 @@
 import { describe, it, expect, spyOn, mock } from 'bun:test';
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 import { logger } from '@elizaos/core';
 
 // Spy on logger to capture logs

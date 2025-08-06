@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mrTeeCharacter as character } from '../src/character';
+import { mrTeeCharacter as character } from '../character';
 import dotenv from 'dotenv';
 import * as path from 'node:path';
 
