@@ -282,6 +282,7 @@ Run tests for Eliza agent plugins and projects.
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
@@ -301,6 +302,7 @@ ElizaOS employs a dual testing strategy:
   - `--skip-build`: Skip building before running tests
 
 **E2E Test Structure:**
+
 - Plugins export tests in `src/plugin.ts` via the `tests` array
 - Projects export tests in `src/index.ts` via the `tests` array
 - Test files follow naming convention: `[template-name].e2e.ts`
@@ -669,6 +671,7 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    ```
 
    **E2E Test Structure:**
+
    ```
    plugin-my-plugin/
    ├── src/
@@ -796,6 +799,7 @@ Projects contain agent configurations and code for building agent-based applicat
    ```
 
    **E2E Test Structure for Projects:**
+
    ```
    my-agent-project/
    ├── src/

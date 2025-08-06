@@ -10,13 +10,13 @@ const DEFAULT_VITE_VAR_DIR = 'dist/.vite';
  */
 export async function getViteOutDir(rootDir: string): Promise<string> {
   const viteConfigPath = path.join(rootDir, 'vite.config.ts');
-  
+
   // Check if vite config exists
   if (!fs.existsSync(viteConfigPath)) {
     // Return default if config doesn't exist
     return DEFAULT_VITE_OUT_DIR;
   }
-  
+
   const configContent = await fs.promises.readFile(viteConfigPath, 'utf-8');
 
   // Extract the outDir value using regex

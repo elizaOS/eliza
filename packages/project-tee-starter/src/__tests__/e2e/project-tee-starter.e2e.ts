@@ -1,19 +1,27 @@
-import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, ChannelType, logger } from '@elizaos/core';
+import {
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+  ChannelType,
+  logger,
+} from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * E2E Test Suite for Project TEE Starter
  * ======================================
- * 
+ *
  * This test suite validates TEE (Trusted Execution Environment) specific functionality
  * while gracefully handling non-TEE environments where tests are expected to fail.
- * 
+ *
  * TEST CATEGORIES:
  * ---------------
  * 1. ALWAYS PASS: Basic project setup tests that work in any environment
  * 2. TEE-OPTIONAL: Tests that check for TEE features but pass with warnings if unavailable
  * 3. TEE-REQUIRED: Tests that only pass in actual TEE environments (skip otherwise)
- * 
+ *
  * ENVIRONMENT DETECTION:
  * ---------------------
  * Tests detect TEE availability by checking:
@@ -42,7 +50,7 @@ export class ProjectTeeStarterTestSuite {
   }> {
     const teeService = runtime.getService('tee') || runtime.getService('mr-tee-service');
     const hasEndpoint = !!runtime.getSetting('TEE_ATTESTATION_ENDPOINT');
-    
+
     // Check for embedding capability
     let hasEmbeddings = false;
     try {
@@ -57,7 +65,7 @@ export class ProjectTeeStarterTestSuite {
       hasService: !!teeService,
       hasEndpoint,
       hasEmbeddings,
-      isFullTee: !!teeService && hasEndpoint && hasEmbeddings
+      isFullTee: !!teeService && hasEndpoint && hasEmbeddings,
     };
   }
 
@@ -97,13 +105,13 @@ export class ProjectTeeStarterTestSuite {
       category: 'tee-optional',
       fn: async (runtime: IAgentRuntime) => {
         const env = await this.detectTeeEnvironment(runtime);
-        
+
         if (env.hasService) {
           logger.info('✓ TEE service is available and registered');
         } else {
           logger.info('⚠ TEE service not available (expected in non-TEE environments)');
         }
-        
+
         // This test always passes - it's just informational
       },
     },
@@ -114,14 +122,13 @@ export class ProjectTeeStarterTestSuite {
       fn: async (runtime: IAgentRuntime) => {
         const env = await this.detectTeeEnvironment(runtime);
         const plugins = runtime.character.plugins || [];
-        const teePlugins = plugins.filter(p => 
-          p.toLowerCase().includes('tee') || 
-          p.toLowerCase().includes('attestation')
+        const teePlugins = plugins.filter(
+          (p) => p.toLowerCase().includes('tee') || p.toLowerCase().includes('attestation')
         );
 
         logger.info(`✓ Found ${teePlugins.length} TEE-related plugins: ${teePlugins.join(', ')}`);
         logger.info(`✓ TEE mode configured: ${env.isFullTee ? 'FULL' : 'OFF'}`);
-        
+
         if (!env.hasEndpoint) {
           logger.info('⚠ TEE_ATTESTATION_ENDPOINT not configured (expected in development)');
         }
@@ -133,9 +140,8 @@ export class ProjectTeeStarterTestSuite {
       category: 'tee-optional',
       fn: async (runtime: IAgentRuntime) => {
         const plugins = runtime.character.plugins || [];
-        const hasTeePlugin = plugins.some(p => 
-          p.toLowerCase().includes('tee') || 
-          p === 'mr-tee-starter-plugin'
+        const hasTeePlugin = plugins.some(
+          (p) => p.toLowerCase().includes('tee') || p === 'mr-tee-starter-plugin'
         );
 
         if (hasTeePlugin) {
@@ -152,14 +158,14 @@ export class ProjectTeeStarterTestSuite {
       category: 'tee-required',
       fn: async (runtime: IAgentRuntime) => {
         const env = await this.detectTeeEnvironment(runtime);
-        
+
         if (!env.isFullTee) {
           logger.info('⚠ Skipping attestation test (requires full TEE environment)');
           return;
         }
 
         // Test attestation action availability
-        const attestationAction = runtime.actions.find(a => 
+        const attestationAction = runtime.actions.find((a) =>
           a.name.toLowerCase().includes('attest')
         );
 
@@ -176,7 +182,7 @@ export class ProjectTeeStarterTestSuite {
       category: 'tee-required',
       fn: async (runtime: IAgentRuntime) => {
         const env = await this.detectTeeEnvironment(runtime);
-        
+
         if (!env.hasEmbeddings) {
           logger.info('⚠ Skipping embedding test (requires embedding model)');
           return;
@@ -184,7 +190,7 @@ export class ProjectTeeStarterTestSuite {
 
         try {
           const testContent = 'Secure TEE test message';
-          
+
           // Create a test memory with content
           const testMemory: Memory = {
             id: uuidv4() as UUID,
@@ -196,7 +202,7 @@ export class ProjectTeeStarterTestSuite {
               action: null,
             } as Content,
             createdAt: Date.now(),
-            embedding: [] // Would be populated by embedding service
+            embedding: [], // Would be populated by embedding service
           };
 
           await runtime.createMemory(testMemory, 'messages', false);
@@ -212,7 +218,7 @@ export class ProjectTeeStarterTestSuite {
       category: 'tee-required',
       fn: async (runtime: IAgentRuntime) => {
         const env = await this.detectTeeEnvironment(runtime);
-        
+
         if (!env.isFullTee) {
           logger.info('⚠ Skipping message processing test (requires full TEE environment)');
           return;
@@ -229,7 +235,7 @@ export class ProjectTeeStarterTestSuite {
               action: null,
             } as Content,
             createdAt: Date.now(),
-            embedding: []
+            embedding: [],
           };
 
           await runtime.createMemory(testMessage, 'messages', false);
@@ -251,14 +257,16 @@ export class ProjectTeeStarterTestSuite {
           const memories = await runtime.getMemories({
             roomId: testRoomId,
             count: 1,
-            tableName: 'messages'
+            tableName: 'messages',
           });
 
           logger.info('✓ Database connection is working');
         } catch (error) {
           // Check if it's a schema issue
           if (error.message?.includes('embeddings.dim_384')) {
-            logger.info('⚠ Database schema missing embedding columns (expected without embedding model)');
+            logger.info(
+              '⚠ Database schema missing embedding columns (expected without embedding model)'
+            );
           } else {
             logger.info(`⚠ Database test failed: ${error.message}`);
           }

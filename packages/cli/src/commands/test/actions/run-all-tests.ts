@@ -16,10 +16,10 @@ export async function runAllTests(
   // Run component tests first
   const projectInfo = getProjectType(testPath);
   const componentResult = await runComponentTests(testPath, options, projectInfo);
-  
+
   // Run e2e tests
   const e2eResult = await runE2eTests(testPath, options, projectInfo);
-  
+
   // Check results and exit appropriately
   if (componentResult.failed || e2eResult.failed) {
     if (componentResult.failed) {

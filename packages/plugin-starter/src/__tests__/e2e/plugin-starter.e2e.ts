@@ -1,8 +1,8 @@
-import { 
-  type Content, 
+import {
+  type Content,
   type HandlerCallback,
   type IAgentRuntime,
-  type TestSuite 
+  type TestSuite,
 } from '@elizaos/core';
 
 /**

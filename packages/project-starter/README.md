@@ -45,6 +45,7 @@ elizaos test
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic

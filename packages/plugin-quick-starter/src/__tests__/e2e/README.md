@@ -7,6 +7,7 @@ This directory contains end-to-end tests for the ElizaOS plugin quick starter te
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
@@ -96,13 +97,13 @@ When extending the quick starter plugin, add corresponding e2e tests:
     if (!feature) {
       throw new Error('My feature not loaded');
     }
-    
+
     // Test feature behavior
     const result = await feature.doSomething();
     if (!result.success) {
       throw new Error('Feature failed: ' + result.error);
     }
-    
+
     console.log('✓ My feature works correctly');
   }
 }
@@ -119,11 +120,13 @@ When extending the quick starter plugin, add corresponding e2e tests:
 ## Troubleshooting
 
 ### Tests not running?
+
 - Ensure tests are exported in `plugin.ts`
 - Check that the plugin name matches in tests
 - Verify the ElizaOS test runner is up to date
 
 ### Tests failing?
+
 - Check runtime initialization
 - Verify all required services are available
 - Ensure test data doesn't conflict with other tests

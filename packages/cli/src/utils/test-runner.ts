@@ -139,7 +139,7 @@ export class TestRunner {
 
       try {
         safeLogger.info(`  Running test: ${test.name}`);
-        
+
         // Pass the runtime directly to avoid pino logger context issues
         await test.fn(this.runtime);
         this.stats.passed++;
@@ -318,7 +318,7 @@ export const myPlugin = {
             // Calculate the relative path from e2eDir to get the correct structure in dist
             const relativePath = path.relative(e2eDir, testFile);
             const distFile = path.join(distE2eDir, relativePath.replace(/\.ts$/, '.js'));
-            
+
             if (fs.existsSync(distFile)) {
               moduleImportPath = distFile;
               safeLogger.debug(`Using compiled version from ${distFile}`);

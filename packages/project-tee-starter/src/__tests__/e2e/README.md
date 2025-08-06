@@ -7,6 +7,7 @@ This directory contains end-to-end tests for the ElizaOS project TEE (Trusted Ex
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
@@ -67,17 +68,21 @@ elizaos test --type component
 ## TEE-Specific Testing Considerations
 
 ### Development Environment
+
 - TEE hardware features may not be available in development
 - Tests gracefully handle missing TEE services with warnings
 - Mock TEE services can be used for development testing
 
 ### Production Environment
+
 - Full TEE capabilities should be available
 - Attestation endpoints should be configured
 - Secure key storage should be operational
 
 ### Configuration
+
 TEE-specific environment variables:
+
 - `TEE_MODE`: Enable/disable TEE mode
 - `TEE_ATTESTATION_ENDPOINT`: Attestation service endpoint
 - `TEE_PROVIDER`: TEE provider (e.g., 'phala', 'sgx')

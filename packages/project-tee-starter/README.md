@@ -107,6 +107,7 @@ project-tee-starter/
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
@@ -147,6 +148,7 @@ elizaos test --port 4000
 ### TEE-Specific Testing
 
 The E2E tests include TEE-specific scenarios:
+
 - TEE service availability checks
 - Attestation action registration
 - Secure memory operations

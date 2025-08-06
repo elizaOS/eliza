@@ -1,4 +1,16 @@
-import { type Content, type HandlerCallback, type IAgentRuntime, type Memory, type UUID, type Action, type Provider, type Evaluator, type State, ChannelType, logger } from '@elizaos/core';
+import {
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+  type Action,
+  type Provider,
+  type Evaluator,
+  type State,
+  ChannelType,
+  logger,
+} from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -77,7 +89,7 @@ interface TestSuite {
 
 /**
  * Main E2E Test Suite for Project Starter
- * 
+ *
  * This suite tests the complete project functionality including:
  * - Project initialization
  * - Character loading
@@ -115,7 +127,7 @@ export const ProjectStarterTestSuite: TestSuite = {
       name: 'character_should_be_loaded_correctly',
       fn: async (runtime: IAgentRuntime) => {
         const character = runtime.character;
-        
+
         // Verify character has required fields
         if (!character.name) {
           throw new Error('Character name is missing');
@@ -163,10 +175,10 @@ export const ProjectStarterTestSuite: TestSuite = {
         // Note: In a real E2E test environment, the agent might not have
         // a language model configured, so we'll just verify the system
         // can handle message processing without errors
-        
+
         const testRoomId = uuidv4() as UUID;
         const testUserId = uuidv4() as UUID;
-        
+
         try {
           // Ensure connections exist
           await runtime.ensureConnection({
@@ -176,9 +188,9 @@ export const ProjectStarterTestSuite: TestSuite = {
             name: 'TestUser',
             source: 'test',
             worldId: uuidv4() as UUID,
-            type: ChannelType.DM
+            type: ChannelType.DM,
           });
-          
+
           // Create a test message
           const userMessage: Memory = {
             id: uuidv4() as UUID,
@@ -190,12 +202,12 @@ export const ProjectStarterTestSuite: TestSuite = {
               action: null,
             } as Content,
             createdAt: Date.now(),
-            embedding: []
+            embedding: [],
           };
 
           // Store the message
           await runtime.createMemory(userMessage, 'messages', false);
-          
+
           // In a real scenario with an LLM, we would process the message
           // For now, we just verify the system can handle it
           logger.info('✓ Agent can receive and store messages');
@@ -211,16 +223,14 @@ export const ProjectStarterTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Test for specific hello world response
         // This requires the HELLO_WORLD action to be available
-        
-        const helloWorldAction = runtime.actions.find(
-          (a: Action) => a.name === 'HELLO_WORLD'
-        );
-        
+
+        const helloWorldAction = runtime.actions.find((a: Action) => a.name === 'HELLO_WORLD');
+
         if (!helloWorldAction) {
           logger.info('⚠ HELLO_WORLD action not found, skipping test');
           return;
         }
-        
+
         logger.info('✓ HELLO_WORLD action is available');
       },
     },
@@ -230,7 +240,7 @@ export const ProjectStarterTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Test various casual greetings
         const greetings = ['hey there!', 'hi!', 'hello', "what's up?", 'howdy'];
-        
+
         // Just verify we can create messages with different greetings
         for (const greeting of greetings) {
           const message: Memory = {
@@ -243,15 +253,15 @@ export const ProjectStarterTestSuite: TestSuite = {
               action: null,
             } as Content,
             createdAt: Date.now(),
-            embedding: []
+            embedding: [],
           };
-          
+
           // Verify message structure is valid
           if (!message.content.text) {
             throw new Error(`Invalid message created for greeting: ${greeting}`);
           }
         }
-        
+
         logger.info('✓ Can handle various greeting formats');
       },
     },
@@ -263,14 +273,14 @@ export const ProjectStarterTestSuite: TestSuite = {
         try {
           const testRoomId = uuidv4() as UUID;
           const testUserId = uuidv4() as UUID;
-          
+
           // Create a context provider state
           const state: State = {
             values: {},
             data: { conversationContext: true },
             text: 'Testing conversation context',
           };
-          
+
           logger.info('✓ Conversation context system is available');
         } catch (error) {
           logger.info('⚠ Conversation context test skipped (test environment limitation)');
@@ -283,9 +293,7 @@ export const ProjectStarterTestSuite: TestSuite = {
       name: 'hello_world_action_direct_execution',
       fn: async (runtime: IAgentRuntime) => {
         // Test direct action execution if available
-        const helloWorldAction = runtime.actions.find(
-          (a: Action) => a.name === 'HELLO_WORLD'
-        );
+        const helloWorldAction = runtime.actions.find((a: Action) => a.name === 'HELLO_WORLD');
 
         if (!helloWorldAction) {
           logger.info('⚠ HELLO_WORLD action not found, skipping direct execution test');
@@ -303,7 +311,7 @@ export const ProjectStarterTestSuite: TestSuite = {
             action: 'HELLO_WORLD',
           } as Content,
           createdAt: Date.now(),
-          embedding: []
+          embedding: [],
         };
 
         const state: State = {
@@ -313,7 +321,10 @@ export const ProjectStarterTestSuite: TestSuite = {
         };
 
         let responseReceived = false;
-        const callback: HandlerCallback = async (response: Content, files?: any): Promise<Memory[]> => {
+        const callback: HandlerCallback = async (
+          response: Content,
+          files?: any
+        ): Promise<Memory[]> => {
           if (response.text === 'hello world!' && response.action === 'HELLO_WORLD') {
             responseReceived = true;
           }
@@ -321,14 +332,7 @@ export const ProjectStarterTestSuite: TestSuite = {
         };
 
         // Try direct action execution
-        await helloWorldAction.handler(
-          runtime,
-          message,
-          state,
-          {},
-          callback,
-          []
-        );
+        await helloWorldAction.handler(runtime, message, state, {}, callback, []);
 
         if (!responseReceived) {
           throw new Error('HELLO_WORLD action did not produce expected response');
@@ -369,7 +373,7 @@ export const ProjectStarterTestSuite: TestSuite = {
             action: null,
           } as Content,
           createdAt: Date.now(),
-          embedding: []
+          embedding: [],
         };
 
         const mockState: State = {
@@ -415,7 +419,7 @@ export const ProjectStarterTestSuite: TestSuite = {
         try {
           const testRoomId = uuidv4() as UUID;
           const testUserId = uuidv4() as UUID;
-          
+
           // Ensure connection exists
           await runtime.ensureConnection({
             entityId: testUserId,
@@ -424,9 +428,9 @@ export const ProjectStarterTestSuite: TestSuite = {
             name: 'MemoryTestUser',
             source: 'test',
             worldId: uuidv4() as UUID,
-            type: ChannelType.DM
+            type: ChannelType.DM,
           });
-          
+
           // Create test messages
           const messages: Memory[] = [];
           for (let i = 0; i < 3; i++) {
@@ -440,26 +444,26 @@ export const ProjectStarterTestSuite: TestSuite = {
                 action: null,
               } as Content,
               createdAt: Date.now() + i * 1000, // Stagger timestamps
-              embedding: []
+              embedding: [],
             };
             messages.push(message);
-            
+
             // Store the message
             await runtime.createMemory(message, 'messages', false);
           }
-          
+
           // Retrieve messages
           const retrievedMessages = await runtime.getMemories({
             roomId: testRoomId,
             count: 10,
-            tableName: 'messages'
+            tableName: 'messages',
           });
-          
+
           // Verify we got some messages back
           if (!retrievedMessages || retrievedMessages.length === 0) {
             throw new Error('No messages retrieved from memory system');
           }
-          
+
           logger.info(`✓ Memory system stored and retrieved ${retrievedMessages.length} messages`);
         } catch (error) {
           // Memory operations might fail in test environment
@@ -475,7 +479,7 @@ export const ProjectStarterTestSuite: TestSuite = {
         try {
           const testRoomId = uuidv4() as UUID;
           const testUserId = uuidv4() as UUID;
-          
+
           // Create multiple messages concurrently
           const messagePromises = Array.from({ length: 5 }, async (_, i) => {
             const message: Memory = {
@@ -488,15 +492,15 @@ export const ProjectStarterTestSuite: TestSuite = {
                 action: null,
               } as Content,
               createdAt: Date.now() + i * 100,
-              embedding: []
+              embedding: [],
             };
-            
+
             return runtime.createMemory(message, 'messages', false);
           });
-          
+
           // Wait for all messages to be created
           await Promise.all(messagePromises);
-          
+
           logger.info('✓ Successfully handled concurrent message creation');
         } catch (error) {
           logger.info('⚠ Concurrent message test skipped (test environment limitation)');

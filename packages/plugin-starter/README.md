@@ -50,6 +50,7 @@ src/
 ### Two Types of Tests
 
 #### 1. Component Tests (Bun Test Runner)
+
 - **Purpose**: Test individual functions/classes in isolation
 - **Location**: `src/__tests__/*.test.ts`
 - **Runner**: Bun's built-in test runner
@@ -69,6 +70,7 @@ describe('Plugin Configuration', () => {
 ```
 
 #### 2. E2E Tests (ElizaOS Test Runner)
+
 - **Purpose**: Test plugin behavior within a real ElizaOS runtime
 - **Location**: `src/__tests__/e2e/*.ts`
 - **Runner**: ElizaOS custom test runner
@@ -86,7 +88,7 @@ export const StarterPluginTestSuite: TestSuite = {
       name: 'hello_world_action_test',
       fn: async (runtime) => {
         // Test with real runtime - no mocks needed!
-        const action = runtime.actions.find(a => a.name === 'HELLO_WORLD');
+        const action = runtime.actions.find((a) => a.name === 'HELLO_WORLD');
         if (!action) {
           throw new Error('Action not found');
         }
@@ -114,13 +116,13 @@ elizaos test --type e2e
 
 ### Key Differences
 
-| Aspect | Component Tests | E2E Tests |
-|--------|------------|-----------|
-| **Runner** | Bun test | ElizaOS TestRunner |
-| **Environment** | Mocked | Real runtime |
-| **Database** | Mocked | Real (PGLite) |
-| **Speed** | Fast (ms) | Slower (seconds) |
-| **Use Case** | TDD, component logic | Integration, user flows |
+| Aspect          | Component Tests      | E2E Tests               |
+| --------------- | -------------------- | ----------------------- |
+| **Runner**      | Bun test             | ElizaOS TestRunner      |
+| **Environment** | Mocked               | Real runtime            |
+| **Database**    | Mocked               | Real (PGLite)           |
+| **Speed**       | Fast (ms)            | Slower (seconds)        |
+| **Use Case**    | TDD, component logic | Integration, user flows |
 
 ### E2E Test Integration
 
@@ -158,7 +160,7 @@ E2E tests receive a real `IAgentRuntime` instance, allowing you to:
     if (!service) {
       throw new Error('Service not initialized');
     }
-    
+
     // Test real behavior
     await service.stop();
     // Verify cleanup happened...
@@ -169,12 +171,14 @@ E2E tests receive a real `IAgentRuntime` instance, allowing you to:
 ### Best Practices
 
 1. **Use Component Tests for**:
+
    - Algorithm logic
    - Data transformations
    - Input validation
    - Error handling
 
 2. **Use E2E Tests for**:
+
    - User scenarios
    - Action execution flows
    - Provider data integration

@@ -313,7 +313,7 @@ describe('Hello World Provider', () => {
     // Text and structure should be consistent
     expect(result1.text).toBeDefined();
     expect(result2.text).toBeDefined();
-    expect(result1.text).toBe(result2.text as string);
+    expect(result1.text).toBe(result2.text);
     expect(result1.values || {}).toEqual(result2.values || {});
     expect(result1.data || {}).toEqual(result2.data || {});
   });

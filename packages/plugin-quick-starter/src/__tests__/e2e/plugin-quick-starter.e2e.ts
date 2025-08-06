@@ -1,14 +1,14 @@
-import { 
-  type Content, 
-  type HandlerCallback, 
-  type Memory, 
-  type UUID, 
-  type Plugin, 
-  type Action, 
-  type Provider, 
+import {
+  type Content,
+  type HandlerCallback,
+  type Memory,
+  type UUID,
+  type Plugin,
+  type Action,
+  type Provider,
   type IAgentRuntime,
   type TestSuite,
-  logger 
+  logger,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -83,11 +83,11 @@ export const QuickStarterPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Check if the plugin is registered
         const plugin = runtime.plugins.find((p: Plugin) => p.name === 'plugin-quick-starter');
-        
+
         if (!plugin) {
           throw new Error('Plugin quick-starter is not loaded in the runtime');
         }
-        
+
         logger.info('✓ Plugin quick-starter loaded successfully');
       },
     },
@@ -96,20 +96,20 @@ export const QuickStarterPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Check if the quick action is registered
         const action = runtime.actions.find((a: Action) => a.name === 'QUICK_ACTION');
-        
+
         if (!action) {
           throw new Error('QUICK_ACTION is not registered');
         }
-        
+
         // Verify action has required properties
         if (!action.name || action.name !== 'QUICK_ACTION') {
           throw new Error('Action name is incorrect');
         }
-        
+
         if (!action.handler || typeof action.handler !== 'function') {
           throw new Error('Action handler is not a function');
         }
-        
+
         logger.info('✓ QUICK_ACTION registered correctly');
       },
     },
@@ -134,7 +134,10 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         let responseText = '';
 
         // Create a callback to capture the response
-        const callback: HandlerCallback = async (response: Content, files?: any): Promise<Memory[]> => {
+        const callback: HandlerCallback = async (
+          response: Content,
+          files?: any
+        ): Promise<Memory[]> => {
           callbackExecuted = true;
           responseText = response.text || '';
           const responseMemory: Memory = {
@@ -144,7 +147,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
             roomId: 'quick-test-room' as UUID,
             content: response,
             createdAt: Date.now(),
-            embedding: []
+            embedding: [],
           };
           return [responseMemory];
         };
@@ -156,13 +159,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         }
 
         // Execute the action handler
-        const result = await action.handler(
-          runtime,
-          testMessage,
-          undefined,
-          {},
-          callback
-        );
+        const result = await action.handler(runtime, testMessage, undefined, {}, callback);
 
         // Verify the action executed successfully
         if (!result || !result.success) {
@@ -185,7 +182,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Check if the provider is registered
         const provider = runtime.providers.find((p: Provider) => p.name === 'QUICK_PROVIDER');
-        
+
         if (!provider) {
           throw new Error('QUICK_PROVIDER is not registered');
         }
@@ -220,7 +217,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Check if the starter service is available
         const service = runtime.getService('starter');
-        
+
         if (!service) {
           logger.warn('⚠ Starter service not available (optional service)');
           return;
@@ -249,19 +246,24 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         let responseReceived = false;
 
         // Process message through the runtime
-        await runtime.processActions(testMessage, [], undefined, async (response: Content): Promise<Memory[]> => {
-          responseReceived = true;
-          const responseMemory: Memory = {
-            id: 'response-integration' as UUID,
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            roomId: 'integration-test-room' as UUID,
-            content: response,
-            createdAt: Date.now(),
-            embedding: []
-          };
-          return [responseMemory];
-        });
+        await runtime.processActions(
+          testMessage,
+          [],
+          undefined,
+          async (response: Content): Promise<Memory[]> => {
+            responseReceived = true;
+            const responseMemory: Memory = {
+              id: 'response-integration' as UUID,
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: 'integration-test-room' as UUID,
+              content: response,
+              createdAt: Date.now(),
+              embedding: [],
+            };
+            return [responseMemory];
+          }
+        );
 
         // Basic integration check - agent should process messages
         if (!responseReceived) {
@@ -276,7 +278,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         // Verify that the runtime has a database adapter
         // This is a basic check to ensure the plugin can work with the database
-        
+
         try {
           // Try to get the connection - this should exist
           const connection = await runtime.getConnection();
@@ -308,12 +310,15 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         try {
           // Attempt to create memory with invalid message
           await runtime.createMemory(invalidMessage as any, 'messages', false);
-          
+
           // If we get here without error, that's also acceptable
-                      logger.info('✓ Plugin handled invalid input without crashing');
+          logger.info('✓ Plugin handled invalid input without crashing');
         } catch (error) {
           // Error handling is working
-          logger.info('✓ Plugin properly handles errors:', error instanceof Error ? error.message : String(error));
+          logger.info(
+            '✓ Plugin properly handles errors:',
+            error instanceof Error ? error.message : String(error)
+          );
         }
       },
     },

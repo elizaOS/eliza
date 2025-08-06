@@ -7,6 +7,7 @@ This directory contains end-to-end tests for the ElizaOS plugin starter template
 ElizaOS employs a dual testing strategy:
 
 1. **Component Tests** (`src/__tests__/*.test.ts`)
+
    - Run with Bun's native test runner
    - Fast, isolated tests using mocks
    - Perfect for TDD and component logic
@@ -45,6 +46,7 @@ export const myPlugin: Plugin = {
   tests: [StarterPluginTestSuite], // Direct import!
 };
 ```
+
 ## Running Tests
 
 ```bash
@@ -65,7 +67,7 @@ elizaos test --type component
 1. **Direct Import**: Tests are imported directly from the e2e test file - no intermediate export file needed
 2. **Plugin Integration**: The test suite is added to the plugin's `tests` array
 3. **Test Discovery**: The ElizaOS test runner automatically finds and executes tests from the plugin's `tests` array
-3. **Runtime Access**: Each test receives a real runtime instance with full access to:
+4. **Runtime Access**: Each test receives a real runtime instance with full access to:
    - Plugin actions, providers, and services
    - Agent character configuration
    - Database and model access
