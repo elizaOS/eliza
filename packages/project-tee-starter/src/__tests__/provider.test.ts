@@ -1,10 +1,10 @@
 import { describe, expect, it, spyOn, beforeAll, afterAll } from 'bun:test';
-import plugin from '../src/plugin';
+import plugin from '../plugin';
 import type { IAgentRuntime, Memory, State, Provider } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 
 // Setup environment variables
 dotenv.config();

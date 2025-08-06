@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 
 describe('Plugin Routes', () => {
   it('should have TEE-specific routes for status and frontend', () => {

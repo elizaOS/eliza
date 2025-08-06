@@ -10,7 +10,7 @@ const mockLogger = {
 };
 
 // We'll test the validation logic by importing the plugin and testing its init method
-import teeStarterPlugin from '../src/plugin';
+import teeStarterPlugin from '../plugin';
 
 // Mock runtime for testing
 const mockRuntime = {} as IAgentRuntime;
