@@ -9,6 +9,7 @@ import {
   ModelType,
   logger,
   EventType,
+  Action,
 } from '@elizaos/core';
 import dotenv from 'dotenv';
 import {
@@ -88,11 +89,11 @@ describe('Plugin Configuration', () => {
 
 describe('Hello World Action', () => {
   let runtime: IAgentRuntime;
-  let helloWorldAction: any;
+  let helloWorldAction: Action;
 
   beforeEach(() => {
     runtime = createMockRuntime();
-    helloWorldAction = starterPlugin.actions?.[0];
+    helloWorldAction = starterPlugin?.actions?.[0] as Action;
     // Clear all spies before each test
     (logger.info as any).calls = [];
     (logger.error as any).calls = [];
@@ -312,7 +313,7 @@ describe('Hello World Provider', () => {
     // Text and structure should be consistent
     expect(result1.text).toBeDefined();
     expect(result2.text).toBeDefined();
-    expect(result1.text).toBe(result2.text);
+    expect(result1.text).toBe(result2.text as string);
     expect(result1.values || {}).toEqual(result2.values || {});
     expect(result1.data || {}).toEqual(result2.data || {});
   });
