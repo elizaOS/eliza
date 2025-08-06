@@ -22,7 +22,7 @@ export async function getViteOutDir(rootDir: string): Promise<string> {
   // Extract the outDir value using regex
   const outDirMatch = configContent.match(/outDir\s*:\s*['"`]([^'"`]+)['"`]/);
   if (!outDirMatch) {
-    // Return default if outDir not found
+    // Return default output directory if outDir configuration is not found in vite.config.ts
     return DEFAULT_VITE_OUT_DIR;
   }
 
