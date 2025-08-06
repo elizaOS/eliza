@@ -12,11 +12,11 @@ import { pathToFileURL } from 'node:url';
 // Ensure logger has all required methods with fallbacks
 // Bind methods to preserve pino logger context
 const safeLogger = {
-  debug: logger?.debug?.bind(logger) || console.debug,
-  info: logger?.info?.bind(logger) || console.log,
-  warn: logger?.warn?.bind(logger) || console.warn,
-  error: logger?.error?.bind(logger) || console.error,
-  success: logger?.success?.bind(logger) || console.log,
+  debug: logger?.debug ? logger.debug.bind(logger) : console.debug,
+  info: logger?.info ? logger.info.bind(logger) : console.log,
+  warn: logger?.warn ? logger.warn.bind(logger) : console.warn,
+  error: logger?.error ? logger.error.bind(logger) : console.error,
+  success: logger?.success ? logger.success.bind(logger) : console.log,
 };
 
 interface TestStats {
@@ -111,8 +111,12 @@ export class TestRunner {
     let processedFilter = filter;
     if (processedFilter.endsWith('.test.ts') || processedFilter.endsWith('.test.js')) {
       processedFilter = processedFilter.slice(0, -8); // Remove '.test.ts' or '.test.js'
+    } else if (processedFilter.endsWith('.spec.ts') || processedFilter.endsWith('.spec.js')) {
+      processedFilter = processedFilter.slice(0, -8); // Remove '.spec.ts' or '.spec.js'
     } else if (processedFilter.endsWith('.test')) {
       processedFilter = processedFilter.slice(0, -5); // Remove '.test'
+    } else if (processedFilter.endsWith('.spec')) {
+      processedFilter = processedFilter.slice(0, -5); // Remove '.spec'
     }
 
     // Match against test suite name (case insensitive for better UX)
@@ -304,7 +308,8 @@ export const myPlugin = {
         try {
           // Get the file name for logging
           const fileName = path.basename(testFile);
-          const fileNameWithoutExt = path.basename(testFile, '.test.ts');
+          // Remove any test file extension pattern
+          const fileNameWithoutExt = fileName.replace(/\.(test|spec|e2e)\.(ts|js|tsx|jsx)$/, '');
           safeLogger.info(`Loading test file: ${fileName}`);
 
           // Check if we should try to load from the dist directory instead
