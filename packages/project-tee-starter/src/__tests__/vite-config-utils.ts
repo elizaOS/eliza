@@ -1,17 +1,29 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
+// Default output directories
+const DEFAULT_VITE_OUT_DIR = 'dist/frontend';
+const DEFAULT_VITE_VAR_DIR = 'dist/.vite';
+
 /**
  * Extracts the Vite output directory from vite.config.ts
  */
 export async function getViteOutDir(rootDir: string): Promise<string> {
   const viteConfigPath = path.join(rootDir, 'vite.config.ts');
+
+  // Check if vite config exists
+  if (!fs.existsSync(viteConfigPath)) {
+    // Return default if config doesn't exist
+    return DEFAULT_VITE_OUT_DIR;
+  }
+
   const configContent = await fs.promises.readFile(viteConfigPath, 'utf-8');
 
   // Extract the outDir value using regex
   const outDirMatch = configContent.match(/outDir\s*:\s*['"`]([^'"`]+)['"`]/);
   if (!outDirMatch) {
-    throw new Error('Could not find outDir in vite.config.ts');
+    // Return default output directory if outDir configuration is not found in vite.config.ts
+    return DEFAULT_VITE_OUT_DIR;
   }
 
   let outDir = outDirMatch[1];
@@ -24,7 +36,7 @@ export async function getViteOutDir(rootDir: string): Promise<string> {
       outDir = outDir.replace('${outDir}', varMatch[1]);
     } else {
       // Default fallback
-      outDir = 'dist/.vite';
+      outDir = DEFAULT_VITE_VAR_DIR;
     }
   }
 

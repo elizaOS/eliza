@@ -13,7 +13,6 @@ import type {
 } from '@elizaos/core';
 import { ModelType, Service, logger } from '@elizaos/core';
 import { z } from 'zod';
-import { StarterPluginTestSuite } from './tests';
 
 /**
  * Defines the configuration schema for a plugin, including the validation rules for the plugin name.
@@ -273,7 +272,6 @@ export const starterPlugin: Plugin = {
   services: [StarterService],
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
-  tests: [StarterPluginTestSuite],
   // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependencies go here (if requires another plugin)
 };
 

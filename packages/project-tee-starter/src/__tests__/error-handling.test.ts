@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
-import teeStarterPlugin from '../src/plugin';
-import { mrTeeCharacter } from '../src/character';
+import teeStarterPlugin from '../plugin';
+import { mrTeeCharacter } from '../character';
 
 describe('Error Handling', () => {
   describe('Plugin Error Handling', () => {
