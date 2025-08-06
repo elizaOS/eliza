@@ -26,6 +26,7 @@ jobs:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45 # Prevent job timeout from killing processes prematurely
     strategy:
       fail-fast: false
       matrix:
@@ -64,16 +65,32 @@ jobs:
       - name: Build all packages
         run: bun run build
 
-      - name: Link CLI globally
+      - name: Link packages globally
         run: |
+          # Link core package first (everything depends on it)
+          cd packages/core
+          bun link
+          cd ../..
+          echo "Linked @elizaos/core package globally"
+
+          # Link server package (CLI depends on it)
+          cd packages/server
+          bun link
+          cd ../..
+          echo "Linked @elizaos/server package globally"
+
+          # Link CLI package
           cd packages/cli
           bun link
           cd ../..
           echo "Linked elizaos command globally"
 
-      - name: Verify CLI link
+      - name: Verify package links
         shell: bash
         run: |
+          echo "Verifying @elizaos/server package is available..."
+          bun pm ls -g | grep "@elizaos/server" || echo "@elizaos/server not found in global links"
+
           echo "Verifying elizaos command is available..."
           which elizaos || echo "elizaos not found in PATH"
           elizaos --version || echo "Failed to run elizaos --version"

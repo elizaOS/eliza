@@ -70,23 +70,18 @@ const helloWorldAction: Action = {
     _responses?: Memory[]
   ): Promise<ActionResult> => {
     try {
-      logger.info('Handling HELLO_WORLD action');
+      const response = 'Hello world!';
 
-      // Simple response content for callback
-      const responseContent: Content = {
-        text: 'hello world!',
-        actions: ['HELLO_WORLD'],
-        source: message.content.source,
-      };
-
-      // Call back with the hello world message if callback is provided
       if (callback) {
-        await callback(responseContent);
+        await callback({
+          text: response,
+          actions: ['HELLO_WORLD'],
+          source: message.content.source,
+        });
       }
 
-      // Return ActionResult
       return {
-        text: 'hello world!',
+        text: response,
         success: true,
         data: {
           actions: ['HELLO_WORLD'],
@@ -94,7 +89,7 @@ const helloWorldAction: Action = {
         },
       };
     } catch (error) {
-      logger.error('Error in HELLO_WORLD action:', error);
+      logger.error('Error in HelloWorld action:', error);
       return {
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
@@ -105,15 +100,16 @@ const helloWorldAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: '{{userName}}',
         content: {
-          text: 'Can you say hello?',
+          text: 'hello',
+          actions: [],
         },
       },
       {
-        name: '{{name2}}',
+        name: '{{agentName}}',
         content: {
-          text: 'hello world!',
+          text: 'Hello world!',
           actions: ['HELLO_WORLD'],
         },
       },
@@ -151,13 +147,13 @@ export class StarterService extends Service {
   }
 
   static async start(runtime: IAgentRuntime) {
-    logger.info(`*** Starting starter service - MODIFIED: ${new Date().toISOString()} ***`);
+    logger.info('Starting starter service');
     const service = new StarterService(runtime);
     return service;
   }
 
   static async stop(runtime: IAgentRuntime) {
-    logger.info('*** TESTING DEV MODE - STOP MESSAGE CHANGED! ***');
+    logger.info('Stopping starter service');
     // get the service from the runtime
     const service = runtime.getService(StarterService.serviceType);
     if (!service) {
@@ -167,7 +163,7 @@ export class StarterService extends Service {
   }
 
   async stop() {
-    logger.info('*** THIRD CHANGE - TESTING FILE WATCHING! ***');
+    logger.info('Stopping StarterService');
   }
 }
 
@@ -178,7 +174,7 @@ export const starterPlugin: Plugin = {
     EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
   },
   async init(config: Record<string, string>) {
-    logger.info('*** TESTING DEV MODE - PLUGIN MODIFIED AND RELOADED! ***');
+    logger.debug('Plugin initialized');
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 

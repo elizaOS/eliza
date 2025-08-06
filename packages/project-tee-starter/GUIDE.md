@@ -39,6 +39,7 @@ Before starting deployment, ensure you have:
    ```
 
 2. **Docker Desktop**:
+
    - Install Docker Desktop for your OS
    - Start Docker Desktop
    - Login to Docker Hub: `docker login`

@@ -1,7 +1,8 @@
 import type { OptionValues } from 'commander';
 import { z } from 'zod';
 import type { AgentBasic } from '../../shared';
-import { getAgentsBaseUrl } from '../../shared';
+import { createApiClientConfig } from '../../shared';
+import { AgentsService } from '@elizaos/api-client';
 
 // Zod schemas for validation
 export const AgentBasicSchema = z
@@ -13,26 +14,20 @@ export const AgentBasicSchema = z
   .passthrough(); // Allow additional properties
 
 export const AgentsListResponseSchema = z.object({
-  success: z.boolean(),
-  data: z
-    .object({
-      agents: z.array(AgentBasicSchema),
-    })
-    .optional(),
+  agents: z.array(AgentBasicSchema),
 });
 
 /**
  * Asynchronously fetches a list of basic agent information from the server.
  */
 export async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
-  const baseUrl = getAgentsBaseUrl(opts);
-  const response = await fetch(baseUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch agents list: ${response.statusText}`);
-  }
-  const rawData = await response.json();
-  const validatedData = AgentsListResponseSchema.parse(rawData);
-  return (validatedData.data?.agents || []) as AgentBasic[];
+  const config = createApiClientConfig(opts);
+  const agentsService = new AgentsService(config);
+  const result = await agentsService.listAgents();
+
+  // The AgentsService returns { agents: Agent[] } directly after BaseApiClient unwraps the server response
+  const validatedData = AgentsListResponseSchema.parse(result);
+  return validatedData.agents as AgentBasic[];
 }
 
 /**

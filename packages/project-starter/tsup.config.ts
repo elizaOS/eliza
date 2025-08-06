@@ -7,13 +7,14 @@ export default defineConfig({
   sourcemap: true,
   clean: false,
   format: ['esm'], // Ensure you're targeting CommonJS
-  dts: false, // Skip DTS generation to avoid external import issues // Ensure you're targeting CommonJS
+  dts: true, // require DTS so we get d.ts in the dist folder on npm
   external: [
     'dotenv', // Externalize dotenv to prevent bundling
     'fs', // Externalize fs to use Node.js built-in module
     'path', // Externalize other built-ins if necessary
     'https',
     'http',
+    '@elizaos/core',
     'zod',
   ],
 });

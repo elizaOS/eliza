@@ -1,5 +1,5 @@
 import type { Plugin } from '@elizaos/core';
-import { type IAgentRuntime, logger } from '@elizaos/core';
+import { type IAgentRuntime, logger, Service } from '@elizaos/core';
 import { z } from 'zod';
 import { type DeriveKeyResponse, TappdClient } from '@phala/dstack-sdk';
 import { type PrivateKeyAccount, privateKeyToAccount } from 'viem/accounts';
@@ -12,20 +12,75 @@ import crypto from 'node:crypto';
 /**
  * Define the configuration schema for the plugin with the following properties:
  *
- * @param {string} WALLET_SECRET_SALT - The secret salt for the wallet (min length of 1, optional)
+ * @param {string} TEE_MODE - The TEE mode (OFF, LOCAL, DOCKER, PRODUCTION)
+ * @param {string} TEE_VENDOR - The TEE vendor (must be 'phala')
+ * @param {string} WALLET_SECRET_SALT - The secret salt for the wallet (min length of 8)
  * @returns {object} - The configured schema object
  */
 const configSchema = z.object({
-  WALLET_SECRET_SALT: z
+  TEE_MODE: z
     .string()
-    .min(1, 'Wallet secret salt is not provided')
     .optional()
     .transform((val) => {
+      // Provide test defaults when NODE_ENV is test
+      if (process.env.NODE_ENV === 'test' && !val) {
+        return 'OFF';
+      }
+      return val;
+    })
+    .refine((val) => {
+      if (!val) return true; // Allow undefined in non-test environments
+      return ['OFF', 'LOCAL', 'DOCKER', 'PRODUCTION'].includes(val);
+    }, 'TEE_MODE must be one of: OFF, LOCAL, DOCKER, PRODUCTION'),
+
+  TEE_VENDOR: z
+    .string()
+    .optional()
+    .transform((val) => {
+      // Provide test defaults when NODE_ENV is test
+      if (process.env.NODE_ENV === 'test' && !val) {
+        return 'phala';
+      }
+      return val;
+    })
+    .refine((val) => {
+      if (!val) return true; // Allow undefined in non-test environments
+      return val === 'phala';
+    }, 'TEE_VENDOR must be: phala'),
+
+  WALLET_SECRET_SALT: z
+    .string()
+    .optional()
+    .transform((val) => {
+      // SECURITY WARNING: Test defaults are ONLY for test environments
+      // NEVER use these defaults in production - always provide a secure salt
+      if (process.env.NODE_ENV === 'test' && !val) {
+        logger.debug('Using test default for WALLET_SECRET_SALT - NEVER use in production');
+        return 'test_default_salt_12345';
+      }
       if (!val) {
         logger.warn('Warning: Wallet secret salt is not provided');
       }
       return val;
-    }),
+    })
+    .refine(
+      (val) => {
+        if (!val) return true; // Allow undefined in non-test environments
+        const trimmedVal = val.trim();
+        return trimmedVal.length >= 8 && trimmedVal.length <= 128;
+      },
+      (val) => {
+        if (!val) return { message: 'Wallet secret salt is required' };
+        const trimmedVal = val.trim();
+        if (trimmedVal.length < 8) {
+          return { message: 'Wallet secret salt must be at least 8 characters long for security' };
+        }
+        if (trimmedVal.length > 128) {
+          return { message: 'Wallet secret salt must not exceed 128 characters' };
+        }
+        return { message: 'Invalid wallet secret salt' };
+      }
+    ),
 });
 
 // Functional TEE service configuration
@@ -82,7 +137,7 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
     logger.log('ECDSA Key Derived Successfully!');
     logger.log('ECDSA Keypair:', ecdsaKeypair.address);
     logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
-    
+
     const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
     logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
   } catch (error) {
@@ -102,10 +157,10 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
  */
 const startTeeService = async (runtime: IAgentRuntime): Promise<TeeServiceConfig> => {
   logger.info("*** Starting Mr. TEE's custom service (Functional) ***");
-  
+
   const config = createTeeServiceConfig(runtime);
   await handleTeeKeyDerivation(config);
-  
+
   return config;
 };
 
@@ -119,26 +174,71 @@ const stopTeeService = async (runtime: IAgentRuntime): Promise<void> => {
 };
 
 /**
- * TEE starter service factory function
+ * StarterService class for TEE functionality
  */
-export const createTeeStarterService = () => ({
-  serviceType: 'starter',
-  capabilityDescription: 'This is a starter service, can be customized for Mr. TEE.',
-  start: startTeeService,
-  stop: stopTeeService,
-});
+export class StarterService extends Service {
+  public static serviceType = 'starter';
+
+  constructor(runtime: IAgentRuntime) {
+    super(runtime);
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<StarterService> {
+    const service = new StarterService(runtime);
+    await startTeeService(runtime);
+    return service;
+  }
+
+  async stop(): Promise<void> {
+    await stopTeeService(this.runtime);
+  }
+
+  public get capabilityDescription(): string {
+    return 'This is a starter service, can be customized for Mr. TEE.';
+  }
+}
 
 const teeStarterPlugin: Plugin = {
   name: 'mr-tee-starter-plugin',
   description: "Mr. TEE's starter plugin - using plugin-tee for attestation",
   config: {
     TEE_MODE: process.env.TEE_MODE,
+    TEE_VENDOR: process.env.TEE_VENDOR,
     WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
   },
-  async init(config: Record<string, string>) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     logger.info('*** Initializing Mr. TEE plugin ***');
     try {
-      const validatedConfig = await configSchema.parseAsync(config);
+      // Merge process.env values with config, config takes precedence
+      const mergedConfig = {
+        TEE_MODE: config.TEE_MODE ?? process.env.TEE_MODE,
+        TEE_VENDOR: config.TEE_VENDOR ?? process.env.TEE_VENDOR,
+        WALLET_SECRET_SALT: config.WALLET_SECRET_SALT ?? process.env.WALLET_SECRET_SALT,
+      };
+
+      // Apply test defaults if in test environment
+      const isTestEnvironment = process.env.NODE_ENV === 'test' || process.argv.includes('test');
+
+      if (isTestEnvironment) {
+        // Apply test-only defaults - NEVER use these in production
+        mergedConfig.TEE_MODE = mergedConfig.TEE_MODE || 'OFF';
+        mergedConfig.TEE_VENDOR = mergedConfig.TEE_VENDOR || 'phala';
+        // Test salt - this is ONLY for test environments and should NEVER be used in production
+        mergedConfig.WALLET_SECRET_SALT =
+          mergedConfig.WALLET_SECRET_SALT || 'test_default_salt_12345';
+      }
+
+      const validatedConfig = await configSchema.parseAsync(mergedConfig);
+
+      // Production safety check - ensure test defaults aren't used in production
+      if (
+        process.env.NODE_ENV === 'production' &&
+        validatedConfig.WALLET_SECRET_SALT === 'test_default_salt_12345'
+      ) {
+        throw new Error(
+          'CRITICAL: Test salt detected in production environment. Please provide a secure WALLET_SECRET_SALT.'
+        );
+      }
 
       // Set all environment variables at once
       for (const [key, value] of Object.entries(validatedConfig)) {
@@ -169,6 +269,21 @@ const teeStarterPlugin: Plugin = {
         });
       },
     },
+    {
+      name: 'TEE Status',
+      path: '/public/tee-status',
+      type: 'GET',
+      handler: async (
+        _req: Record<string, unknown>,
+        res: { json: (data: Record<string, unknown>) => void }
+      ) => {
+        res.json({
+          status: 'active',
+          tee_enabled: process.env.TEE_MODE !== 'OFF',
+          vendor: process.env.TEE_VENDOR || 'phala',
+        });
+      },
+    },
   ],
   events: {
     MESSAGE_RECEIVED: [
@@ -196,9 +311,7 @@ const teeStarterPlugin: Plugin = {
     ],
   },
   // Enable this service to run when TEE mode is enabled
-  services: [
-    /* createTeeStarterService() */
-  ],
+  services: [StarterService],
   actions: [],
   providers: [],
 };

@@ -1660,7 +1660,7 @@ paths:
                   data:
                     type: object
                     properties:
-                      deletedCount:
+                      deleted:
                         type: integer
                       message:
                         type: string
@@ -2898,7 +2898,7 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  deletedCount:
+                  deleted:
                     type: integer
         "404":
           description: Channel not found
@@ -2974,7 +2974,7 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  deletedCount:
+                  deleted:
                     type: integer
         "400":
           description: Invalid request
