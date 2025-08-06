@@ -1,8 +1,8 @@
-import { loadProject } from '@/src/project';
+import { loadProject, type Project } from '@/src/project';
 import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
-import { logger, type IAgentRuntime, type ProjectAgent, Project } from '@elizaos/core';
+import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,6 @@ import { getElizaCharacter } from '@/src/characters/eliza';
 import { startAgent } from '@/src/commands/start';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
-import { cwd } from 'node:process';
 
 /**
  * Function that runs the end-to-end tests.
@@ -135,7 +134,7 @@ export async function runE2eTests(
 
       // Set up server properties
       logger.info('Setting up server properties...');
-      server.startAgent = async (character) => {
+      server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
         return startAgent(character, server!, undefined, [], { isTestMode: true });
       };
@@ -263,6 +262,7 @@ export async function runE2eTests(
             logger.debug(`Running tests for agent: ${runtime.character.name}`);
           }
 
+          // Pass the runtime directly without modification to avoid pino logger context issues
           const testRunner = new TestRunner(runtime, projectAgent);
 
           // Determine what types of tests to run based on directory type

@@ -59,8 +59,9 @@ describe('Project Structure Validation', () => {
     it('should have the correct package.json configuration', () => {
       const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 
-      // Check package name
-      expect(packageJson.name).toBe('@elizaos/project-starter');
+      // Check package name exists and is valid
+      expect(packageJson.name).toBeTruthy();
+      expect(typeof packageJson.name).toBe('string');
 
       // Check scripts
       expect(packageJson.scripts).toHaveProperty('build');

@@ -1,0 +1,174 @@
+---
+title: 'Plugins'
+description: 'Extend agent capabilities with plugins'
+---
+
+## What are Plugins?
+
+Plugins extend agent capabilities through:
+- **Actions** - Tasks agents can perform
+- **Providers** - Data sources for context
+- **Evaluators** - Response processors
+- **Services** - Background tasks & integrations
+- **Routes** - HTTP endpoints
+- **Events** - Event handlers
+
+## Plugin Interface
+
+```typescript
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  
+  // Core components
+  actions: [],      // Tasks to perform
+  providers: [],    // Data providers
+  evaluators: [],   // Response processors
+  services: [],     // Background services
+  
+  // Optional features
+  routes: [],       // HTTP endpoints
+  events: {},       // Event handlers
+  
+  // Configuration
+  init: async (config, runtime) => {}
+};
+```
+
+## Core Plugin: Bootstrap
+
+Every agent includes `@elizaos/plugin-bootstrap` which provides essential functionality for message handling, knowledge management, and basic agent operations. For detailed information, see the [Bootstrap Plugin Deep Dive](/plugins/bootstrap/complete-documentation).
+
+## Platform Plugins
+
+| Plugin | Description | Environment Variable |
+|--------|-------------|---------------------|
+| `@elizaos/plugin-discord` | Discord bot integration | `DISCORD_API_TOKEN` |
+| `@elizaos/plugin-telegram` | Telegram bot | `TELEGRAM_BOT_TOKEN` |
+| `@elizaos/plugin-twitter` | Twitter/X integration | `TWITTER_API_KEY` |
+
+## Feature Plugins
+
+Available at [github.com/elizaos-plugins](https://github.com/elizaos-plugins):
+- `plugin-binance` - Crypto trading
+- `plugin-dexscreener` - Token prices
+- `plugin-web-search` - Web search
+- `plugin-firecrawl` - Web scraping
+- `plugin-0x` - DEX trading
+- And many more...
+
+## Services
+
+Background tasks and long-running processes:
+
+```typescript
+class MyService extends Service {
+  async start() {
+    // Initialize service
+    setInterval(() => this.checkUpdates(), 60000);
+  }
+  
+  async stop() {
+    // Cleanup
+  }
+}
+```
+
+## Using Plugins
+
+### Conditional Loading
+
+```typescript
+plugins: [
+  "@elizaos/plugin-bootstrap",
+  ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+  ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : [])
+]
+```
+
+### Environment Variables
+
+```bash
+# Platform APIs
+DISCORD_API_TOKEN=...
+TELEGRAM_BOT_TOKEN=...
+TWITTER_API_KEY=...
+
+# AI Models
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+```
+
+## Quick Plugin Example
+
+```typescript
+import { Plugin } from '@elizaos/core';
+
+export const weatherPlugin: Plugin = {
+  name: 'weather-plugin',
+  description: 'Provides weather data',
+  
+  providers: [{
+    name: 'WEATHER',
+    get: async (runtime, message) => {
+      const weather = await fetchWeather();
+      return { temperature: weather.temp };
+    }
+  }],
+  
+  actions: [{
+    name: 'CHECK_WEATHER',
+    description: 'Check current weather',
+    validate: async () => true,
+    handler: async (runtime, message) => {
+      const weather = await fetchWeather();
+      return {
+        text: `Current temperature: ${weather.temp}°C`
+      };
+    }
+  }]
+};
+```
+
+## Plugin Categories
+
+<CardGroup cols={2}>
+  <Card title="Platform Integrations" href="/plugins/platform">
+    - Discord, Telegram, Twitter
+    - WhatsApp, Slack, Teams
+    - Reddit, LinkedIn
+  </Card>
+  
+  <Card title="LLM Providers" href="/plugins/llm">
+    - OpenAI, Anthropic
+    - Ollama, LocalAI
+    - Google Gemini
+  </Card>
+  
+  <Card title="Trading & Finance">
+    - Binance, Coinbase
+    - DexScreener, 0x
+    - Jupiter, Uniswap
+  </Card>
+  
+  <Card title="Data & Tools" href="/plugins/sql">
+    - Web Search, Firecrawl
+    - SQL, Vector DB
+    - Image Gen, TTS
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Actions" icon="play" href="/core-concepts/plugins/actions">
+    Learn about actions
+  </Card>
+  
+  <Card title="Providers" icon="database" href="/core-concepts/plugins/providers">
+    Explore providers
+  </Card>
+  
+  <Card title="Evaluators" icon="scale-balanced" href="/core-concepts/plugins/evaluators">
+    Understand evaluators
+  </Card>
+</CardGroup>

@@ -37,7 +37,7 @@ describe('BaseApiClient', () => {
     expect(client['baseUrl']).toBe('http://localhost:3000');
     expect(client['apiKey']).toBe('test-key');
     expect(client['timeout']).toBe(5000);
-    expect(client['defaultHeaders']['X-API-KEY']).toBe('test-key');
+    expect(client['defaultHeaders']['Authorization']).toBe('Bearer test-key');
   });
 
   it('should remove trailing slash from baseUrl', () => {
@@ -57,7 +57,7 @@ describe('BaseApiClient', () => {
     global.fetch = async (url: string, options: any) => {
       expect(url).toBe('http://localhost:3000/api/test');
       expect(options.method).toBe('GET');
-      expect(options.headers['X-API-KEY']).toBe('test-key');
+      expect(options.headers['Authorization']).toBe('Bearer test-key');
 
       return {
         ok: true,

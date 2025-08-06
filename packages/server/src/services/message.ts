@@ -33,7 +33,7 @@ export class MessageBusService extends Service {
   static serviceType = 'message-bus-service';
   capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
-  private boundHandleIncomingMessage: (message: MessageServiceMessage) => Promise<void>;
+  private boundHandleIncomingMessage: (data: unknown) => void;
   private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
@@ -41,7 +41,11 @@ export class MessageBusService extends Service {
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.boundHandleIncomingMessage = this.handleIncomingMessage.bind(this);
+    this.boundHandleIncomingMessage = (data: unknown) => {
+      this.handleIncomingMessage(data).catch((error) => {
+        logger.error(`[${this.runtime.character.name}] Error handling incoming message:`, error);
+      });
+    };
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
     this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
     this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
@@ -376,8 +380,13 @@ export class MessageBusService extends Service {
         : undefined,
     };
 
+    // Generate a deterministic memory ID by combining message ID and agent ID
+    // This ensures each agent creates a unique memory for the same message
+    // but the same agent will always generate the same ID for the same message
+    const uniqueMemoryId = createUniqueUuid(this.runtime, `${message.id}-${this.runtime.agentId}`);
+
     return {
-      id: createUniqueUuid(this.runtime, message.id),
+      id: uniqueMemoryId,
       entityId: agentAuthorEntityId,
       agentId: this.runtime.agentId,
       roomId: agentRoomId,
@@ -397,7 +406,37 @@ export class MessageBusService extends Service {
     };
   }
 
-  public async handleIncomingMessage(message: MessageServiceMessage) {
+  public async handleIncomingMessage(data: unknown) {
+    // Validate the incoming data structure
+    if (!data || typeof data !== 'object') {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Invalid message data received`
+      );
+      return;
+    }
+
+    const messageData = data as any;
+
+    // Validate required fields
+    if (
+      !messageData.id ||
+      !messageData.channel_id ||
+      !messageData.author_id ||
+      !messageData.content
+    ) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Message missing required fields`,
+        {
+          hasId: !!messageData.id,
+          hasChannelId: !!messageData.channel_id,
+          hasAuthorId: !!messageData.author_id,
+          hasContent: !!messageData.content,
+        }
+      );
+      return;
+    }
+
+    const message = messageData as MessageServiceMessage;
     logger.info(
       `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
       { messageId: message.id }

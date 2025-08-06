@@ -1,0 +1,4038 @@
+openapi: 3.1.0
+info:
+  title: Eliza OS API
+  description: |-
+    API documentation for Eliza OS v1.2.0 - A flexible and scalable AI agent framework.
+
+    This API is designed to be used with a locally running Eliza instance. Endpoints allow for creating,
+    managing, and interacting with AI agents through a REST interface.
+
+    The API is organized into the following domains:
+    - **System**: System-wide operations and environment management
+    - **Agents**: Agent lifecycle and management operations
+    - **Memory**: Agent memory and room management
+    - **Messaging**: Message handling, channels, and servers
+    - **Audio**: Audio processing and speech synthesis
+    - **Media**: File upload and media management
+    - **TEE**: Trusted Execution Environment operations
+    - **WebSocket**: Real-time communication via Socket.IO
+  version: 1.2.0
+  contact:
+    name: Eliza OS Community
+    url: https://github.com/elizaos/eliza
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+tags:
+  - name: system
+    description: System-wide operations and environment management
+  - name: agents
+    description: Operations for managing AI agents
+  - name: memory
+    description: Operations for managing agent memories
+  - name: rooms
+    description: Operations for managing rooms
+  - name: messaging
+    description: Operations for messages, channels, and servers
+  - name: audio
+    description: Operations for speech and audio processing
+  - name: media
+    description: Operations for file uploads and media management
+  - name: logs
+    description: Operations for accessing system and agent logs
+  - name: tee
+    description: Trusted Execution Environment operations
+  - name: websocket
+    description: Real-time WebSocket communication
+
+paths:
+  # System endpoints
+  /api/server/ping:
+    get:
+      tags:
+        - system
+      summary: Ping health check
+      description: Simple ping endpoint to check if server is responsive
+      operationId: getPing
+      responses:
+        "200":
+          description: Server is responsive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pong:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: integer
+                    description: Current timestamp in milliseconds
+
+  /api/server/hello:
+    get:
+      tags:
+        - system
+      summary: Basic health check
+      description: Simple hello world test endpoint
+      operationId: getHello
+      responses:
+        "200":
+          description: Hello world response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Hello World!"
+
+  /api/server/status:
+    get:
+      tags:
+        - system
+      summary: Get system status
+      description: Returns the current status of the system with agent count and timestamp
+      operationId: getStatus
+      responses:
+        "200":
+          description: System status information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  agentCount:
+                    type: integer
+                    description: Number of active agents
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: Current timestamp
+
+  /api/server/health:
+    get:
+      tags:
+        - system
+      summary: Health check endpoint
+      description: Detailed health check for the system
+      operationId: getHealth
+      responses:
+        "200":
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  version:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  dependencies:
+                    type: object
+                    properties:
+                      agents:
+                        type: string
+                        example: "healthy"
+        "503":
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/server/logs:
+    get:
+      tags:
+        - logs
+      summary: Get system logs
+      description: Retrieve system logs with optional filtering
+      operationId: getLogs
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            description: Timestamp (ms) to get logs from
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [all, trace, debug, info, warn, error, fatal]
+            default: info
+        - name: agentName
+          in: query
+          schema:
+            type: string
+        - name: agentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        "200":
+          description: System logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  level:
+                    type: string
+                  levels:
+                    type: array
+                    items:
+                      type: string
+        "500":
+          description: Error retrieving logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - logs
+      summary: Get system logs (POST)
+      description: Retrieve system logs with optional filtering using POST method
+      operationId: postLogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                since:
+                  type: integer
+                  description: Timestamp (ms) to get logs from
+                level:
+                  type: string
+                  enum: [all, trace, debug, info, warn, error, fatal]
+                  default: info
+                agentName:
+                  type: string
+                agentId:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  default: 100
+                  maximum: 1000
+      responses:
+        "200":
+          description: System logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  level:
+                    type: string
+                  levels:
+                    type: array
+                    items:
+                      type: string
+        "500":
+          description: Error retrieving logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - logs
+      summary: Clear system logs
+      description: Clear all system logs
+      operationId: clearLogs
+      responses:
+        "200":
+          description: Logs cleared successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Logs cleared successfully"
+        "500":
+          description: Error clearing logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+
+  /api/server/stop:
+    post:
+      tags:
+        - system
+      summary: Stop the server
+      description: Initiates server shutdown
+      operationId: stopServer
+      responses:
+        "200":
+          description: Server is shutting down
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server stopping..."
+
+  /api/server/debug/servers:
+    get:
+      tags:
+        - system
+      summary: Get server debug info
+      description: Get debug information about active servers (debug endpoint)
+      operationId: getDebugServers
+      responses:
+        "200":
+          description: Server debug information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  servers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        name:
+                          type: string
+                        status:
+                          type: string
+                        agents:
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
+
+  /api/server/servers:
+    get:
+      tags:
+        - system
+      summary: Get server debug info
+      description: Get debug information about active servers (debug endpoint)
+      operationId: getServers
+      responses:
+        "200":
+          description: Server debug information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  servers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        status:
+                          type: string
+                        agents:
+                          type: array
+                          items:
+                            type: string
+
+  /api/system/environment/local:
+    get:
+      tags:
+        - system
+      summary: Get local environment variables
+      description: Retrieve local environment variables from .env file
+      operationId: getLocalEnv
+      responses:
+        "200":
+          description: Local environment variables
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: string
+        "500":
+          description: Error retrieving environment variables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - system
+      summary: Update local environment variables
+      description: Update local environment variables in .env file
+      operationId: updateLocalEnv
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Key-value pairs of environment variables
+      responses:
+        "200":
+          description: Environment variables updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Local env updated"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error updating environment variables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Agent endpoints
+  /api/agents:
+    get:
+      tags:
+        - agents
+      summary: List all agents
+      description: Returns a list of all available agents
+      operationId: listAgents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      agents:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AgentInfo"
+        "500":
+          description: Error retrieving agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - agents
+      summary: Create a new agent
+      description: Creates a new agent from character configuration
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                characterPath:
+                  type: string
+                  description: Path to a character file
+                characterJson:
+                  type: object
+                  description: Character configuration in JSON format
+      responses:
+        "201":
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      character:
+                        $ref: "#/components/schemas/Character"
+        "400":
+          description: Error creating agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}:
+    get:
+      tags:
+        - agents
+      summary: Get agent details
+      description: Returns detailed information about a specific agent
+      operationId: getAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to retrieve
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/AgentInfo"
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags:
+        - agents
+      summary: Update agent
+      description: Update an existing agent
+      operationId: updateAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Agent updates
+      responses:
+        "200":
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/AgentInfo"
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error updating agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - agents
+      summary: Delete an agent
+      description: Permanently deletes an agent
+      operationId: deleteAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to delete
+      responses:
+        "200":
+          description: Agent deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+        "202":
+          description: Agent deletion initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  partial:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+        "400":
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "408":
+          description: Agent deletion operation timed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Cannot delete agent due to active references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error deleting agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/start:
+    post:
+      tags:
+        - agents
+      summary: Start an agent
+      description: Starts an existing agent
+      operationId: startAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to start
+      responses:
+        "200":
+          description: Agent started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      status:
+                        type: string
+                        enum: [active]
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error starting agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/stop:
+    post:
+      tags:
+        - agents
+      summary: Stop an agent
+      description: Stops a running agent
+      operationId: stopAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to stop
+      responses:
+        "200":
+          description: Agent stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        "400":
+          description: Invalid agent ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/logs:
+    get:
+      tags:
+        - logs
+      summary: Get agent logs
+      description: Retrieve logs for a specific agent
+      operationId: getAgentLogs
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: since
+          in: query
+          schema:
+            type: integer
+            description: Timestamp (ms) to get logs from
+        - name: until
+          in: query
+          schema:
+            type: integer
+            description: Timestamp (ms) to get logs until
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [trace, debug, info, warn, error, fatal]
+            default: info
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        "200":
+          description: Agent logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      logs:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/LogEntry"
+                      count:
+                        type: integer
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/logs/{logId}:
+    delete:
+      tags:
+        - logs
+      summary: Delete a specific log entry
+      description: Delete a specific log entry for an agent
+      operationId: deleteAgentLog
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the log entry to delete
+      responses:
+        "204":
+          description: Log entry deleted successfully
+        "400":
+          description: Invalid agent ID or log ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error deleting log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/panels:
+    get:
+      tags:
+        - agents
+      summary: Get agent panels
+      description: Get public UI panels available for this agent from its plugins
+      operationId: getAgentPanels
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      responses:
+        "200":
+          description: Agent panels retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Display name of the panel
+                        path:
+                          type: string
+                          description: URL path to access the panel
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving panels
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/worlds:
+    get:
+      tags:
+        - agents
+      summary: Get all worlds
+      description: Get all worlds across all agents
+      operationId: getAllWorlds
+      responses:
+        "200":
+          description: Worlds retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      worlds:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/World"
+        "500":
+          description: Error retrieving worlds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/worlds:
+    post:
+      tags:
+        - agents
+      summary: Create a world for an agent
+      description: Create a new world for a specific agent
+      operationId: createAgentWorld
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the world
+                sourceType:
+                  type: string
+                  description: Type of source (e.g., discord, telegram)
+                sourceId:
+                  type: string
+                  description: Platform-specific identifier
+                metadata:
+                  type: object
+                  description: Additional world metadata
+      responses:
+        "201":
+          description: World created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      world:
+                        $ref: "#/components/schemas/World"
+        "400":
+          description: Invalid agent ID or request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating world
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/worlds/{worldId}:
+    patch:
+      tags:
+        - agents
+      summary: Update a world
+      description: Update world properties
+      operationId: updateAgentWorld
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: worldId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the world to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Updated name for the world
+                metadata:
+                  type: object
+                  description: Updated metadata (merged with existing)
+      responses:
+        "200":
+          description: World updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      world:
+                        $ref: "#/components/schemas/World"
+        "400":
+          description: Invalid agent ID or world ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or world not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error updating world
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/rooms:
+    get:
+      tags:
+        - rooms
+        - agents
+      summary: Get agent rooms
+      description: Retrieves all rooms for a specific agent
+      operationId: getAgentRooms
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: worldId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter rooms by world ID
+      responses:
+        "200":
+          description: Agent rooms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Room"
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - rooms
+        - agents
+      summary: Create a room
+      description: Creates a new room for an agent
+      operationId: createRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the room
+                worldId:
+                  type: string
+                  format: uuid
+                  description: ID of the world
+                roomId:
+                  type: string
+                  format: uuid
+                  description: Optional custom room ID
+                entityId:
+                  type: string
+                  format: uuid
+                  description: Entity ID to add to the room
+      responses:
+        "201":
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Room"
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/rooms/{roomId}:
+    get:
+      tags:
+        - rooms
+        - agents
+      summary: Get room details
+      description: Retrieves details about a specific room
+      operationId: getRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room
+      responses:
+        "200":
+          description: Room details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Room"
+        "400":
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags:
+        - rooms
+        - agents
+      summary: Update a room
+      description: Updates a specific room
+      operationId: updateRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: New name for the room
+      responses:
+        "200":
+          description: Room updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Room"
+        "400":
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error updating room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - rooms
+        - agents
+      summary: Delete a room
+      description: Deletes a specific room
+      operationId: deleteRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room to delete
+      responses:
+        "204":
+          description: Room deleted successfully
+        "400":
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error deleting room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/agents/{agentId}/rooms/{roomId}/memories:
+    get:
+      tags:
+        - memory
+        - rooms
+        - agents
+      summary: Get room memories
+      description: Retrieves memories for a specific room
+      operationId: getRoomMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 50
+          description: Number of memories to retrieve
+        - name: unique
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Return only unique memories
+        - name: start
+          in: query
+          schema:
+            type: integer
+          description: Start timestamp filter
+        - name: end
+          in: query
+          schema:
+            type: integer
+          description: End timestamp filter
+      responses:
+        "200":
+          description: Room memories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Memory"
+        "400":
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/memory/{agentId}/memories/all/{roomId}:
+    delete:
+      tags:
+        - memory
+      summary: Delete all memories for a room
+      description: Delete all memories for a specific room
+      operationId: deleteRoomMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room
+      responses:
+        "204":
+          description: Memories deleted successfully
+        "400":
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error deleting memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/memory/{agentId}/memories:
+    get:
+      tags:
+        - memory
+      summary: Get agent memories
+      description: Retrieve all memories for a specific agent
+      operationId: getAgentMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: tableName
+          in: query
+          schema:
+            type: string
+            default: messages
+          description: Table name to query
+        - name: includeEmbedding
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include embedding vectors in response
+        - name: channelId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by channel ID
+        - name: roomId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by room ID
+      responses:
+        "200":
+          description: Agent memories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      memories:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Memory"
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - memory
+      summary: Delete all agent memories
+      description: Delete all memories for a specific agent
+      operationId: deleteAllAgentMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      responses:
+        "200":
+          description: Memories deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                      message:
+                        type: string
+        "400":
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error deleting memories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/memory/{agentId}/memories/{memoryId}:
+    patch:
+      tags:
+        - memory
+      summary: Update a memory
+      description: Update a specific memory for an agent
+      operationId: updateAgentMemory
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the memory to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Memory update data
+      responses:
+        "200":
+          description: Memory updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      message:
+                        type: string
+        "400":
+          description: Invalid agent ID or memory ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent or memory not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error updating memory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/memory/{agentId}/rooms:
+    post:
+      tags:
+        - memory
+      summary: Create a room
+      description: Create a new room for an agent
+      operationId: createMemoryRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the room
+                type:
+                  type: string
+                  enum: [DM, GROUP, CHANNEL]
+                  default: DM
+                  description: Type of room
+                source:
+                  type: string
+                  default: client
+                  description: Source of the room
+                worldId:
+                  type: string
+                  format: uuid
+                  description: ID of the world
+                serverId:
+                  type: string
+                  description: Server ID
+                metadata:
+                  type: object
+                  description: Additional room metadata
+      responses:
+        "201":
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      agentId:
+                        type: string
+                        format: uuid
+                      createdAt:
+                        type: integer
+                      source:
+                        type: string
+                      type:
+                        type: string
+                      worldId:
+                        type: string
+                        format: uuid
+                      serverId:
+                        type: string
+                      metadata:
+                        type: object
+        "400":
+          description: Invalid agent ID or missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Messaging endpoints
+  /api/messaging/submit:
+    post:
+      tags:
+        - messaging
+      summary: Submit a message to the central messaging system
+      description: |
+        Submit a message to the central messaging bus for agent processing. This is the primary endpoint
+        for sending messages to agents, replacing the deprecated agent-specific message endpoints.
+
+        The message is submitted to a central channel and the appropriate agent(s) will process it
+        based on the channel and room configuration. This architecture allows for multi-agent
+        conversations and better message routing.
+
+        **Important**: Do not use `/api/agents/{agentId}/message` - that endpoint no longer exists.
+        All messages should go through this central messaging system.
+      operationId: submitMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - channel_id
+                - server_id
+                - author_id
+                - content
+                - source_type
+                - raw_message
+              properties:
+                channel_id:
+                  type: string
+                  format: uuid
+                  description: Central channel ID where the message is posted
+                server_id:
+                  type: string
+                  format: uuid
+                  description: Server ID (use '00000000-0000-0000-0000-000000000000' for default)
+                author_id:
+                  type: string
+                  format: uuid
+                  description: ID of the message author (user or agent)
+                content:
+                  type: string
+                  description: The message content text
+                in_reply_to_message_id:
+                  type: string
+                  format: uuid
+                  description: Optional ID of the message being replied to
+                source_type:
+                  type: string
+                  description: Source type (e.g., 'agent_response', 'user_message')
+                raw_message:
+                  type: object
+                  description: Raw message object containing additional data
+                metadata:
+                  type: object
+                  description: Additional metadata including agent_name if from agent
+      responses:
+        "201":
+          description: Message submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error processing message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/complete:
+    post:
+      tags:
+        - messaging
+      summary: Mark message processing as complete
+      description: |
+        Notify the system that an agent has finished processing a message. This is used
+        to signal completion of agent responses and update the message state.
+      operationId: completeMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agentId
+                - roomId
+                - userId
+                - prompt
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+                roomId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                prompt:
+                  type: string
+      responses:
+        "200":
+          description: Completion successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      response:
+                        type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error generating completion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/ingest-external:
+    post:
+      tags:
+        - messaging
+      summary: Ingest messages from external platforms
+      description: |
+        Ingest messages from external platforms (Discord, Telegram, etc.) into the central
+        messaging system. This endpoint handles messages from external sources and routes
+        them to the appropriate agents through the central message bus.
+      operationId: ingestExternalMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agentId
+                - roomId
+                - userId
+                - text
+                - sourceId
+                - sourceType
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+                roomId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+                sourceId:
+                  type: string
+                sourceType:
+                  type: string
+                  enum: [discord, telegram, twitter]
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Message ingested successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error ingesting message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-servers:
+    get:
+      tags:
+        - messaging
+      summary: Get central servers
+      description: Get all servers from central database
+      operationId: getCentralServers
+      responses:
+        "200":
+          description: Servers retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Server"
+        "500":
+          description: Error retrieving servers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/servers:
+    post:
+      tags:
+        - messaging
+      summary: Create server
+      description: Create a new server
+      operationId: createServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "201":
+          description: Server created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      server:
+                        $ref: "#/components/schemas/Server"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/servers/{serverId}/agents:
+    post:
+      tags:
+        - messaging
+      summary: Add agent to server
+      description: Add an agent to a server
+      operationId: addAgentToServer
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agentId
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Agent added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error adding agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags:
+        - messaging
+      summary: Get server agents
+      description: Get all agents for a server
+      operationId: getServerAgents
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agents retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentInfo"
+        "400":
+          description: Invalid server ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/servers/{serverId}/agents/{agentId}:
+    delete:
+      tags:
+        - messaging
+      summary: Remove agent from server
+      description: Remove an agent from a server
+      operationId: removeAgentFromServer
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agent removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Server or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error removing agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/servers/{serverId}/channels:
+    get:
+      tags:
+        - messaging
+      summary: Get server channels
+      description: Get all channels for a server
+      operationId: getServerChannels
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channels retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Channel"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/channels:
+    post:
+      tags:
+        - messaging
+      summary: Create channel
+      description: Create a new channel
+      operationId: createChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - serverId
+              properties:
+                name:
+                  type: string
+                serverId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum: [text, voice]
+                  default: text
+      responses:
+        "201":
+          description: Channel created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      channel:
+                        $ref: "#/components/schemas/Channel"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/dm-channel:
+    get:
+      tags:
+        - messaging
+      summary: Get or create DM channel
+      description: Get or create a direct message channel between users
+      operationId: getDmChannel
+      parameters:
+        - name: userId1
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId2
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: DM channel retrieved or created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      channel:
+                        $ref: "#/components/schemas/Channel"
+        "400":
+          description: Invalid user IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error retrieving channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels:
+    post:
+      tags:
+        - messaging
+      summary: Create central channel
+      description: Create a channel in the central database
+      operationId: createCentralChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - serverId
+              properties:
+                name:
+                  type: string
+                serverId:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                type:
+                  type: string
+                  enum: [text, voice, dm, group]
+      responses:
+        "201":
+          description: Central channel created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      channel:
+                        $ref: "#/components/schemas/Channel"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-servers/{serverId}/channels:
+    get:
+      tags:
+        - messaging
+      summary: Get central server channels
+      description: Get all channels for a server from central database
+      operationId: getCentralServerChannels
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channels retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Channel"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/details:
+    get:
+      tags:
+        - messaging
+      summary: Get channel details
+      description: Get details for a specific channel
+      operationId: getChannelDetails
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channel details retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: "#/components/schemas/Channel"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}:
+    get:
+      tags:
+        - messaging
+      summary: Get channel info
+      description: Get basic information for a specific channel (alias for details)
+      operationId: getChannelInfo
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channel info retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      channel:
+                        $ref: "#/components/schemas/Channel"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags:
+        - messaging
+      summary: Update channel
+      description: Update channel details
+      operationId: updateChannel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Channel updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - messaging
+      summary: Delete channel
+      description: Delete a channel
+      operationId: deleteChannel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Channel deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/participants:
+    get:
+      tags:
+        - messaging
+      summary: Get channel participants
+      description: Get all participants in a channel
+      operationId: getChannelParticipants
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Participants retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Participant"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/agents:
+    post:
+      tags:
+        - messaging
+      summary: Add agent to channel
+      description: Add an agent to a specific channel
+      operationId: addAgentToChannel
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - agentId
+              properties:
+                agentId:
+                  type: string
+                  format: uuid
+                  description: ID of the agent to add
+      responses:
+        "200":
+          description: Agent added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Channel or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error adding agent to channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/messages:
+    get:
+      tags:
+        - messaging
+      summary: Get channel messages
+      description: Get messages for a channel
+      operationId: getChannelMessages
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags:
+        - messaging
+      summary: Send message to channel
+      description: Send a message to a channel
+      operationId: sendChannelMessage
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - author_id
+                - content
+                - server_id
+              properties:
+                author_id:
+                  type: string
+                  format: uuid
+                  description: Central ID of the author sending the message
+                content:
+                  type: string
+                  description: Message content
+                in_reply_to_message_id:
+                  type: string
+                  format: uuid
+                  description: ID of the root message being replied to (optional)
+                server_id:
+                  type: string
+                  format: uuid
+                  description: Central server ID this channel belongs to
+                raw_message:
+                  description: Raw message payload (string or JSON object)
+                  oneOf:
+                    - type: object
+                    - type: string
+                metadata:
+                  type: object
+                  description: Additional metadata such as user_display_name
+                source_type:
+                  type: string
+                  description: Source identifier (e.g. 'eliza_gui')
+      responses:
+        "201":
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - messaging
+      summary: Delete all channel messages
+      description: Delete all messages in a channel
+      operationId: deleteAllChannelMessages
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Messages deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: integer
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/messages/{messageId}:
+    delete:
+      tags:
+        - messaging
+      summary: Delete channel message
+      description: Delete a specific message from a channel
+      operationId: deleteChannelMessage
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Message deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "404":
+          description: Channel or message not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/central-channels/{channelId}/messages/all:
+    delete:
+      tags:
+        - messaging
+      summary: Delete all channel messages by user
+      description: Delete all messages by a specific user in a channel
+      operationId: deleteAllUserChannelMessages
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Messages deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: integer
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Channel not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/group-channels:
+    post:
+      tags:
+        - messaging
+      summary: Create group channel
+      description: Create a group channel with multiple participants
+      operationId: createGroupChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - participants
+              properties:
+                name:
+                  type: string
+                participants:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  minItems: 2
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Group channel created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      channel:
+                        $ref: "#/components/schemas/Channel"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error creating channel
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/external-messages:
+    post:
+      tags:
+        - messaging
+      summary: Process external message
+      description: Process a message from an external platform
+      operationId: processExternalMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - platform
+                - messageId
+                - channelId
+                - userId
+                - content
+              properties:
+                platform:
+                  type: string
+                  enum: [discord, telegram, twitter]
+                messageId:
+                  type: string
+                channelId:
+                  type: string
+                userId:
+                  type: string
+                content:
+                  type: string
+                attachments:
+                  type: array
+                  items:
+                    type: object
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Message processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      messageId:
+                        type: string
+                      response:
+                        type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error processing message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Audio endpoints
+  /api/audio/{agentId}/transcriptions:
+    post:
+      tags:
+        - audio
+      summary: Transcribe audio
+      description: Transcribe audio file to text
+      operationId: transcribeAudio
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user
+      responses:
+        "200":
+          description: Audio transcribed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                        description: Transcribed text
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error transcribing audio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/audio/{agentId}/process-audio:
+    post:
+      tags:
+        - audio
+      summary: Process audio message
+      description: Process an audio message - transcribe and get agent response
+      operationId: processAudioMessage
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to process
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user
+                roomId:
+                  type: string
+                  format: uuid
+                  description: ID of the room
+      responses:
+        "200":
+          description: Audio processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                        description: Transcribed text
+                      response:
+                        type: string
+                        description: Agent's response
+                      audioResponse:
+                        type: string
+                        format: binary
+                        description: Agent's audio response (if speech enabled)
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error processing audio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/audio/{agentId}/audio-messages/synthesize:
+    post:
+      tags:
+        - audio
+      summary: Synthesize speech from text
+      description: Convert text to speech using agent's voice settings
+      operationId: synthesizeSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to convert to speech
+                options:
+                  type: object
+                  properties:
+                    voice:
+                      type: string
+                      description: Voice ID or name
+                    language:
+                      type: string
+                      description: Language code
+      responses:
+        "200":
+          description: Speech synthesized successfully
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error synthesizing speech
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/audio/{agentId}/speech/generate:
+    post:
+      tags:
+        - audio
+      summary: Generate speech from text
+      description: Generate speech audio from text using agent's voice settings
+      operationId: generateSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to convert to speech
+      responses:
+        "200":
+          description: Speech generated successfully
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error generating speech
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/audio/{agentId}/speech/conversation:
+    post:
+      tags:
+        - audio
+      summary: Convert conversation to speech
+      description: Convert a conversation (multiple messages) to speech
+      operationId: conversationToSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - messages
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      speaker:
+                        type: string
+                      timestamp:
+                        type: integer
+      responses:
+        "200":
+          description: Conversation converted to speech successfully
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error converting conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Media endpoints
+  /api/media/{agentId}/upload-media:
+    post:
+      tags:
+        - media
+      summary: Upload media for agent
+      description: Upload image or video media for an agent
+      operationId: uploadAgentMedia
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Media file to upload
+      responses:
+        "200":
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  url:
+                    type: string
+                    description: URL of the uploaded media
+                  type:
+                    type: string
+                    enum: [image, video]
+                  mimeType:
+                    type: string
+                  size:
+                    type: integer
+        "400":
+          description: Invalid request or file type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error uploading media
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/messaging/channels/{channelId}/upload-media:
+    post:
+      tags:
+        - media
+      summary: Upload media to channel
+      description: Upload media file to a specific channel
+      operationId: uploadChannelMedia
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the channel
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Media file to upload
+                agentId:
+                  type: string
+                  format: uuid
+                  description: ID of the agent uploading the media
+      responses:
+        "200":
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  url:
+                    type: string
+                    description: URL of the uploaded media
+                  channelId:
+                    type: string
+                    format: uuid
+                  agentId:
+                    type: string
+                    format: uuid
+                  type:
+                    type: string
+                    enum: [image, video]
+                  mimeType:
+                    type: string
+                  size:
+                    type: integer
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Error uploading media
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Socket.IO Events Documentation
+  /websocket:
+    get:
+      tags:
+        - websocket
+      summary: Socket.IO Real-time Connection
+      description: |
+        Socket.IO connection for real-time bidirectional communication. The server uses Socket.IO v4.x for WebSocket transport with automatic fallback.
+
+        **Connection URL**: `ws://localhost:3000/socket.io/` (or `wss://` for secure connections)
+
+        **Socket.IO Client Connection Example**:
+        ```javascript
+        import { io } from 'socket.io-client';
+        const socket = io('http://localhost:3000');
+        ```
+
+        **Events**:
+
+        ### Client to Server Events:
+        - `join` - Join a room/channel
+          ```json
+          {
+            "roomId": "uuid",
+            "agentId": "uuid"
+          }
+          ```
+
+        - `leave` - Leave a room/channel
+          ```json
+          {
+            "roomId": "uuid",
+            "agentId": "uuid"
+          }
+          ```
+
+        - `message` - Send a message
+          ```json
+          {
+            "text": "string",
+            "roomId": "uuid",
+            "userId": "uuid",
+            "name": "string"
+          }
+          ```
+
+        - `request-world-state` - Request current state
+          ```json
+          {
+            "roomId": "uuid"
+          }
+          ```
+
+        ### Server to Client Events:
+        - `messageBroadcast` - New message broadcast
+          ```json
+          {
+            "senderId": "uuid",
+            "senderName": "string",
+            "text": "string",
+            "roomId": "uuid",
+            "serverId": "uuid",
+            "createdAt": "timestamp",
+            "source": "string",
+            "id": "uuid",
+            "thought": "string",
+            "actions": ["string"],
+            "attachments": []
+          }
+          ```
+
+        - `messageComplete` - Message processing complete
+          ```json
+          {
+            "channelId": "uuid",
+            "serverId": "uuid"
+          }
+          ```
+
+        - `world-state` - World state update
+          ```json
+          {
+            "agents": {},
+            "users": {},
+            "channels": {},
+            "messages": {}
+          }
+          ```
+
+        - `logEntry` - Real-time log entry
+          ```json
+          {
+            "level": "number",
+            "time": "timestamp",
+            "msg": "string",
+            "agentId": "uuid",
+            "agentName": "string"
+          }
+          ```
+
+        - `error` - Error event
+          ```json
+          {
+            "error": "string",
+            "details": {}
+          }
+          ```
+      responses:
+        "101":
+          description: Switching Protocols - WebSocket connection established
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+            message:
+              type: string
+              description: Error message
+            details:
+              type: string
+              description: Detailed error information
+
+    AgentInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent
+        name:
+          type: string
+          description: Name of the agent
+        status:
+          type: string
+          enum: [active, inactive]
+          description: Current status of the agent
+
+    Character:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the character
+        name:
+          type: string
+          description: Name of the character
+        bio:
+          type: string
+          description: Short biography of the character
+        settings:
+          type: object
+          description: Character-specific settings
+        system:
+          type: string
+          description: System prompt for the character
+        style:
+          type: object
+          description: Character's communication style
+        lore:
+          type: array
+          items:
+            type: string
+          description: Extended lore and background information
+        messageExamples:
+          type: array
+          items:
+            type: string
+          description: Example messages for character training
+        topics:
+          type: array
+          items:
+            type: string
+          description: Topics the character is knowledgeable about
+        plugins:
+          type: array
+          items:
+            type: string
+          description: Plugins used by the character
+
+    Content:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text content of the message
+        thought:
+          type: string
+          description: Agent's internal thought process
+        plan:
+          type: string
+          description: Agent's plan or reasoning
+        actions:
+          type: array
+          items:
+            type: string
+          description: Actions the agent wants to take
+        source:
+          type: string
+          description: Source of the message
+        inReplyTo:
+          type: string
+          format: uuid
+          description: ID of the message this is in reply to
+
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the memory
+        entityId:
+          type: string
+          format: uuid
+          description: ID of the entity associated with this memory
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent associated with this memory
+        roomId:
+          type: string
+          format: uuid
+          description: ID of the room this memory belongs to
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the memory was created
+        content:
+          $ref: "#/components/schemas/Content"
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the room
+        name:
+          type: string
+          description: Name of the room
+        source:
+          type: string
+          description: Source of the room
+        worldId:
+          type: string
+          format: uuid
+          description: ID of the world this room belongs to
+        entities:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+          description: Entities in this room
+
+    LogEntry:
+      type: object
+      properties:
+        level:
+          type: number
+          description: Log level
+        time:
+          type: number
+          format: int64
+          description: Timestamp of the log entry
+        msg:
+          type: string
+          description: Log message
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the related agent (if applicable)
+        agentName:
+          type: string
+          description: Name of the related agent (if applicable)
+
+    TeeAgent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the TEE agent
+        name:
+          type: string
+          description: Name of the TEE agent
+        attestation:
+          type: object
+          description: TEE attestation data
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the message
+        text:
+          type: string
+          description: Message text content
+        userId:
+          type: string
+          format: uuid
+          description: ID of the user who sent the message
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent (if sent by agent)
+        roomId:
+          type: string
+          format: uuid
+          description: ID of the room the message belongs to
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the message was created
+        metadata:
+          type: object
+          description: Additional message metadata
+
+    World:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the world
+        name:
+          type: string
+          description: Name of the world
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent that owns this world
+        sourceType:
+          type: string
+          description: Type of source (discord, telegram, etc)
+        sourceId:
+          type: string
+          description: Platform-specific identifier
+        metadata:
+          type: object
+          description: Additional world metadata
+
+    Server:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the server
+        name:
+          type: string
+          description: Name of the server
+        description:
+          type: string
+          description: Description of the server
+        metadata:
+          type: object
+          description: Additional server metadata
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the server was created
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the channel
+        name:
+          type: string
+          description: Name of the channel
+        serverId:
+          type: string
+          format: uuid
+          description: ID of the server this channel belongs to
+        type:
+          type: string
+          enum: [text, voice, dm, group]
+          description: Type of channel
+        description:
+          type: string
+          description: Channel description
+        metadata:
+          type: object
+          description: Additional channel metadata
+
+    Participant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the participant
+        userId:
+          type: string
+          format: uuid
+          description: User ID of the participant
+        name:
+          type: string
+          description: Name of the participant
+        role:
+          type: string
+          enum: [admin, member, guest]
+          description: Role in the channel
+        joinedAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the participant joined

@@ -1,4 +1,4 @@
-import { describe, expect, it, spyOn, beforeEach, afterAll, beforeAll } from 'bun:test';
+import { describe, expect, it, beforeEach, afterAll, beforeAll } from 'bun:test';
 import { starterPlugin, StarterService } from '../index';
 import { createMockRuntime, setupLoggerSpies, MockRuntime } from './test-utils';
 import { HandlerCallback, IAgentRuntime, Memory, State, UUID, logger } from '@elizaos/core';
@@ -33,15 +33,15 @@ describe('Integration: HelloWorld Action with StarterService', () => {
     };
 
     // Create a mock runtime with a spied getService method
-    const getServiceImpl = (serviceType) => {
+    const getServiceImpl = (serviceType: string) => {
       if (serviceType === 'starter') {
-        return mockService;
+        return mockService as any;
       }
       return null;
     };
 
     mockRuntime = createMockRuntime({
-      getService: getServiceImpl,
+      getService: getServiceImpl as any,
     });
   });
 
@@ -70,8 +70,8 @@ describe('Integration: HelloWorld Action with StarterService', () => {
     };
 
     // Create a mock callback to capture the response
-    const callbackCalls = [];
-    const callbackFn = (...args) => {
+    const callbackCalls: any[] = [];
+    const callbackFn = (...args: any[]) => {
       callbackCalls.push(args);
     };
 
@@ -88,10 +88,9 @@ describe('Integration: HelloWorld Action with StarterService', () => {
     // Verify the callback was called with expected response
     expect(callbackCalls.length).toBeGreaterThan(0);
     if (callbackCalls.length > 0) {
-      expect(callbackCalls[0][0]).toMatchObject({
-        text: 'hello world!',
-        actions: ['HELLO_WORLD'],
-      });
+      expect(callbackCalls[0][0].text).toBe('Hello world!');
+      expect(callbackCalls[0][0].actions).toEqual(['HELLO_WORLD']);
+      expect(callbackCalls[0][0].source).toBe('test');
     }
 
     // Get the service to ensure integration
@@ -107,9 +106,10 @@ describe('Integration: Plugin initialization and service registration', () => {
     const mockRuntime = createMockRuntime();
 
     // Create and install a mock registerService
-    const registerServiceCalls = [];
-    mockRuntime.registerService = (type, service) => {
-      registerServiceCalls.push({ type, service });
+    const registerServiceCalls: any[] = [];
+    mockRuntime.registerService = (service: any) => {
+      registerServiceCalls.push({ service });
+      return Promise.resolve();
     };
 
     // Run a minimal simulation of the plugin initialization process

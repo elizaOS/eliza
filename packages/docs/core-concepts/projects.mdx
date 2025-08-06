@@ -1,0 +1,246 @@
+---
+title: 'Projects'
+description: 'Collections of agents and plugins'
+---
+
+## What are Projects?
+
+Projects = TypeScript applications that configure and run one or more agents.
+
+## Project Structure
+
+```
+my-project/
+├── src/
+│   ├── index.ts         # Entry point
+│   └── character.ts     # Agent configuration
+├── .env                 # Environment variables
+├── package.json         # Dependencies
+└── tsconfig.json        # TypeScript config
+```
+
+## Project Definition
+
+```typescript
+// src/index.ts
+import { Project, ProjectAgent, IAgentRuntime } from '@elizaos/core';
+import { character } from './character';
+
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    // Optional initialization logic
+    console.log('Initializing:', character.name);
+  },
+  // plugins: [customPlugin], // Optional project-specific plugins
+};
+
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+```
+
+## Character Configuration
+
+```typescript
+// src/character.ts
+import { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: "MyAgent",
+  bio: "A helpful assistant",
+  plugins: [
+    "@elizaos/plugin-bootstrap",
+    ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : [])
+  ]
+};
+```
+
+## Multi-Agent Projects
+
+```typescript
+import { supportAgent, analyticsAgent } from './agents';
+
+const supportProjectAgent: ProjectAgent = {
+  character: supportAgent,
+  init: async (runtime) => {
+    console.log('Support agent ready');
+  }
+};
+
+const analyticsProjectAgent: ProjectAgent = {
+  character: analyticsAgent,
+  init: async (runtime) => {
+    console.log('Analytics agent ready');
+  }
+};
+
+const project: Project = {
+  agents: [supportProjectAgent, analyticsProjectAgent]
+};
+
+export default project;
+```
+
+## Environment Configuration
+
+```bash .env
+# API Keys
+OPENAI_API_KEY=sk-...
+DISCORD_BOT_TOKEN=...
+
+# Database
+DATABASE_URL=postgresql://localhost/mydb
+
+# Project Settings
+LOG_LEVEL=info
+NODE_ENV=production
+```
+
+## Running Projects
+
+```bash
+# Start with default character
+elizaos start
+
+# Start with specific character file
+elizaos start --character character.json
+
+# Development mode
+elizaos dev
+```
+
+## Project Templates
+
+### Starter Project
+
+```bash
+elizaos create my-agent
+cd my-agent
+bun install
+bun start
+```
+
+### Custom Project Setup
+
+```bash
+mkdir my-project && cd my-project
+bun init
+bun add @elizaos/core @elizaos/cli
+bun add @elizaos/plugin-bootstrap
+```
+
+## Example Projects
+
+### Single Agent Projects
+
+<CardGroup cols={2}>
+  <Card title="Discord Bot" icon="discord">
+    ```typescript
+    plugins: [
+      "@elizaos/plugin-bootstrap",
+      "@elizaos/plugin-discord"
+    ]
+    ```
+  </Card>
+  
+  <Card title="Trading Bot" icon="chart-line">
+    ```typescript
+    plugins: [
+      "@elizaos/plugin-bootstrap",
+      "plugin-binance",
+      "plugin-dexscreener"
+    ]
+    ```
+  </Card>
+</CardGroup>
+
+### Advanced Single Agent: Spartan
+
+[Spartan](https://github.com/elizaos/spartan) showcases a sophisticated single-agent implementation:
+
+```typescript
+export const spartan: Character = {
+  name: "Spartan",
+  bio: "Elite AI agent with advanced capabilities",
+  plugins: [
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-twitter",      // Social media presence
+    "plugin-web-search",            // Research capabilities
+    "plugin-code-analysis",         // Code understanding
+    "plugin-sentiment",             // Emotion analysis
+    "plugin-knowledge-graph"        // Complex reasoning
+  ],
+  // Advanced features
+  settings: {
+    modelProvider: "anthropic",
+    responseMode: "strategic",
+    memoryDepth: "extended"
+  }
+};
+```
+
+**Advanced Features:**
+- Multi-modal reasoning
+- Long-term memory strategies
+- Complex action chains
+- Advanced prompt engineering
+- Custom evaluation pipelines
+
+### Real-World Multi-Agent Project: The Org
+
+[The Org](https://github.com/elizaos/the-org) demonstrates a sophisticated multi-agent system:
+
+```typescript
+// Multiple specialized agents working together
+const project: Project = {
+  agents: [
+    // Executive agent - high-level decisions
+    { character: ceo, init: initCEO },
+    
+    // Department heads - specialized domains
+    { character: cto, init: initCTO },
+    { character: cfo, init: initCFO },
+    { character: cmo, init: initCMO },
+    
+    // Operational agents - specific tasks
+    { character: devOps, init: initDevOps },
+    { character: researcher, init: initResearcher }
+  ]
+};
+```
+
+**Key Features:**
+- Hierarchical agent organization
+- Inter-agent communication
+- Specialized roles and permissions
+- Shared knowledge base
+- Coordinated decision-making
+
+## Best Practices
+
+- Use TypeScript for better type safety
+- Load plugins conditionally based on environment
+- Keep character definitions modular
+- Test locally before deploying
+- Use `elizaos dev` for development
+
+## Project vs Agent
+
+| Aspect | Agent | Project |
+|--------|-------|---------|
+| Definition | Single AI personality | Application with 1+ agents |
+| Configuration | Character interface | Project interface |
+| Plugins | Per-character | Per-agent or shared |
+| Use case | Simple bots | Complex systems |
+
+## Next Steps
+
+<CardGroup cols={1}>
+  <Card title="Example Projects" icon="github" href="https://github.com/elizaos/eliza/tree/main/agent">
+    Browse sample agent configurations
+  </Card>
+</CardGroup>

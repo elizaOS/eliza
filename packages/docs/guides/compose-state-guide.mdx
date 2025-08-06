@@ -1,0 +1,1162 @@
+---
+title: State Management
+description: Comprehensive documentation on the composeState method in elizaOS and how it interacts with different types of providers to build contextual state for agent decision-making
+icon: database
+---
+
+This guide provides comprehensive documentation on the `composeState` method in elizaOS and how it interacts with different types of providers to build contextual state for agent decision-making.
+
+## Introduction
+
+The `composeState` method is a core function in elizaOS that aggregates data from multiple providers to create a comprehensive state object. This state represents the agent's understanding of the current context and is used for decision-making, action selection, and response generation.
+
+### What is State?
+
+State in elizaOS is a structured object containing:
+
+- **values**: Key-value pairs for direct access (used in templates)
+- **data**: Structured data from providers
+- **text**: Concatenated textual context from all providers
+
+## Quick Reference
+
+### Provider Summary Table
+
+| Provider Name       | Dynamic | Position | Default Included | Purpose                    |
+| ------------------- | ------- | -------- | ---------------- | -------------------------- |
+| **ACTIONS**         | No      | -1       | Yes              | Lists available actions    |
+| **ACTION_STATE**    | No      | 150      | Yes              | Action execution state     |
+| **ANXIETY**         | No      | Default  | Yes              | Response style guidelines  |
+| **ATTACHMENTS**     | Yes     | Default  | No               | File/media attachments     |
+| **CAPABILITIES**    | No      | Default  | Yes              | Service capabilities       |
+| **CHARACTER**       | No      | Default  | Yes              | Agent personality          |
+| **CHOICE**          | No      | Default  | Yes              | Pending user choices       |
+| **ENTITIES**        | Yes     | Default  | No               | Conversation participants  |
+| **EVALUATORS**      | No      | Default  | No (private)     | Post-processing options    |
+| **FACTS**           | Yes     | Default  | No               | Stored knowledge           |
+| **PROVIDERS**       | No      | Default  | Yes              | Available providers list   |
+| **RECENT_MESSAGES** | No      | 100      | Yes              | Conversation history       |
+| **RELATIONSHIPS**   | Yes     | Default  | No               | Social connections         |
+| **ROLES**           | No      | Default  | Yes              | Server roles (groups only) |
+| **SETTINGS**        | No      | Default  | Yes              | Configuration state        |
+| **TIME**            | No      | Default  | Yes              | Current UTC time           |
+| **WORLD**           | Yes     | Default  | No               | Server/world context       |
+
+### Common Usage Patterns
+
+```typescript
+// Default state (all non-dynamic, non-private providers)
+const state = await runtime.composeState(message);
+
+// Include specific dynamic providers
+const state = await runtime.composeState(message, ['FACTS', 'ENTITIES']);
+
+// Only specific providers
+const state = await runtime.composeState(message, ['CHARACTER'], true);
+
+// Force fresh data (skip cache)
+const state = await runtime.composeState(message, null, false, true);
+```
+
+## Understanding composeState
+
+### Method Signature
+
+```typescript
+async composeState(
+    message: Memory,
+    includeList: string[] | null = null,
+    onlyInclude = false,
+    skipCache = false
+): Promise<State>
+```
+
+### Parameters
+
+- **message**: The current message/memory object being processed
+- **includeList**: Array of provider names to include (optional)
+- **onlyInclude**: If true, ONLY include providers from includeList
+- **skipCache**: If true, bypass cache and fetch fresh data
+
+### How It Works
+
+1. **Provider Selection**: Determines which providers to run based on filters
+2. **Parallel Execution**: Runs all selected providers concurrently
+3. **Result Aggregation**: Combines results from all providers
+4. **Caching**: Stores the composed state for reuse
+
+## Provider Types
+
+elizaOS includes various built-in providers, each serving a specific purpose:
+
+### Core Providers
+
+#### 1. **Character Provider**
+
+Provides character information, personality, and behavior guidelines.
+
+```typescript
+// Included data:
+{
+  values: {
+    agentName: "Alice",
+    bio: "AI assistant focused on...",
+    topics: "technology, science, education",
+    adjective: "helpful"
+  },
+  data: { character: {...} },
+  text: "# About Alice\n..."
+}
+```
+
+#### 2. **Recent Messages Provider**
+
+Provides conversation history and context.
+
+```typescript
+// Included data:
+{
+  values: {
+    recentMessages: "User: Hello\nAlice: Hi there!",
+    recentInteractions: "..."
+  },
+  data: {
+    recentMessages: [...],
+    actionResults: [...]
+  },
+  text: "# Conversation Messages\n..."
+}
+```
+
+#### 3. **Actions Provider**
+
+Lists available actions the agent can take.
+
+```typescript
+// Included data:
+{
+  values: {
+    actionNames: "Possible response actions: 'SEND_MESSAGE', 'SEARCH', 'CALCULATE'",
+    actionExamples: "..."
+  },
+  data: { actionsData: [...] },
+  text: "# Available Actions\n..."
+}
+```
+
+### Dynamic Providers
+
+Dynamic providers are only executed when explicitly requested:
+
+- **Facts Provider**: Retrieves relevant facts from memory
+- **Relationships Provider**: Gets relationship information
+- **Settings Provider**: Fetches configuration settings
+- **Roles Provider**: Server role hierarchy
+
+### Private Providers
+
+Private providers are internal and not included in default state composition:
+
+- **Evaluators Provider**: Post-interaction processing options
+
+## Detailed Provider Reference
+
+### Built-in Providers
+
+#### Actions Provider (`ACTIONS`)
+
+- **Purpose**: Lists all available actions the agent can execute
+- **Position**: -1 (runs early)
+- **Dynamic**: No (included by default)
+- **Data Provided**:
+  - `actionNames`: Comma-separated list of action names
+  - `actionsWithDescriptions`: Formatted action details
+  - `actionExamples`: Example usage for each action
+  - `actionsData`: Raw action objects
+
+#### Action State Provider (`ACTION_STATE`)
+
+- **Purpose**: Shares execution state between chained actions
+- **Position**: 150
+- **Dynamic**: No (included by default)
+- **Data Provided**:
+  - `actionResults`: Previous action execution results
+  - `actionPlan`: Multi-step action execution plan
+  - `workingMemory`: Temporary data shared between actions
+  - `recentActionMemories`: Historical action executions
+
+#### Anxiety Provider (`ANXIETY`)
+
+- **Purpose**: Provides behavioral guidelines based on channel type
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Behavior**: Adjusts response style for DMs, groups, and voice channels
+
+#### Attachments Provider (`ATTACHMENTS`)
+
+- **Purpose**: Lists files and media in the conversation
+- **Position**: Default
+- **Dynamic**: Yes (must be explicitly included)
+- **Data Provided**:
+  - File names, URLs, descriptions
+  - Text content from attachments
+  - Media metadata
+
+#### Capabilities Provider (`CAPABILITIES`)
+
+- **Purpose**: Lists agent's available services and capabilities
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Data Provided**: Service descriptions and available functions
+
+#### Character Provider (`CHARACTER`)
+
+- **Purpose**: Core personality and behavior definition
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Data Provided**:
+  - `agentName`: Character name
+  - `bio`: Character background
+  - `topics`: Current interests
+  - `adjective`: Current mood/state
+  - `directions`: Style guidelines
+  - `examples`: Example conversations/posts
+
+#### Choice Provider (`CHOICE`)
+
+- **Purpose**: Lists pending decisions awaiting user input
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Use Case**: Interactive workflows requiring user selection
+
+#### Entities Provider (`ENTITIES`)
+
+- **Purpose**: Information about conversation participants
+- **Position**: Default
+- **Dynamic**: Yes (must be explicitly included)
+- **Data Provided**:
+  - User names and aliases
+  - Entity metadata
+  - Sender identification
+
+#### Facts Provider (`FACTS`)
+
+- **Purpose**: Retrieves relevant stored facts
+- **Position**: Default
+- **Dynamic**: Yes (must be explicitly included)
+- **Behavior**: Uses embedding search to find contextually relevant facts
+
+#### Providers Provider (`PROVIDERS`)
+
+- **Purpose**: Meta-provider listing all available providers
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Use Case**: Dynamic provider discovery
+
+#### Recent Messages Provider (`RECENT_MESSAGES`)
+
+- **Purpose**: Conversation history and context
+- **Position**: 100 (runs later to access other data)
+- **Dynamic**: No (included by default)
+- **Data Provided**:
+  - Recent dialogue messages
+  - Action execution history
+  - Formatted conversation context
+
+#### Relationships Provider (`RELATIONSHIPS`)
+
+- **Purpose**: Social graph and interaction history
+- **Position**: Default
+- **Dynamic**: Yes (must be explicitly included)
+- **Data Provided**:
+  - Known entities and their relationships
+  - Interaction frequency
+  - Relationship metadata
+
+#### Roles Provider (`ROLES`)
+
+- **Purpose**: Server/group role hierarchy
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Restrictions**: Only available in group channels
+
+#### Settings Provider (`SETTINGS`)
+
+- **Purpose**: Configuration and onboarding state
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Behavior**: Different output for DMs (onboarding) vs groups
+
+#### Time Provider (`TIME`)
+
+- **Purpose**: Current time and timezone information
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Data Provided**: Formatted timestamps and timezone data
+
+#### World Provider (`WORLD`)
+
+- **Purpose**: Virtual world/server context
+- **Position**: Default
+- **Dynamic**: No (included by default)
+- **Data Provided**: World metadata and configuration
+
+## Cache Management
+
+### How Caching Works
+
+The `composeState` method uses an in-memory cache (`stateCache`) to store composed states:
+
+```typescript
+// Cache is stored by message ID
+this.stateCache.set(message.id, newState);
+```
+
+### Getting Cached Data
+
+```typescript
+// Inside a runtime context (this.stateCache is a Map<UUID, State>)
+// The cache is internal to the runtime and accessed via composeState with skipCache parameter
+
+// To get fresh data, skip the cache:
+const freshState = await runtime.composeState(message, null, false, true); // skipCache = true
+
+// To use cached data (default behavior):
+const cachedState = await runtime.composeState(message); // uses cache if available
+```
+
+### Clearing Cache
+
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+
+// The stateCache is internal to the runtime instance
+// In a custom runtime extension or plugin initialization:
+
+class ExtendedRuntime extends AgentRuntime {
+  clearOldStateCache() {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+    for (const [messageId, state] of this.stateCache.entries()) {
+      // Check if we have the message in memory
+      this.getMemoryById(messageId).then((memory) => {
+        if (memory && memory.createdAt < oneHourAgo) {
+          this.stateCache.delete(messageId);
+        }
+      });
+    }
+  }
+
+  // Clear entire cache
+  clearAllStateCache() {
+    this.stateCache.clear();
+  }
+}
+```
+
+## Usage Scenarios
+
+### Scenario 1: Default State Composition
+
+Most common usage - compose state with all non-private, non-dynamic providers:
+
+```typescript
+// Default usage - includes all standard providers
+const state = await runtime.composeState(message);
+
+// Access composed data
+console.log(state.values.agentName); // Character name
+console.log(state.values.recentMessages); // Recent conversation
+console.log(state.values.actionNames); // Available actions
+```
+
+### Scenario 2: Including Dynamic Providers
+
+Include specific dynamic providers for additional context:
+
+```typescript
+// Include facts and relationships providers
+const state = await runtime.composeState(
+  message,
+  ['FACTS', 'RELATIONSHIPS'], // Include these dynamic providers
+  false, // Don't exclude other providers
+  false // Use cache if available
+);
+
+// Access additional data
+console.log(state.values.facts); // Relevant facts
+console.log(state.values.relationships); // Relationship data
+```
+
+### Scenario 3: Selective Provider Inclusion
+
+Only include specific providers for focused processing:
+
+```typescript
+// Only get character and recent messages
+const state = await runtime.composeState(
+  message,
+  ['CHARACTER', 'RECENT_MESSAGES'], // Only these providers
+  true, // onlyInclude = true
+  false // Use cache
+);
+
+// State will only contain data from specified providers
+```
+
+### Scenario 4: Force Fresh Data
+
+Skip cache for real-time data requirements:
+
+```typescript
+// Force fresh data fetch
+const state = await runtime.composeState(
+  message,
+  null, // Include default providers
+  false, // Don't limit to includeList
+  true // skipCache = true
+);
+```
+
+## Examples
+
+### Example 1: Action Processing with State
+
+```typescript
+import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// In an action handler
+async function handleAction(runtime: IAgentRuntime, message: Memory) {
+  // Compose state with action-specific providers
+  const state = await runtime.composeState(
+    message,
+    ['CHARACTER', 'RECENT_MESSAGES', 'ACTION_STATE'],
+    false,
+    false
+  );
+
+  // Use state for decision making
+  if (state.values.hasActionResults) {
+    console.log('Previous actions completed:', state.values.completedActions);
+  }
+
+  // Process action based on state
+  // Actions are typically processed through runtime.processActions
+  // but can be executed directly if needed
+  const action = runtime.actions.find((a) => a.name === 'SEND_MESSAGE');
+  if (action && action.handler) {
+    const result = await action.handler(runtime, message, state);
+    return result;
+  }
+}
+```
+
+### Example 2: Settings-Based Configuration
+
+```typescript
+// Check settings in DM for configuration
+async function checkConfiguration(runtime: IAgentRuntime, message: Memory) {
+  // Include settings provider for DM configuration
+  const state = await runtime.composeState(
+    message,
+    ['SETTINGS', 'CHARACTER'],
+    false,
+    true // Skip cache for fresh settings
+  );
+
+  // Helper function to check if all required settings are configured
+  const hasRequiredSettings = (settings: any) => {
+    if (!settings) return false;
+
+    // Check if all required settings have values
+    return Object.entries(settings).every(([key, setting]: [string, any]) => {
+      if (setting.required) {
+        return setting.value !== null && setting.value !== undefined;
+      }
+      return true;
+    });
+  };
+
+  // Check if configuration is needed
+  const settings = state.data.providers?.SETTINGS?.data?.settings;
+  if (settings && hasRequiredSettings(settings)) {
+    return 'Configuration complete!';
+  } else {
+    return "Let's configure your settings...";
+  }
+}
+```
+
+### Example 3: Context-Aware Response Generation
+
+```typescript
+import { ModelType } from '@elizaos/core';
+
+// Generate response with full context
+async function generateContextualResponse(runtime: IAgentRuntime, message: Memory) {
+  // Get comprehensive state
+  const state = await runtime.composeState(
+    message,
+    ['CHARACTER', 'RECENT_MESSAGES', 'FACTS', 'ENTITIES', 'ATTACHMENTS'],
+    false,
+    false
+  );
+
+  // Build prompt from state
+  const prompt = `
+${state.values.bio}
+
+${state.values.recentMessages}
+
+Known facts:
+${state.values.facts || 'No relevant facts'}
+
+People in conversation:
+${state.values.entities || 'Just you and me'}
+
+Respond to the last message appropriately.
+    `;
+
+  // Generate response using composed context
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt,
+    maxTokens: 500,
+  });
+
+  return response;
+}
+```
+
+### Example 4: Custom Provider Integration
+
+```typescript
+import type { Provider } from '@elizaos/core';
+
+// Define a custom provider
+const customDataProvider: Provider = {
+  name: 'CUSTOM_DATA',
+  description: 'Custom data from external source',
+  dynamic: true,
+  get: async (runtime, message) => {
+    try {
+      // Example: fetch data from a service or database
+      const customData = await runtime.getService('customService')?.getData();
+
+      if (!customData) {
+        return { values: {}, data: {}, text: '' };
+      }
+
+      return {
+        values: { customData: customData.summary },
+        data: { customData },
+        text: `Custom data: ${customData.summary}`,
+      };
+    } catch (error) {
+      runtime.logger.error('Error in custom provider:', error);
+      return { values: {}, data: {}, text: '' };
+    }
+  },
+};
+
+// Register the provider
+runtime.registerProvider(customDataProvider);
+
+// Use in state composition
+const state = await runtime.composeState(
+  message,
+  ['CHARACTER', 'CUSTOM_DATA'], // Include custom provider
+  false,
+  true
+);
+
+console.log(state.values.customData); // Access custom data value
+```
+
+### Example 5: Performance Monitoring
+
+```typescript
+// Monitor provider performance
+async function composeStateWithMetrics(runtime: IAgentRuntime, message: Memory) {
+  const startTime = Date.now();
+
+  // Compose state
+  const state = await runtime.composeState(message);
+
+  // Check individual provider timings
+  const providers = state.data.providers;
+  for (const [name, result] of Object.entries(providers)) {
+    console.log(`Provider ${name} data size:`, JSON.stringify(result).length);
+  }
+
+  const totalTime = Date.now() - startTime;
+  console.log(`Total composition time: ${totalTime}ms`);
+
+  return state;
+}
+```
+
+## Advanced Examples
+
+### Multi-Step Action Coordination
+
+```typescript
+import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+
+// Example ActionPlan type
+interface ActionPlan {
+  thought: string;
+  steps: Array<{
+    actionName: string;
+    params?: any;
+  }>;
+  totalSteps: number;
+}
+
+// Coordinate multiple actions with shared state
+async function executeMultiStepPlan(runtime: IAgentRuntime, message: Memory, plan: ActionPlan) {
+  const workingMemory: { [key: string]: any } = {};
+
+  for (let i = 0; i < plan.steps.length; i++) {
+    // Update state with working memory
+    const state = await runtime.composeState(
+      message,
+      ['CHARACTER', 'ACTION_STATE', 'RECENT_MESSAGES'],
+      false,
+      true // Fresh state for each step
+    );
+
+    // Inject working memory into state
+    state.data.workingMemory = workingMemory;
+    state.data.actionPlan = {
+      ...plan,
+      currentStep: i + 1,
+    };
+
+    // Execute action through runtime's processActions
+    const action = runtime.actions.find((a) => a.name === plan.steps[i].actionName);
+    if (action && action.handler) {
+      const result = await action.handler(runtime, message, state);
+
+      // Store result in working memory
+      workingMemory[`step_${i + 1}_result`] = result;
+    }
+  }
+
+  return workingMemory;
+}
+```
+
+### Provider Dependency Management
+
+```typescript
+// Provider that depends on other providers
+const enhancedFactsProvider: Provider = {
+  name: 'ENHANCED_FACTS',
+  description: 'Facts with relationship context',
+  dynamic: true,
+  position: 200, // Run after other providers
+
+  get: async (runtime, message, state) => {
+    // First ensure we have entities and relationships
+    const enhancedState = await runtime.composeState(
+      message,
+      ['ENTITIES', 'RELATIONSHIPS', 'FACTS'],
+      false,
+      false
+    );
+
+    // Enhance facts with relationship context
+    const facts = enhancedState.data.providers?.FACTS?.data?.facts || [];
+    const relationships = enhancedState.data.providers?.RELATIONSHIPS?.data?.relationships || [];
+
+    // Helper function to find related entities
+    const findRelatedEntities = (fact: any, relationships: any[]) => {
+      // Simple implementation - match entities mentioned in fact text
+      return relationships.filter((rel) => fact.content?.text?.includes(rel.targetEntityId));
+    };
+
+    const formatEnhancedFacts = (facts: any[]) => {
+      return facts
+        .map(
+          (fact) => `${fact.content?.text} [Related: ${fact.relatedEntities?.length || 0} entities]`
+        )
+        .join('\n');
+    };
+
+    const enhancedFacts = facts.map((fact) => ({
+      ...fact,
+      relatedEntities: findRelatedEntities(fact, relationships),
+    }));
+
+    return {
+      values: { enhancedFacts: formatEnhancedFacts(enhancedFacts) },
+      data: { enhancedFacts },
+      text: `Enhanced facts with relationships:\n${formatEnhancedFacts(enhancedFacts)}`,
+    };
+  },
+};
+```
+
+### Dynamic Provider Loading
+
+```typescript
+import { ChannelType, type IAgentRuntime, type Memory } from '@elizaos/core';
+
+// Conditionally load providers based on context
+async function adaptiveStateComposition(runtime: IAgentRuntime, message: Memory) {
+  // Determine context
+  const room = await runtime.getRoom(message.roomId);
+  const isDM = room?.type === ChannelType.DM;
+  const isVoice = room?.type === ChannelType.VOICE_GROUP || room?.type === ChannelType.VOICE_DM;
+
+  // Build provider list based on context
+  const providers: string[] = ['CHARACTER', 'RECENT_MESSAGES'];
+
+  if (isDM) {
+    providers.push('SETTINGS'); // Configuration in DMs
+  } else {
+    providers.push('ROLES', 'ENTITIES'); // Group context
+  }
+
+  if (isVoice) {
+    // Voice channels might need different providers
+    // For example, you might want to limit providers for performance
+    providers = ['CHARACTER', 'ANXIETY']; // Minimal providers for voice
+  }
+
+  // Check if user mentioned facts or history
+  if (message.content.text.match(/remember|fact|history/i)) {
+    providers.push('FACTS', 'RELATIONSHIPS');
+  }
+
+  // Compose adaptive state
+  return runtime.composeState(message, providers, false, false);
+}
+```
+
+### State Transformation Pipeline
+
+```typescript
+// Transform state through multiple stages
+async function stateTransformationPipeline(runtime: IAgentRuntime, message: Memory) {
+  // Stage 1: Base state
+  const baseState = await runtime.composeState(
+    message,
+    ['CHARACTER', 'RECENT_MESSAGES'],
+    true,
+    false
+  );
+
+  // Helper function to determine if facts are needed
+  const needsFactEnrichment = (state: State) => {
+    // Check if the message mentions facts, history, or memory
+    const messageText = state.values.recentMessages || '';
+    return /remember|fact|history|memory/i.test(messageText);
+  };
+
+  // Stage 2: Enrich with facts if needed
+  let enrichedState = baseState;
+  if (needsFactEnrichment(baseState)) {
+    const factsState = await runtime.composeState(message, ['FACTS'], false, false);
+    enrichedState = mergeStates(baseState, factsState);
+  }
+
+  // Stage 3: Add action context
+  const actionState = await runtime.composeState(
+    message,
+    ['ACTIONS', 'ACTION_STATE'],
+    false,
+    false
+  );
+
+  // Final merged state
+  return mergeStates(enrichedState, actionState);
+}
+
+function mergeStates(state1: State, state2: State): State {
+  return {
+    values: { ...state1.values, ...state2.values },
+    data: {
+      ...state1.data,
+      ...state2.data,
+      providers: {
+        ...state1.data.providers,
+        ...state2.data.providers,
+      },
+    },
+    text: `${state1.text}\n\n${state2.text}`,
+  };
+}
+```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Stale Cache Data
+
+**Problem**: State contains outdated information
+
+```typescript
+// Symptom: Old messages or incorrect data
+const state = await runtime.composeState(message);
+console.log(state.values.recentMessages); // Shows old messages
+```
+
+**Solution**: Force fresh data or implement cache TTL
+
+```typescript
+// Option 1: Skip cache
+const freshState = await runtime.composeState(message, null, false, true);
+
+// Option 2: Implement cache TTL
+class CacheWithTTL extends Map {
+  private ttl: number;
+  private timestamps = new Map<string, number>();
+
+  constructor(ttl: number = 5 * 60 * 1000) {
+    // 5 minutes default
+    super();
+    this.ttl = ttl;
+  }
+
+  set(key: string, value: any) {
+    this.timestamps.set(key, Date.now());
+    return super.set(key, value);
+  }
+
+  get(key: string) {
+    const timestamp = this.timestamps.get(key);
+    if (timestamp && Date.now() - timestamp > this.ttl) {
+      this.delete(key);
+      return undefined;
+    }
+    return super.get(key);
+  }
+}
+```
+
+#### 2. Provider Timeout Issues
+
+**Problem**: Slow providers blocking state composition
+
+```typescript
+// Provider that might hang
+const slowProvider: Provider = {
+  name: 'SLOW_API',
+  get: async (runtime, message) => {
+    // This could take forever without proper timeout handling
+    try {
+      // Simulate a slow external API call
+      const response = await fetch('https://slow-api.example.com/data');
+      const data = await response.json();
+
+      return {
+        data: { apiResponse: data },
+        values: { slowApiStatus: 'success' },
+        text: `Fetched data from slow API`,
+      };
+    } catch (error) {
+      // This might never complete if the API hangs
+      return { data: {}, values: {}, text: '' };
+    }
+  },
+};
+```
+
+**Solution**: Implement timeouts
+
+```typescript
+const timeoutProvider: Provider = {
+  name: 'TIMEOUT_SAFE',
+  get: async (runtime, message) => {
+    try {
+      // Example of a provider that might take too long
+      const fetchData = async () => {
+        // Simulate an API call or expensive operation
+        const service = runtime.getService('externalAPI');
+        if (!service) {
+          return { values: {}, data: {}, text: '' };
+        }
+        const data = await service.fetchData();
+        return {
+          values: { apiData: data.summary },
+          data: { apiData: data },
+          text: `API data: ${data.summary}`,
+        };
+      };
+
+      const result = await Promise.race([
+        fetchData(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000)),
+      ]);
+      return result;
+    } catch (error) {
+      runtime.logger.warn(`Provider TIMEOUT_SAFE timed out`);
+      return { values: {}, data: {}, text: '' };
+    }
+  },
+};
+```
+
+#### 3. Memory Leaks from Cache
+
+**Problem**: Cache grows indefinitely
+
+```typescript
+// This will grow forever
+for (const message of messages) {
+  await runtime.composeState(message);
+}
+```
+
+**Solution**: Implement cache size limits
+
+```typescript
+class BoundedCache extends Map {
+  private maxSize: number;
+
+  constructor(maxSize: number = 1000) {
+    super();
+    this.maxSize = maxSize;
+  }
+
+  set(key: string, value: any) {
+    // Remove oldest entries if at capacity
+    if (this.size >= this.maxSize) {
+      const firstKey = this.keys().next().value;
+      this.delete(firstKey);
+    }
+    return super.set(key, value);
+  }
+}
+```
+
+#### 4. Circular Provider Dependencies
+
+**Problem**: Providers depending on each other
+
+```typescript
+// DON'T DO THIS
+const providerA: Provider = {
+  name: 'A',
+  get: async (runtime, message) => {
+    const state = await runtime.composeState(message, ['B']);
+    // Uses B's data
+  },
+};
+
+const providerB: Provider = {
+  name: 'B',
+  get: async (runtime, message) => {
+    const state = await runtime.composeState(message, ['A']);
+    // Uses A's data - CIRCULAR!
+  },
+};
+```
+
+**Solution**: Use provider positioning and cached state
+
+```typescript
+const providerA: Provider = {
+  name: 'A',
+  position: 100, // Runs first
+  get: async (runtime, message) => {
+    // Generate data independently
+    return { data: { aData: 'value' } };
+  },
+};
+
+const providerB: Provider = {
+  name: 'B',
+  position: 200, // Runs after A
+  get: async (runtime, message, cachedState) => {
+    // Access A's data from cached state
+    const aData = cachedState.data?.providers?.A?.data?.aData;
+
+    // Process the data from provider A
+    const processedData = aData
+      ? {
+          enhanced: true,
+          originalValue: aData,
+          processedAt: Date.now(),
+        }
+      : null;
+
+    return {
+      data: { bData: processedData },
+      values: { bProcessed: processedData ? 'success' : 'no data' },
+      text: processedData ? `Processed data from A: ${aData}` : '',
+    };
+  },
+};
+```
+
+### Debugging State Composition
+
+```typescript
+// Debug helper to trace provider execution
+async function debugComposeState(runtime: IAgentRuntime, message: Memory, includeList?: string[]) {
+  console.log('=== State Composition Debug ===');
+  console.log('Message ID:', message.id);
+  console.log('Include List:', includeList || 'default');
+
+  // Monkey patch provider execution
+  const originalProviders = runtime.providers;
+  runtime.providers = runtime.providers.map((provider) => ({
+    ...provider,
+    get: async (...args) => {
+      const start = Date.now();
+      console.log(`[${provider.name}] Starting...`);
+
+      try {
+        const result = await provider.get(...args);
+        const duration = Date.now() - start;
+        console.log(`[${provider.name}] Completed in ${duration}ms`);
+        console.log(`[${provider.name}] Data size:`, JSON.stringify(result).length);
+        return result;
+      } catch (error) {
+        console.error(`[${provider.name}] Error:`, error);
+        throw error;
+      }
+    },
+  }));
+
+  const state = await runtime.composeState(message, includeList);
+
+  // Restore original providers
+  runtime.providers = originalProviders;
+
+  console.log('=== Final State Summary ===');
+  console.log('Total providers run:', Object.keys(state.data.providers || {}).length);
+  console.log('State text length:', state.text.length);
+  console.log('===============================');
+
+  return state;
+}
+```
+
+## Best Practices
+
+### 1. Provider Selection
+
+- Use default providers for general conversation
+- Include dynamic providers only when needed
+- Use `onlyInclude` for performance-critical paths
+
+### 2. Cache Management
+
+```typescript
+// Good: Use cache for repeated operations
+const state1 = await runtime.composeState(message); // First call
+const state2 = await runtime.composeState(message); // Uses cache
+
+// Good: Skip cache for real-time data
+const freshState = await runtime.composeState(message, null, false, true);
+
+// Bad: Always skipping cache
+// This defeats the purpose of caching and hurts performance
+```
+
+### 3. Error Handling
+
+```typescript
+try {
+  const state = await runtime.composeState(message, ['CUSTOM_PROVIDER']);
+  // Use state
+} catch (error) {
+  console.error('State composition failed:', error);
+  // Fallback to minimal state
+  const minimalState = await runtime.composeState(
+    message,
+    ['CHARACTER'], // Just character data
+    true,
+    true
+  );
+}
+```
+
+### 4. Memory Optimization
+
+```typescript
+// Clean up old cache entries periodically
+setInterval(() => {
+  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+  for (const [messageId, _] of runtime.stateCache.entries()) {
+    runtime.getMemoryById(messageId).then((memory) => {
+      if (memory && memory.createdAt < fiveMinutesAgo) {
+        runtime.stateCache.delete(messageId);
+      }
+    });
+  }
+}, 60000); // Run every minute
+```
+
+### 5. Custom Provider Guidelines
+
+When creating custom providers:
+
+```typescript
+const customProvider: Provider = {
+  name: 'CUSTOM_DATA',
+  description: 'Provides custom data',
+  dynamic: true, // Set to true if not always needed
+  position: 150, // Higher numbers run later
+  private: false, // Set to true for internal-only providers
+
+  get: async (runtime, message, state) => {
+    // Best practices:
+    // 1. Return quickly - use timeouts
+    // 2. Handle errors gracefully
+    // 3. Return empty result on failure
+    // 4. Keep data size reasonable
+
+    try {
+      // Example: Fetch data with timeout
+      const fetchDataWithTimeout = async (timeout: number) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        try {
+          const response = await fetch('https://api.example.com/data', {
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          return await response.json();
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
+        }
+      };
+
+      const data = await fetchDataWithTimeout(5000);
+      return {
+        values: { customValue: data.summary || 'No summary' },
+        data: { fullData: data },
+        text: `Custom data: ${data.summary || 'No data available'}`,
+      };
+    } catch (error) {
+      runtime.logger.error('Error in CUSTOM_DATA provider:', error);
+      // Return empty result on error
+      return {
+        values: {},
+        data: {},
+        text: '',
+      };
+    }
+  },
+};
+```
+
+## Summary
+
+The `composeState` method is central to elizaOS's context management system. It provides a flexible way to aggregate data from multiple sources, manage caching for performance, and create rich contextual state for agent decision-making. By understanding how to effectively use providers and manage state composition, you can build more intelligent and context-aware agents.
+
+Key takeaways:
+
+- Use default composition for most scenarios
+- Include dynamic providers when specific data is needed
+- Leverage caching for performance
+- Clear cache when data freshness is critical
+- Monitor provider performance in production
+- Handle errors gracefully

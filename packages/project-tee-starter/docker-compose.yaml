@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 services:
   postgres:
     image: ankane/pgvector:latest
@@ -22,9 +22,9 @@ services:
   elizaos:
     image: ${DOCKER_IMAGE}
     container_name: elizaos
-    command: sh -c "bun run start"
     volumes:
       - /var/run/tappd.sock:/var/run/tappd.sock
+      - /var/run/dstack.sock:/var/run/dstack.sock
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SERVER_PORT=${SERVER_PORT}
@@ -39,6 +39,9 @@ services:
       - REDPILL_API_KEY=${REDPILL_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID}
+      - ELIZA_UI_ENABLE=${ELIZA_UI_ENABLE:-true}
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
       - '3000:3000'
       - '50000-50100:50000-50100/udp'

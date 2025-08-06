@@ -1,0 +1,692 @@
+---
+title: "Testing Guide"
+description: "This guide covers testing strategies, patterns, and best practices for the @elizaos/plugin-discord package."
+---
+
+# Discord Plugin Testing Guide
+
+This guide covers testing strategies, patterns, and best practices for the @elizaos/plugin-discord package.
+
+## Test Environment Setup
+
+### Prerequisites
+
+1. **Test Discord Server**
+   - Create a dedicated Discord server for testing
+   - Set up test channels (text, voice, etc.)
+   - Configure appropriate permissions
+
+2. **Test Bot Application**
+   - Create a separate bot application for testing
+   - Generate test credentials
+   - Add bot to test server with full permissions
+
+3. **Environment Configuration**
+
+```bash
+# .env.test
+DISCORD_APPLICATION_ID=test_application_id
+DISCORD_API_TOKEN=test_bot_token
+DISCORD_TEST_CHANNEL_ID=test_text_channel_id
+DISCORD_TEST_VOICE_CHANNEL_ID=test_voice_channel_id
+DISCORD_TEST_SERVER_ID=test_server_id
+
+# Test user for interactions
+DISCORD_TEST_USER_ID=test_user_id
+```
+
+## Unit Testing
+
+### Testing Message Manager
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MessageManager } from '@elizaos/plugin-discord';
+import { Client, Message, TextChannel } from 'discord.js';
+
+describe('MessageManager', () => {
+  let messageManager: MessageManager;
+  let mockClient: Client;
+  let mockRuntime: any;
+  
+  beforeEach(() => {
+    // Mock Discord.js client
+    mockClient = {
+      channels: {
+        cache: new Map(),
+        fetch: vi.fn()
+      },
+      user: { id: 'bot-id' }
+    } as any;
+    
+    // Mock runtime
+    mockRuntime = {
+      processMessage: vi.fn(),
+      character: { name: 'TestBot' },
+      logger: { info: vi.fn(), error: vi.fn() }
+    };
+    
+    messageManager = new MessageManager(mockClient, mockRuntime);
+  });
+  
+  describe('handleMessage', () => {
+    it('should ignore bot messages', async () => {
+      const mockMessage = {
+        author: { bot: true },
+        content: 'Test message'
+      } as any;
+      
+      await messageManager.handleMessage(mockMessage);
+      
+      expect(mockRuntime.processMessage).not.toHaveBeenCalled();
+    });
+    
+    it('should process user messages', async () => {
+      const mockMessage = {
+        author: { bot: false, id: 'user-123' },
+        content: 'Hello bot',
+        channel: { id: 'channel-123' },
+        guild: { id: 'guild-123' }
+      } as any;
+      
+      mockRuntime.processMessage.mockResolvedValue({
+        text: 'Hello user!'
+      });
+      
+      await messageManager.handleMessage(mockMessage);
+      
+      expect(mockRuntime.processMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: { text: 'Hello bot' },
+          channelId: 'channel-123',
+          serverId: 'guild-123'
+        })
+      );
+    });
+    
+    it('should handle attachments', async () => {
+      const mockMessage = {
+        author: { bot: false, id: 'user-123' },
+        content: 'Check this image',
+        attachments: new Map([
+          ['123', {
+            url: 'https://example.com/image.png',
+            contentType: 'image/png',
+            name: 'image.png'
+          }]
+        ]),
+        channel: { id: 'channel-123' }
+      } as any;
+      
+      await messageManager.handleMessage(mockMessage);
+      
+      expect(mockRuntime.processMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: expect.arrayContaining([
+            expect.objectContaining({
+              url: 'https://example.com/image.png',
+              contentType: 'image/png'
+            })
+          ])
+        })
+      );
+    });
+  });
+});
+```
+
+### Testing Voice Manager
+
+```typescript
+import { VoiceManager } from '@elizaos/plugin-discord';
+import { VoiceChannel, VoiceConnection } from '@discordjs/voice';
+
+describe('VoiceManager', () => {
+  let voiceManager: VoiceManager;
+  let mockChannel: VoiceChannel;
+  
+  beforeEach(() => {
+    voiceManager = new VoiceManager(mockClient, mockRuntime);
+    
+    mockChannel = {
+      id: 'voice-123',
+      name: 'Test Voice',
+      guild: { id: 'guild-123' },
+      joinable: true
+    } as any;
+  });
+  
+  describe('joinChannel', () => {
+    it('should create voice connection', async () => {
+      const connection = await voiceManager.joinChannel(mockChannel);
+      
+      expect(connection).toBeDefined();
+      expect(voiceManager.getConnection('guild-123')).toBe(connection);
+    });
+    
+    it('should handle connection errors', async () => {
+      mockChannel.joinable = false;
+      
+      await expect(voiceManager.joinChannel(mockChannel))
+        .rejects
+        .toThrow('Cannot join voice channel');
+    });
+  });
+  
+  describe('audio processing', () => {
+    it('should process audio stream', async () => {
+      const mockStream = createMockAudioStream();
+      const transcribeSpy = vi.spyOn(voiceManager, 'transcribeAudio');
+      
+      await voiceManager.processAudioStream(mockStream, 'user-123');
+      
+      expect(transcribeSpy).toHaveBeenCalled();
+    });
+  });
+});
+```
+
+## Integration Testing
+
+### Testing Discord Service
+
+```typescript
+import { DiscordService } from '@elizaos/plugin-discord';
+import { AgentRuntime } from '@elizaos/core';
+
+describe('DiscordService Integration', () => {
+  let service: DiscordService;
+  let runtime: AgentRuntime;
+  
+  beforeAll(async () => {
+    runtime = new AgentRuntime({
+      character: {
+        name: 'TestBot',
+        clients: ['discord']
+      },
+      settings: {
+        DISCORD_API_TOKEN: process.env.DISCORD_TEST_TOKEN,
+        DISCORD_APPLICATION_ID: process.env.DISCORD_TEST_APP_ID
+      }
+    });
+    
+    service = new DiscordService(runtime);
+    await service.start();
+  });
+  
+  afterAll(async () => {
+    await service.stop();
+  });
+  
+  it('should connect to Discord', async () => {
+    expect(service.client).toBeDefined();
+    expect(service.client.isReady()).toBe(true);
+  });
+  
+  it('should handle slash commands', async () => {
+    const testChannel = await service.client.channels.fetch(
+      process.env.DISCORD_TEST_CHANNEL_ID
+    );
+    
+    // Simulate slash command
+    const interaction = createMockInteraction({
+      commandName: 'test',
+      channel: testChannel
+    });
+    
+    await service.handleInteraction(interaction);
+    
+    // Verify response was sent
+    expect(interaction.reply).toHaveBeenCalled();
+  });
+});
+```
+
+### Testing Message Flow
+
+```typescript
+describe('Message Flow Integration', () => {
+  it('should process message end-to-end', async () => {
+    const testMessage = await sendTestMessage(
+      'Hello bot!',
+      process.env.DISCORD_TEST_CHANNEL_ID
+    );
+    
+    // Wait for bot response
+    const response = await waitForBotResponse(testMessage.channel, 5000);
+    
+    expect(response).toBeDefined();
+    expect(response.content).toContain('Hello');
+  });
+  
+  it('should handle media attachments', async () => {
+    const testMessage = await sendTestMessageWithImage(
+      'What is this?',
+      'test-image.png',
+      process.env.DISCORD_TEST_CHANNEL_ID
+    );
+    
+    const response = await waitForBotResponse(testMessage.channel, 10000);
+    
+    expect(response.content).toMatch(/I can see|image shows/i);
+  });
+});
+```
+
+## E2E Testing
+
+### Complete Bot Test Suite
+
+```typescript
+import { DiscordTestSuite } from '@elizaos/plugin-discord/tests';
+
+describe('Discord Bot E2E Tests', () => {
+  const suite = new DiscordTestSuite({
+    testChannelId: process.env.DISCORD_TEST_CHANNEL_ID,
+    testVoiceChannelId: process.env.DISCORD_TEST_VOICE_CHANNEL_ID,
+    testUserId: process.env.DISCORD_TEST_USER_ID
+  });
+  
+  beforeAll(async () => {
+    await suite.setup();
+  });
+  
+  afterAll(async () => {
+    await suite.cleanup();
+  });
+  
+  describe('Text Interactions', () => {
+    it('should respond to messages', async () => {
+      const result = await suite.testMessageResponse({
+        content: 'Hello!',
+        expectedPattern: /hello|hi|hey/i
+      });
+      
+      expect(result.success).toBe(true);
+    });
+    
+    it('should handle mentions', async () => {
+      const result = await suite.testMention({
+        content: 'Hey bot, how are you?',
+        expectedResponse: true
+      });
+      
+      expect(result.responded).toBe(true);
+    });
+  });
+  
+  describe('Voice Interactions', () => {
+    it('should join voice channel', async () => {
+      const result = await suite.testVoiceJoin();
+      expect(result.connected).toBe(true);
+    });
+    
+    it('should transcribe voice', async () => {
+      const result = await suite.testVoiceTranscription({
+        audioFile: 'test-audio.mp3',
+        expectedTranscript: 'hello world'
+      });
+      
+      expect(result.transcript).toContain('hello');
+    });
+  });
+  
+  describe('Slash Commands', () => {
+    it('should execute slash commands', async () => {
+      const result = await suite.testSlashCommand({
+        command: 'chat',
+        options: { message: 'Test message' }
+      });
+      
+      expect(result.success).toBe(true);
+    });
+  });
+});
+```
+
+## Performance Testing
+
+### Load Testing
+
+```typescript
+import { performance } from 'perf_hooks';
+
+describe('Performance Tests', () => {
+  it('should handle multiple concurrent messages', async () => {
+    const messageCount = 100;
+    const startTime = performance.now();
+    
+    const promises = Array(messageCount).fill(0).map((_, i) =>
+      sendTestMessage(`Test message ${i}`, testChannelId)
+    );
+    
+    await Promise.all(promises);
+    
+    const endTime = performance.now();
+    const totalTime = endTime - startTime;
+    const avgTime = totalTime / messageCount;
+    
+    expect(avgTime).toBeLessThan(1000); // Less than 1s per message
+  });
+  
+  it('should maintain voice connection stability', async () => {
+    const duration = 60000; // 1 minute
+    const startTime = Date.now();
+    
+    await voiceManager.joinChannel(testVoiceChannel);
+    
+    // Monitor connection status
+    const checkInterval = setInterval(() => {
+      const connection = voiceManager.getConnection(testServerId);
+      expect(connection?.state.status).toBe('ready');
+    }, 1000);
+    
+    await new Promise(resolve => setTimeout(resolve, duration));
+    clearInterval(checkInterval);
+    
+    const connection = voiceManager.getConnection(testServerId);
+    expect(connection?.state.status).toBe('ready');
+  });
+});
+```
+
+### Memory Usage Testing
+
+```typescript
+describe('Memory Usage', () => {
+  it('should not leak memory on message processing', async () => {
+    const iterations = 1000;
+    const measurements = [];
+    
+    for (let i = 0; i < iterations; i++) {
+      if (i % 100 === 0) {
+        global.gc(); // Force garbage collection
+        const usage = process.memoryUsage();
+        measurements.push(usage.heapUsed);
+      }
+      
+      await messageManager.handleMessage(createMockMessage());
+    }
+    
+    // Check for memory growth
+    const firstMeasurement = measurements[0];
+    const lastMeasurement = measurements[measurements.length - 1];
+    const growth = lastMeasurement - firstMeasurement;
+    
+    // Allow some growth but not excessive
+    expect(growth).toBeLessThan(50 * 1024 * 1024); // 50MB
+  });
+});
+```
+
+## Mock Utilities
+
+### Discord.js Mocks
+
+```typescript
+export function createMockMessage(options: Partial<Message> = {}): Message {
+  return {
+    id: options.id || 'mock-message-id',
+    content: options.content || 'Mock message',
+    author: options.author || {
+      id: 'mock-user-id',
+      username: 'MockUser',
+      bot: false
+    },
+    channel: options.channel || createMockTextChannel(),
+    guild: options.guild || createMockGuild(),
+    createdTimestamp: Date.now(),
+    reply: vi.fn(),
+    react: vi.fn(),
+    ...options
+  } as any;
+}
+
+export function createMockTextChannel(
+  options: Partial<TextChannel> = {}
+): TextChannel {
+  return {
+    id: options.id || 'mock-channel-id',
+    name: options.name || 'mock-channel',
+    type: ChannelType.GuildText,
+    send: vi.fn(),
+    guild: options.guild || createMockGuild(),
+    ...options
+  } as any;
+}
+
+export function createMockInteraction(
+  options: any = {}
+): ChatInputCommandInteraction {
+  return {
+    id: 'mock-interaction-id',
+    commandName: options.commandName || 'test',
+    options: {
+      getString: vi.fn((name) => options.options?.[name]),
+      getInteger: vi.fn((name) => options.options?.[name])
+    },
+    reply: vi.fn(),
+    deferReply: vi.fn(),
+    editReply: vi.fn(),
+    channel: options.channel || createMockTextChannel(),
+    ...options
+  } as any;
+}
+```
+
+### Test Helpers
+
+```typescript
+export async function waitForBotResponse(
+  channel: TextChannel,
+  timeout = 5000
+): Promise<Message | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      collector.stop();
+      resolve(null);
+    }, timeout);
+    
+    const collector = channel.createMessageCollector({
+      filter: (m) => m.author.bot,
+      max: 1,
+      time: timeout
+    });
+    
+    collector.on('collect', (message) => {
+      clearTimeout(timer);
+      resolve(message);
+    });
+  });
+}
+
+export async function sendTestMessage(
+  content: string,
+  channelId: string
+): Promise<Message> {
+  const channel = await client.channels.fetch(channelId) as TextChannel;
+  return await channel.send(content);
+}
+
+export async function simulateVoiceActivity(
+  connection: VoiceConnection,
+  audioFile: string,
+  userId: string
+): Promise<void> {
+  const resource = createAudioResource(audioFile);
+  const player = createAudioPlayer();
+  
+  connection.subscribe(player);
+  player.play(resource);
+  
+  // Simulate user speaking
+  connection.receiver.speaking.on('start', userId);
+  
+  await new Promise((resolve) => {
+    player.on(AudioPlayerStatus.Idle, resolve);
+  });
+}
+```
+
+## Debug Logging
+
+### Enable Detailed Logging
+
+```typescript
+// Enable debug logging for tests
+process.env.DEBUG = 'eliza:discord:*';
+
+// Custom test logger
+export class TestLogger {
+  private logs: Array<{ level: string; message: string; timestamp: Date }> = [];
+  
+  log(level: string, message: string, ...args: any[]) {
+    this.logs.push({
+      level,
+      message: `${message} ${args.join(' ')}`,
+      timestamp: new Date()
+    });
+    
+    if (process.env.VERBOSE_TESTS) {
+      console.log(`[${level}] ${message}`, ...args);
+    }
+  }
+  
+  getLogs(level?: string) {
+    return level 
+      ? this.logs.filter(l => l.level === level)
+      : this.logs;
+  }
+  
+  clear() {
+    this.logs = [];
+  }
+}
+```
+
+## Test Configuration
+
+### vitest.config.ts
+
+```typescript
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules',
+        'tests',
+        '**/*.test.ts'
+      ]
+    }
+  }
+});
+```
+
+### Test Setup
+
+```typescript
+// tests/setup.ts
+import { config } from 'dotenv';
+import { vi } from 'vitest';
+
+// Load test environment
+config({ path: '.env.test' });
+
+// Global test utilities
+global.createMockRuntime = () => ({
+  processMessage: vi.fn(),
+  character: { name: 'TestBot' },
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn()
+  },
+  getSetting: vi.fn((key) => process.env[key]),
+  getService: vi.fn()
+});
+
+// Cleanup after tests
+afterAll(async () => {
+  // Close all connections
+  await cleanup();
+});
+```
+
+## Continuous Integration
+
+### GitHub Actions Workflow
+
+```yaml
+name: Discord Plugin Tests
+
+on:
+  push:
+    paths:
+      - 'packages/plugin-discord/**'
+  pull_request:
+    paths:
+      - 'packages/plugin-discord/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Run unit tests
+      run: bun test packages/plugin-discord --coverage
+      env:
+        DISCORD_API_TOKEN: ${{ secrets.TEST_DISCORD_TOKEN }}
+        DISCORD_APPLICATION_ID: ${{ secrets.TEST_DISCORD_APP_ID }}
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/coverage-final.json
+```
+
+## Best Practices
+
+1. **Test Isolation**
+   - Each test should be independent
+   - Clean up resources after tests
+   - Use separate test channels/servers
+
+2. **Mock External Services**
+   - Mock Discord API calls for unit tests
+   - Use real Discord for integration tests only
+   - Mock transcription/vision services
+
+3. **Error Scenarios**
+   - Test network failures
+   - Test permission errors
+   - Test rate limiting
+
+4. **Performance Monitoring**
+   - Track response times
+   - Monitor memory usage
+   - Check for connection stability
+
+5. **Security Testing**
+   - Test token validation
+   - Test permission checks
+   - Test input sanitization
