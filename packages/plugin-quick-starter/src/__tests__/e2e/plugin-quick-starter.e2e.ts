@@ -1,4 +1,15 @@
-import { type Content, type HandlerCallback, type Memory, type UUID, type Plugin, type Action, type Provider, logger } from '@elizaos/core';
+import { 
+  type Content, 
+  type HandlerCallback, 
+  type Memory, 
+  type UUID, 
+  type Plugin, 
+  type Action, 
+  type Provider, 
+  type IAgentRuntime,
+  type TestSuite,
+  logger 
+} from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -32,7 +43,7 @@ import { v4 as uuidv4 } from 'uuid';
  * ```typescript
  * {
  *   name: 'my_new_test',
- *   fn: async (runtime) => {
+ *   fn: async (runtime: IAgentRuntime) => {
  *     // Your test logic here
  *     if (someCondition !== expected) {
  *       throw new Error('Test failed: reason');
@@ -59,17 +70,6 @@ import { v4 as uuidv4 } from 'uuid';
  * - Minimal service lifecycle
  */
 
-// Define test suite structure
-interface TestCase {
-  name: string;
-  fn: (runtime: any) => Promise<void>;
-}
-
-interface TestSuite {
-  name: string;
-  tests: TestCase[];
-}
-
 /**
  * Quick Starter Plugin E2E Test Suite
  *
@@ -80,7 +80,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
   tests: [
     {
       name: 'plugin_should_be_loaded',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Check if the plugin is registered
         const plugin = runtime.plugins.find((p: Plugin) => p.name === 'plugin-quick-starter');
         
@@ -93,7 +93,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'should_have_quick_action_registered',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Check if the quick action is registered
         const action = runtime.actions.find((a: Action) => a.name === 'QUICK_ACTION');
         
@@ -115,13 +115,14 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'quick_action_should_execute_successfully',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Create a test message
         const testMessage = {
-          id: 'quick-test-1',
-          userId: 'test-user',
+          id: 'quick-test-1' as UUID,
+          userId: 'test-user' as UUID,
           agentId: runtime.agentId,
-          roomId: 'quick-test-room',
+          entityId: 'test-user' as UUID,
+          roomId: 'quick-test-room' as UUID,
           content: {
             text: 'quick test',
             action: null,
@@ -181,7 +182,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'quick_provider_should_provide_data',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Check if the provider is registered
         const provider = runtime.providers.find((p: Provider) => p.name === 'QUICK_PROVIDER');
         
@@ -191,15 +192,16 @@ export const QuickStarterPluginTestSuite: TestSuite = {
 
         // Test the provider's get method
         const mockMessage = {
-          id: 'provider-test-1',
-          userId: 'test-user',
+          id: 'provider-test-1' as UUID,
+          userId: 'test-user' as UUID,
           agentId: runtime.agentId,
-          roomId: 'provider-test-room',
+          entityId: 'test-user' as UUID,
+          roomId: 'provider-test-room' as UUID,
           content: { text: 'test' },
           createdAt: Date.now(),
         };
 
-        const result = await provider.get(runtime, mockMessage, {});
+        const result = await provider.get(runtime, mockMessage, { values: {}, data: {}, text: '' });
 
         // Verify provider returns data
         if (!result) {
@@ -215,7 +217,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'quick_service_should_be_available',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Check if the starter service is available
         const service = runtime.getService('starter');
         
@@ -229,13 +231,14 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'plugin_should_integrate_with_agent_correctly',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test that the plugin integrates properly with the agent
         const testMessage = {
-          id: 'integration-test-1',
-          userId: 'test-user',
+          id: 'integration-test-1' as UUID,
+          userId: 'test-user' as UUID,
           agentId: runtime.agentId,
-          roomId: 'integration-test-room',
+          entityId: 'test-user' as UUID,
+          roomId: 'integration-test-room' as UUID,
           content: {
             text: 'test quick plugin integration',
             action: null,
@@ -270,7 +273,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'plugin_database_adapter_should_be_registered',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Verify that the runtime has a database adapter
         // This is a basic check to ensure the plugin can work with the database
         
@@ -290,13 +293,14 @@ export const QuickStarterPluginTestSuite: TestSuite = {
     },
     {
       name: 'plugin_should_handle_errors_gracefully',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test error handling with invalid input
         const invalidMessage = {
-          id: 'error-test-1',
-          userId: 'test-user',
+          id: 'error-test-1' as UUID,
+          userId: 'test-user' as UUID,
           agentId: runtime.agentId,
-          roomId: 'error-test-room',
+          entityId: 'test-user' as UUID,
+          roomId: 'error-test-room' as UUID,
           content: null, // Invalid content
           createdAt: Date.now(),
         };

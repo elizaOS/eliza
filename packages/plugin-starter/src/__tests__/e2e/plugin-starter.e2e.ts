@@ -1,4 +1,9 @@
-import { type Content, type HandlerCallback } from '@elizaos/core';
+import { 
+  type Content, 
+  type HandlerCallback,
+  type IAgentRuntime,
+  type TestSuite 
+} from '@elizaos/core';
 
 /**
  * E2E (End-to-End) Test Suite for ElizaOS Plugins
@@ -31,7 +36,7 @@ import { type Content, type HandlerCallback } from '@elizaos/core';
  * ```typescript
  * {
  *   name: 'my_new_test',
- *   fn: async (runtime) => {
+ *   fn: async (runtime: IAgentRuntime) => {
  *     // Your test logic here
  *     if (someCondition !== expected) {
  *       throw new Error('Test failed: reason');
@@ -60,16 +65,6 @@ import { type Content, type HandlerCallback } from '@elizaos/core';
  * For more details, see the ElizaOS documentation.
  */
 
-// Define a minimal TestSuite interface that matches what's needed
-interface TestSuite {
-  name: string;
-  description?: string;
-  tests: Array<{
-    name: string;
-    fn: (runtime: any) => Promise<any>;
-  }>;
-}
-
 // Define minimal interfaces for the types we need
 type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
@@ -91,8 +86,6 @@ interface State {
 
 export const StarterPluginTestSuite: TestSuite = {
   name: 'plugin_starter_test_suite',
-  description: 'E2E tests for the starter plugin',
-
   tests: [
     /**
      * Basic Plugin Verification Test
@@ -102,7 +95,7 @@ export const StarterPluginTestSuite: TestSuite = {
      */
     {
       name: 'example_test',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Test the character name
         if (runtime.character.name !== 'Eliza') {
           throw new Error(
@@ -125,7 +118,7 @@ export const StarterPluginTestSuite: TestSuite = {
      */
     {
       name: 'should_have_hello_world_action',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Access actions through runtime.actions instead of getPlugin
         const actionExists = runtime.actions?.some((a) => a.name === 'HELLO_WORLD');
         if (!actionExists) {
@@ -147,7 +140,7 @@ export const StarterPluginTestSuite: TestSuite = {
      */
     {
       name: 'hello_world_action_test',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Create a test message asking the agent to say hello
         const testMessage: Memory = {
           entityId: '12345678-1234-1234-1234-123456789012' as UUID,
@@ -215,7 +208,7 @@ export const StarterPluginTestSuite: TestSuite = {
      */
     {
       name: 'hello_world_provider_test',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Create a test message
         const testMessage: Memory = {
           entityId: '12345678-1234-1234-1234-123456789012' as UUID,
@@ -258,7 +251,7 @@ export const StarterPluginTestSuite: TestSuite = {
      */
     {
       name: 'starter_service_test',
-      fn: async (runtime) => {
+      fn: async (runtime: IAgentRuntime) => {
         // Get the service from the runtime
         const service = runtime.getService('starter');
         if (!service) {
@@ -287,7 +280,7 @@ export const StarterPluginTestSuite: TestSuite = {
      * ```typescript
      * {
      *   name: 'your_test_name',
-     *   fn: async (runtime) => {
+     *   fn: async (runtime: IAgentRuntime) => {
      *     // Setup: Create any test data needed
      *
      *     // Action: Perform the operation you want to test
