@@ -12,6 +12,59 @@ import type {
 } from '../types/sessions';
 
 /**
+ * Query parameters for session messages API
+ */
+interface SessionMessageQueryParams {
+  limit?: string;
+  before?: string;
+  after?: string;
+}
+
+/**
+ * Validates and converts a date parameter to timestamp string
+ * @param value Date, string, or number to convert
+ * @param paramName Name of the parameter for error messages
+ * @returns Timestamp string or undefined if value is invalid
+ */
+function toTimestampString(value: Date | string | number | undefined, paramName: string): string | undefined {
+  if (!value) return undefined;
+
+  let timestamp: number;
+  
+  if (value instanceof Date) {
+    timestamp = value.getTime();
+  } else if (typeof value === 'string') {
+    const date = new Date(value);
+    timestamp = date.getTime();
+    
+    // Check for invalid date
+    if (isNaN(timestamp)) {
+      console.warn(`Invalid date string for ${paramName}: ${value}`);
+      return undefined;
+    }
+  } else if (typeof value === 'number') {
+    timestamp = value;
+  } else {
+    console.warn(`Invalid type for ${paramName}: ${typeof value}`);
+    return undefined;
+  }
+  
+  return timestamp.toString();
+}
+
+/**
+ * Validates required parameters
+ * @param value Parameter value to validate
+ * @param paramName Name of the parameter for error messages
+ * @throws Error if the parameter is invalid
+ */
+function validateRequiredParam(value: string | undefined | null, paramName: string): asserts value is string {
+  if (!value || value.trim() === '') {
+    throw new Error(`${paramName} is required and cannot be empty`);
+  }
+}
+
+/**
  * Service for managing messaging sessions between users and agents
  */
 export class SessionsService extends BaseApiClient {
@@ -38,6 +91,7 @@ export class SessionsService extends BaseApiClient {
    * @returns Session information
    */
   async getSession(sessionId: string): Promise<SessionInfoResponse> {
+    validateRequiredParam(sessionId, 'sessionId');
     return this.get<SessionInfoResponse>(`/api/messaging/sessions/${sessionId}`);
   }
 
@@ -48,6 +102,8 @@ export class SessionsService extends BaseApiClient {
    * @returns Message response
    */
   async sendMessage(sessionId: string, params: SendMessageParams): Promise<MessageResponse> {
+    validateRequiredParam(sessionId, 'sessionId');
+    validateRequiredParam(params?.content, 'content');
     return this.post<MessageResponse>(`/api/messaging/sessions/${sessionId}/messages`, params);
   }
 
@@ -61,30 +117,23 @@ export class SessionsService extends BaseApiClient {
     sessionId: string,
     params?: GetMessagesParams
   ): Promise<GetMessagesResponse> {
-    const queryParams: Record<string, any> = {};
+    validateRequiredParam(sessionId, 'sessionId');
+    
+    const queryParams: SessionMessageQueryParams = {};
 
     if (params?.limit) {
       queryParams.limit = params.limit.toString();
     }
 
-    if (params?.before) {
-      if (params.before instanceof Date) {
-        queryParams.before = params.before.getTime().toString();
-      } else if (typeof params.before === 'string') {
-        queryParams.before = new Date(params.before).getTime().toString();
-      } else {
-        queryParams.before = params.before.toString();
-      }
+    // Convert date parameters with validation
+    const beforeTimestamp = toTimestampString(params?.before, 'before');
+    if (beforeTimestamp) {
+      queryParams.before = beforeTimestamp;
     }
-
-    if (params?.after) {
-      if (params.after instanceof Date) {
-        queryParams.after = params.after.getTime().toString();
-      } else if (typeof params.after === 'string') {
-        queryParams.after = new Date(params.after).getTime().toString();
-      } else {
-        queryParams.after = params.after.toString();
-      }
+    
+    const afterTimestamp = toTimestampString(params?.after, 'after');
+    if (afterTimestamp) {
+      queryParams.after = afterTimestamp;
     }
 
     return this.get<GetMessagesResponse>(
@@ -99,6 +148,7 @@ export class SessionsService extends BaseApiClient {
    * @returns Success response
    */
   async deleteSession(sessionId: string): Promise<{ success: boolean }> {
+    validateRequiredParam(sessionId, 'sessionId');
     return this.delete<{ success: boolean }>(`/api/messaging/sessions/${sessionId}`);
   }
 

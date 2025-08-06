@@ -1,4 +1,29 @@
-import type { UUID, PaginationParams, Message } from './index';
+import type { UUID } from '@elizaos/core';
+import type { PaginationParams } from './base';
+
+/**
+ * Attachment type for messages
+ */
+export interface MessageAttachment {
+  type: 'image' | 'file' | 'audio' | 'video' | 'document';
+  url: string;
+  name?: string;
+  size?: number;
+  mimeType?: string;
+}
+
+/**
+ * Message metadata type
+ */
+export interface MessageMetadata {
+  source?: string;
+  priority?: 'low' | 'normal' | 'high';
+  tags?: string[];
+  context?: Record<string, string | number | boolean>;
+  thought?: string;
+  actions?: string[];
+  [key: string]: string | number | boolean | string[] | Record<string, string | number | boolean> | undefined;
+}
 
 /**
  * Metadata associated with a session
@@ -49,12 +74,8 @@ export interface CreateSessionResponse {
  */
 export interface SendMessageParams {
   content: string;
-  attachments?: Array<{
-    type: string;
-    url: string;
-    name?: string;
-  }>;
-  metadata?: Record<string, any>;
+  attachments?: MessageAttachment[];
+  metadata?: MessageMetadata;
 }
 
 /**
@@ -74,11 +95,7 @@ export interface SimplifiedMessage {
   authorId: string;
   isAgent: boolean;
   createdAt: Date;
-  metadata: {
-    thought?: string;
-    actions?: string[];
-    [key: string]: any;
-  };
+  metadata: MessageMetadata;
 }
 
 /**
@@ -126,5 +143,5 @@ export interface MessageResponse {
   content: string;
   authorId: string;
   createdAt: Date;
-  metadata?: Record<string, any>;
+  metadata?: MessageMetadata;
 }

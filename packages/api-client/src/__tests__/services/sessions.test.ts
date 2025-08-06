@@ -21,10 +21,17 @@ describe('SessionsService', () => {
     it('should get health status', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({
-          status: 'healthy',
-          activeSessions: 5,
-          timestamp: '2024-01-01T00:00:00.000Z',
+          success: true,
+          data: {
+            status: 'healthy',
+            activeSessions: 5,
+            timestamp: '2024-01-01T00:00:00.000Z',
+          }
         }),
       });
 
@@ -57,12 +64,19 @@ describe('SessionsService', () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({
-          sessionId: 'session-789',
-          agentId: 'agent-123',
-          userId: 'user-456',
-          createdAt: '2024-01-01T00:00:00.000Z',
-          metadata: { platform: 'web' },
+          success: true,
+          data: {
+            sessionId: 'session-789',
+            agentId: 'agent-123',
+            userId: 'user-456',
+            createdAt: '2024-01-01T00:00:00.000Z',
+            metadata: { platform: 'web' },
+          }
         }),
       });
 
@@ -84,16 +98,23 @@ describe('SessionsService', () => {
       const sessionId = 'session-789';
       const params = {
         content: 'Hello, agent!',
-        attachments: [{ type: 'image', url: 'https://example.com/image.jpg', name: 'image.jpg' }],
+        attachments: [{ type: 'image' as const, url: 'https://example.com/image.jpg', name: 'image.jpg' }],
       };
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({
-          id: 'msg-123',
-          content: 'Hello, agent!',
-          authorId: 'user-456',
-          createdAt: '2024-01-01T00:00:00.000Z',
+          success: true,
+          data: {
+            id: 'msg-123',
+            content: 'Hello, agent!',
+            authorId: 'user-456',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          }
         }),
       });
 
@@ -108,6 +129,15 @@ describe('SessionsService', () => {
         })
       );
     });
+
+    it('should throw error when sessionId is empty', async () => {
+      const params = { content: 'Hello' };
+      await expect(service.sendMessage('', params)).rejects.toThrow('sessionId is required');
+    });
+
+    it('should throw error when content is empty', async () => {
+      await expect(service.sendMessage('session-123', { content: '' })).rejects.toThrow('content is required');
+    });
   });
 
   describe('getMessages', () => {
@@ -120,18 +150,25 @@ describe('SessionsService', () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({
-          messages: [
-            {
-              id: 'msg-1',
-              content: 'Hello',
-              authorId: 'user-456',
-              isAgent: false,
-              createdAt: '2024-01-01T00:00:00.000Z',
-              metadata: {},
-            },
-          ],
-          hasMore: true,
+          success: true,
+          data: {
+            messages: [
+              {
+                id: 'msg-1',
+                content: 'Hello',
+                authorId: 'user-456',
+                isAgent: false,
+                createdAt: '2024-01-01T00:00:00.000Z',
+                metadata: {},
+              },
+            ],
+            hasMore: true,
+          }
         }),
       });
 
@@ -144,6 +181,84 @@ describe('SessionsService', () => {
         expect.any(Object)
       );
     });
+
+    it('should handle invalid date strings gracefully', async () => {
+      const sessionId = 'session-789';
+      const params = {
+        before: 'invalid-date-string',
+        after: 'another-invalid-date',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: {
+            messages: [],
+            hasMore: false,
+          }
+        }),
+      });
+
+      // Should not throw, but invalid dates should be ignored
+      const result = await service.getMessages(sessionId, params);
+      
+      expect(result.messages).toEqual([]);
+      // URL should not contain 'NaN' for invalid dates
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[0]).not.toContain('NaN');
+    });
+
+    it('should handle various date formats', async () => {
+      const sessionId = 'session-789';
+      const dateTimestamp = 1704067200000; // 2024-01-01T00:00:00.000Z
+      
+      // Test with timestamp number
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: { messages: [], hasMore: false }
+        }),
+      });
+      
+      await service.getMessages(sessionId, { before: dateTimestamp });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`before=${dateTimestamp}`),
+        expect.any(Object)
+      );
+
+      // Test with valid date string
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: { messages: [], hasMore: false }
+        }),
+      });
+      
+      await service.getMessages(sessionId, { after: '2024-01-01T00:00:00.000Z' });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`after=${dateTimestamp}`),
+        expect.any(Object)
+      );
+    });
+
+    it('should throw error when sessionId is empty', async () => {
+      await expect(service.getMessages('', {})).rejects.toThrow('sessionId is required');
+    });
   });
 
   describe('deleteSession', () => {
@@ -152,7 +267,14 @@ describe('SessionsService', () => {
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ success: true }),
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: { success: true }
+        }),
       });
 
       const result = await service.deleteSession(sessionId);
@@ -171,18 +293,25 @@ describe('SessionsService', () => {
     it('should list all active sessions', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
         json: async () => ({
-          sessions: [
-            {
-              sessionId: 'session-1',
-              agentId: 'agent-123',
-              userId: 'user-456',
-              createdAt: '2024-01-01T00:00:00.000Z',
-              lastActivity: '2024-01-01T00:01:00.000Z',
-              metadata: {},
-            },
-          ],
-          total: 1,
+          success: true,
+          data: {
+            sessions: [
+              {
+                sessionId: 'session-1',
+                agentId: 'agent-123',
+                userId: 'user-456',
+                createdAt: '2024-01-01T00:00:00.000Z',
+                lastActivity: '2024-01-01T00:01:00.000Z',
+                metadata: {},
+              },
+            ],
+            total: 1,
+          }
         }),
       });
 
