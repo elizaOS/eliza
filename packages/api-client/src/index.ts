@@ -12,6 +12,7 @@ export * from './types/audio';
 export * from './types/media';
 export * from './types/server';
 export * from './types/system';
+export * from './types/sessions';
 
 // Services (for advanced usage)
 export { AgentsService } from './services/agents';
@@ -21,6 +22,7 @@ export { AudioService } from './services/audio';
 export { MediaService } from './services/media';
 export { ServerService } from './services/server';
 export { SystemService } from './services/system';
+export { SessionsService } from './services/sessions';
 
 // Base client and error
 export { BaseApiClient, ApiError } from './lib/base-client';
