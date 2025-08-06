@@ -10,13 +10,13 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Ensure logger has all required methods with fallbacks
-// Bind methods to preserve pino logger context
+// Bind methods to preserve pino logger context with safer optional chaining
 const safeLogger = {
-  debug: logger?.debug ? logger.debug.bind(logger) : console.debug,
-  info: logger?.info ? logger.info.bind(logger) : console.log,
-  warn: logger?.warn ? logger.warn.bind(logger) : console.warn,
-  error: logger?.error ? logger.error.bind(logger) : console.error,
-  success: logger?.success ? logger.success.bind(logger) : console.log,
+  debug: (logger && typeof logger.debug === 'function') ? logger.debug.bind(logger) : console.debug,
+  info: (logger && typeof logger.info === 'function') ? logger.info.bind(logger) : console.log,
+  warn: (logger && typeof logger.warn === 'function') ? logger.warn.bind(logger) : console.warn,
+  error: (logger && typeof logger.error === 'function') ? logger.error.bind(logger) : console.error,
+  success: (logger && typeof logger.success === 'function') ? logger.success.bind(logger) : console.log,
 };
 
 interface TestStats {

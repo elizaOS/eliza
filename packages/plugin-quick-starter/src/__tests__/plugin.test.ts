@@ -20,6 +20,38 @@ import {
   testFixtures,
 } from './test-utils';
 
+// Define proper interfaces for test mocking
+interface MockLoggerMethod {
+  calls?: any[];
+}
+
+interface MockLogger {
+  info: MockLoggerMethod;
+  error: MockLoggerMethod;
+  debug: MockLoggerMethod;
+  warn: MockLoggerMethod;
+}
+
+interface PluginConfig {
+  EXAMPLE_PLUGIN_VARIABLE?: string | number;
+}
+
+interface TestCallbackContent {
+  text?: string;
+  actions?: string[];
+  source?: string;
+}
+
+interface TestActionResult {
+  text?: string;
+  success: boolean;
+  data?: {
+    actions?: string[];
+    source?: string;
+  };
+  error?: Error;
+}
+
 // Setup environment variables
 dotenv.config();
 
@@ -80,7 +112,7 @@ describe('Plugin Configuration', () => {
     const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: 123 }; // Should be string
 
     if (starterPlugin.init) {
-      await expect(starterPlugin.init(invalidConfig as any, runtime)).rejects.toThrow(
+      await expect(starterPlugin.init(invalidConfig as PluginConfig, runtime)).rejects.toThrow(
         'Invalid plugin configuration'
       );
     }
@@ -95,10 +127,11 @@ describe('Hello World Action', () => {
     runtime = createMockRuntime();
     helloWorldAction = starterPlugin?.actions?.[0] as Action;
     // Clear all spies before each test
-    (logger.info as any).calls = [];
-    (logger.error as any).calls = [];
-    (logger.debug as any).calls = [];
-    (logger.warn as any).calls = [];
+    const mockLogger = logger as unknown as MockLogger;
+    mockLogger.info.calls = [];
+    mockLogger.error.calls = [];
+    mockLogger.debug.calls = [];
+    mockLogger.warn.calls = [];
   });
 
   it('should have hello world action', () => {
@@ -181,9 +214,9 @@ describe('Hello World Action', () => {
       content: { text: 'say hello', source: 'test' },
     });
 
-    let callbackContent: any = null;
+    let callbackContent: TestCallbackContent | null = null;
     const callback: HandlerCallback = async (content: Content) => {
-      callbackContent = content;
+      callbackContent = content as TestCallbackContent;
       return [];
     };
 
@@ -192,8 +225,9 @@ describe('Hello World Action', () => {
     expect(result).toHaveProperty('text', 'Hello world!');
     expect(result).toHaveProperty('success', true);
     expect(result).toHaveProperty('data');
-    expect((result as any).data).toHaveProperty('actions', ['QUICK_ACTION']);
-    expect((result as any).data).toHaveProperty('source', 'test');
+    const typedResult = result as TestActionResult;
+    expect(typedResult.data).toHaveProperty('actions', ['QUICK_ACTION']);
+    expect(typedResult.data).toHaveProperty('source', 'test');
 
     expect(callbackContent).toEqual({
       text: 'Hello world!',
@@ -225,7 +259,8 @@ describe('Hello World Action', () => {
 
     expect(result).toHaveProperty('success', false);
     expect(result).toHaveProperty('error');
-    expect((result as any).error?.message).toBe('Callback error');
+    const typedResult = result as TestActionResult;
+    expect(typedResult.error?.message).toBe('Callback error');
     // Quick-starter plugin doesn't log errors
   });
 

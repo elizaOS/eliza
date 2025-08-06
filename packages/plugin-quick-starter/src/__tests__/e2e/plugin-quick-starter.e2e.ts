@@ -12,6 +12,17 @@ import {
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
+// Define proper interfaces for E2E testing
+interface E2ETestFiles {
+  [key: string]: unknown;
+}
+
+interface E2ETestContent extends Content {
+  text?: string;
+  actions?: string[];
+  source?: string;
+}
+
 /**
  * E2E (End-to-End) Test Suite for ElizaOS Plugin Quick Starter
  * =============================================================
@@ -136,7 +147,7 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         // Create a callback to capture the response
         const callback: HandlerCallback = async (
           response: Content,
-          files?: any
+          files?: E2ETestFiles
         ): Promise<Memory[]> => {
           callbackExecuted = true;
           responseText = response.text || '';
