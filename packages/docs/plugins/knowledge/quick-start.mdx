@@ -1,0 +1,246 @@
+---
+title: Quick Start Guide
+description: Get up and running with the Knowledge Plugin in 5 minutes
+---
+
+Give your AI agent the ability to learn from documents and answer questions based on that knowledge. Works out of the box with zero configuration!
+
+## Getting Started (Beginner-Friendly)
+
+### Step 1: Add the Plugin
+
+The Knowledge plugin works automatically with any elizaOS agent. Just add it to your agent's plugin list:
+
+```typescript
+// In your character file (e.g., character.ts)
+export const character = {
+  name: 'MyAgent',
+  plugins: [
+    '@elizaos/plugin-openai', // ← Make sure you have this
+    '@elizaos/plugin-knowledge', // ← Add this line
+    // ... your other plugins
+  ],
+  // ... rest of your character config
+};
+```
+
+**That's it!** Your agent can now learn from documents. You'll need an `OPENAI_API_KEY` in your `.env` file for embeddings.
+
+<Note>
+Add `OPENAI_API_KEY=your-api-key` to your `.env` file. This is used for creating document embeddings, even if you're using a different AI provider for chat.
+</Note>
+
+### Step 2: Upload Documents (Optional)
+
+Want your agent to automatically learn from documents when it starts?
+
+1. **Create a `docs` folder** in your project root:
+
+   ```
+   your-project/
+   ├── .env
+   ├── docs/           ← Create this folder
+   │   ├── guide.pdf
+   │   ├── manual.txt
+   │   └── notes.md
+   └── package.json
+   ```
+
+2. **Add this line to your `.env` file:**
+
+   ```env
+   LOAD_DOCS_ON_STARTUP=true
+   ```
+
+3. **Start your agent** - it will automatically learn from all documents in the `docs` folder!
+
+### Step 3: Ask Questions
+
+Once documents are loaded, just talk to your agent naturally:
+
+- "What does the guide say about setup?"
+- "Search your knowledge for configuration info"
+- "What do you know about [any topic]?"
+
+Your agent will search through all loaded documents and give you relevant answers!
+
+## Supported File Types
+
+The plugin can read almost any document:
+
+- **Text Files:** `.txt`, `.md`, `.csv`, `.json`, `.xml`, `.yaml`
+- **Documents:** `.pdf`, `.doc`, `.docx`
+- **Code Files:** `.js`, `.ts`, `.py`, `.java`, `.cpp`, `.html`, `.css` and many more
+
+## Using the Web Interface
+
+The Knowledge Plugin includes a powerful web interface for managing your agent's knowledge base.
+
+### Accessing the Knowledge Manager
+
+1. **Start your agent:**
+   ```bash
+   elizaos start
+   ```
+
+2. **Open your browser** and go to `http://localhost:3000`
+
+3. **Select your agent** from the list (e.g., "Eliza")
+
+4. **Click the Knowledge tab** in the right panel
+
+That's it! You can now:
+- Upload new documents
+- Search existing documents
+- Delete documents you no longer need
+- See all documents your agent has learned from
+
+<Tip>
+You can also drag and drop files directly onto the Knowledge tab to upload them!
+</Tip>
+
+## Agent Actions
+
+Your agent automatically gets these new abilities:
+
+- **PROCESS_KNOWLEDGE** - "Remember this document: [file path or text]"
+- **SEARCH_KNOWLEDGE** - "Search your knowledge for [topic]"
+
+### Examples in Chat
+
+**First, upload a document through the GUI:**
+1. Go to `http://localhost:3000`
+2. Click on your agent and open the Knowledge tab
+3. Upload a document (e.g., `company_q3_earnings.pdf`)
+
+**Then ask your agent about it:**
+
+```
+You: What were the Q3 revenue figures?
+Agent: Based on the Q3 earnings report in my knowledge base, the revenue was $2.3M, 
+       representing a 15% increase from Q2...
+
+You: Search your knowledge for information about profit margins
+Agent: I found relevant information about profit margins: The Q3 report shows gross 
+       margins improved to 42%, up from 38% in the previous quarter...
+
+You: What does the report say about future projections?
+Agent: According to the earnings report, the company projects Q4 revenue to reach 
+       $2.8M with continued margin expansion...
+```
+
+## Organizing Your Documents
+
+Create subfolders for better organization:
+
+```
+docs/
+├── products/
+│   ├── product-guide.pdf
+│   └── pricing.md
+├── support/
+│   ├── faqs.txt
+│   └── troubleshooting.md
+└── policies/
+    └── terms.pdf
+```
+
+## Basic Configuration (Optional)
+
+### Custom Document Folder
+
+If you want to use a different folder for documents:
+
+```env title=".env"
+# Custom path to your documents
+KNOWLEDGE_PATH=/path/to/your/documents
+```
+
+### Provider Settings
+
+The plugin automatically uses your existing AI provider. If you're using OpenRouter:
+
+```typescript
+// In your character file (e.g., character.ts)
+export const character = {
+  name: 'MyAgent',
+  plugins: [
+    '@elizaos/plugin-openrouter',
+    '@elizaos/plugin-openai', // ← Make sure you have this as openrouter doesn't support embeddings
+    '@elizaos/plugin-knowledge', // ← Add this line
+    // ... your other plugins
+  ],
+  // ... rest of your character config
+};
+```
+
+```env title=".env"
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENAI_API_KEY=your-openai-api-key
+```
+
+<Note>
+The plugin automatically uses OpenAI embeddings even when using OpenRouter for text generation.
+</Note>
+
+## <Icon icon="question" /> FAQ
+
+**Q: Do I need any API keys?**  
+A: For simple setup, only OPENAI_API_KEY.
+
+**Q: What if I don't have any AI plugins?**  
+A: You need at least one AI provider plugin (like `@elizaos/plugin-openai`) for embeddings.
+
+**Q: Can I upload documents while the agent is running?**  
+A: Yes! Use the web interface or just tell your agent to process a file.
+
+**Q: How much does this cost?**
+A: Only the cost of generating embeddings (usually pennies per document).
+
+**Q: Where are my documents stored?**  
+A: Documents are processed and stored in your agent's database as searchable chunks.
+
+## <Icon icon="exclamation-triangle" /> Common Issues
+
+### Documents Not Loading
+
+Make sure:
+- Your `docs` folder exists in the right location
+- `LOAD_DOCS_ON_STARTUP=true` is in your `.env` file
+- Files are in supported formats
+
+### Can't Access Web Interface
+
+Check that:
+- Your agent is running (`elizaos start`)
+- You're using the correct URL: `http://localhost:3000`
+- No other application is using port 3000
+
+### Agent Can't Find Information
+
+Try:
+- Using simpler search terms
+- Checking if the document was successfully processed
+- Looking in the Knowledge tab to verify the document is there
+
+## <Icon icon="rocket" /> Next Steps
+
+Now that you have the basics working:
+
+- Try uploading different types of documents
+- Organize your documents into folders
+- Ask your agent complex questions about the content
+- Explore the web interface features
+
+<CardGroup cols={2}>
+  <Card title="Examples" icon="code" href="/plugins/knowledge/examples">
+    See the plugin in action
+  </Card>
+  <Card title="Advanced Guide" icon="rocket" href="/plugins/knowledge/complete-documentation">
+    Advanced configuration options
+  </Card>
+</CardGroup>
+
+<Info>
+The Knowledge Plugin is designed to work out-of-the-box. You only need to adjust settings if you have specific requirements.
+</Info>

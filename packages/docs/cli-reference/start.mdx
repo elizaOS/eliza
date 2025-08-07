@@ -1,0 +1,321 @@
+---
+title: Start Command
+description: Launch and manage elizaOS projects and agents in production mode
+icon: play
+---
+
+<Tabs>
+  <Tab title="Overview">
+    ## Usage
+
+    ```bash
+    elizaos start [options]
+    ```
+
+    ## Options
+
+    | Option | Description |
+    | ------ | ----------- |
+    | `-c, --configure` | Reconfigure services and AI models |
+    | `--character <paths...>` | Character file(s) to use |
+    | `-p, --port <port>` | Port to listen on |
+  </Tab>
+
+  <Tab title="Examples">
+    ### Basic Usage
+
+    ```bash
+    # Start with default configuration
+    elizaos start
+
+    # Start on custom port
+    elizaos start --port 8080
+
+    # Force reconfiguration
+    elizaos start --configure
+    ```
+
+    ### Character Configuration
+
+    ```bash
+    # Start with single character file
+    elizaos start --character ./character.json
+
+    # Start with multiple character files
+    elizaos start --character ./char1.json ./char2.json
+
+    # Mix local files and URLs
+    elizaos start --character ./local.json https://example.com/remote.json
+
+    # Character files without .json extension
+    elizaos start --character assistant support-bot
+
+    # Comma-separated format also works
+    elizaos start --character "char1.json,char2.json"
+    ```
+
+    ### Advanced Configurations
+
+    ```bash
+    # Reconfigure services before starting
+    elizaos start --configure
+
+    # Start with specific character on custom port
+    elizaos start --character ./my-bot.json --port 4000
+
+    # Complete setup for production deployment
+    elizaos start --character ./production-bot.json --port 3000
+    ```
+
+    ### Production Deployment
+
+    ```bash
+    # With environment file
+    cp .env.production .env
+    elizaos start
+
+    # Background process (Linux/macOS)
+    nohup elizaos start > elizaos.log 2>&1 &
+    ```
+
+    ### Health Checks
+
+    ```bash
+    # Verify service is running
+    curl http://localhost:3000/health
+
+    # Check process status
+    ps aux | grep elizaos
+
+    # Monitor logs
+    tail -f elizaos.log
+    ```
+  </Tab>
+
+  <Tab title="Features">
+    ## Production Features
+
+    When you run `start`, elizaOS provides production-ready features:
+
+    1. **Optimized Performance**: Runs with production optimizations
+    2. **Stable Configuration**: Uses saved configuration by default
+    3. **Service Management**: Handles service connections and disconnections
+    4. **Error Recovery**: Automatic recovery from transient errors
+    5. **Resource Management**: Efficient resource allocation and cleanup
+
+    ## Startup Process
+
+    When you run the `start` command, elizaOS:
+
+    1. **Project Detection**: Detects whether you're in a project or plugin directory
+    2. **Configuration Loading**: Loads and validates the configuration
+    3. **Database Initialization**: Initializes the database system
+    4. **Plugin Loading**: Loads required plugins
+    5. **Service Startup**: Starts any configured services
+    6. **Knowledge Processing**: Processes knowledge files if present
+    7. **API Server**: Starts the HTTP API server
+    8. **Agent Runtime**: Initializes agent runtimes
+    9. **Event Listening**: Begins listening for messages and events
+
+    ## Project Detection
+
+    elizaOS automatically detects the type of directory you're in and adjusts its behavior accordingly:
+
+    - **elizaOS Projects**: Loads project configuration and starts defined agents
+    - **elizaOS Plugins**: Runs in plugin test mode with the default character
+    - **Other Directories**: Uses the default Eliza character
+
+    ## Configuration Management
+
+    ### Default Configuration
+
+    - Uses saved configuration from previous runs
+    - Loads environment variables from `.env` file
+    - Applies project-specific settings
+
+    ### Force Reconfiguration
+
+    ```bash
+    # Bypass saved configuration and reconfigure all services
+    elizaos start --configure
+    ```
+
+    This is useful when:
+    - You've changed API keys or service credentials
+    - You want to select different AI models
+    - Service configurations have changed
+    - Troubleshooting configuration issues
+
+    ## Environment Variables
+
+    The `start` command automatically loads environment variables:
+
+    ### From .env File
+
+    ```bash
+    # elizaOS looks for .env in the project directory
+    cd my-project
+    elizaos start  # Loads from ./my-project/.env
+    ```
+
+    ### Direct Environment Variables
+
+    ```bash
+    # Set variables directly
+    OPENAI_API_KEY=your-key elizaos start
+
+    # Multiple variables
+    OPENAI_API_KEY=key1 DISCORD_TOKEN=token1 elizaos start
+    ```
+
+    ## Error Handling
+
+    ### Character Loading Errors
+
+    If character files fail to load, elizaOS will:
+
+    1. **Log Errors**: Display detailed error messages for each failed character
+    2. **Continue Starting**: Use any successfully loaded characters
+    3. **Fallback**: Use the default Eliza character if no characters load successfully
+
+    ### Service Connection Errors
+
+    - Automatic retry for transient connection issues
+    - Graceful degradation when optional services are unavailable
+    - Error logging with recovery suggestions
+
+    ## Port Management
+
+    ### Default Port
+
+    - Port must be specified with `-p` or `--port` option
+    - Automatically detects if port is in use
+    - Suggests alternative ports if specified port is unavailable
+
+    ### Custom Port
+
+    ```bash
+    # Specify custom port
+    elizaos start --port 8080
+
+    # Check if port is available first
+    netstat -an | grep :8080
+    elizaos start --port 8080
+    ```
+
+    ## Build Process
+
+    The `start` command does not include built-in build functionality. To build your project before starting:
+
+    ```bash
+    # Build separately before starting
+    bun run build
+    elizaos start
+    ```
+
+    ## Health Checks
+
+    ```bash
+    # Verify service is running
+    curl http://localhost:3000/health
+
+    # Check process status
+    ps aux | grep elizaos
+
+    # Monitor logs
+    tail -f elizaos.log
+    ```
+  </Tab>
+
+  <Tab title="Troubleshooting">
+    ## Troubleshooting
+
+    ### Startup Failures
+
+    ```bash
+    # Check if another instance is running
+    ps aux | grep elizaos
+    pkill -f elizaos
+
+    # Clear any conflicting processes
+    # Press Ctrl+C in the terminal where elizaos start is running
+    elizaos start
+    ```
+
+    ### Port Conflicts
+
+    ```bash
+    # Check what's using the port
+    lsof -i :3000
+
+    # Use different port
+    elizaos start --port 3001
+
+    # Or stop conflicting service
+    sudo kill -9 $(lsof -ti:3000)
+    elizaos start
+    ```
+
+    ### Character Loading Issues
+
+    ```bash
+    # Verify character file exists and is valid JSON
+    cat ./character.json | jq .
+
+    # Test with absolute path
+    elizaos start --character /full/path/to/character.json
+
+    # Start without character to use default
+    elizaos start
+    ```
+
+    ### Configuration Problems
+
+    ```bash
+    # Force reconfiguration to fix corrupted settings
+    elizaos start --configure
+
+    # Check environment variables
+    elizaos env list
+
+    # Reset environment if needed
+    elizaos env reset
+    elizaos start --configure
+    ```
+
+    ### Build Failures
+
+    ```bash
+    # Build separately and check for errors
+    bun run build
+    
+    # If build succeeds, then start
+    elizaos start
+
+    # Install dependencies if missing
+    bun install
+    bun run build
+    elizaos start
+    ```
+
+    ### Service Connection Issues
+
+    ```bash
+    # Check internet connectivity
+    ping google.com
+
+    # Verify API keys are set
+    elizaos env list
+
+    # Test with minimal configuration
+    elizaos start --configure
+    ```
+
+    ## Related Commands
+
+    - [`create`](/cli-reference/create): Create a new project to start
+    - [`dev`](/cli-reference/dev): Run in development mode with hot reloading
+    - [`agent`](/cli-reference/agent): Manage individual agents
+    - [`env`](/cli-reference/env): Configure environment variables
+  </Tab>
+</Tabs>

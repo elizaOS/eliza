@@ -1,0 +1,90 @@
+name: Claude Code Review
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    # Focus on documentation files
+    paths:
+      - "**/*.mdx"
+      - "**/*.md"
+      - "docs.json"
+      - "mint.json"
+
+  # Allow manual triggering for when you specifically want a review
+  workflow_dispatch:
+
+jobs:
+  claude-review:
+    # Skip review if PR title contains [skip-review] or is a draft
+    if: |
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      github.event.pull_request.draft != true
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
+          # model: "claude-opus-4-20250514"
+
+          # Direct prompt for automated documentation review
+          direct_prompt: |
+            Review this documentation PR against our Mintlify documentation standards:
+
+            **MDX Syntax & Structure:**
+            - Verify all MDX files have proper YAML frontmatter with `title` and `description`
+            - **Check for double header issue**: MDX files should NOT have an H1 heading (`# Title`) in the content if they have a `title` in frontmatter (Mintlify automatically creates the H1 from frontmatter)
+            - Check for valid Mintlify components usage
+            - Ensure code blocks have language tags (e.g., ```javascript)
+            - Verify images have alt text
+            - Check that internal links use relative paths (not absolute URLs)
+            - Ensure no emojis are used - Mintlify icons should be used instead
+
+            **Content Quality:**
+            - Confirm second-person voice ("you") is used consistently
+            - Check that procedural content has prerequisites listed at the start
+            - Verify code examples are complete and appear to be functional
+            - Ensure content is clear, concise, and avoids unnecessary complexity
+            - Check for proper formatting consistency with existing documentation patterns
+            - Verify no emojis in content - icons provide better consistency
+
+            **Link Validation:**
+            - Identify any potentially broken internal links (e.g., links to non-existent files)
+            - Check for external links that might be outdated or incorrect
+            - Verify relative path structure matches the project layout
+            - Double-check all links are valid and point to existing resources
+
+            **Documentation Best Practices:**
+            - Content should be "just enough" - not too much, not too little
+            - Information should be accurate and evergreen when possible
+            - Check for content duplication - flag if similar content exists elsewhere
+            - Both basic and advanced use cases should be covered where appropriate
+
+            **Navigation & Organization:**
+            - If docs.json is modified, verify navigation structure makes sense
+            - Check that new pages are properly integrated into the navigation
+
+            Provide specific, actionable feedback. Point out exact line numbers for issues.
+            Be constructive and explain why changes would improve the documentation.
+
+          # Optional: Add tools for checking links and validating MDX
+          # allowed_tools: "Bash(npm run check-links),Bash(npm run validate-mdx)"

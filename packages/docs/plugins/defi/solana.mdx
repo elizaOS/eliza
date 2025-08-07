@@ -1,0 +1,167 @@
+---
+title: "Overview"
+description: "Enable high-performance Solana blockchain interactions for your AI agent"
+---
+
+The Solana plugin provides comprehensive integration with the Solana blockchain, enabling AI agents to manage wallets, transfer tokens, perform swaps, and track portfolios with real-time market data.
+
+## Features
+
+- **Native SOL & SPL Tokens**: Transfer SOL and any SPL token
+- **DeFi Integration**: Token swaps via Jupiter aggregator
+- **Portfolio Management**: Real-time balance tracking with USD valuations
+- **Market Data**: Live price feeds for SOL, BTC, ETH, and SPL tokens
+- **AI-Powered**: Natural language understanding for all operations
+- **WebSocket Support**: Real-time account monitoring and updates
+
+## Installation
+
+```bash
+elizaos plugins add solana
+```
+
+## Configuration
+
+The plugin requires the following environment variables:
+
+```env
+# Required - Wallet Configuration
+SOLANA_PRIVATE_KEY=your_base58_private_key_here
+# OR
+SOLANA_PUBLIC_KEY=your_public_key_here  # For read-only mode
+
+# Optional - RPC Configuration
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+HELIUS_API_KEY=your_helius_api_key
+
+# Optional - Market Data
+BIRDEYE_API_KEY=your_birdeye_api_key
+
+# Optional - AI Service
+OPENAI_API_KEY=your_openai_api_key  # For enhanced parsing
+```
+
+## Usage
+
+```typescript
+import { solanaPlugin } from '@elizaos/plugin-solana';
+import { AgentRuntime } from '@elizaos/core';
+
+// Initialize the agent with Solana plugin
+const runtime = new AgentRuntime({
+  plugins: [solanaPlugin],
+  // ... other configuration
+});
+```
+
+## Actions
+
+### Transfer Tokens
+Send SOL or SPL tokens to any Solana address.
+
+Example prompts:
+- "Send 1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+- "Transfer 100 USDC to alice.sol"
+- "Send 50 BONK tokens to Bob's wallet"
+
+### Swap Tokens
+Exchange tokens using Jupiter's aggregator for best prices.
+
+Example prompts:
+- "Swap 10 SOL for USDC"
+- "Exchange all my BONK for SOL"
+- "Trade 100 USDC for RAY with 1% slippage"
+
+## Providers
+
+The plugin includes a comprehensive wallet provider that gives your agent awareness of:
+- **Total portfolio value** in USD and SOL
+- **Individual token balances** with current prices
+- **Real-time updates** via WebSocket subscriptions
+- **Token metadata** including symbols and decimals
+
+## Key Features
+
+### AI-Powered Intent Parsing
+The plugin uses advanced prompt engineering to understand natural language:
+
+```typescript
+// The AI understands various ways to express the same intent:
+"Send 1 SOL to alice.sol"
+"Transfer 1 SOL to alice"
+"Pay alice 1 SOL"
+"Give 1 SOL to alice.sol"
+```
+
+### Automatic Token Resolution
+No need to specify token addresses - just use symbols:
+- Automatically resolves token symbols to mint addresses
+- Fetches current token metadata
+- Validates token existence before transactions
+
+### Real-Time Portfolio Tracking
+- Updates every 2 minutes automatically
+- WebSocket subscriptions for instant updates
+- Comprehensive USD valuations using Birdeye API
+
+### High-Performance Architecture
+- Connection pooling for optimal RPC usage
+- Intelligent caching to minimize API calls
+- Retry logic with exponential backoff
+- Transaction simulation before execution
+
+## Advanced Configuration
+
+### Using Helius RPC
+For enhanced performance and reliability:
+
+```env
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+HELIUS_API_KEY=your_helius_api_key
+```
+
+### Custom Network Configuration
+Connect to devnet or custom networks:
+
+```env
+SOLANA_RPC_URL=https://api.devnet.solana.com
+SOLANA_CLUSTER=devnet
+```
+
+### Public Key Only Mode
+For read-only operations without a private key:
+
+```env
+SOLANA_PUBLIC_KEY=7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+```
+
+## Error Handling
+
+The plugin includes robust error handling for:
+- Insufficient balance errors
+- Network timeouts and failures
+- Invalid addresses or tokens
+- Slippage tolerance exceeded
+- Transaction simulation failures
+
+## Security Considerations
+
+- Private keys support both base58 and base64 formats
+- Never expose private keys in logs or responses
+- Use public key mode when write access isn't needed
+- Validate all user inputs before execution
+- Set appropriate slippage for swaps
+
+## Performance Tips
+
+- Use Helius or other premium RPCs for production
+- Enable WebSocket connections for real-time updates
+- Configure appropriate cache TTLs
+- Monitor rate limits on external APIs
+
+## Next Steps
+
+- [Complete Documentation →](./solana/complete-documentation.mdx)
+- [DeFi Operations Flow →](./solana/defi-operations-flow)
+- [Examples →](./solana/examples)
+- [Testing Guide →](./solana/testing-guide)

@@ -1,0 +1,336 @@
+---
+title: Examples & Recipes
+description: Practical examples and code recipes for the Knowledge plugin
+---
+
+Learn how to use the Knowledge Plugin with practical examples that actually work.
+
+## How Knowledge Actually Works
+
+The Knowledge Plugin allows agents to learn from documents in three ways:
+
+1. **Auto-load from `docs` folder** (recommended for most use cases)
+2. **Upload via Web Interface** (best for dynamic content)
+3. **Hardcode small snippets** (only for tiny bits of info like "hello world")
+
+## Basic Character Examples
+
+### Example 1: Document-Based Support Bot
+
+Create a support bot that learns from your documentation:
+
+```typescript title="characters/support-bot.ts"
+import { type Character } from '@elizaos/core';
+
+export const supportBot: Character = {
+  name: 'SupportBot',
+  plugins: [
+    '@elizaos/plugin-openai', // Required for embeddings
+    '@elizaos/plugin-knowledge', // Add knowledge capabilities
+  ],
+  system: 'You are a friendly customer support agent. Answer questions using the support documentation you have learned. Always search your knowledge base before responding.',
+  bio: [
+    'Expert in product features and troubleshooting',
+    'Answers based on official documentation',
+    'Always polite and helpful',
+  ],
+};
+```
+
+**Setup your support docs:**
+
+```
+your-project/
+├── docs/                           # Create this folder
+│   ├── product-manual.pdf         # Your actual product docs
+│   ├── troubleshooting-guide.md   # Support procedures
+│   ├── faq.txt                    # Common questions
+│   └── policies/                  # Organize with subfolders
+│       ├── refund-policy.pdf
+│       └── terms-of-service.md
+├── .env
+│   OPENAI_API_KEY=sk-...
+│   LOAD_DOCS_ON_STARTUP=true      # Auto-load all docs
+└── src/
+    └── character.ts
+```
+
+When you start the agent, it will automatically:
+1. Load all documents from the `docs` folder
+2. Process them into searchable chunks
+3. Use this knowledge to answer questions
+
+### Example 2: API Documentation Assistant
+
+For technical documentation:
+
+```typescript title="characters/api-assistant.ts"
+export const apiAssistant: Character = {
+  name: 'APIHelper',
+  plugins: [
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-knowledge',
+  ],
+  system: 'You are a technical documentation assistant. Help developers by searching your knowledge base for API documentation, code examples, and best practices.',
+  topics: [
+    'API endpoints and methods',
+    'Authentication and security',
+    'Code examples and best practices',
+    'Error handling and debugging',
+  ],
+};
+```
+
+**Organize your API docs:**
+
+```
+docs/
+├── api-reference/
+│   ├── authentication.md
+│   ├── endpoints.json
+│   └── error-codes.csv
+├── tutorials/
+│   ├── getting-started.md
+│   ├── advanced-usage.md
+│   └── examples.ts
+└── changelog.md
+```
+
+### Example 3: Simple Info Bot (Hello World Example)
+
+For very basic, hardcoded information only:
+
+```json title="characters/info-bot.json"
+{
+  "name": "InfoBot",
+  "plugins": [
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-knowledge"
+  ],
+  "knowledge": [
+    "Our office is located at 123 Main St",
+    "Business hours: 9 AM to 5 PM EST",
+    "Contact: support@example.com"
+  ],
+  "system": "You are a simple information bot. Answer questions using your basic knowledge."
+}
+```
+
+**Note:** The `knowledge` array is only for tiny snippets. For real documents, use the `docs` folder!
+
+## Real-World Setup Guide
+
+### Step 1: Prepare Your Documents
+
+Create a well-organized `docs` folder:
+
+```
+docs/
+├── products/
+│   ├── product-overview.pdf
+│   ├── pricing-tiers.md
+│   └── feature-comparison.xlsx
+├── support/
+│   ├── installation-guide.pdf
+│   ├── troubleshooting.md
+│   └── common-issues.txt
+├── legal/
+│   ├── terms-of-service.pdf
+│   ├── privacy-policy.md
+│   └── data-processing.txt
+└── README.md  # Optional: describe folder structure
+```
+
+### Step 2: Configure Auto-Loading
+
+```env title=".env"
+# Required: Your AI provider
+OPENAI_API_KEY=sk-...
+
+# Auto-load documents on startup
+LOAD_DOCS_ON_STARTUP=true
+
+# Optional: Custom docs path (default is ./docs)
+KNOWLEDGE_PATH=/path/to/your/documents
+```
+
+### Step 3: Start Your Agent
+
+```bash
+elizaos start
+```
+
+The agent will:
+- Automatically find and load all documents
+- Process PDFs, text files, markdown, etc.
+- Create searchable embeddings
+- Log progress: "Loaded 23 documents from docs folder on startup"
+
+## Using the Web Interface
+
+### Uploading Documents
+
+1. Start your agent: `elizaos start`
+2. Open browser: `http://localhost:3000`
+3. Select your agent
+4. Click the **Knowledge** tab
+5. Drag and drop files or click to upload
+
+**Best for:**
+- Adding documents while the agent is running
+- Uploading user-specific content
+- Testing with different documents
+- Managing (view/delete) existing documents
+
+### What Happens When You Upload
+
+When you upload a document via the web interface:
+1. The file is processed immediately
+2. It's converted to searchable chunks
+3. The agent can use it right away
+4. You'll see it listed in the Knowledge tab
+
+## How Agents Use Knowledge
+
+### Automatic Knowledge Search
+
+When users ask questions, the agent automatically:
+
+```typescript
+// User asks: "What's your refund policy?"
+// Agent automatically:
+// 1. Searches knowledge base for "refund policy"
+// 2. Finds relevant chunks from refund-policy.pdf
+// 3. Uses this information to answer
+
+// User asks: "How do I install the software?"
+// Agent automatically:
+// 1. Searches for "install software"
+// 2. Finds installation-guide.pdf content
+// 3. Provides step-by-step instructions
+```
+
+### The Knowledge Provider
+
+The knowledge plugin includes a provider that automatically injects relevant knowledge into the agent's context:
+
+```typescript
+// This happens behind the scenes:
+// 1. User sends message
+// 2. Knowledge provider searches for relevant info
+// 3. Found knowledge is added to agent's context
+// 4. Agent generates response using this knowledge
+```
+
+## Configuration Examples
+
+### Production Support Bot
+
+```env title=".env"
+# AI Configuration
+OPENAI_API_KEY=sk-...
+
+# Knowledge Configuration
+LOAD_DOCS_ON_STARTUP=true
+KNOWLEDGE_PATH=/var/app/support-docs
+
+# Optional: For better processing
+CTX_KNOWLEDGE_ENABLED=true
+OPENROUTER_API_KEY=sk-or-...  # For enhanced context
+```
+
+### Development Setup
+
+```env title=".env"
+# Minimal setup for testing
+OPENAI_API_KEY=sk-...
+LOAD_DOCS_ON_STARTUP=true
+# Docs in default ./docs folder
+```
+
+## Best Practices
+
+### DO: Use the Docs Folder
+
+✅ **Recommended approach for most use cases:**
+
+```
+1. Put your documents in the docs folder
+2. Set LOAD_DOCS_ON_STARTUP=true
+3. Start your agent
+4. Documents are automatically loaded
+```
+
+### DO: Use Web Upload for Dynamic Content
+
+✅ **When to use the web interface:**
+
+- User-uploaded content
+- Frequently changing documents  
+- Testing different documents
+- One-off documents
+
+### DON'T: Hardcode Large Content
+
+❌ **Avoid this:**
+
+```json
+{
+  "knowledge": [
+    "Chapter 1: Introduction... (500 lines)",
+    "Chapter 2: Getting Started... (1000 lines)",
+    // Don't do this!
+  ]
+}
+```
+
+✅ **Instead, use files:**
+
+```
+docs/
+├── chapter-1-introduction.md
+├── chapter-2-getting-started.md
+└── ...
+```
+
+## Testing Your Setup
+
+### Quick Verification
+
+1. Check the logs when starting:
+   ```
+   [INFO] Loaded 15 documents from docs folder on startup
+   ```
+
+2. Ask the agent about your documents:
+   ```
+   You: "What documents do you have about pricing?"
+   Agent: "I have information about pricing from pricing-tiers.md and product-overview.pdf..."
+   ```
+
+3. Use the Knowledge tab to see all loaded documents
+
+### Troubleshooting
+
+**No documents loading?**
+- Check `LOAD_DOCS_ON_STARTUP=true` is set
+- Verify `docs` folder exists and has files
+- Check file permissions
+
+**Agent not finding information?**
+- Ensure documents contain the information
+- Try more specific questions
+- Check the Knowledge tab to verify documents are loaded
+
+## Summary
+
+1. **For production**: Use the `docs` folder with auto-loading
+2. **For dynamic content**: Use the web interface
+3. **For tiny snippets only**: Use the knowledge array
+4. **The agent automatically searches knowledge** - no special commands needed
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="play" href="quick-start.mdx">
+    Get started in 5 minutes
+  </Card>
+</CardGroup>

@@ -1,0 +1,116 @@
+---
+title: "Operations Flow"
+description: "How DeFi operations work in the Solana plugin"
+---
+
+## Overview
+
+The Solana plugin processes DeFi operations through this flow:
+
+```
+User Message → Action Recognition → AI Parameter Extraction → Execution → Response
+```
+
+## Transfer Flow
+
+### 1. User Intent
+```
+User: Send 1 SOL to alice.sol
+```
+
+### 2. Action Recognition
+The plugin identifies transfer keywords (send, transfer, pay).
+
+### 3. Parameter Extraction
+AI extracts:
+- Amount: 1
+- Token: SOL  
+- Recipient: alice.sol (resolves to address)
+
+### 4. Execution Steps
+- Resolve .sol domain if needed
+- Check balance
+- Build transaction with priority fee
+- Sign and send
+- Wait for confirmation
+
+### 5. Response
+```
+Agent: Successfully sent 1 SOL to alice.sol
+Transaction: https://solscan.io/tx/[signature]
+```
+
+## Swap Flow
+
+### 1. User Intent
+```
+User: Swap 10 SOL for USDC
+```
+
+### 2. Jupiter Integration
+- Get quote from Jupiter API
+- Calculate output amount
+- Check price impact
+
+### 3. Execution
+- Build swap transaction
+- Add priority fees
+- Execute and monitor
+
+### 4. Special Cases
+- "Swap all" - calculates max balance
+- Custom slippage - applies user preference
+- Route selection - optimizes for best price
+
+## Portfolio Flow
+
+### 1. User Request
+```
+User: What's my portfolio worth?
+```
+
+### 2. Data Aggregation
+- Fetch SOL balance
+- Get SPL token balances
+- Query prices from Birdeye API
+
+### 3. Response Format
+```
+Total Value: $X,XXX.XX (XX.XX SOL)
+
+Token Balances:
+SOL: 10.5 ($850.50)
+USDC: 250.25 ($250.25)
+BONK: 1,000,000 ($45.20)
+```
+
+## Key Features
+
+### Real-Time Updates
+- WebSocket subscriptions for balance changes
+- Automatic portfolio refresh every 2 minutes
+- Instant transaction notifications
+
+### Smart Token Resolution
+- Common symbols (USDC, USDT, BONK) auto-resolved
+- .sol domain support
+- Token metadata caching
+
+### Transaction Optimization
+- Priority fees for faster confirmation
+- Compute unit optimization
+- Automatic retry on failure
+
+## Error Handling
+
+### Common Errors
+- **Insufficient Balance**: Pre-checks prevent failed transactions
+- **Token Not Found**: Clear error messages for unknown tokens
+- **Network Issues**: Automatic retry with backoff
+- **High Slippage**: Warns before executing
+
+### Safety Features
+1. Balance validation before execution
+2. Address verification
+3. Slippage protection
+4. Transaction simulation when possible

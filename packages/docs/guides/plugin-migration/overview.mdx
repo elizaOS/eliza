@@ -1,0 +1,133 @@
+---
+title: "Overview"
+description: "Complete guide for migrating elizaOS plugins from version 0.x to 1.x"
+icon: "compass"
+---
+
+This comprehensive guide will walk you through migrating your elizaOS plugins from version 0.x to 1.x. The migration process involves several key changes to architecture, APIs, and best practices.
+
+## Migration Documentation
+
+Follow these guides in order for a smooth migration:
+
+### 1. [Migration Overview](./migration-guide)
+Start here! This guide covers:
+- Key differences between 0.x and 1.x
+- Breaking changes and new features
+- Basic migration steps
+- Common migration patterns
+
+### 2. [State and Providers Guide](./state-and-providers-guide)
+Understanding the new state management system:
+- How state management has changed
+- Converting old state patterns to new providers
+- Best practices for state composition
+- Provider implementation examples
+
+### 3. [Prompt and Generation Guide](./prompt-and-generation-guide)
+Adapting to the new prompt system:
+- Template system changes
+- Prompt generation updates
+- LLM integration patterns
+- Custom prompt strategies
+
+### 4. [Advanced Migration Guide](./advanced-migration-guide)
+For complex plugin migrations:
+- Handling custom services
+- Migrating complex action chains
+- Database adapter changes
+- Performance optimization tips
+
+### 5. [Completion Requirements](./completion-requirements)
+Checklist for migration completion:
+- Required changes checklist
+- Validation steps
+- Common pitfalls to avoid
+- Migration verification
+
+### 6. [Testing Guide](./testing-guide)
+Ensuring your migrated plugin works correctly:
+- Updated testing patterns
+- Migration test scenarios
+- Integration testing
+- Performance benchmarks
+
+## Quick Start
+
+If you're migrating a simple plugin, you can start with these basic steps:
+
+1. **Update imports** - Change from `@ai16z/eliza` to `@elizaos/core`
+2. **Convert actions** - Update action signatures to include callbacks
+3. **Update providers** - Convert state getters to provider pattern
+4. **Test thoroughly** - Use the testing guide to verify functionality
+
+## Migration Tips
+
+- **Don't rush** - Take time to understand the new patterns
+- **Test incrementally** - Migrate and test one component at a time
+- **Use TypeScript** - The new type system will catch many issues
+- **Ask for help** - Join our Discord for migration support
+
+## Common Migration Scenarios
+
+### Simple Action Migration
+```typescript
+// 0.x
+const myAction = {
+  handler: async (runtime, message, state) => {
+    return { text: "Response" };
+  }
+};
+
+// 1.x
+const myAction = {
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({ text: "Response" });
+    return true;
+  }
+};
+```
+
+### Provider Migration
+```typescript
+// 0.x - Direct state access
+const data = await runtime.databaseAdapter.getData();
+
+// 1.x - Provider pattern
+const provider = {
+  get: async (runtime, message) => {
+    return await runtime.databaseAdapter.getData();
+  }
+};
+```
+
+## Pre-Migration Checklist
+
+Before starting your migration:
+
+- [ ] Backup your existing plugin code
+- [ ] Review all breaking changes
+- [ ] Identify custom components that need migration
+- [ ] Plan your testing strategy
+- [ ] Allocate sufficient time for the migration
+
+## Getting Help
+
+If you encounter issues during migration:
+
+1. Review the migration guides for common issues
+2. Search existing [GitHub issues](https://github.com/elizaos/eliza/issues)
+3. Join our [Discord community](https://discord.gg/ai16z) for real-time help
+4. Create a detailed issue with your migration problem
+
+## Migration Goals
+
+The 1.x architecture brings:
+
+- **Better modularity** - Cleaner separation of concerns
+- **Improved testing** - Easier to test individual components
+- **Enhanced flexibility** - More customization options
+- **Better performance** - Optimized runtime execution
+- **Stronger typing** - Catch errors at compile time
+
+Start with the [Migration Overview](./migration-guide) and work through each guide systematically for the best results! 

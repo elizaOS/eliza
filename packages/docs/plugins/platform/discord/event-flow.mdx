@@ -1,0 +1,479 @@
+---
+title: "Event Flow"
+description: "This document provides a comprehensive breakdown of how events flow through the Discord plugin system."
+---
+
+This document provides a comprehensive breakdown of how events flow through the Discord plugin system.
+
+## Complete Event Flow Diagram
+
+```mermaid
+flowchart TD
+    Start([Discord Event]) --> A[Discord.js Client]
+    
+    A --> B{Event Type}
+    B -->|Message| C[MESSAGE_CREATE Event]
+    B -->|Interaction| D[INTERACTION_CREATE Event]
+    B -->|Guild Join| E[GUILD_CREATE Event]
+    B -->|Member Join| F[GUILD_MEMBER_ADD Event]
+    B -->|Voice State| G[VOICE_STATE_UPDATE Event]
+    
+    %% Message Flow
+    C --> H{Is Bot Message?}
+    H -->|Yes| End1[Ignore]
+    H -->|No| I[Check Channel Restrictions]
+    
+    I --> J{Channel Allowed?}
+    J -->|No| End2[Ignore]
+    J -->|Yes| K[Message Manager]
+    
+    K --> L{Has Attachments?}
+    L -->|Yes| M[Process Attachments]
+    L -->|No| N[Convert to elizaOS Format]
+    M --> N
+    
+    N --> O[Add Discord Context]
+    O --> P[Send to Bootstrap Plugin]
+    
+    P --> Q[Bootstrap Processes]
+    Q --> R[Generate Response]
+    
+    R --> S{Has Callback?}
+    S -->|Yes| T[Format Discord Response]
+    S -->|No| End3[No Response]
+    
+    T --> U{Response Type}
+    U -->|Text| V[Send Text Message]
+    U -->|Embed| W[Send Embed]
+    U -->|Buttons| X[Send with Components]
+    
+    V --> Y[Message Sent]
+    W --> Y
+    X --> Y
+    
+    %% Interaction Flow
+    D --> Z{Interaction Type}
+    Z -->|Command| AA[Slash Command Handler]
+    Z -->|Button| AB[Button Handler]
+    Z -->|Select Menu| AC[Select Menu Handler]
+    
+    AA --> AD[Validate Permissions]
+    AD --> AE[Execute Command]
+    AE --> AF[Send Interaction Response]
+    
+    %% Guild Flow
+    E --> AG[Register Slash Commands]
+    AG --> AH[Create Server Context]
+    AH --> AI[Emit WORLD_JOINED]
+    AI --> AJ[Initialize Server Settings]
+    
+    %% Voice Flow
+    G --> AK{Voice Event Type}
+    AK -->|Join| AL[Handle Voice Join]
+    AK -->|Leave| AM[Handle Voice Leave]
+    AK -->|Speaking| AN[Handle Speaking State]
+    
+    AL --> AO[Create Voice Connection]
+    AO --> AP[Setup Audio Processing]
+    AP --> AQ[Start Recording]
+    
+    AN --> AR[Process Audio Stream]
+    AR --> AS[Transcribe Audio]
+    AS --> AT[Process as Message]
+    AT --> K
+```
+
+## Detailed Event Flows
+
+### 1. Message Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant D as Discord
+    participant C as Client
+    participant MM as MessageManager
+    participant AH as AttachmentHandler
+    participant B as Bootstrap Plugin
+    participant R as Runtime
+    
+    D->>C: MESSAGE_CREATE event
+    C->>C: Check if bot message
+    alt Is bot message
+        C->>D: Ignore
+    else Not bot message
+        C->>C: Check channel restrictions
+        alt Channel not allowed
+            C->>D: Ignore
+        else Channel allowed
+            C->>MM: handleMessage()
+            MM->>MM: Convert to elizaOS format
+            
+            alt Has attachments
+                MM->>AH: processAttachments()
+                AH->>AH: Download media
+                AH->>AH: Process (vision/transcribe)
+                AH->>MM: Return processed content
+            end
+            
+            MM->>B: Send message with callback
+            B->>R: Process message
+            R->>B: Generate response
+            B->>MM: Execute callback
+            MM->>D: Send Discord message
+        end
+    end
+```
+
+### 2. Voice Channel Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Discord
+    participant C as Client
+    participant VM as VoiceManager
+    participant VC as VoiceConnection
+    participant T as Transcription
+    
+    U->>D: Join voice channel
+    D->>C: VOICE_STATE_UPDATE
+    C->>VM: handleVoiceStateUpdate()
+    VM->>VC: Create connection
+    VC->>D: Connect to channel
+    
+    loop While in channel
+        U->>D: Speak
+        D->>VC: Audio stream
+        VC->>VM: Process audio
+        VM->>T: Transcribe audio
+        T->>VM: Return text
+        VM->>C: Create message from transcript
+        C->>C: Process as text message
+    end
+    
+    U->>D: Leave channel
+    D->>C: VOICE_STATE_UPDATE
+    C->>VM: handleVoiceStateUpdate()
+    VM->>VC: Disconnect
+    VM->>VM: Cleanup resources
+```
+
+### 3. Slash Command Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant D as Discord
+    participant C as Client
+    participant CH as CommandHandler
+    participant A as Action
+    participant R as Runtime
+    
+    U->>D: /command input
+    D->>C: INTERACTION_CREATE
+    C->>C: Check interaction type
+    C->>CH: Route to handler
+    
+    CH->>CH: Validate permissions
+    alt No permission
+        CH->>D: Error response
+    else Has permission
+        CH->>CH: Parse arguments
+        CH->>A: Execute action
+        A->>R: Process with runtime
+        R->>A: Return result
+        A->>CH: Action complete
+        CH->>D: Send response
+        
+        alt Needs follow-up
+            CH->>D: Send follow-up
+        end
+    end
+```
+
+### 4. Attachment Processing Flow
+
+```mermaid
+flowchart TD
+    A[Attachment Received] --> B{Attachment Type}
+    
+    B -->|Image| C[Image Handler]
+    B -->|Audio| D[Audio Handler]
+    B -->|Video| E[Video Handler]
+    B -->|Document| F[Document Handler]
+    B -->|Other| G[Generic Handler]
+    
+    C --> H[Download Image]
+    H --> I[Check Image Size]
+    I --> J{Size OK?}
+    J -->|No| K[Resize Image]
+    J -->|Yes| L[Send to Vision Model]
+    K --> L
+    L --> M[Generate Description]
+    
+    D --> N[Download Audio]
+    N --> O[Convert Format if Needed]
+    O --> P[Send to Transcription]
+    P --> Q[Return Transcript]
+    
+    E --> R[Download Video]
+    R --> S[Extract Audio Track]
+    S --> P
+    
+    F --> T[Download Document]
+    T --> U[Extract Text Content]
+    
+    M --> V[Add to Message Context]
+    Q --> V
+    U --> V
+    G --> V
+    
+    V --> W[Continue Processing]
+```
+
+### 5. Multi-Server Event Flow
+
+```mermaid
+flowchart TD
+    A[Bot Joins Server] --> B[GUILD_CREATE Event]
+    B --> C[Create Server Context]
+    
+    C --> D[Initialize Components]
+    D --> E[Message Context Map]
+    D --> F[Voice Connection Pool]
+    D --> G[User Relationship Map]
+    D --> H[Server Settings]
+    
+    B --> I[Register Commands]
+    I --> J[Guild-Specific Commands]
+    I --> K[Global Commands]
+    
+    B --> L[Emit WORLD_JOINED]
+    L --> M[Create World Entity]
+    L --> N[Create Room Entities]
+    L --> O[Create User Entities]
+    
+    P[Server Events] --> Q{Event Type}
+    Q -->|Message| R[Route to Server Context]
+    Q -->|Voice| S[Server Voice Manager]
+    Q -->|Member| T[Update Relationships]
+    
+    R --> U[Process with Context]
+    S --> V[Manage Connection]
+    T --> W[Update Entity]
+```
+
+## Event Type Reference
+
+### Discord.js Events
+
+| Event | Description | Plugin Handler |
+|-------|-------------|----------------|
+| `ready` | Client is ready | Initialize services |
+| `messageCreate` | New message | MessageManager |
+| `messageUpdate` | Message edited | MessageManager |
+| `messageDelete` | Message deleted | Cleanup handler |
+| `interactionCreate` | Slash command/button | Interaction router |
+| `guildCreate` | Bot joins server | Server initializer |
+| `guildDelete` | Bot leaves server | Cleanup handler |
+| `guildMemberAdd` | Member joins | Relationship manager |
+| `voiceStateUpdate` | Voice state change | VoiceManager |
+| `error` | Client error | Error handler |
+| `disconnect` | Lost connection | Reconnection handler |
+
+### elizaOS Events Emitted
+
+| Event | When Emitted | Payload |
+|-------|--------------|---------|
+| `WORLD_JOINED` | Bot joins server | World, rooms, entities |
+| `MESSAGE_RECEIVED` | Message processed | elizaOS message format |
+| `VOICE_MESSAGE_RECEIVED` | Voice transcribed | Transcribed message |
+| `REACTION_RECEIVED` | Reaction added | Reaction details |
+| `INTERACTION_RECEIVED` | Slash command used | Interaction data |
+
+## State Management
+
+### Message Context
+
+```typescript
+interface MessageContext {
+  channelId: string;
+  serverId: string;
+  userId: string;
+  threadId?: string;
+  referencedMessageId?: string;
+  attachments: ProcessedAttachment[];
+  discordMetadata: {
+    messageId: string;
+    timestamp: number;
+    editedTimestamp?: number;
+    isPinned: boolean;
+    mentions: string[];
+  };
+}
+```
+
+### Voice Context
+
+```typescript
+interface VoiceContext {
+  channelId: string;
+  serverId: string;
+  connection: VoiceConnection;
+  activeUsers: Map<string, VoiceUserState>;
+  recordingState: {
+    isRecording: boolean;
+    startTime?: number;
+    audioBuffer: Buffer[];
+  };
+}
+```
+
+## Error Handling in Event Flow
+
+### Error Propagation
+
+```mermaid
+flowchart TD
+    A[Event Error] --> B{Error Type}
+    
+    B -->|Permission Error| C[Log Warning]
+    B -->|Network Error| D[Retry Logic]
+    B -->|API Error| E[Handle API Error]
+    B -->|Unknown Error| F[Log Error]
+    
+    C --> G[Notify User if Possible]
+    D --> H{Retry Count}
+    H -->|< Max| I[Exponential Backoff]
+    H -->|>= Max| J[Give Up]
+    I --> K[Retry Operation]
+    
+    E --> L{Error Code}
+    L -->|Rate Limit| M[Queue for Later]
+    L -->|Invalid Request| N[Log and Skip]
+    L -->|Server Error| O[Retry Later]
+    
+    F --> P[Send to Error Reporter]
+    P --> Q[Continue Processing]
+```
+
+## Performance Considerations
+
+### Event Batching
+
+For high-volume servers, events are batched:
+
+```typescript
+class EventBatcher {
+  private messageQueue: DiscordMessage[] = [];
+  private batchTimer?: NodeJS.Timeout;
+  
+  addMessage(message: DiscordMessage) {
+    this.messageQueue.push(message);
+    
+    if (!this.batchTimer) {
+      this.batchTimer = setTimeout(() => {
+        this.processBatch();
+      }, 100); // 100ms batch window
+    }
+  }
+  
+  private async processBatch() {
+    const batch = [...this.messageQueue];
+    this.messageQueue = [];
+    this.batchTimer = undefined;
+    
+    // Process messages in parallel
+    await Promise.all(
+      batch.map(msg => this.processMessage(msg))
+    );
+  }
+}
+```
+
+### Connection Pooling
+
+Voice connections are pooled to reduce overhead:
+
+```typescript
+class VoiceConnectionPool {
+  private connections = new Map<string, VoiceConnection>();
+  private maxConnections = 10;
+  
+  async getConnection(channelId: string): Promise<VoiceConnection> {
+    // Reuse existing connection
+    const existing = this.connections.get(channelId);
+    if (existing?.state.status === VoiceConnectionStatus.Ready) {
+      return existing;
+    }
+    
+    // Check pool limit
+    if (this.connections.size >= this.maxConnections) {
+      await this.evictOldestConnection();
+    }
+    
+    // Create new connection
+    const connection = await this.createConnection(channelId);
+    this.connections.set(channelId, connection);
+    return connection;
+  }
+}
+```
+
+## Monitoring Event Flow
+
+### Event Metrics
+
+Track event processing metrics:
+
+```typescript
+interface EventMetrics {
+  eventType: string;
+  processingTime: number;
+  success: boolean;
+  errorType?: string;
+  serverId: string;
+  channelId: string;
+}
+
+class EventMonitor {
+  private metrics: EventMetrics[] = [];
+  
+  recordEvent(metric: EventMetrics) {
+    this.metrics.push(metric);
+    
+    // Log slow events
+    if (metric.processingTime > 1000) {
+      logger.warn(`Slow event processing: ${metric.eventType} took ${metric.processingTime}ms`);
+    }
+  }
+  
+  getStats() {
+    return {
+      totalEvents: this.metrics.length,
+      averageProcessingTime: this.calculateAverage(),
+      errorRate: this.calculateErrorRate(),
+      eventBreakdown: this.getEventTypeBreakdown()
+    };
+  }
+}
+```
+
+## Best Practices
+
+1. **Event Debouncing**
+   - Debounce rapid events (typing indicators, voice state)
+   - Batch similar events when possible
+
+2. **Error Isolation**
+   - Don't let one event error affect others
+   - Use try-catch at event handler level
+
+3. **Resource Management**
+   - Clean up event listeners on disconnect
+   - Limit concurrent event processing
+
+4. **Monitoring**
+   - Track event processing times
+   - Monitor error rates by event type
+   - Alert on unusual patterns

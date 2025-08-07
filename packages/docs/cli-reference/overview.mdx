@@ -1,0 +1,158 @@
+---
+title: elizaOS CLI Overview
+description: Comprehensive guide to the elizaOS Command Line Interface (CLI) tools and commands
+icon: terminal
+---
+
+## Installation
+
+Install the elizaOS CLI globally using Bun:
+
+```bash
+bun install -g @elizaos/cli
+```
+
+## Available Commands
+
+| Command | Description |
+| ------- | ----------- |
+| [`create`](/cli-reference/create) | Initialize a new project, plugin, or agent |
+| [`monorepo`](/cli-reference/monorepo) | Clone elizaOS monorepo from a specific branch (defaults to develop) |
+| [`plugins`](/cli-reference/plugins) | Manage elizaOS plugins |
+| [`agent`](/cli-reference/agent) | Manage elizaOS agents |
+| [`tee`](/cli-reference/tee) | Manage TEE deployments |
+| [`start`](/cli-reference/start) | Start the Eliza agent with configurable plugins and services |
+| [`update`](/cli-reference/update) | Update elizaOS CLI and project dependencies |
+| [`test`](/cli-reference/test) | Run tests for Eliza agent projects and plugins |
+| [`env`](/cli-reference/env) | Manage environment variables and secrets |
+| [`dev`](/cli-reference/dev) | Start the project or plugin in development mode with auto-rebuild, detailed logging, and file change detection |
+| [`publish`](/cli-reference/publish) | Publish a plugin to the registry |
+
+## Global Options
+
+These options apply to all commands:
+
+| Option | Description |
+| ------ | ----------- |
+| `--help`, `-h` | Display help information |
+| `--version`, `-v` | Display version information |
+| `--no-emoji` | Disables emoji characters in the output |
+| `--no-auto-install` | Disables the automatic prompt to install Bun if it is not detected |
+
+## Examples
+
+### Getting Version Information
+
+```bash
+# Check your CLI version
+elizaos --version
+
+# Get help for the 'agent' command
+elizaos agent --help
+
+# Get help for the 'agent start' subcommand
+elizaos agent start --help
+```
+
+## Project Structure
+
+For detailed information about project and plugin structure, see the [Quickstart Guide](/quickstart).
+
+## Environment Configuration
+
+Configure your API keys and environment variables with the `env` command:
+
+```bash
+# Edit local environment variables interactively
+elizaos env edit-local
+
+# List all environment variables
+elizaos env list
+
+# Interactive environment manager
+elizaos env interactive
+```
+
+## Development vs Production
+
+elizaOS supports two main modes of operation:
+
+<CardGroup cols={2}>
+  <Card title="Development Mode" icon="code" href="/cli-reference/dev">
+    Hot reloading, detailed error messages, and file watching for rapid development.
+  </Card>
+  <Card title="Production Mode" icon="rocket" href="/cli-reference/start">
+    Optimized performance and production-ready configuration for deployment.
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+For a complete guide to getting started with elizaOS, see the [Quickstart Guide](/quickstart).
+
+### Creating a new project
+
+```bash
+# Create a new project using the interactive wizard
+elizaos create
+
+# Or specify a name directly
+elizaos create my-agent-project
+```
+
+### Starting a project
+
+```bash
+# Navigate to your project directory
+cd my-agent-project
+
+# Start the project
+elizaos start
+```
+
+### Development mode
+
+```bash
+# Run in development mode with hot reloading
+elizaos dev
+```
+
+## Working with Projects
+
+elizaOS organizes work into projects, which can contain one or more agents along with their configurations, knowledge files, and dependencies. The CLI provides commands to manage the entire lifecycle of a project:
+
+1. **Create** a new project with `create`
+2. **Configure** settings with `env`
+3. **Develop** using `dev` for hot reloading
+4. **Test** functionality with `test`
+5. **Start** in production with `start`
+6. **Share** by publishing with `publish`
+
+## Working with Plugins
+
+Plugins extend the functionality of your agents. Use the `plugins` command for managing plugins and `publish` for publishing your own:
+
+```bash
+# List available plugins
+elizaos plugins list
+
+# Add a plugin to your project
+elizaos plugins add @elizaos/plugin-discord
+
+# Publish your plugin (from plugin directory)
+elizaos publish
+
+# Test publishing without making changes
+elizaos publish --test
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Complete workflow guide to get started with elizaOS
+  </Card>
+  <Card title="Environment Configuration" icon="gear" href="/cli-reference/env">
+    Managing environment variables and configuration
+  </Card>
+</CardGroup>

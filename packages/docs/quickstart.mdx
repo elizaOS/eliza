@@ -1,0 +1,116 @@
+---
+title: 'Quickstart'
+description: 'Get elizaOS up and running in under 5 minutes'
+---
+
+## Prerequisites
+
+Before you begin, make sure you have the following installed:
+
+<CardGroup cols={2}>
+  <Card title="Node.js 23.3" icon="node" href="https://nodejs.org/">
+    Install Node.js version 23.3 or higher
+  </Card>
+  <Card title="Bun" icon="bolt" href="https://bun.sh/">
+    Install Bun runtime for faster package management
+  </Card>
+</CardGroup>
+
+## Quick Installation
+
+Follow these steps to get elizaOS running quickly:
+
+<Steps>
+  <Step title="Install elizaOS CLI">
+Install the elizaOS CLI globally using Bun:
+    ```bash
+    bun i -g @elizaos/cli
+    ```
+  </Step>
+
+  <Step title="Create Your Agent">
+    Create a new elizaOS agent with your chosen name:
+    ```bash
+    elizaos create <agent-name>
+    ```
+    Replace `<agent-name>` with your desired agent name.
+  </Step>
+
+  <Step title="Configure Your Agent">
+    During the setup process, you'll be prompted to make the following selections:
+
+    1. **Database**: Select `pglite` for a lightweight PostgreSQL option
+    2. **Model Provider**: Select `openai`
+    3. **API Key**: Provide your OpenAI API key when prompted
+
+    <Note>
+      Make sure you have your OpenAI API key ready. You can get one from the [OpenAI Platform](https://platform.openai.com/).
+    </Note>
+  </Step>
+
+  <Step title="Navigate to Your Agent">
+    Change directory to your newly created agent:
+    ```bash
+    cd <agent-name>
+    ```
+  </Step>
+
+  <Step title="Start Your Agent">
+    Launch your elizaOS agent:
+    ```bash
+    elizaos start
+    ```
+    Your agent is now running and ready to interact!
+  </Step>
+
+  <Step title="Chat with Eliza">
+    Open your browser and navigate to:
+    ```
+    http://localhost:3000
+    ```
+    Start chatting with your Eliza agent through the web interface!
+  </Step>
+</Steps>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Explore elizaOS" icon="folder-open" href="https://github.com/elizaos/eliza">
+    Check out the main elizaOS repository for more advanced features and configurations
+  </Card>
+  <Card title="Customize Your Agent" icon="palette" href="/development">
+    Learn how to customize your agent's personality, capabilities, and integrations
+  </Card>
+  <Card title="Deploy Your Agent" icon="rocket" href="/guides/plugin-publishing-guide">
+    Ready to go live? Learn how to deploy your agent to production
+  </Card>
+  <Card title="Join the Community" icon="users" href="https://discord.gg/ai16z">
+    Connect with other elizaOS developers and get support
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="Node.js version issues">
+    If you encounter issues with Node.js, make sure you're running version 23.3 or higher:
+    ```bash
+    node --version
+    ```
+    You can use [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) to manage Node.js versions.
+  </Accordion>
+
+  <Accordion icon="key" title="OpenAI API key errors">
+    If you're getting authentication errors:
+    - Verify your API key is correct
+    - Check that your OpenAI account has available credits
+    - Ensure your API key has the necessary permissions
+  </Accordion>
+
+  <Accordion icon="database" title="Database connection issues">
+    If pglite isn't working properly:
+    - Try restarting the agent
+    - Check that the database files have proper permissions
+    - Consider using a different database option if issues persist
+  </Accordion>
+</AccordionGroup>

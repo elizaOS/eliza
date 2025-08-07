@@ -1,0 +1,541 @@
+---
+title: "Plugin Internals"
+description: "Comprehensive guide to the elizaOS plugin system architecture and implementation"
+---
+
+## Overview
+
+The elizaOS plugin system is a comprehensive extension mechanism that allows developers to add functionality to agents through a well-defined interface. This analysis examines the complete plugin architecture by analyzing the source code and comparing it with the documentation.
+
+## Core Plugins
+
+elizaOS includes two essential core plugins that provide foundational functionality:
+
+<CardGroup cols={2}>
+  <Card title="Bootstrap Plugin" icon="rocket" href="/plugins/bootstrap">
+    The core message handler and event system for elizaOS agents. Provides essential functionality for message processing, knowledge management, and basic agent operations.
+  </Card>
+  
+  <Card title="SQL Plugin" icon="database" href="/plugins/sql">
+    Database integration and management for elizaOS. Features automatic schema migrations, multi-database support, and a sophisticated plugin architecture.
+  </Card>
+</CardGroup>
+
+## 1. Complete Plugin Interface
+
+Based on `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/plugin.ts`, the full Plugin interface includes:
+
+```typescript
+export interface Plugin {
+  name: string;                          // Unique identifier
+  description: string;                   // Human-readable description
+  
+  // Initialization
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+  
+  // Configuration
+  config?: { [key: string]: any };       // Plugin-specific configuration
+  
+  // Core Components (documented)
+  actions?: Action[];                    // Tasks agents can perform
+  providers?: Provider[];                // Data sources
+  evaluators?: Evaluator[];              // Response filters
+  
+  // Additional Components (not fully documented)
+  services?: (typeof Service)[];         // Background services
+  adapter?: IDatabaseAdapter;            // Database adapter
+  models?: {                            // Model handlers
+    [key: string]: (...args: any[]) => Promise<any>;
+  };
+  events?: PluginEvents;                // Event handlers
+  routes?: Route[];                     // HTTP endpoints
+  tests?: TestSuite[];                  // Test suites
+  componentTypes?: {                    // Custom component types
+    name: string;
+    schema: Record<string, unknown>;
+    validator?: (data: any) => boolean;
+  }[];
+  
+  // Dependency Management
+  dependencies?: string[];              // Required plugins
+  testDependencies?: string[];          // Test-only dependencies
+  priority?: number;                    // Loading priority
+  schema?: any;                        // Database schema
+}
+```
+
+## 2. Action, Provider, and Evaluator Interfaces
+
+### Action Interface
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/components.ts`:
+
+```typescript
+export interface Action {
+  name: string;                         // Unique identifier
+  similes?: string[];                   // Alternative names/aliases
+  description: string;                  // What the action does
+  examples?: ActionExample[][];         // Usage examples
+  handler: Handler;                     // Execution logic
+  validate: Validator;                  // Pre-execution validation
+}
+
+// Handler signature
+type Handler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: { [key: string]: unknown },
+  callback?: HandlerCallback,
+  responses?: Memory[]
+) => Promise<unknown>;
+```
+
+### Provider Interface
+```typescript
+export interface Provider {
+  name: string;                         // Unique identifier
+  description?: string;                 // What data it provides
+  dynamic?: boolean;                    // Dynamic data source
+  position?: number;                    // Execution order
+  private?: boolean;                    // Hidden from provider list
+  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
+}
+
+interface ProviderResult {
+  values?: { [key: string]: any };
+  data?: { [key: string]: any };
+  text?: string;
+}
+```
+
+### Evaluator Interface
+```typescript
+export interface Evaluator {
+  alwaysRun?: boolean;                  // Run on every response
+  description: string;                  // What it evaluates
+  similes?: string[];                   // Alternative names
+  examples: EvaluationExample[];        // Example evaluations
+  handler: Handler;                     // Evaluation logic
+  name: string;                         // Unique identifier
+  validate: Validator;                  // Should evaluator run?
+}
+```
+
+## 3. Plugin Initialization Lifecycle
+
+Based on `/Users/studio/Documents/GitHub/eliza/packages/core/src/runtime.ts`, the initialization process:
+
+1. **Plugin Registration** (`registerPlugin` method):
+   - Validates plugin has a name
+   - Checks for duplicate plugins
+   - Adds to active plugins list
+   - Calls plugin's `init()` method if present
+   - Handles configuration errors gracefully
+
+2. **Component Registration Order**:
+   ```typescript
+   // 1. Database adapter (if provided)
+   if (plugin.adapter) {
+     this.registerDatabaseAdapter(plugin.adapter);
+   }
+   
+   // 2. Actions
+   if (plugin.actions) {
+     for (const action of plugin.actions) {
+       this.registerAction(action);
+     }
+   }
+   
+   // 3. Evaluators
+   if (plugin.evaluators) {
+     for (const evaluator of plugin.evaluators) {
+       this.registerEvaluator(evaluator);
+     }
+   }
+   
+   // 4. Providers
+   if (plugin.providers) {
+     for (const provider of plugin.providers) {
+       this.registerProvider(provider);
+     }
+   }
+   
+   // 5. Models
+   if (plugin.models) {
+     for (const [modelType, handler] of Object.entries(plugin.models)) {
+       this.registerModel(modelType, handler, plugin.name, plugin.priority);
+     }
+   }
+   
+   // 6. Routes
+   if (plugin.routes) {
+     for (const route of plugin.routes) {
+       this.routes.push(route);
+     }
+   }
+   
+   // 7. Events
+   if (plugin.events) {
+     for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+       for (const eventHandler of eventHandlers) {
+         this.registerEvent(eventName, eventHandler);
+       }
+     }
+   }
+   
+   // 8. Services (delayed if runtime not initialized)
+   if (plugin.services) {
+     for (const service of plugin.services) {
+       if (this.isInitialized) {
+         await this.registerService(service);
+       } else {
+         this.servicesInitQueue.add(service);
+       }
+     }
+   }
+   ```
+
+## 4. Service System Integration
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/service.ts`:
+
+### Service Abstract Class
+```typescript
+export abstract class Service {
+  protected runtime!: IAgentRuntime;
+  
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+  
+  abstract stop(): Promise<void>;
+  static serviceType: string;
+  abstract capabilityDescription: string;
+  config?: Metadata;
+  
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error('Not implemented');
+  }
+}
+```
+
+### Service Types
+The system includes predefined service types:
+- TRANSCRIPTION, VIDEO, BROWSER, PDF
+- REMOTE_FILES (AWS S3)
+- WEB_SEARCH, EMAIL, TEE
+- TASK, WALLET, LP_POOL, TOKEN_DATA
+- DATABASE_MIGRATION
+- PLUGIN_MANAGER, PLUGIN_CONFIGURATION, PLUGIN_USER_INTERACTION
+
+## 5. Route Definitions for HTTP Endpoints
+
+From the Plugin interface:
+```typescript
+export type Route = {
+  type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
+  path: string;
+  filePath?: string;                    // For static files
+  public?: boolean;                     // Public access
+  name?: string;                        // Route name
+  handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
+  isMultipart?: boolean;                // File uploads
+};
+```
+
+Example from starter plugin:
+```typescript
+routes: [
+  {
+    name: 'hello-world-route',
+    path: '/helloworld',
+    type: 'GET',
+    handler: async (_req: any, res: any) => {
+      res.json({ message: 'Hello World!' });
+    }
+  }
+]
+```
+
+## 6. Event System Integration
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/events.ts`:
+
+### Event Types
+Standard events include:
+- World events: WORLD_JOINED, WORLD_CONNECTED, WORLD_LEFT
+- Entity events: ENTITY_JOINED, ENTITY_LEFT, ENTITY_UPDATED
+- Room events: ROOM_JOINED, ROOM_LEFT
+- Message events: MESSAGE_RECEIVED, MESSAGE_SENT, MESSAGE_DELETED
+- Voice events: VOICE_MESSAGE_RECEIVED, VOICE_MESSAGE_SENT
+- Run events: RUN_STARTED, RUN_ENDED, RUN_TIMEOUT
+- Action/Evaluator events: ACTION_STARTED/COMPLETED, EVALUATOR_STARTED/COMPLETED
+- Model events: MODEL_USED
+
+### Plugin Event Handlers
+```typescript
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: any) => Promise<any>)[];
+};
+```
+
+## 7. Database Adapter Plugins
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/database.ts`:
+
+The IDatabaseAdapter interface is extensive, including methods for:
+- Agents, Entities, Components
+- Memories (with embeddings)
+- Rooms, Participants
+- Relationships
+- Tasks
+- Caching
+- Logs
+
+Example: SQL Plugin creates database adapters:
+```typescript
+export const plugin: Plugin = {
+  name: '@elizaos/plugin-sql',
+  description: 'A plugin for SQL database access with dynamic schema migrations',
+  priority: 0,
+  schema,
+  init: async (_, runtime: IAgentRuntime) => {
+    const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
+    runtime.registerDatabaseAdapter(dbAdapter);
+  }
+};
+```
+
+## 8. Action Chaining and Callbacks
+
+### Overview
+
+Action chaining in elizaOS allows multiple actions to execute sequentially with each action having access to the results of previous actions. This enables complex workflows where actions can build upon each other's outputs. The system uses callbacks for real-time user feedback and an `ActionResult` interface for passing data between actions.
+
+### The ActionResult Interface
+
+Actions return an `ActionResult` object that standardizes how actions communicate their outcomes:
+
+```typescript
+export interface ActionResult {
+  /** Whether the action succeeded - defaults to true */
+  success: boolean;
+  
+  /** Optional text description of the result */
+  text?: string;
+  
+  /** Values to merge into the state */
+  values?: Record<string, any>;
+  
+  /** Data payload containing action-specific results */
+  data?: Record<string, any>;
+  
+  /** Error information if the action failed */
+  error?: string | Error;
+}
+```
+
+### Handler Callbacks
+
+The `HandlerCallback` provides a mechanism for actions to send immediate feedback to users before the action completes:
+
+```typescript
+export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
+```
+
+Example usage from plugin-linear:
+```typescript
+async handler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  _options?: Record<string, unknown>,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  try {
+    // ... perform action logic ...
+    
+    // Send success message to user via callback
+    await callback?.({
+      text: `Created Linear issue: ${issue.title} (${issue.identifier})\n\nView it at: ${issue.url}`,
+      source: message.content.source
+    });
+    
+    // Return structured result for potential chaining
+    return {
+      text: `Created issue: ${issue.title} (${issue.identifier})`,
+      success: true,
+      data: {
+        issueId: issue.id,
+        identifier: issue.identifier,
+        url: issue.url
+      }
+    };
+  } catch (error) {
+    // Send error message to user
+    await callback?.({
+      text: `Failed to create issue: ${error.message}`,
+      source: message.content.source
+    });
+    
+    return {
+      text: `Failed to create issue: ${error.message}`,
+      success: false
+    };
+  }
+}
+```
+
+### Action Context and Previous Results
+
+When multiple actions are executed in sequence, each action receives an `ActionContext` that provides access to previous action results:
+
+```typescript
+export interface ActionContext {
+  /** Results from previously executed actions in this run */
+  previousResults: ActionResult[];
+  
+  /** Get a specific previous result by action name */
+  getPreviousResult?: (actionName: string) => ActionResult | undefined;
+}
+```
+
+The runtime automatically provides this context in the `options` parameter:
+
+```typescript
+async handler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: Record<string, unknown>,
+  callback?: HandlerCallback
+): Promise<ActionResult> {
+  // Access the action context
+  const context = options?.context as ActionContext;
+  
+  // Get results from a specific previous action
+  const previousResult = context?.getPreviousResult?.('CREATE_LINEAR_ISSUE');
+  
+  if (previousResult?.data?.issueId) {
+    // Use data from previous action
+    const issueId = previousResult.data.issueId;
+    // ... continue with logic using previous result ...
+  }
+}
+```
+
+### Action Execution Flow
+
+The runtime's `processActions` method manages the execution flow:
+
+1. **Action Planning**: When multiple actions are detected, the runtime creates an execution plan
+2. **Sequential Execution**: Actions execute in the order specified by the agent
+3. **State Accumulation**: Each action's results are merged into the accumulated state
+4. **Working Memory**: Results are stored in working memory for access during execution
+5. **Error Handling**: Failed actions don't stop the chain unless marked as critical
+
+### Working Memory Management
+
+The runtime maintains a working memory that stores recent action results:
+
+```typescript
+// Results are automatically stored in state.data.workingMemory
+const memoryEntry: WorkingMemoryEntry = {
+  actionName: action.name,
+  result: actionResult,
+  timestamp: Date.now()
+};
+```
+
+The system keeps the most recent 50 entries (configurable) to prevent memory bloat.
+
+### Best Practices for Action Chaining
+
+1. **Always Return ActionResult**: Even for simple actions, return a proper `ActionResult` object:
+   ```typescript
+   return {
+     success: true,
+     text: "Action completed",
+     data: { /* any data for next actions */ }
+   };
+   ```
+
+2. **Use Callbacks for User Feedback**: Send immediate feedback via callbacks rather than waiting for the action to complete:
+   ```typescript
+   await callback?.({
+     text: "Processing your request...",
+     source: message.content.source
+   });
+   ```
+
+3. **Store Identifiers in Data**: When creating resources, store identifiers that subsequent actions might need:
+   ```typescript
+   return {
+     success: true,
+     data: {
+       resourceId: created.id,
+       resourceUrl: created.url
+     }
+   };
+   ```
+
+4. **Handle Missing Dependencies**: Check if required previous results exist:
+   ```typescript
+   const previousResult = context?.getPreviousResult?.('REQUIRED_ACTION');
+   if (!previousResult?.success) {
+     return {
+       success: false,
+       text: "Required previous action did not complete successfully"
+     };
+   }
+   ```
+
+5. **Maintain Backward Compatibility**: The runtime handles legacy action returns (void, boolean) but new actions should use `ActionResult`.
+
+### Example: Multi-Step Workflow
+
+Here's an example of a multi-step workflow using action chaining:
+
+```typescript
+// User: "Create a bug report for the login issue and assign it to John"
+// Agent executes: REPLY, CREATE_LINEAR_ISSUE, UPDATE_LINEAR_ISSUE
+
+// Action 1: CREATE_LINEAR_ISSUE
+{
+  success: true,
+  data: {
+    issueId: "abc-123",
+    identifier: "BUG-456"
+  }
+}
+
+// Action 2: UPDATE_LINEAR_ISSUE (can access previous result)
+async handler(runtime, message, state, options, callback) {
+  const context = options?.context as ActionContext;
+  const createResult = context?.getPreviousResult?.('CREATE_LINEAR_ISSUE');
+  
+  if (createResult?.data?.issueId) {
+    // Use the issue ID from previous action
+    await updateIssue(createResult.data.issueId, { assignee: "John" });
+    
+    return {
+      success: true,
+      text: "Issue assigned to John"
+    };
+  }
+}
+```
+
+### Common Patterns
+
+1. **Create and Configure**: Create a resource, then configure it
+2. **Search and Update**: Find resources, then modify them
+3. **Validate and Execute**: Check conditions, then perform actions
+4. **Aggregate and Report**: Collect data from multiple sources, then summarize
+
+The action chaining system provides a powerful way to build complex, multi-step workflows while maintaining clean separation between individual actions.
+

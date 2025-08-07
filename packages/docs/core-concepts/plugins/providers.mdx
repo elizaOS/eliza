@@ -1,0 +1,145 @@
+---
+title: 'Providers'
+description: 'Supply data to agents'
+---
+
+## What are Providers?
+
+Providers = data sources that supply context for agent decision-making.
+
+## Provider Interface
+
+```typescript
+interface Provider {
+  name: string;           // Unique identifier
+  description?: string;   // What it provides
+  dynamic?: boolean;      // Changes over time?
+  position?: number;      // Load priority (-100 to 100)
+  private?: boolean;      // Hidden from provider list?
+  get: (runtime, message, state) => Promise<ProviderResult>;
+}
+```
+
+## Core Providers (Bootstrap Plugin)
+
+| Provider | Returns | Example Use |
+|----------|---------|-------------|
+| `characterProvider` | Agent personality | Name, bio, traits |
+| `timeProvider` | Current date/time | "What time is it?" |
+| `knowledgeProvider` | Knowledge base | Documentation, facts |
+| `recentMessagesProvider` | Chat history | Context awareness |
+| `actionsProvider` | Available actions | "What can you do?" |
+| `factsProvider` | Stored facts | User preferences |
+| `settingsProvider` | Configuration | Model settings |
+
+## Plugin Provider Examples
+
+<Tabs>
+  <Tab title="Finance">
+    | Provider | Plugin | Returns |
+    |----------|--------|---------|
+    | `walletProvider` | plugin-sei | Balance, portfolio |
+    | `marketProvider` | plugin-arbitrage | Price feeds |
+    | `tokenPriceProvider` | plugin-dexscreener | Token prices, liquidity |
+  </Tab>
+  
+  <Tab title="Platform">
+    | Provider | Plugin | Returns |
+    |----------|--------|---------|
+    | `userProvider` | plugin-discord | User info, roles |
+    | `channelProvider` | plugin-telegram | Channel data |
+    | `serverProvider` | plugin-discord | Server settings |
+  </Tab>
+  
+  <Tab title="Data">
+    | Provider | Plugin | Returns |
+    |----------|--------|---------|
+    | `searchProvider` | plugin-web-search | Search results |
+    | `documentProvider` | plugin-obsidian | Note content |
+    | `queryProvider` | plugin-sql | Database results |
+  </Tab>
+</Tabs>
+
+## Creating Providers
+
+### Basic Provider
+
+```typescript
+const provider: Provider = {
+  name: 'MY_DATA',
+  get: async (runtime, message, state) => {
+    return {
+      text: "Contextual information",
+      data: { key: "value" }
+    };
+  }
+};
+```
+
+### Dynamic Provider
+
+```typescript
+const dynamicProvider: Provider = {
+  name: 'LIVE_DATA',
+  dynamic: true,  // Re-fetched each time
+  get: async (runtime) => {
+    const data = await fetchLatestData();
+    return { data };
+  }
+};
+```
+
+### Private Provider
+
+```typescript
+const secretProvider: Provider = {
+  name: 'INTERNAL_STATE',
+  private: true,  // Not shown in provider list
+  get: async (runtime) => {
+    return runtime.getInternalState();
+  }
+};
+```
+
+## Provider Return Format
+
+```typescript
+interface ProviderResult {
+  text?: string;      // Natural language context
+  data?: {           // Structured data
+    [key: string]: any;
+  };
+  values?: {         // Key-value pairs
+    [key: string]: any;
+  };
+}
+```
+
+## Provider Priority
+
+```typescript
+// Lower numbers = higher priority
+position: -100  // Loads first
+position: 0     // Default
+position: 100   // Loads last
+```
+
+## Best Practices
+
+- Return consistent data structures
+- Handle errors gracefully
+- Cache when appropriate
+- Keep data fetching fast
+- Document what data is provided
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Actions" icon="play" href="/core-concepts/plugins/actions">
+    See how actions use provider data
+  </Card>
+  
+  <Card title="Evaluators" icon="scale-balanced" href="/core-concepts/plugins/evaluators">
+    Learn about response evaluation
+  </Card>
+</CardGroup>

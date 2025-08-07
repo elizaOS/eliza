@@ -1,0 +1,1251 @@
+---
+title: "Implementation Examples"
+description: "Practical examples and recipes for building agents with the bootstrap plugin"
+---
+
+# Examples - Building with @elizaos/plugin-bootstrap
+
+This document provides practical examples of building agents using the plugin-bootstrap package.
+
+## Basic Agent Setup
+
+### Minimal Agent
+
+```typescript
+import { type Character } from '@elizaos/core';
+
+// Define a minimal character
+export const character: Character = {
+  name: 'Assistant',
+  description: 'A helpful AI assistant',
+  plugins: [
+    '@elizaos/plugin-sql', // For memory storage
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-bootstrap', // Essential for message handling
+  ],
+  settings: {
+    secrets: {},
+  },
+  system: 'Respond to messages in a helpful and concise manner.',
+  bio: [
+    'Provides helpful responses',
+    'Keeps answers concise and clear',
+    'Engages in a friendly manner',
+  ],
+  style: {
+    all: [
+      'Be helpful and informative',
+      'Keep responses concise',
+      'Use clear language',
+    ],
+    chat: [
+      'Be conversational',
+      'Show understanding',
+    ],
+  },
+};
+```
+
+### Custom Character Agent
+
+```typescript
+import { type Character } from '@elizaos/core';
+
+export const techBotCharacter: Character = {
+  name: 'TechBot',
+  description: 'A technical support specialist',
+  plugins: [
+    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-sql',
+    // Add platform plugins as needed
+    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
+  ],
+  settings: {
+    secrets: {},
+    avatar: 'https://example.com/techbot-avatar.png',
+  },
+  system: 'You are a technical support specialist. Provide clear, patient, and detailed assistance with technical issues. Break down complex problems into simple steps.',
+  bio: [
+    'Expert in software development and troubleshooting',
+    'Patient and detail-oriented problem solver',
+    'Specializes in clear technical communication',
+    'Helps users at all skill levels',
+  ],
+  topics: [
+    'software development',
+    'debugging',
+    'technical support',
+    'programming languages',
+    'system troubleshooting',
+  ],
+  style: {
+    all: [
+      'Be professional yet friendly',
+      'Use technical vocabulary but keep it accessible',
+      'Provide step-by-step guidance',
+      'Ask clarifying questions when needed',
+    ],
+    chat: [
+      'Be patient and understanding',
+      'Break down complex topics',
+      'Offer examples when helpful',
+    ],
+  },
+  // Custom templates
+  templates: {
+    messageHandlerTemplate: `<task>Generate a technical support response as {{agentName}}</task>
+
+{{providers}}
+
+<guidelines>
+- Assess the user's technical level from their message
+- Consider the complexity of their problem
+- Provide appropriate solutions
+- Use clear, step-by-step guidance
+- Include code examples when relevant
+</guidelines>
+
+<output>
+<response>
+  <thought>Analysis of the technical issue</thought>
+  <text>Your helpful technical response</text>
+</response>
+</output>`,
+
+    shouldRespondTemplate: `<task>Decide if {{agentName}} should respond</task>
+
+{{recentMessages}}
+
+<respond-if>
+- User asks a technical question
+- User reports an issue or bug
+- User needs clarification on technical topics
+- Direct mention of {{agentName}}
+- Discussion about programming or software
+</respond-if>
+
+<ignore-if>
+- Casual conversation between others
+- Non-technical discussions
+- Already resolved issues
+</ignore-if>
+
+<output>
+<response>
+  <reasoning>Brief explanation</reasoning>
+  <action>RESPOND | IGNORE | STOP</action>
+</response>
+</output>`,
+  },
+};
+```
+
+## Custom Actions
+
+### Creating a Custom Help Action
+
+```typescript
+import { Action, ActionExample } from '@elizaos/core';
+
+const helpAction: Action = {
+  name: 'HELP',
+  similes: ['SUPPORT', 'ASSIST', 'GUIDE'],
+  description: 'Provides detailed help on a specific topic',
+
+  validate: async (runtime) => {
+    // Always available
+    return true;
+  },
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Extract help topic from message
+    const topic = extractHelpTopic(message.content.text);
+
+    // Get relevant documentation
+    const helpContent = await getHelpContent(topic);
+
+    // Generate response
+    const response = {
+      thought: `User needs help with ${topic}`,
+      text: helpContent,
+      actions: ['HELP'],
+      attachments: topic.includes('screenshot')
+        ? [{ url: '/help/screenshots/' + topic + '.png' }]
+        : [],
+    };
+
+    await callback(response);
+    return true;
+  },
+
+  examples: [
+    [
+      {
+        name: '{{user}}',
+        content: { text: 'How do I reset my password?' },
+      },
+      {
+        name: '{{agent}}',
+        content: {
+          text: "Here's how to reset your password:\n1. Click 'Forgot Password'\n2. Enter your email\n3. Check your inbox for reset link",
+          actions: ['HELP'],
+        },
+      },
+    ],
+  ],
+};
+
+// Add to agent
+const agentWithHelp = new AgentRuntime({
+  character: {
+    /* ... */
+  },
+  plugins: [
+    bootstrapPlugin,
+    {
+      name: 'custom-help',
+      actions: [helpAction],
+    },
+  ],
+});
+```
+
+### Action that Calls External API
+
+```typescript
+const weatherAction: Action = {
+  name: 'CHECK_WEATHER',
+  similes: ['WEATHER', 'FORECAST'],
+  description: 'Checks current weather for a location',
+
+  validate: async (runtime) => {
+    // Check if API key is configured
+    return !!runtime.getSetting('WEATHER_API_KEY');
+  },
+
+  handler: async (runtime, message, state, options, callback) => {
+    const location = extractLocation(message.content.text);
+    const apiKey = runtime.getSetting('WEATHER_API_KEY');
+
+    try {
+      const response = await fetch(
+        `https://api.weather.com/v1/current?location=${location}&key=${apiKey}`
+      );
+      const weather = await response.json();
+
+      await callback({
+        thought: `Checking weather for ${location}`,
+        text: `Current weather in ${location}: ${weather.temp}°F, ${weather.condition}`,
+        actions: ['CHECK_WEATHER'],
+        metadata: { weather },
+      });
+    } catch (error) {
+      await callback({
+        thought: `Failed to get weather for ${location}`,
+        text: "Sorry, I couldn't fetch the weather information right now.",
+        actions: ['CHECK_WEATHER'],
+        error: error.message,
+      });
+    }
+
+    return true;
+  },
+};
+```
+
+## Custom Providers
+
+### Creating a System Status Provider
+
+```typescript
+import { Provider } from '@elizaos/core';
+
+const systemStatusProvider: Provider = {
+  name: 'SYSTEM_STATUS',
+  description: 'Provides current system status and metrics',
+  position: 50,
+
+  get: async (runtime, message) => {
+    // Gather system metrics
+    const metrics = await gatherSystemMetrics();
+
+    // Format for prompt
+    const statusText = `
+# System Status
+- CPU Usage: ${metrics.cpu}%
+- Memory: ${metrics.memory}% used
+- Active Users: ${metrics.activeUsers}
+- Response Time: ${metrics.avgResponseTime}ms
+- Uptime: ${metrics.uptime}
+    `.trim();
+
+    return {
+      data: metrics,
+      values: {
+        cpuUsage: metrics.cpu,
+        memoryUsage: metrics.memory,
+        isHealthy: metrics.cpu < 80 && metrics.memory < 90,
+      },
+      text: statusText,
+    };
+  },
+};
+
+// Use in agent
+const monitoringAgent = new AgentRuntime({
+  character: {
+    name: 'SystemMonitor',
+    // ...
+  },
+  plugins: [
+    bootstrapPlugin,
+    {
+      name: 'monitoring',
+      providers: [systemStatusProvider],
+    },
+  ],
+});
+```
+
+### Context-Aware Provider
+
+```typescript
+const userPreferencesProvider: Provider = {
+  name: 'USER_PREFERENCES',
+  description: 'User preferences and settings',
+
+  get: async (runtime, message) => {
+    const userId = message.entityId;
+    const prefs = await runtime.getMemories({
+      tableName: 'preferences',
+      agentId: runtime.agentId,
+      entityId: userId,
+      count: 1,
+    });
+
+    if (!prefs.length) {
+      return {
+        data: {},
+        values: {},
+        text: 'No user preferences found.',
+      };
+    }
+
+    const preferences = prefs[0].content;
+    return {
+      data: preferences,
+      values: {
+        language: preferences.language || 'en',
+        timezone: preferences.timezone || 'UTC',
+        notifications: preferences.notifications ?? true,
+      },
+      text: `User Preferences:
+- Language: ${preferences.language || 'English'}
+- Timezone: ${preferences.timezone || 'UTC'}
+- Notifications: ${preferences.notifications ? 'Enabled' : 'Disabled'}`,
+    };
+  },
+};
+```
+
+## Custom Evaluators
+
+### Creating a Sentiment Analyzer
+
+```typescript
+import { Evaluator } from '@elizaos/core';
+
+const sentimentEvaluator: Evaluator = {
+  name: 'SENTIMENT_ANALYSIS',
+  similes: ['ANALYZE_MOOD', 'CHECK_SENTIMENT'],
+  description: 'Analyzes conversation sentiment and adjusts agent mood',
+
+  validate: async (runtime, message) => {
+    // Run every 5 messages
+    const messages = await runtime.getMemories({
+      tableName: 'messages',
+      roomId: message.roomId,
+      count: 5,
+    });
+    return messages.length >= 5;
+  },
+
+  handler: async (runtime, message, state) => {
+    const prompt = `Analyze the sentiment of the recent conversation.
+
+${state.recentMessages}
+
+Provide a sentiment analysis with:
+- Overall sentiment (positive/negative/neutral)
+- Emotional tone
+- Suggested agent mood adjustment`;
+
+    const analysis = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+
+    // Store sentiment data
+    await runtime.createMemory(
+      {
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: message.roomId,
+        content: {
+          type: 'sentiment_analysis',
+          analysis: analysis,
+          timestamp: Date.now(),
+        },
+      },
+      'analysis'
+    );
+
+    // Adjust agent mood if needed
+    if (analysis.suggestedMood) {
+      await runtime.updateCharacterMood(analysis.suggestedMood);
+    }
+
+    return analysis;
+  },
+};
+```
+
+## Task Services
+
+### Scheduled Daily Summary
+
+```typescript
+// Register a daily summary task
+runtime.registerTaskWorker({
+  name: 'DAILY_SUMMARY',
+
+  validate: async (runtime, message, state) => {
+    const hour = new Date().getHours();
+    return hour === 9; // Run at 9 AM
+  },
+
+  execute: async (runtime, options) => {
+    // Gather yesterday's data
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const messages = await runtime.getMemories({
+      tableName: 'messages',
+      startTime: yesterday.setHours(0, 0, 0, 0),
+      endTime: yesterday.setHours(23, 59, 59, 999),
+    });
+
+    // Generate summary
+    const summary = await generateDailySummary(messages);
+
+    // Post to main channel
+    await runtime.emitEvent(EventType.POST_GENERATED, {
+      runtime,
+      worldId: options.worldId,
+      userId: runtime.agentId,
+      roomId: options.mainChannelId,
+      source: 'task',
+      callback: async (content) => {
+        // Handle posted summary
+        console.log('Daily summary posted:', content.text);
+      },
+    });
+  },
+});
+
+// Create the scheduled task
+await runtime.createTask({
+  name: 'DAILY_SUMMARY',
+  description: 'Posts daily activity summary',
+  metadata: {
+    updateInterval: 1000 * 60 * 60, // Check hourly
+    worldId: 'main-world',
+    mainChannelId: 'general',
+  },
+  tags: ['queue', 'repeat'],
+});
+```
+
+### Event-Driven Task
+
+```typescript
+// Task that triggers on specific events
+runtime.registerTaskWorker({
+  name: 'NEW_USER_WELCOME',
+
+  execute: async (runtime, options) => {
+    const { userId, userName } = options;
+
+    // Send welcome message
+    await runtime.sendMessage({
+      roomId: options.roomId,
+      content: {
+        text: `Welcome ${userName}! 👋 I'm here to help you get started.`,
+        actions: ['WELCOME'],
+      },
+    });
+
+    // Schedule follow-up
+    await runtime.createTask({
+      name: 'WELCOME_FOLLOWUP',
+      metadata: {
+        userId,
+        executeAt: Date.now() + 1000 * 60 * 60 * 24, // 24 hours later
+      },
+      tags: ['queue'],
+    });
+  },
+});
+
+// Trigger on new user
+runtime.on(EventType.ENTITY_JOINED, async (payload) => {
+  await runtime.createTask({
+    name: 'NEW_USER_WELCOME',
+    metadata: {
+      userId: payload.entityId,
+      userName: payload.entity.name,
+      roomId: payload.roomId,
+    },
+    tags: ['queue', 'immediate'],
+  });
+});
+```
+
+## Complete Bot Example
+
+### Support Bot with Custom Features
+
+```typescript
+import { AgentRuntime, Plugin, EventType, ChannelType } from '@elizaos/core';
+
+
+// Custom support plugin
+const supportPlugin: Plugin = {
+  name: 'support-features',
+  description: 'Custom support bot features',
+
+  actions: [
+    {
+      name: 'CREATE_TICKET',
+      similes: ['TICKET', 'ISSUE', 'REPORT'],
+      description: 'Creates a support ticket',
+
+      validate: async (runtime) => true,
+
+      handler: async (runtime, message, state, options, callback) => {
+        const ticket = {
+          id: generateTicketId(),
+          userId: message.entityId,
+          issue: message.content.text,
+          status: 'open',
+          createdAt: Date.now(),
+        };
+
+        await runtime.createMemory(
+          {
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+            content: {
+              type: 'ticket',
+              ...ticket,
+            },
+          },
+          'tickets'
+        );
+
+        await callback({
+          thought: 'Creating support ticket',
+          text: `I've created ticket #${ticket.id} for your issue. Our team will review it shortly.`,
+          actions: ['CREATE_TICKET'],
+          metadata: { ticketId: ticket.id },
+        });
+
+        return true;
+      },
+    },
+  ],
+
+  providers: [
+    {
+      name: 'OPEN_TICKETS',
+      description: 'Lists open support tickets',
+
+      get: async (runtime, message) => {
+        const tickets = await runtime.getMemories({
+          tableName: 'tickets',
+          agentId: runtime.agentId,
+          filter: { status: 'open' },
+          count: 10,
+        });
+
+        const ticketList = tickets
+          .map((t) => `- #${t.content.id}: ${t.content.issue.substring(0, 50)}...`)
+          .join('\n');
+
+        return {
+          data: { tickets },
+          values: { openCount: tickets.length },
+          text: `Open Tickets (${tickets.length}):\n${ticketList}`,
+        };
+      },
+    },
+  ],
+
+  evaluators: [
+    {
+      name: 'TICKET_ESCALATION',
+      description: 'Checks if tickets need escalation',
+
+      validate: async (runtime, message) => {
+        // Check every 10 messages
+        return message.content.type === 'ticket';
+      },
+
+      handler: async (runtime, message, state) => {
+        const urgentKeywords = ['urgent', 'critical', 'emergency', 'asap'];
+        const needsEscalation = urgentKeywords.some((word) =>
+          message.content.text.toLowerCase().includes(word)
+        );
+
+        if (needsEscalation) {
+          await runtime.emitEvent('TICKET_ESCALATED', {
+            ticketId: message.content.ticketId,
+            reason: 'Urgent keywords detected',
+          });
+        }
+
+        return { escalated: needsEscalation };
+      },
+    },
+  ],
+
+  services: [],
+
+  events: {
+    [EventType.MESSAGE_RECEIVED]: [
+      async (payload) => {
+        // Auto-respond to DMs with ticket creation prompt
+        const room = await payload.runtime.getRoom(payload.message.roomId);
+        if (room?.type === ChannelType.DM) {
+          // Check if this is a new conversation
+          const messages = await payload.runtime.getMemories({
+            tableName: 'messages',
+            roomId: payload.message.roomId,
+            count: 2,
+          });
+
+          if (messages.length === 1) {
+            await payload.callback({
+              text: "Hello! I'm here to help. Would you like to create a support ticket?",
+              actions: ['GREET'],
+              suggestions: ['Create ticket', 'Check ticket status', 'Get help'],
+            });
+          }
+        }
+      },
+    ],
+  },
+};
+
+// Create the support bot
+const supportBot = new AgentRuntime({
+  character: {
+    name: 'SupportBot',
+    description: '24/7 customer support specialist',
+    bio: 'I help users resolve issues and create support tickets',
+    modelProvider: 'openai',
+
+    templates: {
+      messageHandlerTemplate: `# Support Bot Response
+{{providers}}
+
+Guidelines:
+- Be empathetic and professional
+- Gather all necessary information
+- Offer to create tickets for unresolved issues
+- Provide ticket numbers for tracking
+      `,
+    },
+  },
+
+  plugins: [bootstrapPlugin, pglitePlugin, supportPlugin],
+
+  settings: {
+    CONVERSATION_LENGTH: 50, // Longer context for support
+    SHOULD_RESPOND_BYPASS_TYPES: ['dm', 'support', 'ticket'],
+  },
+});
+
+// Start the bot
+await supportBot.start();
+```
+
+## Integration Examples
+
+### Discord Integration
+
+```typescript
+import { DiscordClient } from '@elizaos/discord';
+
+const discordBot = new AgentRuntime({
+  character: {
+    /* ... */
+  },
+  plugins: [bootstrapPlugin],
+  clients: [new DiscordClient()],
+});
+
+// Discord-specific room handling
+discordBot.on(EventType.MESSAGE_RECEIVED, async (payload) => {
+  const room = await payload.runtime.getRoom(payload.message.roomId);
+
+  // Handle Discord-specific features
+  if (room?.metadata?.discordType === 'thread') {
+    // Special handling for threads
+  }
+});
+```
+
+### Multi-Platform Bot
+
+```typescript
+import { DiscordClient } from '@elizaos/discord';
+import { TelegramClient } from '@elizaos/telegram';
+import { TwitterClient } from '@elizaos/twitter';
+
+const multiPlatformBot = new AgentRuntime({
+  character: {
+    name: 'OmniBot',
+    description: 'Available everywhere',
+  },
+
+  plugins: [
+    bootstrapPlugin,
+    {
+      name: 'platform-adapter',
+      providers: [
+        {
+          name: 'PLATFORM_INFO',
+          get: async (runtime, message) => {
+            const source = message.content.source;
+            const platformTips = {
+              discord: 'Use /commands for Discord-specific features',
+              telegram: 'Use inline keyboards for better UX',
+              twitter: 'Keep responses under 280 characters',
+            };
+
+            return {
+              data: { platform: source },
+              values: { isTwitter: source === 'twitter' },
+              text: `Platform: ${source}\nTip: ${platformTips[source] || 'None'}`,
+            };
+          },
+        },
+      ],
+    },
+  ],
+
+  clients: [new DiscordClient(), new TelegramClient(), new TwitterClient()],
+});
+```
+
+## Best Practices
+
+1. **Always include bootstrapPlugin** - It's the foundation
+2. **Use providers for context** - Don't query database in actions
+3. **Chain actions thoughtfully** - Order matters
+4. **Handle errors gracefully** - Users should get helpful messages
+5. **Test with different scenarios** - DMs, groups, mentions
+6. **Monitor evaluator output** - Learn from your bot's analysis
+7. **Configure templates** - Match your bot's personality
+
+## Debugging Tips
+
+```typescript
+// Enable debug logging
+process.env.DEBUG = 'elizaos:*';
+
+// Log action execution
+const debugAction = {
+  ...originalAction,
+  handler: async (...args) => {
+    console.log(`Executing ${debugAction.name}`, args[1].content);
+    const result = await originalAction.handler(...args);
+    console.log(`${debugAction.name} completed`, result);
+    return result;
+  },
+};
+
+// Monitor provider data
+runtime.on('state:composed', (state) => {
+  console.log(
+    'State providers:',
+    state.providerData.map((p) => p.providerName)
+  );
+});
+
+// Track message flow
+runtime.on(EventType.MESSAGE_RECEIVED, (payload) => {
+  console.log(`Message flow: ${payload.message.entityId} -> ${payload.runtime.agentId}`);
+});
+```
+
+These examples demonstrate the flexibility and power of the plugin-bootstrap system. Start with simple examples and gradually add complexity as needed!
+
+### Understanding the Callback Mechanism
+
+Every action handler receives a callback function that sends messages back to the user. Here's how it works:
+
+```typescript
+const explainAction: Action = {
+  name: 'EXPLAIN',
+  description: 'Explains a concept in detail',
+
+  handler: async (runtime, message, state, options, callback) => {
+    // Extract topic from message
+    const topic = extractTopic(message.content.text);
+
+    // First message - acknowledge the request
+    await callback({
+      text: `Let me explain ${topic} for you...`,
+      actions: ['ACKNOWLEDGE'],
+    });
+
+    // Fetch explanation (simulating delay)
+    const explanation = await fetchExplanation(topic);
+
+    // Second message - deliver the explanation
+    await callback({
+      text: explanation,
+      actions: ['EXPLAIN'],
+      thought: `Explained ${topic} to the user`,
+    });
+
+    // Third message - offer follow-up
+    await callback({
+      text: 'Would you like me to explain anything else about this topic?',
+      actions: ['FOLLOW_UP'],
+    });
+
+    return true;
+  },
+};
+```
+
+## Template Customization Examples
+
+### Example 1: Gaming Bot with Custom Templates
+
+```typescript
+import { AgentRuntime, Character } from '@elizaos/core';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+
+const gamingBotCharacter: Character = {
+  name: 'GameMaster',
+  description: 'A gaming companion and guide',
+
+  templates: {
+    // Custom shouldRespond for gaming context
+    shouldRespondTemplate: `<task>Decide if {{agentName}} should respond to gaming-related messages.</task>
+
+{{providers}}
+
+<gaming-rules>
+- ALWAYS respond to: game questions, strategy requests, team coordination
+- RESPOND to: patch notes discussion, build advice, gameplay tips
+- IGNORE: off-topic chat, real-world discussions (unless directly asked)
+- STOP if: asked to stop giving advice or to be quiet
+</gaming-rules>
+
+<output>
+<response>
+  <reasoning>Gaming context assessment</reasoning>
+  <action>RESPOND | IGNORE | STOP</action>
+</response>
+</output>`,
+
+    // Gaming-focused message handler
+    messageHandlerTemplate: `<task>Generate gaming advice as {{agentName}}.</task>
+
+{{providers}}
+Available actions: {{actionNames}}
+
+<gaming-personality>
+- Use gaming terminology naturally
+- Reference game mechanics when relevant
+- Be encouraging to new players
+- Share pro tips for experienced players
+- React enthusiastically to achievements
+</gaming-personality>
+
+<communication-style>
+- Short, punchy responses for in-game chat
+- Detailed explanations for strategy questions
+- Use gaming emotes and expressions
+- Reference popular gaming memes appropriately
+</communication-style>
+
+<output>
+<response>
+  <thought>Gaming situation analysis</thought>
+  <actions>REPLY</actions>
+  <providers>GAME_STATE,PLAYER_STATS</providers>
+  <text>Your gaming response</text>
+</response>
+</output>`,
+
+    // Gaming-specific reflection
+    reflectionTemplate: `<task>Analyze gaming interactions for improvement.</task>
+
+{{recentMessages}}
+
+<gaming-focus>
+- Track player skill progression
+- Note frequently asked game mechanics
+- Identify team dynamics and roles
+- Record successful strategies shared
+- Monitor player frustration levels
+</gaming-focus>
+
+<output>
+{
+  "thought": "Gaming insight",
+  "facts": [{
+    "claim": "Gaming fact or strategy",
+    "type": "strategy|mechanic|meta",
+    "game": "specific game name"
+  }],
+  "playerProfile": {
+    "skillLevel": "beginner|intermediate|advanced|pro",
+    "preferredRole": "tank|dps|support|flex",
+    "interests": ["pvp", "pve", "competitive"]
+  }
+}
+</output>`,
+  },
+
+  // Gaming-related bio and style
+  bio: [
+    'Expert in multiple game genres',
+    'Provides real-time strategy advice',
+    'Helps teams coordinate effectively',
+    'Explains complex game mechanics simply',
+  ],
+
+  style: {
+    chat: [
+      'Use gaming slang appropriately',
+      'Quick responses during matches',
+      'Detailed guides when asked',
+      'Supportive and encouraging tone',
+    ],
+  },
+};
+
+// Create the gaming bot
+const gamingBot = new AgentRuntime({
+  character: gamingBotCharacter,
+  plugins: [bootstrapPlugin],
+});
+```
+
+### Example 2: Customer Support Bot with Templates
+
+```typescript
+const supportBotCharacter: Character = {
+  name: 'SupportAgent',
+  description: '24/7 customer support specialist',
+
+  templates: {
+    // Support-focused shouldRespond
+    shouldRespondTemplate: `<task>Determine if {{agentName}} should handle this support request.</task>
+
+{{providers}}
+
+<support-priorities>
+PRIORITY 1 (Always respond):
+- Error messages or bug reports
+- Account issues or login problems
+- Payment or billing questions
+- Direct help requests
+
+PRIORITY 2 (Respond):
+- Feature questions
+- How-to requests
+- General feedback
+
+PRIORITY 3 (Conditionally respond):
+- Complaints (respond with empathy)
+- Feature requests (acknowledge and log)
+
+NEVER IGNORE:
+- Frustrated customers
+- Urgent issues
+- Security concerns
+</support-priorities>
+
+<output>
+<response>
+  <reasoning>Support priority assessment</reasoning>
+  <action>RESPOND | ESCALATE | ACKNOWLEDGE</action>
+</response>
+</output>`,
+
+    // Professional support message handler
+    messageHandlerTemplate: `<task>Provide professional support as {{agentName}}.</task>
+
+{{providers}}
+Available actions: {{actionNames}}
+
+<support-guidelines>
+- Acknowledge the issue immediately
+- Express empathy for any inconvenience
+- Provide clear, step-by-step solutions
+- Offer alternatives if primary solution unavailable
+- Always follow up on open issues
+</support-guidelines>
+
+<tone>
+- Professional yet friendly
+- Patient and understanding
+- Solution-oriented
+- Proactive in preventing future issues
+</tone>
+
+<output>
+<response>
+  <thought>Issue analysis and solution approach</thought>
+  <actions>REPLY,CREATE_TICKET</actions>
+  <providers>USER_HISTORY,KNOWLEDGE_BASE,OPEN_TICKETS</providers>
+  <text>Your support response</text>
+</response>
+</output>`,
+
+    // Support interaction reflection
+    reflectionTemplate: `<task>Analyze support interaction for quality and improvement.</task>
+
+{{recentMessages}}
+
+<support-metrics>
+- Issue resolved: yes/no/escalated
+- Customer satisfaction indicators
+- Response time and efficiency
+- Knowledge gaps identified
+- Common issues pattern
+</support-metrics>
+
+<output>
+{
+  "thought": "Support interaction analysis",
+  "resolution": {
+    "status": "resolved|unresolved|escalated",
+    "issueType": "technical|billing|account|other",
+    "satisfactionIndicators": ["positive", "negative", "neutral"]
+  },
+  "facts": [{
+    "claim": "Issue or solution discovered",
+    "type": "bug|workaround|feature_request",
+    "frequency": "first_time|recurring|common"
+  }],
+  "improvements": ["suggested FAQ entries", "documentation needs"]
+}
+</output>`,
+  },
+};
+```
+
+### Example 3: Educational Bot with Adaptive Templates
+
+```typescript
+const educatorCharacter: Character = {
+  name: 'EduBot',
+  description: 'Adaptive educational assistant',
+
+  templates: {
+    // Education-focused templates with learning level adaptation
+    messageHandlerTemplate: `<task>Provide educational guidance as {{agentName}}.</task>
+
+{{providers}}
+
+<student-context>
+Current Level: {{studentLevel}}
+Subject: {{subject}}
+Learning Style: {{learningStyle}}
+</student-context>
+
+<teaching-approach>
+For BEGINNERS:
+- Use simple language and analogies
+- Break down complex concepts
+- Provide many examples
+- Check understanding frequently
+
+For INTERMEDIATE:
+- Build on existing knowledge
+- Introduce technical terminology
+- Encourage critical thinking
+- Suggest practice problems
+
+For ADVANCED:
+- Discuss edge cases and exceptions
+- Explore theoretical foundations
+- Connect to real-world applications
+- Recommend further reading
+</teaching-approach>
+
+<output>
+<response>
+  <thought>Pedagogical approach for this student</thought>
+  <actions>REPLY,GENERATE_QUIZ</actions>
+  <providers>STUDENT_PROGRESS,CURRICULUM,LEARNING_HISTORY</providers>
+  <text>Your educational response</text>
+</response>
+</output>`,
+  },
+};
+```
+
+## Advanced Callback Patterns
+
+### Progressive Disclosure Pattern
+
+```typescript
+const teachAction: Action = {
+  name: 'TEACH_CONCEPT',
+
+  handler: async (runtime, message, state, options, callback) => {
+    const concept = extractConcept(message.content.text);
+    const userLevel = await getUserLevel(runtime, message.entityId);
+
+    if (userLevel === 'beginner') {
+      // Start with simple explanation
+      await callback({
+        text: `Let's start with the basics of ${concept}...`,
+        actions: ['TEACH_INTRO'],
+      });
+
+      // Add an analogy
+      await callback({
+        text: `Think of it like ${getAnalogy(concept)}`,
+        actions: ['TEACH_ANALOGY'],
+      });
+
+      // Check understanding
+      await callback({
+        text: 'Does this make sense so far? Would you like me to explain differently?',
+        actions: ['CHECK_UNDERSTANDING'],
+      });
+    } else {
+      // Advanced explanation
+      await callback({
+        text: `${concept} involves several key principles...`,
+        actions: ['TEACH_ADVANCED'],
+        attachments: [
+          {
+            url: `/diagrams/${concept}.png`,
+            contentType: 'image/png',
+          },
+        ],
+      });
+    }
+
+    return true;
+  },
+};
+```
+
+### Error Recovery Pattern
+
+```typescript
+const processAction: Action = {
+  name: 'PROCESS_REQUEST',
+
+  handler: async (runtime, message, state, options, callback) => {
+    try {
+      // Acknowledge request
+      await callback({
+        text: 'Processing your request...',
+        actions: ['ACKNOWLEDGE'],
+      });
+
+      // Attempt processing
+      const result = await processUserRequest(message);
+
+      // Success response
+      await callback({
+        text: `Successfully completed! ${result.summary}`,
+        actions: ['SUCCESS'],
+        metadata: { processId: result.id },
+      });
+    } catch (error) {
+      // Error response with helpful information
+      await callback({
+        text: 'I encountered an issue processing your request.',
+        actions: ['ERROR'],
+      });
+
+      // Provide specific error details
+      if (error.code === 'RATE_LIMIT') {
+        await callback({
+          text: "You've exceeded the rate limit. Please try again in a few minutes.",
+          actions: ['RATE_LIMIT_ERROR'],
+        });
+      } else if (error.code === 'INVALID_INPUT') {
+        await callback({
+          text: `The input seems invalid. Please check: ${error.details}`,
+          actions: ['VALIDATION_ERROR'],
+        });
+      } else {
+        // Generic error with support option
+        await callback({
+          text: 'An unexpected error occurred. Would you like me to create a support ticket?',
+          actions: ['OFFER_SUPPORT'],
+          metadata: { errorId: generateErrorId() },
+        });
+      }
+    }
+
+    return true;
+  },
+};
+```
+
+### Streaming Response Pattern
+
+```typescript
+const streamingAction: Action = {
+  name: 'STREAM_DATA',
+
+  handler: async (runtime, message, state, options, callback) => {
+    const dataStream = await getDataStream(message.content.query);
+
+    // Initial response
+    await callback({
+      text: 'Streaming data as it arrives...',
+      actions: ['STREAM_START'],
+    });
+
+    // Stream chunks
+    for await (const chunk of dataStream) {
+      await callback({
+        text: chunk.data,
+        actions: ['STREAM_CHUNK'],
+        metadata: {
+          chunkId: chunk.id,
+          isPartial: true,
+        },
+      });
+
+      // Rate limit streaming
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    // Final summary
+    await callback({
+      text: "Streaming complete! Here's a summary of the data...",
+      actions: ['STREAM_COMPLETE'],
+      metadata: { totalChunks: dataStream.length },
+    });
+
+    return true;
+  },
+};
+```

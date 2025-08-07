@@ -18,14 +18,21 @@ describe('Plugin Configuration', () => {
     );
   });
 
-  it('should be a minimal plugin focused on character definition', () => {
-    // Verify arrays exist but are empty (except routes and events)
+  it('should be a TEE-focused plugin with appropriate components', () => {
+    // Verify plugin has TEE-specific components
     expect(teeStarterPlugin.actions).toEqual([]);
     expect(teeStarterPlugin.providers).toEqual([]);
     expect(teeStarterPlugin.evaluators).toBeUndefined();
-    expect(teeStarterPlugin.services).toEqual([]);
+
+    // Has StarterService for TEE functionality
+    expect(teeStarterPlugin.services).toBeDefined();
+    expect(teeStarterPlugin.services?.length).toBe(1);
+
+    // Has routes for TEE status and frontend
     expect(teeStarterPlugin.routes).toBeDefined();
     expect(teeStarterPlugin.routes?.length).toBeGreaterThan(0);
+
+    // Has events for logging
     expect(teeStarterPlugin.events).toBeDefined();
   });
 });

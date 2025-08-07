@@ -1,0 +1,367 @@
+---
+title: "Plugin System Overview"
+description: "Comprehensive guide to the elizaOS plugin system architecture and implementation"
+---
+
+
+## Overview
+
+The elizaOS plugin system is a comprehensive extension mechanism that allows developers to add functionality to agents through a well-defined interface. This analysis examines the complete plugin architecture by analyzing the source code and comparing it with the documentation.
+
+## Core Plugins
+
+elizaOS includes essential core plugins that provide foundational functionality:
+
+<CardGroup cols={2}>
+  <Card title="Bootstrap Plugin" icon="rocket" href="/plugins/bootstrap">
+    The core message handler and event system for elizaOS agents. Provides essential functionality for message processing, knowledge management, and basic agent operations.
+  </Card>
+  
+  <Card title="SQL Plugin" icon="database" href="/plugins/sql">
+    Database integration and management for elizaOS. Features automatic schema migrations, multi-database support, and a sophisticated plugin architecture.
+  </Card>
+  
+  <Card title="Knowledge Plugin" icon="brain" href="/plugins/knowledge">
+    Advanced knowledge base and RAG system for elizaOS. Provides semantic search, contextual embeddings, and intelligent document processing.
+  </Card>
+</CardGroup>
+
+## DeFi Plugins
+
+Blockchain and DeFi integrations for Web3 functionality:
+
+<CardGroup cols={2}>
+  <Card title="EVM Plugin" icon="cube" href="/plugins/defi/evm">
+    Multi-chain EVM support with token transfers, swaps, bridging, and governance across 30+ networks including Ethereum, Base, Arbitrum, and more.
+  </Card>
+  
+  <Card title="Solana Plugin" icon="bolt" href="/plugins/defi/solana">
+    High-performance Solana blockchain integration with SOL/SPL transfers, Jupiter swaps, and real-time portfolio tracking.
+  </Card>
+</CardGroup>
+
+## Platform Integrations
+
+Connect your agent to popular platforms:
+
+<CardGroup cols={3}>
+  <Card title="Discord" icon="discord" href="/plugins/platform/discord">
+    Full Discord integration with voice, commands, and rich interactions.
+  </Card>
+  
+  <Card title="Telegram" icon="telegram" href="/plugins/platform/telegram">
+    Telegram bot functionality with inline keyboards and media support.
+  </Card>
+  
+  <Card title="Twitter" icon="twitter" href="/plugins/platform/twitter">
+    Twitter/X integration for posting, replying, and timeline management.
+  </Card>
+</CardGroup>
+
+## LLM Providers
+
+Choose from various language model providers:
+
+<CardGroup cols={3}>
+  <Card title="OpenAI" icon="openai" href="/plugins/llm/openai">
+    GPT-4, GPT-3.5, and other OpenAI models.
+  </Card>
+  
+  <Card title="Anthropic" icon="robot" href="/plugins/llm/anthropic">
+    Claude 3 and other Anthropic models.
+  </Card>
+  
+  <Card title="OpenRouter" icon="route" href="/plugins/llm/openrouter">
+    OpenRouter models for advanced routing and customization.
+  </Card>
+</CardGroup>
+
+## 1. Complete Plugin Interface
+
+Based on `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/plugin.ts`, the full Plugin interface includes:
+
+```typescript
+export interface Plugin {
+  name: string;                          // Unique identifier
+  description: string;                   // Human-readable description
+  
+  // Initialization
+  init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
+  
+  // Configuration
+  config?: { [key: string]: any };       // Plugin-specific configuration
+  
+  // Core Components (documented)
+  actions?: Action[];                    // Tasks agents can perform
+  providers?: Provider[];                // Data sources
+  evaluators?: Evaluator[];              // Response filters
+  
+  // Additional Components (not fully documented)
+  services?: (typeof Service)[];         // Background services
+  adapter?: IDatabaseAdapter;            // Database adapter
+  models?: {                            // Model handlers
+    [key: string]: (...args: any[]) => Promise<any>;
+  };
+  events?: PluginEvents;                // Event handlers
+  routes?: Route[];                     // HTTP endpoints
+  tests?: TestSuite[];                  // Test suites
+  componentTypes?: {                    // Custom component types
+    name: string;
+    schema: Record<string, unknown>;
+    validator?: (data: any) => boolean;
+  }[];
+  
+  // Dependency Management
+  dependencies?: string[];              // Required plugins
+  testDependencies?: string[];          // Test-only dependencies
+  priority?: number;                    // Loading priority
+  schema?: any;                        // Database schema
+}
+```
+
+## 2. Action, Provider, and Evaluator Interfaces
+
+### Action Interface
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/components.ts`:
+
+```typescript
+export interface Action {
+  name: string;                         // Unique identifier
+  similes?: string[];                   // Alternative names/aliases
+  description: string;                  // What the action does
+  examples?: ActionExample[][];         // Usage examples
+  handler: Handler;                     // Execution logic
+  validate: Validator;                  // Pre-execution validation
+}
+
+// Handler signature
+type Handler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: { [key: string]: unknown },
+  callback?: HandlerCallback,
+  responses?: Memory[]
+) => Promise<unknown>;
+```
+
+### Provider Interface
+```typescript
+export interface Provider {
+  name: string;                         // Unique identifier
+  description?: string;                 // What data it provides
+  dynamic?: boolean;                    // Dynamic data source
+  position?: number;                    // Execution order
+  private?: boolean;                    // Hidden from provider list
+  get: (runtime: IAgentRuntime, message: Memory, state: State) => Promise<ProviderResult>;
+}
+
+interface ProviderResult {
+  values?: { [key: string]: any };
+  data?: { [key: string]: any };
+  text?: string;
+}
+```
+
+### Evaluator Interface
+```typescript
+export interface Evaluator {
+  alwaysRun?: boolean;                  // Run on every response
+  description: string;                  // What it evaluates
+  similes?: string[];                   // Alternative names
+  examples: EvaluationExample[];        // Example evaluations
+  handler: Handler;                     // Evaluation logic
+  name: string;                         // Unique identifier
+  validate: Validator;                  // Should evaluator run?
+}
+```
+
+## 3. Plugin Initialization Lifecycle
+
+Based on `/Users/studio/Documents/GitHub/eliza/packages/core/src/runtime.ts`, the initialization process:
+
+1. **Plugin Registration** (`registerPlugin` method):
+   - Validates plugin has a name
+   - Checks for duplicate plugins
+   - Adds to active plugins list
+   - Calls plugin's `init()` method if present
+   - Handles configuration errors gracefully
+
+2. **Component Registration Order**:
+   ```typescript
+   // 1. Database adapter (if provided)
+   if (plugin.adapter) {
+     this.registerDatabaseAdapter(plugin.adapter);
+   }
+   
+   // 2. Actions
+   if (plugin.actions) {
+     for (const action of plugin.actions) {
+       this.registerAction(action);
+     }
+   }
+   
+   // 3. Evaluators
+   if (plugin.evaluators) {
+     for (const evaluator of plugin.evaluators) {
+       this.registerEvaluator(evaluator);
+     }
+   }
+   
+   // 4. Providers
+   if (plugin.providers) {
+     for (const provider of plugin.providers) {
+       this.registerProvider(provider);
+     }
+   }
+   
+   // 5. Models
+   if (plugin.models) {
+     for (const [modelType, handler] of Object.entries(plugin.models)) {
+       this.registerModel(modelType, handler, plugin.name, plugin.priority);
+     }
+   }
+   
+   // 6. Routes
+   if (plugin.routes) {
+     for (const route of plugin.routes) {
+       this.routes.push(route);
+     }
+   }
+   
+   // 7. Events
+   if (plugin.events) {
+     for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+       for (const eventHandler of eventHandlers) {
+         this.registerEvent(eventName, eventHandler);
+       }
+     }
+   }
+   
+   // 8. Services (delayed if runtime not initialized)
+   if (plugin.services) {
+     for (const service of plugin.services) {
+       if (this.isInitialized) {
+         await this.registerService(service);
+       } else {
+         this.servicesInitQueue.add(service);
+       }
+     }
+   }
+   ```
+
+## 4. Service System Integration
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/service.ts`:
+
+### Service Abstract Class
+```typescript
+export abstract class Service {
+  protected runtime!: IAgentRuntime;
+  
+  constructor(runtime?: IAgentRuntime) {
+    if (runtime) {
+      this.runtime = runtime;
+    }
+  }
+  
+  abstract stop(): Promise<void>;
+  static serviceType: string;
+  abstract capabilityDescription: string;
+  config?: Metadata;
+  
+  static async start(_runtime: IAgentRuntime): Promise<Service> {
+    throw new Error('Not implemented');
+  }
+}
+```
+
+### Service Types
+The system includes predefined service types:
+- TRANSCRIPTION, VIDEO, BROWSER, PDF
+- REMOTE_FILES (AWS S3)
+- WEB_SEARCH, EMAIL, TEE
+- TASK, WALLET, LP_POOL, TOKEN_DATA
+- DATABASE_MIGRATION
+- PLUGIN_MANAGER, PLUGIN_CONFIGURATION, PLUGIN_USER_INTERACTION
+
+## 5. Route Definitions for HTTP Endpoints
+
+From the Plugin interface:
+```typescript
+export type Route = {
+  type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
+  path: string;
+  filePath?: string;                    // For static files
+  public?: boolean;                     // Public access
+  name?: string;                        // Route name
+  handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
+  isMultipart?: boolean;                // File uploads
+};
+```
+
+Example from starter plugin:
+```typescript
+routes: [
+  {
+    name: 'hello-world-route',
+    path: '/helloworld',
+    type: 'GET',
+    handler: async (_req: any, res: any) => {
+      res.json({ message: 'Hello World!' });
+    }
+  }
+]
+```
+
+## 6. Event System Integration
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/events.ts`:
+
+### Event Types
+Standard events include:
+- World events: WORLD_JOINED, WORLD_CONNECTED, WORLD_LEFT
+- Entity events: ENTITY_JOINED, ENTITY_LEFT, ENTITY_UPDATED
+- Room events: ROOM_JOINED, ROOM_LEFT
+- Message events: MESSAGE_RECEIVED, MESSAGE_SENT, MESSAGE_DELETED
+- Voice events: VOICE_MESSAGE_RECEIVED, VOICE_MESSAGE_SENT
+- Run events: RUN_STARTED, RUN_ENDED, RUN_TIMEOUT
+- Action/Evaluator events: ACTION_STARTED/COMPLETED, EVALUATOR_STARTED/COMPLETED
+- Model events: MODEL_USED
+
+### Plugin Event Handlers
+```typescript
+export type PluginEvents = {
+  [K in keyof EventPayloadMap]?: EventHandler<K>[];
+} & {
+  [key: string]: ((params: any) => Promise<any>)[];
+};
+```
+
+## 7. Database Adapter Plugins
+
+From `/Users/studio/Documents/GitHub/eliza/packages/core/src/types/database.ts`:
+
+The IDatabaseAdapter interface is extensive, including methods for:
+- Agents, Entities, Components
+- Memories (with embeddings)
+- Rooms, Participants
+- Relationships
+- Tasks
+- Caching
+- Logs
+
+Example: SQL Plugin creates database adapters:
+```typescript
+export const plugin: Plugin = {
+  name: '@elizaos/plugin-sql',
+  description: 'A plugin for SQL database access with dynamic schema migrations',
+  priority: 0,
+  schema,
+  init: async (_, runtime: IAgentRuntime) => {
+    const dbAdapter = createDatabaseAdapter(config, runtime.agentId);
+    runtime.registerDatabaseAdapter(dbAdapter);
+  }
+};
+```
+

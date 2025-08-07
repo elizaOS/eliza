@@ -1,0 +1,779 @@
+---
+title: "Testing Guide"
+description: "This guide covers testing strategies, patterns, and best practices for the @elizaos/plugin-twitter package."
+---
+
+This guide covers testing strategies, patterns, and best practices for the @elizaos/plugin-twitter package.
+
+## Test Environment Setup
+
+### Prerequisites
+
+1. **Test Twitter Account**
+   - Create a dedicated test account
+   - Apply for developer access
+   - Create test app with read/write permissions
+
+2. **Test Credentials**
+   - Generate OAuth 1.0a credentials for testing
+   - Store in `.env.test` file
+   - Never use production credentials for tests
+
+3. **Environment Configuration**
+
+```bash
+# .env.test
+TWITTER_API_KEY=test_api_key
+TWITTER_API_SECRET_KEY=test_api_secret
+TWITTER_ACCESS_TOKEN=test_access_token
+TWITTER_ACCESS_TOKEN_SECRET=test_token_secret
+
+# Test configuration
+TWITTER_DRY_RUN=true  # Always use dry run for tests
+TWITTER_TEST_USER_ID=1234567890
+TWITTER_TEST_USERNAME=testbot
+TWITTER_TEST_TARGET_USER=testuser
+
+# Rate limit safe values
+TWITTER_POLL_INTERVAL=300  # 5 minutes
+TWITTER_POST_INTERVAL_MIN=60
+```
+
+## Unit Testing
+
+### Testing Client Base
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ClientBase } from '@elizaos/plugin-twitter';
+import { TwitterApi } from 'twitter-api-v2';
+
+describe('ClientBase', () => {
+  let client: ClientBase;
+  let mockTwitterApi: any;
+  let mockRuntime: any;
+  
+  beforeEach(() => {
+    // Mock Twitter API
+    mockTwitterApi = {
+      v2: {
+        me: vi.fn().mockResolvedValue({
+          data: {
+            id: '123',
+            username: 'testbot',
+            name: 'Test Bot'
+          }
+        }),
+        tweet: vi.fn().mockResolvedValue({
+          data: {
+            id: '456',
+            text: 'Test tweet'
+          }
+        }),
+        homeTimeline: vi.fn().mockResolvedValue({
+          data: [
+            { id: '789', text: 'Timeline tweet' }
+          ]
+        })
+      }
+    };
+    
+    // Mock runtime
+    mockRuntime = {
+      getSetting: vi.fn((key) => {
+        const settings = {
+          TWITTER_API_KEY: 'test_key',
+          TWITTER_DRY_RUN: 'true'
+        };
+        return settings[key];
+      }),
+      logger: { info: vi.fn(), error: vi.fn() }
+    };
+    
+    // Mock TwitterApi constructor
+    vi.spyOn(TwitterApi, 'constructor').mockImplementation(() => mockTwitterApi);
+    
+    client = new ClientBase(mockRuntime, {});
+  });
+  
+  describe('initialization', () => {
+    it('should verify credentials on init', async () => {
+      await client.init();
+      
+      expect(mockTwitterApi.v2.me).toHaveBeenCalled();
+      expect(client.profile).toEqual({
+        id: '123',
+        username: 'testbot',
+        name: 'Test Bot'
+      });
+    });
+    
+    it('should handle authentication failure', async () => {
+      mockTwitterApi.v2.me.mockRejectedValue(new Error('401 Unauthorized'));
+      
+      await expect(client.init()).rejects.toThrow('401');
+    });
+  });
+  
+  describe('tweeting', () => {
+    it('should simulate tweets in dry run mode', async () => {
+      const result = await client.tweet('Test tweet');
+      
+      expect(mockTwitterApi.v2.tweet).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        text: 'Test tweet',
+        id: expect.any(String)
+      });
+    });
+    
+    it('should post real tweets when not in dry run', async () => {
+      mockRuntime.getSetting.mockImplementation((key) => 
+        key === 'TWITTER_DRY_RUN' ? 'false' : 'test'
+      );
+      
+      const result = await client.tweet('Real tweet');
+      
+      expect(mockTwitterApi.v2.tweet).toHaveBeenCalledWith({
+        text: 'Real tweet'
+      });
+    });
+  });
+});
+```
+
+### Testing Post Client
+
+```typescript
+import { TwitterPostClient } from '@elizaos/plugin-twitter';
+
+describe('TwitterPostClient', () => {
+  let postClient: TwitterPostClient;
+  let mockClient: any;
+  let mockRuntime: any;
+  
+  beforeEach(() => {
+    mockClient = {
+      tweet: vi.fn().mockResolvedValue({ id: '123', text: 'Posted' })
+    };
+    
+    mockRuntime = {
+      getSetting: vi.fn(),
+      generateText: vi.fn().mockResolvedValue({
+        text: 'Generated tweet content'
+      }),
+      character: {
+        postExamples: ['Example 1', 'Example 2']
+      }
+    };
+    
+    postClient = new TwitterPostClient(mockClient, mockRuntime, {});
+  });
+  
+  describe('post generation', () => {
+    it('should generate tweets from examples', async () => {
+      const tweet = await postClient.generateTweet();
+      
+      expect(mockRuntime.generateText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: 'system',
+              content: expect.stringContaining('post')
+            })
+          ])
+        })
+      );
+      
+      expect(tweet).toBe('Generated tweet content');
+    });
+    
+    it('should respect max tweet length', async () => {
+      mockRuntime.generateText.mockResolvedValue({
+        text: 'a'.repeat(500)  // Too long
+      });
+      
+      const tweet = await postClient.generateTweet();
+      
+      expect(tweet.length).toBeLessThanOrEqual(280);
+    });
+  });
+  
+  describe('scheduling', () => {
+    it('should calculate intervals with variance', () => {
+      mockRuntime.getSetting.mockImplementation((key) => {
+        const settings = {
+          TWITTER_POST_INTERVAL_MIN: '60',
+          TWITTER_POST_INTERVAL_MAX: '120',
+          TWITTER_POST_INTERVAL_VARIANCE: '0.2'
+        };
+        return settings[key];
+      });
+      
+      const interval = postClient.calculateNextInterval();
+      
+      // Base range: 60-120 minutes
+      // With 20% variance: 48-144 minutes
+      expect(interval).toBeGreaterThanOrEqual(48 * 60 * 1000);
+      expect(interval).toBeLessThanOrEqual(144 * 60 * 1000);
+    });
+  });
+});
+```
+
+### Testing Interaction Client
+
+```typescript
+import { TwitterInteractionClient } from '@elizaos/plugin-twitter';
+
+describe('TwitterInteractionClient', () => {
+  let interactionClient: TwitterInteractionClient;
+  
+  describe('timeline processing', () => {
+    it('should apply weighted algorithm', () => {
+      const tweets = [
+        {
+          id: '1',
+          text: 'AI is amazing',
+          author: { username: 'user1', verified: true },
+          created_at: new Date().toISOString()
+        },
+        {
+          id: '2',
+          text: 'Hello world',
+          author: { username: 'targetuser', verified: false },
+          created_at: new Date(Date.now() - 3600000).toISOString()
+        }
+      ];
+      
+      const scored = interactionClient.applyWeightedAlgorithm(tweets);
+      
+      // Target user should score higher despite being older
+      expect(scored[0].id).toBe('2');
+    });
+    
+    it('should filter already processed tweets', async () => {
+      interactionClient.processedTweets.add('123');
+      
+      const tweets = [
+        { id: '123', text: 'Already processed' },
+        { id: '456', text: 'New tweet' }
+      ];
+      
+      const filtered = interactionClient.filterNewTweets(tweets);
+      
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].id).toBe('456');
+    });
+  });
+  
+  describe('response generation', () => {
+    it('should decide when to respond', () => {
+      const mentionTweet = {
+        text: '@testbot what do you think?',
+        author: { username: 'user1' }
+      };
+      
+      const regularTweet = {
+        text: 'Just a regular tweet',
+        author: { username: 'user2' }
+      };
+      
+      expect(interactionClient.shouldRespond(mentionTweet)).toBe(true);
+      expect(interactionClient.shouldRespond(regularTweet)).toBe(false);
+    });
+  });
+});
+```
+
+## Integration Testing
+
+### Testing Twitter Service
+
+```typescript
+describe('TwitterService Integration', () => {
+  let service: TwitterService;
+  let runtime: AgentRuntime;
+  
+  beforeAll(async () => {
+    runtime = new AgentRuntime({
+      character: {
+        name: 'TestBot',
+        clients: ['twitter']
+      },
+      settings: {
+        TWITTER_API_KEY: process.env.TWITTER_TEST_API_KEY,
+        TWITTER_API_SECRET_KEY: process.env.TWITTER_TEST_API_SECRET,
+        TWITTER_ACCESS_TOKEN: process.env.TWITTER_TEST_ACCESS_TOKEN,
+        TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_TEST_TOKEN_SECRET,
+        TWITTER_DRY_RUN: 'true'  // Always dry run for tests
+      }
+    });
+    
+    service = await TwitterService.start(runtime);
+  });
+  
+  afterAll(async () => {
+    await service.stop();
+  });
+  
+  it('should create client instance', async () => {
+    const client = await service.createClient(
+      runtime,
+      'test-client',
+      {}
+    );
+    
+    expect(client).toBeDefined();
+    expect(client.client).toBeDefined();
+    expect(client.post).toBeDefined();
+    expect(client.interaction).toBeDefined();
+  });
+  
+  it('should handle WORLD_JOINED event', (done) => {
+    runtime.on(['WORLD_JOINED', 'twitter:world:joined'], (event) => {
+      expect(event.world).toBeDefined();
+      expect(event.world.name).toContain('Twitter');
+      done();
+    });
+    
+    service.createClient(runtime, 'event-test', {});
+  });
+});
+```
+
+### Testing End-to-End Flow
+
+```typescript
+describe('E2E Twitter Flow', () => {
+  let runtime: AgentRuntime;
+  
+  beforeAll(async () => {
+    runtime = new AgentRuntime({
+      character: {
+        name: 'E2ETestBot',
+        clients: ['twitter'],
+        postExamples: ['Test tweet from E2E bot']
+      },
+      plugins: [bootstrapPlugin, twitterPlugin],
+      settings: {
+        TWITTER_DRY_RUN: 'true',
+        TWITTER_POST_ENABLE: 'true',
+        TWITTER_POST_IMMEDIATELY: 'true'
+      }
+    });
+  });
+  
+  it('should post on startup when configured', async () => {
+    const postSpy = vi.fn();
+    runtime.on('twitter:post:simulate', postSpy);
+    
+    await runtime.start();
+    
+    // Wait for post
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    expect(postSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.any(String)
+      })
+    );
+  });
+  
+  it('should process timeline interactions', async () => {
+    const interactionSpy = vi.fn();
+    runtime.on('twitter:interaction:simulate', interactionSpy);
+    
+    // Simulate timeline update
+    await runtime.emit('twitter:timeline:update', {
+      tweets: [
+        {
+          id: '123',
+          text: '@testbot hello!',
+          author: { username: 'user1' }
+        }
+      ]
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    expect(interactionSpy).toHaveBeenCalled();
+  });
+});
+```
+
+## Performance Testing
+
+### Rate Limit Testing
+
+```typescript
+describe('Rate Limit Handling', () => {
+  it('should respect rate limits', async () => {
+    const client = new ClientBase(runtime, {});
+    const requests = [];
+    
+    // Simulate many requests
+    for (let i = 0; i < 100; i++) {
+      requests.push(client.tweet(`Test ${i}`));
+    }
+    
+    const results = await Promise.allSettled(requests);
+    
+    // Should queue requests, not fail
+    const succeeded = results.filter(r => r.status === 'fulfilled');
+    expect(succeeded.length).toBeGreaterThan(0);
+    
+    // Check for rate limit handling
+    const rateLimited = results.filter(r => 
+      r.status === 'rejected' && 
+      r.reason?.code === 429
+    );
+    
+    if (rateLimited.length > 0) {
+      // Should have retry logic
+      expect(client.requestQueue.size()).toBeGreaterThan(0);
+    }
+  });
+});
+```
+
+### Memory Usage Testing
+
+```typescript
+describe('Memory Management', () => {
+  it('should not leak memory with processed tweets', async () => {
+    const client = new TwitterInteractionClient(mockClient, runtime, {});
+    const initialMemory = process.memoryUsage().heapUsed;
+    
+    // Process many tweets
+    for (let i = 0; i < 10000; i++) {
+      client.markAsProcessed(`tweet_${i}`);
+    }
+    
+    // Force garbage collection
+    if (global.gc) global.gc();
+    
+    const finalMemory = process.memoryUsage().heapUsed;
+    const memoryGrowth = finalMemory - initialMemory;
+    
+    // Should maintain reasonable memory usage
+    expect(memoryGrowth).toBeLessThan(50 * 1024 * 1024); // 50MB
+  });
+});
+```
+
+## Mock Utilities
+
+### Twitter API Mocks
+
+```typescript
+export function createMockTwitterApi() {
+  return {
+    v2: {
+      me: vi.fn().mockResolvedValue({
+        data: { id: '123', username: 'testbot' }
+      }),
+      
+      tweet: vi.fn().mockResolvedValue({
+        data: { id: '456', text: 'Mocked tweet' }
+      }),
+      
+      reply: vi.fn().mockResolvedValue({
+        data: { id: '789', text: 'Mocked reply' }
+      }),
+      
+      homeTimeline: vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: '111',
+            text: 'Timeline tweet 1',
+            author_id: '222',
+            created_at: new Date().toISOString()
+          }
+        ],
+        meta: { next_token: 'next_123' }
+      }),
+      
+      search: vi.fn().mockResolvedValue({
+        data: [],
+        meta: {}
+      }),
+      
+      like: vi.fn().mockResolvedValue({ data: { liked: true } }),
+      retweet: vi.fn().mockResolvedValue({ data: { retweeted: true } })
+    }
+  };
+}
+
+export function createMockRuntime(overrides = {}) {
+  return {
+    getSetting: vi.fn((key) => {
+      const defaults = {
+        TWITTER_DRY_RUN: 'true',
+        TWITTER_POST_ENABLE: 'false',
+        TWITTER_SEARCH_ENABLE: 'false'
+      };
+      return overrides[key] || defaults[key];
+    }),
+    
+    generateText: vi.fn().mockResolvedValue({
+      text: 'Generated response'
+    }),
+    
+    character: {
+      name: 'TestBot',
+      postExamples: ['Example tweet'],
+      ...overrides.character
+    },
+    
+    logger: {
+      info: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn()
+    },
+    
+    emit: vi.fn(),
+    on: vi.fn(),
+    
+    ...overrides
+  };
+}
+```
+
+### Test Helpers
+
+```typescript
+export async function waitForTweet(
+  runtime: IAgentRuntime,
+  timeout = 5000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Timeout waiting for tweet'));
+    }, timeout);
+    
+    runtime.on('twitter:post:simulate', (tweet) => {
+      clearTimeout(timer);
+      resolve(tweet);
+    });
+  });
+}
+
+export async function simulateTimeline(
+  runtime: IAgentRuntime,
+  tweets: any[]
+) {
+  await runtime.emit('twitter:timeline:update', { tweets });
+}
+
+export function createTestTweet(overrides = {}) {
+  return {
+    id: Math.random().toString(36).substring(7),
+    text: 'Test tweet',
+    author_id: '123',
+    created_at: new Date().toISOString(),
+    public_metrics: {
+      like_count: 0,
+      retweet_count: 0,
+      reply_count: 0,
+      quote_count: 0
+    },
+    ...overrides
+  };
+}
+```
+
+## Test Configuration
+
+### vitest.config.ts
+
+```typescript
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
+    testTimeout: 30000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules',
+        'tests',
+        '**/*.test.ts',
+        '**/types.ts'
+      ]
+    },
+    // Prevent rate limiting in tests
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true
+      }
+    }
+  }
+});
+```
+
+### Test Setup
+
+```typescript
+// tests/setup.ts
+import { config } from 'dotenv';
+import { vi } from 'vitest';
+
+// Load test environment
+config({ path: '.env.test' });
+
+// Mock external services
+vi.mock('twitter-api-v2', () => ({
+  TwitterApi: vi.fn(() => createMockTwitterApi())
+}));
+
+// Global test configuration
+global.testConfig = {
+  timeout: 30000,
+  retries: 3
+};
+
+// Ensure dry run for all tests
+process.env.TWITTER_DRY_RUN = 'true';
+
+// Mock timers for scheduled posts
+vi.useFakeTimers();
+
+// Cleanup after tests
+afterEach(() => {
+  vi.clearAllTimers();
+});
+```
+
+## Debugging Tests
+
+### Enable Debug Logging
+
+```typescript
+// Enable detailed logging for specific test
+it('should process timeline with debug info', async () => {
+  process.env.DEBUG = 'eliza:twitter:*';
+  
+  const debugLogs = [];
+  const originalLog = console.log;
+  console.log = (...args) => {
+    debugLogs.push(args.join(' '));
+    originalLog(...args);
+  };
+  
+  // Run test
+  await client.processTimeline();
+  
+  // Check debug output
+  expect(debugLogs.some(log => log.includes('timeline'))).toBe(true);
+  
+  // Restore
+  console.log = originalLog;
+  delete process.env.DEBUG;
+});
+```
+
+### Test Reporters
+
+```typescript
+// Custom reporter for Twitter-specific tests
+export class TwitterTestReporter {
+  onTestStart(test: Test) {
+    if (test.name.includes('twitter')) {
+      console.log(`🐦 Running: ${test.name}`);
+    }
+  }
+  
+  onTestComplete(test: Test, result: TestResult) {
+    if (test.name.includes('twitter')) {
+      const emoji = result.status === 'passed' ? '✅' : '❌';
+      console.log(`${emoji} ${test.name}: ${result.duration}ms`);
+    }
+  }
+}
+```
+
+## CI/CD Integration
+
+### GitHub Actions Workflow
+
+```yaml
+name: Twitter Plugin Tests
+
+on:
+  push:
+    paths:
+      - 'packages/plugin-twitter/**'
+  pull_request:
+    paths:
+      - 'packages/plugin-twitter/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Run unit tests
+      run: bun test packages/plugin-twitter
+      env:
+        TWITTER_DRY_RUN: true
+        
+    - name: Run integration tests
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: bun test:integration packages/plugin-twitter
+      env:
+        TWITTER_API_KEY: ${{ secrets.TEST_TWITTER_API_KEY }}
+        TWITTER_API_SECRET_KEY: ${{ secrets.TEST_TWITTER_API_SECRET }}
+        TWITTER_ACCESS_TOKEN: ${{ secrets.TEST_TWITTER_ACCESS_TOKEN }}
+        TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TEST_TWITTER_TOKEN_SECRET }}
+        TWITTER_DRY_RUN: true
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/coverage-final.json
+        flags: twitter-plugin
+```
+
+## Best Practices
+
+1. **Always Use Dry Run**
+   - Set `TWITTER_DRY_RUN=true` for all tests
+   - Never post real tweets in tests
+   - Mock API responses
+
+2. **Test Rate Limiting**
+   - Simulate 429 errors
+   - Test retry logic
+   - Verify queue behavior
+
+3. **Mock External Calls**
+   - Mock Twitter API
+   - Mock LLM generation
+   - Control test data
+
+4. **Test Edge Cases**
+   - Empty timelines
+   - Malformed tweets
+   - Network failures
+   - Auth errors
+
+5. **Performance Testing**
+   - Monitor memory usage
+   - Test with large datasets
+   - Measure processing times

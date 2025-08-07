@@ -204,6 +204,12 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
       return false;
     }
 
+    // Skip delegation for version command (should always use global CLI)
+    if (args.length > 0 && (args[0] === '-v' || args[0] === '--version')) {
+      logger.debug('Version command detected, skipping local CLI delegation');
+      return false;
+    }
+
     // Skip delegation if we're already running from local CLI
     if (isRunningFromLocalCli()) {
       logger.debug('Already running from local CLI, continuing execution');

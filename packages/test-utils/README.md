@@ -55,7 +55,7 @@ ElizaOS provides a comprehensive testing structure for plugins:
 
 ### Writing Tests
 
-Component tests use Vitest:
+Component tests use bun:test:
 
 ```typescript
 // Unit test example (__tests__/plugin.test.ts)

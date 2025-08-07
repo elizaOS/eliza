@@ -1,0 +1,192 @@
+name: Check Documentation Quality
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-documentation-quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git and Create Feature Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create unique branch name with timestamp
+          BRANCH_NAME="fix/documentation-quality-$(date +%Y%m%d-%H%M%S)"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+          git checkout -b "$BRANCH_NAME"
+
+      - name: Fix Documentation Quality Issues with Claude
+        id: claude-fix-quality
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Direct prompt for fixing documentation quality issues
+          direct_prompt: |
+            Check all MDX files in the documentation for quality issues and automatically fix them. Track all changes made for the PR description.
+
+            **Quality Checks to Perform:**
+
+            1. **Double Header Issues:**
+               - Find MDX files that have YAML frontmatter with a title field AND also have an H1 heading (# Title) in the content
+               - This creates duplicate headers because Mintlify automatically generates an H1 from the frontmatter title
+               - This is a critical issue that affects page appearance and SEO
+
+            2. **Duplicate Content Detection:**
+               - Find sections of content that are duplicated across multiple files
+               - Look for:
+                 - Identical paragraphs (minimum 50 words)
+                 - Identical code examples
+                 - Identical component configurations
+                 - Nearly identical sections with minor variations
+               - Exclude common patterns like copyright notices or standard warnings
+
+            3. **Other Quality Issues:**
+               - Missing frontmatter fields (title or description)
+               - Empty description fields
+               - Inconsistent heading hierarchy (e.g., H3 following H1 without H2)
+               - Files with emojis instead of Mintlify icons
+               - Code blocks without language tags
+
+            **For each issue found, automatically fix it:**
+
+            **For Double Headers:**
+            - Remove the H1 heading from the content (keep only frontmatter)
+            - Ensure content starts properly after frontmatter
+            - Track: filename, line removed, original heading text
+
+            **For Duplicate Content:**
+            - If accidental duplication: Keep the first instance, remove others
+            - If strategic duplication: Add a comment explaining why
+            - For partial duplication: Consider extracting to a reusable component
+            - Track: files modified, content removed/consolidated
+
+            **For Other Issues:**
+            - Fix missing/empty frontmatter fields with appropriate defaults
+            - Fix heading hierarchy issues
+            - Replace emojis with appropriate Mintlify icons
+            - Add language tags to code blocks
+            - Track: all changes made with before/after context
+
+            **Fix Application Rules:**
+            - Make minimal, precise changes
+            - Preserve all content except what needs to be fixed
+            - Maintain proper MDX formatting
+            - Test that files remain valid MDX after changes
+            - Create clear commit messages for each type of fix
+
+            **Analysis Approach:**
+            1. First scan all MDX files to build a map of content
+            2. Check each file for double header issues
+            3. Use fuzzy matching to detect near-duplicates (85% similarity threshold)
+            4. Ignore common boilerplate text
+            5. Check for other quality issues
+
+            **Output Summary (save as JSON for PR description):**
+            - Total files scanned
+            - Number of double header issues fixed
+            - Number of duplicate content instances resolved
+            - Other quality issues fixed
+            - List of all files modified with specific changes
+            - Statistics on improvements made
+
+          # Allow Claude to use bash commands for finding and editing files
+          allowed_tools: "Bash(find . -name '*.mdx'),Bash(grep -n),Bash(head -n),Bash(sed -i),Bash(awk),EditFile(*)"
+
+          # Custom environment variables
+          claude_env: |
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            REPOSITORY: ${{ github.repository }}
+
+      - name: Check for Changes
+        id: check-changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes needed"
+          fi
+
+      - name: Commit and Push Changes
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          # Stage all changes
+          git add -A
+
+          # Create detailed commit message
+          git commit -m "fix: automated documentation quality improvements" \
+                     -m "- Fixed double header issues where H1 followed frontmatter title" \
+                     -m "- Resolved duplicate content across files" \
+                     -m "- Fixed missing language tags in code blocks" \
+                     -m "- Replaced emojis with Mintlify icons" \
+                     -m "- Fixed heading hierarchy issues"
+
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+
+      - name: Create Pull Request
+        if: steps.check-changes.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create PR description with details from Claude's analysis
+          PR_BODY="## Automated Documentation Quality Fixes
+
+          This PR contains automated fixes for documentation quality issues detected by the scheduled workflow.
+
+          ### Changes Made:
+          - 🔧 Fixed double header issues (H1 headings after frontmatter titles)
+          - 📝 Resolved duplicate content across files
+          - 💻 Added missing language tags to code blocks
+          - 🎨 Replaced emojis with Mintlify icons
+          - 📊 Fixed heading hierarchy issues
+
+          ### Files Modified:
+          Check the Files changed tab for a complete list of modifications.
+
+          ### Review Instructions:
+          Please review the changes to ensure:
+          1. All double headers have been properly removed
+          2. No content was accidentally deleted
+          3. The documentation still reads naturally
+          4. All MDX files remain valid
+
+          ---
+          *This PR was automatically generated by the documentation quality workflow.*"
+
+          # Create the PR using GitHub CLI
+          gh pr create \
+            --title "fix: automated documentation quality improvements" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label "documentation" \
+            --label "automated"

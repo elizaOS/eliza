@@ -32,7 +32,9 @@ describe('TEE Starter Plugin', () => {
     expect(teeStarterPlugin.evaluators).toBeUndefined();
   });
 
-  it('should have no custom services', () => {
-    expect(teeStarterPlugin.services).toEqual([]);
+  it('should have the StarterService for TEE functionality', () => {
+    expect(teeStarterPlugin.services).toBeDefined();
+    expect(teeStarterPlugin.services?.length).toBe(1);
+    expect(teeStarterPlugin.services?.[0].name).toBe('StarterService');
   });
 });

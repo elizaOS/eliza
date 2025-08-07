@@ -1,0 +1,187 @@
+---
+title: 'Actions'
+description: 'Things agents can do'
+---
+
+## What are Actions?
+
+Actions = discrete tasks agents can perform.
+
+## Action Interface
+
+```typescript
+interface Action {
+  name: string;              // Unique identifier
+  description: string;       // What it does
+  similes?: string[];       // Alternative names
+  examples?: ActionExample[][];  // Usage examples
+  validate: Validator;       // Can this run?
+  handler: Handler;          // Execute the action
+}
+```
+
+## Core Actions (Bootstrap Plugin)
+
+The bootstrap plugin provides 13 essential actions:
+
+### Communication Actions
+| Action | Description | Example Trigger |
+|--------|-------------|----------------|
+| `REPLY` | Generate response | "Tell me about..." |
+| `SEND_MESSAGE` | Send to specific room | "Message the team..." |
+| `NONE` | Acknowledge silently | "Thanks!" |
+| `IGNORE` | Skip message | Spam/irrelevant |
+
+### Room Management
+| Action | Description | Example Trigger |
+|--------|-------------|----------------|
+| `FOLLOW_ROOM` | Subscribe to updates | "Join #general" |
+| `UNFOLLOW_ROOM` | Unsubscribe | "Leave #general" |
+| `MUTE_ROOM` | Mute notifications | "Mute this channel" |
+| `UNMUTE_ROOM` | Unmute | "Unmute #general" |
+
+### Data & Configuration
+| Action | Description | Example Trigger |
+|--------|-------------|----------------|
+| `UPDATE_CONTACT` | Update contact info | "Remember that I..." |
+| `UPDATE_ROLE` | Change roles | "Make me admin" |
+| `UPDATE_SETTINGS` | Modify settings | "Set model to gpt-4" |
+
+### Media & Utilities
+| Action | Description | Example Trigger |
+|--------|-------------|----------------|
+| `GENERATE_IMAGE` | Create AI images | "Draw a cat" |
+| `CHOICE` | Present options | "Should I A or B?" |
+
+## Plugin Action Examples
+
+<Tabs>
+  <Tab title="Trading">
+    | Action | Plugin | Example |
+    |--------|--------|--------|
+    | `GET_PRICE` | plugin-binance | "BTC price?" |
+    | `EXECUTE_TRADE` | plugin-binance | "Buy 0.1 BTC" |
+    | `TOKEN_PRICE` | plugin-dexscreener | "Price of $PEPE" |
+  </Tab>
+  
+  <Tab title="Social">
+    | Action | Plugin | Example |
+    |--------|--------|--------|
+    | `POST_TWEET` | plugin-twitter | "Tweet: GM!" |
+    | `SEND_MESSAGE` | plugin-discord | "Tell #general..." |
+    | `REPLY` | plugin-telegram | Auto-replies |
+  </Tab>
+  
+  <Tab title="Data">
+    | Action | Plugin | Example |
+    |--------|--------|--------|
+    | `WEB_SEARCH` | plugin-web-search | "Search for..." |
+    | `SCRAPE_URL` | plugin-firecrawl | "Get content from..." |
+    | `QUERY_DB` | plugin-sql | "Find users where..." |
+  </Tab>
+</Tabs>
+
+## Creating Actions
+
+### Minimal Action
+
+```typescript
+const action: Action = {
+  name: 'MY_ACTION',
+  description: 'Does something',
+  validate: async () => true,
+  handler: async (runtime, message) => {
+    return { text: "Done!" };
+  }
+};
+```
+
+### With Validation
+
+```typescript
+const sendTokenAction: Action = {
+  name: 'SEND_TOKEN',
+  description: 'Send tokens to address',
+  
+  validate: async (runtime, message) => {
+    return message.content.includes('send') && 
+           message.content.includes('0x');
+  },
+  
+  handler: async (runtime, message) => {
+    const address = extractAddress(message.content);
+    const amount = extractAmount(message.content);
+    await sendToken(address, amount);
+    return {
+      text: `Sent ${amount} tokens to ${address}`
+    };
+  }
+};
+```
+
+### With Examples
+
+```typescript
+const action: Action = {
+  name: 'WEATHER',
+  description: 'Get weather info',
+  examples: [[
+    { name: "user", content: { text: "What's the weather?" } },
+    { name: "agent", content: { text: "Let me check the weather for you." } }
+  ]],
+  validate: async (runtime, message) => {
+    return message.content.toLowerCase().includes('weather');
+  },
+  handler: async (runtime, message) => {
+    const weather = await fetchWeather();
+    return { text: `It's ${weather.temp}°C and ${weather.condition}` };
+  }
+};
+```
+
+## Handler Patterns
+
+```typescript
+// Using callbacks
+handler: async (runtime, message, state, options, callback) => {
+  const result = await doWork();
+  if (callback) {
+    await callback({ text: result }, []);
+  }
+  return result;
+}
+
+// Using services
+handler: async (runtime, message) => {
+  const service = runtime.getService<TwitterService>('twitter');
+  return service.post(message.content);
+}
+
+// Using database
+handler: async (runtime, message) => {
+  const memories = await runtime.databaseAdapter.searchMemories({
+    query: message.content,
+    limit: 5
+  });
+  return { memories };
+}
+
+## Best Practices
+
+- Name actions clearly (VERB_NOUN format)
+- Validate before executing
+- Return consistent response format
+- Use similes for alternative triggers
+- Provide diverse examples
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Providers" icon="database" href="/core-concepts/plugins/providers">
+    Learn about data providers
+  </Card>
+  
+  <Card title="Evaluators" icon="scale-balanced" href="/core-concepts/plugins/evaluators">
+    Explore response evaluation
+  </Card>
+</CardGroup>

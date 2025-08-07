@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, beforeAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { $ } from 'bun';
 import { logger } from '@elizaos/core';
 
 // Helper function to check if a file exists
@@ -15,6 +16,15 @@ function directoryExists(dirPath: string): boolean {
 
 describe('Project Structure Validation', () => {
   const rootDir = path.resolve(__dirname, '..');
+  const distDir = path.join(rootDir, 'dist');
+
+  beforeAll(async () => {
+    // Build the project if dist doesn't exist
+    if (!fs.existsSync(distDir)) {
+      console.log('Building project for tests...');
+      await $`cd ${rootDir} && bun run build`;
+    }
+  });
 
   describe('Directory Structure', () => {
     it('should have the expected directory structure', () => {
@@ -59,8 +69,9 @@ describe('Project Structure Validation', () => {
     it('should have the correct package.json configuration', () => {
       const packageJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 
-      // Check package name
-      expect(packageJson.name).toBe('@elizaos/project-tee-starter');
+      // Check package name - should be valid (not checking exact name since it's dynamic in created projects)
+      expect(packageJson.name).toBeTruthy();
+      expect(typeof packageJson.name).toBe('string');
 
       // Check scripts
       expect(packageJson.scripts).toHaveProperty('build');

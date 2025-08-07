@@ -12,6 +12,7 @@ import { createLogger } from './logger';
 import {
   ChannelType,
   ModelType,
+  MODEL_SETTINGS,
   type Content,
   type MemoryMetadata,
   type Character,
@@ -1618,6 +1619,84 @@ export class AgentRuntime implements IAgentRuntime {
     return models[0].handler;
   }
 
+  /**
+   * Retrieves model configuration settings from character settings with support for
+   * model-specific overrides and default fallbacks.
+   *
+   * Precedence order (highest to lowest):
+   * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
+   * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
+   * 3. Legacy settings for backwards compatibility (e.g., MODEL_TEMPERATURE)
+   *
+   * @param modelType The specific model type to get settings for
+   * @returns Object containing model parameters if they exist, or null if no settings are configured
+   */
+  private getModelSettings(modelType?: ModelTypeName): Record<string, number> | null {
+    const modelSettings: Record<string, number> = {};
+
+    // Helper to get a setting value with fallback chain
+    const getSettingWithFallback = (
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey: string
+    ): number | null => {
+      // Try model-specific setting first
+      if (modelType) {
+        const modelSpecificKey = `${modelType}_${param}`;
+        const modelValue = this.getSetting(modelSpecificKey);
+        if (modelValue !== null && modelValue !== undefined) {
+          const numValue = Number(modelValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
+          // If model-specific value exists but is invalid, continue to fallbacks
+        }
+      }
+
+      // Fall back to default setting
+      const defaultKey = `DEFAULT_${param}`;
+      const defaultValue = this.getSetting(defaultKey);
+      if (defaultValue !== null && defaultValue !== undefined) {
+        const numValue = Number(defaultValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+        // If default value exists but is invalid, continue to legacy
+      }
+
+      // Fall back to legacy setting for backwards compatibility
+      const legacyValue = this.getSetting(legacyKey);
+      if (legacyValue !== null && legacyValue !== undefined) {
+        const numValue = Number(legacyValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+      }
+
+      return null;
+    };
+
+    // Get settings with proper fallback chain
+    const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
+    const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const frequencyPenalty = getSettingWithFallback(
+      'FREQUENCY_PENALTY',
+      MODEL_SETTINGS.MODEL_FREQ_PENALTY
+    );
+    const presencePenalty = getSettingWithFallback(
+      'PRESENCE_PENALTY',
+      MODEL_SETTINGS.MODEL_PRESENCE_PENALTY
+    );
+
+    // Add settings if they exist
+    if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
+    if (temperature !== null) modelSettings.temperature = temperature;
+    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
+    if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
+
+    // Return null if no settings were configured
+    return Object.keys(modelSettings).length > 0 ? modelSettings : null;
+  }
+
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any,
@@ -1649,10 +1728,23 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       paramsWithRuntime = params;
     } else {
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
+      // Include model settings from character configuration if available
+      const modelSettings = this.getModelSettings(modelKey);
+
+      if (modelSettings) {
+        // Apply model settings if configured
+        paramsWithRuntime = {
+          ...modelSettings, // Apply model settings first (includes defaults and model-specific)
+          ...params, // Then apply specific params (allowing overrides)
+          runtime: this,
+        };
+      } else {
+        // No model settings configured, use params as-is
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
     }
     const startTime = performance.now();
     try {

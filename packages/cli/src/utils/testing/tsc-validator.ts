@@ -29,7 +29,8 @@ export async function runTypeCheck(
       args.push('--strict');
     }
 
-    const result = await bunExec('tsc', args, {
+    // Use bun x to run the project's local TypeScript compiler
+    const result = await bunExec('bun', ['x', 'tsc', ...args], {
       cwd: projectPath,
     });
     const { stdout, stderr } = result;

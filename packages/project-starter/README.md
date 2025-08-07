@@ -62,7 +62,7 @@ ElizaOS provides a comprehensive testing structure for projects:
 
 ### Writing Tests
 
-Component tests use Vitest:
+Component tests use bun:test:
 
 ```typescript
 // Unit test example (__tests__/config.test.ts)

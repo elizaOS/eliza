@@ -1,0 +1,326 @@
+---
+title: Plugin Schema Guide
+description: Learn how to add custom database schemas to Eliza plugins for shared data access
+icon: table
+---
+
+# Adding Custom Schema to Eliza Plugins
+
+This guide explains how to extend any Eliza plugin with custom database schemas, enabling shared data access across multiple agents.
+
+## Overview
+
+Eliza uses Drizzle ORM with PostgreSQL and automatically handles migrations from your schema definitions. This guide demonstrates how to add custom tables that can be shared across all agents (no `agentId` field), along with actions to write data and providers to read it.
+
+## Step 1: Define Your Custom Schema
+
+### Creating a Shared Table
+
+To create a table that's accessible by all agents, define it without an `agentId` field. Here's an example of a user preferences table:
+
+```typescript
+// In your plugin's schema.ts file
+
+import { pgTable, uuid, varchar, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+
+export const userPreferencesTable = pgTable(
+  'user_preferences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(), // Links to the user
+    preferences: jsonb('preferences').default({}).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_user_preferences_user_id').on(table.userId),
+  ]
+);
+
+// Export your schema
+export const customSchema = {
+  userPreferencesTable,
+};
+```
+
+**Key Points:**
+- No `agentId` field means data is shared across all agents
+- Eliza will automatically create migrations from this schema
+- Use appropriate indexes for query performance
+
+## Step 2: Create a Repository for Database Access
+
+### Repository Pattern
+
+Create a repository class to handle database operations. This follows the pattern used throughout Eliza:
+
+```typescript
+// In your plugin's repositories/user-preferences-repository.ts
+
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { UUID } from '@elizaos/core';
+import { userPreferencesTable } from '../schema.ts';
+
+export interface UserPreferences {
+  id: UUID;
+  userId: UUID;
+  preferences: Record<string, any>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class UserPreferencesRepository {
+  constructor(private readonly db: ReturnType<typeof drizzle>) {}
+
+  /**
+   * Create or update user preferences
+   */
+  async upsert(userId: UUID, preferences: Record<string, any>): Promise<UserPreferences> {
+    // Check if preferences exist
+    const existing = await this.findByUserId(userId);
+    
+    if (existing) {
+      // Update existing
+      const [updated] = await this.db
+        .update(userPreferencesTable)
+        .set({
+          preferences,
+          updatedAt: new Date(),
+        })
+        .where(eq(userPreferencesTable.userId, userId))
+        .returning();
+      
+      return this.mapToUserPreferences(updated);
+    } else {
+      // Create new
+      const [created] = await this.db
+        .insert(userPreferencesTable)
+        .values({
+          userId,
+          preferences,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      return this.mapToUserPreferences(created);
+    }
+  }
+
+  /**
+   * Find preferences by user ID
+   */
+  async findByUserId(userId: UUID): Promise<UserPreferences | null> {
+    const result = await this.db
+      .select()
+      .from(userPreferencesTable)
+      .where(eq(userPreferencesTable.userId, userId))
+      .limit(1);
+
+    return result.length > 0 ? this.mapToUserPreferences(result[0]) : null;
+  }
+
+  /**
+   * Map database row to domain type
+   */
+  private mapToUserPreferences(row: any): UserPreferences {
+    return {
+      id: row.id as UUID,
+      userId: row.userId || row.user_id,
+      preferences: row.preferences || {},
+      createdAt: row.createdAt || row.created_at,
+      updatedAt: row.updatedAt || row.updated_at,
+    };
+  }
+}
+```
+
+## Step 3: Create an Action to Write Data
+
+### Action Structure
+
+Actions process user input and store data using the repository:
+
+```typescript
+import type { Action, IAgentRuntime, Memory, ActionResult } from '@elizaos/core';
+import { parseKeyValueXml } from '@elizaos/core';
+import { UserPreferencesRepository } from '../repositories/user-preferences-repository.ts';
+
+export const storeUserPreferencesAction: Action = {
+  name: 'STORE_USER_PREFERENCES',
+  description: 'Extract and store user preferences from messages',
+  
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    const text = message.content.text?.toLowerCase() || '';
+    return text.includes('preference') || text.includes('prefer') || text.includes('like');
+  },
+
+  handler: async (runtime: IAgentRuntime, message: Memory) => {
+    // 1. Create prompt for LLM to extract structured data
+    const extractionPrompt = `
+      Extract user preferences from the following message.
+      Return in XML format:
+      
+      <preferences>
+        <theme>light/dark/auto</theme>
+        <language>en/es/fr/etc</language>
+        <notifications>true/false</notifications>
+        <customPreference>value</customPreference>
+      </preferences>
+      
+      Message: "${message.content.text}"
+    `;
+
+    // 2. Use runtime's LLM
+    const llmResponse = await runtime.completion({
+      messages: [{ role: 'system', content: extractionPrompt }]
+    });
+
+    // 3. Parse the response
+    const extractedPreferences = parseKeyValueXml(llmResponse.content);
+
+    // 4. Get database and repository
+    const db = runtime.databaseAdapter.db;
+    const repository = new UserPreferencesRepository(db);
+    
+    // 5. Store preferences
+    const userId = message.userId || message.entityId;
+    const stored = await repository.upsert(userId, extractedPreferences);
+
+    return {
+      success: true,
+      data: stored,
+      text: 'Your preferences have been saved successfully.'
+    };
+  }
+};
+```
+
+## Step 4: Create a Provider to Read Data
+
+### Provider Structure
+
+Providers make data available to agents during conversations:
+
+```typescript
+import type { Provider, IAgentRuntime, Memory } from '@elizaos/core';
+import { UserPreferencesRepository } from '../repositories/user-preferences-repository.ts';
+
+export const userPreferencesProvider: Provider = {
+  name: 'USER_PREFERENCES',
+  description: 'Provides user preferences to customize agent behavior',
+  dynamic: true, // Fetches fresh data on each request
+  
+  get: async (runtime: IAgentRuntime, message: Memory) => {
+    // 1. Get user ID from message
+    const userId = message.userId || message.entityId;
+    
+    // 2. Get database and repository
+    const db = runtime.databaseAdapter.db;
+    const repository = new UserPreferencesRepository(db);
+    
+    // 3. Fetch preferences
+    const userPrefs = await repository.findByUserId(userId);
+    
+    if (!userPrefs) {
+      return {
+        data: { preferences: {} },
+        values: { preferences: 'No preferences found' },
+        text: ''
+      };
+    }
+    
+    // 4. Format data for agent context
+    const preferencesText = `
+# User Preferences
+${Object.entries(userPrefs.preferences).map(([key, value]) => 
+  `- ${key}: ${value}`
+).join('\n')}
+    `.trim();
+    
+    return {
+      data: { preferences: userPrefs.preferences },
+      values: userPrefs.preferences,
+      text: preferencesText // This text is added to agent context
+    };
+  }
+};
+```
+
+## Step 5: Register Your Components
+
+### Plugin Configuration
+
+Register your schema, actions, and providers in your plugin:
+
+```typescript
+import type { Plugin } from '@elizaos/core';
+
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  description: 'My custom plugin',
+  actions: [storeUserPreferencesAction],
+  providers: [userPreferencesProvider],
+  schema: customSchema, // Your schema export
+};
+```
+
+## Important Considerations
+
+### 1. Database Access Pattern
+
+- Always access the database through `runtime.databaseAdapter.db`
+- Use repository classes to encapsulate database operations
+- The database type is already properly typed from the runtime adapter
+
+### 2. Shared Data Pattern
+
+Without `agentId` in your tables:
+- All agents can read and write the same data
+- Use `userId` or other identifiers to scope data appropriately
+- Consider data consistency across multiple agents
+
+### 3. Type Safety
+
+- Define interfaces for your domain types
+- Map database rows to domain types in repository methods
+- Handle both camelCase and snake_case field names
+
+### 4. Error Handling
+
+```typescript
+try {
+  const result = await repository.upsert(userId, preferences);
+  return { success: true, data: result };
+} catch (error) {
+  console.error('Failed to store preferences:', error);
+  return { 
+    success: false, 
+    error: error instanceof Error ? error.message : 'Unknown error' 
+  };
+}
+```
+
+## Example Flow
+
+1. **User sends message**: "I prefer dark theme and Spanish language"
+2. **Action triggered**: 
+   - LLM extracts: `{ theme: 'dark', language: 'es' }`
+   - Repository stores in database
+3. **Provider supplies data**: 
+   - On next interaction, provider fetches preferences
+   - Agent context includes: "User Preferences: theme: dark, language: es"
+4. **Multiple agents**: Any agent can access this user's preferences
+
+## Summary
+
+To add custom schema to an Eliza plugin:
+
+1. **Define schema** without `agentId` for shared data
+2. **Create repository** classes following Eliza's pattern
+3. **Create actions** to write data using `parseKeyValueXml` for structure
+4. **Create providers** to read data and supply to agent context
+5. **Register everything** in your plugin configuration
+
+Eliza handles the rest - migrations, database connections, and making your data available across all agents in the system. 

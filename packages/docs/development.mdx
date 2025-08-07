@@ -1,0 +1,396 @@
+---
+title: 'Development'
+description: 'Learn how to develop with elizaOS - from simple character modifications to core framework contributions'
+---
+
+<Info>
+  **Prerequisites**: Make sure you have completed the [Quickstart](/quickstart) guide and have Node.js (version 23.0 or higher) and Bun installed.
+</Info>
+
+## Development Tracks
+
+elizaOS offers two distinct development paths depending on your goals and experience level:
+
+<CardGroup cols={2}>
+  <Card title="Beginner Track" icon="user" color="#0EA5E9">
+    Perfect for creating and customizing your own AI agents using the elizaOS CLI
+  </Card>
+  <Card title="Advanced Track" icon="code" color="#8B5CF6">
+    For contributors and developers building custom elizaOS versions
+  </Card>
+</CardGroup>
+
+## Beginner Development Track
+
+The beginner track focuses on using the elizaOS CLI to create and customize your agents without diving into the core framework code.
+
+### Getting Started with CLI Development
+
+<Steps>
+  <Step title="Create Your Agent">
+    If you haven't already, create a new agent using the elizaOS CLI:
+    ```bash
+    elizaos create my-custom-agent
+    ```
+  </Step>
+
+  <Step title="Navigate to Your Agent Directory">
+    ```bash
+    cd my-custom-agent
+    ```
+  </Step>
+
+  <Step title="Understand the Project Structure">
+    Your agent directory contains:
+    - `character.json` - Your agent's personality and configuration
+    - `package.json` - Project dependencies and scripts
+    - `.env` - Environment variables and API keys
+    - `plugins/` - Directory for custom plugins
+  </Step>
+</Steps>
+
+### Modifying Your Character
+
+The `character.json` file defines your agent's personality, knowledge, and behavior:
+
+```json character.json
+{
+  "name": "MyAgent",
+  "bio": "A helpful AI assistant created with elizaOS",
+  "adjectives": [
+    "friendly",
+    "knowledgeable",
+    "professional"
+  ],
+  "knowledge": [
+    "I am an AI assistant created with elizaOS",
+    "I can help with various tasks and questions"
+  ],
+  "messageExamples": [
+    [
+      {
+        "name": "User",
+        "content": {"text": "Hello!"}
+      },
+      {
+        "name": "MyAgent",
+        "content": {"text": "Hello! How can I assist you today?"}
+      }
+    ]
+  ],
+  "plugins": []
+}
+```
+
+<Tip>
+  Experiment with different personality traits and knowledge entries to create unique agent behaviors.
+</Tip>
+
+### Working with Plugins
+
+Plugins extend your agent's capabilities with additional features:
+
+#### Installing Plugins
+
+Use the elizaOS CLI to add existing plugins:
+
+```bash
+elizaos plugins add @elizaos/plugin-twitter
+elizaos plugins add @elizaos/plugin-discord
+```
+
+<Warning>
+  After installing plugins via CLI, you **must** add them to your character file (`.json` or `.ts`) to activate them:
+</Warning>
+
+```json character.json
+{
+  "name": "MyAgent",
+  "plugins": [
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-twitter",
+    "@elizaos/plugin-discord"
+  ],
+  "bio": ["Your agent's description"],
+  "style": {
+    "all": ["conversational", "friendly"]
+  }
+}
+```
+
+```typescript character.ts
+import { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: "MyAgent",
+  plugins: [
+    // Core plugins
+    "@elizaos/plugin-sql",
+    
+    // Conditional plugins based on environment variables
+    ...(process.env.TWITTER_API_KEY ? ["@elizaos/plugin-twitter"] : []),
+    ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+    ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : [])
+  ],
+  bio: ["Your agent's description"],
+  style: {
+    all: ["conversational", "friendly"]
+  }
+};
+```
+
+#### Removing Plugins
+
+To remove a plugin:
+
+```bash
+elizaos plugins remove @elizaos/plugin-twitter
+```
+
+Remember to also remove it from your character file (`.json` or `.ts`).
+
+#### Available Plugins
+
+<AccordionGroup>
+  <Accordion title="Available Plugins">
+    - `@elizaos/plugin-bootstrap` - Base plugin infrastructure
+    - `@elizaos/plugin-sql` - SQL database integration
+    - `@elizaos/plugin-forms` - Forms for structured data collection
+    - `@elizaos/plugin-starter` - Template for creating new plugins
+  </Accordion>
+</AccordionGroup>
+
+### Testing Your Changes
+
+After making modifications:
+
+```bash
+elizaos start
+```
+
+Visit `http://localhost:3000` to interact with your customized agent.
+
+## Advanced Development Track
+
+The advanced track is for developers who want to contribute to the elizaOS core framework or build custom versions.
+
+### Setting Up the Monorepo
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the official elizaOS monorepo:
+    ```bash
+    git clone https://github.com/elizaos/eliza.git
+    cd eliza
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Use Bun to install all dependencies:
+    ```bash
+    bun install
+    ```
+  </Step>
+
+  <Step title="Build the Project">
+    Build all packages in the monorepo:
+    ```bash
+    bun run build
+    ```
+  </Step>
+</Steps>
+
+### Monorepo Structure
+
+The elizaOS monorepo is organized as follows:
+
+```
+eliza/
+├── packages/
+│   ├── core/           # Core elizaOS framework
+│   ├── cli/            # CLI tool source code
+│   ├── client/         # Client libraries
+│   └── plugin-*/       # Official plugins
+└── scripts/            # Build and utility scripts
+```
+
+### Contributing to Core Framework
+
+#### Development Workflow
+
+<Steps>
+  <Step title="Create a Feature Branch">
+    ```bash
+    git checkout -b feature/my-new-feature
+    ```
+  </Step>
+
+  <Step title="Make Your Changes">
+    Edit files in the relevant package directory
+  </Step>
+
+  <Step title="Run Tests">
+    ```bash
+    bun test
+    ```
+  </Step>
+
+  <Step title="Build and Verify">
+    ```bash
+    bun run build
+    bun run typecheck
+    ```
+  </Step>
+
+  <Step title="Submit a Pull Request">
+    Push your changes and create a PR on GitHub
+  </Step>
+</Steps>
+
+#### Key Development Areas
+
+<Tabs>
+  <Tab title="Core Framework">
+    Work on the fundamental elizaOS engine:
+    - Agent reasoning logic
+    - Memory management
+    - Plugin system architecture
+    - Performance optimizations
+  </Tab>
+
+  <Tab title="Plugin Development">
+    Create new plugins to extend functionality:
+    - Integration with external services
+    - New communication channels
+    - Custom tools and capabilities
+  </Tab>
+
+  <Tab title="CLI Improvements">
+    Enhance the developer experience:
+    - New CLI commands
+    - Better error handling
+    - Template management
+  </Tab>
+</Tabs>
+
+### Creating Custom elizaOS Versions
+
+For specialized use cases, you might want to create a custom fork:
+
+```bash
+# Fork the repository on GitHub first
+git clone https://github.com/YOUR_USERNAME/eliza.git
+cd eliza
+
+# Add upstream remote
+git remote add upstream https://github.com/elizaos/eliza.git
+
+# Create your custom branch
+git checkout -b custom/my-version
+```
+
+#### Custom Version Best Practices
+
+<Card title="Maintain Compatibility" icon="link">
+  Keep your custom version compatible with the core plugin system
+</Card>
+
+<Card title="Document Changes" icon="book">
+  Clearly document all modifications and custom features
+</Card>
+
+<Card title="Stay Updated" icon="sync">
+  Regularly sync with upstream to get the latest improvements:
+  ```bash
+  git fetch upstream
+  git merge upstream/develop
+  ```
+</Card>
+
+### Local Development Tips
+
+#### Environment Setup
+
+Create a `.env.local` file for development:
+
+```bash .env.local
+NODE_ENV=development
+LOG_LEVEL=debug
+ENABLE_HOT_RELOAD=true
+```
+
+#### Using Development Mode
+
+Run the framework in development mode with hot reload:
+
+```bash
+bun run dev
+```
+
+#### Debugging
+
+<AccordionGroup>
+  <Accordion title="Enable Debug Logging">
+    Set `LOG_LEVEL=debug` in your environment variables
+  </Accordion>
+
+  <Accordion title="Use VS Code Debugger">
+    The monorepo includes VS Code debug configurations in `.vscode/launch.json`
+  </Accordion>
+
+  <Accordion title="Performance Profiling">
+    Use `bun run profile` to generate performance reports
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+### For Beginners
+
+- Start with small character modifications
+- Test changes frequently
+- Back up your `character.json` before major changes
+- Join the community for plugin recommendations
+
+### For Advanced Users
+
+- Follow the project's coding standards
+- Write comprehensive tests for new features
+- Document your code thoroughly
+- Participate in code reviews
+
+## Getting Help
+
+<CardGroup cols={3}>
+  <Card title="Documentation" icon="book" href="https://docs.elizaos.com">
+    Comprehensive guides and API references
+  </Card>
+
+  <Card title="GitHub Issues" icon="github" href="https://github.com/elizaOS/eliza/issues">
+    Report bugs and request features
+  </Card>
+
+  <Card title="Discord Community" icon="discord" href="https://discord.gg/ai16z">
+    Get help from the community
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Choose Your Track">
+    Decide whether to start with the beginner or advanced track based on your goals
+  </Step>
+
+  <Step title="Set Up Your Environment">
+    Follow the setup instructions for your chosen track
+  </Step>
+
+  <Step title="Start Building">
+    Begin creating your agent or contributing to the framework
+  </Step>
+
+  <Step title="Share Your Work">
+    Share your creations with the elizaOS community!
+  </Step>
+</Steps>

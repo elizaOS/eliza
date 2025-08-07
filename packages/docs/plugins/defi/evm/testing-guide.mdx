@@ -1,0 +1,123 @@
+---
+title: "Testing Guide"
+description: "How to test the EVM plugin safely on real networks"
+---
+
+## Testing Philosophy
+
+The best way to test DeFi plugins is with small amounts on real networks. Test networks often have reliability issues and don't reflect real-world conditions.
+
+## Safe Testing Practices
+
+### 1. Start Small
+
+Always test with minimal amounts first:
+- 0.001 ETH for transfers
+- $1-5 worth of tokens for swaps
+- Smallest viable amounts for bridges
+
+### 2. Test on Low-Cost Chains First
+
+Start testing on chains with low transaction fees:
+- Polygon: ~$0.01 per transaction
+- Base: ~$0.05 per transaction  
+- Arbitrum: ~$0.10 per transaction
+
+### 3. Progressive Testing
+
+```
+1. Test basic transfers first
+2. Test token transfers
+3. Test swaps with small amounts
+4. Test bridges last (they're most complex)
+```
+
+## Testing Checklist
+
+### Environment Setup
+
+```env
+# Use a dedicated test wallet
+EVM_PRIVATE_KEY=test_wallet_private_key
+
+# Start with one chain
+ETHEREUM_PROVIDER_BASE=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+```
+
+### Basic Tests
+
+1. **Wallet Connection**
+   ```
+   User: What's my wallet address?
+   Agent: [Should show your wallet address]
+   ```
+
+2. **Balance Check**
+   ```
+   User: What's my balance?
+   Agent: [Should show balances across configured chains]
+   ```
+
+3. **Small Transfer**
+   ```
+   User: Send 0.001 ETH to [another test address]
+   Agent: [Should execute the transfer]
+   ```
+
+4. **Token Transfer**
+   ```
+   User: Send 1 USDC to [test address]
+   Agent: [Should handle ERC20 transfer]
+   ```
+
+### Swap Testing
+
+Test swaps with minimal amounts:
+```
+User: Swap 0.01 ETH for USDC
+Agent: [Should find best route and execute]
+```
+
+### Error Handling
+
+Test error scenarios:
+- Insufficient balance
+- Invalid addresses
+- Network issues
+- High slippage
+
+## Monitoring Results
+
+1. **Transaction Verification**
+   - Check block explorers (Etherscan, BaseScan, etc.)
+   - Verify transaction status
+   - Confirm balances updated
+
+2. **Gas Usage**
+   - Monitor gas costs
+   - Ensure reasonable gas estimates
+   - Check for failed transactions
+
+## Common Issues
+
+### "Insufficient funds for gas"
+- Ensure you have native tokens for gas
+- Each chain needs its native token (ETH, MATIC, etc.)
+
+### "Transaction underpriced"
+- RPC may be congested
+- Try alternative RPC endpoints
+
+### "Nonce too low"
+- Previous transaction may be pending
+- Wait for confirmation or reset nonce
+
+## Production Readiness
+
+Before using in production:
+1. Test all intended operations
+2. Verify error handling works
+3. Ensure proper logging
+4. Set appropriate gas limits
+5. Configure slippage tolerances
+6. Test with your expected volumes

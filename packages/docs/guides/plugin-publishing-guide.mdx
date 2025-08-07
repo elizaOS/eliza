@@ -1,0 +1,469 @@
+---
+title: Plugin Publishing Guide
+description: A complete guide to creating, developing, and publishing elizaOS plugins
+icon: book-open
+---
+
+This guide walks you through the entire process of creating, developing, and publishing an elizaOS plugin. By the end, you'll have a published plugin available in the elizaOS registry.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Bun** installed ([installation guide](https://bun.sh))
+- **Git** installed and configured
+- **npm** account ([create one here](https://www.npmjs.com/signup))
+- **GitHub** account with a Personal Access Token (PAT)
+
+### Setting up GitHub Personal Access Token
+
+1. Go to GitHub → Settings → Developer settings → Personal access tokens
+2. Click "Generate new token (classic)"
+3. Name it "elizaOS Publishing"
+4. Select scopes: `repo`, `read:org`, and `workflow`
+5. Save the token securely
+
+## Step 1: Create Your Plugin
+
+Start by creating a new plugin using the elizaOS CLI:
+
+```bash
+# Create a new plugin with the interactive wizard
+elizaos create -t plugin my-awesome-plugin
+
+# Navigate to your plugin directory
+cd plugin-my-awesome-plugin
+```
+
+<Note>
+The CLI automatically prefixes your plugin name with `plugin-` to follow elizaOS conventions.
+</Note>
+
+## Step 2: Understand Plugin Structure
+
+Your new plugin has this structure:
+
+```
+plugin-my-awesome-plugin/
+├── src/
+│   └── index.ts         # Main plugin file
+├── images/              # Required images for registry
+│   ├── logo.jpg        # 400x400px square logo
+│   └── banner.jpg      # 1280x640px banner
+├── __tests__/          # Test files
+├── package.json        # Plugin metadata
+├── tsconfig.json       # TypeScript configuration
+└── README.md           # Plugin documentation
+```
+
+### Key Files to Edit
+
+1. **`src/index.ts`** - Your plugin's main code
+2. **`package.json`** - Plugin metadata and configuration
+3. **`README.md`** - Documentation for users
+4. **`images/`** - Visual assets for the registry
+
+## Step 3: Develop Your Plugin
+
+### Basic Plugin Structure
+
+```typescript
+// src/index.ts
+import { Plugin, IAgentRuntime } from "@elizaos/core";
+
+export const myAwesomePlugin: Plugin = {
+    name: "my-awesome-plugin",
+    description: "A plugin that does awesome things",
+
+    actions: [
+        // Your custom actions
+    ],
+
+    providers: [
+        // Your custom providers
+    ],
+
+    evaluators: [
+        // Your custom evaluators
+    ],
+
+    services: [
+        // Your custom services
+    ],
+
+    async init(runtime: IAgentRuntime) {
+        // Initialize your plugin
+        console.log("My Awesome Plugin initialized!");
+    }
+};
+
+export default myAwesomePlugin;
+```
+
+### Adding an Action
+
+```typescript
+import { Action, IAgentRuntime, Memory, HandlerCallback } from "@elizaos/core";
+
+const greetAction: Action = {
+    name: "GREET_USER",
+    description: "Greets the user with a personalized message",
+
+    validate: async (runtime: IAgentRuntime, message: Memory) => {
+        // Validate the action can be performed
+        return message.content.text.toLowerCase().includes("hello");
+    },
+
+    handler: async (
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: any,
+        options: any,
+        callback: HandlerCallback
+    ) => {
+        // Perform the action
+        const response = `Hello! Welcome to ${runtime.character.name}!`;
+        callback({
+            text: response,
+            action: "GREET_USER"
+        });
+    },
+
+    examples: [
+        [
+            {
+                user: "user123",
+                content: { text: "Hello there!" }
+            },
+            {
+                user: "assistant",
+                content: {
+                    text: "Hello! Welcome to Eliza!",
+                    action: "GREET_USER"
+                }
+            }
+        ]
+    ]
+};
+```
+
+### Development Commands
+
+```bash
+# Install dependencies
+bun install
+
+# Start development mode with hot reload
+elizaos dev
+
+# Run tests
+elizaos test
+
+# Build your plugin
+bun run build
+```
+
+## Step 4: Configure package.json
+
+Update your `package.json` with accurate information:
+
+```json
+{
+  "name": "plugin-my-awesome-plugin",
+  "version": "1.0.0",
+      "description": "A plugin that adds awesome functionality to elizaOS agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "repository": "github:yourusername/plugin-my-awesome-plugin",
+  "keywords": ["elizaos-plugin", "eliza-plugin", "ai", "chatbot"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "agentConfig": {
+    "actions": ["GREET_USER"],
+    "providers": [],
+    "evaluators": [],
+    "models": ["gpt-4", "gpt-3.5-turbo", "claude-3"],
+    "services": []
+  }
+}
+```
+
+<Warning>
+The `agentConfig` section is required for your plugin to be properly loaded by elizaOS agents.
+</Warning>
+
+## Step 5: Add Required Images
+
+Your plugin needs two images for the registry:
+
+### Logo (images/logo.jpg)
+- **Size**: 400x400 pixels
+- **Format**: JPEG
+- **Max file size**: 500KB
+- **Purpose**: Displayed in plugin listings
+
+### Banner (images/banner.jpg)
+- **Size**: 1280x640 pixels
+- **Format**: JPEG
+- **Max file size**: 1MB
+- **Purpose**: Featured on your plugin's detail page
+
+<Tip>
+Use high-quality images that represent your plugin's functionality. The logo should be clear at small sizes.
+</Tip>
+
+## Step 6: Write Documentation
+
+Create a comprehensive README.md:
+
+```markdown
+# My Awesome Plugin
+
+A plugin that adds awesome functionality to elizaOS agents.
+
+## Features
+
+- <Icon icon="sparkles" /> Feature 1: Personalized greetings
+- <Icon icon="rocket" /> Feature 2: Advanced responses
+- <Icon icon="target" /> Feature 3: Custom actions
+
+## Installation
+
+\`\`\`bash
+elizaos plugins add @your-npm-username/plugin-my-awesome-plugin
+\`\`\`
+
+## Configuration
+
+Add to your agent's character file:
+
+\`\`\`json
+{
+  "plugins": ["@your-npm-username/plugin-my-awesome-plugin"]
+}
+\`\`\`
+
+## Usage
+
+The plugin automatically adds the following actions:
+- `GREET_USER`: Responds to hello messages
+
+## API Reference
+
+### Actions
+
+#### GREET_USER
+Greets the user with a personalized message.
+
+**Trigger**: Messages containing "hello"
+**Response**: Personalized greeting
+
+## License
+
+MIT
+```
+
+## Step 7: Test Your Plugin
+
+Before publishing, thoroughly test your plugin:
+
+```bash
+# Run unit tests
+elizaos test
+
+# Test in a real project
+cd ../test-project
+elizaos plugins add ../plugin-my-awesome-plugin
+elizaos dev
+```
+
+### Testing Checklist
+
+- [ ] All tests pass
+- [ ] Plugin loads without errors
+- [ ] Actions trigger correctly
+- [ ] No TypeScript errors
+- [ ] Documentation is complete
+- [ ] Images are correct size/format
+
+## Step 8: Pre-publish Validation
+
+Run a test publish to catch any issues:
+
+```bash
+# Dry run to see what would happen
+elizaos publish --test
+
+# Check generated registry files
+elizaos publish --dry-run
+ls packages/registry/
+```
+
+### Common Validation Issues
+
+1. **Missing images**: Ensure both logo.jpg and banner.jpg exist
+2. **Invalid package name**: Must start with `plugin-`
+3. **Missing agentConfig**: Required in package.json
+4. **Image size**: Check dimensions and file size
+
+## Step 9: Publish Your Plugin
+
+### Authenticate First
+
+```bash
+# Login to npm
+bunx npm login
+
+# Set GitHub token (or you'll be prompted)
+export GITHUB_TOKEN=your_pat_here
+```
+
+### Publish
+
+```bash
+# Publish to npm and submit to registry
+elizaos publish --npm
+```
+
+This command will:
+1. Validate your plugin structure
+2. Build your TypeScript code
+3. Publish to npm
+4. Create a GitHub repository
+5. Open a PR to the elizaOS registry
+
+### What Happens Next
+
+1. **npm Package**: Available immediately at `npmjs.com/package/your-plugin`
+2. **GitHub Repo**: Created at `github.com/yourusername/plugin-my-awesome-plugin`
+3. **Registry PR**: Opened at `github.com/elizaos-plugins/registry/pulls`
+
+<Note>
+Registry PRs are reviewed by maintainers. Approval typically takes 1-3 business days.
+</Note>
+
+## Step 10: Post-Publishing
+
+### Updating Your Plugin
+
+For updates after initial publication:
+
+```bash
+# 1. Make your changes
+# 2. Update version in package.json
+bun version patch  # or minor/major
+
+# 3. Build and test
+bun run build
+elizaos test
+
+# 4. Publish directly to npm
+bun publish
+
+# 5. Push to GitHub
+git add .
+git commit -m "Update to version x.y.z"
+git push
+git push --tags
+```
+
+<Important>
+The `elizaos publish` command is only for initial publication. Use standard npm/git commands for updates.
+</Important>
+
+### Marketing Your Plugin
+
+1. **Announce on Discord**: Share in the #plugins channel
+2. **Write a Blog Post**: Explain what your plugin does
+3. **Create Examples**: Show real-world usage
+4. **Record a Demo**: Video tutorials help adoption
+
+## Troubleshooting
+
+### Build Failures
+
+```bash
+# Clear and rebuild
+rm -rf dist node_modules
+bun install
+bun run build
+```
+
+### Publishing Errors
+
+```bash
+# Check npm authentication
+bunx npm whoami
+
+# Verify GitHub token
+echo $GITHUB_TOKEN
+
+# Try step-by-step
+elizaos publish --test  # Test first
+elizaos publish --npm --skip-registry  # Skip registry if needed
+```
+
+### Registry PR Issues
+
+If your PR is not approved:
+1. Check comments from reviewers
+2. Fix any requested changes
+3. Update your PR branch
+
+## Best Practices
+
+### Code Quality
+- Write clean, documented code
+- Include comprehensive tests
+- Use TypeScript types properly
+- Follow elizaOS conventions
+
+### Documentation
+- Clear README with examples
+- API documentation for all exports
+- Configuration examples
+- Troubleshooting section
+
+### Versioning
+- Use semantic versioning
+- Document breaking changes
+- Maintain a CHANGELOG.md
+- Tag releases in Git
+
+### Community
+- Respond to issues on GitHub
+- Help users in Discord
+- Accept contributions
+- Keep plugin updated
+
+## Resources
+
+- [elizaOS Core Documentation](/core-concepts)
+- [Plugin API Reference](/api-reference)
+- [Example Plugins](https://github.com/elizaos-plugins)
+- [Discord Community](https://discord.gg/ai16z)
+
+## Getting Help
+
+If you run into issues:
+
+1. Check this guide's troubleshooting section
+2. Search existing GitHub issues
+3. Ask in Discord #plugin-dev channel
+4. Open an issue on your plugin's repo
+
+Remember: Publishing a plugin is just the beginning. The best plugins evolve based on user feedback and community contributions!

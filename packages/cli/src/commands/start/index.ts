@@ -1,6 +1,7 @@
 import { loadProject } from '@/src/project';
 import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
+import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
@@ -25,6 +26,9 @@ export const start = new Command()
     try {
       // Load env config first before any character loading
       await loadEnvConfig();
+
+      // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
+      await ensureElizaOSCli();
 
       // Setup proper module resolution environment variables
       // This ensures consistent plugin loading between dev and start commands

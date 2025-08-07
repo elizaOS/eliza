@@ -1511,7 +1511,7 @@ Actions define how agents respond to and interact with messages. They enable age
 
 An Action consists of:
 
-- `name`: Unique identifier 
+- `name`: Unique identifier
 - `similes`: Alternative names/triggers
 - `description`: Purpose and usage explanation
 - `validate`: Function to check if action is appropriate
@@ -1524,7 +1524,7 @@ An Action consists of:
 
 - Checks if the action can be executed
 - Consider conversation state
-- Validate required 
+- Validate required
 
 ---
 
@@ -1651,7 +1651,7 @@ import { Action, IAgentRuntime, Memory, State } from "@elizaos/core";
 
 // Example image generation action
 const generateImageAction: Action = {
-    name: "GENERATE_IMAGE", 
+    name: "GENERATE_IMAGE",
     similes: ["CREATE_IMAGE", "MAKE_IMAGE", "DRAW"],
     description: "Generates an image based on the user's description",
     suppressInitialMessage: true, // Suppress initial response since we'll generate our own
@@ -1673,7 +1673,7 @@ const generateImageAction: Action = {
         try {
             // Get image service
             const imageService = runtime.getService(ServiceType.IMAGE_GENERATION);
-            
+
             // Generate image
             const imageUrl = await imageService.generateImage(message.content.text);
 
@@ -1703,8 +1703,8 @@ const generateImageAction: Action = {
         [
             {
                 user: "{{user1}}",
-                content: { 
-                    text: "Can you generate an image of a sunset?" 
+                content: {
+                    text: "Can you generate an image of a sunset?"
                 }
             },
             {
@@ -1787,7 +1787,7 @@ const continueAction: Action = {
 };
 ```
 
-#### IGNORE 
+#### IGNORE
 
 For ending conversations:
 
@@ -1918,14 +1918,14 @@ interface IAgentRuntime {
     modelProvider: ModelProviderName;              // AI model to use
     imageModelProvider: ModelProviderName;
     imageVisionModelProvider: ModelProviderName;
-    
+
     // Components
     plugins: Plugin[];                             // Additional capabilities
     clients: Record<string, Client>;               // Platform connections
     providers: Provider[];                         // Real-time data sources
     actions: Action[];                             // Available behaviors
     evaluators: Evaluator[];                       // Analysis & learning
-    
+
     // Memory Management
     messageManager: IMemoryManager;                // Conversation history
     descriptionManager: IMemoryManager;
@@ -1933,14 +1933,14 @@ interface IAgentRuntime {
     knowledgeManager: IMemoryManager;              // Search & retrieval
     ragKnowledgeManager: IRAGKnowledgeManager;     // RAG integration
     loreManager: IMemoryManager;                   // Character background
-    
+
     // Storage & Caching
     databaseAdapter: IDatabaseAdapter;            // Data persistence
     cacheManager: ICacheManager;                  // Performance optimization
-    
+
     // Services
     services: Map<ServiceType, Service>;          // External integrations
-    
+
     // Networking
     fetch: (url: string, options: any) => Promise<Response>;
 }
@@ -2169,7 +2169,7 @@ Simply click the link or open your browser to `http://localhost:5173/`. You'll s
 
 ## Additional Configuration
 
-You can load plugins or additional client support with your character file to unlock more capabilities for your agent. 
+You can load plugins or additional client support with your character file to unlock more capabilities for your agent.
 
 ### Add Plugins and Clients
 
@@ -2415,7 +2415,7 @@ COINGECKO_API_KEY=
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
-    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --filter=!@elizaos/docs --no-cache",
+    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-*  --no-cache",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
     "lint": "turbo run lint --filter=./packages/*",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
@@ -2669,7 +2669,7 @@ bun install --include=optional sharp
 ```
 ---
 
-### Deploy Eliza in one click 
+### Deploy Eliza in one click
 
 Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
 1. Start with a template
@@ -2741,4 +2741,3 @@ When analyzing this codebase:
 - Consider backwards compatibility and migration paths for any proposed changes
 - Highlight innovative technical approaches used in the system
 - When asked about implementation details, provide comprehensive technical explanations
-

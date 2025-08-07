@@ -1,0 +1,333 @@
+---
+title: Contextual Embeddings
+description: Enhanced retrieval accuracy using Anthropic's contextual retrieval technique
+---
+
+Contextual embeddings are an advanced Knowledge plugin feature that improves retrieval accuracy by enriching text chunks with surrounding context before generating embeddings. This implementation is based on [Anthropic's contextual retrieval techniques](https://www.anthropic.com/news/contextual-retrieval).
+
+## What are Contextual Embeddings?
+
+Traditional RAG systems embed isolated text chunks, losing important context. Contextual embeddings solve this by using an LLM to add relevant context to each chunk before embedding.
+
+### Traditional vs Contextual
+
+<Tabs>
+  <Tab title="Traditional Embedding">
+    ```text
+    Original chunk:
+    "The deployment process requires authentication."
+    
+    Embedded as-is, missing context about:
+    - Which deployment process?
+    - What kind of authentication?
+    - For which system?
+    ```
+  </Tab>
+  <Tab title="Contextual Embedding">
+    ```text
+    Enriched chunk:
+    "In the Kubernetes deployment section for the payment service, 
+    the deployment process requires authentication using OAuth2 
+    tokens obtained from the identity provider."
+    
+    Now embeddings understand this is about:
+    - Kubernetes deployments
+    - Payment service specifically
+    - OAuth2 authentication
+    ```
+  </Tab>
+</Tabs>
+
+## How It Works
+
+The Knowledge plugin uses a sophisticated prompt-based approach to enrich chunks:
+
+1. **Document Analysis**: The full document is passed to an LLM along with each chunk
+2. **Context Generation**: The LLM identifies relevant context from the document
+3. **Chunk Enrichment**: The original chunk is preserved with added context
+4. **Embedding**: The enriched chunk is embedded using your configured embedding model
+
+<Note>
+The implementation is based on Anthropic's Contextual Retrieval cookbook example, which showed up to 50% improvement in retrieval accuracy.
+</Note>
+
+## Configuration
+
+### Enable Contextual Embeddings
+
+```env title=".env"
+# Enable contextual embeddings
+CTX_KNOWLEDGE_ENABLED=true
+
+# Configure your text generation provider
+TEXT_PROVIDER=openrouter  # or openai, anthropic, google
+TEXT_MODEL=anthropic/claude-3-haiku  # or any supported model
+
+# Required API keys
+OPENROUTER_API_KEY=your-key  # If using OpenRouter
+# or
+OPENAI_API_KEY=your-key      # If using OpenAI
+# or
+ANTHROPIC_API_KEY=your-key   # If using Anthropic
+# or  
+GOOGLE_API_KEY=your-key      # If using Google
+```
+
+<Warning>
+**Important**: Embeddings always use the model configured in `useModel(TEXT_EMBEDDING)` from your agent setup. Do NOT try to mix different embedding models - all your documents must use the same embedding model for consistency.
+</Warning>
+
+### Recommended Setup: OpenRouter with Separate Embedding Provider
+
+Since OpenRouter doesn't support embeddings, you need a separate embedding provider:
+
+<Tabs>
+  <Tab title="OpenRouter + OpenAI">
+    ```typescript title="character.ts"
+    export const character = {
+      name: 'MyAgent',
+      plugins: [
+        '@elizaos/plugin-openrouter',  // For text generation
+        '@elizaos/plugin-openai',       // For embeddings
+        '@elizaos/plugin-knowledge',    // Knowledge plugin
+      ],
+    };
+    ```
+
+    ```env title=".env"
+    # Enable contextual embeddings
+    CTX_KNOWLEDGE_ENABLED=true
+
+    # Text generation (for context enrichment)
+    TEXT_PROVIDER=openrouter
+    TEXT_MODEL=anthropic/claude-3-haiku
+    OPENROUTER_API_KEY=your-openrouter-key
+
+    # Embeddings (automatically used)
+    OPENAI_API_KEY=your-openai-key
+    ```
+  </Tab>
+  <Tab title="OpenRouter + Google">
+    ```typescript title="character.ts"
+    export const character = {
+      name: 'MyAgent',
+      plugins: [
+        '@elizaos/plugin-openrouter',  // For text generation
+        '@elizaos/plugin-google',       // For embeddings
+        '@elizaos/plugin-knowledge',    // Knowledge plugin
+      ],
+    };
+    ```
+
+    ```env title=".env"
+    # Enable contextual embeddings
+    CTX_KNOWLEDGE_ENABLED=true
+
+    # Text generation (for context enrichment)
+    TEXT_PROVIDER=openrouter
+    TEXT_MODEL=anthropic/claude-3-haiku
+    OPENROUTER_API_KEY=your-openrouter-key
+
+    # Embeddings (Google will be used automatically)
+    GOOGLE_API_KEY=your-google-key
+    ```
+  </Tab>
+</Tabs>
+
+### Alternative Providers
+
+<Tabs>
+  <Tab title="OpenAI Only">
+    ```env
+    CTX_KNOWLEDGE_ENABLED=true
+    TEXT_PROVIDER=openai
+    TEXT_MODEL=gpt-4o-mini
+    OPENAI_API_KEY=your-key
+    ```
+  </Tab>
+  <Tab title="Anthropic + OpenAI">
+    ```env
+    CTX_KNOWLEDGE_ENABLED=true
+    TEXT_PROVIDER=anthropic
+    TEXT_MODEL=claude-3-haiku-20240307
+    ANTHROPIC_API_KEY=your-anthropic-key
+    OPENAI_API_KEY=your-openai-key  # Still needed for embeddings
+    ```
+  </Tab>
+  <Tab title="Google Only">
+    ```env
+    CTX_KNOWLEDGE_ENABLED=true
+    TEXT_PROVIDER=google
+    TEXT_MODEL=gemini-1.5-flash
+    GOOGLE_API_KEY=your-google-key
+    # Google embeddings will be used automatically
+    ```
+  </Tab>
+  <Tab title="OpenRouter + Google">
+    ```env
+    CTX_KNOWLEDGE_ENABLED=true
+    TEXT_PROVIDER=openrouter
+    TEXT_MODEL=anthropic/claude-3-haiku
+    OPENROUTER_API_KEY=your-openrouter-key
+    GOOGLE_API_KEY=your-google-key  # For embeddings
+    # Requires @elizaos/plugin-google for embeddings
+    ```
+  </Tab>
+</Tabs>
+
+## Technical Details
+
+### Chunk Processing
+
+The plugin uses fixed chunk sizes optimized for contextual enrichment:
+
+- **Chunk Size**: 500 tokens (approximately 1,750 characters)
+- **Chunk Overlap**: 100 tokens
+- **Context Target**: 60-200 tokens of added context
+
+These values are based on research showing that smaller chunks with rich context perform better than larger chunks without context.
+
+### Content-Aware Templates
+
+The plugin automatically detects content types and uses specialized prompts:
+
+```typescript
+// Different templates for different content types
+- General text documents
+- PDF documents (with special handling for corrupted text)
+- Mathematical content (preserves equations and notation)
+- Code files (includes imports, function signatures)
+- Technical documentation (preserves terminology)
+```
+
+### OpenRouter Caching
+
+When using OpenRouter with Claude or Gemini models, the plugin automatically leverages caching:
+
+1. **First document chunk**: Caches the full document
+2. **Subsequent chunks**: Reuses cached document (90% cost reduction)
+3. **Cache duration**: 5 minutes (automatic)
+
+This means processing a 100-page document costs almost the same as processing a single page!
+
+## Example: How Context Improves Retrieval
+
+### Without Contextual Embeddings
+
+```text
+Query: "How do I configure the timeout?"
+
+Retrieved chunk:
+"Set the timeout value to 30 seconds."
+
+Problem: Which timeout? Database? API? Cache?
+```
+
+### With Contextual Embeddings
+
+```text
+Query: "How do I configure the timeout?"
+
+Retrieved chunk:
+"In the Redis configuration section, when setting up the caching layer,
+set the timeout value to 30 seconds for optimal performance with 
+session data."
+
+Result: Clear understanding this is about Redis cache timeout.
+```
+
+## Performance Considerations
+
+### Processing Time
+
+- **Initial processing**: 1-3 seconds per chunk (includes LLM call)
+- **With caching**: 0.1-0.3 seconds per chunk
+- **Batch processing**: Up to 30 chunks concurrently
+
+### Cost Estimation
+
+| Document Size | Pages | Chunks | Without Caching | With OpenRouter Cache |
+|--------------|-------|--------|-----------------|----------------------|
+| Small | 10 | ~20 | $0.02 | $0.002 |
+| Medium | 50 | ~100 | $0.10 | $0.01 |
+| Large | 200 | ~400 | $0.40 | $0.04 |
+
+<Note>
+Costs are estimates based on Claude 3 Haiku pricing. Actual costs depend on your chosen model.
+</Note>
+
+## Monitoring
+
+The plugin provides detailed logging:
+
+```bash
+# Enable debug logging to see enrichment details
+LOG_LEVEL=debug elizaos start
+```
+
+This will show:
+- Context enrichment progress
+- Cache hit/miss rates
+- Processing times per document
+- Token usage
+
+## Common Issues and Solutions
+
+### Context Not Being Added
+
+**Check if contextual embeddings are enabled:**
+```bash
+# Look for this in your logs:
+"CTX enrichment ENABLED"
+# or
+"CTX enrichment DISABLED"
+```
+
+**Verify your configuration:**
+- `CTX_KNOWLEDGE_ENABLED=true` (not "TRUE" or "True")
+- `TEXT_PROVIDER` and `TEXT_MODEL` are both set
+- Required API key for your provider is set
+
+### Slow Processing
+
+**Solutions:**
+1. Use OpenRouter with Claude/Gemini for automatic caching
+2. Process smaller batches of documents
+3. Use faster models (Claude 3 Haiku, Gemini 1.5 Flash)
+
+### High Costs
+
+**Solutions:**
+1. Enable OpenRouter caching (90% cost reduction)
+2. Use smaller models for context generation
+3. Process documents in batches during off-peak hours
+
+## Best Practices
+
+<Steps>
+  <Step title="Use OpenRouter for Cost Efficiency">
+    OpenRouter's caching makes contextual embeddings 90% cheaper when processing multiple chunks from the same document.
+  </Step>
+  <Step title="Keep Default Settings">
+    The chunk sizes and overlap are optimized based on research. Only change if you have specific requirements.
+  </Step>
+  <Step title="Monitor Your Logs">
+    Enable debug logging when first setting up to ensure context is being added properly.
+  </Step>
+  <Step title="Use Appropriate Models">
+    - Claude 3 Haiku: Best balance of quality and cost
+    - Gemini 1.5 Flash: Fastest processing
+    - GPT-4o-mini: Good quality, moderate cost
+  </Step>
+</Steps>
+
+## Summary
+
+Contextual embeddings significantly improve retrieval accuracy by:
+
+- Adding document context to each chunk before embedding
+- Using intelligent templates based on content type
+- Preserving the original text while enriching with context
+- Leveraging caching for cost-efficient processing
+
+The implementation is based on Anthropic's proven approach and integrates seamlessly with elizaOS's existing infrastructure. Simply set `CTX_KNOWLEDGE_ENABLED=true` and configure your text generation provider to get started!

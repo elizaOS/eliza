@@ -1,0 +1,161 @@
+name: Check Dead Links
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git and Create Feature Branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create unique branch name with timestamp
+          BRANCH_NAME="fix/dead-links-$(date +%Y%m%d-%H%M%S)"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+          git checkout -b "$BRANCH_NAME"
+
+      - name: Fix Dead Links with Claude
+        id: claude-fix-links
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Direct prompt for fixing broken links automatically
+          direct_prompt: |
+            Check all links in the documentation for broken or dead links and automatically fix them. Track all changes made for the PR description.
+
+            **Instructions:**
+            1. Scan all MDX and MD files in the repository
+            2. Check for the following types of links:
+               - Internal relative links (e.g., /components/cards, ../guides/intro)
+               - External links (e.g., https://example.com)
+               - Anchor links (e.g., #section-name)
+
+            **For each broken link found, automatically apply the fix:**
+            - **For typos**: Correct the spelling/path
+            - **For moved files**: Update to the new location
+            - **For renamed files**: Use fuzzy matching to find and update to correct filename
+            - **For missing anchors**: Remove anchor or update to valid anchor
+            - **For external 404s**: Comment out with explanation or update to wayback machine
+            - **For redirect chains**: Update to the final destination URL
+
+            **Track each fix made:**
+            - File path and line number
+            - Original broken link
+            - New fixed link
+            - Confidence level of fix
+            - Type of fix applied
+
+            **Link Checking Rules:**
+            - Internal links should point to existing files
+            - Internal links should use relative paths starting from root (e.g., /api/reference)
+            - External links should return valid HTTP responses (not 404, 500, etc.)
+            - Skip checking localhost links
+            - Skip checking example.com or placeholder domains
+
+            **Fix Application Guidelines:**
+            - Apply high-confidence fixes automatically
+            - For medium confidence: Apply fix but add a comment
+            - For low confidence: Comment out the link with explanation
+            - Use fuzzy matching (threshold: 85%) for path corrections
+            - Check git history for recently moved/renamed files
+            - Preserve link text when updating URLs
+            - Group similar fixes in commits
+
+            **Output Summary (save as JSON for PR description):**
+            - Total links checked
+            - Number of broken links found
+            - Number of links fixed automatically
+            - Number of links requiring manual review
+            - List of all fixes applied with confidence levels
+            - Files modified count
+
+      - name: Check for Changes
+        id: check-changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes needed"
+          fi
+
+      - name: Commit and Push Changes
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          # Stage all changes
+          git add -A
+
+          # Create detailed commit message
+          git commit -m "fix: automated broken link fixes" \
+                     -m "- Fixed internal broken links with correct paths" \
+                     -m "- Updated moved/renamed file references" \
+                     -m "- Resolved external link redirects" \
+                     -m "- Corrected typos in link paths" \
+                     -m "- Added comments for low-confidence fixes"
+
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+
+      - name: Create Pull Request
+        if: steps.check-changes.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create PR description with details from Claude's analysis
+          PR_BODY="## Automated Broken Link Fixes
+
+          This PR contains automated fixes for broken links detected by the scheduled workflow.
+
+          ### Changes Made:
+          - 🔗 Fixed internal broken links
+          - 📁 Updated references to moved/renamed files
+          - 🌐 Resolved external link issues
+          - ✏️ Corrected typos in link paths
+          - 💭 Added comments for links requiring manual review
+
+          ### Review Instructions:
+          Please review the changes to ensure:
+          1. All link fixes point to valid destinations
+          2. Link text remains appropriate for new URLs
+          3. Commented links are addressed appropriately
+          4. No content meaning was changed
+
+          ### Files Modified:
+          Check the Files changed tab for a complete list of modifications.
+
+          ---
+          *This PR was automatically generated by the dead links checker workflow.*"
+
+          # Create the PR using GitHub CLI
+          gh pr create \
+            --title "fix: automated broken link fixes" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --label "documentation" \
+            --label "broken-links" \
+            --label "automated"
