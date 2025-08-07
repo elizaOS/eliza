@@ -202,7 +202,7 @@ describeScaffolding('Integration: Project Scaffolding', () => {
       expect(fs.existsSync(path.join(TEST_DIR, 'character.ts'))).toBe(true);
       expect(fs.existsSync(path.join(TEST_DIR, 'package.json'))).toBe(true);
     } catch (error) {
-      logger.error('Error in scaffolding test:', error);
+      logger.error({ error }, 'Error in scaffolding test:');
       throw error;
     }
   });

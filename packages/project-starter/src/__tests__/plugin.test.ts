@@ -137,7 +137,7 @@ describe('Plugin Configuration', () => {
         expect(true).toBe(true); // If we got here, init succeeded
       } catch (e) {
         error = e as Error;
-        logger.error('Plugin initialization error:', e);
+        logger.error({ error: e }, 'Plugin initialization error:');
       }
 
       documentTestResult(
@@ -254,10 +254,10 @@ describe('StarterService', () => {
 
       // Test real functionality - check stop method is available
       expect(typeof startResult.stop).toBe('function');
-    } catch (e) {
-      error = e as Error;
-      logger.error('Service start error:', e);
-    }
+      } catch (e) {
+        error = e as Error;
+        logger.error({ error: e }, 'Service start error:');
+      }
 
     documentTestResult(
       'StarterService start',
@@ -316,7 +316,7 @@ describe('StarterService', () => {
       expect(stopSpy).toHaveBeenCalled();
     } catch (e) {
       error = e as Error;
-      logger.error('Service stop error:', e);
+      logger.error({ error: e }, 'Service stop error:');
     }
 
     documentTestResult(

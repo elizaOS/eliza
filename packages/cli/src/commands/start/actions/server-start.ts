@@ -84,13 +84,13 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
   const serverPort = await findNextAvailablePort(desiredPort);
   if (serverPort !== desiredPort) {
-    logger.warn(`Port ${desiredPort} is in use, using port ${serverPort} instead`);
+    logger.warn({ desiredPort, serverPort }, 'Port is in use, using alternate port');
   }
   process.env.SERVER_PORT = serverPort.toString();
   try {
     await server.start(serverPort);
   } catch (error) {
-    logger.error(`Failed to start server on port ${serverPort}:`, error);
+    logger.error({ error, serverPort }, `Failed to start server on port:`);
     throw error;
   }
 

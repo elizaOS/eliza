@@ -215,7 +215,10 @@ export const formatPosts = ({
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
         if (!entity) {
-          logger.warn('core::prompts:formatPosts - no entity for', message.entityId);
+          logger.warn(
+            { entityId: message.entityId },
+            'core::prompts:formatPosts - no entity for'
+          );
         }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
@@ -358,17 +361,20 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
   if (xmlBlockMatch) {
     xmlContent = xmlBlockMatch[1];
     logger.debug('Found response XML block');
-  } else {
-    // Fall back to finding any XML block (e.g., <response>...</response>)
-    const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
-    if (!fallbackMatch) {
-      logger.warn('Could not find XML block in text');
-      logger.debug('Text content:', text.substring(0, 200) + '...');
-      return null;
+    } else {
+      // Fall back to finding any XML block (e.g., <response>...</response>)
+      const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
+      if (!fallbackMatch) {
+        logger.warn('Could not find XML block in text');
+        logger.debug(
+          { textPreview: text.substring(0, 200) + '...' },
+          'Text content'
+        );
+        return null;
+      }
+      xmlContent = fallbackMatch[2];
+      logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
     }
-    xmlContent = fallbackMatch[2];
-    logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
-  }
 
   const result: Record<string, any> = {};
 
@@ -406,7 +412,10 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
   // Return null if no key-value pairs were found
   if (Object.keys(result).length === 0) {
     logger.warn('No key-value pairs extracted from XML content');
-    logger.debug('XML content was:', xmlContent.substring(0, 200) + '...');
+    logger.debug(
+      { xmlPreview: xmlContent.substring(0, 200) + '...' },
+      'XML content was'
+    );
     return null;
   }
 
@@ -533,10 +542,14 @@ export async function splitChunks(content: string, chunkSize = 512, bleed = 20):
   });
 
   const chunks = await textSplitter.splitText(content);
-  logger.debug('[splitChunks] Split complete:', {
-    numberOfChunks: chunks.length,
-    averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
-  });
+  logger.debug(
+    {
+      numberOfChunks: chunks.length,
+      averageChunkSize:
+        chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
+    },
+    '[splitChunks] Split complete'
+  );
 
   return chunks;
 }
