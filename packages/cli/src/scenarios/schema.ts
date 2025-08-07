@@ -48,11 +48,34 @@ const EvaluationSchema = z.discriminatedUnion('type', [
 const MockSchema = z.object({
     service: z.string(),
     method: z.string(),
-    // The 'when' clause specifically checks arguments now.
+    // Enhanced 'when' clause with multiple matching strategies
     when: z.object({
-        args: z.array(z.any())
+        // Exact argument matching (existing)
+        args: z.array(z.any()).optional(),
+        // Input parameter matching (extracted from args)
+        input: z.record(z.any()).optional(),
+        // Request context matching
+        context: z.record(z.any()).optional(),
+        // Custom JavaScript matcher function
+        matcher: z.string().optional(),
+        // Partial argument matching
+        partialArgs: z.array(z.any()).optional(),
     }).optional(),
+    // Static response (existing)
     response: z.any(),
+    // Dynamic response generation
+    responseFn: z.string().optional(),
+    // Error simulation
+    error: z.object({
+        code: z.string(),
+        message: z.string(),
+        status: z.number().optional(),
+    }).optional(),
+    // Response metadata
+    metadata: z.object({
+        delay: z.number().optional(), // Simulate network delay
+        probability: z.number().min(0).max(1).optional(), // Random failure
+    }).optional(),
 });
 
 // Plugin configuration schema

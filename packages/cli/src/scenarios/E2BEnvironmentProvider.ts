@@ -65,7 +65,15 @@ print(json.dumps(files))
         try {
             const result = await e2bService.executeCode(captureCode, 'python');
             const filesJson = result.text || result.logs?.stdout?.join('\n') || '{}';
-            return JSON.parse(filesJson);
+
+            // Handle case where the response is not valid JSON (e.g., mock responses)
+            if (typeof filesJson === 'string' && filesJson.trim().startsWith('{')) {
+                return JSON.parse(filesJson);
+            } else {
+                // If it's not JSON, return empty files object
+                console.warn('File system capture returned non-JSON response, returning empty files object');
+                return {};
+            }
         } catch (error) {
             console.warn('Failed to capture file system state:', error);
             return {};

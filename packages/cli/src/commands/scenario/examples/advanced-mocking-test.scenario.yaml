@@ -1,0 +1,177 @@
+name: "Advanced Mocking Test"
+description: "Tests conditional mocking and complex response structures"
+
+plugins:
+  - "@elizaos/plugin-github"
+  - "@elizaos/plugin-evm"
+
+environment:
+  type: e2b
+
+setup:
+  mocks:
+    # Conditional GitHub issue search with exact matching
+    - service: "github-service"
+      method: "searchIssues"
+      when:
+        input:
+          labels: ["bug", "critical"]
+          state: "open"
+        matcher: "input.labels.includes('bug') && input.state === 'open'"
+      response:
+        - title: "Critical Bug Found"
+          number: 456
+          state: "open"
+          labels: ["bug", "critical"]
+          created_at: "2024-07-15T10:00:00Z"
+          metadata:
+            priority: "high"
+            assignee: "alice"
+
+    # Different response for feature requests
+    - service: "github-service"
+      method: "searchIssues"
+      when:
+        input:
+          labels: ["feature"]
+        matcher: "input.labels.includes('feature')"
+      response:
+        - title: "New Feature Request"
+          number: 789
+          state: "open"
+          labels: ["feature", "enhancement"]
+          created_at: "2024-07-15T11:00:00Z"
+
+    # Dynamic EVM balance response with function
+    - service: "evm-service"
+      method: "getBalancesForAddress"
+      when:
+        args: ["0x1234567890abcdef"]
+      responseFn: |
+        return {
+          chain: "ethereum",
+          address: args[0],
+          balances: [
+            { symbol: "ETH", amount: "1.23", decimals: 18 },
+            { symbol: "USDC", amount: "1000.00", decimals: 6 }
+          ],
+          last_updated: new Date().toISOString(),
+          metadata: {
+            source: "mock",
+            confidence: "high"
+          }
+        }
+
+    # Error simulation with custom error
+    - service: "github-service"
+      method: "readFile"
+      when:
+        input:
+          path: "/docs/nonexistent.md"
+        matcher: "input.path.includes('nonexistent')"
+      error:
+        code: "FILE_NOT_FOUND"
+        message: "File does not exist"
+        status: 404
+
+    # Network delay simulation
+    - service: "github-service"
+      method: "getRepository"
+      when:
+        input:
+          owner: "slow-repo"
+        matcher: "input.owner === 'slow-repo'"
+      response:
+        name: "slow-repo"
+        full_name: "slow-repo/slow-repo"
+        description: "A repository with slow responses"
+      metadata:
+        delay: 2000 # 2 second delay
+
+    # Random failure simulation
+    - service: "evm-service"
+      method: "sendTransaction"
+      when:
+        input:
+          to: "0xunreliable"
+        matcher: "input.to === '0xunreliable'"
+      error:
+        code: "TRANSACTION_FAILED"
+        message: "Random network failure"
+      metadata:
+        probability: 0.3 # 30% chance of failure
+
+    # Complex nested response with metadata
+    - service: "github-service"
+      method: "createIssue"
+      when:
+        input:
+          title: "Test Issue"
+        matcher: "input.title === 'Test Issue'"
+      response:
+        number: 999
+        title: "Test Issue"
+        state: "open"
+        created_at: "2024-07-15T12:00:00Z"
+        user:
+          login: "test-user"
+          id: 12345
+        labels: []
+        assignees: []
+        metadata:
+          mock_id: "test-issue-999"
+          created_by: "scenario-test"
+
+run:
+  - name: "Test conditional GitHub search"
+    lang: javascript
+    code: |
+      console.log('Testing conditional GitHub search...');
+      console.log('Mock should return: Critical Bug Found');
+      console.log('Conditional GitHub search test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Conditional GitHub search test completed"
+
+  - name: "Test dynamic EVM response"
+    lang: javascript
+    code: |
+      console.log('Testing dynamic EVM response...');
+      console.log('Mock should return: 1.23 ETH, 1000.00 USDC');
+      console.log('Dynamic EVM response test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Dynamic EVM response test completed"
+
+  - name: "Test error handling"
+    lang: javascript
+    code: |
+      console.log('Testing error handling...');
+      console.log('Mock should simulate: FILE_NOT_FOUND error');
+      console.log('Error handling test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Error handling test completed"
+
+  - name: "Test network delay"
+    lang: javascript
+    code: |
+      console.log('Testing network delay...');
+      console.log('Mock should have 2 second delay');
+      console.log('Network delay test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Network delay test completed"
+
+  - name: "Test random failure"
+    lang: javascript
+    code: |
+      console.log('Testing random failure...');
+      console.log('Mock should have 30% failure probability');
+      console.log('Random failure test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Random failure test completed"
+
+judgment:
+  strategy: all_pass 

@@ -15,6 +15,7 @@ setup:
           stdout: ["Hello from mock!"]
           stderr: []
         error: null
+        files: {}
     # Generic mock for any other executeCode calls
     - service: "e2b"
       method: "executeCode"
@@ -24,6 +25,8 @@ setup:
           stdout: ["Generic mock response"]
           stderr: []
         error: null
+        # Add proper structure for file system capture
+        files: {}
   virtual_fs:
     "test.js": "console.log('This should be mocked');"
 run:
