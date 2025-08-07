@@ -51,8 +51,11 @@ elizaos --help
 #### 2. Create Your First Project
 
 ```bash
-# Create a new project with interactive setup
+# Create a new project with interactive setup 
 elizaos create my-agent
+
+# Run with higher priviledge if you are getting `InstallFailed` error (Permission denied)
+sudo elizaos create my-agent
 
 # Or create with specific options (skips prompts)
 elizaos create my-agent --yes --type project
