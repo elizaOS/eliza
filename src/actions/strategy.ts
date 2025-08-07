@@ -2,11 +2,6 @@ import { isHex } from "viem";
 import { Action, Content, logger, ModelType } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
-import { selectLevvaState } from "../providers";
-import { LevvaService } from "../services/levva/class";
-import { getChain } from "../util/eth/client";
-import { rephrase } from "../util/generate";
-import { Suggestion } from "./types";
 import {
   ExtractedDataForStrategy,
   selectStrategyDataFromMessagesPrompt,
@@ -14,8 +9,14 @@ import {
   suggestStrategyAssetPrompt,
   suggestStrategyContractPrompt,
   suggestStrategyRiskProfilePrompt,
-} from "src/prompts/strategy";
-import { StrategyEntry } from "src/services/levva/pool";
+} from "../prompts/strategy";
+import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
+import { selectProviderState } from "../providers/util";
+import { LevvaService } from "../services/levva/class";
+import { StrategyEntry } from "../services/levva/pool";
+import { Suggestion } from "./types";
+import { getChain } from "../util/eth/client";
+import { rephrase } from "../util/generate";
 
 const description = [
   "Select optimal earning strategy for user",
@@ -48,7 +49,10 @@ export const action: Action = {
         throw new Error("State not found, disable action");
       }
 
-      const lvva = selectLevvaState(state);
+      const lvva = selectProviderState<LevvaProviderState>(
+        LEVVA_PROVIDER_NAME,
+        state
+      );
 
       if (!lvva) {
         throw new Error("Failed to get lvva provider, disable action");

@@ -2,7 +2,8 @@ import { isHex } from "viem";
 import { Action, logger, ModelType } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
 import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
-import { selectLevvaState } from "../providers";
+import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
+import { selectProviderState } from "../providers/util";
 import type { LevvaService } from "../services/levva/class";
 import { getChain } from "../util/eth/client";
 import { rephrase } from "../util/generate";
@@ -36,7 +37,10 @@ export const action: Action = {
         throw new Error("Callback not found, disable action");
       }
 
-      const levvaState = selectLevvaState(state);
+      const levvaState = selectProviderState<LevvaProviderState>(
+        LEVVA_PROVIDER_NAME,
+        state
+      );
 
       if (!levvaState?.user) {
         throw new Error("User address ID is required");

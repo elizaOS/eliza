@@ -40,7 +40,10 @@ interface WethHelper {
   getCall: (amount: bigint) => CalldataWithDescription;
 }
 
-export function wrapEth(amount: bigint, weth?: TokenEntry): CalldataWithDescription {
+export function wrapEth(
+  amount: bigint,
+  weth?: Pick<TokenEntry, "address" | "decimals">
+): CalldataWithDescription {
   if (!weth) {
     throw new Error("WETH token not found");
   }
@@ -55,10 +58,33 @@ export function wrapEth(amount: bigint, weth?: TokenEntry): CalldataWithDescript
     value: amount.toString(),
     title: `Wrap ${formatUnits(amount, weth.decimals)} ETH`,
     description: `Wrap ${formatUnits(amount, weth.decimals)} ETH to WETH`,
-  }
+  };
 }
 
-export async function wethHelper(runtime: IAgentRuntime, params: WETHParams): Promise<WethHelper | undefined> {
+export function unwrapEth(
+  amount: bigint,
+  weth?: Pick<TokenEntry, "address" | "decimals">
+): CalldataWithDescription {
+  if (!weth) {
+    throw new Error("WETH token not found");
+  }
+
+  return {
+    to: weth.address as `0x${string}`,
+    data: encodeFunctionData({
+      abi,
+      functionName: "withdraw",
+      args: [amount],
+    }),
+    title: `Unwrap ${formatUnits(amount, weth.decimals)} WETH`,
+    description: `Unwrap ${formatUnits(amount, weth.decimals)} WETH to ETH`,
+  };
+}
+
+export async function wethHelper(
+  runtime: IAgentRuntime,
+  params: WETHParams
+): Promise<WethHelper | undefined> {
   const { chainId, tokenIn, tokenOut } = params;
 
   let isNative: IsNative = undefined;
@@ -87,30 +113,12 @@ export async function wethHelper(runtime: IAgentRuntime, params: WETHParams): Pr
 
   if (isNative === "in") {
     // wrap eth
-    const getCall = (amount: bigint): CalldataWithDescription => ({
-      to: token.address as `0x${string}`,
-      data: encodeFunctionData({
-        abi,
-        functionName: "deposit",
-        args: [],
-      }),
-      value: amount.toString(),
-      title: `Wrap ${formatUnits(amount, token.decimals)} ETH`,
-      description: `Wrap ${formatUnits(amount, token.decimals)} ETH to WETH`,
-    });
-
+    const getCall = (amount: bigint) => wrapEth(amount, token);
     return { side: isNative, getCall, address: token.address };
   } else {
     // unwrap weth
     const getCall = (amount: bigint): CalldataWithDescription => ({
-      to: token.address as `0x${string}`,
-      data: encodeFunctionData({
-        abi,
-        functionName: "withdraw",
-        args: [amount],
-      }),
-      title: `Unwrap ${formatUnits(amount, token.decimals)} WETH`,
-      description: `Unwrap ${formatUnits(amount, token.decimals)} WETH to ETH`,
+      ...unwrapEth(amount, token),
       optional: true,
     });
 

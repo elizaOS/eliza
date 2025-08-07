@@ -3,13 +3,15 @@ import { createUniqueUuid, EventType, logger } from "@elizaos/core";
 import { CancelRunSignal } from "@elizaos/plugin-bootstrap"
 import { z } from "zod";
 import { modules } from "./actions/modules";
-import { levvaProvider } from "./providers";
 import calldataRoute from "./routes/calldata";
 import levvaUserRoute from "./routes/levva-user";
 import suggestRoute from "./routes/suggest";
 import { BrowserService } from "./services/browser";
 import { LevvaService } from "./services/levva/class";
+import { levvaProvider } from "./providers";
 import { newsProvider } from "./providers/news";
+import { swapParamsProvider } from "./providers/swap-params";
+import statusRoute from "./routes/status";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -30,8 +32,6 @@ const configSchema = z.object({
       return val;
     }),
 });
-
-const messages = new Map<string, Memory>();
 
 const plugin: Plugin = {
   name: "levva",
@@ -59,7 +59,7 @@ const plugin: Plugin = {
       throw error;
     }
   },
-  routes: [calldataRoute, levvaUserRoute, suggestRoute],
+  routes: [calldataRoute, levvaUserRoute, suggestRoute, statusRoute],
   events: {
     [EventType.RUN_STARTED]: [
       async ({ runtime, runId, entityId, messageId }) => {
@@ -86,7 +86,7 @@ const plugin: Plugin = {
   },
   services: [BrowserService, LevvaService],
   actions: modules.map((m) => m.action),
-  providers: [levvaProvider, newsProvider],
+  providers: [levvaProvider, newsProvider, swapParamsProvider],
 };
 
 export default plugin;

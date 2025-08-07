@@ -1,29 +1,23 @@
-import {
-  type Action,
-  type Content,
-  logger,
-  ModelType,
-} from "@elizaos/core";
-import { erc20Abi, isHex, parseUnits } from "viem";
+import { parseUnits } from "viem";
+import { type Action, type Content, logger, Media } from "@elizaos/core";
 import { LEVVA_ACTIONS, LEVVA_SERVICE } from "../constants/enum";
-import { IGNORE_REPLY_MODIFIER } from "../constants/prompt";
-import { selectLevvaState } from "../providers";
-import { LevvaService } from "../services/levva/class";
-import { estimationTemplate, swapTemplate } from "../templates";
+import { LEVVA_PROVIDER_NAME, LevvaProviderState } from "../providers";
 import {
-  getChain,
-  getClient,
-} from "../util";
+  SWAP_PARAMS_PROVIDER_NAME,
+  SwapParamsProviderData,
+} from "../providers/swap-params";
+import { selectProviderState } from "../providers/util";
+import { LevvaService } from "../services/levva/class";
+import { estimationTemplate } from "../templates";
+import { CalldataWithDescription } from "../types/tx";
+import { getChain } from "../util";
 import { rephrase } from "../util/generate";
 import { formatEstimation, selectSwapRouter } from "../util/eth/swap";
 import { Suggestion } from "./types";
-import { selectSwapDataFromMessagesPrompt } from "src/prompts/swap";
+import { unwrapEth, wrapEth } from "src/util/eth/weth";
 
 const description = [
-  "Initiate token swap for user.",
-  "Ask user for exchange pair and amount if not provided.",
-  "If all the info is provided, this action should respond with swap details and transaction calldata.",
-  IGNORE_REPLY_MODIFIER,
+  "Initiate token swap for user if all parameters are provider or inquire user for swap parameters.",
 ].join(" ");
 
 export const action: Action = {
@@ -32,14 +26,18 @@ export const action: Action = {
   similes: ["SWAP_TOKENS", "EXCHANGE_TOKENS", "swap tokens", "exchange tokens"],
 
   validate: async () => {
+    // fixme validations run in ACTIONS provider on 1st runtime.composeState call
+    // runtime.composeState gets all providers in Promise.all, so provider position does not seem to matter
+    // consider implementing composeState sequentially, or calling compose state in validator(seems unreliable)
+    // so for now decide to always include
     return true;
   },
 
   handler: async (runtime, message, state, options, callback) => {
     // todo refactor action that it can be chained properly: [REPLY, SWAP_TOKENS], not just [SWAP_TOKENS]
-
     try {
       logger.info("SWAP_TOKENS action called");
+
       const service = runtime.getService<LevvaService>(
         LEVVA_SERVICE.LEVVA_COMMON
       );
@@ -56,206 +54,137 @@ export const action: Action = {
         throw new Error("State not found, disable action");
       }
 
-      const levvaState = selectLevvaState(state);
+      const lvva = selectProviderState<LevvaProviderState>(
+        LEVVA_PROVIDER_NAME,
+        state
+      );
 
-      if (!levvaState?.user) {
+      if (!lvva?.user) {
         throw new Error("User address ID is required");
       }
 
-      const { chainId, user } = levvaState;
-      // todo maybe move chains to db?
-      const chain = getChain(chainId);
-      const { address } = user;
-
-      if (!isHex(address)) {
-        throw new Error("User not found");
-      }
-
-      // todo make a dynamic provider for tx param extraction
-      const gen = await runtime.useModel(
-        // fixme use ModelType.OBJECT_SMALL with grok
-        ModelType.OBJECT_LARGE,
-        {
-          prompt: selectSwapDataFromMessagesPrompt({
-            recentMessages: state.values.recentMessages,
-            tokens: state.values.tokens,
-          }),
-        }
+      const params = selectProviderState<SwapParamsProviderData>(
+        SWAP_PARAMS_PROVIDER_NAME,
+        state
       );
 
-      if (typeof gen !== "object") {
-        throw new Error("Failed to generate params object");
+      if (!params) {
+        throw new Error(
+          `Failed to get provider(${SWAP_PARAMS_PROVIDER_NAME}) results`
+        );
       }
 
-      const { fromToken, toToken, amount } = gen;
-
-      if (!fromToken) {
-        logger.info("Could not find from token, need to ask user");
-
-        const responseContent: Content = {
-          thought:
-            "User didn't provide source token, I should ask the user for it.",
-          text: "Which token do you want to swap?",
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
-      } else if (!toToken) {
-        logger.info("Could not find to token, need to ask user");
-
-        const responseContent: Content = {
-          thought:
-            "User didn't provide destination token, I should ask the user for it.",
-          text: "Which token do you want to swap to?",
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
-      } else if (!amount) {
-        logger.info("Could not find amount, need to ask user");
-
-        const responseContent = {
-          thought: "User didn't provide amount, I should ask the user for it.",
-          text: `How much ${fromToken} do you want to swap?`,
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
+      if (
+        !params.type ||
+        !params.tokenIn ||
+        !params.tokenOut ||
+        !params.amount
+      ) {
+        throw new Error(state.values.swap);
       }
 
-      const tokenIn = await service.getTokenDataWithInfo({
-        chainId,
-        symbolOrAddress: fromToken,
-      });
+      const { tokenIn, tokenOut, amount, type } = params;
+      const amountUnits = parseUnits(amount, tokenIn.decimals);
+      const chain = getChain(lvva.chainId);
+      let calldata: CalldataWithDescription[];
+      let thought: string;
+      let text: string;
 
-      if (!tokenIn) {
-        logger.info(
-          "Could not find token in db, need to ask user for its address"
-        );
+      switch (type) {
+        case "kyber":
+          // todo remove selectSwapRouter
+          const swap = selectSwapRouter(tokenIn, tokenOut);
 
-        const responseContent: Content = {
-          thought:
-            "User didn't provide token in address, I should ask the user for it.",
-          text: `I couldn't find the token ${fromToken} on ${chain.name}, maybe you know it's address?`,
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
-      }
-
-      const tokenOut = await service.getTokenDataWithInfo({
-        chainId,
-        symbolOrAddress: toToken,
-      });
-
-      if (!tokenOut) {
-        logger.info(
-          "Could not find token out, need to ask user for its address"
-        );
-
-        const responseContent: Content = {
-          thought:
-            "User didn't provide token out address, I should ask the user for it.",
-          text: `I couldn't find the token ${toToken} on ${chain.name}, maybe you know it's address?`,
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
-
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
-
-        return;
-      }
-
-      const client = getClient(chain);
-
-      const balance = !tokenIn.address
-        ? await client.getBalance({ address })
-        : await client.readContract({
-            address: tokenIn.address,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [address],
+          const { calls, estimation } = await swap(runtime, {
+            address: lvva.user.address,
+            amountIn: amountUnits,
+            chain,
+            decimals: tokenIn.decimals,
           });
 
-      const amountUnits = parseUnits(amount, tokenIn.decimals);
+          calldata = calls;
+          thought = `Prepared transaction to swap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
 
-      if (balance < amountUnits) {
-        logger.info(`Not enough ${tokenIn.symbol} to swap`);
+          text = `Swapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
+${formatEstimation(estimation)}  
+Please approve transactions in your wallet.  
+`;
 
-        const responseContent: Content = {
-          thought:
-            "User doesn't have enough tokens to swap, I should tell the user about it.",
-          text: `You don't have enough ${tokenIn.symbol} to swap`,
-          actions: ["SWAP_TOKENS"],
-          source: message.content.source,
-        };
+          break;
+        case "wrap":
+          calldata = [
+            wrapEth(amountUnits, {
+              address: tokenIn.address!,
+              decimals: tokenIn.decimals,
+            }),
+          ];
 
-        await callback(
-          await rephrase({ runtime, content: responseContent, state })
-        );
+          thought = `Prepared transaction to wrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
 
-        return;
+          text = `Wrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
+Please approve transactions in your wallet.
+`;
+          break;
+        case "unwrap":
+          calldata = [
+            unwrapEth(amountUnits, {
+              address: tokenIn.address!,
+              decimals: tokenIn.decimals,
+            }),
+          ];
+
+          thought = `Prepared transaction to unwrap ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}, display confirmation`;
+
+          text = `Unwrapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
+Please approve transactions in your wallet.
+`;
+          break;
+        default:
+          throw new Error(`Unknown swap type: ${params.type}`);
       }
 
-      const swap = selectSwapRouter(tokenIn, tokenOut);
-
-      const { calls, estimation } = await swap(runtime, {
-        address,
-        amountIn: amountUnits,
-        chain,
-        decimals: tokenIn.decimals,
-      });
-
-      const hash = await service.createCalldata(calls);
+      const hash = await service.createCalldata(calldata);
 
       const json = {
         id: "calls.json",
         url: `/api/calldata?hash=${hash}`,
       };
 
-      const responseContent: Content = {
-        thought: `Swapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...`,
-        text: `Swapping ${amount} ${tokenIn.symbol} to ${tokenOut.symbol}...
-${formatEstimation(estimation)}
-Please approve transactions in your wallet.`,
+      const content: Content = {
+        thought,
+        text,
         actions: ["SWAP_TOKENS"],
         source: message.content.source,
         attachments: [json],
       };
 
-      await callback(
-        await rephrase({ runtime, content: responseContent, state })
-      );
+      const responseContent = await rephrase({ runtime, content, state });
+      await callback(responseContent);
 
-      return;
+      return {
+        text: `Generated calldata accessible at ${json.url}, generated text: ${responseContent?.text}`,
+        values: {
+          success: true,
+          responded: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: responseContent?.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          response: responseContent,
+          thought: responseContent?.thought,
+          initialReply: content.text,
+          initialThought: content.thought,
+          messageGenerated: true,
+        },
+        success: true,
+      };
     } catch (error) {
       logger.error("Error in SWAP_TOKENS action:", error);
-      // @ts-expect-error fix typing
-      const thought = `Action failed with error: ${error.message ?? "unknown"}. I should tell the user about the error.`;
-      // @ts-expect-error fix typing
-      const text = `Failed to swap, reason: ${error.message ?? "unknown"}. Please try again.`;
+      const errorMessage = (error as Error).message ?? "unknown error";
+      const thought = `Action failed with error: ${errorMessage}. I should tell the user about the error.`;
+      const text = `Failed to swap, reason: ${errorMessage}. Please try again.`;
 
       const responseContent = await rephrase({
         runtime,
@@ -269,7 +198,24 @@ Please approve transactions in your wallet.`,
       });
 
       await callback?.(responseContent);
-      return;
+
+      return {
+        text: `Error generating transaction: ${errorMessage}.`,
+        values: {
+          success: false,
+          responded: true,
+          error: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: responseContent?.thought,
+        },
+        data: {
+          actionName: LEVVA_ACTIONS.SWAP_TOKENS,
+          error: errorMessage,
+        },
+        success: false,
+        error: error as Error,
+      };
     }
   },
   examples: [

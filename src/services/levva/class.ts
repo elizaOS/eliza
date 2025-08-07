@@ -15,6 +15,7 @@ import {
   logger,
   Service,
   ServiceType,
+  UUID,
 } from "@elizaos/core";
 import { BrowserService } from "../browser";
 import { LEVVA_SERVICE } from "../../constants/enum";
@@ -28,6 +29,7 @@ import {
   getBalanceOf,
   getChain,
   getClient,
+  getLevvaUser,
   getTokenData,
   getToken as getTokenImpl,
   parseTokenInfo,
@@ -215,6 +217,16 @@ export class LevvaService
     }
   }
 
+  getUser = async (address: `0x${string}`) => {
+    const [user] = await getLevvaUser(this.runtime, { address });
+    return user as typeof user | undefined;
+  };
+
+  getUserById = async (id: UUID) => {
+    const [user] = await getLevvaUser(this.runtime, { id });
+    return user as typeof user | undefined;
+  };
+
   // do we need it? or better to use runtime.getMemoryById?
   getMessages = getMessages.bind(null, this.runtime);
   checkSecret = checkSecret.bind(null, this.runtime);
@@ -361,7 +373,7 @@ export class LevvaService
     await upsertBalance(this.runtime, data);
   };
 
-  private getBalanceOf = (
+  getBalanceOf = (
     address: `0x${string}`,
     chainId: number,
     token: `0x${string}`
@@ -630,7 +642,9 @@ export class LevvaService
           ? "ultra-safe"
           : x.type === "Safe"
             ? "safe"
-            : x.type === "Brave" ? "brave" : "custom";
+            : x.type === "Brave"
+              ? "brave"
+              : "custom";
 
       const contractAddress = x.vault?.address;
 
@@ -952,7 +966,9 @@ export class LevvaService
     return calls;
   }
 
-  async checkEligibility(entity?: Entity | null): Promise<{ result: boolean; reason?: Content }> {
+  async checkEligibility(
+    entity?: Entity | null
+  ): Promise<{ result: boolean; reason?: Content }> {
     if (!entity) {
       const content: Content = {
         type: "text",
