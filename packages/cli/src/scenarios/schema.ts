@@ -55,6 +55,19 @@ const MockSchema = z.object({
     response: z.any(),
 });
 
+// Plugin configuration schema
+const PluginConfigSchema = z.object({
+    name: z.string(),
+    version: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    enabled: z.boolean().optional().default(true),
+});
+
+const PluginReferenceSchema = z.union([
+    z.string(), // Simple string reference
+    PluginConfigSchema, // Full configuration object
+]);
+
 const SetupSchema = z.object({
     mocks: z.array(MockSchema).optional(),
     virtual_fs: z.record(z.string()).optional(),
@@ -74,7 +87,7 @@ const JudgmentSchema = z.object({
 export const ScenarioSchema = z.object({
     name: z.string(),
     description: z.string(),
-    plugins: z.array(z.string()).optional(),
+    plugins: z.array(PluginReferenceSchema).optional(),
     environment: z.object({
         type: z.enum(['e2b', 'local']),
     }),
@@ -85,3 +98,5 @@ export const ScenarioSchema = z.object({
 
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type Evaluation = z.infer<typeof EvaluationSchema>;
+export type PluginConfig = z.infer<typeof PluginConfigSchema>;
+export type PluginReference = z.infer<typeof PluginReferenceSchema>;

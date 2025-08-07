@@ -13,6 +13,7 @@ import { createE2BRuntime } from '../../scenarios/runtime-factory';
 import { MockEngine } from '../../scenarios/MockEngine';
 import { EvaluationEngine } from '../../scenarios/EvaluationEngine';
 import { Reporter } from '../../scenarios/Reporter';
+import { PluginParser } from '../../scenarios/plugin-parser';
 
 export const scenario = new Command()
     .name('scenario')
@@ -49,6 +50,30 @@ export const scenario = new Command()
                     }
                     const scenario: Scenario = validationResult.data;
 
+                    // Parse and validate plugins if specified
+                    if (scenario.plugins && scenario.plugins.length > 0) {
+                        logger.info('Parsing and validating plugins...');
+                        const pluginResult = await PluginParser.parseAndValidate(scenario.plugins);
+
+                        if (!pluginResult.valid) {
+                            logger.error('Plugin validation failed:');
+                            pluginResult.errors.forEach(error => logger.error(`  - ${error}`));
+                            process.exit(1);
+                        }
+
+                        if (pluginResult.warnings.length > 0) {
+                            logger.warn('Plugin warnings:');
+                            pluginResult.warnings.forEach(warning => logger.warn(`  - ${warning}`));
+                        }
+
+                        logger.info(PluginParser.generateSummary(pluginResult));
+
+                        // Store parsed plugins for later use
+                        (scenario as any).parsedPlugins = pluginResult.plugins;
+                    } else {
+                        logger.info('No plugins specified in scenario');
+                    }
+                    // TODO: use parsedPlugins to initialize the runtime
                     // Initialize Reporter
                     reporter = new Reporter();
                     reporter.reportStart(scenario);
