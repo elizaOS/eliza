@@ -1,8 +1,8 @@
-import { loadProject } from '@/src/project';
+import { loadProject, type Project } from '@/src/project';
 import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
-import { logger, type IAgentRuntime, type ProjectAgent, Project } from '@elizaos/core';
+import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,6 @@ import { getElizaCharacter } from '@/src/characters/eliza';
 import { startAgent } from '@/src/commands/start';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
-import { cwd } from 'node:process';
 
 /**
  * Function that runs the end-to-end tests.
@@ -113,7 +112,7 @@ export async function runE2eTests(
       });
       logger.info('Server initialized successfully');
     } catch (initError) {
-      logger.error('Server initialization failed:', initError);
+      logger.error({ error: initError }, 'Server initialization failed:');
       throw initError;
     }
 
@@ -135,7 +134,7 @@ export async function runE2eTests(
 
       // Set up server properties
       logger.info('Setting up server properties...');
-      server.startAgent = async (character) => {
+      server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
         return startAgent(character, server!, undefined, [], { isTestMode: true });
       };
@@ -153,12 +152,12 @@ export async function runE2eTests(
       logger.info('Starting server...');
       try {
         await server.start(serverPort);
-        logger.info('Server started successfully on port', serverPort);
+        logger.info({ serverPort }, 'Server started successfully on port');
       } catch (error) {
-        logger.error('Error starting server:', error);
+        logger.error({ error }, 'Error starting server:');
         if (error instanceof Error) {
-          logger.error('Error details:', error.message);
-          logger.error('Stack trace:', error.stack);
+          logger.error({ message: error.message }, 'Error details:');
+          logger.error({ stack: error.stack }, 'Stack trace:');
         }
         throw error;
       }
@@ -207,7 +206,7 @@ export async function runE2eTests(
 
             logger.info('Default test agent started successfully');
           } catch (pluginError) {
-            logger.error(`Error starting plugin test agent: ${pluginError}`);
+            logger.error({ error: pluginError }, `Error starting plugin test agent:`);
             throw pluginError;
           }
         } else {
@@ -233,10 +232,13 @@ export async function runE2eTests(
               // wait 1 second between agent starts
               await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (agentError) {
-              logger.error(`Error starting agent ${agent.character.name}:`, agentError);
+              logger.error(
+                { error: agentError, agentName: agent.character.name },
+                'Error starting agent'
+              );
               if (agentError instanceof Error) {
-                logger.error('Error details:', agentError.message);
-                logger.error('Stack trace:', agentError.stack);
+                logger.error({ message: agentError.message }, 'Error details:');
+                logger.error({ stack: agentError.stack }, 'Stack trace:');
               }
               // Log the error but don't fail the entire test run
               logger.warn(`Skipping agent ${agent.character.name} due to startup error`);
@@ -263,6 +265,7 @@ export async function runE2eTests(
             logger.debug(`Running tests for agent: ${runtime.character.name}`);
           }
 
+          // Pass the runtime directly without modification to avoid pino logger context issues
           const testRunner = new TestRunner(runtime, projectAgent);
 
           // Determine what types of tests to run based on directory type
@@ -289,17 +292,17 @@ export async function runE2eTests(
         // This aligns with standard testing tools behavior
         return { failed: anyTestsFound ? totalFailed > 0 : false };
       } catch (error) {
-        logger.error('Error in runE2eTests:', error);
+        logger.error({ error }, 'Error in runE2eTests:');
         if (error instanceof Error) {
-          logger.error('Error details:', error.message);
-          logger.error('Stack trace:', error.stack);
+          logger.error({ message: error.message }, 'Error details:');
+          logger.error({ stack: error.stack }, 'Stack trace:');
         } else {
-          logger.error('Unknown error type:', typeof error);
-          logger.error('Error value:', error);
+          logger.error({ type: typeof error }, 'Unknown error type:');
+          logger.error({ error }, 'Error value:');
           try {
-            logger.error('Stringified error:', JSON.stringify(error, null, 2));
+            logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
           } catch (e) {
-            logger.error('Could not stringify error:', e);
+            logger.error({ error: e }, 'Could not stringify error:');
           }
         }
         return { failed: true };
@@ -327,33 +330,33 @@ export async function runE2eTests(
         }
       }
     } catch (error) {
-      logger.error('Error in runE2eTests:', error);
+      logger.error({ error }, 'Error in runE2eTests:');
       if (error instanceof Error) {
-        logger.error('Error details:', error.message);
-        logger.error('Stack trace:', error.stack);
+        logger.error({ message: error.message }, 'Error details:');
+        logger.error({ stack: error.stack }, 'Stack trace:');
       } else {
-        logger.error('Unknown error type:', typeof error);
-        logger.error('Error value:', error);
+        logger.error({ type: typeof error }, 'Unknown error type:');
+        logger.error({ error }, 'Error value:');
         try {
-          logger.error('Stringified error:', JSON.stringify(error, null, 2));
+          logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
         } catch (e) {
-          logger.error('Could not stringify error:', e);
+          logger.error({ error: e }, 'Could not stringify error:');
         }
       }
       return { failed: true };
     }
   } catch (error) {
-    logger.error('Error in runE2eTests:', error);
+    logger.error({ error }, 'Error in runE2eTests:');
     if (error instanceof Error) {
-      logger.error('Error details:', error.message);
-      logger.error('Stack trace:', error.stack);
+      logger.error({ message: error.message }, 'Error details:');
+      logger.error({ stack: error.stack }, 'Stack trace:');
     } else {
-      logger.error('Unknown error type:', typeof error);
-      logger.error('Error value:', error);
+      logger.error({ type: typeof error }, 'Unknown error type:');
+      logger.error({ error }, 'Error value:');
       try {
-        logger.error('Stringified error:', JSON.stringify(error, null, 2));
+        logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
       } catch (e) {
-        logger.error('Could not stringify error:', e);
+        logger.error({ error: e }, 'Could not stringify error:');
       }
     }
     return { failed: true };

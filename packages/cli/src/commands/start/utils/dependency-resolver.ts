@@ -50,7 +50,7 @@ export function resolvePluginDependencies(
     .map((name) => availablePlugins.get(name))
     .filter((p) => p) as Plugin[];
 
-  logger.info(`Final plugins being loaded: ${finalPlugins.map((p) => p.name).join(', ')}`);
+  logger.info({ plugins: finalPlugins.map((p) => p.name) }, `Final plugins being loaded:`);
 
   return finalPlugins;
 }

@@ -64,7 +64,7 @@ async function gracefulShutdown(signal: string) {
     // Extract error message for better debugging
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`Error stopping server: ${errorMessage}`);
-    logger.debug('Full error details:', error);
+    logger.debug({ error }, 'Full error details:');
   }
 
   // Use appropriate exit codes for different signals
@@ -148,6 +148,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error('An error occurred:', error);
+  logger.error({ error }, 'An error occurred:');
   process.exit(1);
 });

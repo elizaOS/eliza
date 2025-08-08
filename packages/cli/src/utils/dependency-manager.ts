@@ -36,7 +36,7 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
     try {
       packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     } catch (parseError) {
-      logger.debug(`Error parsing JSON in package.json at ${packageJsonPath}:`, parseError);
+      logger.debug({ error: parseError, packageJsonPath }, `Error parsing JSON in package.json`);
       return false;
     }
 
@@ -45,7 +45,7 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
 
     return '@elizaos/cli' in dependencies || '@elizaos/cli' in devDependencies;
   } catch (error) {
-    logger.debug(`Error reading package.json at ${packageJsonPath}:`, error);
+    logger.debug({ error, packageJsonPath }, `Error reading package.json`);
     return false;
   }
 }
@@ -115,12 +115,12 @@ export async function installElizaOSCli(cwd: string = process.cwd()): Promise<bo
       return true;
     } else {
       logger.warn('⚠ Failed to install @elizaos/cli as dev dependency (optional)');
-      logger.debug('Installation error:', result.error);
+      logger.debug({ error: result.error }, 'Installation error:');
       return false;
     }
   } catch (error) {
     logger.warn('⚠ Failed to install @elizaos/cli as dev dependency (optional)');
-    logger.debug('Installation error:', error);
+    logger.debug({ error }, 'Installation error:');
     return false;
   }
 }
@@ -161,14 +161,14 @@ export async function getLatestElizaOSCliVersion(): Promise<string | null> {
         const info = JSON.parse(result.stdout);
         return info.version || info.dist?.version || 'latest';
       } catch (parseError) {
-        logger.debug('Error parsing JSON from bun info command:', parseError);
+        logger.debug({ error: parseError }, 'Error parsing JSON from bun info command:');
         return null;
       }
     }
 
     return null;
   } catch (error) {
-    logger.debug('Error getting @elizaos/cli version with bun:', error);
+    logger.debug({ error }, 'Error getting @elizaos/cli version with bun:');
     return null;
   }
 }

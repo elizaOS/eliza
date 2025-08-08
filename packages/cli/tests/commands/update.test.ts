@@ -73,7 +73,9 @@ describe('ElizaOS Update Commands', () => {
 
       const result = bunExecSync('elizaos update --check', { encoding: 'utf8' });
 
-      expect(result).toMatch(/Version: 1\.[2-9]\.\d+/); // Support 1.2.x through 1.9.x versions
+      // In monorepo context, version will be "monorepo"
+      // In published packages, it will be a semantic version
+      expect(result).toMatch(/Version: (monorepo|1\.[2-9]\.\d+)/); // Support monorepo or 1.2.x through 1.9.x versions
     },
     TEST_TIMEOUTS.INDIVIDUAL_TEST
   );

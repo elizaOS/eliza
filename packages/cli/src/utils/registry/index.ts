@@ -267,9 +267,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       }
     }
   } catch (error) {
-    logger.debug(
-      `Failed to fetch registry from public URL: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ error }, 'Failed to fetch registry from public URL:');
   }
 
   // If fetching fails, try to read from cache
@@ -281,9 +279,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       return cachedRegistry;
     }
   } catch (error) {
-    logger.debug(
-      `Failed to read registry cache: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ error }, 'Failed to read registry cache:');
   }
 
   // If we're in a monorepo context, try to discover local plugins
@@ -306,9 +302,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       // Merge with default registry, prioritizing local packages
       return { ...DEFAULT_REGISTRY, ...localRegistry };
     } catch (error) {
-      logger.debug(
-        `Failed to discover local plugins: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logger.debug({ error }, 'Failed to discover local plugins:');
     }
   }
 
@@ -614,13 +608,14 @@ export async function getPackageDetails(packageName: string): Promise<{
     try {
       return JSON.parse(text);
     } catch {
-      logger.warn(`Invalid JSON response received from registry for package ${packageName}:`, text);
+      logger.warn(
+        { packageName, text },
+        `Invalid JSON response received from registry for package`
+      );
       return null;
     }
   } catch (error) {
-    logger.warn(
-      `Failed to fetch package details from registry: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.warn({ error }, 'Failed to fetch package details from registry:');
     return null;
   }
 }
@@ -649,7 +644,8 @@ export async function getBestPluginVersion(
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {
     logger.warn(
-      `Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, but you're using v${runtimeVersion}`
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime version mismatch`
     );
     logger.warn('This may cause compatibility issues.');
     return packageDetails.latestVersion;
@@ -658,7 +654,8 @@ export async function getBestPluginVersion(
   // If minor version is different, warn but with less severity
   if (runtimeMinor !== packageMinor) {
     logger.warn(
-      `Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, you're using v${runtimeVersion}`
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime minor version differs`
     );
   }
 

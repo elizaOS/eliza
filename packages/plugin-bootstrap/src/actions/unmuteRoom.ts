@@ -208,7 +208,7 @@ export const unmuteRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error('Error unmuting room:', error);
+        logger.error({ error }, 'Error unmuting room:');
         return {
           text: 'Failed to unmute room',
           values: {

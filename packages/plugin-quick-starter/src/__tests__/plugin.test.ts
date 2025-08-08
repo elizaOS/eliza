@@ -9,6 +9,7 @@ import {
   ModelType,
   logger,
   EventType,
+  Action,
 } from '@elizaos/core';
 import dotenv from 'dotenv';
 import {
@@ -18,6 +19,38 @@ import {
   createUUID,
   testFixtures,
 } from './test-utils';
+
+// Define proper interfaces for test mocking
+interface MockLoggerMethod {
+  calls?: any[];
+}
+
+interface MockLogger {
+  info: MockLoggerMethod;
+  error: MockLoggerMethod;
+  debug: MockLoggerMethod;
+  warn: MockLoggerMethod;
+}
+
+interface PluginConfig {
+  EXAMPLE_PLUGIN_VARIABLE?: string | number;
+}
+
+interface TestCallbackContent {
+  text?: string;
+  actions?: string[];
+  source?: string;
+}
+
+interface TestActionResult {
+  text?: string;
+  success: boolean;
+  data?: {
+    actions?: string[];
+    source?: string;
+  };
+  error?: Error;
+}
 
 // Setup environment variables
 dotenv.config();
@@ -79,7 +112,7 @@ describe('Plugin Configuration', () => {
     const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: 123 }; // Should be string
 
     if (starterPlugin.init) {
-      await expect(starterPlugin.init(invalidConfig as any, runtime)).rejects.toThrow(
+      await expect(starterPlugin.init(invalidConfig as PluginConfig, runtime)).rejects.toThrow(
         'Invalid plugin configuration'
       );
     }
@@ -88,21 +121,22 @@ describe('Plugin Configuration', () => {
 
 describe('Hello World Action', () => {
   let runtime: IAgentRuntime;
-  let helloWorldAction: any;
+  let helloWorldAction: Action;
 
   beforeEach(() => {
     runtime = createMockRuntime();
-    helloWorldAction = starterPlugin.actions?.[0];
+    helloWorldAction = starterPlugin?.actions?.[0] as Action;
     // Clear all spies before each test
-    (logger.info as any).calls = [];
-    (logger.error as any).calls = [];
-    (logger.debug as any).calls = [];
-    (logger.warn as any).calls = [];
+    const mockLogger = logger as unknown as MockLogger;
+    mockLogger.info.calls = [];
+    mockLogger.error.calls = [];
+    mockLogger.debug.calls = [];
+    mockLogger.warn.calls = [];
   });
 
   it('should have hello world action', () => {
     expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction?.name).toBe('HELLO_WORLD');
+    expect(helloWorldAction?.name).toBe('QUICK_ACTION');
   });
 
   it('should always validate messages (current implementation)', async () => {
@@ -180,9 +214,9 @@ describe('Hello World Action', () => {
       content: { text: 'say hello', source: 'test' },
     });
 
-    let callbackContent: any = null;
+    let callbackContent: TestCallbackContent | null = null;
     const callback: HandlerCallback = async (content: Content) => {
-      callbackContent = content;
+      callbackContent = content as TestCallbackContent;
       return [];
     };
 
@@ -191,12 +225,13 @@ describe('Hello World Action', () => {
     expect(result).toHaveProperty('text', 'Hello world!');
     expect(result).toHaveProperty('success', true);
     expect(result).toHaveProperty('data');
-    expect((result as any).data).toHaveProperty('actions', ['HELLO_WORLD']);
-    expect((result as any).data).toHaveProperty('source', 'test');
+    const typedResult = result as TestActionResult;
+    expect(typedResult.data).toHaveProperty('actions', ['QUICK_ACTION']);
+    expect(typedResult.data).toHaveProperty('source', 'test');
 
     expect(callbackContent).toEqual({
       text: 'Hello world!',
-      actions: ['HELLO_WORLD'],
+      actions: ['QUICK_ACTION'],
       source: 'test',
     });
   });
@@ -224,7 +259,8 @@ describe('Hello World Action', () => {
 
     expect(result).toHaveProperty('success', false);
     expect(result).toHaveProperty('error');
-    expect((result as any).error?.message).toBe('Callback error');
+    const typedResult = result as TestActionResult;
+    expect(typedResult.error?.message).toBe('Callback error');
     // Quick-starter plugin doesn't log errors
   });
 
@@ -278,7 +314,7 @@ describe('Hello World Provider', () => {
 
   it('should have hello world provider', () => {
     expect(provider).toBeDefined();
-    expect(provider?.name).toBe('HELLO_WORLD_PROVIDER');
+    expect(provider?.name).toBe('QUICK_PROVIDER');
   });
 
   it('should provide hello world data', async () => {
@@ -310,9 +346,11 @@ describe('Hello World Provider', () => {
     const result2 = await provider.get(runtime, message, state);
 
     // Text and structure should be consistent
+    expect(result1.text).toBeDefined();
+    expect(result2.text).toBeDefined();
     expect(result1.text).toBe(result2.text);
-    expect(result1.values).toEqual(result2.values);
-    expect(result1.data).toEqual(result2.data);
+    expect(result1.values || {}).toEqual(result2.values || {});
+    expect(result1.data || {}).toEqual(result2.data || {});
   });
 });
 

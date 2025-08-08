@@ -110,9 +110,7 @@ export class UserEnvironment {
         path: process.argv[1] || '',
       };
     } catch (error) {
-      logger.warn(
-        `[UserEnvironment] Error getting CLI info: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logger.warn({ error }, `[UserEnvironment] Error getting CLI info`);
       return {
         version: '0.0.0',
         name: '@elizaos/cli',
@@ -148,9 +146,7 @@ export class UserEnvironment {
         version = stdout.trim();
         logger.debug(`[UserEnvironment] Bun version: ${version}`);
       } catch (e) {
-        logger.debug(
-          `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
-        );
+        logger.debug({ error: e }, `[UserEnvironment] Could not get bun version:`);
 
         // Attempt auto-installation if conditions are met
         if (shouldAutoInstall()) {
@@ -165,9 +161,8 @@ export class UserEnvironment {
               logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
             } catch (retryError) {
               logger.error(
-                `Failed to verify Bun installation after auto-install: ${
-                  retryError instanceof Error ? retryError.message : String(retryError)
-                }`
+                { error: retryError },
+                'Failed to verify Bun installation after auto-install:'
               );
               // Continue to manual installation instructions
             }
@@ -421,7 +416,7 @@ export class UserEnvironment {
 
       return '0.25.9'; // Default fallback
     } catch (error) {
-      logger.warn(`Error getting package version for ${packageName}: ${error}`);
+      logger.warn({ error, packageName }, `Error getting package version`);
       return '0.25.9';
     }
   }
@@ -444,7 +439,7 @@ export class UserEnvironment {
 
       return pluginPackages;
     } catch (error) {
-      logger.warn(`Error getting local packages: ${error}`);
+      logger.warn({ error }, `Error getting local packages`);
       return [];
     }
   }
