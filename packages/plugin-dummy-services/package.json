@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.3.4",
+    "@elizaos/core": "workspace:*",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
