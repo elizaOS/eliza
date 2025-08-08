@@ -392,6 +392,23 @@ describe('Utils Comprehensive Tests', () => {
         providers: [],
       });
     });
+
+    it('should correctly handle nested same-name tags in fallback scan', () => {
+      // No <response> tag so fallback scanner is used
+      const xml = '<container><text><text>inner</text>outer</text></container>';
+      const result = parseKeyValueXml(xml);
+      // Ensure we did not truncate at the inner </text>
+      expect(result).not.toBeNull();
+      expect(result!.text).toContain('outer');
+      expect(result!.text).toContain('<text>inner</text>');
+    });
+
+    it('should treat self-closing tags with whitespace as self-closing and skip them', () => {
+      // First tag is self-closing with whitespace before '/>'
+      const xml = '<sc /> <container><key>value</key></container>';
+      const result = parseKeyValueXml(xml);
+      expect(result).toEqual({ key: 'value' });
+    });
   });
 
   describe('formatMessages', () => {
