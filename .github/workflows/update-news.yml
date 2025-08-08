@@ -32,7 +32,6 @@ jobs:
       - name: Run update script
         run: ./scripts/update-news.sh
 
-      
       - name: Run repomix
         run: |
           npx repomix -c scripts/repomix.config.json

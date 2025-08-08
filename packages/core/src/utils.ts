@@ -368,7 +368,11 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
         const openIdx = input.indexOf('<', i);
         if (openIdx === -1) break;
         // Skip closing tags and comments/decls
-        if (input.startsWith('</', openIdx) || input.startsWith('<!--', openIdx) || input.startsWith('<?', openIdx)) {
+        if (
+          input.startsWith('</', openIdx) ||
+          input.startsWith('<!--', openIdx) ||
+          input.startsWith('<?', openIdx)
+        ) {
           i = openIdx + 1;
           continue;
         }
@@ -391,14 +395,43 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
         // Find end of start tag '>' (skip attributes if present)
         const startTagEnd = input.indexOf('>', j);
         if (startTagEnd === -1) break;
-        // Self-closing tag? skip
-        if (input[startTagEnd - 1] === '/') {
+        // Self-closing tag? tolerate whitespace before '/>'
+        const startTagText = input.slice(openIdx, startTagEnd + 1);
+        if (/\/\s*>$/.test(startTagText)) {
           i = startTagEnd + 1;
           continue;
         }
         const closeSeq = `</${tag}>`;
-        const closeIdx = input.indexOf(closeSeq, startTagEnd + 1);
-        if (closeIdx !== -1) {
+        // Implement nested tag counting for same-named tags
+        let depth = 1;
+        let searchStart = startTagEnd + 1;
+        while (depth > 0 && searchStart < length) {
+          const nextOpen = input.indexOf(`<${tag}`, searchStart);
+          const nextClose = input.indexOf(closeSeq, searchStart);
+          if (nextClose === -1) {
+            break;
+          }
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            // Determine if the next open is self-closing; if so, do not increase depth
+            const nestedStartEnd = input.indexOf('>', nextOpen + 1);
+            if (nestedStartEnd === -1) {
+              break;
+            }
+            const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
+            if (/\/\s*>$/.test(nestedStartText)) {
+              // self-closing; skip without changing depth
+              searchStart = nestedStartEnd + 1;
+            } else {
+              depth++;
+              searchStart = nestedStartEnd + 1;
+            }
+          } else {
+            depth--;
+            searchStart = nextClose + closeSeq.length;
+          }
+        }
+        if (depth === 0) {
+          const closeIdx = searchStart - closeSeq.length;
           const inner = input.slice(startTagEnd + 1, closeIdx);
           return { tag, content: inner };
         }
