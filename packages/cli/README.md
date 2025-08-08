@@ -279,14 +279,34 @@ If any character files fail to load, ElizaOS will:
 
 Run tests for Eliza agent plugins and projects.
 
+ElizaOS employs a dual testing strategy:
+
+1. **Component Tests** (`src/__tests__/*.test.ts`)
+
+   - Run with Bun's native test runner
+   - Fast, isolated tests using mocks
+   - Perfect for TDD and component logic
+
+2. **E2E Tests** (`src/__tests__/e2e/*.e2e.ts`)
+   - Run with ElizaOS custom test runner
+   - Real runtime with actual database (PGLite)
+   - Test complete user scenarios
+
 - **Subcommands:**
-  - `component`: Run component tests (via Vitest)
+  - `component`: Run component tests (via bun:test)
   - `e2e`: Run end-to-end runtime tests
   - `all`: Run both component and e2e tests (default)
 - **Options:**
   - `-p, --port <port>`: Port to listen on for e2e tests
   - `-n, --name <n>`: Filter tests by name (matches file names or test suite names)
   - `--skip-build`: Skip building before running tests
+
+**E2E Test Structure:**
+
+- Plugins export tests in `src/plugin.ts` via the `tests` array
+- Projects export tests in `src/index.ts` via the `tests` array
+- Test files follow naming convention: `[template-name].e2e.ts`
+- Each e2e folder should have a README explaining the testing approach
 
 ### Trusted Execution Environment (TEE) Management
 
@@ -650,6 +670,19 @@ Plugins extend the functionality of ElizaOS agents by providing additional capab
    elizaos test e2e
    ```
 
+   **E2E Test Structure:**
+
+   ```
+   plugin-my-plugin/
+   ├── src/
+   │   ├── __tests__/
+   │   │   ├── e2e/
+   │   │   │   ├── plugin-my-plugin.e2e.ts  # E2E test suite
+   │   │   │   └── README.md                 # E2E test documentation
+   │   │   └── *.test.ts                     # Component unit tests
+   │   └── plugin.ts                         # Export tests here: tests: [MyPluginTestSuite]
+   ```
+
 6. **Publish your plugin**:
 
    ```bash
@@ -763,6 +796,19 @@ Projects contain agent configurations and code for building agent-based applicat
 
    # Test with specific options
    elizaos test --port 4000 --name specific-test
+   ```
+
+   **E2E Test Structure for Projects:**
+
+   ```
+   my-agent-project/
+   ├── src/
+   │   ├── __tests__/
+   │   │   ├── e2e/
+   │   │   │   ├── project-my-agent.e2e.ts  # E2E test suite
+   │   │   │   └── README.md                # E2E test documentation
+   │   │   └── *.test.ts                    # Component unit tests
+   │   └── index.ts                         # Export tests here: tests: [MyProjectTestSuite]
    ```
 
 8. **Development workflow**:

@@ -31,6 +31,18 @@ const agent = await client.agents.createAgent({
 // Send a message
 const message = await client.messaging.postMessage(channelId, 'Hello, world!');
 
+// Create a session for user-agent conversation
+const session = await client.sessions.createSession({
+  agentId: agent.id,
+  userId: 'user-123',
+  metadata: { platform: 'web' },
+});
+
+// Send a message in the session
+const sessionMessage = await client.sessions.sendMessage(session.sessionId, {
+  content: 'Hello, agent!',
+});
+
 // Upload media
 const upload = await client.media.uploadAgentMedia(agentId, {
   file: myFile,
@@ -53,6 +65,13 @@ const upload = await client.media.uploadAgentMedia(agentId, {
 - Channel operations
 - Server management
 - Message search
+
+### Sessions
+
+- Create and manage user-agent conversation sessions
+- Send and retrieve messages within sessions
+- Session metadata and lifecycle management
+- Automatic cleanup of inactive sessions
 
 ### Memory
 

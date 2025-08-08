@@ -1,4 +1,5 @@
 node_modules
+bun.lock
 /out
 
 .env
@@ -176,5 +177,7 @@ tasks/
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
-**/.windsurfrules/ 
+**/.windsurfrules/
 .roomodes
+bun.lock
+/.kiro

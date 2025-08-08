@@ -513,7 +513,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {UUID[]} entityIds - The unique identifiers of the entities to retrieve.
    * @returns {Promise<Entity[] | null>} A Promise that resolves to the entity with its components if found, null otherwise.
    */
-  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     return this.withDatabase(async () => {
       const result = await this.db
         .select({
@@ -645,7 +645,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     }
 
     try {
-      const existingEntities = await this.getEntityByIds([entity.id]);
+      const existingEntities = await this.getEntitiesByIds([entity.id]);
 
       if (!existingEntities || !existingEntities.length) {
         return await this.createEntities([entity]);
@@ -1553,8 +1553,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       isUnique = similarMemories.length === 0;
     }
 
+    // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
+    // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
-      typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+      typeof memory.content === 'string' ? memory.content : JSON.stringify(memory.content ?? {});
+
+    const metadataToInsert =
+      typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
     await this.db.transaction(async (tx) => {
       await tx.insert(memoryTable).values([
@@ -1562,7 +1567,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           id: memoryId,
           type: tableName,
           content: sql`${contentToInsert}::jsonb`,
-          metadata: sql`${memory.metadata || {}}::jsonb`,
+          metadata: sql`${metadataToInsert}::jsonb`,
           entityId: memory.entityId,
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
@@ -1611,21 +1616,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           // Update memory content if provided
           if (memory.content) {
             const contentToUpdate =
-              typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+              typeof memory.content === 'string'
+                ? memory.content
+                : JSON.stringify(memory.content ?? {});
+
+            const metadataToUpdate =
+              typeof memory.metadata === 'string'
+                ? memory.metadata
+                : JSON.stringify(memory.metadata ?? {});
 
             await tx
               .update(memoryTable)
               .set({
                 content: sql`${contentToUpdate}::jsonb`,
-                ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
+                ...(memory.metadata && { metadata: sql`${metadataToUpdate}::jsonb` }),
               })
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
+            const metadataToUpdate =
+              typeof memory.metadata === 'string'
+                ? memory.metadata
+                : JSON.stringify(memory.metadata ?? {});
+
             await tx
               .update(memoryTable)
               .set({
-                metadata: sql`${memory.metadata}::jsonb`,
+                metadata: sql`${metadataToUpdate}::jsonb`,
               })
               .where(eq(memoryTable.id, memory.id));
           }
@@ -2109,7 +2126,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .from(participantTable)
         .where(eq(participantTable.entityId, entityId));
 
-      const entities = await this.getEntityByIds([entityId]);
+      const entities = await this.getEntitiesByIds([entityId]);
 
       if (!entities || !entities.length) {
         return [];

@@ -1,19 +1,21 @@
-import { displayBanner, handleError } from '@/src/utils';
-import { validatePort } from '@/src/utils/port-validation';
-import { loadCharacterTryPath } from '@elizaos/server';
 import { loadProject } from '@/src/project';
+import { displayBanner, handleError } from '@/src/utils';
+import { buildProject } from '@/src/utils/build-project';
+import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
+import { getModuleLoader } from '@/src/utils/module-loader';
+import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
-import { startAgents } from './actions/server-start';
-import { StartOptions } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { startAgents } from './actions/server-start';
+import { StartOptions } from './types';
 import { loadEnvConfig } from './utils/config-utils';
-import { detectDirectoryType } from '@/src/utils/directory-detection';
 
 export const start = new Command()
   .name('start')
-  .description('Start the Eliza agent server')
+  .description('Build and start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
   .option('-p, --port <port>', 'Port to listen on', validatePort)
   .option('--character <paths...>', 'Character file(s) to use')
@@ -25,10 +27,52 @@ export const start = new Command()
       // Load env config first before any character loading
       await loadEnvConfig();
 
+      // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
+      await ensureElizaOSCli();
+
+      // Setup proper module resolution environment variables
+      // This ensures consistent plugin loading between dev and start commands
+      const localModulesPath = path.join(process.cwd(), 'node_modules');
+      if (process.env.NODE_PATH) {
+        process.env.NODE_PATH = `${localModulesPath}${path.delimiter}${process.env.NODE_PATH}`;
+      } else {
+        process.env.NODE_PATH = localModulesPath;
+      }
+
+      // Add local .bin to PATH to prioritize local executables
+      const localBinPath = path.join(process.cwd(), 'node_modules', '.bin');
+      if (process.env.PATH) {
+        process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
+      } else {
+        process.env.PATH = localBinPath;
+      }
+
+      // Build the project first (unless it's a monorepo)
+      const cwd = process.cwd();
+      const dirInfo = detectDirectoryType(cwd);
+      const isMonorepo = dirInfo.type === 'elizaos-monorepo';
+
+      if (!isMonorepo && !process.env.ELIZA_TEST_MODE) {
+        try {
+          // Use buildProject function with proper UI feedback and error handling
+          await buildProject(cwd, false);
+        } catch (error) {
+          logger.error(`Build error: ${error instanceof Error ? error.message : String(error)}`);
+          logger.warn(
+            'Build failed, but continuing with start. Some features may not work correctly.'
+          );
+        }
+      }
+
       let characters: Character[] = [];
       let projectAgents: ProjectAgent[] = [];
 
       if (options.character && options.character.length > 0) {
+        // Load @elizaos/server module for character loading
+        const moduleLoader = getModuleLoader();
+        const serverModule = await moduleLoader.load('@elizaos/server');
+        const { loadCharacterTryPath } = serverModule;
+
         // Validate and load characters from provided paths
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);
@@ -50,7 +94,7 @@ export const start = new Command()
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
-            logger.error(`Failed to load character from ${resolvedPath}:`, e);
+            logger.error({ error: e, resolvedPath }, `Failed to load character from path:`);
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
@@ -79,7 +123,7 @@ export const start = new Command()
             }
           }
         } catch (e) {
-          logger.debug('Failed to load project agents, will use default character:', e);
+          logger.debug({ error: e }, 'Failed to load project agents, will use default character:');
         }
       }
 

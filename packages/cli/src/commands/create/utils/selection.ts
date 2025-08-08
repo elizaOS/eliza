@@ -15,9 +15,9 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI',
+      title: 'Local AI (Ollama)',
       value: 'local',
-      description: 'Local models, no API required',
+      description: 'Local models via Ollama, no API required',
     },
     {
       title: 'OpenAI',
@@ -35,16 +35,20 @@ export function getAvailableAIModels(): AIModelOption[] {
       description: 'Access multiple AI models',
     },
     {
-      title: 'Ollama',
-      value: 'ollama',
-      description: 'Self-hosted models',
-    },
-    {
       title: 'Google Generative AI',
       value: 'google',
       description: 'Gemini models',
     },
   ];
+}
+
+/**
+ * Checks if an AI model has built-in embedding support.
+ * Models with embeddings don't need a separate embedding provider.
+ */
+export function hasEmbeddingSupport(aiModel: string): boolean {
+  const modelsWithEmbeddings = ['local', 'openai', 'google'];
+  return modelsWithEmbeddings.includes(aiModel);
 }
 
 /**
@@ -119,19 +123,14 @@ export async function selectAIModel(): Promise<string> {
 export function getAvailableEmbeddingModels(): AIModelOption[] {
   return [
     {
-      title: 'Local AI',
+      title: 'Local AI (Ollama)',
       value: 'local',
-      description: 'Local embeddings, no API required',
+      description: 'Local embeddings via Ollama, no API required',
     },
     {
       title: 'OpenAI',
       value: 'openai',
       description: 'OpenAI text-embedding-ada-002',
-    },
-    {
-      title: 'Ollama',
-      value: 'ollama',
-      description: 'Self-hosted embedding models',
     },
     {
       title: 'Google Generative AI',

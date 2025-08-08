@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExec, bunExecInherit } from './bun-exec';
 import { displayBunInstallationTipCompact } from './bun-installation-helper';
 
 /**
@@ -23,13 +23,12 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
   }
 
   try {
-    const result = await execa('bun', finalArgs, {
-      cwd,
-      stdio: silent ? 'pipe' : 'inherit',
-      reject: false,
-    });
+    const result = silent
+      ? await bunExec('bun', finalArgs, { cwd })
+      : await bunExecInherit('bun', finalArgs, { cwd });
 
-    if (silent && result.exitCode !== 0) {
+    // Using result.success for clarity - it's a boolean that indicates exitCode === 0
+    if (silent && !result.success) {
       throw new Error(
         `Bun command failed with exit code ${result.exitCode}: ${result.stderr || result.stdout}`
       );
@@ -46,13 +45,12 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
       (error.message?.includes('frozen-lockfile') || error.message?.includes('install'))
     ) {
       console.warn('CI-optimized install failed, retrying with basic args...');
-      const retryResult = await execa('bun', args, {
-        cwd,
-        stdio: silent ? 'pipe' : 'inherit',
-        reject: false,
-      });
+      const retryResult = silent
+        ? await bunExec('bun', args, { cwd })
+        : await bunExecInherit('bun', args, { cwd });
 
-      if (silent && retryResult.exitCode !== 0) {
+      // Using result.success for clarity - it's a boolean that indicates exitCode === 0
+      if (silent && !retryResult.success) {
         throw new Error(
           `Bun command failed with exit code ${retryResult.exitCode}: ${retryResult.stderr || retryResult.stdout}`
         );

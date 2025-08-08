@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.19",
+  "version": "workspace:*",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -20,7 +20,11 @@
   },
   "files": [
     "dist",
-    "templates"
+    "dist/**/.gitignore",
+    "dist/**/.npmignore",
+    "templates",
+    "templates/**/.gitignore",
+    "templates/**/.npmignore"
   ],
   "keywords": [],
   "type": "module",
@@ -32,8 +36,8 @@
     "elizaos": "./dist/index.js"
   },
   "scripts": {
-    "start": "bun run build && node dist/index.js start",
-    "build": "bun run src/scripts/copy-templates.ts && bun x tsup && bun run src/scripts/copy-client-dist.ts",
+    "start": "bun run build && bun dist/index.js start",
+    "build": "bun run src/scripts/copy-templates.ts && bun x tsup",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -69,11 +73,12 @@
     "typescript": "5.8.3",
     "vite": "^6.3.5"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "gitHead": "c4e30a38836ac4bed81c671239377685892ebdf5",
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.35",
     "@anthropic-ai/sdk": "^0.54.0",
     "@clack/prompts": "^0.11.0",
+    "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
@@ -82,7 +87,6 @@
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
-    "execa": "^9.6.0",
     "fs-extra": "^11.1.0",
     "globby": "^14.0.2",
     "https-proxy-agent": "^7.0.6",
@@ -94,6 +98,6 @@
     "tsconfig-paths": "^4.2.0",
     "type-fest": "^4.41.0",
     "yoctocolors": "^2.1.1",
-    "zod": "^3.25.67"
+    "zod": "3.24.2"
   }
 }

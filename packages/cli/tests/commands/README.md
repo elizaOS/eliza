@@ -4,66 +4,54 @@ This directory contains TypeScript tests for the ElizaOS CLI, converted from the
 
 ## Test Structure
 
-### Shared Utilities (`test-utils.ts`)
+### Core Test Utilities
 
-The `test-utils.ts` file provides common functionality to reduce code duplication:
+The test suite provides several helper functions:
 
-- **`setupTestEnvironment()`** - Creates temp directory and sets up CLI command
-- **`cleanupTestEnvironment()`** - Restores directory and cleans up temp files
-- **`runCliCommand()`** - Executes CLI commands with standard options
-- **`expectCliCommandToFail()`** - Runs commands expecting failure
+**From `test-utils.ts`:**
+
+- **`setupTestEnvironment()`** - Creates temporary directories and sets up test state
+- **`cleanupTestEnvironment()`** - Cleans up after tests complete
 - **`expectHelpOutput()`** - Validates help command output
-- **`createTestProject()`** - Creates ElizaOS projects for testing
-- **`createTestPluginStructure()`** - Sets up plugin directory structure
+- **`createTestProject()`** - Creates a test ElizaOS project
 - **`createTestAgent()`** - Creates test agent JSON files
+- **`createTestPluginStructure()`** - Sets up plugin directory structure
 - **`assertions`** - Common assertion helpers
 
-### Refactored Pattern
+**From `../utils/bun-test-helpers.ts`:**
 
-#### Before (Repetitive):
+- **`bunExecSync()`** - Execute CLI commands synchronously
+- **`bunSpawn()`** - Spawn long-running processes
+- **`parseCommand()`** - Parse command strings
+
+### Command Execution Pattern
+
+All tests now use the consistent pattern of directly calling `bunExecSync`:
 
 ```typescript
-describe('My Command', () => {
-  let testTmpDir: string;
-  let elizaosCmd: string;
-  let originalCwd: string;
+import { bunExecSync } from '../utils/bun-test-helpers';
 
-  beforeEach(async () => {
-    originalCwd = process.cwd();
-    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
-    process.chdir(testTmpDir);
-    const scriptDir = join(__dirname, '..');
-    elizaosCmd = `bun ${join(scriptDir, '../dist/index.js')}`;
-  });
+// Execute a command
+const result = bunExecSync('elizaos [command]', { encoding: 'utf8' });
 
-  afterEach(async () => {
-    process.chdir(originalCwd);
-    if (testTmpDir && testTmpDir.includes('eliza-test-')) {
-      try {
-        await rm(testTmpDir, { recursive: true });
-      } catch (e) {}
-    }
-  });
-
-  test('command --help', () => {
-    const result = execSync(`${elizaosCmd} command --help`, { encoding: 'utf8' });
-    expect(result).toContain('Usage: elizaos command');
-  });
-});
+// With platform-specific options
+import { getPlatformOptions } from './test-utils';
+const result = bunExecSync('elizaos [command]', getPlatformOptions({ encoding: 'utf8' }));
 ```
 
-#### After (DRY):
+### Example Test Structure
 
 ```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  runCliCommand,
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
+import { bunExecSync } from '../utils/bun-test-helpers';
 
-describe('My Command', () => {
+describe('ElizaOS Command Tests', () => {
   let context: TestContext;
 
   beforeEach(async () => {
@@ -74,8 +62,8 @@ describe('My Command', () => {
     await cleanupTestEnvironment(context);
   });
 
-  test('command --help', () => {
-    const result = runCliCommand(context.elizaosCmd, 'command --help');
+  it('command shows help', async () => {
+    const result = bunExecSync('elizaos command --help', { encoding: 'utf8' });
     expectHelpOutput(result, 'command');
   });
 });
@@ -83,35 +71,65 @@ describe('My Command', () => {
 
 ### Files Status
 
-| Test File          | Status               | Notes                    |
-| ------------------ | -------------------- | ------------------------ |
-| `monorepo.test.ts` | ✅ Refactored        | Using test-utils         |
-| `env.test.ts`      | ✅ Refactored        | Using test-utils         |
-| `test.test.ts`     | ✅ Refactored        | Using test-utils         |
-| `agent.test.ts`    | 🔄 Can be refactored | Complex server setup     |
-| `create.test.ts`   | 🔄 Can be refactored | Project creation helpers |
-| `plugins.test.ts`  | 🔄 Can be refactored | Plugin structure helpers |
-| `publish.test.ts`  | 🔄 Can be refactored | Mock npm/git commands    |
-| `start.test.ts`    | 🔄 Can be refactored | Server management        |
-| `update.test.ts`   | 🔄 Can be refactored | Project helpers          |
+| Test File          | Status     | Pattern Used                 |
+| ------------------ | ---------- | ---------------------------- |
+| `agent.test.ts`    | ✅ Updated | Direct bunExecSync           |
+| `create.test.ts`   | ✅ Updated | Direct bunExecSync           |
+| `dev.test.ts`      | ✅ Updated | Direct bunExecSync/Bun.spawn |
+| `env.test.ts`      | ✅ Updated | Direct bunExecSync           |
+| `monorepo.test.ts` | ✅ Updated | Direct bunExecSync           |
+| `plugins.test.ts`  | ✅ Correct | Already using bunExecSync    |
+| `publish.test.ts`  | ✅ Correct | Already using bunExecSync    |
+| `start.test.ts`    | ✅ Correct | Already using proper pattern |
+| `test.test.ts`     | ✅ Updated | Direct bunExecSync           |
+| `update.test.ts`   | ✅ Updated | Direct bunExecSync           |
 
-### Refactoring Remaining Files
+### Migration from Old Patterns
 
-To refactor the remaining test files:
+When migrating tests from older patterns:
 
-1. **Import test-utils**: Replace individual imports with test-utils
-2. **Replace setup/teardown**: Use `setupTestEnvironment()` and `cleanupTestEnvironment()`
-3. **Use CLI helpers**: Replace `execSync` calls with `runCliCommand()`
+1. **Replace direct paths**: Replace `bun "/path/to/cli/index.js"` with `elizaos` command
+2. **Use temp directories**: Replace manual directory creation with `setupTestEnvironment()`
+3. **Use bunExecSync**: Replace `execSync` or wrapper calls with `bunExecSync('elizaos [command]', { encoding: 'utf8' })`
 4. **Use validation helpers**: Replace manual help validation with `expectHelpOutput()`
-5. **Extract common patterns**: Move repeated logic to test-utils
+5. **Remove path manipulation**: No need for `getBunExecutable()` or constructing CLI paths
+
+### Key Patterns
+
+1. **Synchronous command execution:**
+
+   ```typescript
+   const result = bunExecSync('elizaos [command]', { encoding: 'utf8' });
+   ```
+
+2. **Long-running processes:**
+
+   ```typescript
+   const proc = Bun.spawn(['elizaos', 'start', ...args], {
+     cwd: process.cwd(),
+     env: { ...process.env },
+     stdout: 'pipe',
+     stderr: 'pipe',
+   });
+   ```
+
+3. **Error handling:**
+   ```typescript
+   try {
+     bunExecSync('elizaos [command]', { encoding: 'utf8' });
+   } catch (e: any) {
+     // Handle expected failures
+     expect(e.status).not.toBe(0);
+   }
+   ```
 
 ### Benefits
 
-- **Reduced Code**: ~50% less boilerplate per test file
-- **Consistency**: Standardized patterns across all tests
-- **Maintainability**: Changes to test infrastructure only need to be made in one place
-- **Readability**: Tests focus on what they're testing, not setup/teardown
-- **Reliability**: Consistent error handling and cleanup
+- **Consistency**: All tests use the same execution pattern
+- **Simplicity**: Direct use of `bunExecSync` without wrappers
+- **Reliability**: Works with global `elizaos` command via `bun link`
+- **Cross-platform**: Platform differences handled by `getPlatformOptions()`
+- **No path manipulation**: Eliminates complex path construction
 
 ### Test Coverage
 

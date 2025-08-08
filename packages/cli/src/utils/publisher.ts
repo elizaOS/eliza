@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExec, bunExecInherit } from '@/src/utils/bun-exec';
 import { logger } from '@elizaos/core';
 import {
   branchExists,
@@ -41,24 +41,24 @@ interface PackageJson {
 export async function testPublishToNpm(cwd: string): Promise<boolean> {
   try {
     // Check if logged in to npm
-    await execa('npm', ['whoami']);
+    await bunExec('npm', ['whoami']);
     logger.info('[✓] Logged in to npm');
 
     // Test build
     logger.info('Testing build...');
-    await execa('npm', ['run', 'build', '--dry-run'], { cwd });
+    await bunExec('npm', ['run', 'build', '--dry-run'], { cwd });
     logger.info('[✓] Build test successful');
 
     // Test publish access
-    await execa('npm', ['access', 'ls-packages'], { cwd });
+    await bunExec('npm', ['access', 'ls-packages'], { cwd });
     logger.info('[✓] Have publish permissions');
 
     return true;
   } catch (error) {
-    logger.error('Test failed:', error);
+    logger.error({ error }, 'Test failed:');
     if (error instanceof Error) {
-      logger.error(`Error message: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
+      logger.error({ message: error.message }, 'Error message:');
+      logger.error({ stack: error.stack }, 'Error stack:');
     }
     return false;
   }
@@ -187,19 +187,19 @@ export async function testPublishToGitHub(
 export async function publishToNpm(cwd: string): Promise<boolean> {
   try {
     // Check if logged in to npm
-    await execa('npm', ['whoami']);
+    await bunExec('npm', ['whoami']);
 
     // Build the package
     logger.info('Building package...');
-    await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
+    await bunExecInherit('npm', ['run', 'build'], { cwd });
 
     // Publish to npm
     logger.info('Publishing to npm...');
-    await execa('npm', ['publish'], { cwd, stdio: 'inherit' });
+    await bunExecInherit('npm', ['publish'], { cwd });
 
     return true;
   } catch (error) {
-    logger.error('Failed to publish to npm:', error);
+    logger.error({ error }, 'Failed to publish to npm:');
     return false;
   }
 }

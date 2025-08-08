@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExecSimple } from '../../../utils/bun-exec.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ export async function checkCliVersion(): Promise<string> {
     const currentVersion = cliPackageJson.version || '0.0.0';
 
     // Get the time data for all published versions to find the most recent
-    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
     const timeData = JSON.parse(stdout);
 
     // Remove metadata entries like 'created' and 'modified'

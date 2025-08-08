@@ -2,7 +2,7 @@ import { getGitHubCredentials, getLocalPackages, resolveEnvFile } from '@/src/ut
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
 import dotenv from 'dotenv';
-import { execa } from 'execa';
+import { bunExecSimple } from '../bun-exec.js';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -201,7 +201,6 @@ const DEFAULT_REGISTRY: Record<string, string> = {
   '@elizaos/plugin-evm': 'github:elizaos-plugins/plugin-evm',
   '@elizaos/plugin-farcaster': 'github:elizaos-plugins/plugin-farcaster',
   '@elizaos/plugin-groq': 'github:elizaos-plugins/plugin-groq',
-  '@elizaos/plugin-local-ai': 'github:elizaos-plugins/plugin-local-ai',
   '@elizaos/plugin-mcp': 'github:elizaos-plugins/plugin-mcp',
   '@elizaos/plugin-messari-ai-toolkit': 'github:messari/plugin-messari-ai-toolkit',
   '@elizaos/plugin-morpheus': 'github:bowtiedbluefin/plugin-morpheus',
@@ -268,9 +267,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       }
     }
   } catch (error) {
-    logger.debug(
-      `Failed to fetch registry from public URL: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ error }, 'Failed to fetch registry from public URL:');
   }
 
   // If fetching fails, try to read from cache
@@ -282,9 +279,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       return cachedRegistry;
     }
   } catch (error) {
-    logger.debug(
-      `Failed to read registry cache: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ error }, 'Failed to read registry cache:');
   }
 
   // If we're in a monorepo context, try to discover local plugins
@@ -307,9 +302,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       // Merge with default registry, prioritizing local packages
       return { ...DEFAULT_REGISTRY, ...localRegistry };
     } catch (error) {
-      logger.debug(
-        `Failed to discover local plugins: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logger.debug({ error }, 'Failed to discover local plugins:');
     }
   }
 
@@ -452,7 +445,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
  */
 export async function repoHasBranch(repoUrl: string, branchName: string): Promise<boolean> {
   try {
-    const { stdout } = await execa('git', ['ls-remote', '--heads', repoUrl, branchName]);
+    const { stdout } = await bunExecSimple('git', ['ls-remote', '--heads', repoUrl, branchName]);
     return stdout.includes(branchName);
   } catch (error) {
     logger.warn(
@@ -601,7 +594,7 @@ export async function getPackageDetails(packageName: string): Promise<{
     // Use agent only if https_proxy is defined
     const requestOptions: RequestInit = {};
     if (process.env.https_proxy) {
-      // @ts-ignore - HttpsProxyAgent is not in the RequestInit type, but is used by node-fetch
+      // @ts-ignore - HttpsProxyAgent is not in the RequestInit type
       requestOptions.agent = new HttpsProxyAgent(process.env.https_proxy);
     }
 
@@ -615,13 +608,14 @@ export async function getPackageDetails(packageName: string): Promise<{
     try {
       return JSON.parse(text);
     } catch {
-      logger.warn(`Invalid JSON response received from registry for package ${packageName}:`, text);
+      logger.warn(
+        { packageName, text },
+        `Invalid JSON response received from registry for package`
+      );
       return null;
     }
   } catch (error) {
-    logger.warn(
-      `Failed to fetch package details from registry: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.warn({ error }, 'Failed to fetch package details from registry:');
     return null;
   }
 }
@@ -650,7 +644,8 @@ export async function getBestPluginVersion(
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {
     logger.warn(
-      `Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, but you're using v${runtimeVersion}`
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime version mismatch`
     );
     logger.warn('This may cause compatibility issues.');
     return packageDetails.latestVersion;
@@ -659,7 +654,8 @@ export async function getBestPluginVersion(
   // If minor version is different, warn but with less severity
   if (runtimeMinor !== packageMinor) {
     logger.warn(
-      `Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, you're using v${runtimeVersion}`
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime minor version differs`
     );
   }
 

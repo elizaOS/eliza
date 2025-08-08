@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec, bunExecInherit, bunExecSimple, type ExecResult } from '@/src/utils/bun-exec';
 import * as fs from 'fs-extra';
 import * as clack from '@clack/prompts';
 import ora from 'ora';
@@ -8,6 +8,7 @@ import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import * as os from 'os';
 import { runBunCommand } from './run-bun';
+import { type Subprocess } from 'bun';
 
 // Configuration
 const MAX_BUILD_ITERATIONS = 5;
@@ -74,18 +75,21 @@ export class PluginCreator {
 
     this.handleCancellation(input);
 
+    // Cast to string after cancellation check
+    const inputStr = input as string;
+
     // Return empty array if no input provided (for optional fields)
-    if (!input || input.trim() === '') {
+    if (!inputStr || inputStr.trim() === '') {
       return [];
     }
 
-    return input
+    return inputStr
       .split(',')
       .map((item: string) => item.trim())
       .filter((item: string) => item);
   }
   private anthropic: Anthropic | null = null;
-  private activeClaudeProcess: any = null;
+  private activeClaudeProcess: Promise<ExecResult> | null = null;
   private options: CreatorOptions;
 
   constructor(options: CreatorOptions = {}) {
@@ -100,7 +104,7 @@ export class PluginCreator {
 
       if (this.activeClaudeProcess) {
         try {
-          this.activeClaudeProcess.kill();
+          await this.activeClaudeProcess;
           logger.info('Terminated active Claude Code process');
         } catch (error) {
           logger.error('Failed to terminate Claude Code process:', error);
@@ -140,7 +144,7 @@ export class PluginCreator {
 
       // Check for Claude Code
       try {
-        await execa('claude', ['--version'], { stdio: 'pipe' });
+        await bunExec('claude', ['--version'], { stdio: 'pipe' });
       } catch {
         throw new Error(
           'Claude Code is required for plugin generation. Install with: bun install -g @anthropic-ai/claude-code'
@@ -304,7 +308,7 @@ export class PluginCreator {
 
     // Use elizaos create command to create from template
     try {
-      await execa(
+      await bunExec(
         'bunx',
         ['@elizaos/cli', 'create', `plugin-${pluginName}`, '-t', 'plugin-starter'],
         {
@@ -855,8 +859,7 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
 
         logger.info(`🚀 Executing: claude ${claudeArgs.join(' ')}`);
 
-        this.activeClaudeProcess = execa('claude', claudeArgs, {
-          stdio: 'inherit',
+        this.activeClaudeProcess = bunExecInherit('claude', claudeArgs, {
           cwd: this.pluginPath!,
         });
 
@@ -881,7 +884,7 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
     } catch (error) {
       if (this.activeClaudeProcess) {
         try {
-          this.activeClaudeProcess.kill();
+          await this.activeClaudeProcess;
           this.activeClaudeProcess = null;
           logger.warn('🛑 Claude Code process terminated due to timeout');
         } catch (killError) {
@@ -1084,8 +1087,8 @@ If ANY of the CRITICAL requirements fail, the plugin is NOT production ready.`;
 
   private async getAvailableDiskSpace(): Promise<number> {
     try {
-      const result = await execa('df', ['-k', os.tmpdir()]);
-      const lines = result.stdout.split('\n');
+      const { stdout } = await bunExecSimple('df', ['-k', os.tmpdir()]);
+      const lines = stdout.split('\n');
       const dataLine = lines[1];
       const parts = dataLine.split(/\s+/);
       const availableKB = parseInt(parts[3]);

@@ -25,6 +25,13 @@ export const test = new Command()
   .hook('preAction', async (thisCommand) => {
     // Install plugin dependencies before running tests
     const testPath = thisCommand.args[0];
+    const options = thisCommand.opts() as TestCommandOptions;
+
+    // Skip dependency installation for component tests - they handle their own build
+    if (options.type === 'component') {
+      return;
+    }
+
     const projectInfo = getProjectType(testPath);
     await installPluginDependencies(projectInfo);
   })

@@ -96,6 +96,8 @@ function getPackageName(templateType: string): string {
       return 'project-tee-starter';
     case 'plugin':
       return 'plugin-starter';
+    case 'plugin-quick':
+      return 'plugin-quick-starter';
     case 'project':
     case 'project-starter':
     default:
@@ -107,7 +109,7 @@ function getPackageName(templateType: string): string {
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
-  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin',
+  templateType: 'project' | 'project-starter' | 'project-tee-starter' | 'plugin' | 'plugin-quick',
   targetDir: string
 ) {
   const packageName = getPackageName(templateType);
@@ -155,7 +157,7 @@ export async function copyTemplate(
   await copyDir(templateDir, targetDir);
 
   // For plugin templates, replace hardcoded "plugin-starter" strings in source files
-  if (templateType === 'plugin') {
+  if (templateType === 'plugin' || templateType === 'plugin-quick') {
     const pluginNameFromPath = path.basename(targetDir);
     await replacePluginNameInFiles(targetDir, pluginNameFromPath);
   }
@@ -225,11 +227,13 @@ export async function copyTemplate(
 }
 
 /**
- * Replace hardcoded "plugin-starter" strings in source files with the actual plugin name
+ * Replace hardcoded "plugin-starter" or "plugin-quick-starter" strings in source files with the actual plugin name
  */
 async function replacePluginNameInFiles(targetDir: string, pluginName: string): Promise<void> {
   const filesToProcess = [
     'src/index.ts',
+    'src/plugin.ts',
+    'src/__tests__/plugin.test.ts',
     '__tests__/plugin.test.ts',
     'e2e/starter-plugin.test.ts',
     'README.md',
@@ -249,8 +253,9 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
       ) {
         let content = await fs.readFile(fullPath, 'utf8');
 
-        // Replace the hardcoded plugin name in source files
+        // Replace both plugin-starter and plugin-quick-starter with the actual plugin name
         content = content.replace(/plugin-starter/g, pluginName);
+        content = content.replace(/plugin-quick-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');
         logger.debug(`Updated plugin name in ${filePath}`);
@@ -263,50 +268,4 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
   });
 
   await Promise.all(promises);
-}
-
-/**
- * Copy client dist files to the CLI package dist directory
- */
-export async function copyClientDist() {
-  logger.debug('Copying client dist files to CLI package');
-
-  const srcClientDist = path.resolve(process.cwd(), '../client/dist');
-  const destClientDist = path.resolve(process.cwd(), './dist');
-  const indexSrc = path.join(srcClientDist, 'index.html');
-  const indexDest = path.join(destClientDist, 'index.html');
-
-  await fs.mkdir(destClientDist, { recursive: true });
-
-  // Wait specifically for index.html to appear
-  let retries = 0;
-  const maxRetries = 10;
-  const retryDelay = 1000;
-  while (retries < maxRetries) {
-    if (existsSync(indexSrc)) {
-      break;
-    }
-    logger.info(`Waiting for client index.html (attempt ${retries + 1}/${maxRetries})…`);
-    await new Promise((r) => setTimeout(r, retryDelay));
-    retries++;
-  }
-
-  if (!existsSync(indexSrc)) {
-    logger.error(`index.html not found at ${indexSrc} after ${maxRetries} attempts`);
-    logger.error('Client package must be built before CLI package. Run: bun run build:client');
-    throw new Error('Client dist files not found - build the client package first');
-  }
-
-  // Copy everything
-  await copyDir(srcClientDist, destClientDist);
-
-  // Verify it made it into CLI dist
-  if (!existsSync(indexDest)) {
-    logger.error(`index.html missing in CLI dist at ${indexDest}`);
-    throw new Error('Failed to copy client files to CLI dist directory');
-  }
-
-  logger.info('✅ Client files successfully copied to CLI package');
-
-  logger.success('Client dist files copied successfully');
 }

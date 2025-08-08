@@ -1,0 +1,394 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "ElizaOS Documentation",
+  "colors": {
+    "primary": "#0B35F1",
+    "light": "#0B35F1",
+    "dark": "#0B35F1"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Docs for LLMs",
+          "icon": "robot",
+          "href": "https://eliza.how/llms-full.txt"
+        }
+      ]
+    },
+    "tabs": [
+      {
+        "tab": "Docs",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["index", "quickstart", "development"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/index",
+              "core-concepts/agents",
+              {
+                "group": "Plugins",
+                "pages": [
+                  "core-concepts/plugins",
+                  "core-concepts/plugins/actions",
+                  "core-concepts/plugins/providers",
+                  "core-concepts/plugins/evaluators"
+                ]
+              },
+              "core-concepts/projects"
+            ]
+          },
+          {
+            "group": "Deep Dive",
+            "pages": [
+              "deep-dive/architecture",
+              "deep-dive/runtime",
+              "deep-dive/services",
+              "deep-dive/plugin-internals",
+              "deep-dive/real-world-patterns"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/plugin-developer-guide",
+              "guides/plugin-publishing-guide",
+              "guides/plugin-schema-guide",
+              "guides/compose-state-guide",
+              "guides/socket-io-integration-guide",
+              {
+                "group": "Plugin Migration (0.x to 1.x)",
+                "icon": "arrow-right-arrow-left",
+                "pages": [
+                  "guides/plugin-migration/overview",
+                  "guides/plugin-migration/migration-guide",
+                  "guides/plugin-migration/state-and-providers-guide",
+                  "guides/plugin-migration/prompt-and-generation-guide",
+                  "guides/plugin-migration/advanced-migration-guide",
+                  "guides/plugin-migration/testing-guide",
+                  "guides/plugin-migration/completion-requirements"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Agents",
+            "pages": [
+              "api-reference/agents/create-a-new-agent",
+              "api-reference/agents/get-agent-details",
+              "api-reference/agents/list-all-agents",
+              "api-reference/agents/update-agent",
+              "api-reference/agents/delete-an-agent",
+              "api-reference/agents/start-an-agent",
+              "api-reference/agents/stop-an-agent",
+              "api-reference/agents/get-agent-panels",
+              "api-reference/agents/create-a-world-for-an-agent",
+              "api-reference/agents/get-all-worlds",
+              "api-reference/agents/update-a-world"
+            ]
+          },
+          {
+            "group": "Audio",
+            "pages": [
+              "api-reference/audio/generate-speech-from-text",
+              "api-reference/audio/synthesize-speech-from-text",
+              "api-reference/audio/transcribe-audio",
+              "api-reference/audio/process-audio-message",
+              "api-reference/audio/convert-conversation-to-speech"
+            ]
+          },
+          {
+            "group": "Messaging",
+            "pages": [
+              "api-reference/messaging/create-server",
+              "api-reference/messaging/create-channel",
+              "api-reference/messaging/create-central-channel",
+              "api-reference/messaging/create-group-channel",
+              "api-reference/messaging/get-or-create-dm-channel",
+              "api-reference/messaging/send-message-to-channel",
+              "api-reference/messaging/get-channel-messages",
+              "api-reference/messaging/get-channel-details",
+              "api-reference/messaging/get-channel-info",
+              "api-reference/messaging/get-channel-participants",
+              "api-reference/messaging/update-channel",
+              "api-reference/messaging/delete-channel",
+              "api-reference/messaging/delete-channel-message",
+              "api-reference/messaging/delete-all-channel-messages",
+              "api-reference/messaging/delete-all-channel-messages-by-user",
+              "api-reference/messaging/add-agent-to-server",
+              "api-reference/messaging/add-agent-to-channel",
+              "api-reference/messaging/remove-agent-from-server",
+              "api-reference/messaging/get-server-agents",
+              "api-reference/messaging/get-server-channels",
+              "api-reference/messaging/get-central-servers",
+              "api-reference/messaging/get-central-server-channels",
+              "api-reference/messaging/process-external-message",
+              "api-reference/messaging/ingest-messages-from-external-platforms",
+              "api-reference/messaging/submit-a-message-to-the-central-messaging-system",
+              "api-reference/messaging/mark-message-processing-as-complete"
+            ]
+          },
+          {
+            "group": "Memory",
+            "pages": [
+              "api-reference/memory/get-agent-memories",
+              "api-reference/memory/get-room-memories",
+              "api-reference/memory/create-a-room",
+              "api-reference/memory/update-a-memory",
+              "api-reference/memory/delete-all-agent-memories",
+              "api-reference/memory/delete-all-memories-for-a-room"
+            ]
+          },
+          {
+            "group": "Rooms",
+            "pages": [
+              "api-reference/rooms/create-a-room",
+              "api-reference/rooms/get-room-details",
+              "api-reference/rooms/get-agent-rooms",
+              "api-reference/rooms/update-a-room",
+              "api-reference/rooms/delete-a-room"
+            ]
+          },
+          {
+            "group": "Media",
+            "pages": [
+              "api-reference/media/upload-media-for-agent",
+              "api-reference/media/upload-media-to-channel"
+            ]
+          },
+          {
+            "group": "Logs",
+            "pages": [
+              "api-reference/logs/get-agent-logs",
+              "api-reference/logs/get-system-logs",
+              "api-reference/logs/get-system-logs-post",
+              "api-reference/logs/delete-a-specific-log-entry",
+              "api-reference/logs/clear-system-logs"
+            ]
+          },
+          {
+            "group": "System",
+            "pages": [
+              "api-reference/system/basic-health-check",
+              "api-reference/system/health-check-endpoint",
+              "api-reference/system/ping-health-check",
+              "api-reference/system/get-system-status",
+              "api-reference/system/get-server-debug-info",
+              "api-reference/system/get-server-debug-info-1",
+              "api-reference/system/get-local-environment-variables",
+              "api-reference/system/update-local-environment-variables",
+              "api-reference/system/stop-the-server"
+            ]
+          },
+          {
+            "group": "WebSocket",
+            "pages": ["api-reference/websocket/socketio-real-time-connection"]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["cli-reference/overview"]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "cli-reference/create",
+              "cli-reference/start",
+              "cli-reference/dev",
+              "cli-reference/env",
+              "cli-reference/agent",
+              "cli-reference/plugins",
+              "cli-reference/test",
+              "cli-reference/update",
+              "cli-reference/publish",
+              "cli-reference/monorepo",
+              "cli-reference/tee"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Plugins",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["plugins/overview"]
+          },
+          {
+            "group": "Core Plugins",
+            "pages": [
+              {
+                "group": "Bootstrap",
+                "pages": [
+                  "plugins/bootstrap",
+                  "plugins/bootstrap/complete-documentation",
+                  "plugins/bootstrap/message-flow",
+                  "plugins/bootstrap/examples",
+                  "plugins/bootstrap/testing-guide"
+                ]
+              },
+              {
+                "group": "SQL",
+                "pages": [
+                  "plugins/sql",
+                  "plugins/sql/database-adapters",
+                  "plugins/sql/schema-management",
+                  "plugins/sql/plugin-tables",
+                  "plugins/sql/examples"
+                ]
+              },
+              {
+                "group": "Knowledge",
+                "pages": [
+                  "plugins/knowledge",
+                  "plugins/knowledge/quick-start",
+                  "plugins/knowledge/complete-documentation",
+                  "plugins/knowledge/architecture-flow",
+                  "plugins/knowledge/contextual-embeddings",
+                  "plugins/knowledge/examples"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "plugins/llm",
+              "plugins/llm/openai",
+              "plugins/llm/anthropic",
+              "plugins/llm/google-genai",
+              "plugins/llm/ollama",
+              "plugins/llm/openrouter"
+            ]
+          },
+          {
+            "group": "Platform Integrations",
+            "pages": [
+              {
+                "group": "Discord",
+                "pages": [
+                  "plugins/platform/discord",
+                  "plugins/platform/discord/complete-documentation",
+                  "plugins/platform/discord/event-flow",
+                  "plugins/platform/discord/examples",
+                  "plugins/platform/discord/testing-guide"
+                ]
+              },
+              {
+                "group": "Telegram",
+                "pages": [
+                  "plugins/platform/telegram",
+                  "plugins/platform/telegram/complete-documentation",
+                  "plugins/platform/telegram/message-flow",
+                  "plugins/platform/telegram/examples",
+                  "plugins/platform/telegram/testing-guide"
+                ]
+              },
+              {
+                "group": "Twitter",
+                "pages": [
+                  "plugins/platform/twitter",
+                  "plugins/platform/twitter/complete-documentation",
+                  "plugins/platform/twitter/timeline-flow",
+                  "plugins/platform/twitter/examples",
+                  "plugins/platform/twitter/testing-guide"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "DeFi Plugins",
+            "pages": [
+              {
+                "group": "EVM",
+                "pages": [
+                  "plugins/defi/evm",
+                  "plugins/defi/evm/complete-documentation",
+                  "plugins/defi/evm/defi-operations-flow",
+                  "plugins/defi/evm/examples",
+                  "plugins/defi/evm/testing-guide"
+                ]
+              },
+              {
+                "group": "Solana",
+                "pages": [
+                  "plugins/defi/solana",
+                  "plugins/defi/solana/complete-documentation",
+                  "plugins/defi/solana/defi-operations-flow",
+                  "plugins/defi/solana/examples",
+                  "plugins/defi/solana/testing-guide"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
+  },
+  "navbar": {
+    "links": [],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/elizaos/eliza"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/elizaos",
+      "github": "https://github.com/elizaos/eliza",
+      "discord": "https://discord.gg/ai16z",
+      "youtube": "https://www.youtube.com/@elizaOSDeveloper",
+      "linkedin": "https://www.linkedin.com/company/elizalabs"
+    }
+  },
+  "seo": {
+    "indexHiddenPages": false,
+    "metadata": {
+      "og:site_name": "ElizaOS Documentation",
+      "og:type": "website",
+      "og:image": "/images/eliza-og.png",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "/images/eliza-og.png"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      {
+        "title": "Ask Perplexity",
+        "description": "Ask Perplexity about the current page",
+        "icon": "search",
+        "href": {
+          "base": "https://www.perplexity.ai/search",
+          "query": [
+            {
+              "key": "q",
+              "value": "Ask question about https://eliza.how$path.md"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

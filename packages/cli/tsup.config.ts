@@ -17,19 +17,17 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   sourcemap: false,
-  // Externalize problematic fs-related dependencies
-  external: ['fs-extra'],
+  // Only externalize fs-extra which has native dependencies
+  // We bundle most @elizaos packages but use ModuleLoader for @elizaos/server
+  // to ensure singleton patterns work correctly
+  external: ['fs-extra', '@elizaos/server'],
   platform: 'node',
   minify: false,
   target: 'esnext',
   outDir: 'dist',
   tsconfig: 'tsconfig.json',
-  banner: {
-    js: `
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-`,
-  },
+  // Remove banner to avoid duplicate createRequire declarations
+  // The module-loader.ts already handles createRequire properly
   esbuildOptions(options) {
     // Use a transform to replace @/src imports
     options.define = {

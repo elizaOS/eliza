@@ -8,8 +8,9 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -34,48 +35,11 @@ import {
  * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
  * 4. If no clear selection is made, return null for both fields
  *
- * Return in JSON format:
- * ```json
- * {
- *   "taskId": "string" | null,
- *   "selectedOption": "OPTION_NAME" | null
- * }
- * ```
- *
- * Make sure to include the ```json``` tags around the JSON object.
- */
-/**
- * Task: Extract selected task and option from user message
- *
- * Available Tasks:
- * {{#each tasks}}
- * Task ID: {{taskId}} - {{name}}
- * Available options:
- * {{#each options}}
- * - {{name}}: {{description}}
- * {{/each}}
- * - ABORT: Cancel this task
- *
- * {{/each}}
- *
- * Recent Messages:
- * {{recentMessages}}
- *
- * Instructions:
- * 1. Review the user's message and identify which task and option they are selecting
- * 2. Match against the available tasks and their options, including ABORT
- * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
- * 4. If no clear selection is made, return null for both fields
- *
- * Return in JSON format:
- * ```json
- * {
- *   "taskId": "string" | null,
- *   "selectedOption": "OPTION_NAME" | null
- * }
- * ```
- *
- * Make sure to include the ```json``` tags around the JSON object.
+ * Return in XML format:
+ * <response>
+ *   <taskId>string_or_null</taskId>
+ *   <selectedOption>OPTION_NAME_or_null</selectedOption>
+ * </response>
  */
 const optionExtractionTemplate = `# Task: Extract selected task and option from user message
 
@@ -99,15 +63,16 @@ Available options:
 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
-Return in JSON format:
-\`\`\`json
-{
-  "taskId": "string" | null,
-  "selectedOption": "OPTION_NAME" | null
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+Return in XML format:
+<response>
+  <taskId>string_or_null</taskId>
+  <selectedOption>OPTION_NAME_or_null</selectedOption>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Represents an action that allows selecting an option for a pending task that has multiple options.
@@ -164,7 +129,7 @@ export const choiceAction: Action = {
         pendingTasks.some((task) => task.metadata?.options)
       );
     } catch (error) {
-      logger.error('Error validating choice action:', error);
+      logger.error({ error }, 'Error validating choice action');
       return false;
     }
   },
@@ -176,20 +141,42 @@ export const choiceAction: Action = {
     _options?: any,
     callback?: HandlerCallback,
     _responses?: Memory[]
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
       tags: ['AWAITING_CHOICE'],
     });
 
     if (!pendingTasks?.length) {
-      throw new Error('No pending tasks with options found');
+      return {
+        text: 'No pending tasks with options found',
+        values: {
+          success: false,
+          error: 'NO_PENDING_TASKS',
+        },
+        data: {
+          actionName: 'CHOOSE_OPTION',
+          error: 'No pending tasks with options found',
+        },
+        success: false,
+      };
     }
 
     const tasksWithOptions = pendingTasks.filter((task) => task.metadata?.options);
 
     if (!tasksWithOptions.length) {
-      throw new Error('No tasks currently have options to select from.');
+      return {
+        text: 'No tasks currently have options to select from',
+        values: {
+          success: false,
+          error: 'NO_OPTIONS_AVAILABLE',
+        },
+        data: {
+          actionName: 'CHOOSE_OPTION',
+          error: 'No tasks currently have options to select from',
+        },
+        success: false,
+      };
     }
 
     // Format tasks with their options for the LLM, using shortened UUIDs
@@ -228,13 +215,13 @@ export const choiceAction: Action = {
       stopSequences: [],
     });
 
-    const parsed = parseJSONObjectFromText(result);
+    const parsed = parseKeyValueXml(result);
     const { taskId, selectedOption } = parsed as any;
 
     if (taskId && selectedOption) {
       // Find the task by matching the shortened UUID
       const taskMap = new Map(formattedTasks.map((task) => [task.taskId, task]));
-      const taskInfo = taskMap.get(taskId);
+      const taskInfo = taskMap.get(taskId) as (typeof formattedTasks)[0] | undefined;
 
       if (!taskInfo) {
         await callback?.({
@@ -242,7 +229,20 @@ export const choiceAction: Action = {
           actions: ['SELECT_OPTION_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: `Could not find task with ID: ${taskId}`,
+          values: {
+            success: false,
+            error: 'TASK_NOT_FOUND',
+            taskId,
+          },
+          data: {
+            actionName: 'CHOOSE_OPTION',
+            error: 'Task not found',
+            taskId,
+          },
+          success: false,
+        };
       }
 
       // Find the actual task using the full UUID
@@ -254,7 +254,18 @@ export const choiceAction: Action = {
           actions: ['SELECT_OPTION_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: 'Error locating the selected task',
+          values: {
+            success: false,
+            error: 'TASK_LOOKUP_ERROR',
+          },
+          data: {
+            actionName: 'CHOOSE_OPTION',
+            error: 'Failed to locate task',
+          },
+          success: false,
+        };
       }
 
       if (selectedOption === 'ABORT') {
@@ -264,7 +275,18 @@ export const choiceAction: Action = {
             actions: ['SELECT_OPTION_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: 'Error aborting task',
+            values: {
+              success: false,
+              error: 'ABORT_ERROR',
+            },
+            data: {
+              actionName: 'CHOOSE_OPTION',
+              error: 'Could not abort task',
+            },
+            success: false,
+          };
         }
 
         await runtime.deleteTask(selectedTask.id);
@@ -273,7 +295,22 @@ export const choiceAction: Action = {
           actions: ['CHOOSE_OPTION_CANCELLED'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: `Task "${selectedTask.name}" has been cancelled`,
+          values: {
+            success: true,
+            taskAborted: true,
+            taskId: selectedTask.id,
+            taskName: selectedTask.name,
+          },
+          data: {
+            actionName: 'CHOOSE_OPTION',
+            selectedOption: 'ABORT',
+            taskId: selectedTask.id,
+            taskName: selectedTask.name,
+          },
+          success: true,
+        };
       }
 
       try {
@@ -284,15 +321,45 @@ export const choiceAction: Action = {
           actions: ['CHOOSE_OPTION'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
+          values: {
+            success: true,
+            selectedOption,
+            taskId: selectedTask.id,
+            taskName: selectedTask.name,
+            taskExecuted: true,
+          },
+          data: {
+            actionName: 'CHOOSE_OPTION',
+            selectedOption,
+            taskId: selectedTask.id,
+            taskName: selectedTask.name,
+          },
+          success: true,
+        };
       } catch (error) {
-        logger.error('Error executing task with option:', error);
+        logger.error({ error }, 'Error executing task with option');
         await callback?.({
           text: 'There was an error processing your selection.',
           actions: ['SELECT_OPTION_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: 'Error processing selection',
+          values: {
+            success: false,
+            error: 'EXECUTION_ERROR',
+          },
+          data: {
+            actionName: 'CHOOSE_OPTION',
+            error: error instanceof Error ? error.message : String(error),
+            taskId: selectedTask.id,
+            selectedOption,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
       }
     }
 
@@ -317,6 +384,21 @@ export const choiceAction: Action = {
       actions: ['SELECT_OPTION_INVALID'],
       source: message.content.source,
     });
+
+    return {
+      text: 'No valid option selected',
+      values: {
+        success: false,
+        error: 'NO_SELECTION',
+        availableTasks: tasksWithOptions.length,
+      },
+      data: {
+        actionName: 'CHOOSE_OPTION',
+        error: 'No valid selection made',
+        availableTasks: formattedTasks,
+      },
+      success: false,
+    };
   },
 
   examples: [

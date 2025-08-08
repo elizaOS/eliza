@@ -42,27 +42,40 @@ elizaos test
 
 ## Testing
 
-ElizaOS provides a comprehensive testing structure for projects:
+ElizaOS employs a dual testing strategy:
+
+1. **Component Tests** (`src/__tests__/*.test.ts`)
+
+   - Run with Bun's native test runner
+   - Fast, isolated tests using mocks
+   - Perfect for TDD and component logic
+
+2. **E2E Tests** (`src/__tests__/e2e/*.e2e.ts`)
+   - Run with ElizaOS custom test runner
+   - Real runtime with actual database (PGLite)
+   - Test complete user scenarios
 
 ### Test Structure
 
-- **Component Tests** (`__tests__/` directory):
+```
+src/
+  __tests__/              # All tests live inside src
+    *.test.ts            # Component tests (use Bun test runner)
+    e2e/                 # E2E tests (use ElizaOS test runner)
+      project-starter.e2e.ts  # E2E test suite
+      README.md          # E2E testing documentation
+  index.ts               # Export tests here: tests: [ProjectStarterTestSuite]
+```
 
-  - **Unit Tests**: Test individual functions and components in isolation
-  - **Integration Tests**: Test how components work together
-  - Run with: `elizaos test component`
+### Running Tests
 
-- **End-to-End Tests** (`e2e/` directory):
-
-  - Test the project within a full ElizaOS runtime
-  - Run with: `elizaos test e2e`
-
-- **Running All Tests**:
-  - `elizaos test` runs both component and e2e tests
+- `elizaos test` - Run all tests (component + e2e)
+- `elizaos test component` - Run only component tests
+- `elizaos test e2e` - Run only E2E tests
 
 ### Writing Tests
 
-Component tests use Vitest:
+Component tests use bun:test:
 
 ```typescript
 // Unit test example (__tests__/config.test.ts)

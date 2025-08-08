@@ -5,10 +5,10 @@ import * as semver from 'semver';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync, readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { resolveEnvFile } from './resolve-utils';
 import { emoji } from './emoji-handler';
 import { autoInstallBun, shouldAutoInstall } from './auto-install-bun';
+import { bunExecSimple } from './bun-exec';
 
 // Types
 interface OSInfo {
@@ -110,9 +110,7 @@ export class UserEnvironment {
         path: process.argv[1] || '',
       };
     } catch (error) {
-      logger.warn(
-        `[UserEnvironment] Error getting CLI info: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logger.warn({ error }, `[UserEnvironment] Error getting CLI info`);
       return {
         version: '0.0.0',
         name: '@elizaos/cli',
@@ -128,91 +126,116 @@ export class UserEnvironment {
     logger.debug('[UserEnvironment] Using bun as the package manager for ElizaOS CLI');
 
     const isNpx = process.env.npm_execpath?.includes('npx');
-    const isBunx = process.argv[0]?.includes('bun');
+    // Check if running via bunx by looking for bunx cache patterns in the script path
+    const scriptPath = process.argv[1] || '';
+    const isBunx =
+      scriptPath.includes('.bun/install/cache/') ||
+      scriptPath.includes('bunx') ||
+      process.env.BUN_INSTALL_CACHE_DIR !== undefined;
 
     let version: string | null = null;
 
-    try {
-      // Get bun version
-      const { stdout } = await import('execa').then(({ execa }) => execa('bun', ['--version']));
-      version = stdout.trim();
-      logger.debug(`[UserEnvironment] Bun version: ${version}`);
-    } catch (e) {
-      logger.debug(
-        `[UserEnvironment] Could not get bun version: ${e instanceof Error ? e.message : String(e)}`
-      );
+    // First check if we're already running under Bun
+    if (typeof Bun !== 'undefined' && Bun.version) {
+      version = Bun.version;
+      logger.debug(`[UserEnvironment] Running under Bun runtime, version: ${version}`);
+    } else {
+      try {
+        // Get bun version from command line
+        const { stdout } = await bunExecSimple('bun', ['--version']);
+        version = stdout.trim();
+        logger.debug(`[UserEnvironment] Bun version: ${version}`);
+      } catch (e) {
+        logger.debug({ error: e }, `[UserEnvironment] Could not get bun version:`);
 
-      // Attempt auto-installation if conditions are met
-      if (shouldAutoInstall()) {
-        logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
-        const installSuccess = await autoInstallBun();
+        // Attempt auto-installation if conditions are met
+        if (shouldAutoInstall()) {
+          logger.info(`${emoji.info('Attempting to automatically install Bun...')}`);
+          const installSuccess = await autoInstallBun();
 
-        if (installSuccess) {
-          // Try to get version again after installation
-          try {
-            const { stdout } = await import('execa').then(({ execa }) =>
-              execa('bun', ['--version'])
-            );
-            version = stdout.trim();
-            logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
-          } catch (retryError) {
-            logger.error(
-              `Failed to verify Bun installation after auto-install: ${
-                retryError instanceof Error ? retryError.message : String(retryError)
-              }`
-            );
-            // Continue to manual installation instructions
+          if (installSuccess) {
+            // Try to get version again after installation
+            try {
+              const { stdout } = await bunExecSimple('bun', ['--version']);
+              version = stdout.trim();
+              logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
+            } catch (retryError) {
+              logger.error(
+                { error: retryError },
+                'Failed to verify Bun installation after auto-install:'
+              );
+              // Continue to manual installation instructions
+            }
           }
         }
-      }
 
-      // If auto-installation failed or was not attempted, show manual instructions
-      if (!version) {
-        const platform = process.platform;
-        logger.error(
-          `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
-        );
-        logger.error('');
-        logger.error(
-          `${emoji.rocket('Install Bun using the appropriate command for your system:')}`
-        );
-        logger.error('');
+        // If auto-installation failed or was not attempted, show manual instructions
+        if (!version) {
+          const platform = process.platform;
+          logger.error(
+            `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+          );
+          logger.error('');
+          logger.error(
+            `${emoji.rocket('Install Bun using the appropriate command for your system:')}`
+          );
+          logger.error('');
 
-        if (platform === 'win32') {
-          logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
-        } else {
-          logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
-          if (platform === 'darwin') {
-            logger.error('   macOS (Homebrew): brew install bun');
+          if (platform === 'win32') {
+            logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+          } else {
+            logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+            if (platform === 'darwin') {
+              logger.error('   macOS (Homebrew): brew install bun');
+            }
           }
-        }
-        logger.error('');
-        logger.error('   More options: https://bun.sh/docs/installation');
-        logger.error('   After installation, restart your terminal or source your shell profile');
-        logger.error('');
+          logger.error('');
+          logger.error('   More options: https://bun.sh/docs/installation');
+          logger.error('   After installation, restart your terminal or source your shell profile');
+          logger.error('');
 
-        // Force exit the process - Bun is required for ElizaOS CLI
-        logger.error('🔴 Exiting: Bun installation is required to continue.');
-        process.exit(1);
+          // Force exit the process - Bun is required for ElizaOS CLI
+          logger.error('🔴 Exiting: Bun installation is required to continue.');
+          process.exit(1);
+        }
       }
     }
 
     const packageName = '@elizaos/cli';
     let isGlobalCheck = false;
+
+    // First check if the script path indicates a global installation
+    const cliPath = process.argv[1] || '';
+    const isInGlobalPath =
+      cliPath.includes('/.bun/install/global/') ||
+      cliPath.includes('/npm/global/') ||
+      (process.platform === 'win32' && cliPath.includes('\\npm\\'));
+
     try {
       // Check if running via npx/bunx first, as these might trigger global check falsely
       if (!isNpx && !isBunx) {
-        // Check if bun has the CLI installed globally
-        const command =
-          process.platform === 'win32'
-            ? `bun pm ls -g | findstr "${packageName}"`
-            : `bun pm ls -g | grep -q "${packageName}"`;
-        execSync(command, { stdio: 'ignore' });
-        isGlobalCheck = true;
+        // If we're already in a global path, consider it global
+        if (isInGlobalPath) {
+          isGlobalCheck = true;
+        } else {
+          // Check if bun has the CLI installed globally
+          // Use Bun.spawnSync for checking global packages
+          const args =
+            process.platform === 'win32'
+              ? ['cmd', '/c', `bun pm ls -g | findstr "${packageName}"`]
+              : ['sh', '-c', `bun pm ls -g | grep -q "${packageName}"`];
+
+          const proc = Bun.spawnSync(args, {
+            stdout: 'ignore',
+            stderr: 'ignore',
+          });
+
+          isGlobalCheck = proc.exitCode === 0;
+        }
       }
     } catch (error) {
-      // Package not found globally
-      isGlobalCheck = false;
+      // Package not found globally - but still might be global based on path
+      isGlobalCheck = isInGlobalPath;
     }
 
     // Combine check with NODE_ENV check
@@ -382,8 +405,7 @@ export class UserEnvironment {
 
       // Try npm as last resort
       try {
-        const { execa } = await import('execa');
-        const { stdout } = await execa('npm', ['view', packageName, 'version']);
+        const { stdout } = await bunExecSimple('npm', ['view', packageName, 'version']);
         if (stdout?.trim()) {
           logger.info(`Found latest version of ${packageName} from npm: ${stdout.trim()}`);
           return stdout.trim();
@@ -394,7 +416,7 @@ export class UserEnvironment {
 
       return '0.25.9'; // Default fallback
     } catch (error) {
-      logger.warn(`Error getting package version for ${packageName}: ${error}`);
+      logger.warn({ error, packageName }, `Error getting package version`);
       return '0.25.9';
     }
   }
@@ -417,7 +439,7 @@ export class UserEnvironment {
 
       return pluginPackages;
     } catch (error) {
-      logger.warn(`Error getting local packages: ${error}`);
+      logger.warn({ error }, `Error getting local packages`);
       return [];
     }
   }

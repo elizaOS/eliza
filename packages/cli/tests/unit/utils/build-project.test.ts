@@ -10,8 +10,8 @@ const mockLogger = {
   debug: mock(),
 };
 
-const mockExeca = mock();
-const mockRunBunCommand = mock();
+const mockBunExec = mock();
+const mockRunBunWithSpinner = mock();
 const mockExistsSync = mock();
 const mockReadFileSync = mock();
 const mockRm = mock();
@@ -22,12 +22,12 @@ mock.module('@elizaos/core', () => ({
   logger: mockLogger,
 }));
 
-mock.module('execa', () => ({
-  execa: mockExeca,
+mock.module('../../../src/utils/bun-exec', () => ({
+  bunExec: mockBunExec,
 }));
 
-mock.module('../../../src/utils/run-bun', () => ({
-  runBunCommand: mockRunBunCommand,
+mock.module('../../../src/utils/spinner-utils', () => ({
+  runBunWithSpinner: mockRunBunWithSpinner,
 }));
 
 mock.module('node:fs', () => ({
@@ -53,8 +53,8 @@ describe('buildProject', () => {
     mockLogger.error.mockClear();
     mockLogger.warn.mockClear();
     mockLogger.debug.mockClear();
-    mockExeca.mockClear();
-    mockRunBunCommand.mockClear();
+    mockBunExec.mockClear();
+    mockRunBunWithSpinner.mockClear();
     mockExistsSync.mockClear();
     mockReadFileSync.mockClear();
     mockRm.mockClear();
@@ -76,7 +76,7 @@ describe('buildProject', () => {
         },
       })
     );
-    mockRunBunCommand.mockResolvedValue(undefined);
+    mockRunBunWithSpinner.mockResolvedValue({ success: true });
     mockRm.mockResolvedValue(undefined);
   });
 
@@ -84,26 +84,34 @@ describe('buildProject', () => {
     // Clean up any environment state
   });
 
-  it('should log correct messages and call runBunCommand for project build', async () => {
+  it('should log correct messages and call runBunWithSpinner for project build', async () => {
     await buildProject(testProjectPath);
 
-    // Verify logger calls
-    expect(mockLogger.info).toHaveBeenCalledWith(`Building project in ${testProjectPath}...`);
-    expect(mockLogger.info).toHaveBeenCalledWith('Build completed successfully');
-
-    // Verify runBunCommand was called with correct parameters
-    expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], testProjectPath);
+    // Verify runBunWithSpinner was called with correct parameters
+    expect(mockRunBunWithSpinner).toHaveBeenCalledWith(
+      ['run', 'build'],
+      testProjectPath,
+      expect.objectContaining({
+        spinnerText: 'Building project...',
+        successText: expect.stringContaining('Project built successfully'),
+        errorText: 'Failed to build project',
+      })
+    );
   });
 
-  it('should log correct messages and call runBunCommand for plugin build', async () => {
+  it('should log correct messages and call runBunWithSpinner for plugin build', async () => {
     await buildProject(testPluginPath, true);
 
-    // Verify plugin-specific logging
-    expect(mockLogger.info).toHaveBeenCalledWith(`Building plugin in ${testPluginPath}...`);
-    expect(mockLogger.info).toHaveBeenCalledWith('Build completed successfully');
-
-    // Verify runBunCommand was called for plugin
-    expect(mockRunBunCommand).toHaveBeenCalledWith(['run', 'build'], testPluginPath);
+    // Verify plugin-specific call
+    expect(mockRunBunWithSpinner).toHaveBeenCalledWith(
+      ['run', 'build'],
+      testPluginPath,
+      expect.objectContaining({
+        spinnerText: 'Building plugin...',
+        successText: expect.stringContaining('Plugin built successfully'),
+        errorText: 'Failed to build plugin',
+      })
+    );
   });
 
   it('should clean dist directory before building', async () => {
@@ -137,17 +145,16 @@ describe('buildProject', () => {
       return !pathStr.includes('dist');
     });
 
-    mockExeca.mockResolvedValue({ exitCode: 0 });
+    mockBunExec.mockResolvedValue({ success: true, stdout: '', stderr: '', exitCode: 0 });
 
     await buildProject(testProjectPath);
 
     // Verify fallback to tsc
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockBunExec).toHaveBeenCalledWith(
       'bunx',
       ['tsc', '--build'],
       expect.objectContaining({
         cwd: testProjectPath,
-        stdio: 'inherit',
       })
     );
   });
@@ -175,16 +182,9 @@ describe('buildProject', () => {
 
   it('should handle build errors and log them correctly', async () => {
     const buildError = new Error('Build failed');
-    mockRunBunCommand.mockRejectedValue(buildError);
+    mockRunBunWithSpinner.mockResolvedValue({ success: false, error: buildError });
 
-    await expect(buildProject(testProjectPath)).rejects.toThrow(
-      'Failed to build using bun: Error: Build failed'
-    );
-
-    // Verify error logging
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      'Failed to build project: Error: Failed to build using bun: Error: Build failed'
-    );
+    await expect(buildProject(testProjectPath)).rejects.toThrow('Build failed');
   });
 
   it('should throw error when no build method can be determined', async () => {
@@ -206,7 +206,7 @@ describe('buildProject', () => {
     );
   });
 
-  it('should warn when no build script is found', async () => {
+  it('should handle tsc build failure', async () => {
     // Mock package.json without build script
     mockReadFileSync.mockReturnValue(
       JSON.stringify({
@@ -221,11 +221,8 @@ describe('buildProject', () => {
       return !pathStr.includes('dist');
     });
 
-    mockExeca.mockResolvedValue({ exitCode: 0 });
+    mockBunExec.mockResolvedValue({ success: false, stdout: '', stderr: 'tsc error', exitCode: 1 });
 
-    await buildProject(testProjectPath);
-
-    // Verify warning was logged
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('No build script found'));
+    await expect(buildProject(testProjectPath)).rejects.toThrow('bunx tsc build failed: tsc error');
   });
 });

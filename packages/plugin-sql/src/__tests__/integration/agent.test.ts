@@ -839,7 +839,7 @@ describe('Agent Integration Tests', () => {
           // Verify all data was created
           expect(await cascadeAdapter.getWorld(worldId)).not.toBeNull();
           expect((await cascadeAdapter.getRoomsByIds([roomId1, roomId2]))?.length).toBe(2);
-          expect((await cascadeAdapter.getEntityByIds([entityId1, entityId2]))?.length).toBe(2);
+          expect((await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]))?.length).toBe(2);
           expect(await cascadeAdapter.getMemoryById(memoryId1)).not.toBeNull();
           expect(await cascadeAdapter.getMemoryById(memoryId2)).not.toBeNull();
           expect(await cascadeAdapter.getTask(taskId)).not.toBeNull();
@@ -861,7 +861,7 @@ describe('Agent Integration Tests', () => {
           expect(rooms).toEqual([]);
 
           // Entities should be deleted
-          const entities = await cascadeAdapter.getEntityByIds([entityId1, entityId2]);
+          const entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
           expect(entities).toEqual([]);
 
           // Memories should be deleted

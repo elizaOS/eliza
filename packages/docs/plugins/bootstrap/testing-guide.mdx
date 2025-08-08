@@ -1,0 +1,587 @@
+---
+title: "Testing Guide"
+description: "Testing patterns and best practices for the bootstrap plugin"
+---
+
+# Testing Guide for @elizaos/plugin-bootstrap
+
+This guide covers testing patterns and best practices for developing with the plugin-bootstrap package.
+
+## Overview
+
+The plugin-bootstrap package includes a comprehensive test suite that demonstrates how to test:
+
+- <Icon icon="wrench" /> Actions
+- <Icon icon="chart-bar" /> Providers
+- <Icon icon="brain" /> Evaluators
+- <Icon icon="clock" /> Services
+- <Icon icon="envelope" /> Event Handlers
+- <Icon icon="refresh" /> Message Processing Logic
+
+## Test Setup
+
+### Test Framework
+
+This plugin uses **Bun's built-in test runner**, not Vitest. Bun provides a Jest-compatible testing API with excellent TypeScript support and fast execution.
+
+### Using the Standard Test Utilities
+
+The package provides robust test utilities in `src/__tests__/test-utils.ts`:
+
+```typescript
+import { setupActionTest } from '@elizaos/plugin-bootstrap/test-utils';
+
+describe('My Component', () => {
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
+  let callbackFn: ReturnType<typeof mock>;
+
+  beforeEach(() => {
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn;
+  });
+});
+```
+
+### Available Mock Factories
+
+```typescript
+// Create a mock runtime with all methods
+const runtime = createMockRuntime();
+
+// Create a mock memory/message
+const message = createMockMemory({
+  content: { text: 'Hello world' },
+  entityId: 'user-123',
+  roomId: 'room-456',
+});
+
+// Create a mock state
+const state = createMockState({
+  values: {
+    customKey: 'customValue',
+  },
+});
+
+// Create a mock service
+const service = createMockService({
+  serviceType: ServiceType.TASK,
+});
+```
+
+## Testing Patterns
+
+### Testing Actions
+
+#### Basic Action Test
+
+```typescript
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { replyAction } from '../actions/reply';
+import { setupActionTest } from '../test-utils';
+
+describe('Reply Action', () => {
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
+  let callbackFn: ReturnType<typeof mock>;
+
+  beforeEach(() => {
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn;
+  });
+
+  it('should validate successfully', async () => {
+    const result = await replyAction.validate(mockRuntime);
+    expect(result).toBe(true);
+  });
+
+  it('should generate appropriate response', async () => {
+    // Setup LLM response
+    mockRuntime.useModel.mockResolvedValue({
+      thought: 'User greeted me',
+      message: 'Hello! How can I help you?',
+    });
+
+    // Execute action
+    await replyAction.handler(
+      mockRuntime,
+      mockMessage as Memory,
+      mockState as State,
+      {},
+      callbackFn
+    );
+
+    // Verify callback was called with correct content
+    expect(callbackFn).toHaveBeenCalledWith({
+      thought: 'User greeted me',
+      text: 'Hello! How can I help you?',
+      actions: ['REPLY'],
+    });
+  });
+});
+```
+
+#### Testing Action with Dependencies
+
+```typescript
+describe('Follow Room Action', () => {
+  it('should update participation status', async () => {
+    const setup = setupActionTest();
+
+    // Setup room data
+    setup.mockRuntime.getRoom.mockResolvedValue({
+      id: 'room-123',
+      type: ChannelType.TEXT,
+      participants: ['user-123'],
+    });
+
+    // Execute action
+    await followRoomAction.handler(
+      setup.mockRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State,
+      {},
+      setup.callbackFn
+    );
+
+    // Verify runtime methods were called
+    expect(setup.mockRuntime.updateParticipantUserState).toHaveBeenCalledWith(
+      'room-123',
+      setup.mockRuntime.agentId,
+      'FOLLOWED'
+    );
+
+    // Verify callback
+    expect(setup.callbackFn).toHaveBeenCalledWith({
+      text: expect.stringContaining('followed'),
+      actions: ['FOLLOW_ROOM'],
+    });
+  });
+});
+```
+
+### Testing Providers
+
+```typescript
+import { recentMessagesProvider } from '../providers/recentMessages';
+
+describe('Recent Messages Provider', () => {
+  it('should format conversation history', async () => {
+    const setup = setupActionTest();
+
+    // Mock recent messages
+    const recentMessages = [
+      createMockMemory({
+        content: { text: 'Hello' },
+        entityId: 'user-123',
+        createdAt: Date.now() - 60000,
+      }),
+      createMockMemory({
+        content: { text: 'Hi there!' },
+        entityId: setup.mockRuntime.agentId,
+        createdAt: Date.now() - 30000,
+      }),
+    ];
+
+    setup.mockRuntime.getMemories.mockResolvedValue(recentMessages);
+    setup.mockRuntime.getEntityById.mockResolvedValue({
+      id: 'user-123',
+      names: ['Alice'],
+      metadata: { userName: 'alice' },
+    });
+
+    // Get provider data
+    const result = await recentMessagesProvider.get(setup.mockRuntime, setup.mockMessage as Memory);
+
+    // Verify structure
+    expect(result).toHaveProperty('data');
+    expect(result).toHaveProperty('values');
+    expect(result).toHaveProperty('text');
+
+    // Verify content
+    expect(result.data.recentMessages).toHaveLength(2);
+    expect(result.text).toContain('Alice: Hello');
+    expect(result.text).toContain('Hi there!');
+  });
+});
+```
+
+### Testing Evaluators
+
+```typescript
+import { reflectionEvaluator } from '../evaluators/reflection';
+
+describe('Reflection Evaluator', () => {
+  it('should extract facts from conversation', async () => {
+    const setup = setupActionTest();
+
+    // Mock LLM response with facts
+    setup.mockRuntime.useModel.mockResolvedValue({
+      thought: 'Learned new information about user',
+      facts: [
+        {
+          claim: 'User likes coffee',
+          type: 'fact',
+          in_bio: false,
+          already_known: false,
+        },
+      ],
+      relationships: [],
+    });
+
+    // Execute evaluator
+    const result = await reflectionEvaluator.handler(
+      setup.mockRuntime,
+      setup.mockMessage as Memory,
+      setup.mockState as State
+    );
+
+    // Verify facts were saved
+    expect(setup.mockRuntime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { text: 'User likes coffee' },
+      }),
+      'facts',
+      true
+    );
+  });
+});
+```
+
+### Testing Message Processing
+
+```typescript
+import { messageReceivedHandler } from '../index';
+
+describe('Message Processing', () => {
+  it('should process message end-to-end', async () => {
+    const setup = setupActionTest();
+    const onComplete = mock();
+
+    // Setup room and state
+    setup.mockRuntime.getRoom.mockResolvedValue({
+      id: 'room-123',
+      type: ChannelType.TEXT,
+    });
+
+    // Mock shouldRespond decision
+    setup.mockRuntime.useModel
+      .mockResolvedValueOnce('<action>REPLY</action>') // shouldRespond
+      .mockResolvedValueOnce({
+        // response generation
+        thought: 'Responding to greeting',
+        actions: ['REPLY'],
+        text: 'Hello!',
+        simple: true,
+      });
+
+    // Process message
+    await messageReceivedHandler({
+      runtime: setup.mockRuntime,
+      message: setup.mockMessage as Memory,
+      callback: setup.callbackFn,
+      onComplete,
+    });
+
+    // Verify flow
+    expect(setup.mockRuntime.addEmbeddingToMemory).toHaveBeenCalled();
+    expect(setup.mockRuntime.createMemory).toHaveBeenCalled();
+    expect(setup.callbackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Hello!',
+        actions: ['REPLY'],
+      })
+    );
+    expect(onComplete).toHaveBeenCalled();
+  });
+});
+```
+
+### Testing Services
+
+```typescript
+import { TaskService } from '../services/task';
+
+describe('Task Service', () => {
+  it('should execute repeating tasks', async () => {
+    const setup = setupActionTest();
+
+    // Create task
+    const task = {
+      id: 'task-123',
+      name: 'TEST_TASK',
+      metadata: {
+        updateInterval: 1000,
+        updatedAt: Date.now() - 2000,
+      },
+      tags: ['queue', 'repeat'],
+    };
+
+    // Register worker
+    const worker = {
+      name: 'TEST_TASK',
+      execute: mock(),
+    };
+    setup.mockRuntime.registerTaskWorker(worker);
+    setup.mockRuntime.getTaskWorker.mockReturnValue(worker);
+    setup.mockRuntime.getTasks.mockResolvedValue([task]);
+
+    // Start service
+    const service = await TaskService.start(setup.mockRuntime);
+
+    // Wait for tick
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    // Verify execution
+    expect(worker.execute).toHaveBeenCalled();
+    expect(setup.mockRuntime.updateTask).toHaveBeenCalledWith(
+      'task-123',
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          updatedAt: expect.any(Number),
+        }),
+      })
+    );
+
+    // Cleanup
+    await service.stop();
+  });
+});
+```
+
+## Testing Best Practices
+
+### 1. Use Standard Test Setup
+
+Always use the provided test utilities for consistency:
+
+```typescript
+const setup = setupActionTest({
+  messageOverrides: {
+    /* custom message props */
+  },
+  stateOverrides: {
+    /* custom state */
+  },
+  runtimeOverrides: {
+    /* custom runtime behavior */
+  },
+});
+```
+
+### 2. Test Edge Cases
+
+```typescript
+it('should handle missing attachments gracefully', async () => {
+  setup.mockMessage.content.attachments = undefined;
+  // Test continues without error
+});
+
+it('should handle network failures', async () => {
+  setup.mockRuntime.useModel.mockRejectedValue(new Error('Network error'));
+  // Verify graceful error handling
+});
+```
+
+### 3. Mock External Dependencies
+
+```typescript
+// Mock fetch for external APIs
+import { mock } from 'bun:test';
+
+// Create mock for fetch
+globalThis.fetch = mock().mockResolvedValue({
+  ok: true,
+  arrayBuffer: () => Promise.resolve(Buffer.from('test')),
+  headers: new Map([['content-type', 'image/png']]),
+});
+```
+
+### 4. Test Async Operations
+
+```typescript
+it('should handle concurrent messages', async () => {
+  const messages = [
+    createMockMemory({ content: { text: 'Message 1' } }),
+    createMockMemory({ content: { text: 'Message 2' } }),
+  ];
+
+  // Process messages concurrently
+  await Promise.all(
+    messages.map((msg) =>
+      messageReceivedHandler({
+        runtime: setup.mockRuntime,
+        message: msg,
+        callback: setup.callbackFn,
+      })
+    )
+  );
+
+  // Verify both processed correctly
+  expect(setup.callbackFn).toHaveBeenCalledTimes(2);
+});
+```
+
+### 5. Verify State Changes
+
+```typescript
+it('should update agent state correctly', async () => {
+  // Initial state
+  expect(setup.mockRuntime.getMemories).toHaveBeenCalledTimes(0);
+
+  // Action that modifies state
+  await action.handler(...);
+
+  // Verify state changes
+  expect(setup.mockRuntime.createMemory).toHaveBeenCalled();
+  expect(setup.mockRuntime.updateRelationship).toHaveBeenCalled();
+});
+```
+
+## Common Testing Scenarios
+
+### Testing Room Type Behavior
+
+```typescript
+describe('Room Type Handling', () => {
+  it.each([
+    [ChannelType.DM, true],
+    [ChannelType.TEXT, false],
+    [ChannelType.VOICE_DM, true],
+  ])('should bypass shouldRespond for %s: %s', async (roomType, shouldBypass) => {
+    setup.mockRuntime.getRoom.mockResolvedValue({
+      id: 'room-123',
+      type: roomType,
+    });
+
+    // Test behavior based on room type
+  });
+});
+```
+
+### Testing Provider Context
+
+```typescript
+it('should include all requested providers', async () => {
+  const state = await setup.mockRuntime.composeState(setup.mockMessage, [
+    'RECENT_MESSAGES',
+    'ENTITIES',
+    'RELATIONSHIPS',
+  ]);
+
+  expect(state.providerData).toHaveLength(3);
+  expect(state.providerData[0].providerName).toBe('RECENT_MESSAGES');
+});
+```
+
+### Testing Error Recovery
+
+```typescript
+it('should recover from provider errors', async () => {
+  // Make one provider fail
+  setup.mockRuntime.getMemories.mockRejectedValueOnce(new Error('DB error'));
+
+  // Should still process message
+  await messageReceivedHandler({...});
+
+  // Verify graceful degradation
+  expect(setup.callbackFn).toHaveBeenCalled();
+});
+```
+
+## Running Tests
+
+```bash
+# Run all bootstrap tests
+bun test
+
+# Run specific test file
+bun test packages/plugin-bootstrap/src/__tests__/actions.test.ts
+
+# Run tests in watch mode
+bun test --watch
+
+# Run with coverage
+bun test --coverage
+```
+
+## Bun Test Features
+
+Bun's test runner provides several advantages:
+
+1. **Fast execution** - Tests run directly in Bun's runtime
+2. **Built-in TypeScript** - No compilation step needed
+3. **Jest compatibility** - Familiar API for developers
+4. **Built-in mocking** - The `mock()` function is built-in
+5. **Snapshot testing** - Built-in support for snapshots
+6. **Watch mode** - Automatic re-running on file changes
+
+### Bun Mock API
+
+```typescript
+import { mock } from 'bun:test';
+
+// Create a mock function
+const mockFn = mock();
+
+// Set return value
+mockFn.mockReturnValue('value');
+mockFn.mockResolvedValue('async value');
+
+// Set implementation
+mockFn.mockImplementation((arg) => arg * 2);
+
+// Check calls
+expect(mockFn).toHaveBeenCalled();
+expect(mockFn).toHaveBeenCalledWith('arg');
+expect(mockFn).toHaveBeenCalledTimes(2);
+
+// Reset mocks
+mock.restore(); // Reset all mocks
+mockFn.mockReset(); // Reset specific mock
+```
+
+## Tips for Writing Tests
+
+1. **Start with the happy path** - Test normal operation first
+2. **Add edge cases** - Empty arrays, null values, errors
+3. **Test async behavior** - Timeouts, retries, concurrent operations
+4. **Verify side effects** - Database updates, event emissions
+5. **Keep tests focused** - One concept per test
+6. **Use descriptive names** - Should describe what is being tested
+7. **Mock at boundaries** - Mock external services, not internal logic
+
+## Debugging Tests
+
+```typescript
+// Add console logs to debug
+it('should process correctly', async () => {
+  setup.mockRuntime.useModel.mockImplementation(async (type, params) => {
+    console.log('Model called with:', { type, params });
+    return mockResponse;
+  });
+
+  // Step through with debugger
+  debugger;
+  await action.handler(...);
+});
+```
+
+## Differences from Vitest
+
+If you're familiar with Vitest, here are the key differences:
+
+1. **Import from `bun:test`** instead of `vitest`
+2. **No need for `vi` prefix** - Just use `mock()` directly
+3. **No configuration file** - Bun test works out of the box
+4. **Different CLI commands** - Use `bun test` instead of `vitest`
+
+Remember: Good tests make development faster and more confident. The test suite is your safety net when making changes!

@@ -1,0 +1,210 @@
+---
+title: "Database Management"
+description: "Database integration and management for elizaOS"
+---
+
+
+The `@elizaos/plugin-sql` provides comprehensive database management for elizaOS agents, featuring automatic schema migrations, multi-database support, and a sophisticated plugin architecture.
+
+## Key Features
+
+### 🗄️ Dual Database Support
+- **PGLite** - Embedded PostgreSQL for development
+- **PostgreSQL** - Full PostgreSQL for production
+- Automatic adapter selection based on environment
+
+### 🔄 Dynamic Migration System
+- Automatic schema discovery from plugins
+- Intelligent table creation and updates
+- Dependency resolution for foreign keys
+- No manual migration files needed
+
+### 🏗️ Schema Introspection
+- Analyzes existing database structure
+- Detects missing columns and indexes
+- Handles composite primary keys
+- Preserves existing data
+
+### 🔌 Plugin Integration
+- Plugins can define their own schemas
+- Automatic table creation at startup
+- Isolated namespaces prevent conflicts
+- Shared core tables for common data
+
+## Architecture Overview
+
+The plugin consists of several key components:
+
+```mermaid
+flowchart TD
+    A[elizaOS Runtime] --> B[DatabaseMigrationService<br/>• Schema Discovery<br/>• Migration Orchestration]
+    B --> C[Database Adapters]
+    
+    C --> D[PGLite Adapter<br/>• Development<br/>• File-based]
+    C --> E[PG Adapter<br/>• Production<br/>• Pooled]
+```
+
+## Core Components
+
+### 1. Database Adapters
+- **BaseDrizzleAdapter** - Shared functionality
+- **PgliteDatabaseAdapter** - Development database
+- **PgDatabaseAdapter** - Production database
+
+### 2. Migration Service
+- **DatabaseMigrationService** - Orchestrates migrations
+- **DrizzleSchemaIntrospector** - Analyzes schemas
+- **Custom Migrator** - Executes schema changes
+
+### 3. Connection Management
+- **PGliteClientManager** - Singleton PGLite instance
+- **PostgresConnectionManager** - Connection pooling
+- **Global Singletons** - Prevents multiple connections
+
+### 4. Schema Definitions
+Core tables for agent functionality:
+- `agents` - Agent identities
+- `memories` - Knowledge storage
+- `entities` - People and objects
+- `relationships` - Entity connections
+- `messages` - Communication history
+- `embeddings` - Vector search
+- `cache` - Key-value storage
+- `logs` - System events
+
+## Installation
+
+```bash
+elizaos plugins add @elizaos/plugin-sql
+```
+
+## Configuration
+
+The SQL plugin is automatically included by the elizaOS runtime and configured via environment variables.
+
+### Environment Setup
+
+Create a `.env` file in your project root:
+
+```bash
+# For PostgreSQL (production)
+POSTGRES_URL=postgresql://user:password@host:5432/database
+
+# For custom PGLite directory (development)
+# Optional - defaults to ./.eliza/.elizadb if not set
+PGLITE_DATA_DIR=/path/to/custom/db
+```
+
+### Adapter Selection
+
+The plugin automatically chooses the appropriate adapter:
+
+- **With `POSTGRES_URL`** → PostgreSQL adapter (production)
+- **Without `POSTGRES_URL`** → PGLite adapter (development)
+
+No code changes needed - just set your environment variables.
+
+### Custom Plugin with Schema
+
+```typescript
+import { Plugin } from '@elizaos/core';
+import { pgTable, uuid, text, timestamp } from 'drizzle-orm/pg-core';
+
+// Define your schema
+const customTable = pgTable('custom_data', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  agentId: uuid('agent_id').notNull(),
+  data: text('data').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Create plugin
+export const customPlugin: Plugin = {
+  name: 'custom-plugin',
+  schema: {
+    customTable,
+  },
+  // Plugin will have access to database via runtime
+};
+```
+
+## How It Works
+
+### 1. Initialization
+When the agent starts:
+1. SQL plugin initializes the appropriate database adapter
+2. Migration service discovers all plugin schemas
+3. Schemas are analyzed and dependencies resolved
+4. Tables are created or updated as needed
+
+### 2. Schema Discovery
+```typescript
+// Plugins export their schemas
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  schema: { /* Drizzle tables */ },
+};
+
+// Migration service finds and registers them
+discoverAndRegisterPluginSchemas(plugins);
+```
+
+### 3. Dynamic Migration
+The system:
+- Introspects existing database structure
+- Compares with plugin schema definitions
+- Generates and executes necessary DDL
+- Handles errors gracefully
+
+### 4. Runtime Access
+Plugins access the database through the runtime:
+```typescript
+const adapter = runtime.databaseAdapter;
+await adapter.getMemories({ agentId });
+```
+
+## Advanced Features
+
+### Composite Primary Keys
+```typescript
+const cacheTable = pgTable('cache', {
+  key: text('key').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  value: jsonb('value'),
+}, (table) => ({
+  pk: primaryKey(table.key, table.agentId),
+}));
+```
+
+### Foreign Key Dependencies
+Tables with foreign keys are automatically created in the correct order.
+
+### Schema Introspection
+The system can analyze and adapt to existing database structures.
+
+### Error Recovery
+- Automatic retries with exponential backoff
+- Detailed error logging
+- Graceful degradation
+
+## Best Practices
+
+1. **Define Clear Schemas** - Use TypeScript for type safety
+2. **Use UUIDs** - For distributed compatibility
+3. **Include Timestamps** - Track data changes
+4. **Index Strategically** - For query performance
+5. **Test Migrations** - Verify schema changes locally
+
+## Limitations
+
+- No automatic downgrades or rollbacks
+- Column type changes require manual intervention
+- Data migrations must be handled separately
+- Schema changes should be tested thoroughly
+
+## Next Steps
+
+- [Database Adapters](./database-adapters.mdx) - Detailed adapter documentation
+- [Schema Management](./schema-management.mdx) - Creating and managing schemas
+- [Plugin Tables Guide](./plugin-tables.mdx) - Adding tables to your plugin
+- [Examples](./examples.mdx) - Real-world usage patterns

@@ -1,0 +1,106 @@
+---
+title: "OpenRouter Plugin"
+description: "Multi-provider LLM access through OpenRouter"
+---
+
+## Features
+
+- **Multiple providers** - Access 50+ models from various providers
+- **Automatic failover** - Route to available providers
+- **Cost optimization** - Choose models by price/performance
+- **Single API key** - One key for all providers
+
+## Installation
+
+```bash
+elizaos plugins add @elizaos/plugin-openrouter
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required
+OPENROUTER_API_KEY=sk-or-...
+
+# Optional model configuration
+# You can use any model available on OpenRouter
+OPENROUTER_SMALL_MODEL=google/gemini-2.0-flash-001           # Default: google/gemini-2.0-flash-001
+OPENROUTER_LARGE_MODEL=google/gemini-2.5-flash-preview-05-20 # Default: google/gemini-2.5-flash-preview-05-20
+OPENROUTER_IMAGE_MODEL=anthropic/claude-3-5-sonnet           # For vision tasks
+
+# Examples of other available models:
+# OPENROUTER_SMALL_MODEL=anthropic/claude-3-haiku
+# OPENROUTER_LARGE_MODEL=anthropic/claude-3-opus
+# OPENROUTER_LARGE_MODEL=openai/gpt-4o
+# OPENROUTER_SMALL_MODEL=meta-llama/llama-3.1-8b-instruct:free
+```
+
+### Character Configuration
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": [
+    "@elizaos/plugin-openrouter",
+    "@elizaos/plugin-ollama"  // For embeddings
+  ]
+}
+```
+
+## Supported Operations
+
+| Operation | Support | Notes |
+|-----------|---------|-------|
+| TEXT_GENERATION | ✅ | All available models |
+| EMBEDDING | ❌ | Use fallback plugin |
+| OBJECT_GENERATION | ✅ | Model dependent |
+
+## Important: Embedding Fallback
+
+OpenRouter doesn't provide embedding endpoints, so include a fallback:
+
+```json
+{
+  "plugins": [
+    "@elizaos/plugin-openrouter",  // Text generation
+    "@elizaos/plugin-openai"        // Embeddings
+  ]
+}
+```
+
+## Model Configuration
+
+The plugin uses model tiers:
+
+- **SMALL_MODEL**: Fast, cost-effective responses
+- **LARGE_MODEL**: Complex reasoning, best quality
+- **IMAGE_MODEL**: Multimodal capabilities
+
+OpenRouter provides access to 50+ models from various providers. You can use:
+
+### Premium Models
+- Any Anthropic Claude model (Opus, Sonnet, Haiku)
+- Any OpenAI GPT model (GPT-4o, GPT-4, GPT-3.5)
+- Google Gemini models (Pro, Flash, etc.)
+- Cohere Command models
+
+### Open Models
+- Meta Llama models (3.1, 3.2, 3.3)
+- Mistral/Mixtral models
+- Many models with `:free` suffix for testing
+
+## Pricing Strategy
+
+OpenRouter charges a small markup (usually ~10%) on top of provider prices:
+
+1. **Pay-per-token** - No monthly fees
+2. **Price transparency** - See costs per model
+3. **Credits system** - Pre-pay for usage
+
+## External Resources
+
+- [Plugin Source](https://github.com/elizaos/eliza/tree/main/packages/plugin-openrouter)
+- [OpenRouter Documentation](https://openrouter.ai/docs)
+- [Model List & Pricing](https://openrouter.ai/models)

@@ -44,9 +44,9 @@ There are others but they are not as important
 ### Command Structure
 
 - **Main Command**: `elizaos test` (run from packages/cli)
-- **Test Framework**: vitest
+- **Test Framework**: bun:test
 - **Subcommands**:
-  - `component`: Run component tests using Vitest
+  - `component`: Run component tests using bun:test
   - `e2e`: Run end-to-end runtime tests
   - `all`: Run both component and e2e tests (default)
 
@@ -54,10 +54,10 @@ There are others but they are not as important
 
 - **E2E Tests**:
   - Use actual runtime
-  - Cannot use vitest state (interferes with internal elizaos vitest instance)
+  - Cannot use bun:test state (interferes with internal elizaos bun:test instance)
   - Test real integrations and workflows
 - **Unit Tests**:
-  - Use vitest with standard primitives
+  - Use bun:test with standard primitives
   - Test individual components in isolation
 
 ## Architecture Details
@@ -72,7 +72,6 @@ There are others but they are not as important
 
 - **Types**: `packages/core/src/types.ts` - All core type definitions
 - **Runtime**: `packages/core/src/runtime.ts` - Main runtime implementation
-- **Plugin Compatibility**: Shim everything through /specs (currently defaulting to v2)
 
 ### Abstraction Layers
 
@@ -197,6 +196,10 @@ By default, agent events are registered in packages/plugin-bootstrap
 ## Code Style Guidelines
 
 - TypeScript for all code
+- Never use any, never, or unknown types - always opt for specific types that accurately represent the data
+- Ensure code is free of TypeScript errors or warnings - code must compile without issues
+- All tests must pass successfully before considering code complete
+- Prefer real integration tests that cover entire functionality flow over isolated unit tests
 - Comprehensive error handling required
 - Clear separation of concerns
 - Follow existing patterns in codebase

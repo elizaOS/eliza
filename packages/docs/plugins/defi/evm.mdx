@@ -1,0 +1,148 @@
+---
+title: "Overview"
+description: "Integrate EVM blockchain capabilities into your AI agent"
+---
+
+The EVM plugin enables AI agents to interact with Ethereum Virtual Machine (EVM) compatible blockchains, supporting token transfers, swaps, bridging, and governance operations across 30+ networks.
+
+## Features
+
+- **Multi-chain Support**: Works with Ethereum, Base, Arbitrum, Optimism, Polygon, BSC, Avalanche, and many more
+- **Token Operations**: Transfer native tokens and ERC20 tokens
+- **DeFi Integration**: Swap tokens and bridge across chains using LiFi and Bebop
+- **Governance**: Create proposals, vote, queue, and execute governance actions
+- **Wallet Management**: Multi-chain balance tracking with automatic updates
+- **TEE Support**: Secure wallet derivation in Trusted Execution Environments
+
+## Installation
+
+```bash
+elizaos plugins add evm
+```
+
+## Configuration
+
+The plugin requires the following environment variables:
+
+```env
+# Required
+EVM_PRIVATE_KEY=your_private_key_here
+
+# Optional - Custom RPC endpoints
+ETHEREUM_PROVIDER_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+ETHEREUM_PROVIDER_BASE=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+# Optional - TEE Configuration
+TEE_MODE=true
+WALLET_SECRET_SALT=your_secret_salt
+```
+
+## Usage
+
+```typescript
+import { evmPlugin } from '@elizaos/plugin-evm';
+import { AgentRuntime } from '@elizaos/core';
+
+// Initialize the agent with EVM plugin
+const runtime = new AgentRuntime({
+  plugins: [evmPlugin],
+  // ... other configuration
+});
+```
+
+## Actions
+
+### Transfer Tokens
+Transfer native tokens or ERC20 tokens between addresses.
+
+Example prompts:
+- "Send 0.1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+- "Transfer 100 USDC to vitalik.eth on Base"
+- "Send 50 DAI to 0x123... on Polygon"
+
+### Swap Tokens
+Exchange tokens on the same chain using optimal routes.
+
+Example prompts:
+- "Swap 1 ETH for USDC"
+- "Exchange 100 USDT for DAI on Arbitrum"
+- "Trade my WETH for USDC on Base"
+
+### Bridge Tokens
+Transfer tokens across different chains.
+
+Example prompts:
+- "Bridge 100 USDC from Ethereum to Arbitrum"
+- "Move 0.5 ETH from Base to Optimism"
+- "Transfer DAI from Polygon to Ethereum"
+
+### Governance Actions
+Participate in DAO governance using OpenZeppelin Governor contracts.
+
+Example prompts:
+- "Create a proposal to increase the treasury allocation"
+- "Vote FOR on proposal #42"
+- "Queue proposal #37 for execution"
+- "Execute the queued proposal #35"
+
+## Providers
+
+The plugin includes providers that give your agent awareness of:
+- **Wallet balances** across all configured chains
+- **Token metadata** and current prices
+- **Transaction history** and status
+
+## Supported Chains
+
+The plugin supports all chains available in viem, including:
+- Ethereum Mainnet
+- Layer 2s: Arbitrum, Optimism, Base, zkSync
+- Alternative L1s: Polygon, BSC, Avalanche
+- And many more...
+
+## Advanced Features
+
+### Custom Chain Configuration
+Add custom RPC endpoints for any supported chain:
+
+```env
+ETHEREUM_PROVIDER_OPTIMISM=https://opt-mainnet.g.alchemy.com/v2/YOUR_KEY
+ETHEREUM_PROVIDER_ARBITRUM=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+```
+
+### TEE Wallet Derivation
+For enhanced security, enable TEE mode to derive wallets in Trusted Execution Environments:
+
+```env
+TEE_MODE=true
+WALLET_SECRET_SALT=your_unique_salt
+```
+
+### Multi-Aggregator Swaps
+The plugin automatically finds the best swap routes using multiple aggregators:
+- Primary: LiFi SDK
+- Secondary: Bebop
+
+## Error Handling
+
+The plugin includes comprehensive error handling for common scenarios:
+- Insufficient balance
+- Network congestion
+- Failed transactions
+- Invalid addresses
+- Slippage protection
+
+## Security Considerations
+
+- Never hardcode private keys in your code
+- Use environment variables for sensitive data
+- Validate all user inputs
+- Set appropriate slippage tolerances
+- Monitor gas prices and limits
+
+## Next Steps
+
+- [Complete Documentation →](./evm/complete-documentation)
+- [DeFi Operations Flow →](./evm/defi-operations-flow)
+- [Examples →](./evm/examples)
+- [Testing Guide →](./evm/testing-guide)
