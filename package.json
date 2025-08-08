@@ -77,6 +77,9 @@
     "utf-8-validate"
   ],
   "dependencies": {
-    "helmet": "^8.1.0"
+    "@elizaos/plugin-openai": "^1.0.9",
+    "helmet": "^8.1.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^4.0.14"
   }
 }

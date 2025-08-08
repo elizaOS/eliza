@@ -1,0 +1,44 @@
+name: "Simple Evaluation Test"
+description: "Tests the EvaluationEngine with simple evaluators in E2B environment"
+environment:
+  type: e2b
+setup:
+  virtual_fs:
+    "input.txt": "Hello from setup!"
+run:
+  - lang: python
+    code: |
+      print("Step 1: Processing input file")
+      with open("input.txt", "r") as f:
+          content = f.read()
+      print(f"Read content: {content}")
+      with open("output.txt", "w") as f:
+          f.write("Created in step 1")
+    evaluations:
+      - type: "string_contains"
+        value: "Step 1"
+      - type: "string_contains"
+        value: "Processing input"
+      - type: "regex_match"
+        pattern: "Read content:.*"
+      - type: "file_exists"
+        path: "input.txt"
+      - type: "file_exists"
+        path: "output.txt"
+  - lang: python
+    code: |
+      print("Step 2: Final processing")
+      with open("final.txt", "w") as f:
+          f.write("Final result from step 2")
+      print("Step 2 completed successfully")
+    evaluations:
+      - type: "string_contains"
+        value: "Step 2"
+      - type: "regex_match"
+        pattern: "Step 2.*completed"
+      - type: "file_exists"
+        path: "final.txt"
+      - type: "file_exists"
+        path: "nonexistent.txt"  # This should fail
+judgment:
+  strategy: all_pass 

@@ -1,0 +1,35 @@
+name: "Plugin Parsing Test"
+description: "Test dynamic plugin loading and parsing functionality"
+plugins:
+  # Simple string references
+  - "@elizaos/plugin-sql"
+  - "@elizaos/plugin-e2b"
+  
+  # Full configuration objects
+  - name: "@elizaos/plugin-openai"
+    version: "1.0.0"
+    config:
+      model: "gpt-4"
+      temperature: 0.7
+    enabled: true
+  
+  # Disabled plugin
+  - name: "@elizaos/plugin-github"
+    enabled: false
+  
+  # Plugin with custom config
+  - name: "@elizaos/plugin-bootstrap"
+    config:
+      autoStart: true
+      debugMode: false
+
+environment:
+  type: local
+run:
+  - lang: javascript
+    code: "console.log('Plugin parsing test completed');"
+    evaluations:
+      - type: "string_contains"
+        value: "completed"
+judgment:
+  strategy: all_pass 

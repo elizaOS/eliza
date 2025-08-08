@@ -1,0 +1,2 @@
+name: "Invalid Scenario Missing Fields"
+description: "This scenario is missing required fields and should fail validation."

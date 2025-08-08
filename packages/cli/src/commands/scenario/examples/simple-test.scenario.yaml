@@ -1,0 +1,21 @@
+name: Simple Test Scenario
+description: A simple test to verify the Reporter and judgment logic
+
+environment:
+  type: local
+
+run:
+  - name: Simple echo test
+    lang: bash
+    code: |
+      echo "Hello World"
+    evaluations:
+      - type: string_contains
+        value: "Hello"
+        description: Verify output contains 'Hello'
+      - type: string_contains
+        value: "World"
+        description: Verify output contains 'World'
+
+judgment:
+  strategy: all_pass 

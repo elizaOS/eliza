@@ -1,0 +1,26 @@
+name: "Simple MockEngine Test"
+description: "Basic test to verify MockEngine functionality"
+environment:
+  type: e2b
+setup:
+  mocks:
+    # Simple mock for any executeCode call
+    - service: "e2b"
+      method: "executeCode"
+      response:
+        text: "MOCKED RESPONSE"
+        logs:
+          stdout: ["MOCKED RESPONSE"]
+          stderr: []
+        error: null
+run:
+  # Expected: Should return mocked response instead of real execution
+  - lang: javascript
+    code: "console.log('This should be mocked');"
+    evaluations: []
+  # Expected: Should also return mocked response
+  - lang: python
+    code: "print('This should also be mocked');"
+    evaluations: []
+judgment:
+  strategy: all_pass 

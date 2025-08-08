@@ -1,0 +1,72 @@
+name: "Enhanced Mock Test"
+description: "Tests the enhanced mocking features with simple examples"
+
+environment:
+  type: local
+
+setup:
+  mocks:
+    # Test input parameter matching
+    - service: "test-service"
+      method: "processData"
+      when:
+        input:
+          type: "user"
+          action: "create"
+        matcher: "input.type === 'user' && input.action === 'create'"
+      response:
+        success: true
+        id: 12345
+        message: "User created successfully"
+
+    # Test dynamic response function
+    - service: "test-service"
+      method: "calculate"
+      when:
+        args: [10, 20]
+      responseFn: |
+        return {
+          result: args[0] + args[1],
+          operation: "addition",
+          timestamp: new Date().toISOString()
+        }
+
+    # Test error simulation
+    - service: "test-service"
+      method: "divide"
+      when:
+        input:
+          divisor: 0
+        matcher: "input.divisor === 0"
+      error:
+        code: "DIVISION_BY_ZERO"
+        message: "Cannot divide by zero"
+
+    # Test metadata (delay)
+    - service: "test-service"
+      method: "slowOperation"
+      when:
+        input:
+          operation: "slow"
+        matcher: "input.operation === 'slow'"
+      response:
+        status: "completed"
+        message: "Slow operation finished"
+      metadata:
+        delay: 1000 # 1 second delay
+
+run:
+  - lang: javascript
+    code: |
+      console.log('Testing enhanced mocking features...');
+      console.log('1. Input parameter matching');
+      console.log('2. Dynamic response functions');
+      console.log('3. Error simulation');
+      console.log('4. Metadata (delays)');
+      console.log('Enhanced mocking test completed');
+    evaluations:
+      - type: "string_contains"
+        value: "Enhanced mocking test completed"
+
+judgment:
+  strategy: all_pass 

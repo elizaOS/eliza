@@ -1,0 +1,52 @@
+# scenarios/definitions/check-evm-balance.scenario.yaml
+
+name: "Verify Agent Can Report EVM Wallet Balance"
+description: "Tests the agent's ability to access its context from the EVM Wallet Provider and report the balances of all tokens for its default address."
+
+# The EVM plugin is required for wallet context, and bootstrap is needed for basic reply actions.
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-evm"
+
+# We will use the sandboxed E2B environment for this test.
+environment:
+  type: e2b
+
+# We will mock the underlying network call to ensure the test is fast,
+# deterministic, and doesn't cost real gas fees.
+setup:
+  mocks:
+    # We define a mock for the evm-service's internal getBalancesForAddress method.
+    # The Scenario Runner will intercept any call to this method from the plugin
+    # and return our predefined data instead of hitting a real RPC node.
+    - service: "evm-service"
+      method: "getBalancesForAddress"
+      response:
+        # This is the data that will be fed into the walletProvider.
+        # It simulates the agent holding 1.23 ETH and 456.78 ELZA tokens.
+        - chain: "ethereum"
+          balances:
+            - symbol: "ETH"
+              amount: "1.23"
+            - symbol: "ELZA"
+              amount: "456.78"
+
+# The core execution of the scenario. We send a single prompt to the agent.
+run:
+  - name: "Ask agent for its balance"
+    input: "What is your wallet balance?"
+    evaluations:
+      # We check the agent's final response to ensure it correctly reported the data
+      # that was provided to it via the mocked service call.
+      - type: "string_contains"
+        value: "ETH"
+      - type: "regex_match"
+        pattern: "1.23"
+      - type: "string_contains"
+        value: "ELZA"
+      - type: "regex_match"
+        pattern: "456.78"
+
+# The final verdict: all evaluations in the run step must pass.
+judgment:
+  strategy: "all_pass" 

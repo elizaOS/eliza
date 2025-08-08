@@ -1,0 +1,68 @@
+# scenarios/definitions/answer-roadmap-questions.scenario.yaml
+
+name: "Verify Agent Can Answer Roadmap Questions"
+description: "Tests the agent's ability to search its own GitHub issues, code, and documentation to synthesize a coherent roadmap."
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-github"
+
+environment:
+  type: e2b
+
+setup:
+  mocks:
+    # 1. Mock the issue search - simulates finding two relevant tickets.
+    - service: "github-service"
+      method: "searchIssues"
+      response:
+        - title: "Implement Scenario Runner"
+          labels: ["feature", "testing"]
+          state: "open"
+          number: 123
+        - title: "Add Dark Mode to UI"
+          labels: ["enhancement", "ui"]
+          state: "open"
+          number: 124
+
+    # 2. Mock reading a documentation file - simulates finding a ROADMAP.md.
+    - service: "github-service"
+      method: "readFile"
+      # This mock will only trigger if the input path matches '/docs/ROADMAP.md'
+      when:
+        path: "/docs/ROADMAP.md"
+      response:
+        content: "## Official Roadmap\n- Q4 Goal: Achieve full multi-language support."
+
+    # 3. Mock a code search - simulates finding a TODO comment for a future feature.
+    - service: "github-service"
+      method: "searchCode"
+      response:
+        - path: "/src/server.js"
+          line: 55
+          content: "// TODO: Refactor the auth system for enterprise SSO"
+
+run:
+  - name: "Ask agent about its development roadmap"
+    input: "What new features are you planning to add?"
+    evaluations:
+      # Check if the agent's response correctly references the mocked issues.
+      - type: "string_contains"
+        value: "Scenario Runner"
+        case_sensitive: false
+      - type: "string_contains"
+        value: "Dark Mode"
+        case_sensitive: false
+      - type: "string_contains"
+        value: "SSO"
+        case_sensitive: false
+
+      # The generic LLM judge.
+      # This works in both test mode (judging against mocked data)
+      # and live mode (judging against real data).
+      - type: "llm_judge"
+        prompt: "The user asked about the development roadmap. Did the agent provide a helpful and coherent summary based on the available information it found?"
+        expected: "yes"
+
+judgment:
+  strategy: "all_pass" 
