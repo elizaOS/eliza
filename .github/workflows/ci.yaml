@@ -91,4 +91,4 @@ jobs:
         run: bun install
 
       - name: Build packages
-        run: bun run build && bun run build:docs
+        run: bun run build
