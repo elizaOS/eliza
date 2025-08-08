@@ -235,25 +235,25 @@ export const starterPlugin: Plugin = {
     [EventType.MESSAGE_RECEIVED]: [
       async (params: MessagePayload) => {
         logger.debug('MESSAGE_RECEIVED event received');
-        logger.debug('Message:', params.message);
+        logger.debug({ message: params.message }, 'Message:');
       },
     ],
     [EventType.VOICE_MESSAGE_RECEIVED]: [
       async (params: MessagePayload) => {
         logger.debug('VOICE_MESSAGE_RECEIVED event received');
-        logger.debug('Message:', params.message);
+        logger.debug({ message: params.message }, 'Message:');
       },
     ],
     [EventType.WORLD_CONNECTED]: [
       async (params: WorldPayload) => {
         logger.debug('WORLD_CONNECTED event received');
-        logger.debug('World:', params.world);
+        logger.debug({ world: params.world }, 'World:');
       },
     ],
     [EventType.WORLD_JOINED]: [
       async (params: WorldPayload) => {
         logger.debug('WORLD_JOINED event received');
-        logger.debug('World:', params.world);
+        logger.debug({ world: params.world }, 'World:');
       },
     ],
   },

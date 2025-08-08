@@ -35,7 +35,7 @@ function isRunningFromLocalCli(): boolean {
 
     return isInLocalCli;
   } catch (error) {
-    logger.debug('Error checking if running from local CLI:', error);
+    logger.debug({ error }, 'Error checking if running from local CLI:');
     return false;
   }
 }
@@ -125,7 +125,7 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 
     // Handle process errors
     childProcess.on('error', (error) => {
-      logger.error(`Failed to start local CLI: ${error.message}`);
+      logger.error({ message: error.message }, `Failed to start local CLI:`);
       reject(error);
     });
 

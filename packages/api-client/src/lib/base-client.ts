@@ -30,7 +30,7 @@ export abstract class BaseApiClient {
     };
 
     if (this.apiKey) {
-      this.defaultHeaders['X-API-KEY'] = this.apiKey;
+      this.defaultHeaders['Authorization'] = `Bearer ${this.apiKey}`;
     }
   }
 
