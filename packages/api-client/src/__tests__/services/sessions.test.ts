@@ -47,7 +47,7 @@ describe('SessionsService', () => {
         expect.objectContaining({
           method: 'GET',
           headers: expect.objectContaining({
-            Authorization: 'Bearer test-key',
+            'X-API-KEY': 'test-key',
           }),
         })
       );

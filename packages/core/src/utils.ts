@@ -359,15 +359,62 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     xmlContent = xmlBlockMatch[1];
     logger.debug('Found response XML block');
   } else {
-    // Fall back to finding any XML block (e.g., <response>...</response>)
-    const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
-    if (!fallbackMatch) {
+    // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
+    // This avoids potentially expensive backtracking on crafted inputs
+    const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
+      let i = 0;
+      const length = input.length;
+      while (i < length) {
+        const openIdx = input.indexOf('<', i);
+        if (openIdx === -1) break;
+        // Skip closing tags and comments/decls
+        if (input.startsWith('</', openIdx) || input.startsWith('<!--', openIdx) || input.startsWith('<?', openIdx)) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Extract tag name [letters, digits, dash, underscore]
+        let j = openIdx + 1;
+        let tag = '';
+        while (j < length) {
+          const ch = input[j];
+          if (/^[A-Za-z0-9_-]$/.test(ch)) {
+            tag += ch;
+            j++;
+            continue;
+          }
+          break;
+        }
+        if (!tag) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Find end of start tag '>' (skip attributes if present)
+        const startTagEnd = input.indexOf('>', j);
+        if (startTagEnd === -1) break;
+        // Self-closing tag? skip
+        if (input[startTagEnd - 1] === '/') {
+          i = startTagEnd + 1;
+          continue;
+        }
+        const closeSeq = `</${tag}>`;
+        const closeIdx = input.indexOf(closeSeq, startTagEnd + 1);
+        if (closeIdx !== -1) {
+          const inner = input.slice(startTagEnd + 1, closeIdx);
+          return { tag, content: inner };
+        }
+        i = startTagEnd + 1;
+      }
+      return null;
+    };
+
+    const fb = findFirstXmlBlock(text);
+    if (!fb) {
       logger.warn('Could not find XML block in text');
       logger.debug({ textPreview: text.substring(0, 200) + '...' }, 'Text content');
       return null;
     }
-    xmlContent = fallbackMatch[2];
-    logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
+    xmlContent = fb.content;
+    logger.debug(`Found XML block with tag: ${fb.tag}`);
   }
 
   const result: Record<string, any> = {};
