@@ -5,6 +5,7 @@ The Sessions API provides a simplified interface for managing messaging sessions
 ## Overview
 
 Sessions provide:
+
 - Dedicated conversation channels between users and agents
 - Message history management
 - Session metadata tracking
@@ -111,12 +112,12 @@ interface SimplifiedMessage {
   id: string;
   content: string;
   authorId: string;
-  isAgent: boolean;  // true if message is from agent
+  isAgent: boolean; // true if message is from agent
   createdAt: Date;
   metadata: {
-    thought?: string;    // Agent's internal thought process
-    actions?: string[];  // Actions taken by the agent
-    [key: string]: any;  // Additional metadata
+    thought?: string; // Agent's internal thought process
+    actions?: string[]; // Actions taken by the agent
+    [key: string]: any; // Additional metadata
   };
 }
 ```
@@ -148,6 +149,7 @@ try {
 1. **Session Reuse**: Don't create a new session for every message. Reuse sessions for ongoing conversations.
 
 2. **Metadata**: Use metadata to store platform-specific information:
+
    ```typescript
    metadata: {
      platform: 'discord',
@@ -157,6 +159,7 @@ try {
    ```
 
 3. **Pagination**: Use pagination when retrieving messages to avoid large responses:
+
    ```typescript
    let hasMore = true;
    let before = undefined;
@@ -167,10 +170,10 @@ try {
        limit: 100,
        before,
      });
-     
+
      allMessages.push(...response.messages);
      hasMore = response.hasMore;
-     
+
      if (response.messages.length > 0) {
        before = response.messages[response.messages.length - 1].createdAt;
      }
@@ -189,7 +192,7 @@ try {
          return await client.sessions.sendMessage(sessionId, params);
        } catch (error) {
          if (i === maxRetries - 1) throw error;
-         await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+         await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
        }
      }
    }

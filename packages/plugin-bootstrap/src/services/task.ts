@@ -156,7 +156,10 @@ export class TaskService extends Service {
             continue;
           }
         } catch (error) {
-          logger.error({ error, taskName: task.name }, `[Bootstrap] Error validating task ${task.name}:`);
+          logger.error(
+            { error, taskName: task.name },
+            `[Bootstrap] Error validating task ${task.name}:`
+          );
           continue;
         }
       }

@@ -160,8 +160,8 @@ export async function getLatestElizaOSCliVersion(): Promise<string | null> {
       try {
         const info = JSON.parse(result.stdout);
         return info.version || info.dist?.version || 'latest';
-        } catch (parseError) {
-          logger.debug({ error: parseError }, 'Error parsing JSON from bun info command:');
+      } catch (parseError) {
+        logger.debug({ error: parseError }, 'Error parsing JSON from bun info command:');
         return null;
       }
     }

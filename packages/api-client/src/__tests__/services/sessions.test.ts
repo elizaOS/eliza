@@ -31,7 +31,7 @@ describe('SessionsService', () => {
             status: 'healthy',
             activeSessions: 5,
             timestamp: '2024-01-01T00:00:00.000Z',
-          }
+          },
         }),
       });
 
@@ -76,7 +76,7 @@ describe('SessionsService', () => {
             userId: 'user-456',
             createdAt: '2024-01-01T00:00:00.000Z',
             metadata: { platform: 'web' },
-          }
+          },
         }),
       });
 
@@ -98,7 +98,9 @@ describe('SessionsService', () => {
       const sessionId = 'session-789';
       const params = {
         content: 'Hello, agent!',
-        attachments: [{ type: 'image' as const, url: 'https://example.com/image.jpg', name: 'image.jpg' }],
+        attachments: [
+          { type: 'image' as const, url: 'https://example.com/image.jpg', name: 'image.jpg' },
+        ],
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -114,7 +116,7 @@ describe('SessionsService', () => {
             content: 'Hello, agent!',
             authorId: 'user-456',
             createdAt: '2024-01-01T00:00:00.000Z',
-          }
+          },
         }),
       });
 
@@ -136,7 +138,9 @@ describe('SessionsService', () => {
     });
 
     it('should throw error when content is empty', async () => {
-      await expect(service.sendMessage('session-123', { content: '' })).rejects.toThrow('content is required');
+      await expect(service.sendMessage('session-123', { content: '' })).rejects.toThrow(
+        'content is required'
+      );
     });
   });
 
@@ -168,7 +172,7 @@ describe('SessionsService', () => {
               },
             ],
             hasMore: true,
-          }
+          },
         }),
       });
 
@@ -200,13 +204,13 @@ describe('SessionsService', () => {
           data: {
             messages: [],
             hasMore: false,
-          }
+          },
         }),
       });
 
       // Should not throw, but invalid dates should be ignored
       const result = await service.getMessages(sessionId, params);
-      
+
       expect(result.messages).toEqual([]);
       // URL should not contain 'NaN' for invalid dates
       const callArgs = mockFetch.mock.calls[0];
@@ -216,7 +220,7 @@ describe('SessionsService', () => {
     it('should handle various date formats', async () => {
       const sessionId = 'session-789';
       const dateTimestamp = 1704067200000; // 2024-01-01T00:00:00.000Z
-      
+
       // Test with timestamp number
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -226,10 +230,10 @@ describe('SessionsService', () => {
         },
         json: async () => ({
           success: true,
-          data: { messages: [], hasMore: false }
+          data: { messages: [], hasMore: false },
         }),
       });
-      
+
       await service.getMessages(sessionId, { before: dateTimestamp });
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining(`before=${dateTimestamp}`),
@@ -245,10 +249,10 @@ describe('SessionsService', () => {
         },
         json: async () => ({
           success: true,
-          data: { messages: [], hasMore: false }
+          data: { messages: [], hasMore: false },
         }),
       });
-      
+
       await service.getMessages(sessionId, { after: '2024-01-01T00:00:00.000Z' });
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining(`after=${dateTimestamp}`),
@@ -273,7 +277,7 @@ describe('SessionsService', () => {
         },
         json: async () => ({
           success: true,
-          data: { success: true }
+          data: { success: true },
         }),
       });
 
@@ -311,7 +315,7 @@ describe('SessionsService', () => {
               },
             ],
             total: 1,
-          }
+          },
         }),
       });
 

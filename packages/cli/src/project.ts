@@ -291,7 +291,7 @@ export async function loadProject(dir: string): Promise<Project> {
     ) {
       // Use the agents from the default export
       agents.push(...(projectModule.default.agents as ProjectAgent[]));
-          logger.debug({ count: agents.length }, `Found agents in default export's agents array`);
+      logger.debug({ count: agents.length }, `Found agents in default export's agents array`);
     }
     // Only if we didn't find agents in the default export, look for other exports
     else {

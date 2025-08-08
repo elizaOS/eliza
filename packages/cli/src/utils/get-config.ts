@@ -153,7 +153,10 @@ export async function getElizaDirectories(targetProjectDir?: string) {
   const elizaDir = targetProjectDir ? path.resolve(targetProjectDir, '.eliza') : paths.elizaDir;
   const envFilePath = targetProjectDir ? path.resolve(targetProjectDir, '.env') : paths.envFilePath;
 
-  logger.debug({ elizaDir, projectRoot, targetProjectDir: targetProjectDir || 'none' }, 'Eliza directories:');
+  logger.debug(
+    { elizaDir, projectRoot, targetProjectDir: targetProjectDir || 'none' },
+    'Eliza directories:'
+  );
 
   const defaultElizaDbDir = path.resolve(projectRoot, '.eliza', '.elizadb');
   // Pass targetProjectDir to resolvePgliteDir to ensure it uses the correct base directory
@@ -207,7 +210,10 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
       }
     }
   } catch (error) {
-    logger.error({ error: error instanceof Error ? error.message : String(error), envFilePath }, 'Error setting up .env file:');
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), envFilePath },
+      'Error setting up .env file:'
+    );
     throw error;
   }
 }
@@ -269,7 +275,10 @@ export async function setupPgLite(
 
     logger.success('PGLite configuration saved');
   } catch (error) {
-    logger.error({ error: error instanceof Error ? error.message : String(error), elizaDbDir, envFilePath }, 'Error setting up PGLite directory:');
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), elizaDbDir, envFilePath },
+      'Error setting up PGLite directory:'
+    );
     throw error;
   }
 }

@@ -72,7 +72,10 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
       console.error('  curl -fsSL https://bun.sh/install | bash');
       console.error('  # or');
       console.error('  npm install -g bun');
-      logger.debug({ error: bunError instanceof Error ? bunError.message : String(bunError) }, 'Bun error:');
+      logger.debug(
+        { error: bunError instanceof Error ? bunError.message : String(bunError) },
+        'Bun error:'
+      );
       return false;
     }
   } catch (error) {

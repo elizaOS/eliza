@@ -22,7 +22,13 @@ export interface MessageMetadata {
   context?: Record<string, string | number | boolean>;
   thought?: string;
   actions?: string[];
-  [key: string]: string | number | boolean | string[] | Record<string, string | number | boolean> | undefined;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | string[]
+    | Record<string, string | number | boolean>
+    | undefined;
 }
 
 /**
