@@ -34,7 +34,7 @@ export async function getVersion(): Promise<string> {
 
     return version;
   } catch (error) {
-    logger.error('Error getting CLI version:', error);
+    logger.error({ error }, 'Error getting CLI version:');
     return FALLBACK_VERSION;
   }
 }

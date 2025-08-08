@@ -147,18 +147,18 @@ const handleTeeKeyDerivation = async (config: TeeServiceConfig): Promise<void> =
     const ed25519Keypair = deriveEd25519Keypair(deriveKeyResponse);
 
     logger.log('ECDSA Key Derived Successfully!');
-    logger.log('ECDSA Keypair:', ecdsaKeypair.address);
-    logger.log('ED25519 Keypair:', ed25519Keypair.publicKey);
+    logger.log({ address: ecdsaKeypair.address }, 'ECDSA Keypair:');
+    logger.log({ publicKey: ed25519Keypair.publicKey }, 'ED25519 Keypair:');
 
     const signature = await ecdsaKeypair.signMessage({ message: 'Hello, world!' });
-    logger.log('Sign message w/ ECDSA keypair: Hello world!, Signature: ', signature);
+    logger.log({ signature }, 'Sign message w/ ECDSA keypair: Hello world!, Signature:');
   } catch (error) {
     // Handle TEE connection errors gracefully
     if (isTeeConnectionError(error)) {
       logger.warn('TEE daemon not available - running in non-TEE mode for testing');
       logger.warn('To run with TEE, ensure tappd is running at /var/run/tappd.sock');
     } else {
-      logger.warn('TEE daemon connection failed, running in non-TEE mode:', error);
+      logger.warn({ error }, 'TEE daemon connection failed, running in non-TEE mode:');
     }
     // Continue without TEE functionality for testing
   }
@@ -301,8 +301,8 @@ const teeStarterPlugin: Plugin = {
     MESSAGE_RECEIVED: [
       async (params) => {
         logger.info(
-          '[MR_TEE_PLUGIN] MESSAGE_RECEIVED event',
-          params.message?.content?.text?.substring(0, 50)
+          { preview: params.message?.content?.text?.substring(0, 50) },
+          '[MR_TEE_PLUGIN] MESSAGE_RECEIVED event'
         );
       },
     ],

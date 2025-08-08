@@ -237,13 +237,13 @@ export const create = new Command('create')
         const typeLabel = formatProjectType(projectType);
         clack.outro(colors.green(`${typeLabel} created successfully! 🎉`));
       }
-    } catch (error) {
-      if (!opts?.yes) {
+      } catch (error) {
+        if (!opts?.yes) {
         // Dynamic error message based on project type
         const errorType = formatProjectType(projectType || 'project');
         clack.cancel(`Failed to create ${errorType}.`);
       }
-      logger.error('Create command failed:', error);
+        logger.error({ error }, 'Create command failed:');
       handleError(error);
       process.exit(1);
     }

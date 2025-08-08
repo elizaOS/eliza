@@ -115,7 +115,7 @@ export async function startAgent(
       logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
     }
   } catch (error) {
-    logger.error('Failed to run plugin migrations:', error);
+    logger.error({ error }, 'Failed to run plugin migrations:');
     throw error;
   }
 

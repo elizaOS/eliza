@@ -129,7 +129,7 @@ export const choiceAction: Action = {
         pendingTasks.some((task) => task.metadata?.options)
       );
     } catch (error) {
-      logger.error('Error validating choice action:', error);
+      logger.error({ error }, 'Error validating choice action');
       return false;
     }
   },
@@ -339,7 +339,7 @@ export const choiceAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error('Error executing task with option:', error);
+        logger.error({ error }, 'Error executing task with option');
         await callback?.({
           text: 'There was an error processing your selection.',
           actions: ['SELECT_OPTION_ERROR'],

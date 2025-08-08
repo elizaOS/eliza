@@ -485,7 +485,7 @@ async function processSettingUpdates(
 
     return { updatedAny, messages };
   } catch (error) {
-    logger.error('Error processing setting updates:', error);
+    logger.error({ error }, 'Error processing setting updates:');
     return {
       updatedAny: false,
       messages: ['Error occurred while updating settings'],
