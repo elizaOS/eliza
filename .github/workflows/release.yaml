@@ -51,6 +51,9 @@ jobs:
           npm config set registry https://registry.npmjs.org/
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
+      - name: Install Protobuf Compiler
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Install dependencies
         run: bun install
 
@@ -115,7 +118,7 @@ jobs:
           # Update versions in all package.json files WITHOUT publishing
           # Using --no-git-tag-version to prevent automatic git operations
           # Note: Any temporary commits from earlier steps will be preserved
-          bunx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
+          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,7 +167,7 @@ jobs:
 
           # Publish the already-built packages
           # Store the result to check if publishing succeeded
-          if bunx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
+          if npx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
             echo "publish_success=true" >> $GITHUB_OUTPUT
             echo "✅ Successfully published all packages"
           else
@@ -204,3 +207,17 @@ jobs:
             git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
             git push origin main
           fi
+
+      - name: Merge main to develop
+        run: |
+          # Fetch the latest develop branch
+          git fetch origin develop:develop
+
+          # Checkout develop branch
+          git checkout develop
+
+          # Merge main into develop
+          git merge main --no-ff -m "chore: merge main to develop for v${{ env.VERSION }} release"
+
+          # Push the updated develop branch
+          git push origin develop
