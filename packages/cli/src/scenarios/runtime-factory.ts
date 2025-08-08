@@ -4,6 +4,8 @@ import { IDatabaseAdapter, Agent, Entity, Room, UUID } from '@elizaos/core';
 import { setDefaultSecretsFromEnv, startAgent } from '../commands/start';
 import { configureDatabaseSettings, resolvePgliteDir } from '../utils';
 import { AgentServer } from '@elizaos/server';
+import { ElizaClient } from '@elizaos/api-client';
+import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 
 // --- Start of Pre-emptive Environment Loading ---
 console.log('[ENV] Loading environment configuration...');
@@ -463,6 +465,131 @@ export async function createE2BRuntime(): Promise<AgentRuntime> {
   const runtime = new AgentRuntime({ character, plugins: [sqlPlugin, e2bPlugin, openaiPlugin], settings: envSettings, adapter: mockAdapter });
   await runtime.initialize();
   return runtime;
+}
+
+/**
+ * Handle natural language agent interaction via API client
+ */
+export async function handleNaturalLanguageInteraction(
+  server: AgentServer | null,
+  agentId: string,
+  input: string,
+  timeoutMs: number = 30000
+): Promise<string> {
+  let localServer: AgentServer | null = null;
+  let port = 3000;
+
+  try {
+    // Create server if not provided
+    if (!server) {
+      localServer = new AgentServer();
+      await localServer.initialize({
+        dataDir: './test-data',
+      });
+
+      // Set up the server methods like the CLI does
+      const { startAgent, stopAgent } = await import('../commands/start/actions/agent-start');
+      localServer.startAgent = (character) => startAgent(character, localServer!);
+      localServer.stopAgent = (runtime) => stopAgent(runtime, localServer!);
+
+      await localServer.start(port);
+      console.log(`✅ Server started on port ${port}`);
+
+      // Create and start the agent
+      const character = {
+        name: 'scenario-agent',
+        bio: 'A test agent for scenario execution',
+        plugins: ['@elizaos/plugin-sql'], // Only SQL plugin to avoid hanging
+        settings: {
+          secrets: {
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+          },
+        },
+        style: {
+          all: ['be helpful', 'be concise'],
+          chat: ['be conversational'],
+        },
+      };
+
+      console.log('🔄 Starting agent...');
+      const agentRuntime = await localServer.startAgent(character);
+      console.log(`✅ Agent started: ${agentRuntime.character.name} (${agentRuntime.character.id})`);
+      agentId = agentRuntime.character.id || 'scenario-agent'; // Use the actual agent ID
+    } else {
+      localServer = server;
+    }
+
+    // Create API client
+    const client = ElizaClient.create({
+      baseUrl: `http://localhost:${port}`,
+    });
+
+    // Get servers to find default server
+    const { servers } = await client.messaging.listServers();
+    if (servers.length === 0) {
+      throw new Error('No servers found');
+    }
+    const defaultServer = servers[0];
+
+    // Create channel with correct parameters
+    const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
+    const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'scenario-test-channel',
+        server_id: defaultServer.id,
+        participantCentralUserIds: [testUserId],
+        type: ChannelType.GROUP,
+        metadata: { scenario: true },
+      }),
+    });
+
+    if (!channelResponse.ok) {
+      throw new Error(`Channel creation failed: ${channelResponse.status}`);
+    }
+
+    const channelResult = await channelResponse.json();
+    const channel = channelResult.data;
+
+    // Add agent to channel
+    await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
+
+    // Send message
+    await client.messaging.postMessage(channel.id, input, { scenario: true });
+
+    // Wait for response
+    const startTime = Date.now();
+    const pollInterval = 1000;
+
+    while (Date.now() - startTime < timeoutMs) {
+      const messages = await client.messaging.getChannelMessages(channel.id, { limit: 10 });
+      const agentMessage = messages.messages.find(msg =>
+        msg.authorId === agentId &&
+        new Date(msg.createdAt).getTime() > Date.now() - 10000
+      );
+
+      if (agentMessage) {
+        return agentMessage.content;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Timeout waiting for agent response');
+  } catch (error) {
+    throw new Error(`Natural language interaction failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    // Clean up local server if we created it
+    if (localServer && !server) {
+      try {
+        await localServer.stop();
+        console.log('✅ Server stopped');
+      } catch (error) {
+        console.log('⚠️ Error stopping server:', error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
 }
 
 

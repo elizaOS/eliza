@@ -88,19 +88,39 @@ print(json.dumps(files))
         for (const step of scenario.run) {
             console.log('Executing E2B step:', JSON.stringify(step, null, 2));
 
-            // Use the correct executeCode API: executeCode(code: string, language?: string)
-            const result = await e2bService.executeCode(step.code, step.lang);
+            if (step.input) {
+                // Handle natural language input via API client
+                const { handleNaturalLanguageInteraction } = await import('./runtime-factory');
+                const agentId = this.runtime.character.id || 'scenario-runner';
+                const response = await handleNaturalLanguageInteraction(
+                    null as any, // We'll create the server in the function
+                    agentId,
+                    step.input
+                );
 
-            // Capture file system state after this step
-            const files = await this.captureFileSystem(e2bService);
+                results.push({
+                    exitCode: 0,
+                    stdout: response,
+                    stderr: '',
+                    files: await this.captureFileSystem(e2bService)
+                });
+            } else if (step.code) {
+                // Use the correct executeCode API: executeCode(code: string, language?: string)
+                const result = await e2bService.executeCode(step.code, step.lang);
 
-            // Map E2B result format to ExecutionResult format
-            results.push({
-                exitCode: result.error ? 1 : 0,
-                stdout: result.text || result.logs?.stdout?.join('\n') || '',
-                stderr: result.error?.value || result.logs?.stderr?.join('\n') || '',
-                files: files
-            });
+                // Capture file system state after this step
+                const files = await this.captureFileSystem(e2bService);
+
+                // Map E2B result format to ExecutionResult format
+                results.push({
+                    exitCode: result.error ? 1 : 0,
+                    stdout: result.text || result.logs?.stdout?.join('\n') || '',
+                    stderr: result.error?.value || result.logs?.stderr?.join('\n') || '',
+                    files: files
+                });
+            } else {
+                throw new Error('Step must have either input or code');
+            }
         }
         return results;
     }

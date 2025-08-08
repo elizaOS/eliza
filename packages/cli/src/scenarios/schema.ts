@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Base schema for any evaluation
-type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge';
+export type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge';
 
 const BaseEvaluationSchema = z.object({
     type: z.string(),
@@ -98,8 +98,9 @@ const SetupSchema = z.object({
 
 const RunStepSchema = z.object({
     name: z.string().optional(),
-    lang: z.string(),
-    code: z.string(),
+    lang: z.string().optional(),
+    code: z.string().optional(),
+    input: z.string().optional(), // Natural language input to agent
     evaluations: z.array(EvaluationSchema),
 });
 

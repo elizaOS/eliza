@@ -69,46 +69,65 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
 
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
-            // Construct appropriate command based on language
-            let command: string;
-            const escapedCode = step.code.replace(/"/g, '\\"');
-
-            switch (step.lang) {
-                case 'bash':
-                case 'sh':
-                    command = step.code;
-                    break;
-                case 'node':
-                case 'javascript':
-                    command = `node -e "${escapedCode}"`;
-                    break;
-                case 'python':
-                case 'python3':
-                    command = `${step.lang} -c "${escapedCode}"`;
-                    break;
-                default:
-                    // For other languages, try the -c flag pattern
-                    command = `${step.lang} -c "${escapedCode}"`;
-                    break;
-            }
-
-            try {
-                const { stdout, stderr } = await execAsync(command, { cwd: this.tempDir });
-
-                // Capture file system state after this step
-                const files = await this.captureFileSystem();
-
-                results.push({ exitCode: 0, stdout, stderr, files });
-            } catch (error: any) {
-                // Capture file system state even on error
-                const files = await this.captureFileSystem();
+            if (step.input) {
+                // Handle natural language input via API client
+                const { handleNaturalLanguageInteraction } = await import('./runtime-factory');
+                const response = await handleNaturalLanguageInteraction(
+                    null as any, // We'll create the server in the function
+                    'scenario-runner',
+                    step.input
+                );
 
                 results.push({
-                    exitCode: error.code || 1,
-                    stdout: error.stdout || '',
-                    stderr: error.stderr || error.message || '',
-                    files: files
+                    exitCode: 0,
+                    stdout: response,
+                    stderr: '',
+                    files: await this.captureFileSystem()
                 });
+            } else if (step.code) {
+                // Construct appropriate command based on language
+                let command: string;
+                const escapedCode = step.code.replace(/"/g, '\\"');
+
+                switch (step.lang) {
+                    case 'bash':
+                    case 'sh':
+                        command = step.code;
+                        break;
+                    case 'node':
+                    case 'javascript':
+                        command = `node -e "${escapedCode}"`;
+                        break;
+                    case 'python':
+                    case 'python3':
+                        command = `${step.lang} -c "${escapedCode}"`;
+                        break;
+                    default:
+                        // For other languages, try the -c flag pattern
+                        command = `${step.lang} -c "${escapedCode}"`;
+                        break;
+                }
+
+                try {
+                    const { stdout, stderr } = await execAsync(command, { cwd: this.tempDir });
+
+                    // Capture file system state after this step
+                    const files = await this.captureFileSystem();
+
+                    results.push({ exitCode: 0, stdout, stderr, files });
+                } catch (error: any) {
+                    // Capture file system state even on error
+                    const files = await this.captureFileSystem();
+
+                    results.push({
+                        exitCode: error.code || 1,
+                        stdout: error.stdout || '',
+                        stderr: error.stderr || error.message || '',
+                        files: files
+                    });
+                }
+            } else {
+                throw new Error('Step must have either input or code');
             }
         }
         return results;
