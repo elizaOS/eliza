@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-dummy-services",
-  "version": "workspace:*",
+  "version": "1.3.4",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "^1.3.4",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
