@@ -913,12 +913,12 @@ const reactionReceivedHandler = async ({
 }) => {
   try {
     await runtime.createMemory(message, 'messages');
-    } catch (error: any) {
-      if (error.code === '23505') {
+  } catch (error: any) {
+    if (error.code === '23505') {
       runtime.logger.warn('[Bootstrap] Duplicate reaction memory, skipping');
       return;
     }
-      runtime.logger.error({ error }, '[Bootstrap] Error in reaction handler:');
+    runtime.logger.error({ error }, '[Bootstrap] Error in reaction handler:');
   }
 };
 
@@ -950,8 +950,11 @@ const messageDeletedHandler = async ({
       message.roomId
     );
     await runtime.deleteMemory(message.id);
-    runtime.logger.debug({ messageId: message.id }, '[Bootstrap] Successfully deleted memory for message');
-    } catch (error: unknown) {
+    runtime.logger.debug(
+      { messageId: message.id },
+      '[Bootstrap] Successfully deleted memory for message'
+    );
+  } catch (error: unknown) {
     runtime.logger.error({ error }, '[Bootstrap] Error in message deleted handler:');
   }
 };
@@ -996,7 +999,10 @@ const channelClearedHandler = async ({
           await runtime.deleteMemory(memory.id);
           deletedCount++;
         } catch (error) {
-          runtime.logger.warn({ error, memoryId: memory.id }, `[Bootstrap] Failed to delete message memory ${memory.id}:`);
+          runtime.logger.warn(
+            { error, memoryId: memory.id },
+            `[Bootstrap] Failed to delete message memory ${memory.id}:`
+          );
         }
       }
     }
@@ -1004,7 +1010,7 @@ const channelClearedHandler = async ({
     runtime.logger.info(
       `[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`
     );
-    } catch (error: unknown) {
+  } catch (error: unknown) {
     runtime.logger.error({ error }, '[Bootstrap] Error in channel cleared handler:');
   }
 };
@@ -1184,7 +1190,7 @@ const postGeneratedHandler = async ({
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-    runtime.logger.info({ cleanedText }, '[Bootstrap] Already recently posted that, retrying');
+        runtime.logger.info({ cleanedText }, '[Bootstrap] Already recently posted that, retrying');
         postGeneratedHandler({
           runtime,
           callback,

@@ -51,10 +51,7 @@ export class DummyTokenDataService extends ITokenDataService {
   }
 
   async getTokensByAddresses(addresses: string[], chain: string): Promise<TokenData[]> {
-    logger.debug(
-      { addresses, chain },
-      'DummyTokenDataService: getTokensByAddresses'
-    );
+    logger.debug({ addresses, chain }, 'DummyTokenDataService: getTokensByAddresses');
     return addresses.map((addr) => this.generateDummyToken(chain, addr));
   }
 

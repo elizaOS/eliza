@@ -211,7 +211,7 @@ describe('Provider Tests', () => {
           if (result && Object.keys(result.data).length === 0) {
             logger.warn('Provider returned empty data object');
           }
-    } catch (e) {
+        } catch (e) {
           error = e as Error;
           logger.error({ error: e }, 'Error in provider.get:');
         }

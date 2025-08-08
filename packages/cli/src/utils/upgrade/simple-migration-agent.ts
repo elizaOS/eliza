@@ -50,8 +50,8 @@ export class SimpleMigrationAgent extends EventTarget {
       if (this.verbose) {
         logger.info('Migration guide loader initialized successfully');
       }
-      } catch (error) {
-        logger.warn({ error }, 'Failed to initialize migration guide loader');
+    } catch (error) {
+      logger.warn({ error }, 'Failed to initialize migration guide loader');
       throw new Error('Cannot initialize migration system without guide access');
     }
   }

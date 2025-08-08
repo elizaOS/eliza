@@ -160,7 +160,10 @@ export class UserEnvironment {
               version = stdout.trim();
               logger.debug(`[UserEnvironment] Bun version after auto-install: ${version}`);
             } catch (retryError) {
-              logger.error({ error: retryError }, 'Failed to verify Bun installation after auto-install:');
+              logger.error(
+                { error: retryError },
+                'Failed to verify Bun installation after auto-install:'
+              );
               // Continue to manual installation instructions
             }
           }
@@ -169,7 +172,9 @@ export class UserEnvironment {
         // If auto-installation failed or was not attempted, show manual instructions
         if (!version) {
           const platform = process.platform;
-          logger.error(`${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`);
+          logger.error(
+            `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
+          );
           logger.error('');
           logger.error(
             `${emoji.rocket('Install Bun using the appropriate command for your system:')}`

@@ -985,7 +985,10 @@ export class AgentServer {
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error({ error: stopError, agentId }, `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 
