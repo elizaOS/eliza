@@ -115,7 +115,7 @@ jobs:
           # Update versions in all package.json files WITHOUT publishing
           # Using --no-git-tag-version to prevent automatic git operations
           # Note: Any temporary commits from earlier steps will be preserved
-          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
+          bunx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,7 +164,7 @@ jobs:
 
           # Publish the already-built packages
           # Store the result to check if publishing succeeded
-          if npx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
+          if bunx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
             echo "publish_success=true" >> $GITHUB_OUTPUT
             echo "✅ Successfully published all packages"
           else
