@@ -1,4 +1,4 @@
-import { Character, RuntimeSettings, encryptedCharacter, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
+import { Character, RuntimeSettings, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
 import { loadEnvironmentVariables } from './env-loader';
 import { setDefaultSecretsFromEnv } from '../../start';
 import { AgentServer } from '@elizaos/server';
@@ -21,7 +21,7 @@ console.log(`[ENV] Environment loaded with ${Object.keys(envSettings).length} va
 export async function createScenarioServerAndAgent(
   existingServer: AgentServer | null = null,
   desiredPort: number = 3000,
-  pluginNames: string[] = ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap']
+  pluginNames: string[] = ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap', '@elizaos/plugin-e2b']
 ): Promise<{ server: AgentServer; runtime: IAgentRuntime; agentId: UUID; port: number; createdServer: boolean }> {
   let server: AgentServer;
   let createdServer = false;
@@ -52,7 +52,8 @@ export async function createScenarioServerAndAgent(
 
   const secrets = await setDefaultSecretsFromEnv(character);
   console.log('secrets', secrets);
-  const runtime = await server.startAgent(encryptedCharacter(character));
+  // Pass raw character; encryption is handled inside startAgent
+  const runtime = await server.startAgent(character);
   console.log('runtime', runtime);
   const agentId = runtime.character.id as UUID;
   console.log('agentId', agentId);
@@ -105,7 +106,7 @@ export async function askAgentViaApi(
       content: input,
       server_id: defaultServer.id,
       metadata: { scenario: true, user_display_name: 'Scenario User' },
-      source_type: 'eliza_scenarios'
+      source_type: 'scenario_message'
     })
   });
   if (!postResp.ok) {

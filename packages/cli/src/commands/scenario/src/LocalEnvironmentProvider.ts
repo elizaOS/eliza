@@ -107,7 +107,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
                         break;
                     case 'python':
                     case 'python3':
-                        command = `${step.lang} -c "${escapedCode}"`;
+                        command = `python3 -c "${escapedCode}"`;
                         break;
                     default:
                         // For other languages, try the -c flag pattern

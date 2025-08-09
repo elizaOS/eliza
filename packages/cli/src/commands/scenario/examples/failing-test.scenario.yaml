@@ -15,7 +15,7 @@ run:
         description: Verify output contains 'Hello'
       - type: string_contains
         value: "Missing"
-        description: Verify output contains 'Missing' (this should fail)
+        description: Verify output contains 'Missing' (this should fail) # this should fail
 
 judgment:
   strategy: all_pass 

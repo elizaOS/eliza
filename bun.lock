@@ -4,7 +4,7 @@
     "": {
       "name": "eliza",
       "dependencies": {
-        "@elizaos/plugin-e2b": "^1.2.0",
+        "@elizaos/plugin-e2b": "1.2.0",
         "@elizaos/plugin-github": "1.2.9",
         "@elizaos/plugin-openai": "^1.0.9",
         "helmet": "^8.1.0",

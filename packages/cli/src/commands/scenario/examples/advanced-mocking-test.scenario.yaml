@@ -2,8 +2,11 @@ name: "Advanced Mocking Test"
 description: "Tests conditional mocking and complex response structures"
 
 plugins:
-  - "@elizaos/plugin-github"
-  - "@elizaos/plugin-evm"
+  # Full configuration objects
+  - name: "@elizaos/plugin-github"
+    enabled: true
+  - name: "@elizaos/plugin-evm"
+    enabled: true
 
 environment:
   type: e2b

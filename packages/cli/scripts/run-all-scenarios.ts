@@ -4,7 +4,8 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-const EXAMPLES_DIR = path.join(__dirname, '..', 'src', 'commands', 'scenario', 'examples');
+const CLI_DIR = path.join(__dirname, '..');
+const EXAMPLES_DIR = path.join(CLI_DIR, 'src', 'commands', 'scenario', 'examples');
 
 interface ScenarioResult {
     file: string;
@@ -16,6 +17,15 @@ interface ScenarioResult {
 
 async function runAllScenarios(): Promise<void> {
     console.log('🧪 Running all scenario tests...\n');
+
+    // Build the CLI so we can run dist/index.js (matches manual workflow)
+    console.log('🔧 Building CLI with tsup...');
+    try {
+        execSync('bun x tsup', { cwd: CLI_DIR, stdio: 'inherit' });
+    } catch (err) {
+        console.error('❌ Build failed. Aborting.');
+        process.exit(1);
+    }
 
     // Get all .scenario.yaml files
     const scenarioFiles = fs.readdirSync(EXAMPLES_DIR)
@@ -45,13 +55,14 @@ async function runAllScenarios(): Promise<void> {
         let error: string | undefined;
 
         try {
-            // Run the scenario using the CLI
-            const command = `bun run packages/cli/src/index.ts scenario run "${scenarioFile}"`;
+            // Run the built CLI binary against each scenario (matches manual one-liner)
+            const relPath = path.relative(CLI_DIR, scenarioFile);
+            const command = `bun dist/index.js scenario run "${relPath}"`;
             console.log(`  Command: ${command}`);
 
             execSync(command, {
                 stdio: 'pipe',
-                cwd: path.join(__dirname, '..', '..', '..'), // Root of monorepo
+                cwd: CLI_DIR,
                 timeout: 300000 // 5 minute timeout per scenario (for LLM calls and E2B)
             });
 

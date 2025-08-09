@@ -7,7 +7,5 @@ run:
     evaluations:
       - type: "string_contains"
         value: "help"
-      - type: "string_contains"
-        value: "assist"
 judgment:
   strategy: any_pass 

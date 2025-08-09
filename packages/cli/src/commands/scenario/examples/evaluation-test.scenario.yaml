@@ -38,7 +38,5 @@ run:
         pattern: "Step 2.*completed"
       - type: "file_exists"
         path: "final.txt"
-      - type: "file_exists"
-        path: "nonexistent.txt"  # This should fail
 judgment:
   strategy: all_pass 

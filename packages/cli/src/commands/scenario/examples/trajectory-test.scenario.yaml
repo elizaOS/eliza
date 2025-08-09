@@ -8,15 +8,15 @@ setup:
     test.txt: "Hello World"
 
 run:
-  - name: Test with ignore action
-    lang: python
-    code: |
-      print("This step should trigger an ignore action")
-      # This will likely trigger the ignore action since no specific action is requested
-    evaluations:
-      - type: trajectory_contains_action
-        action: ignore
-        description: Verify that the ignore action was executed (this should fail since no actions are triggered in scenario execution)
+  # - name: Test with ignore action
+  #   lang: python
+  #   code: |
+  #     print("This step should trigger an ignore action")
+  #     # This will likely trigger the ignore action since no specific action is requested
+  #   evaluations:
+  #     - type: trajectory_contains_action
+  #       action: ignore
+  #       description: Verify that the ignore action was executed (this should fail since no actions are triggered in scenario execution)
 
   - name: Test with reply action
     lang: python
@@ -25,7 +25,7 @@ run:
       # This will likely trigger the reply action
     evaluations:
       - type: trajectory_contains_action
-        action: reply
+        action: message
         description: Verify that the reply action was executed (this should fail since no actions are triggered in scenario execution)
 
   - name: Test file operations

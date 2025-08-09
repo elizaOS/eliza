@@ -1,10 +1,6 @@
 name: "Plugin Parsing Test"
 description: "Test dynamic plugin loading and parsing functionality"
 plugins:
-  # Simple string references
-  - "@elizaos/plugin-sql"
-  - "@elizaos/plugin-e2b"
-  
   # Full configuration objects
   - name: "@elizaos/plugin-openai"
     version: "1.0.0"

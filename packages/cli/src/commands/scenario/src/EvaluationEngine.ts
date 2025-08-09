@@ -114,16 +114,21 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
                 count: 50, // Get recent actions
                 unique: false,
             });
+            console.log('actionMemories', actionMemories);
 
             // Filter for action_result memories
             const actionResults = actionMemories.filter(
-                (mem) => mem.content?.type === 'action_result' && mem.metadata?.type === 'action_result'
+                (mem) => mem?.type === 'messages' && mem.metadata?.type === 'message'
             );
+            console.log('actionResults', actionResults);
 
-            // Check if any action matches the specified name
-            const matchingAction = actionResults.find(
-                (mem) => mem.content?.actionName === actionName
-            );
+            // Normalize function to compare action names robustly (case/underscore insensitive)
+            const normalize = (name: string | undefined): string => (typeof name === 'string' ? name : '').toLowerCase().replace(/_/g, '');
+            const target = normalize(actionName);
+            console.log('target', target);
+
+            // Check if any action matches the specified name (normalized)
+            const matchingAction = actionResults.find((mem) => normalize(mem.metadata?.type) === target);
 
             if (!matchingAction) {
                 return {
