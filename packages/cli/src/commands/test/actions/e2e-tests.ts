@@ -231,12 +231,15 @@ export async function runE2eTests(
 
               // wait 1 second between agent starts
               await new Promise((resolve) => setTimeout(resolve, 1000));
-              } catch (agentError) {
-                logger.error({ error: agentError, agentName: agent.character.name }, 'Error starting agent');
-                if (agentError instanceof Error) {
-                  logger.error({ message: agentError.message }, 'Error details:');
-                  logger.error({ stack: agentError.stack }, 'Stack trace:');
-                }
+            } catch (agentError) {
+              logger.error(
+                { error: agentError, agentName: agent.character.name },
+                'Error starting agent'
+              );
+              if (agentError instanceof Error) {
+                logger.error({ message: agentError.message }, 'Error details:');
+                logger.error({ stack: agentError.stack }, 'Stack trace:');
+              }
               // Log the error but don't fail the entire test run
               logger.warn(`Skipping agent ${agent.character.name} due to startup error`);
             }

@@ -608,7 +608,10 @@ export async function getPackageDetails(packageName: string): Promise<{
     try {
       return JSON.parse(text);
     } catch {
-      logger.warn({ packageName, text }, `Invalid JSON response received from registry for package`);
+      logger.warn(
+        { packageName, text },
+        `Invalid JSON response received from registry for package`
+      );
       return null;
     }
   } catch (error) {
@@ -640,16 +643,20 @@ export async function getBestPluginVersion(
 
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {
-    logger.warn({ packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
-      `Plugin runtime version mismatch`);
+    logger.warn(
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime version mismatch`
+    );
     logger.warn('This may cause compatibility issues.');
     return packageDetails.latestVersion;
   }
 
   // If minor version is different, warn but with less severity
   if (runtimeMinor !== packageMinor) {
-    logger.warn({ packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
-      `Plugin runtime minor version differs`);
+    logger.warn(
+      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
+      `Plugin runtime minor version differs`
+    );
   }
 
   return packageDetails.latestVersion;

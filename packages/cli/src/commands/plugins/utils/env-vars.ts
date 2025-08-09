@@ -89,7 +89,10 @@ export const extractPluginEnvRequirements = async (
       return {};
     }
 
-    logger.debug({ packageName, vars: Object.keys(agentConfig.pluginParameters) }, 'Found environment variables');
+    logger.debug(
+      { packageName, vars: Object.keys(agentConfig.pluginParameters) },
+      'Found environment variables'
+    );
 
     return agentConfig.pluginParameters;
   } catch (error) {

@@ -209,7 +209,10 @@ export class MigrationGuideLoader {
       }
     }
 
-    logger.info({ count: this.guides.length, guidesDir: this.guidesDir }, `Loaded migration guides`);
+    logger.info(
+      { count: this.guides.length, guidesDir: this.guidesDir },
+      `Loaded migration guides`
+    );
   }
 
   private createEmbeddedGuides(guideConfigs: any[]): void {

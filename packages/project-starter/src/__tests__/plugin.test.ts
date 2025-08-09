@@ -254,10 +254,10 @@ describe('StarterService', () => {
 
       // Test real functionality - check stop method is available
       expect(typeof startResult.stop).toBe('function');
-      } catch (e) {
-        error = e as Error;
-        logger.error({ error: e }, 'Service start error:');
-      }
+    } catch (e) {
+      error = e as Error;
+      logger.error({ error: e }, 'Service start error:');
+    }
 
     documentTestResult(
       'StarterService start',

@@ -362,7 +362,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // upgrade-insecure-requests is added by helmet automatically
@@ -985,7 +985,10 @@ export class AgentServer {
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error({ error: stopError, agentId }, `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 

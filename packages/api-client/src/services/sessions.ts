@@ -26,17 +26,20 @@ interface SessionMessageQueryParams {
  * @param paramName Name of the parameter for error messages
  * @returns Timestamp string or undefined if value is invalid
  */
-function toTimestampString(value: Date | string | number | undefined, paramName: string): string | undefined {
+function toTimestampString(
+  value: Date | string | number | undefined,
+  paramName: string
+): string | undefined {
   if (!value) return undefined;
 
   let timestamp: number;
-  
+
   if (value instanceof Date) {
     timestamp = value.getTime();
   } else if (typeof value === 'string') {
     const date = new Date(value);
     timestamp = date.getTime();
-    
+
     // Check for invalid date
     if (isNaN(timestamp)) {
       console.warn(`Invalid date string for ${paramName}: ${value}`);
@@ -48,7 +51,7 @@ function toTimestampString(value: Date | string | number | undefined, paramName:
     console.warn(`Invalid type for ${paramName}: ${typeof value}`);
     return undefined;
   }
-  
+
   return timestamp.toString();
 }
 
@@ -58,7 +61,10 @@ function toTimestampString(value: Date | string | number | undefined, paramName:
  * @param paramName Name of the parameter for error messages
  * @throws Error if the parameter is invalid
  */
-function validateRequiredParam(value: string | undefined | null, paramName: string): asserts value is string {
+function validateRequiredParam(
+  value: string | undefined | null,
+  paramName: string
+): asserts value is string {
   if (!value || value.trim() === '') {
     throw new Error(`${paramName} is required and cannot be empty`);
   }
@@ -113,12 +119,9 @@ export class SessionsService extends BaseApiClient {
    * @param params Query parameters for pagination and filtering
    * @returns Messages response
    */
-  async getMessages(
-    sessionId: string,
-    params?: GetMessagesParams
-  ): Promise<GetMessagesResponse> {
+  async getMessages(sessionId: string, params?: GetMessagesParams): Promise<GetMessagesResponse> {
     validateRequiredParam(sessionId, 'sessionId');
-    
+
     const queryParams: SessionMessageQueryParams = {};
 
     if (params?.limit) {
@@ -130,16 +133,15 @@ export class SessionsService extends BaseApiClient {
     if (beforeTimestamp) {
       queryParams.before = beforeTimestamp;
     }
-    
+
     const afterTimestamp = toTimestampString(params?.after, 'after');
     if (afterTimestamp) {
       queryParams.after = afterTimestamp;
     }
 
-    return this.get<GetMessagesResponse>(
-      `/api/messaging/sessions/${sessionId}/messages`,
-      { params: queryParams }
-    );
+    return this.get<GetMessagesResponse>(`/api/messaging/sessions/${sessionId}/messages`, {
+      params: queryParams,
+    });
   }
 
   /**

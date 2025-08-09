@@ -39,14 +39,14 @@ jobs:
         run: bun install
 
       - name: Build packages
-        run: bun run build && bun run build:docs
+        run: bun run build
 
       - name: Tag and Publish Packages
         id: tag_publish
         run: |
           RELEASE_TYPE=${{ github.event_name == 'push' && 'prerelease' || github.event.inputs.release_type }}
-          npx lerna version $RELEASE_TYPE --conventional-commits --yes --no-private --force-publish
-          npx lerna publish from-git --yes --dist-tag next
+          bunx lerna version $RELEASE_TYPE --conventional-commits --yes --no-private --force-publish
+          bunx lerna publish from-git --yes --dist-tag next
 
       - name: Get Version Tag
         id: get_tag

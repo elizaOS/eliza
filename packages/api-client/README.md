@@ -35,12 +35,12 @@ const message = await client.messaging.postMessage(channelId, 'Hello, world!');
 const session = await client.sessions.createSession({
   agentId: agent.id,
   userId: 'user-123',
-  metadata: { platform: 'web' }
+  metadata: { platform: 'web' },
 });
 
 // Send a message in the session
 const sessionMessage = await client.sessions.sendMessage(session.sessionId, {
-  content: 'Hello, agent!'
+  content: 'Hello, agent!',
 });
 
 // Upload media

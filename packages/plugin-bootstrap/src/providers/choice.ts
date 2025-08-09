@@ -106,7 +106,7 @@ export const choiceProvider: Provider = {
         text: output,
       };
     } catch (error) {
-    logger.error({ error }, 'Error in options provider:');
+      logger.error({ error }, 'Error in options provider:');
       return {
         data: {
           tasks: [],

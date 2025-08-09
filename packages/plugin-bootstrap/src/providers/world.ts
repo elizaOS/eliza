@@ -18,7 +18,7 @@ export const worldProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory) => {
     try {
-    logger.debug({ roomId: message.roomId }, '[🌐] World provider activated for roomId:');
+      logger.debug({ roomId: message.roomId }, '[🌐] World provider activated for roomId:');
 
       // Get the current room from the message
       const currentRoom = await runtime.getRoom(message.roomId);
