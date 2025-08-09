@@ -11,10 +11,6 @@ describe('Plugin Events', () => {
     spyOn(logger, 'debug');
   });
 
-  afterAll(() => {
-    // No global restore needed in bun:test
-  });
-
   it('should have events defined', () => {
     expect(plugin.events).toBeDefined();
     if (plugin.events) {

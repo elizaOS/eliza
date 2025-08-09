@@ -13,10 +13,6 @@ describe('Error Handling', () => {
     spyOn(logger, 'warn');
   });
 
-  afterEach(() => {
-    // No global restore needed in bun:test;
-  });
-
   describe('HELLO_WORLD Action Error Handling', () => {
     it('should log errors in action handlers', async () => {
       // Find the action
