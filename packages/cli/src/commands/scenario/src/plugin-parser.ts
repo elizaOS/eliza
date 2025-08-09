@@ -1,5 +1,5 @@
 import { PluginReference, PluginConfig } from './schema';
-import { loadAndPreparePlugin, isValidPluginShape } from '../commands/start/utils/plugin-utils';
+import { loadAndPreparePlugin, isValidPluginShape } from '../../start/utils/plugin-utils';
 import { Plugin } from '@elizaos/core';
 
 export interface ParsedPlugin {

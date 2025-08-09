@@ -15,20 +15,20 @@ export function loadEnvironmentVariables(): void {
   ];
 
   let loadedFrom = null;
-  
+
   for (const envPath of possibleEnvPaths) {
     if (fs.existsSync(envPath)) {
       console.log(`[ENV] Loading environment from: ${envPath}`);
       const envFileContent = fs.readFileSync(envPath);
       const parsedEnv = dotenv.parse(envFileContent);
-      
+
       // Manually inject parsed env vars into process.env
       for (const key in parsedEnv) {
         if (!process.env.hasOwnProperty(key)) {
           process.env[key] = parsedEnv[key];
         }
       }
-      
+
       loadedFrom = envPath;
       console.log(`[ENV] Environment loaded with ${Object.keys(parsedEnv).length} variables`);
       break; // Use the first found .env file
@@ -43,9 +43,24 @@ export function loadEnvironmentVariables(): void {
   const criticalVars = ['E2B_API_KEY', 'OPENAI_API_KEY'];
   for (const varName of criticalVars) {
     if (process.env[varName]) {
-      console.log(`[ENV] ${varName} found in process.env`);
+      const valuePreview = (process.env[varName] || '').toString();
+      const redacted = valuePreview.length > 8 ? `${valuePreview.slice(0, 4)}****${valuePreview.slice(-4)}` : '****';
+      console.log(`[ENV] ${varName} found in process.env: ${redacted}`);
     } else {
       console.log(`[ENV] ⚠️ ${varName} not found in process.env`);
     }
   }
+
+  // Debug dump of a safe subset of env
+  const safeKeys = ['NODE_ENV', 'E2B_API_KEY', 'OPENAI_API_KEY'];
+  const safeEnv: Record<string, string> = {};
+  for (const key of safeKeys) {
+    if (process.env[key]) {
+      const val = process.env[key] as string;
+      safeEnv[key] = val.length > 8 ? `${val.slice(0, 4)}****${val.slice(-4)}` : '****';
+    } else {
+      safeEnv[key] = '<missing>';
+    }
+  }
+  console.log('[ENV] Safe env preview:', JSON.stringify(safeEnv));
 } 

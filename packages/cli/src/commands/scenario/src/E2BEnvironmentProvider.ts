@@ -1,8 +1,8 @@
-import { EnvironmentProvider, ExecutionResult } from '../commands/scenario/src/providers';
-import { Scenario } from '../commands/scenario/src/schema';
+import { EnvironmentProvider, ExecutionResult } from './providers';
+import { Scenario } from './schema';
 import { AgentRuntime, UUID } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
-import { askAgentViaApi } from '../commands/scenario/src/runtime-factory';
+import { askAgentViaApi } from './runtime-factory';
 
 export class E2BEnvironmentProvider implements EnvironmentProvider {
     private runtime: AgentRuntime;

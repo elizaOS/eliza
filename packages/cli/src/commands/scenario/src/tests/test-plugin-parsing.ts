@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { PluginParser } from './src/scenarios/plugin-parser';
-import { PluginReference } from './src/scenarios/schema';
+import { PluginParser } from '../plugin-parser';
+import { PluginReference } from '../schema';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { ScenarioSchema } from './src/scenarios/schema';
+import { ScenarioSchema } from '../schema';
 import * as yaml from 'js-yaml';
 import * as fs from 'fs';
 import * as path from 'path';

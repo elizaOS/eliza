@@ -1,19 +1,18 @@
 import { Command } from 'commander';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
-import { ScenarioSchema, Scenario } from '../../scenarios/schema';
-import { LocalEnvironmentProvider } from '../../scenarios/LocalEnvironmentProvider';
-import { E2BEnvironmentProvider } from '../../scenarios/E2BEnvironmentProvider';
-import { EnvironmentProvider } from '../../scenarios/providers';
-import { createE2BRuntime } from '../../scenarios/runtime-factory';
-// import { initializeAgent } from '../../scenarios/runtime-factory';
+import { ScenarioSchema, Scenario } from "../scenario/src/schema"
+import { LocalEnvironmentProvider } from '../scenario/src/LocalEnvironmentProvider';
+import { E2BEnvironmentProvider } from '../scenario/src/E2BEnvironmentProvider';
+import { EnvironmentProvider } from '../scenario/src/providers';
+import { createScenarioServerAndAgent } from '../scenario/src/runtime-factory';
 
-import { MockEngine } from '../../scenarios/MockEngine';
-import { EvaluationEngine } from '../../scenarios/EvaluationEngine';
-import { Reporter } from '../../scenarios/Reporter';
-import { PluginParser } from '../../scenarios/plugin-parser';
+import { MockEngine } from './src/MockEngine';
+import { EvaluationEngine } from './src/EvaluationEngine';
+import { Reporter } from './src/Reporter';
+import { PluginParser } from './src/plugin-parser';
 
 export const scenario = new Command()
     .name('scenario')
@@ -28,6 +27,9 @@ export const scenario = new Command()
                 logger.info(`Starting scenario run with args: ${JSON.stringify({ filePath, ...options })}`);
                 let provider: EnvironmentProvider | null = null;
                 let runtime: any = null;
+                let server: any = null;
+                let agentId: any = null;
+                let createdServer = false;
                 let mockEngine: MockEngine | null = null;
                 let finalStatus = false; // Default to fail
                 let reporter: Reporter | null = null;
@@ -77,17 +79,38 @@ export const scenario = new Command()
                     // Initialize Reporter
                     reporter = new Reporter();
                     reporter.reportStart(scenario);
-
+                    const defaultPlugins = [
+                        '@elizaos/plugin-sql',
+                        '@elizaos/plugin-e2b',
+                        '@elizaos/plugin-openai',
+                        '@elizaos/plugin-bootstrap',
+                    ];
+                    const scenarioPlugins = Array.isArray((scenario as any).plugins) ? (scenario as any).plugins as string[] : [];
+                    const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
+                    logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
                     // Determine environment provider based on scenario type
                     if (scenario.environment.type === 'e2b') {
-                        // Check if this scenario has LLM evaluations that need testing
-                        console.log('[DEBUG] About to create agent runtime...');
-                        // runtime = await initializeAgent();
-                        runtime = await createE2BRuntime();
-                        console.log('[DEBUG] Agent runtime created successfully');
-                        provider = new E2BEnvironmentProvider(runtime);
+                        // Create server and start agent once, reuse for steps. Include E2B plugin if available.
+                        const created = await createScenarioServerAndAgent(null, 3000, finalPlugins);
+                        server = created.server;
+                        runtime = created.runtime;
+                        agentId = created.agentId;
+                        createdServer = created.createdServer;
+                        // Prefer E2B provider when the service is present; otherwise gracefully fall back to local
+                        const hasE2B = !!runtime.getService?.('e2b');
+                        provider = hasE2B
+                            ? new E2BEnvironmentProvider(runtime, server, agentId)
+                            : new LocalEnvironmentProvider(server, agentId);
                     } else if (scenario.environment.type === 'local') {
-                        provider = new LocalEnvironmentProvider();
+                        // Local also may need NL interaction; pass server/agent if already created
+                        if (!server || !runtime || !agentId) {
+                            const created = await createScenarioServerAndAgent(null, 3000);
+                            server = created.server;
+                            runtime = created.runtime;
+                            agentId = created.agentId;
+                            createdServer = created.createdServer;
+                        }
+                        provider = new LocalEnvironmentProvider(server, agentId);
                         logger.info('Using local environment');
                     } else {
                         logger.error(`Unsupported environment type: '${scenario.environment.type}'`);
@@ -108,7 +131,7 @@ export const scenario = new Command()
                     const results = await provider.run(scenario);
 
                     // Report execution results using Reporter
-                    results.forEach((result, idx) => {
+                    results.forEach((result) => {
                         reporter?.reportExecutionResult(result);
                     });
 
@@ -174,12 +197,15 @@ export const scenario = new Command()
                     // Apply judgment logic
                     if (scenario.judgment?.strategy === 'all_pass') {
                         finalStatus = allEvaluationResults.every(res => res.success);
+                    } else if (scenario.judgment?.strategy === 'any_pass') {
+                        finalStatus = allEvaluationResults.some(res => res.success);
                     } else {
                         // Default to fail for unknown strategies
                         finalStatus = false;
                     }
                 } catch (error) {
-                    logger.error('An error occurred during scenario execution:', error);
+                    logger.error('An error occurred during scenario execution:');
+                    logger.error(error instanceof Error ? error.message : String(error));
                     process.exit(1);
                 } finally {
                     // Revert mocks first to ensure clean state
@@ -193,14 +219,21 @@ export const scenario = new Command()
                         await provider.teardown();
                     }
                     if (runtime) {
-                        // Explicitly stop the E2B service to ensure clean shutdown
-                        const e2bService = runtime.getService('e2b');
-                        if (e2bService && typeof e2bService.stop === 'function') {
-                            logger.info('Stopping E2B service...');
-                            await e2bService.stop();
-                        }
-                        await runtime.close();
-                        logger.info('Runtime shutdown complete');
+                        try {
+                            // Explicitly stop the E2B service to ensure clean shutdown
+                            const e2bService = runtime.getService('e2b');
+                            if (e2bService && typeof e2bService.stop === 'function') {
+                                logger.info('Stopping E2B service...');
+                                await e2bService.stop();
+                            }
+                            await runtime.close();
+                            logger.info('Runtime shutdown complete');
+                        } catch { }
+                    }
+                    if (server && createdServer) {
+                        try {
+                            await server.stop();
+                        } catch { }
                     }
 
                     // Report final result and exit with appropriate code

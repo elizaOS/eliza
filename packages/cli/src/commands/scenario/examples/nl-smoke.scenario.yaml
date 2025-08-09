@@ -1,0 +1,21 @@
+name: "Natural Language Smoke"
+description: "Simple NL input path with local env and regex eval"
+
+environment:
+  type: local
+
+setup:
+  virtual_fs:
+    notes/readme.txt: |
+      hello world
+
+run:
+  - name: "ask basic question"
+    input: "Say hello"
+    evaluations:
+      - type: regex_match
+        pattern: "hello|hi|hey"
+
+judgment:
+  strategy: all_pass
+

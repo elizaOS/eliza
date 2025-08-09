@@ -1,5 +1,8 @@
 import { EnvironmentProvider, ExecutionResult } from './providers';
 import { Scenario } from './schema';
+import { AgentServer } from '@elizaos/server';
+import { UUID } from '@elizaos/core';
+import { askAgentViaApi } from './runtime-factory';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -10,6 +13,13 @@ const execAsync = promisify(exec);
 
 export class LocalEnvironmentProvider implements EnvironmentProvider {
     private tempDir: string | null = null;
+    private server: AgentServer | null = null;
+    private agentId: UUID | null = null;
+
+    constructor(server?: AgentServer, agentId?: UUID) {
+        this.server = server ?? null;
+        this.agentId = agentId ?? null;
+    }
 
     async setup(scenario: Scenario): Promise<void> {
         const tempDirPrefix = path.join(os.tmpdir(), 'eliza-scenario-run-');
@@ -70,13 +80,10 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
             if (step.input) {
-                // Handle natural language input via API client
-                const { handleNaturalLanguageInteraction } = await import('./runtime-factory');
-                const response = await handleNaturalLanguageInteraction(
-                    null as any, // We'll create the server in the function
-                    'scenario-runner',
-                    step.input
-                );
+                if (!this.server || !this.agentId) {
+                    throw new Error('LocalEnvironmentProvider requires a pre-created server and agent for NL input');
+                }
+                const response = await askAgentViaApi(this.server, this.agentId, step.input);
 
                 results.push({
                     exitCode: 0,

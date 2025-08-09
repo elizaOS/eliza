@@ -75,7 +75,7 @@ class RegexMatchEvaluator implements Evaluator {
     async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
         if (params.type !== 'regex_match') throw new Error('Mismatched evaluator');
 
-        const success = new RegExp(params.pattern).test(runResult.stdout);
+        const success = new RegExp(params.pattern, 'i').test(runResult.stdout);
         return {
             success,
             message: `Checked if stdout matches regex "${params.pattern}". Result: ${success}`,
