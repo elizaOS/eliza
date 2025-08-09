@@ -161,10 +161,14 @@ class LLMJudgeEvaluator implements Evaluator {
 
         const prompt = params.prompt;
         const expected = params.expected;
-        // Try OBJECT_SMALL first, fallback to TEXT_LARGE if not available
-        const modelType = ModelType.OBJECT_SMALL;
+        // Try OBJECT_SMALL first, then TEXT_LARGE/TEXT_SMALL
+        const candidateModels = [ModelType.OBJECT_SMALL, ModelType.TEXT_LARGE, ModelType.TEXT_SMALL];
         const temperature = params.temperature || 0.1;
         const jsonSchema = (params.json_schema as any) || this.getDefaultJudgmentSchema();
+        const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
+
+        // Pick first available model
+        let modelType: ModelType = candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
         // Create a simple, clear prompt for object generation
         const fullPrompt = `
@@ -191,11 +195,20 @@ Do not use any other field names. Use only the exact field names specified above
             console.log(`[LLM Judge] Using model type: ${modelType}`);
             console.log(`[LLM Judge] Temperature: ${temperature}`);
 
-            // Check if the model type is available
+            // Check if the picked model is available; if not, return gracefully
             const availableModels = (runtime as any).models;
-            console.log(`[LLM Judge] Available models:`, Object.keys(availableModels || {}));
+            const modelKeys = availableModels && typeof availableModels.keys === 'function'
+                ? Array.from(availableModels.keys())
+                : Object.keys(availableModels || {});
+            console.log(`[LLM Judge] Available models:`, modelKeys);
             const modelHandler = (runtime as any).getModel(modelType);
             console.log(`[LLM Judge] Model handler for ${modelType}:`, modelHandler ? 'EXISTS' : 'NOT FOUND');
+            if (!modelHandler) {
+                return {
+                    success: false,
+                    message: `LLM judge: no available model handler (tried ${candidateModels.join(', ')})`,
+                };
+            }
 
             // Check if OpenAI plugin is loaded
             const openaiService = runtime.getService('openai');
@@ -205,18 +218,20 @@ Do not use any other field names. Use only the exact field names specified above
             const allServices = (runtime as any).services;
             console.log(`[LLM Judge] All loaded services:`, Object.keys(allServices || {}));
 
-            const objectParams: ObjectGenerationParams = {
-                runtime,
+            // Do not include runtime here; runtime.useModel will inject it
+            const objectParams: Omit<ObjectGenerationParams, 'runtime'> = {
                 prompt: fullPrompt,
                 schema: jsonSchema,
                 temperature,
-                output: 'object'
-            };
+                output: 'object',
+            } as any;
 
-            // Don't log the runtime object as it contains cyclic references
-            const { runtime: _, ...logParams } = objectParams;
-            console.log(`[LLM Judge] Calling useModel with params:`, JSON.stringify(logParams, null, 2));
-            const response = await runtime.useModel(modelType, objectParams);
+            // Safe log (no runtime field)
+            console.log(`[LLM Judge] Calling useModel with params:`, JSON.stringify(objectParams, null, 2));
+            const response = await Promise.race([
+                runtime.useModel(modelType, objectParams),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`LLM judge timeout after ${timeoutMs}ms`)), timeoutMs)),
+            ]);
             console.log(`[LLM Judge] Received response:`, JSON.stringify(response, null, 2));
 
             // The object model should return a proper object, but let's validate it
@@ -230,9 +245,11 @@ Do not use any other field names. Use only the exact field names specified above
                 message: `LLM judgment: ${parsedResponse.judgment} (confidence: ${parsedResponse.confidence}). Expected: "${expected}". Result: ${success}`,
             };
         } catch (error: any) {
+            const msg = error?.message || String(error);
+            const isTimeout = msg.toLowerCase().includes('timeout');
             return {
                 success: false,
-                message: `LLM judge failed to parse valid JSON: ${error.message}`,
+                message: isTimeout ? `LLM judge timed out after ${timeoutMs}ms` : `LLM judge error: ${msg}`,
             };
         }
     }
