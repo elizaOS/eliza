@@ -50,13 +50,10 @@ export async function createScenarioServerAndAgent(
     }
   } as Character;
 
-  const secrets = await setDefaultSecretsFromEnv(character);
-  console.log('secrets', secrets);
+  await setDefaultSecretsFromEnv(character);
   // Pass raw character; encryption is handled inside startAgent
   const runtime = await server.startAgent(character);
-  console.log('runtime', runtime);
   const agentId = runtime.character.id as UUID;
-  console.log('agentId', agentId);
 
   return { server, runtime, agentId, port, createdServer };
 }

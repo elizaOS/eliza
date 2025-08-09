@@ -81,9 +81,9 @@ export const scenario = new Command()
                     reporter.reportStart(scenario);
                     const defaultPlugins = [
                         '@elizaos/plugin-sql',
+                        '@elizaos/plugin-bootstrap',
                         '@elizaos/plugin-e2b',
                         '@elizaos/plugin-openai',
-                        '@elizaos/plugin-bootstrap',
                     ];
                     const scenarioPlugins = Array.isArray((scenario as any).plugins) ? (scenario as any).plugins as string[] : [];
                     const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));

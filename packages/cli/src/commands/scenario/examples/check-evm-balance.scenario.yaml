@@ -10,6 +10,8 @@ plugins:
   - name: "@elizaos/plugin-evm"
     enabled: true
 
+  
+
 # We will use the sandboxed E2B environment for this test.
 environment:
   type: e2b
