@@ -1,20 +1,8 @@
-import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import plugin from '../plugin';
 import { z } from 'zod';
 import { createMockRuntime } from './utils/core-test-utils';
-
-// Mock logger
-mock.module('@elizaos/core', () => {
-  const actual = require('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: mock(),
-      error: mock(),
-      warn: mock(),
-    },
-  };
-});
+import { logger } from '@elizaos/core';
 
 // Access the plugin's init function
 const initPlugin = plugin.init;
@@ -24,7 +12,10 @@ describe('Plugin Configuration Schema', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    mock.restore();
+    // Use spyOn for logger methods
+    spyOn(logger, 'info');
+    spyOn(logger, 'error');
+    spyOn(logger, 'warn');
     // Reset environment variables before each test
     process.env = { ...originalEnv };
   });
