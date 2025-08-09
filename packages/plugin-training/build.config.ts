@@ -1,0 +1,38 @@
+import type { BuildConfig } from 'bun';
+
+export const buildConfig: BuildConfig = {
+  entrypoints: [
+    './src/index.ts',
+    './src/cli/index.ts',
+    './src/mvp-only.ts',
+    './src/enhanced-export.ts',
+  ],
+  outdir: './dist',
+  target: 'node',
+  format: 'esm',
+  splitting: false,
+  sourcemap: 'external',
+  external: [
+    'fs',
+    'path',
+    'http',
+    'https',
+    'crypto',
+    'node:fs',
+    'node:path',
+    'node:http',
+    'node:https',
+    'node:crypto',
+    'node:stream',
+    'node:buffer',
+    'node:util',
+    'node:events',
+    'node:url',
+    'bun:test',
+    'dotenv',
+    'zod',
+    '@elizaos/core',
+    '@elizaos/plugin-sql',
+  ],
+  naming: '[dir]/[name].[ext]',
+};
