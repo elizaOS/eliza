@@ -362,7 +362,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // upgrade-insecure-requests is added by helmet automatically
