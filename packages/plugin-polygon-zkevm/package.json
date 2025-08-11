@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/plugin-polygon-zkevm",
+  "description": "ElizaOS plugin for Polygon zkEVM",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "polygon",
+    "zkevm",
+    "elizaos",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "beta",
+    "ethers": "^6.13.1",
+    "zod": "3.25.32"
+  },
+  "devDependencies": {
+    "tsup": "8.4.0",
+    "prettier": "3.5.3",
+    "vitest": "2.1.5",
+    "@vitest/coverage-v8": "2.1.5",
+    "typescript": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.0.0",
+    "dotenv": "^16.4.5",
+    "vite-tsconfig-paths": "^4.3.1",
+    "@types/node": "^20.11.30"
+  },
+  "scripts": {
+    "build": "tsup",
+    "lint": "eslint src/**/*.ts && prettier --check src/**/*.ts",
+    "test": "vitest run",
+    "format": "prettier --write src/**/*.ts",
+    "format:check": "prettier --check src/**/*.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+}

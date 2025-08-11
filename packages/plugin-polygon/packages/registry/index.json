@@ -1,0 +1,23 @@
+{
+  "v1": {
+    "packages": {}
+  },
+  "v2": {
+    "packages": {
+      "@elizaos/plugin-polygon": {
+        "name": "@elizaos/plugin-polygon",
+        "description": "Polygon integration for ElizaOS",
+        "type": "module",
+        "versions": {
+          "1.0.0-beta.40": {
+            "version": "1.0.0-beta.40",
+            "runtimeVersion": "1.4.2",
+            "platform": "universal",
+            "publishedAt": "2025-08-11T13:47:27.075Z",
+            "published": false
+          }
+        }
+      }
+    }
+  }
+}

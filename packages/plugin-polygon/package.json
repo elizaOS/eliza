@@ -1,0 +1,130 @@
+{
+  "name": "@elizaos/plugin-polygon",
+  "description": "Polygon integration for ElizaOS",
+  "version": "1.0.0-beta.40",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "github:elizaos-plugins/plugin-polygon"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@cosmjs/proto-signing": "^0.32.3",
+    "@cosmjs/stargate": "^0.32.3",
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-polygon": "workspace:*",
+    "@elizaos/plugin-tee": "^1.0.2",
+    "@lifi/data-types": "5.15.5",
+    "@lifi/sdk": "^3.7.2",
+    "@lifi/types": "16.3.0",
+    "axios": "^1.7.2",
+    "cosmjs-types": "^0.9.0",
+    "ethers": "^6.14.0",
+    "node-cache": "^5.1.2",
+    "viem": "^2.7.2",
+    "zod": "3.25.32"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsup": "8.4.0",
+    "typescript": "5.8.2",
+    "prettier": "3.5.3",
+    "dotenv": "^16.4.5",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:legacy": "vitest run src/tests",
+    "test:rpc": "node test-scripts/rpc-check.js",
+    "test:plugin": "node test-scripts/plugin-init.js",
+    "test:bridge": "node test-scripts/bridge-transaction-test.js",
+    "test:bridge-tx": "vitest run src/tests/bridge-transaction.test.ts",
+    "test:encoding": "node test-scripts/deposit-encoding-test.js",
+    "test:standalone": "node standalone-test.js",
+    "test:all": "npm run test:bridge && npm run test:encoding && npm run test:standalone",
+    "typecheck": "tsc --noEmit",
+    "publish": "elizaos plugin publish",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "coverage": "vitest run --coverage",
+    "clean": "rm -rf dist node_modules .turbo"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.25.32"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
+  "platform": "universal",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "POLYGON_RPC_URL": {
+        "type": "string",
+        "description": "Polygon (L2) JSON-RPC endpoint URL"
+      },
+      "ETHEREUM_RPC_URL": {
+        "type": "string",
+        "description": "Ethereum (L1) JSON-RPC endpoint URL"
+      },
+      "PRIVATE_KEY": {
+        "type": "string",
+        "description": "Private key for transaction signing (keep secure)",
+        "sensitive": true
+      },
+      "POLYGONSCAN_KEY": {
+        "type": "string",
+        "description": "PolygonScan API key for gas estimations and other queries"
+      },
+      "GOVERNOR_ADDRESS": {
+        "type": "string",
+        "description": "Address of the governance contract",
+        "optional": true
+      },
+      "TOKEN_ADDRESS": {
+        "type": "string",
+        "description": "Address of the governance token contract",
+        "optional": true
+      },
+      "TIMELOCK_ADDRESS": {
+        "type": "string",
+        "description": "Address of the timelock controller contract",
+        "optional": true
+      },
+      "HEIMDALL_RPC_URL": {
+        "type": "string",
+        "description": "Heimdall RPC endpoint URL for Polygon validator operations",
+        "optional": true
+      }
+    }
+  },
+  "packageType": "plugin",
+  "npmPackage": "@elizaos/plugin-polygon"
+}

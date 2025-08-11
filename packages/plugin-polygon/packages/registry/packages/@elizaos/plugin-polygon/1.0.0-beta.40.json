@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/plugin-polygon",
+  "version": "1.0.0-beta.40",
+  "description": "Polygon integration for ElizaOS",
+  "type": "module",
+  "platform": "universal",
+  "runtimeVersion": "1.4.2",
+  "repository": "github:elizaos-plugins/plugin-polygon",
+  "maintainers": [
+    "monilpat"
+  ],
+  "publishedAt": "2025-08-11T13:47:27.075Z",
+  "publishedBy": "monilpat",
+  "dependencies": {
+    "@cosmjs/proto-signing": "^0.32.3",
+    "@cosmjs/stargate": "^0.32.3",
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-polygon": "workspace:*",
+    "@elizaos/plugin-tee": "^1.0.2",
+    "@lifi/data-types": "5.15.5",
+    "@lifi/sdk": "^3.7.2",
+    "@lifi/types": "16.3.0",
+    "axios": "^1.7.2",
+    "cosmjs-types": "^0.9.0",
+    "ethers": "^6.14.0",
+    "node-cache": "^5.1.2",
+    "viem": "^2.7.2",
+    "zod": "3.25.32"
+  },
+  "tags": [],
+  "license": "UNLICENSED",
+  "npmPackage": "@elizaos/plugin-polygon"
+}
