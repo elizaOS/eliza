@@ -69,6 +69,7 @@ type ChatCompletionRequest = {
   messages: ChatMessage[];
   model?: string;
   stream?: boolean;
+  include_intermediate_steps?: boolean;
 };
 
 app.post("/v1/chat/completions", async (c: Context) => {
@@ -108,8 +109,97 @@ app.post("/v1/chat/completions", async (c: Context) => {
   const result = await agent.generate({ prompt });
 
   const now = Math.floor(Date.now() / 1000);
+  const responseId = `chatcmpl_${randomUUID()}`;
+
+  // If intermediate steps are requested, return full conversation flow
+  if (
+    body.include_intermediate_steps &&
+    result.steps &&
+    result.steps.length > 1
+  ) {
+    const conversationMessages: any[] = [];
+
+    // Add original user message
+    conversationMessages.push({
+      role: "user",
+      content:
+        body.messages[body.messages.length - 1]?.content ||
+        prompt.split("[User] ").pop() ||
+        prompt,
+    });
+
+    // Process each step
+    for (const step of result.steps) {
+      if (step.toolCalls && step.toolCalls.length > 0) {
+        // Add assistant message with tool calls
+        conversationMessages.push({
+          role: "assistant",
+          content: step.text || null,
+          tool_calls: step.toolCalls.map((toolCall) => ({
+            id: toolCall.toolCallId,
+            type: "function",
+            function: {
+              name: toolCall.toolName,
+              arguments: JSON.stringify(toolCall.args || toolCall.input || {}),
+            },
+          })),
+        });
+
+        // Add tool results as tool messages
+        if (step.toolResults) {
+          for (const toolResult of step.toolResults) {
+            conversationMessages.push({
+              role: "tool",
+              tool_call_id: toolResult.toolCallId,
+              content: JSON.stringify(
+                toolResult.result ||
+                  toolResult.output ||
+                  "Tool executed successfully",
+              ),
+            });
+          }
+        }
+      } else if (step.text) {
+        // Final assistant response
+        conversationMessages.push({
+          role: "assistant",
+          content: step.text,
+        });
+      }
+    }
+
+    return c.json({
+      id: responseId,
+      object: "chat.completion",
+      created: now,
+      model: body.model ?? "gpt-5-mini",
+      choices: [
+        {
+          index: 0,
+          message: conversationMessages[conversationMessages.length - 1] || {
+            role: "assistant",
+            content: result.text,
+          },
+          finish_reason: "stop",
+        },
+      ],
+      // Include full conversation in a custom field for debugging
+      conversation_flow: conversationMessages,
+    });
+  }
+
+  // Standard OpenAI response format
+  const toolCalls = result.toolCalls?.map((toolCall) => ({
+    id: toolCall.toolCallId,
+    type: "function" as const,
+    function: {
+      name: toolCall.toolName,
+      arguments: JSON.stringify(toolCall.args || toolCall.input || {}),
+    },
+  }));
+
   const response = {
-    id: `chatcmpl_${randomUUID()}`,
+    id: responseId,
     object: "chat.completion" as const,
     created: now,
     model: body.model ?? "gpt-5-mini",
@@ -119,8 +209,11 @@ app.post("/v1/chat/completions", async (c: Context) => {
         message: {
           role: "assistant" as const,
           content: result.text,
+          ...(toolCalls && toolCalls.length > 0 && { tool_calls: toolCalls }),
         },
-        finish_reason: "stop" as const,
+        finish_reason: (toolCalls && toolCalls.length > 0
+          ? "tool_calls"
+          : "stop") as const,
       },
     ],
   };
