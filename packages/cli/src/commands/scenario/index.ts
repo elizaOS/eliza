@@ -85,7 +85,12 @@ export const scenario = new Command()
                         '@elizaos/plugin-e2b',
                         '@elizaos/plugin-openai',
                     ];
-                    const scenarioPlugins = Array.isArray((scenario as any).plugins) ? (scenario as any).plugins as string[] : [];
+                    // Extract plugin names from scenario configuration, filtering by enabled status
+                    const scenarioPlugins = Array.isArray((scenario as any).plugins)
+                        ? (scenario as any).plugins
+                            .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+                            .map((p: any) => typeof p === 'string' ? p : p.name) // Extract name if it's an object
+                        : [];
                     const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
                     logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
                     // Determine environment provider based on scenario type

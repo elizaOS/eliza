@@ -1,0 +1,23 @@
+name: "Test GitHub Issues Listing"
+description: "Tests that the agent can list open issues for elizaOS/eliza repository using the GitHub plugin"
+
+plugins:
+  - name: "@elizaos/plugin-bootstrap"
+    enabled: true
+  - name: "@elizaos/plugin-github"
+    enabled: true
+
+environment:
+  type: local
+
+run:
+  - name: "Ask agent to list open issues"
+    input: "List open issues for elizaOS/eliza"
+    evaluations:
+      # Check if the agent's response contains the mocked issue titles
+      - type: "string_contains"
+        value: "issues"
+        description: "Agent should mention the issues"
+
+judgment:
+  strategy: "all_pass"

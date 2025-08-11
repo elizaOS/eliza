@@ -117,13 +117,19 @@ export async function askAgentViaApi(
   await postResp.json();
 
   const startTime = Date.now();
-  const pollInterval = 1000;
+  const pollInterval = 30000;
+  await new Promise(resolve => setTimeout(resolve, pollInterval));
   while (Date.now() - startTime < timeoutMs) {
     const messages = await client.messaging.getChannelMessages(channel.id, { limit: 10 });
-    const agentMessage = messages.messages.find((msg: any) =>
+    const recentMessages = messages.messages.filter((msg: any) =>
       msg.authorId === agentId && msg.created_at > Date.now() - 10000
     );
-    if (agentMessage) return agentMessage.content;
+    if (recentMessages.length > 0) {
+      const latestMessage = recentMessages.sort((a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+      return latestMessage.content;
+    }
     await new Promise(resolve => setTimeout(resolve, pollInterval));
 
   }
