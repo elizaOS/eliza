@@ -140,7 +140,7 @@ app.post("/v1/chat/completions", async (c: Context) => {
             type: "function",
             function: {
               name: toolCall.toolName,
-              arguments: JSON.stringify(toolCall.args || toolCall.input || {}),
+              arguments: JSON.stringify(toolCall.input || {}),
             },
           })),
         });
@@ -152,9 +152,7 @@ app.post("/v1/chat/completions", async (c: Context) => {
               role: "tool",
               tool_call_id: toolResult.toolCallId,
               content: JSON.stringify(
-                toolResult.result ||
-                  toolResult.output ||
-                  "Tool executed successfully",
+                toolResult.output || "Tool executed successfully",
               ),
             });
           }
@@ -194,7 +192,7 @@ app.post("/v1/chat/completions", async (c: Context) => {
     type: "function" as const,
     function: {
       name: toolCall.toolName,
-      arguments: JSON.stringify(toolCall.args || toolCall.input || {}),
+      arguments: JSON.stringify(toolCall.input || {}),
     },
   }));
 
@@ -211,9 +209,7 @@ app.post("/v1/chat/completions", async (c: Context) => {
           content: result.text,
           ...(toolCalls && toolCalls.length > 0 && { tool_calls: toolCalls }),
         },
-        finish_reason: (toolCalls && toolCalls.length > 0
-          ? "tool_calls"
-          : "stop") as const,
+        finish_reason: result.finishReason,
       },
     ],
   };
