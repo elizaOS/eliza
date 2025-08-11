@@ -3,10 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "build": "bun build --target=bun --outdir dist src/index.ts",
+    "build": "bun build --target=bun --outdir dist src/index.ts src/server.ts",
     "dev": "bun --watch run src/index.ts",
+    "dev:server": "bun --watch run src/server.ts",
     "clean": "rm -rf dist node_modules",
     "start": "bun run dist/index.js",
+    "start:server": "bun run dist/server.js",
     "lint": "prettier --write ./",
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
@@ -25,6 +27,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^2.0.9",
     "ai": "^5.0.9",
+    "hono": "^4.5.7",
     "drizzle-orm": "^0.44.4",
     "postgres": "^3.4.7",
     "zod": "^4.0.17"

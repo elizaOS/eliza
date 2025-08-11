@@ -3,14 +3,14 @@ import {
   discordService,
   readChannel,
   listChannels,
-} from "../plugins/plugin-discord";
+} from "@/plugins/plugin-discord";
 import {
   evmService,
   getWalletAddress,
   getWalletBalance,
   getTokenBalance,
   getEVMChains,
-} from "../plugins/plugin-evm";
+} from "@/plugins/plugin-evm";
 import { stepCountIs, type Tool } from "ai";
 
 // Initialize ElizaOS
@@ -45,7 +45,7 @@ const agent = new Agent({
   stopWhen: stepCountIs(10),
 });
 
-elizaOS.addAgent(agent);
+elizaOS.addAgent(agent, "default");
 
 const response = await agent.generate({
   prompt: "Hello, tell me a random joke.",
