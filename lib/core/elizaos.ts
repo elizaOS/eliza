@@ -1,6 +1,6 @@
-import { Database } from "../db";
+import { Database } from "@/lib/db";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { Agent } from "./agent";
+import type { Agent } from "@/lib/core";
 
 export class ElizaOS {
   private static agents: Agent[] = [];

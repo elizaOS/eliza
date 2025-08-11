@@ -1,6 +1,6 @@
 import { drizzle, NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
-import { memories } from "./schema";
+import { memories } from "@/lib/db/schema";
 
 export class Database {
   private static instance: NodePgDatabase;

@@ -1,0 +1,113 @@
+---
+alwaysApply: false
+---
+Title: Use @/ alias imports and barrels
+
+Intent
+- Prefer `@/` alias imports over relative `./` or `../` for all internal modules.
+- Prefer importing from barrels (index files) when available.
+
+Scope
+- Applies to all TypeScript/JavaScript in this repo.
+- Bundler/runtime: Bun.
+
+Rationale
+- Clearer, stable import paths that do not depend on file location.
+- Easier refactors and better DX.
+
+Configuration
+- `tsconfig.json` already defines:
+  - `compilerOptions.baseUrl = "."`
+  - `compilerOptions.paths["@/*"] = ["./*"]`
+- With Bun and `moduleResolution: "bundler"`, `@/` resolves at build time.
+
+Rules
+1) Use `@/` for internal modules.
+   - DO: `import { Database } from "@/lib/db";`
+   - DO: `import { ElizaOS, Agent } from "@/lib/core";`
+   - AVOID: `import { Database } from "../db";`
+   - AVOID: `import { Agent } from "./agent";`
+
+2) Prefer barrels over deep paths when a barrel exists.
+   - DO: `import { Agent } from "@/lib/core";` (instead of `@/lib/core/agent`)
+   - DO: `import { memories } from "@/lib/db/schema";` (instead of `@/lib/db/schema/memories`)
+
+3) Keep external packages as bare specifiers.
+   - DO: `import { drizzle } from "drizzle-orm/node-postgres";`
+
+4) When creating new modules, export them via a barrel if the folder already has one.
+   - Update the folder's `index.ts` accordingly.
+
+Migration patterns
+- `../X` → `@/<resolved path to X>`
+- `./X` →
+  - If `X` is covered by a barrel, import from the barrel (e.g., `@/lib/core`).
+  - Otherwise `@/<resolved path to X>`.
+
+Examples (from recent edits)
+- `../db` → `@/lib/db`
+- `./agent` → `@/lib/core` (barrel)
+- `./schema` → `@/lib/db/schema` (barrel)
+
+Checklist for PRs
+- No `./` or `../` imports for internal modules.
+- Prefer barrels where available.
+- `tsconfig.json` alias intact (`@/*` → `./*`).
+
+Notes
+- If a barrel re-export is missing, add it to the folder `index.ts` instead of importing deep subpaths across the codebase.
+Title: Use @/ alias imports and barrels
+
+Intent
+- Prefer `@/` alias imports over relative `./` or `../` for all internal modules.
+- Prefer importing from barrels (index files) when available.
+
+Scope
+- Applies to all TypeScript/JavaScript in this repo.
+- Bundler/runtime: Bun.
+
+Rationale
+- Clearer, stable import paths that do not depend on file location.
+- Easier refactors and better DX.
+
+Configuration
+- `tsconfig.json` already defines:
+  - `compilerOptions.baseUrl = "."`
+  - `compilerOptions.paths["@/*"] = ["./*"]`
+- With Bun and `moduleResolution: "bundler"`, `@/` resolves at build time.
+
+Rules
+1) Use `@/` for internal modules.
+   - DO: `import { Database } from "@/lib/db";`
+   - DO: `import { ElizaOS, Agent } from "@/lib/core";`
+   - AVOID: `import { Database } from "../db";`
+   - AVOID: `import { Agent } from "./agent";`
+
+2) Prefer barrels over deep paths when a barrel exists.
+   - DO: `import { Agent } from "@/lib/core";` (instead of `@/lib/core/agent`)
+   - DO: `import { memories } from "@/lib/db/schema";` (instead of `@/lib/db/schema/memories`)
+
+3) Keep external packages as bare specifiers.
+   - DO: `import { drizzle } from "drizzle-orm/node-postgres";`
+
+4) When creating new modules, export them via a barrel if the folder already has one.
+   - Update the folder's `index.ts` accordingly.
+
+Migration patterns
+- `../X` → `@/<resolved path to X>`
+- `./X` →
+  - If `X` is covered by a barrel, import from the barrel (e.g., `@/lib/core`).
+  - Otherwise `@/<resolved path to X>`.
+
+Examples (from recent edits)
+- `../db` → `@/lib/db`
+- `./agent` → `@/lib/core` (barrel)
+- `./schema` → `@/lib/db/schema` (barrel)
+
+Checklist for PRs
+- No `./` or `../` imports for internal modules.
+- Prefer barrels where available.
+- `tsconfig.json` alias intact (`@/*` → `./*`).
+
+Notes
+- If a barrel re-export is missing, add it to the folder `index.ts` instead of importing deep subpaths across the codebase.
