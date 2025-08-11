@@ -43,7 +43,7 @@ if (process.env.WALLET_PRIVATE_KEY) {
   tools.getEVMChains = getEVMChains;
 }
 
-const jesseXBTJson = readFileSync("./characters/jesseXBT.json", "utf-8");
+const jesseXBTJson = readFileSync("./characters/jessexbt.json", "utf-8");
 
 const jesseXBTData = JSON.parse(jesseXBTJson);
 
