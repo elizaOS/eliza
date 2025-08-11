@@ -1,0 +1,25 @@
+{
+  "name": "plugin-discord",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --target=bun --outdir dist index.ts",
+    "dev": "bun --watch run index.ts",
+    "clean": "rm -rf dist node_modules",
+    "start": "bun run index.js",
+    "lint": "prettier --write ./"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "^3.6.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5",
+    "ai": "^5",
+    "zod": "^4"
+  },
+  "dependencies": {
+    "@discordjs/rest": "^2.5.1",
+    "discord-api-types": "^0.38.18"
+  }
+}
