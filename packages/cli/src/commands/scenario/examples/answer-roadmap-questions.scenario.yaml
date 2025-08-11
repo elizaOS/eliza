@@ -13,6 +13,7 @@ environment:
   type: e2b
 
 setup:
+  # Need to clean up as this isn't actually used in the actions
   mocks:
     # 1. Mock the issue search - simulates finding two relevant tickets.
     - service: "github-service"
@@ -49,15 +50,12 @@ run:
     input: "What new features are you planning to add?"
     evaluations:
       # Check if the agent's response correctly references the mocked issues.
-      - type: "string_contains"
-        value: "Scenario Runner"
-        case_sensitive: false
-      - type: "string_contains"
-        value: "Dark Mode"
-        case_sensitive: false
-      - type: "string_contains"
-        value: "SSO"
-        case_sensitive: false
+      - type: "regex_match"
+        pattern: "Scenario Runner"
+      - type: "regex_match"
+        pattern: "Dark Mode"
+      - type: "regex_match"
+        pattern: "SSO"
 
       # The generic LLM judge.
       # This works in both test mode (judging against mocked data)

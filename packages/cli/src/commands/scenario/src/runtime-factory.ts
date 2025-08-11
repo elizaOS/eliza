@@ -47,8 +47,17 @@ export async function createScenarioServerAndAgent(
       secrets: {
         ...(envSettings as Record<string, any>),
       },
-    }
-  } as Character;
+    },
+    // Always respond: set system prompt and template to ensure reply
+    system: 'Always respond to every message, even if the input is unclear or empty. Never ignore a user message.',
+    // Add minimal required fields for Character type
+    topics: ['testing', 'scenarios', 'automation'],
+    adjectives: ['responsive', 'reliable', 'test-oriented'],
+    style: {
+      all: ['Always reply', 'Be concise and clear'],
+      chat: ['Direct', 'Helpful'],
+    },
+  };
 
   await setDefaultSecretsFromEnv(character);
   // Pass raw character; encryption is handled inside startAgent
@@ -73,7 +82,6 @@ export async function askAgentViaApi(
   const { servers } = await client.messaging.listServers();
   if (servers.length === 0) throw new Error('No servers found');
   const defaultServer = servers[0];
-  console.log('defaultServer', defaultServer);
   const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
   const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
     method: 'POST',
@@ -86,14 +94,10 @@ export async function askAgentViaApi(
       metadata: { scenario: true }
     })
   });
-  console.log('channelResponse', channelResponse);
   if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
   const channelResult = await channelResponse.json();
-  console.log('channelResult', channelResult);
   const channel = channelResult.data;
-  console.log('channel', channel);
-  const addAgentToChannel = await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
-  console.log('addAgentToChannel', addAgentToChannel);
+  await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
   // Post a message using the server's expected payload (requires author_id and server_id)
   const postResp = await fetch(`http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`, {
     method: 'POST',
@@ -110,24 +114,16 @@ export async function askAgentViaApi(
     const errText = await postResp.text();
     throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
   }
-  const postMessage = await postResp.json();
-  console.log('postMessage', postMessage);
+  await postResp.json();
 
   const startTime = Date.now();
   const pollInterval = 1000;
   while (Date.now() - startTime < timeoutMs) {
     const messages = await client.messaging.getChannelMessages(channel.id, { limit: 10 });
-    console.log('messages', messages);
-
-    messages.messages.forEach((msg: any) => {
-      console.log('msg', msg);
-    });
     const agentMessage = messages.messages.find((msg: any) =>
       msg.authorId === agentId && msg.created_at > Date.now() - 10000
     );
-    console.log('agentMessage', agentMessage);
     if (agentMessage) return agentMessage.content;
-    console.log('waiting for agent response');
     await new Promise(resolve => setTimeout(resolve, pollInterval));
 
   }
