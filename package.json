@@ -6,10 +6,16 @@
     "build": "bun build --outdir dist src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "clean": "rm -rf dist node_modules",
-    "start": "bun run dist/index.js"
+    "start": "bun run dist/index.js",
+    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:pull": "drizzle-kit pull",
+    "db:studio": "drizzle-kit studio"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "drizzle-kit": "^0.31.4"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -17,6 +23,8 @@
   "dependencies": {
     "@ai-sdk/openai": "^2.0.9",
     "ai": "^5.0.9",
+    "drizzle-orm": "^0.44.4",
+    "postgres": "^3.4.7",
     "zod": "^4.0.17"
   }
 }
