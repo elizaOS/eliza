@@ -115,17 +115,17 @@ app.post("/v1/chat/completions", async (c: Context) => {
   if (
     body.include_intermediate_steps &&
     result.steps &&
-    result.steps.length > 1
+    result.steps.length > 0
   ) {
     const conversationMessages: any[] = [];
 
-    // Add original user message
+    // Add original user message - find the last user message in the conversation
+    const userMessages = body.messages.filter((msg) => msg.role === "user");
+    const lastUserMessage = userMessages[userMessages.length - 1];
     conversationMessages.push({
       role: "user",
       content:
-        body.messages[body.messages.length - 1]?.content ||
-        prompt.split("[User] ").pop() ||
-        prompt,
+        lastUserMessage?.content || prompt.split("[User] ").pop() || prompt,
     });
 
     // Process each step
