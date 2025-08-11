@@ -7,7 +7,7 @@ import {
 export class Agent<
   Tools extends ToolSet = ToolSet,
   Output = never,
-  OutputPartial = never
+  OutputPartial = never,
 > extends VercelAgent<Tools, Output, OutputPartial> {
   constructor(config: VercelAgentSettings<Tools, Output, OutputPartial>) {
     super(config);
