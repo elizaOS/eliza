@@ -28,9 +28,9 @@ if (process.env.WALLET_PRIVATE_KEY) {
   evmService.initialize({
     walletPrivateKey: process.env.WALLET_PRIVATE_KEY,
     // If you want to customize chains, set EVM_CHAINS like: "base,mainnet"
-    chainIds: process.env.EVM_CHAINS
-      ?.split(",")
-      .map((s) => s.trim()) as Array<string> | undefined,
+    chainIds: process.env.EVM_CHAINS?.split(",").map((s) => s.trim()) as
+      | Array<string>
+      | undefined,
   });
   tools.getWalletAddress = getWalletAddress;
   tools.getWalletBalance = getWalletBalance;

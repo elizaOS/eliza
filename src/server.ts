@@ -31,9 +31,9 @@ if (process.env.DISCORD_API_TOKEN) {
 if (process.env.WALLET_PRIVATE_KEY) {
   evmService.initialize({
     walletPrivateKey: process.env.WALLET_PRIVATE_KEY,
-    chainIds: process.env.EVM_CHAINS
-      ?.split(",")
-      .map((s) => s.trim()) as Array<string> | undefined,
+    chainIds: process.env.EVM_CHAINS?.split(",").map((s) => s.trim()) as
+      | Array<string>
+      | undefined,
   });
   tools.getWalletAddress = getWalletAddress;
   tools.getWalletBalance = getWalletBalance;
@@ -93,7 +93,14 @@ app.post("/v1/chat/completions", async (c: Context) => {
   // Simple prompt composition from OpenAI-style chat messages
   const prompt = body.messages
     .map((m) => {
-      const prefix = m.role === "system" ? "[System]" : m.role === "assistant" ? "[Assistant]" : m.role === "tool" ? "[Tool]" : "[User]";
+      const prefix =
+        m.role === "system"
+          ? "[System]"
+          : m.role === "assistant"
+            ? "[Assistant]"
+            : m.role === "tool"
+              ? "[Tool]"
+              : "[User]";
       return `${prefix} ${m.content}`;
     })
     .join("\n\n");
@@ -129,5 +136,3 @@ Bun.serve({
   fetch: app.fetch,
 });
 console.log(`Hono server listening on http://localhost:${port}`);
-
-

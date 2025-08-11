@@ -11,8 +11,10 @@ export class EVMService {
   private initialized: boolean = false;
   private accountHex: `0x${string}` | null = null;
   private chains: Chain[] = [base];
-  private publicClients: Map<number, ReturnType<typeof createPublicClient>> = new Map();
-  private walletClients: Map<number, ReturnType<typeof createWalletClient>> = new Map();
+  private publicClients: Map<number, ReturnType<typeof createPublicClient>> =
+    new Map();
+  private walletClients: Map<number, ReturnType<typeof createWalletClient>> =
+    new Map();
 
   private constructor() {}
 
@@ -38,7 +40,7 @@ export class EVMService {
 
     const normalizedPk = walletPrivateKey.startsWith("0x")
       ? (walletPrivateKey as `0x${string}`)
-      : ("0x" + walletPrivateKey as `0x${string}`);
+      : (("0x" + walletPrivateKey) as `0x${string}`);
 
     this.accountHex = normalizedPk;
 
@@ -85,14 +87,16 @@ export class EVMService {
   public getPublicClient(chainId?: number) {
     const id = chainId ?? this.chains[0].id;
     const client = this.publicClients.get(id);
-    if (!client) throw new Error(`Public client for chainId ${id} not initialized`);
+    if (!client)
+      throw new Error(`Public client for chainId ${id} not initialized`);
     return client;
   }
 
   public getWalletClient(chainId?: number) {
     const id = chainId ?? this.chains[0].id;
     const client = this.walletClients.get(id);
-    if (!client) throw new Error(`Wallet client for chainId ${id} not initialized`);
+    if (!client)
+      throw new Error(`Wallet client for chainId ${id} not initialized`);
     return client;
   }
 
@@ -102,5 +106,3 @@ export class EVMService {
 }
 
 export const evmService = EVMService.getInstance();
-
-

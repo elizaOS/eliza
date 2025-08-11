@@ -3,7 +3,8 @@ import { z } from "zod";
 import { evmService } from "../services";
 
 export const getEVMChains = tool({
-  description: "List the configured EVM chains (defaults to base if none configured).",
+  description:
+    "List the configured EVM chains (defaults to base if none configured).",
   inputSchema: z
     .object({
       includeRpcUrls: z
@@ -30,11 +31,19 @@ export const getEVMChains = tool({
         symbol: chain.nativeCurrency.symbol,
         decimals: chain.nativeCurrency.decimals,
       },
-      ...(includeRpcUrls
-        ? { rpcUrls: chain.rpcUrls.default?.http ?? [] }
-        : {}),
+      ...(includeRpcUrls ? { rpcUrls: chain.rpcUrls.default?.http ?? [] } : {}),
       ...(includeExplorers
-        ? { explorers: (chain.blockExplorers && chain.blockExplorers.default) ? [{ name: chain.blockExplorers.default.name, url: chain.blockExplorers.default.url }] : [] }
+        ? {
+            explorers:
+              chain.blockExplorers && chain.blockExplorers.default
+                ? [
+                    {
+                      name: chain.blockExplorers.default.name,
+                      url: chain.blockExplorers.default.url,
+                    },
+                  ]
+                : [],
+          }
         : {}),
     }));
 
@@ -45,5 +54,3 @@ export const getEVMChains = tool({
     };
   },
 });
-
-

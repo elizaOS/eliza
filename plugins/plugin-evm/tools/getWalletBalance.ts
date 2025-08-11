@@ -3,12 +3,16 @@ import { z } from "zod";
 import { evmService } from "../services";
 
 export const getWalletBalance = tool({
-  description: "Get the native token balance for the wallet across one or more chains.",
+  description:
+    "Get the native token balance for the wallet across one or more chains.",
   inputSchema: z.object({
     chainIds: z.array(z.number()).optional().describe("Array of EVM chain ids"),
   }),
   execute: async ({ chainIds }) => {
-    const chains = chainIds && chainIds.length > 0 ? chainIds : evmService.getChains().map((c) => c.id);
+    const chains =
+      chainIds && chainIds.length > 0
+        ? chainIds
+        : evmService.getChains().map((c) => c.id);
     const wc = evmService.getWalletClient(chains[0]);
     const [address] = await wc.getAddresses();
 
@@ -26,5 +30,3 @@ export const getWalletBalance = tool({
     };
   },
 });
-
-

@@ -6,5 +6,3 @@ export { getEVMChains } from "./tools/getEVMChains";
 
 // Export the EVM service
 export { EVMService, evmService } from "./services";
-
-

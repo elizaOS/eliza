@@ -4,7 +4,8 @@ import { erc20Abi } from "viem";
 import { evmService } from "../services";
 
 export const getTokenBalance = tool({
-  description: "Get ERC20 token balances for the wallet across one or more chains.",
+  description:
+    "Get ERC20 token balances for the wallet across one or more chains.",
   inputSchema: z.object({
     tokenAddress: z
       .string()
@@ -13,11 +14,19 @@ export const getTokenBalance = tool({
     chainIds: z.array(z.number()).optional().describe("Array of EVM chain ids"),
   }),
   execute: async ({ tokenAddress, chainIds }) => {
-    const chains = chainIds && chainIds.length > 0 ? chainIds : evmService.getChains().map((c) => c.id);
+    const chains =
+      chainIds && chainIds.length > 0
+        ? chainIds
+        : evmService.getChains().map((c) => c.id);
     const wc = evmService.getWalletClient(chains[0]);
     const [address] = await wc.getAddresses();
 
-    const results = [] as Array<{ chainId: number; balance: string; decimals?: number; symbol?: string }>;
+    const results = [] as Array<{
+      chainId: number;
+      balance: string;
+      decimals?: number;
+      symbol?: string;
+    }>;
 
     for (const id of chains) {
       const pc = evmService.getPublicClient(id);
@@ -40,7 +49,12 @@ export const getTokenBalance = tool({
         }) as Promise<string>,
       ]);
 
-      results.push({ chainId: id, balance: balance.toString(), decimals, symbol });
+      results.push({
+        chainId: id,
+        balance: balance.toString(),
+        decimals,
+        symbol,
+      });
     }
 
     return {
@@ -51,5 +65,3 @@ export const getTokenBalance = tool({
     };
   },
 });
-
-
