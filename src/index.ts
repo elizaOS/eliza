@@ -1,4 +1,4 @@
-import { ElizaOS, Agent, Inference } from "@/lib/core";
+import { ElizaOS, Agent, Inference } from "../lib/core";
 
 const elizaOS = new ElizaOS();
 
