@@ -104,7 +104,7 @@ export const scenario = new Command()
                     } else if (scenario.environment.type === 'local') {
                         // Local also may need NL interaction; pass server/agent if already created
                         if (!server || !runtime || !agentId) {
-                            const created = await createScenarioServerAndAgent(null, 3000);
+                            const created = await createScenarioServerAndAgent(null, 3000, finalPlugins);
                             server = created.server;
                             runtime = created.runtime;
                             agentId = created.agentId;

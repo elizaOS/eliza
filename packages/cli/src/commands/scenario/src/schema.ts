@@ -46,7 +46,7 @@ const EvaluationSchema = z.discriminatedUnion('type', [
 ]);
 
 const MockSchema = z.object({
-    service: z.string(),
+    service: z.string().optional(),
     method: z.string(),
     // Enhanced 'when' clause with multiple matching strategies
     when: z.object({
