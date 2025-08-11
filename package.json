@@ -1,0 +1,17 @@
+{
+  "name": "elizaOS",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --outdir dist src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "clean": "rm -rf dist node_modules",
+    "start": "bun run dist/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
