@@ -1,7 +1,9 @@
 import { Hono, type Context } from "hono";
+import { readFileSync } from "fs";
 import { randomUUID } from "node:crypto";
 import { Agent, ElizaOS, Inference } from "@/lib/core";
 import { stepCountIs, type Tool } from "ai";
+import { characterSchema } from "@/lib/core";
 
 // Initialize ElizaOS and agents (same setup as src/index.ts but without demo runs)
 const elizaOS = new ElizaOS();
@@ -41,10 +43,19 @@ if (process.env.WALLET_PRIVATE_KEY) {
   tools.getEVMChains = getEVMChains;
 }
 
+const jesseXBTJson = readFileSync("./characters/jesseXBT.json", "utf-8");
+
+const jesseXBTData = JSON.parse(jesseXBTJson);
+
+const { data: jesseXBT } = characterSchema.safeParse(jesseXBTData);
+
+// TODO: load tools from defined plugins
+
 const defaultAgent = new Agent({
   model: Inference.getModel("gpt-5-mini"),
   tools,
   stopWhen: stepCountIs(10),
+  system: jesseXBT?.system,
 });
 
 // Register at least one agent with a stable ID
