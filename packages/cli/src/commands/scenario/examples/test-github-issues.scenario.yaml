@@ -18,6 +18,8 @@ run:
       - type: "string_contains"
         value: "issues"
         description: "Agent should mention the issues"
-
+      - type: trajectory_contains_action
+        action: LIST_GITHUB_ISSUES
+        description: Verify that the LIST_GITHUB_ISSUES action was executed
 judgment:
   strategy: "all_pass"
