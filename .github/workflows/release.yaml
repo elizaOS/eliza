@@ -21,7 +21,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout main branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main # Assumes releases are created from main
           fetch-depth: 0
