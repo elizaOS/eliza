@@ -108,6 +108,43 @@ To run all scenarios in sequence:
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/*.scenario.yaml
 ```
 
+## Troubleshooting
+
+### Plugin Loading Issues
+
+If you encounter issues with plugins not being loaded during scenario testing:
+
+1. **First, ensure you're running from the project root directory**
+   ```bash
+   # Always run scenario commands from the project root
+   cd /path/to/eliza
+   bun packages/cli/dist/index.js scenario run <scenario-file>
+   ```
+
+2. **If plugins still fail to load, add them as dependencies**
+   ```bash
+   # From the project root directory
+   bun add elizaos/plugin-name
+   ```
+
+   Common plugin examples:
+   ```bash
+   bun add elizaos/plugin-bootstrap
+   bun add elizaos/plugin-sql
+   bun add elizaos/plugin-quick-starter
+   ```
+
+3. **Verify plugin installation**
+   ```bash
+   # Check if the plugin is listed in package.json dependencies
+   cat package.json | grep "elizaos/"
+   ```
+
+This approach ensures that the plugin is properly installed and available for the ElizaOS runtime to load during scenario execution.
+
+# Remember if you make a change to run 
+bun x tsup inside of cli or bun run build inside or outside of cli
+
 ## Environment Setup
 
 1. Required environment variables:
@@ -222,6 +259,12 @@ The scenario system is built on several key components:
    - Check evaluator configuration
    - Verify expected responses match format
    - Review action tracking configuration
+
+4. **Plugin Loading Issues**: If plugins are not being loaded correctly:
+   - Ensure you're running commands from the project root directory
+   - If plugins still fail to load, run `bun add elizaos/plugin-name` from the root directory
+   - This will add the plugin as a dependency and ensure it's available for loading
+   - Example: `bun add elizaos/plugin-bootstrap` or `bun add elizaos/plugin-sql`
 
 ## Contributing
 

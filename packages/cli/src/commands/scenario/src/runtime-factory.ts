@@ -75,7 +75,7 @@ export async function askAgentViaApi(
   server: AgentServer,
   agentId: UUID,
   input: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 45000
 ): Promise<string> {
   const port = (server as any)?.port ?? 3000;
   const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
@@ -97,7 +97,9 @@ export async function askAgentViaApi(
   if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
   const channelResult = await channelResponse.json();
   const channel = channelResult.data;
-  await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
+  console.log('channel', channel);
+  const addAgentResp = await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
+  console.log('addAgentResp', addAgentResp);
   // Post a message using the server's expected payload (requires author_id and server_id)
   const postResp = await fetch(`http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`, {
     method: 'POST',
@@ -110,28 +112,36 @@ export async function askAgentViaApi(
       source_type: 'scenario_message'
     })
   });
+  console.log('postResp', postResp);
   if (!postResp.ok) {
     const errText = await postResp.text();
     throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
   }
-  await postResp.json();
-
+  const rawResponse = await postResp.json();
+  console.log('postResp', rawResponse);
   const startTime = Date.now();
-  const pollInterval = 30000;
-  await new Promise(resolve => setTimeout(resolve, pollInterval));
-  while (Date.now() - startTime < timeoutMs) {
-    const messages = await client.messaging.getChannelMessages(channel.id, { limit: 10 });
-    const recentMessages = messages.messages.filter((msg: any) =>
-      msg.authorId === agentId && msg.created_at > Date.now() - 10000
-    );
-    if (recentMessages.length > 0) {
-      const latestMessage = recentMessages.sort((a: any, b: any) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )[0];
-      return latestMessage.content;
-    }
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  console.log('startTime', startTime);
 
+  // Preemptively wait for action response
+  console.log('waiting', timeoutMs, 'seconds');
+  await new Promise(resolve => setTimeout(resolve, timeoutMs));
+  console.log('getting messages');
+  const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
+  console.log('writing to file');
+  const messagesJson = JSON.stringify(messages, null, 2);
+  console.log('messagesJson', messagesJson);
+  const agentMessages = messages.messages.filter((msg: any) =>
+    msg.authorId === agentId && msg.created_at > startTime
+  );
+  console.log('agentMessages', agentMessages);
+  if (agentMessages.length > 0) {
+    const latestMessage = agentMessages.sort((a: any, b: any) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0];
+    console.log('latestMessage', latestMessage);
+    const messageTime = new Date(latestMessage?.createdAt).getTime();
+    console.log('messageTime', messageTime);
+    return latestMessage.content;
   }
   throw new Error('Timeout waiting for agent response');
 }
