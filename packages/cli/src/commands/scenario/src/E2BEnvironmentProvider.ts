@@ -93,16 +93,23 @@ print(json.dumps(files))
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
             console.log('Executing E2B step:', JSON.stringify(step, null, 2));
+            const startedAtMs = Date.now();
 
             if (step.input) {
                 // Use the existing server + agent to get an NL response
                 const response = await askAgentViaApi(this.server, this.agentId, step.input);
 
+                const endedAtMs = Date.now();
+                const durationMs = endedAtMs - startedAtMs;
+
                 results.push({
                     exitCode: 0,
                     stdout: response,
                     stderr: '',
-                    files: await this.captureFileSystem(e2bService)
+                    files: await this.captureFileSystem(e2bService),
+                    startedAtMs,
+                    endedAtMs,
+                    durationMs
                 });
             } else if (step.code) {
                 // Use the correct executeCode API: executeCode(code: string, language?: string)
@@ -112,11 +119,17 @@ print(json.dumps(files))
                 const files = await this.captureFileSystem(e2bService);
 
                 // Map E2B result format to ExecutionResult format
+                const endedAtMs = Date.now();
+                const durationMs = endedAtMs - startedAtMs;
+
                 results.push({
                     exitCode: result.error ? 1 : 0,
                     stdout: result.text || result.logs?.stdout?.join('\n') || '',
                     stderr: result.error?.value || result.logs?.stderr?.join('\n') || '',
-                    files: files
+                    files: files,
+                    startedAtMs,
+                    endedAtMs,
+                    durationMs
                 });
             } else {
                 throw new Error('Step must have either input or code');

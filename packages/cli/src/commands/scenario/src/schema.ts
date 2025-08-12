@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Base schema for any evaluation
-export type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge';
+export type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge' | 'execution_time';
 
 const BaseEvaluationSchema = z.object({
     type: z.string(),
@@ -37,12 +37,20 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
     json_schema: z.record(z.any()).optional(), // JSON schema object for response validation
 });
 
+const ExecutionTimeEvaluationSchema = BaseEvaluationSchema.extend({
+    type: z.literal('execution_time'),
+    max_duration_ms: z.number(),
+    min_duration_ms: z.number().optional(),
+    target_duration_ms: z.number().optional(),
+});
+
 const EvaluationSchema = z.discriminatedUnion('type', [
     StringContainsEvaluationSchema,
     RegexMatchEvaluationSchema,
     FileExistsEvaluationSchema,
     TrajectoryContainsActionSchema,
     LLMJudgeEvaluationSchema,
+    ExecutionTimeEvaluationSchema,
 ]);
 
 const MockSchema = z.object({

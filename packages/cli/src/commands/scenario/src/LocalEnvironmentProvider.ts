@@ -79,17 +79,25 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
 
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
+            const startedAtMs = Date.now();
+
             if (step.input) {
                 if (!this.server || !this.agentId) {
                     throw new Error('LocalEnvironmentProvider requires a pre-created server and agent for NL input');
                 }
                 const response = await askAgentViaApi(this.server, this.agentId, step.input);
 
+                const endedAtMs = Date.now();
+                const durationMs = endedAtMs - startedAtMs;
+
                 results.push({
                     exitCode: 0,
                     stdout: response,
                     stderr: '',
-                    files: await this.captureFileSystem()
+                    files: await this.captureFileSystem(),
+                    startedAtMs,
+                    endedAtMs,
+                    durationMs
                 });
             } else if (step.code) {
                 // Construct appropriate command based on language
@@ -121,16 +129,33 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
                     // Capture file system state after this step
                     const files = await this.captureFileSystem();
 
-                    results.push({ exitCode: 0, stdout, stderr, files });
+                    const endedAtMs = Date.now();
+                    const durationMs = endedAtMs - startedAtMs;
+
+                    results.push({
+                        exitCode: 0,
+                        stdout,
+                        stderr,
+                        files,
+                        startedAtMs,
+                        endedAtMs,
+                        durationMs
+                    });
                 } catch (error: any) {
                     // Capture file system state even on error
                     const files = await this.captureFileSystem();
+
+                    const endedAtMs = Date.now();
+                    const durationMs = endedAtMs - startedAtMs;
 
                     results.push({
                         exitCode: error.code || 1,
                         stdout: error.stdout || '',
                         stderr: error.stderr || error.message || '',
-                        files: files
+                        files: files,
+                        startedAtMs,
+                        endedAtMs,
+                        durationMs
                     });
                 }
             } else {

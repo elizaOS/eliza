@@ -9,6 +9,10 @@ export interface ExecutionResult {
     stderr: string;
     // A map of all file paths to their string content within the execution environment.
     files: Record<string, string>;
+    // Timing information for execution
+    startedAtMs?: number; // epoch ms
+    endedAtMs?: number;   // epoch ms
+    durationMs?: number;  // derived convenience
 }
 
 /**

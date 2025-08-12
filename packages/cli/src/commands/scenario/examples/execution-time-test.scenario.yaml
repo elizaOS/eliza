@@ -1,0 +1,49 @@
+name: "Execution Time Test"
+description: "Tests the execution time evaluator with various timing constraints"
+environment:
+  type: local
+run:
+  - name: "Fast execution test"
+    lang: python
+    code: |
+      import time
+      time.sleep(0.1)  # 100ms
+      print("Fast execution completed")
+    evaluations:
+      - type: "execution_time"
+        max_duration_ms: 500
+        min_duration_ms: 50
+        target_duration_ms: 150
+
+  - name: "Slow execution test"
+    lang: python
+    code: |
+      import time
+      time.sleep(0.5)  # 500ms
+      print("Slow execution completed")
+    evaluations:
+      - type: "execution_time"
+        max_duration_ms: 1000
+        min_duration_ms: 400
+
+  - name: "Too slow execution test (should fail)"
+    lang: python
+    code: |
+      import time
+      time.sleep(1.0)  # 1000ms
+      print("Too slow execution completed")
+    evaluations:
+      - type: "execution_time"
+        max_duration_ms: 500  # This should fail
+
+  - name: "Too fast execution test (should fail)"
+    lang: python
+    code: |
+      print("Too fast execution completed")
+    evaluations:
+      - type: "execution_time"
+        max_duration_ms: 1000
+        min_duration_ms: 100  # This should fail
+
+judgment:
+  strategy: all_pass

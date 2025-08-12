@@ -27,6 +27,7 @@ export class EvaluationEngine {
         this.register('file_exists', new FileExistsEvaluator());
         this.register('trajectory_contains_action', new TrajectoryContainsActionEvaluator());
         this.register('llm_judge', new LLMJudgeEvaluator());
+        this.register('execution_time', new ExecutionTimeEvaluator());
     }
 
     private register(type: string, evaluator: Evaluator) {
@@ -96,6 +97,29 @@ class FileExistsEvaluator implements Evaluator {
         return {
             success,
             message: `Checked if file "${params.path}" exists. Result: ${success}`,
+        };
+    }
+}
+
+class ExecutionTimeEvaluator implements Evaluator {
+    async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
+        if (params.type !== 'execution_time') throw new Error('Mismatched evaluator');
+
+        const duration = runResult.durationMs ?? ((runResult.endedAtMs ?? 0) - (runResult.startedAtMs ?? 0));
+        if (duration == null || Number.isNaN(duration)) {
+            return {
+                success: false,
+                message: 'No timing information available for this step'
+            };
+        }
+
+        const tooSlow = duration > params.max_duration_ms;
+        const tooFast = params.min_duration_ms != null && duration < params.min_duration_ms;
+        const success = !tooSlow && !tooFast;
+
+        return {
+            success,
+            message: `Execution time ${duration}ms (min=${params.min_duration_ms ?? '-'}, target=${params.target_duration_ms ?? '-'}, max=${params.max_duration_ms})`,
         };
     }
 }
