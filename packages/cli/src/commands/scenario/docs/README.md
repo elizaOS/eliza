@@ -40,70 +40,72 @@ The scenario system is currently being expanded with several improvements:
 
 ## Available Scenario Types
 
+**Important**: Run all scenario commands from the project root directory for plugins to be loaded correctly.
+
 ### 1. Local Environment Tests
 ```bash
 # Run a simple local test
-bun run src/index.ts scenario run src/commands/scenario/examples/simple-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
 
 # Run action tracking test
-bun run src/index.ts scenario run src/commands/scenario/examples/action-tracking-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/action-tracking-test.scenario.yaml
 
 # Run evaluation test
-bun run src/index.ts scenario run src/commands/scenario/examples/evaluation-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/evaluation-test.scenario.yaml
 ```
 
 ### 2. E2B Sandboxed Tests
 ```bash
 # Run E2B environment test
-bun run src/index.ts scenario run src/commands/scenario/examples/e2b-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
 
 # Run E2B fallback test
-bun run src/index.ts scenario run src/commands/scenario/examples/e2b-fallback.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-fallback.scenario.yaml
 
 # Run mock E2B test
-bun run src/index.ts scenario run src/commands/scenario/examples/mock-e2b-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/mock-e2b-test.scenario.yaml
 ```
 
 ### 3. Mock Service Tests
 ```bash
 # Run simple mock test
-bun run src/index.ts scenario run src/commands/scenario/examples/simple-mock-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-mock-test.scenario.yaml
 
 # Run full mock test
-bun run src/index.ts scenario run src/commands/scenario/examples/mock-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/mock-test.scenario.yaml
 ```
 
 ### 4. LLM Judge Tests
 ```bash
 # Run LLM judgment test
-bun run src/index.ts scenario run src/commands/scenario/examples/llm-judge-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/llm-judge-test.scenario.yaml
 
 # Run LLM judgment failure test
-bun run src/index.ts scenario run src/commands/scenario/examples/llm-judge-failure-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/llm-judge-failure-test.scenario.yaml
 ```
 
 ### 5. Other Test Types
 ```bash
 # Run multi-step scenario
-bun run src/index.ts scenario run src/commands/scenario/examples/multi-step.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/multi-step.scenario.yaml
 
 # Run mixed results test
-bun run src/index.ts scenario run src/commands/scenario/examples/mixed-results.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/mixed-results.scenario.yaml
 
 # Run trajectory test
-bun run src/index.ts scenario run src/commands/scenario/examples/trajectory-test.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/trajectory-test.scenario.yaml
 ```
 
-> Note: Once this is merged into develop the CLI command will be installed globally, so you can use `elizaos scenario run` instead of `bun run src/index.ts scenario run`
+> Note: Once this is merged into develop the CLI command will be installed globally, so you can use `elizaos scenario run` instead of `bun packages/cli/dist/index.js scenario run`
 
-> **Future**: Once the ElizaOS CLI is published, you'll be able to use `elizaos scenario run <file>` directly without the `bun run src/index.ts` prefix.
+> **Future**: Once the ElizaOS CLI is published, you'll be able to use `elizaos scenario run <file>` directly without the `bun packages/cli/dist/index.js` prefix.
 
 ## Running All Scenarios
 
 To run all scenarios in sequence:
 ```bash
-cd packages/cli
-bun run test:scenarios
+# From the project root directory
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/*.scenario.yaml
 ```
 
 ## Environment Setup
@@ -124,10 +126,10 @@ bun x tsup  # Build the CLI
 3. Verify setup:
 ```bash
 # Test that the CLI builds correctly
-bun run src/index.ts --help
+bun packages/cli/dist/index.js --help
 
-# Test a simple scenario
-bun run src/index.ts scenario run src/commands/scenario/examples/simple-test.scenario.yaml
+# Test a simple scenario (from project root)
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
 ```
 
 ## Scenario File Structure
