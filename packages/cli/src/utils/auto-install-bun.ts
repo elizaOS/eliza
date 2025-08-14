@@ -52,7 +52,7 @@ async function isBunInstalled(): Promise<boolean> {
     return result.success;
   } catch (error) {
     // Handle any unexpected errors
-    logger.debug('Error checking if Bun is installed:', error);
+    logger.debug({ error }, 'Error checking if Bun is installed:');
     return false;
   }
 }

@@ -55,10 +55,10 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error('Test failed:', error);
+    logger.error({ error }, 'Test failed:');
     if (error instanceof Error) {
-      logger.error(`Error message: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
+      logger.error({ message: error.message }, 'Error message:');
+      logger.error({ stack: error.stack }, 'Error stack:');
     }
     return false;
   }
@@ -199,7 +199,7 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error('Failed to publish to npm:', error);
+    logger.error({ error }, 'Failed to publish to npm:');
     return false;
   }
 }

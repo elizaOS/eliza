@@ -175,7 +175,7 @@ export class AgentServer {
       // Register signal handlers once in constructor to prevent accumulation
       this.registerSignalHandlers();
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (constructor):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (constructor):');
       throw error;
     }
   }
@@ -224,7 +224,7 @@ export class AgentServer {
 
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
-        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        logger.error({ error: migrationError }, '[INIT] Failed to run database migrations:');
         throw new Error(
           `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
         );
@@ -242,7 +242,7 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (async operations):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (async operations):');
       console.trace(error);
       throw error;
     }
@@ -319,7 +319,7 @@ export class AgentServer {
         logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
-      logger.error('[AgentServer] Error ensuring default server:', error);
+      logger.error({ error }, '[AgentServer] Error ensuring default server:');
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
@@ -362,7 +362,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // upgrade-insecure-requests is added by helmet automatically
@@ -564,7 +564,7 @@ export class AgentServer {
 
           res.sendFile(filePath, (err) => {
             if (err) {
-              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              logger.warn({ err, filePath }, `[STATIC] Channel media file not found: ${filePath}`);
               if (!res.headersSent) {
                 res.status(404).json({ error: 'File not found' });
               }
@@ -785,7 +785,7 @@ export class AgentServer {
         },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
-          logger.error(`API error: ${req.method} ${req.path}`, err);
+          logger.error({ err }, `API error: ${req.method} ${req.path}`);
           res.status(500).json({
             success: false,
             error: {
@@ -881,7 +881,7 @@ export class AgentServer {
 
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
-      logger.error('Failed to complete server initialization:', error);
+      logger.error({ error }, 'Failed to complete server initialization:');
       throw error;
     }
   }
@@ -920,8 +920,8 @@ export class AgentServer {
         }
       } catch (e) {
         logger.error(
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
-          e
+          { error: e },
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
         // Decide if this is a fatal error for the agent.
       }
@@ -953,7 +953,7 @@ export class AgentServer {
         `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
-      logger.error('Failed to register agent:', error);
+      logger.error({ error }, 'Failed to register agent:');
       throw error;
     }
   }
@@ -979,13 +979,16 @@ export class AgentServer {
         try {
           agent.stop().catch((stopError) => {
             logger.error(
-              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
-              stopError
+              { error: stopError, agentId },
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
             );
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 
@@ -993,7 +996,7 @@ export class AgentServer {
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
-      logger.error(`Error removing agent ${agentId}:`, error);
+      logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
     }
   }
 
@@ -1064,7 +1067,7 @@ export class AgentServer {
             resolve();
           })
           .on('error', (error: any) => {
-            logger.error(`Failed to bind server to ${host}:${port}:`, error);
+            logger.error({ error, host, port }, `Failed to bind server to ${host}:${port}:`);
 
             // Provide helpful error messages for common issues
             if (error.code === 'EADDRINUSE') {
@@ -1087,7 +1090,7 @@ export class AgentServer {
 
         // Server is now listening successfully
       } catch (error) {
-        logger.error('Failed to start server:', error);
+        logger.error({ error }, 'Failed to start server:');
         reject(error);
       }
     });
@@ -1297,7 +1300,7 @@ export class AgentServer {
           await agent.stop();
           logger.debug(`Stopped agent ${id}`);
         } catch (error) {
-          logger.error(`Error stopping agent ${id}:`, error);
+          logger.error({ error, agentId: id }, `Error stopping agent ${id}:`);
         }
       }
 
@@ -1307,7 +1310,7 @@ export class AgentServer {
           await this.database.close();
           logger.info('Database closed.');
         } catch (error) {
-          logger.error('Error closing database:', error);
+          logger.error({ error }, 'Error closing database:');
         }
       }
 

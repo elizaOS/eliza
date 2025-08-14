@@ -43,7 +43,7 @@ export async function runTypeCheck(
       warnings: stderr.includes('warning') ? [stderr] : [],
     };
   } catch (error: any) {
-    logger.error('TypeScript validation failed:', error);
+    logger.error({ error }, 'TypeScript validation failed:');
     return {
       success: false,
       errors: [`TypeScript validation error: ${error.message}`],

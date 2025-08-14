@@ -352,7 +352,7 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error('Error in recentMessagesProvider:', error);
+      logger.error({ error }, 'Error in recentMessagesProvider:');
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {

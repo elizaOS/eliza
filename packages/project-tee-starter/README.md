@@ -104,16 +104,55 @@ project-tee-starter/
 
 ## 🧪 Testing
 
+ElizaOS employs a dual testing strategy:
+
+1. **Component Tests** (`src/__tests__/*.test.ts`)
+
+   - Run with Bun's native test runner
+   - Fast, isolated tests using mocks
+   - Perfect for TDD and component logic
+
+2. **E2E Tests** (`src/__tests__/e2e/*.e2e.ts`)
+   - Run with ElizaOS custom test runner
+   - Real runtime with actual database (PGLite)
+   - Test complete user scenarios including TEE functionality
+
+### Test Structure
+
+```
+src/
+  __tests__/              # All tests live inside src
+    *.test.ts            # Component tests (use Bun test runner)
+    e2e/                 # E2E tests (use ElizaOS test runner)
+      project-tee-starter.e2e.ts  # E2E test suite with TEE-specific tests
+      README.md          # E2E testing documentation
+  index.ts               # Export tests here: tests: [ProjectTeeStarterTestSuite]
+```
+
+### Running Tests
+
 ```bash
-# Run all tests
-bun test
+# Run all tests (component + e2e)
+elizaos test
 
 # Component tests only
-bun test:component
+elizaos test component
 
-# E2E tests
-bun test:e2e
+# E2E tests only
+elizaos test e2e
+
+# With specific port for E2E tests
+elizaos test --port 4000
 ```
+
+### TEE-Specific Testing
+
+The E2E tests include TEE-specific scenarios:
+
+- TEE service availability checks
+- Attestation action registration
+- Secure memory operations
+- Concurrent secure operations handling
 
 ## 🚀 Deployment
 

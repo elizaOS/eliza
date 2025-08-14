@@ -195,7 +195,7 @@ export const muteRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error('Error muting room:', error);
+        logger.error({ error }, 'Error muting room');
         return {
           text: 'Failed to mute room',
           values: {

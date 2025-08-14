@@ -94,7 +94,7 @@ export const start = new Command()
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
-            logger.error(`Failed to load character from ${resolvedPath}:`, e);
+            logger.error({ error: e, resolvedPath }, `Failed to load character from path:`);
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
@@ -123,7 +123,7 @@ export const start = new Command()
             }
           }
         } catch (e) {
-          logger.debug('Failed to load project agents, will use default character:', e);
+          logger.debug({ error: e }, 'Failed to load project agents, will use default character:');
         }
       }
 

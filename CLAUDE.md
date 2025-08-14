@@ -448,7 +448,6 @@ bun run build
 - **TypeScript with proper typing for all new code**
 - **NEVER use any, never, or unknown types - always opt for specific types that accurately represent the data**
 - **Ensure code is free of TypeScript errors or warnings - code must compile without issues**
-- **Use functional programming patterns; avoid classes**
 - **Prefer iteration and modularization over code duplication**
 - **Comprehensive error handling required**
 - **Clear separation of concerns**
@@ -578,7 +577,6 @@ SOLANA_PRIVATE_KEY=
 
 ### Compatibility
 
-- Plugin compatibility through `/specs` (currently defaulting to v2)
 - Maintain backwards compatibility in changes
 - Consider migration paths for proposed changes
 

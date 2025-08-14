@@ -34,89 +34,164 @@ elizaos test
 
 ## Testing
 
-ElizaOS provides a comprehensive testing structure for plugins:
+ElizaOS uses a dual testing approach that combines Bun's native test runner for component tests with a custom E2E test runner for integration testing within a live ElizaOS runtime.
 
 ### Test Structure
 
-- **Component Tests** (`__tests__/` directory):
+```
+src/
+  __tests__/              # All tests live inside src
+    *.test.ts            # Component tests (use Bun test runner)
+    e2e/                 # E2E tests (use ElizaOS test runner)
+      *.ts               # E2E test files
+      README.md          # E2E testing documentation
+```
 
-  - **Unit Tests**: Test individual functions/classes in isolation
-  - **Integration Tests**: Test how components work together
-  - Run with: `elizaos test component`
+### Two Types of Tests
 
-- **End-to-End Tests** (`__tests__/e2e/` directory):
+#### 1. Component Tests (Bun Test Runner)
 
-  - Test the plugin within a full ElizaOS runtime
-  - Validate complete user scenarios with a real agent
-  - Run with: `elizaos test e2e`
-
-- **Running All Tests**:
-  - `elizaos test` runs both component and e2e tests
-
-### Writing Tests
-
-Component tests use bun:test:
+- **Purpose**: Test individual functions/classes in isolation
+- **Location**: `src/__tests__/*.test.ts`
+- **Runner**: Bun's built-in test runner
+- **Command**: `bun test`
+- **Features**: Fast, isolated, uses mocks
 
 ```typescript
-// Unit test example (__tests__/plugin.test.ts)
+// Example: src/__tests__/plugin.test.ts
+import { describe, it, expect } from 'bun:test';
+import { starterPlugin } from '../plugin';
+
 describe('Plugin Configuration', () => {
   it('should have correct plugin metadata', () => {
     expect(starterPlugin.name).toBe('plugin-starter');
   });
 });
-
-// Integration test example (__tests__/integration.test.ts)
-describe('Integration: HelloWorld Action with StarterService', () => {
-  it('should handle HelloWorld action with StarterService', async () => {
-    // Test interactions between components
-  });
-});
 ```
 
-E2E tests run in a real ElizaOS runtime:
+#### 2. E2E Tests (ElizaOS Test Runner)
+
+- **Purpose**: Test plugin behavior within a real ElizaOS runtime
+- **Location**: `src/__tests__/e2e/*.ts`
+- **Runner**: ElizaOS custom test runner
+- **Command**: `elizaos test --type e2e`
+- **Features**: Real runtime, real database, full integration
 
 ```typescript
-// E2E test example (__tests__/e2e/starter-plugin.ts)
+// Example: src/__tests__/e2e/starter-plugin.ts
+import { type TestSuite } from '@elizaos/core';
+
 export const StarterPluginTestSuite: TestSuite = {
   name: 'plugin_starter_test_suite',
-  description: 'E2E tests for the starter plugin',
   tests: [
     {
       name: 'hello_world_action_test',
       fn: async (runtime) => {
-        // Simulate user asking agent to say hello
-        const testMessage = {
-          content: { text: 'Can you say hello?' }
-        };
-
-        // Execute action and capture response
-        const response = await helloWorldAction.handler(runtime, testMessage, ...);
-
-        // Verify agent responds with "hello world"
-        if (!response.text.includes('hello world')) {
-          throw new Error('Expected "hello world" in response');
+        // Test with real runtime - no mocks needed!
+        const action = runtime.actions.find((a) => a.name === 'HELLO_WORLD');
+        if (!action) {
+          throw new Error('Action not found');
         }
+        // Test real behavior...
       },
     },
   ],
 };
 ```
 
-#### Key E2E Testing Features:
+### Running Tests
 
-- **Real Runtime Environment**: Tests run with a fully initialized ElizaOS runtime
-- **Plugin Interaction**: Test how your plugin behaves with the actual agent
-- **Scenario Testing**: Validate complete user interactions, not just individual functions
-- **No Mock Required**: Access real services, actions, and providers
+```bash
+# Run all tests (both component and E2E)
+elizaos test
 
-#### Writing New E2E Tests:
+# Run only component tests (fast, for TDD)
+bun test
+# or
+elizaos test --type component
 
-1. Add a new test object to the `tests` array in your test suite
-2. Each test receives the runtime instance as a parameter
-3. Throw errors to indicate test failures (no assertion library needed)
-4. See the comprehensive documentation in `__tests__/e2e/starter-plugin.ts` for detailed examples
+# Run only E2E tests (slower, full integration)
+elizaos test --type e2e
+```
 
-The test utilities in `__tests__/test-utils.ts` provide mock objects and setup functions to simplify writing component tests.
+### Key Differences
+
+| Aspect          | Component Tests      | E2E Tests               |
+| --------------- | -------------------- | ----------------------- |
+| **Runner**      | Bun test             | ElizaOS TestRunner      |
+| **Environment** | Mocked               | Real runtime            |
+| **Database**    | Mocked               | Real (PGLite)           |
+| **Speed**       | Fast (ms)            | Slower (seconds)        |
+| **Use Case**    | TDD, component logic | Integration, user flows |
+
+### E2E Test Integration
+
+E2E tests are integrated into your plugin by:
+
+1. **Creating the test suite** in `src/__tests__/e2e/`
+2. **Importing directly** in your plugin definition:
+
+```typescript
+// src/plugin.ts
+import { StarterPluginTestSuite } from './__tests__/e2e/starter-plugin';
+
+export const starterPlugin: Plugin = {
+  name: 'plugin-starter',
+  // ... other properties
+  tests: [StarterPluginTestSuite], // Direct import, no tests.ts needed
+};
+```
+
+### Writing Effective E2E Tests
+
+E2E tests receive a real `IAgentRuntime` instance, allowing you to:
+
+- Access real actions, providers, and services
+- Interact with the actual database
+- Test complete user scenarios
+- Validate plugin behavior in production-like conditions
+
+```typescript
+{
+  name: 'service_lifecycle_test',
+  fn: async (runtime) => {
+    // Get the real service
+    const service = runtime.getService('starter');
+    if (!service) {
+      throw new Error('Service not initialized');
+    }
+
+    // Test real behavior
+    await service.stop();
+    // Verify cleanup happened...
+  },
+}
+```
+
+### Best Practices
+
+1. **Use Component Tests for**:
+
+   - Algorithm logic
+   - Data transformations
+   - Input validation
+   - Error handling
+
+2. **Use E2E Tests for**:
+
+   - User scenarios
+   - Action execution flows
+   - Provider data integration
+   - Service lifecycle
+   - Plugin interactions
+
+3. **Test Organization**:
+   - Keep related tests together
+   - Use descriptive test names
+   - Include failure scenarios
+   - Document complex test setups
+
+The comprehensive E2E test documentation in `src/__tests__/e2e/README.md` provides detailed examples and patterns for writing effective tests.
 
 ## Publishing & Continuous Development
 

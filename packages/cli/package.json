@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.3.1",
+  "version": "1.4.2",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -73,7 +73,7 @@
     "typescript": "5.8.3",
     "vite": "^6.3.5"
   },
-  "gitHead": "48d0b08182b5fd5b17dd58198b1fee15b0815775",
+  "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2",
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.35",
     "@anthropic-ai/sdk": "^0.54.0",
