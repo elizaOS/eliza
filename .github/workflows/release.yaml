@@ -208,16 +208,4 @@ jobs:
             git push origin main
           fi
 
-      - name: Merge main to develop
-        run: |
-          # Fetch the latest develop branch
-          git fetch origin develop:develop
-
-          # Checkout develop branch
-          git checkout develop
-
-          # Merge main into develop
-          git merge main --no-ff -m "chore: merge main to develop for v${{ env.VERSION }} release"
-
-          # Push the updated develop branch
-          git push origin develop
+      

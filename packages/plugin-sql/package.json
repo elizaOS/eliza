@@ -27,7 +27,7 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
-    "@elizaos/core": "1.4.2",
+    "@elizaos/core": "workspace:*",
     "dotenv": "^16.4.7",
     "drizzle-kit": "^0.31.1",
     "drizzle-orm": "^0.44.2",
