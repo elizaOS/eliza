@@ -12,11 +12,16 @@ export const phalaCliCommand = new Command('phala')
   .allowUnknownOption()
   .helpOption(false)
   .allowExcessArguments(true)
+  // Best-effort Commander settings; still prefer rawArgs slicing below for full fidelity.
+  .passThroughOptions()
   // Capture all arguments after 'phala' using variadic arguments
   .argument('[args...]', 'All arguments to pass to Phala CLI')
   .action(async (...commandArgs) => {
-    // Commander.js passes variadic arguments as an array in the first parameter
-    const args = Array.isArray(commandArgs[0]) ? commandArgs[0] : [];
+    // Use rawArgs to preserve exact user-supplied flags; fallback to variadic args if unavailable.
+    const cmd = commandArgs[commandArgs.length - 1] as any;
+    const raw = (cmd?.parent?.rawArgs ?? cmd?.rawArgs ?? process.argv);
+    const idx = raw.lastIndexOf('phala');
+    const args = idx >= 0 ? raw.slice(idx + 1) : (Array.isArray(commandArgs[0]) ? commandArgs[0] : []);
 
     try {
       logger.info(`Running Phala CLI command: phala ${args.join(' ')}`);
@@ -27,10 +32,12 @@ export const phalaCliCommand = new Command('phala')
         shell: true,
       });
 
-      phalaProcess.on('error', (error) => {
-        logger.error(`Failed to execute Phala CLI: ${error}`);
+      phalaProcess.on('error', (err) => {
+        const error = err as NodeJS.ErrnoException;
+        const errorMessage = error.message || 'Unknown error';
+        logger.error({ error }, `Failed to execute Phala CLI: ${errorMessage}`);
 
-        if (error.message.includes('ENOENT')) {
+        if (error.code === 'ENOENT') {
           logger.error(
             `\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`
           );
@@ -52,7 +59,9 @@ export const phalaCliCommand = new Command('phala')
         process.exit(code || 0);
       });
     } catch (error) {
-      logger.error(`Error running Phala CLI: ${error}`);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const errorObj = error instanceof Error ? { error } : { error: errMsg };
+      logger.error(errorObj, `Error running Phala CLI: ${errMsg}`);
       logger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
       logger.error(`   Try running Phala CLI directly with: npx phala ${args.join(' ')}`);
       logger.error('   Or visit https://www.npmjs.com/package/phala for more information');
