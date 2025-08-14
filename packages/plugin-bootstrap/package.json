@@ -26,8 +26,8 @@
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "workspae:*",
-    "@elizaos/plugin-sql": "workspae:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "bun": "^1.2.17"
   },
   "devDependencies": {
