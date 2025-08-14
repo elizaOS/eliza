@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
-import { elizaLogger } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import { emoji } from '../../utils/emoji-handler';
 
 /**
@@ -11,12 +11,15 @@ export const phalaCliCommand = new Command('phala')
   .description('Official Phala Cloud CLI - Manage TEE deployments on Phala Cloud')
   .allowUnknownOption()
   .helpOption(false)
-  .action(async (_, command) => {
-    // Get all arguments after 'phala'
-    const args = command.args;
+  .allowExcessArguments(true)
+  // Capture all arguments after 'phala' using variadic arguments
+  .argument('[args...]', 'All arguments to pass to Phala CLI')
+  .action(async (...commandArgs) => {
+    // Commander.js passes variadic arguments as an array in the first parameter
+    const args = Array.isArray(commandArgs[0]) ? commandArgs[0] : [];
 
     try {
-      elizaLogger.info('Running Phala CLI command:', ['phala', ...args].join(' '));
+      logger.info(`Running Phala CLI command: phala ${args.join(' ')}`);
 
       // Use npx with --yes flag to auto-install without prompting
       const phalaProcess = spawn('npx', ['--yes', 'phala', ...args], {
@@ -25,34 +28,34 @@ export const phalaCliCommand = new Command('phala')
       });
 
       phalaProcess.on('error', (error) => {
-        elizaLogger.error('Failed to execute Phala CLI:', error);
+        logger.error(`Failed to execute Phala CLI: ${error}`);
 
         if (error.message.includes('ENOENT')) {
-          elizaLogger.error(
+          logger.error(
             `\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`
           );
-          elizaLogger.error('   Visit https://nodejs.org or use a version manager like nvm');
-          elizaLogger.error(
+          logger.error('   Visit https://nodejs.org or use a version manager like nvm');
+          logger.error(
             '   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
           );
         } else {
-          elizaLogger.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
-          elizaLogger.error('   Try running directly: npx phala', args.join(' '));
+          logger.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
+          logger.error(`   Try running directly: npx phala ${args.join(' ')}`);
         }
         process.exit(1);
       });
 
       phalaProcess.on('exit', (code) => {
         if (code !== 0) {
-          elizaLogger.warn(`Phala CLI exited with code: ${code}`);
+          logger.warn(`Phala CLI exited with code: ${code}`);
         }
         process.exit(code || 0);
       });
     } catch (error) {
-      elizaLogger.error('Error running Phala CLI:', error);
-      elizaLogger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
-      elizaLogger.error('   Try running Phala CLI directly with: npx phala', args.join(' '));
-      elizaLogger.error('   Or visit https://www.npmjs.com/package/phala for more information');
+      logger.error(`Error running Phala CLI: ${error}`);
+      logger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
+      logger.error(`   Try running Phala CLI directly with: npx phala ${args.join(' ')}`);
+      logger.error('   Or visit https://www.npmjs.com/package/phala for more information');
       process.exit(1);
     }
   })
