@@ -414,8 +414,8 @@ export async function publishToGitHub(
             break;
           }
 
-          // Check if this is a package entry line
-          const match = line.match(/^\s*"(@[^"]+)"/);
+          // Check if this is a package entry line (both scoped and unscoped)
+          const match = line.match(/^\s*"([^"]+)"/);
           if (match) {
             const existingPackage = match[1];
             // If our package should come before this one alphabetically
@@ -453,14 +453,16 @@ export async function publishToGitHub(
           
           if (prevLineIndex >= 0) {
             const prevLine = lines[prevLineIndex];
-            // Check if the previous line needs a comma
-            if (!prevLine.trim().endsWith(',')) {
+            const prevTrim = prevLine.trim();
+            // Only add a comma if the previous non-empty line is an entry (not an opening brace)
+            const isEntryLine = /^"[^"]+"\s*:/.test(prevTrim);
+            if (isEntryLine && !prevTrim.endsWith(',')) {
               lines[prevLineIndex] = prevLine.trimEnd() + ',';
             }
           }
           
           // Remove comma from new entry since it's the last one
-          const newEntryWithoutComma = newEntry.slice(0, -1);
+          const newEntryWithoutComma = newEntry.replace(/,\s*$/, '');
           lines.splice(insertIndex, 0, newEntryWithoutComma);
         } else {
           // Not the last entry, keep the comma
