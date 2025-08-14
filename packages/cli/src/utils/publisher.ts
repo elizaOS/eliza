@@ -441,8 +441,32 @@ export async function publishToGitHub(
           return false;
         }
 
-        // Insert the new entry at the correct alphabetical position
-        lines.splice(insertIndex, 0, newEntry);
+        // Check if we're inserting before the closing brace (last entry)
+        const isLastEntry = lines[insertIndex].trim() === '}';
+        
+        if (isLastEntry) {
+          // Find the previous non-empty line
+          let prevLineIndex = insertIndex - 1;
+          while (prevLineIndex >= 0 && lines[prevLineIndex].trim() === '') {
+            prevLineIndex--;
+          }
+          
+          if (prevLineIndex >= 0) {
+            const prevLine = lines[prevLineIndex];
+            // Check if the previous line needs a comma
+            if (!prevLine.trim().endsWith(',')) {
+              lines[prevLineIndex] = prevLine.trimEnd() + ',';
+            }
+          }
+          
+          // Remove comma from new entry since it's the last one
+          const newEntryWithoutComma = newEntry.slice(0, -1);
+          lines.splice(insertIndex, 0, newEntryWithoutComma);
+        } else {
+          // Not the last entry, keep the comma
+          lines.splice(insertIndex, 0, newEntry);
+        }
+        
         const updatedContent = lines.join('\n');
 
         // Update index.json with minimal change - preserve original structure
