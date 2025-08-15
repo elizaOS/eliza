@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-quickswap",
+  "name": "plugin-quickswap",
   "description": "ElizaOS plugin for Quickswap decentralized exchange",
   "version": "0.1.0",
   "type": "module",
@@ -15,7 +15,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/monilpat/plugin-quickswap.git"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -58,5 +58,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "packageType": "plugin",
+  "platform": "node",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "npmPackage": "@elizaos/plugin-quickswap"
 }

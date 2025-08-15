@@ -1,0 +1,23 @@
+{
+  "v1": {
+    "packages": {}
+  },
+  "v2": {
+    "packages": {
+      "@elizaos/plugin-quickswap": {
+        "name": "@elizaos/plugin-quickswap",
+        "description": "ElizaOS plugin for Quickswap decentralized exchange",
+        "type": "module",
+        "versions": {
+          "0.1.0": {
+            "version": "0.1.0",
+            "runtimeVersion": "1.4.2",
+            "platform": "node",
+            "publishedAt": "2025-08-15T03:08:31.382Z",
+            "published": false
+          }
+        }
+      }
+    }
+  }
+}

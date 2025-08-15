@@ -1,0 +1,23 @@
+{
+  "v1": {
+    "packages": {}
+  },
+  "v2": {
+    "packages": {
+      "@elizaos/plugin-alethea": {
+        "name": "@elizaos/plugin-alethea",
+        "description": "ElizaOS plugin for Alethea AI integration",
+        "type": "module",
+        "versions": {
+          "0.1.0": {
+            "version": "0.1.0",
+            "runtimeVersion": "1.4.2",
+            "platform": "node",
+            "publishedAt": "2025-08-15T03:05:35.681Z",
+            "published": false
+          }
+        }
+      }
+    }
+  }
+}

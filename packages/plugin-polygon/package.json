@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-polygon",
+  "name": "plugin-polygon",
   "description": "Polygon integration for ElizaOS",
   "version": "1.0.0",
   "type": "module",

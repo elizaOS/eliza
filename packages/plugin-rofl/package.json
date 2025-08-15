@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-rofl",
+  "name": "plugin-rofl",
   "description": "Rofl plugin for ElizaOS",
   "version": "0.1.0",
   "type": "module",
@@ -16,7 +16,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/monilpat/plugin-rofl.git"
   },
   "homepage": "https://elizaos.ai",
   "bugs": {
@@ -77,5 +77,6 @@
       }
     }
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "npmPackage": "plugin-rofl"
 }

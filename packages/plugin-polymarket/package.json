@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-polymarket",
+  "name": "plugin-polymarket",
   "description": "ElizaOS plugin for Polymarket prediction markets",
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/monilpat/plugin-polymarket.git"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -60,5 +60,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
+  "packageType": "plugin",
+  "platform": "node",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "npmPackage": "plugin-polymarket"
 }

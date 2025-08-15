@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/plugin-quickswap",
+  "version": "0.1.0",
+  "description": "ElizaOS plugin for Quickswap decentralized exchange",
+  "type": "module",
+  "platform": "node",
+  "runtimeVersion": "1.4.2",
+  "repository": "git+https://github.com/monilpat/plugin-quickswap.git",
+  "maintainers": [
+    "monilpat"
+  ],
+  "publishedAt": "2025-08-15T03:08:31.382Z",
+  "publishedBy": "monilpat",
+  "dependencies": {
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "ethers": "^6.13.1",
+    "quickswap-sdk": "^3.0.38",
+    "zod": "3.25.32"
+  },
+  "tags": [
+    "quickswap",
+    "defi",
+    "decentralized-exchange",
+    "elizaos",
+    "plugin"
+  ],
+  "license": "UNLICENSED"
+}

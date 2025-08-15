@@ -1,0 +1,31 @@
+{
+  "name": "@elizaos/plugin-polymarket",
+  "version": "0.1.0",
+  "description": "ElizaOS plugin for Polymarket prediction markets",
+  "type": "module",
+  "platform": "node",
+  "runtimeVersion": "1.4.2",
+  "repository": "git+https://github.com/monilpat/plugin-polymarket.git",
+  "maintainers": [
+    "monilpat"
+  ],
+  "publishedAt": "2025-08-15T02:58:34.494Z",
+  "publishedBy": "monilpat",
+  "dependencies": {
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@polymarket/clob-client": "^4.16.0",
+    "ethers": "^6.13.1",
+    "node-fetch": "^3.0.0",
+    "ws": "^8.17.0",
+    "zod": "3.25.32"
+  },
+  "tags": [
+    "polymarket",
+    "prediction-markets",
+    "elizaos",
+    "plugin"
+  ],
+  "license": "UNLICENSED"
+}

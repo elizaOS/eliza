@@ -1,0 +1,23 @@
+{
+  "v1": {
+    "packages": {}
+  },
+  "v2": {
+    "packages": {
+      "@elizaos/plugin-polymarket": {
+        "name": "@elizaos/plugin-polymarket",
+        "description": "ElizaOS plugin for Polymarket prediction markets",
+        "type": "module",
+        "versions": {
+          "0.1.0": {
+            "version": "0.1.0",
+            "runtimeVersion": "1.4.2",
+            "platform": "node",
+            "publishedAt": "2025-08-15T02:58:34.494Z",
+            "published": false
+          }
+        }
+      }
+    }
+  }
+}

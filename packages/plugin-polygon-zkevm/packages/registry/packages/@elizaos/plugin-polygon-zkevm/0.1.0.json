@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/plugin-polygon-zkevm",
+  "version": "0.1.0",
+  "description": "ElizaOS plugin for Polygon zkEVM",
+  "type": "module",
+  "platform": "node",
+  "runtimeVersion": "1.4.2",
+  "repository": "git+https://github.com/monilpat/plugin-polygon-zkevm.git",
+  "maintainers": [
+    "monilpat"
+  ],
+  "publishedAt": "2025-08-15T03:01:16.976Z",
+  "publishedBy": "monilpat",
+  "dependencies": {
+    "@elizaos/core": "beta",
+    "ethers": "^6.13.1",
+    "zod": "3.25.32"
+  },
+  "tags": [
+    "polygon",
+    "zkevm",
+    "elizaos",
+    "plugin"
+  ],
+  "license": "UNLICENSED"
+}

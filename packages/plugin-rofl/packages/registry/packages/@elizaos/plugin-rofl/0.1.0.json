@@ -1,0 +1,25 @@
+{
+  "name": "@elizaos/plugin-rofl",
+  "version": "0.1.0",
+  "description": "Rofl plugin for ElizaOS",
+  "type": "module",
+  "platform": "node",
+  "runtimeVersion": "1.4.2",
+  "repository": "git+https://github.com/monilpat/plugin-rofl.git",
+  "maintainers": [
+    "monilpat"
+  ],
+  "publishedAt": "2025-08-15T03:04:01.482Z",
+  "publishedBy": "monilpat",
+  "dependencies": {
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "whatwg-url": "7.1.0",
+    "axios": "^1.9.0"
+  },
+  "tags": [
+    "plugin",
+    "elizaos"
+  ],
+  "license": "UNLICENSED"
+}
