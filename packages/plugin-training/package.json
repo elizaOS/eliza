@@ -1,0 +1,110 @@
+{
+  "name": "@elizaos/plugin-training",
+  "version": "0.1.0",
+  "description": "ElizaOS Training Data Extraction, RLAIF Training, and Custom Reasoning with Fine-tuned Models",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./mvp": {
+      "import": "./dist/mvp-only.js",
+      "types": "./dist/mvp-only.d.ts"
+    },
+    "./enhanced": {
+      "import": "./dist/enhanced-export.js",
+      "types": "./dist/enhanced-export.d.ts"
+    },
+    "./comprehensive": {
+      "import": "./dist/comprehensive-training-plugin.js",
+      "types": "./dist/comprehensive-training-plugin.d.ts"
+    }
+  },
+  "bin": {
+    "eliza-training": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist && rm -rf .turbo",
+    "lint": "eslint src --fix && prettier --write ./src",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "cli": "node dist/cli/index.js",
+    "cli:help": "node dist/cli/index.js --help",
+    "cli:reasoning": "node dist/cli/index.js reasoning",
+    "cli:extract": "node dist/cli/index.js extract-simple",
+    "cli:dataset": "node dist/cli/index.js create-dataset",
+    "cli:train": "node dist/cli/index.js train-model",
+    "reasoning:config": "node dist/cli/index.js reasoning config",
+    "reasoning:models": "node dist/cli/index.js reasoning models list",
+    "reasoning:export": "node dist/cli/index.js reasoning data export",
+    "reasoning:costs": "node dist/cli/index.js reasoning costs report",
+    "extract:simple": "node dist/cli/index.js extract-simple",
+    "extract:db": "node dist/cli/index.js extract-from-db",
+    "dataset:create": "node dist/cli/index.js create-dataset",
+    "dataset:examples": "node dist/cli/index.js list-examples",
+    "train:model": "node dist/cli/index.js train-model",
+    "train:simulate": "node dist/cli/index.js simulate-training",
+    "train:test": "node dist/cli/index.js test-model"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@huggingface/hub": "^0.20.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.36.4",
+    "form-data": "^4.0.0",
+    "node-fetch": "^3.3.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/uuid": "^10.0.0",
+    "eslint": "^8.57.1",
+    "typescript": "5.8.3"
+  },
+  "files": [
+    "dist",
+    "atropos",
+    "scripts",
+    "README.md"
+  ],
+  "keywords": [
+    "elizaos",
+    "training",
+    "rlaif",
+    "atropos",
+    "machine-learning",
+    "llm",
+    "fine-tuning",
+    "deepseek",
+    "llama",
+    "custom-reasoning",
+    "together-ai",
+    "anthropic-proxy",
+    "autocoder",
+    "should-respond",
+    "planning-model",
+    "coding-model"
+  ],
+  "author": "ElizaOS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "packages/plugin-training"
+  },
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "homepage": "https://elizaos.ai",
+  "engines": {
+    "node": ">=18.0.0",
+    "python": ">=3.10.0"
+  }
+}
