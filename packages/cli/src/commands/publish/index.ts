@@ -287,6 +287,18 @@ export const publish = new Command()
         }
       });
 
+      // Remove repository field entirely when using --npm flag
+      if (opts.npm && packageJson.repository) {
+        delete packageJson.repository;
+        console.info('Removed repository field for npm-only publishing');
+      }
+
+      // Remove bugs field when using --npm flag
+      if (opts.npm && packageJson.bugs) {
+        delete packageJson.bugs;
+        console.info('Removed bugs field for npm-only publishing');
+      }
+
       // Extract final plugin name for use in publishing
       const finalPluginName = packageJson.name.startsWith('@')
         ? packageJson.name.split('/')[1]
