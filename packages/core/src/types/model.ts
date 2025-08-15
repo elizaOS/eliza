@@ -372,7 +372,7 @@ export interface ModelStreamChunkBase {
 /**
  * Standard finish chunk containing the final output for the streamed operation
  */
-export interface ModelStreamFinishChunk<T = any> extends ModelStreamChunkBase {
+export interface ModelStreamFinishChunk<T = unknown> extends ModelStreamChunkBase {
   event: 'finish';
   output: T;
 }
@@ -382,7 +382,7 @@ export interface ModelStreamFinishChunk<T = any> extends ModelStreamChunkBase {
  */
 export interface ModelStreamErrorChunk extends ModelStreamChunkBase {
   event: 'error';
-  error: any;
+  error: unknown;
 }
 
 /**
@@ -417,10 +417,10 @@ export type TranscriptionStreamChunk =
  * Text-to-speech streaming chunk variants
  */
 export type TextToSpeechStreamChunk =
-  | (ModelStreamChunkBase & { event: 'audio'; chunk: any })
+  | (ModelStreamChunkBase & { event: 'audio'; chunk: Buffer | Uint8Array })
   | ModelStreamUsageChunk
   | ModelStreamErrorChunk
-  | ModelStreamFinishChunk<any>;
+  | ModelStreamFinishChunk<Buffer | null>;
 
 /**
  * Map of model types to their stream chunk shapes
@@ -433,7 +433,7 @@ export interface ModelStreamChunkMap {
   [ModelType.TRANSCRIPTION]: TranscriptionStreamChunk;
   [ModelType.TEXT_TO_SPEECH]: TextToSpeechStreamChunk;
   // Default fallback for custom/other types
-  [key: string]: ModelStreamChunkBase | any;
+  [key: string]: ModelStreamChunkBase | unknown;
 }
 
 /**
@@ -445,7 +445,7 @@ export type ModelStream<T> = AsyncIterable<T>;
  * Streaming model handler registration
  */
 export interface ModelStreamHandler {
-  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => ModelStream<any> | Promise<ModelStream<any>>;
+  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => ModelStream<unknown> | Promise<ModelStream<unknown>>;
   provider: string;
   priority?: number;
   registrationOrder?: number;
