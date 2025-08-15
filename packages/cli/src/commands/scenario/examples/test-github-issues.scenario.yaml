@@ -14,7 +14,6 @@ run:
   - name: "Ask agent to list open issues"
     input: "List open issues for elizaOS/eliza"
     evaluations:
-      # Check if the agent's response contains the mocked issue titles
       - type: "string_contains"
         value: "issues"
         description: "Agent should mention the issues"

@@ -7,15 +7,7 @@ setup:
     "data.json": '{"name": "test", "value": 42}'
     "output.txt": "Hello World"
 run:
-  - lang: python
-    code: |
-      import json
-      with open("data.json", "r") as f:
-          data = json.load(f)
-      print(f"Loaded data: {data}")
-      with open("result.json", "w") as f:
-          json.dump({"status": "success", "data": data}, f)
-      print("Created result.json")
+  - input: "Please read the data.json file and create a summary of its contents in a well-formatted response"
     evaluations:
       - type: "llm_judge"
         prompt: "Does the output show successful JSON processing?"
@@ -27,11 +19,7 @@ run:
         temperature: 0.3
       - type: "file_exists"
         path: "result.json"
-  - lang: python
-    code: |
-      print("This is a simple test")
-      print("with multiple lines")
-      print("to test LLM judgment")
+  - input: "Please provide a multi-line response explaining the benefits of structured data formats like JSON"
     evaluations:
       - type: "llm_judge"
         prompt: "Does the output contain multiple lines?"
@@ -49,11 +37,7 @@ run:
             reasoning: { type: "string" }
             suggestions: { type: "string" }
           required: ["judgment", "confidence", "reasoning", "suggestions"]
-  - lang: python
-    code: |
-      print("This is a poorly formatted output")
-      print("with inconsistent spacing")
-      print("and unclear structure")
+  - input: "Please respond with a poorly formatted and unclear message about data structures"
     evaluations:
       - type: "llm_judge"
         prompt: "Is this output well-structured and clear?"

@@ -4,11 +4,7 @@ environment:
   type: local
 run:
   - name: "Fast execution test"
-    lang: python
-    code: |
-      import time
-      time.sleep(0.1)  # 100ms
-      print("Fast execution completed")
+    input: "Please respond with a simple greeting message"
     evaluations:
       - type: "execution_time"
         max_duration_ms: 500
@@ -16,30 +12,20 @@ run:
         target_duration_ms: 150
 
   - name: "Slow execution test"
-    lang: python
-    code: |
-      import time
-      time.sleep(0.5)  # 500ms
-      print("Slow execution completed")
+    input: "Please provide a detailed analysis of the benefits of artificial intelligence in modern society, including specific examples and potential future implications"
     evaluations:
       - type: "execution_time"
         max_duration_ms: 1000
         min_duration_ms: 400
 
   - name: "Too slow execution test (should fail)"
-    lang: python
-    code: |
-      import time
-      time.sleep(1.0)  # 1000ms
-      print("Too slow execution completed")
+    input: "Please write a comprehensive research paper on the history of computing, including detailed technical specifications, historical context, and future predictions. Include at least 10 pages of content with proper citations and references."
     evaluations:
       - type: "execution_time"
         max_duration_ms: 500  # This should fail
 
   - name: "Too fast execution test (should fail)"
-    lang: python
-    code: |
-      print("Too fast execution completed")
+    input: "Hello"
     evaluations:
       - type: "execution_time"
         max_duration_ms: 1000
