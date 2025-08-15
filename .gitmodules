@@ -4,3 +4,6 @@
 [submodule "packages/docs"]
 	path = packages/docs
 	url = https://github.com/elizaos/docs
+[submodule "packages/plugin-action-bench"]
+	path = packages/plugin-action-bench
+	url = https://github.com/elizaos-plugins/plugin-action-bench

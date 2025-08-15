@@ -538,109 +538,284 @@ const messageReceivedHandler = async ({
           shouldRespond = true;
         }
 
-        let responseMessages: Memory[] = [];
-
         // I don't think we need these right now
         //runtime.logger.debug('shouldRespond is', shouldRespond);
         //runtime.logger.debug('shouldSkipShouldRespond', shouldSkipShouldRespond);
 
         let responseContent: Content | null = null;
+        let responseMessages: Memory[] = [];
+        let allResponseMessages: Memory[] = [];
+        let iterationCount = 0;
+        const maxIterations = 5; // Prevent infinite loops
+        let continueProcessing = shouldRespond;
+        let accumulatedActionResults: any[] = [];
 
         if (shouldRespond) {
-          state = await runtime.composeState(message, ['ACTIONS']);
-          if (!state.values.actionNames) {
-            runtime.logger.warn(
-              'actionNames data missing from state, even though it was requested'
-            );
-          }
+          // Create a template for checking if more actions are needed
+          const checkContinuationTemplate = `<task>Determine if you have enough information to fully respond to the user's request or if you need to call more actions.</task>
 
-          const prompt = composePromptFromState({
-            state,
-            template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
-          });
+<providers>
+{{providers}}
+</providers>
 
-          // Retry if missing required fields
-          let retries = 0;
-          const maxRetries = 3;
+<available_actions>
+{{actionNames}}
+</available_actions>
 
-          while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-            let response = await runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt,
-            });
+<instructions>
+Based on the conversation context and the ACTION_STATE provider showing previous action results, determine:
+1. Do you have all the information needed to fully answer the user's question?
+2. Are there any additional actions you should call to get more complete information?
 
-            runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
+The ACTION_STATE provider shows you:
+- Previous action results with their success/failure status
+- Working memory with accumulated data
+- The current execution plan and progress
 
-            // Attempt to parse the XML response
-            const parsedXml = parseKeyValueXml(response);
-            runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
+Use this information to determine what data you already have and what's still needed.
+</instructions>
 
-            // Map parsed XML to Content type, handling potential missing fields
-            if (parsedXml) {
-              responseContent = {
-                ...parsedXml,
-                thought: parsedXml.thought || '',
-                actions: parsedXml.actions || ['IGNORE'],
-                providers: parsedXml.providers || [],
-                text: parsedXml.text || '',
-                simple: parsedXml.simple || false,
+<output>
+Respond using XML format:
+<response>
+  <thought>Brief analysis of what information you have and what might be missing</thought>
+  <hasEnoughInfo>YES or NO</hasEnoughInfo>
+  <actions>ACTION1,ACTION2 (actions to call if more info needed, or REPLY if ready to respond)</actions>
+  <providers>PROVIDER1,PROVIDER2 (providers needed for context, if any)</providers>
+  <text>Your response text (only required if hasEnoughInfo is YES)</text>
+</response>
+</output>`;
+
+          while (continueProcessing && iterationCount < maxIterations) {
+            iterationCount++;
+            runtime.logger.debug(`[Bootstrap] Action processing iteration ${iterationCount}`);
+
+            // Compose state with current context including previous action results
+            state = await runtime.composeState(message, [
+              'ACTIONS',
+              'RECENT_MESSAGES',
+              'ACTION_STATE',
+            ]);
+
+            // Add accumulated action results to state data for the ACTION_STATE provider
+            if (accumulatedActionResults.length > 0) {
+              state.data = {
+                ...state.data,
+                actionResults: accumulatedActionResults,
+                iterationCount: iterationCount,
               };
-            } else {
-              responseContent = null;
+              state.values.actionResults = JSON.stringify(accumulatedActionResults, null, 2);
             }
 
-            retries++;
-            if (!responseContent?.thought || !responseContent?.actions) {
+            if (!state.values.actionNames) {
               runtime.logger.warn(
-                { response, parsedXml, responseContent },
-                '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
+                'actionNames data missing from state, even though it was requested'
               );
             }
-          }
 
-          // Check if this is still the latest response ID for this agent+room
-          const currentResponseId = agentResponses.get(message.roomId);
-          if (currentResponseId !== responseId) {
-            runtime.logger.info(
-              `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
-            );
-            return;
-          }
+            // Determine what to do next
+            let prompt: string;
 
+            if (iterationCount === 1) {
+              // First iteration: use the standard message handler template
+              prompt = composePromptFromState({
+                state,
+                template:
+                  runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+              });
+            } else {
+              // Subsequent iterations: check if we need more actions
+              prompt = composePromptFromState({
+                state,
+                template: checkContinuationTemplate,
+              });
+            }
+
+            // Get the agent's decision
+            let retries = 0;
+            const maxRetries = 3;
+            let iterationContent: Content | null = null;
+
+            logger.debug(retries, '#### retries');
+            logger.debug(maxRetries, '#### maxRetries');
+            logger.debug(iterationContent, '#### iterationContent');
+
+            while (
+              retries < maxRetries &&
+              (!iterationContent?.thought || !iterationContent?.actions)
+            ) {
+              let response = await runtime.useModel(ModelType.TEXT_LARGE, {
+                prompt,
+              });
+
+              runtime.logger.debug(
+                { response },
+                `[Bootstrap] Iteration ${iterationCount} - Raw LLM Response`
+              );
+
+              // Parse the XML response
+              const parsedXml = parseKeyValueXml(response);
+              runtime.logger.debug(
+                { parsedXml },
+                `[Bootstrap] Iteration ${iterationCount} - Parsed XML Content`
+              );
+
+              if (parsedXml) {
+                iterationContent = {
+                  ...parsedXml,
+                  thought: parsedXml.thought || '',
+                  actions: parsedXml.actions || ['IGNORE'],
+                  providers: parsedXml.providers || [],
+                  text: parsedXml.text || '',
+                  simple: parsedXml.simple || false,
+                };
+
+                // Check if we should continue after this iteration (for subsequent iterations)
+                if (iterationCount > 1 && parsedXml.hasEnoughInfo) {
+                  continueProcessing = parsedXml.hasEnoughInfo.toUpperCase() === 'NO';
+                }
+              } else {
+                iterationContent = null;
+              }
+
+              retries++;
+              if (!iterationContent?.thought || !iterationContent?.actions) {
+                runtime.logger.warn(
+                  { response, parsedXml, iterationContent },
+                  `[Bootstrap] Iteration ${iterationCount} - Missing required fields, retrying...`
+                );
+              }
+            }
+
+            if (!iterationContent) {
+              runtime.logger.error(
+                `[Bootstrap] Failed to get valid response in iteration ${iterationCount}`
+              );
+              break;
+            }
+
+            // Store the content for this iteration
+            if (iterationCount === 1) {
+              responseContent = iterationContent;
+            } else if (responseContent && iterationContent) {
+              // Update response content with the latest thinking
+              responseContent = {
+                ...responseContent,
+                thought: iterationContent.thought || responseContent.thought,
+                text: iterationContent.text || responseContent.text || '',
+                actions: responseContent.actions,
+                providers: responseContent.providers,
+                simple: responseContent.simple,
+              } as Content;
+            } else {
+              // Fallback if responseContent is somehow null
+              responseContent = iterationContent;
+            }
+
+            // Check if this is still the latest response ID for this agent+room
+            const currentResponseId = agentResponses.get(message.roomId);
+            if (currentResponseId !== responseId) {
+              runtime.logger.info(
+                `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+              );
+              return;
+            }
+
+            // Check if actions are terminal (REPLY or IGNORE only)
+            const isTerminalAction =
+              iterationContent?.actions &&
+              ((iterationContent.actions.length === 1 &&
+                iterationContent.actions[0].toUpperCase() === 'IGNORE') ||
+                (iterationCount > 1 && responseContent?.text));
+
+            if (isTerminalAction) {
+              runtime.logger.debug(
+                `[Bootstrap] Terminal action detected in iteration ${iterationCount}, stopping loop`
+              );
+              continueProcessing = false;
+            }
+
+            // Process actions if not terminal
+            if (
+              !isTerminalAction &&
+              iterationContent?.actions &&
+              !iterationContent.actions.includes('IGNORE')
+            ) {
+              runtime.logger.debug(
+                `[Bootstrap] Processing actions in iteration ${iterationCount}: ${iterationContent.actions.join(', ')}`
+              );
+
+              // Create a temporary response message for action processing
+              const tempResponseMessage = {
+                id: asUUID(v4()),
+                entityId: runtime.agentId,
+                agentId: runtime.agentId,
+                content: iterationContent,
+                roomId: message.roomId,
+                createdAt: Date.now(),
+              };
+
+              // Process the actions and collect results
+              const preActionState = { ...state };
+              await runtime.processActions(
+                message,
+                [tempResponseMessage],
+                state,
+                async (content) => {
+                  runtime.logger.debug({ content }, `Iteration ${iterationCount} action callback`);
+                  // Don't send intermediate results to the user yet
+                  return [] as Memory[];
+                }
+              );
+
+              // Extract action results from the processActions call
+              // Since processActions stores results in state cache, we need to check for them
+              // The runtime stores them with the message.id key
+              try {
+                // Check if the runtime has a method to get action results
+                // For now, we'll track results through state modifications
+                if (state.data?.actionResults && Array.isArray(state.data.actionResults)) {
+                  const existingCount = preActionState.data?.actionResults?.length || 0;
+                  const newResults = state.data.actionResults.slice(existingCount);
+                  if (newResults.length > 0) {
+                    accumulatedActionResults.push(...newResults);
+                    runtime.logger.debug(
+                      `[Bootstrap] Collected ${newResults.length} action results from state in iteration ${iterationCount}`
+                    );
+                  }
+                }
+              } catch (error) {
+                runtime.logger.error(`[Bootstrap] Error extracting action results: ${error}`);
+              }
+
+              // Store the response message for evaluation later
+              allResponseMessages.push(tempResponseMessage);
+            } else {
+              // Terminal action or ready to respond
+              continueProcessing = false;
+            }
+          } // End of while loop
+
+          // After the loop, prepare the final response
           if (responseContent && message.id) {
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
             // --- LLM IGNORE/REPLY ambiguity handling ---
-            // Sometimes the LLM outputs actions like ["REPLY", "IGNORE"], which breaks isSimple detection
-            // and triggers unnecessary large LLM calls. We clarify intent here:
-            // - If IGNORE is present with other actions:
-            //    - If text is empty, we assume the LLM intended to IGNORE and drop all other actions.
-            //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
-            // This ensures consistent, clear behavior and preserves reply speed optimizations.
             if (responseContent.actions && responseContent.actions.length > 1) {
-              // filter out all NONE actions, there's nothing to be done with them
-              // oh but there is a none action in bootstrap
-              //responseContent.actions = responseContent.actions.filter(a => a !== 'NONE')
-
-              // Helper function to safely check if an action is IGNORE
               const isIgnoreAction = (action: unknown): boolean => {
                 return typeof action === 'string' && action.toUpperCase() === 'IGNORE';
               };
 
-              // Check if any action is IGNORE
               const hasIgnoreAction = responseContent.actions.some(isIgnoreAction);
 
               if (hasIgnoreAction) {
                 if (!responseContent.text || responseContent.text.trim() === '') {
-                  // No text, truly meant to IGNORE
                   responseContent.actions = ['IGNORE'];
                 } else {
-                  // Text present, LLM intended to reply, remove IGNORE
                   const filteredActions = responseContent.actions.filter(
                     (action) => !isIgnoreAction(action)
                   );
 
-                  // Ensure we don't end up with an empty actions array when text is present
-                  // If all actions were IGNORE, default to REPLY
                   if (filteredActions.length === 0) {
                     responseContent.actions = ['REPLY'];
                   } else {
@@ -651,7 +826,6 @@ const messageReceivedHandler = async ({
             }
 
             // Automatically determine if response is simple based on providers and actions
-            // Simple = REPLY action with no providers used
             const isSimple =
               responseContent.actions?.length === 1 &&
               typeof responseContent.actions[0] === 'string' &&
@@ -660,7 +834,7 @@ const messageReceivedHandler = async ({
 
             responseContent.simple = isSimple;
 
-            const responseMessage = {
+            const finalResponseMessage = {
               id: asUUID(v4()),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
@@ -669,7 +843,7 @@ const messageReceivedHandler = async ({
               createdAt: Date.now(),
             };
 
-            responseMessages = [responseMessage];
+            responseMessages = [finalResponseMessage];
           }
 
           // Clean up the response ID
@@ -682,6 +856,7 @@ const messageReceivedHandler = async ({
             state = await runtime.composeState(message, responseContent?.providers || []);
           }
 
+          // Send the final response to the user
           if (responseContent && responseContent.simple && responseContent.text) {
             // Log provider usage for simple responses
             if (responseContent.providers && responseContent.providers.length > 0) {
@@ -691,17 +866,21 @@ const messageReceivedHandler = async ({
               );
             }
 
-            // without actions there can't be more than one message
+            await callback(responseContent);
+          } else if (responseContent && responseContent.text) {
+            // Send the final composed response after all iterations
             await callback(responseContent);
           } else {
+            // Fallback to processing any remaining actions
             await runtime.processActions(message, responseMessages, state, async (content) => {
-              runtime.logger.debug({ content }, 'action callback');
+              runtime.logger.debug({ content }, 'final action callback');
               if (responseContent) {
                 responseContent.actionCallbacks = content;
               }
               return callback(content);
             });
           }
+
           await runtime.evaluate(
             message,
             state,
