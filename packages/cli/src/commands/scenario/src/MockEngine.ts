@@ -54,12 +54,6 @@ export class MockEngine {
                     // Return a new function that will perform the mock logic
                     return async (...args: any[]) => {
                         const potentialMocks = this.mockRegistry.get(key)!;
-                        console.log(`[MOCK] Checking mocks for ${key} with args:`, args);
-                        console.log(`[MOCK] Available mocks:`, potentialMocks.map(m => ({
-                            hasWhen: !!m.when,
-                            whenArgs: m.when?.args,
-                            hasResponse: !!m.response
-                        })));
 
                         // Find the best matching mock using enhanced matching strategies
                         const matchedMock = await this.findBestMatchingMock(potentialMocks, args);
@@ -76,7 +70,6 @@ export class MockEngine {
                         }
 
                         // No matching mock found, call the original method
-                        console.log(`[MOCK] No mock found for ${key}, calling original method`);
                         return Reflect.get(target, prop, receiver)(...args);
                     };
                 },
@@ -88,7 +81,6 @@ export class MockEngine {
         // Restore the original getService method to clean up
         this.runtime.getService = this.originalGetService;
         this.mockRegistry.clear();
-        console.log('[MOCK] All mocks reverted');
     }
 
     public getMockRegistry() {

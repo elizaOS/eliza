@@ -6,12 +6,10 @@ import { ElizaClient } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 
 // --- Start of Pre-emptive Environment Loading ---
-console.log('[ENV] Loading environment configuration...');
 loadEnvironmentVariables();
 
 // Get the loaded environment settings
 const envSettings = process.env as RuntimeSettings;
-console.log(`[ENV] Environment loaded with ${Object.keys(envSettings).length} variables`);
 // --- End of Pre-emptive Environment Loading ---
 
 /**
@@ -97,9 +95,7 @@ export async function askAgentViaApi(
   if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
   const channelResult = await channelResponse.json();
   const channel = channelResult.data;
-  console.log('channel', channel);
   const addAgentResp = await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
-  console.log('addAgentResp', addAgentResp);
   // Post a message using the server's expected payload (requires author_id and server_id)
   const postResp = await fetch(`http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`, {
     method: 'POST',
@@ -112,35 +108,25 @@ export async function askAgentViaApi(
       source_type: 'scenario_message'
     })
   });
-  console.log('postResp', postResp);
   if (!postResp.ok) {
     const errText = await postResp.text();
     throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
   }
   const rawResponse = await postResp.json();
-  console.log('postResp', rawResponse);
   const startTime = Date.now();
-  console.log('startTime', startTime);
 
   // Preemptively wait for action response
-  console.log('waiting', timeoutMs, 'seconds');
   await new Promise(resolve => setTimeout(resolve, timeoutMs));
-  console.log('getting messages');
   const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
-  console.log('writing to file');
   const messagesJson = JSON.stringify(messages, null, 2);
-  console.log('messagesJson', messagesJson);
   const agentMessages = messages.messages.filter((msg: any) =>
     msg.authorId === agentId && msg.created_at > startTime
   );
-  console.log('agentMessages', agentMessages);
   if (agentMessages.length > 0) {
     const latestMessage = agentMessages.sort((a: any, b: any) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
-    console.log('latestMessage', latestMessage);
     const messageTime = new Date(latestMessage?.createdAt).getTime();
-    console.log('messageTime', messageTime);
     return latestMessage.content;
   }
   throw new Error('Timeout waiting for agent response');

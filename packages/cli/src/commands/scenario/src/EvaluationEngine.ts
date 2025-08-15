@@ -138,17 +138,14 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
                 count: 50, // Get recent actions
                 unique: false,
             });
-            console.log('actionMemories', actionMemories);
 
             // Filter for action_result memories
             const actionResults = actionMemories.filter(
                 (mem) => mem?.type === 'messages' && mem.content?.type === 'action_result'
             );
-            console.log('actionResults', actionResults);
             // Normalize function to compare action names robustly (case/underscore insensitive)
             const normalize = (name: string | undefined): string => (typeof name === 'string' ? name : '').toLowerCase().replace(/_/g, '');
             const target = normalize(actionName);
-            console.log('target', target);
 
             // Check if any action matches the specified name (normalized)
             const matchingAction = actionResults.find((mem) => normalize(mem.content?.actionName ?? '') === target);
@@ -214,18 +211,12 @@ ${Object.keys(jsonSchema.properties).join(', ')}
 Do not use any other field names. Use only the exact field names specified above.`;
 
         try {
-            console.log(`[LLM Judge] Starting evaluation for prompt: "${prompt}"`);
-            console.log(`[LLM Judge] Using model type: ${modelType}`);
-            console.log(`[LLM Judge] Temperature: ${temperature}`);
-
             // Check if the picked model is available; if not, return gracefully
             const availableModels = (runtime as any).models;
             const modelKeys = availableModels && typeof availableModels.keys === 'function'
                 ? Array.from(availableModels.keys())
                 : Object.keys(availableModels || {});
-            console.log(`[LLM Judge] Available models:`, modelKeys);
             const modelHandler = (runtime as any).getModel(modelType);
-            console.log(`[LLM Judge] Model handler for ${modelType}:`, modelHandler ? 'EXISTS' : 'NOT FOUND');
             if (!modelHandler) {
                 return {
                     success: false,
@@ -235,11 +226,9 @@ Do not use any other field names. Use only the exact field names specified above
 
             // Check if OpenAI plugin is loaded
             const openaiService = runtime.getService('openai');
-            console.log(`[LLM Judge] OpenAI service:`, openaiService ? 'LOADED' : 'NOT FOUND');
 
             // Check all loaded services
             const allServices = (runtime as any).services;
-            console.log(`[LLM Judge] All loaded services:`, Object.keys(allServices || {}));
 
             // Do not include runtime here; runtime.useModel will inject it
             const objectParams: Omit<ObjectGenerationParams, 'runtime'> = {
@@ -249,13 +238,10 @@ Do not use any other field names. Use only the exact field names specified above
                 output: 'object',
             } as any;
 
-            // Safe log (no runtime field)
-            console.log(`[LLM Judge] Calling useModel with params:`, JSON.stringify(objectParams, null, 2));
             const response = await Promise.race([
                 runtime.useModel(modelType, objectParams),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`LLM judge timeout after ${timeoutMs}ms`)), timeoutMs)),
             ]);
-            console.log(`[LLM Judge] Received response:`, JSON.stringify(response, null, 2));
 
             // The object model should return a proper object, but let's validate it
             const parsedResponse = this.validateResponse(response, jsonSchema);
@@ -306,9 +292,6 @@ Do not use any other field names. Use only the exact field names specified above
             const zodSchema = this.convertToZodSchema(schema);
             return zodSchema.parse(response);
         } catch (error) {
-            console.log(`[LLM Judge] Zod validation failed:`, error);
-            console.log(`[LLM Judge] Response was:`, JSON.stringify(response, null, 2));
-            console.log(`[LLM Judge] Expected schema:`, JSON.stringify(schema, null, 2));
             throw error;
         }
     }

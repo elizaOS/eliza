@@ -92,7 +92,6 @@ print(json.dumps(files))
         // The E2B service manages sandboxes internally, no need to check sandboxId here
         const results: ExecutionResult[] = [];
         for (const step of scenario.run) {
-            console.log('Executing E2B step:', JSON.stringify(step, null, 2));
             const startedAtMs = Date.now();
 
             if (step.input) {
