@@ -10,28 +10,7 @@ plugins:
     enabled: true
 
 environment:
-  type: e2b
-
-# Need to clean up as this isn't actually used
-setup:
-  mocks:
-    # 1. Mock the 'searchHistory' action. We assume the motivation for the trade
-    #    is stored directly in the event log record itself.
-    - service: "evm-service"
-      method: "searchHistory"
-      when:
-        input:
-          action_name: "make_trade"
-          limit: 1
-      response:
-        - event_id: "evt_123"
-          timestamp: "2024-07-15T10:00:00Z"
-          action_name: "make_trade"
-          action_input: { "token": "ETH", "amount": 5, "direction": "BUY" }
-          # This is the simplified motivation. The agent doesn't need to look up
-          # market data; it just needs to report what's in the log.
-          metadata:
-            motivation: "Positive market sentiment based on news about Tech Corp's record profits."
+  type: local
 
 run:
   - name: "Ask agent to explain its last trade"

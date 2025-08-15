@@ -10,56 +10,22 @@ plugins:
     enabled: true
 
 environment:
-  type: e2b
-
-setup:
-  # Need to clean up as this isn't actually used in the actions
-  mocks:
-    # 1. Mock the issue search - simulates finding two relevant tickets.
-    - service: "github-service"
-      method: "searchIssues"
-      response:
-        - title: "Implement Scenario Runner"
-          labels: ["feature", "testing"]
-          state: "open"
-          number: 123
-        - title: "Add Dark Mode to UI"
-          labels: ["enhancement", "ui"]
-          state: "open"
-          number: 124
-
-    # 2. Mock reading a documentation file - simulates finding a ROADMAP.md.
-    - service: "github-service"
-      method: "readFile"
-      # This mock will only trigger if the input path matches '/docs/ROADMAP.md'
-      when:
-        path: "/docs/ROADMAP.md"
-      response:
-        content: "## Official Roadmap\n- Q4 Goal: Achieve full multi-language support."
-
-    # 3. Mock a code search - simulates finding a TODO comment for a future feature.
-    - service: "github-service"
-      method: "searchCode"
-      response:
-        - path: "/src/server.js"
-          line: 55
-          content: "// TODO: Refactor the auth system for enterprise SSO"
+  type: local
 
 run:
   - name: "Ask agent about its development roadmap"
     input: "What new features are you planning to add?"
     evaluations:
-      # Check if the agent's response correctly references the mocked issues.
-      - type: "regex_match"
-        pattern: "Scenario Runner"
-      - type: "regex_match"
-        pattern: "Dark Mode"
-      - type: "regex_match"
-        pattern: "SSO"
+      - type: trajectory_contains_action
+        action: SEARCH_GITHUB_ISSUES
+        description: Verify that the SEARCH_GITHUB_ISSUES action was executed
+      - type: trajectory_contains_action
+        action: READ_GITHUB_FILE
+        description: Verify that the READ_GITHUB_FILE action was executed
+      - type: trajectory_contains_action
+        action: SEARCH_GITHUB_CODE
+        description: Verify that the SEARCH_GITHUB_CODE action was executed
 
-      # The generic LLM judge.
-      # This works in both test mode (judging against mocked data)
-      # and live mode (judging against real data).
       - type: "llm_judge"
         prompt: "The user asked about the development roadmap. Did the agent provide a helpful and coherent summary based on the available information it found?"
         expected: "yes"
