@@ -30,7 +30,11 @@ describe('AgentRuntime streaming', () => {
     );
 
     const chunks: any[] = [];
-    for await (const chunk of await runtime.useModelStream(ModelType.TEXT_SMALL, { prompt: 'Hello' })) {
+    for await (const chunk of (await (runtime as unknown as IAgentRuntime).useModel(
+      ModelType.TEXT_SMALL,
+      { prompt: 'Hello' },
+      'STREAMING_TEXT'
+    )) as AsyncIterable<any>) {
       chunks.push(chunk);
     }
 
@@ -58,7 +62,11 @@ describe('AgentRuntime streaming', () => {
     } as any;
 
     const chunks: any[] = [];
-    for await (const chunk of await runtime.useModelStream(ModelType.TEXT_SMALL, { prompt: 'Hi' })) {
+    for await (const chunk of (await (runtime as unknown as IAgentRuntime).useModel(
+      ModelType.TEXT_SMALL,
+      { prompt: 'Hi' },
+      'STREAMING_TEXT'
+    )) as AsyncIterable<any>) {
       chunks.push(chunk);
     }
 
@@ -87,7 +95,11 @@ describe('AgentRuntime streaming', () => {
     );
 
     const received: any[] = [];
-    for await (const chunk of await runtime.useModelStream(ModelType.TEXT_LARGE, { prompt: 'x' })) {
+    for await (const chunk of (await (runtime as unknown as IAgentRuntime).useModel(
+      ModelType.TEXT_LARGE,
+      { prompt: 'x' },
+      'STREAMING_TEXT'
+    )) as AsyncIterable<any>) {
       received.push(chunk);
     }
 

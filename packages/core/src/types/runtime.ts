@@ -10,6 +10,10 @@ import type {
   ModelResultMap,
   ModelTypeName,
   ModelStreamChunkMap,
+  TextStreamChunk,
+  TranscriptionStreamChunk,
+  TextToSpeechStreamChunk,
+  ModelStream,
 } from './model';
 import type { Plugin, Route } from './plugin';
 import type { Content, UUID } from './primitives';
@@ -128,55 +132,57 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
+  // Overloads for useModel with optional streaming event name
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
+    params: Omit<ModelParamsMap[T], 'runtime'>
   ): Promise<R>;
-
-  /**
-   * Streaming variant of useModel. Returns an AsyncIterable of typed chunks.
-   * If no streaming handler is registered, falls back to a single 'finish' chunk with the non-streaming result.
-   */
-  useModelStream<T extends ModelTypeName>(
+  useModel<T extends ModelTypeName>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any,
-    provider?: string
-  ): Promise<AsyncIterable<ModelStreamChunkMap[T]>>;
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TEXT'
+  ): Promise<ModelStream<TextStreamChunk>>;
+  useModel<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TRANSCRIPTION'
+  ): Promise<ModelStream<TranscriptionStreamChunk>>;
+  useModel<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TTS'
+  ): Promise<ModelStream<TextToSpeechStreamChunk>>;
 
-  registerModel(
-    modelType: ModelTypeName | string,
-    handler: (params: any) => Promise<any>,
+  registerModel<T extends ModelTypeName>(
+    modelType: T,
+    handler: (params: ModelParamsMap[T]) => Promise<ModelResultMap[T]>,
     provider: string,
     priority?: number
   ): void;
 
-  getModel(
-    modelType: ModelTypeName | string
-  ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
+  getModel<T extends ModelTypeName>(
+    modelType: T
+  ): ((runtime: IAgentRuntime, params: ModelParamsMap[T]) => Promise<ModelResultMap[T]>) | undefined;
 
-  /**
-   * Register a streaming model handler for a given model type.
-   */
-  registerModelStream(
-    modelType: ModelTypeName | string,
-    handler: (params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>,
+  /** Register a streaming model handler for a given model type. */
+  registerModelStream<T extends ModelTypeName>(
+    modelType: T,
+    handler: (params: ModelParamsMap[T]) => ModelStream<ModelStreamChunkMap[T]> | Promise<ModelStream<ModelStreamChunkMap[T]>>,
     provider: string,
     priority?: number
   ): void;
 
-  /**
-   * Resolve a streaming model handler for a given model type.
-   */
-  getModelStream(
-    modelType: ModelTypeName | string,
+  /** Resolve a streaming model handler for a given model type. */
+  getModelStream<T extends ModelTypeName>(
+    modelType: T,
     provider?: string
-  ): ((runtime: IAgentRuntime, params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>) | undefined;
+  ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => ModelStream<ModelStreamChunkMap[T]> | Promise<ModelStream<ModelStreamChunkMap[T]>>) | undefined;
 
-  registerEvent(event: string, handler: (params: any) => Promise<void>): void;
+  registerEvent<T = unknown>(event: string, handler: (params: T) => Promise<void>): void;
 
-  getEvent(event: string): ((params: any) => Promise<void>)[] | undefined;
+  getEvent<T = unknown>(event: string): ((params: T) => Promise<void>)[] | undefined;
 
-  emitEvent(event: string | string[], params: any): Promise<void>;
+  emitEvent<T = unknown>(event: string | string[], params: T): Promise<void>;
   // In-memory task definition methods
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
