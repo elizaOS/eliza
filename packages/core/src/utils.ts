@@ -717,6 +717,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
 
   const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
     prompt,
+    modelType: ModelType.TEXT_TOKENIZER_ENCODE,
   });
 
   // If already within limits, return unchanged
@@ -730,6 +731,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
   // Decode back to text
   return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
     tokens: truncatedTokens,
+    modelType: ModelType.TEXT_TOKENIZER_DECODE,
   });
 }
 

@@ -48,6 +48,11 @@ import {
   IAgentRuntime,
   type ActionResult,
   type ActionContext,
+  type ModelStreamHandler,
+  type ModelStream,
+  type ModelStreamChunkMap,
+  type ModelStreamFinishChunk,
+  type ModelStreamErrorChunk,
 } from './types';
 
 import { BM25 } from './search';
@@ -103,6 +108,7 @@ export class AgentRuntime implements IAgentRuntime {
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
   models = new Map<string, ModelHandler[]>();
+  streamModels = new Map<string, ModelStreamHandler[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
@@ -1589,6 +1595,290 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
+  registerModelStream<T extends ModelTypeName>(
+    modelType: T,
+    handler: (params: ModelParamsMap[T]) => ModelStream<ModelStreamChunkMap[T]> | Promise<ModelStream<ModelStreamChunkMap[T]>>,
+    provider: string,
+    priority?: number
+  ) {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    if (!this.streamModels.has(modelKey)) {
+      this.streamModels.set(modelKey, []);
+    }
+    const registrationOrder = Date.now();
+    this.streamModels.get(modelKey)?.push({
+      handler: async (_runtime: IAgentRuntime, p: Record<string, unknown>) => handler(p as ModelParamsMap[T]),
+      provider,
+      priority: priority ?? 0,
+      registrationOrder,
+    });
+    // Sort by priority (descending) then by registration order (ascending)
+    this.streamModels.get(modelKey)?.sort((a, b) => {
+      const priorityDiff = (b.priority ?? 0) - (a.priority ?? 0);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return (a.registrationOrder ?? 0) - (b.registrationOrder ?? 0);
+    });
+  }
+
+  getModelStream<T extends ModelTypeName>(
+    modelType: T,
+    provider?: string
+  ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => ModelStream<ModelStreamChunkMap[T]> | Promise<ModelStream<ModelStreamChunkMap[T]>>) | undefined {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const models = this.streamModels.get(modelKey);
+    if (!models?.length) {
+      return undefined;
+    }
+    if (provider) {
+      const modelWithProvider = models.find((m) => m.provider === provider);
+      if (modelWithProvider) {
+        this.logger.debug(
+          `[AgentRuntime][${this.character.name}] Using streaming model ${modelKey} from provider ${provider}`
+        );
+        return modelWithProvider.handler;
+      } else {
+        this.logger.warn(
+          `[AgentRuntime][${this.character.name}] No streaming model found for provider ${provider}`
+        );
+      }
+    }
+    this.logger.debug(
+      `[AgentRuntime][${this.character.name}] Using streaming model ${modelKey} from provider ${models[0].provider}`
+    );
+    return models[0].handler;
+  }
+
+  private async *wrapReadableStream<T>(stream: unknown): AsyncIterable<T> {
+    // Already an AsyncIterable
+    if (stream && typeof (stream as any)[Symbol.asyncIterator] === 'function') {
+      yield* stream as AsyncIterable<T>;
+      return;
+    }
+    
+    // Web ReadableStream API
+    if (stream && typeof (stream as any).getReader === 'function') {
+      const reader = (stream as ReadableStream).getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          yield value as T;
+        }
+      } finally {
+        reader.releaseLock?.();
+      }
+      return;
+    }
+    
+    // Node.js Readable stream
+    if (stream && typeof (stream as any).on === 'function' && typeof (stream as any).read === 'function') {
+      // Convert Node.js stream to AsyncIterable
+      for await (const chunk of stream as AsyncIterable<T>) {
+        yield chunk as T;
+      }
+      return;
+    }
+    
+    // Not a recognized stream type
+    throw new Error('Provided stream is not a recognized stream type (AsyncIterable, ReadableStream, or Node.js Readable)');
+  }
+
+  private async useModelStreamInternal<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    provider?: string
+  ): Promise<ModelStream<ModelStreamChunkMap[T]>> {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const streamHandler = this.getModelStream(modelKey, provider);
+    
+    // Build params with runtime and settings (same logic as non-streaming)
+    let paramsWithRuntime: ModelParamsMap[T];
+    if (
+      params === null ||
+      params === undefined ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+    ) {
+      paramsWithRuntime = params;
+    } else {
+      const modelSettings = this.getModelSettings(modelKey);
+      paramsWithRuntime = modelSettings
+        ? { ...modelSettings, ...params, runtime: this }
+        : { ...params, runtime: this };
+    }
+
+    const runId = this.getCurrentRunId();
+
+    if (!streamHandler) {
+      // Fallback: call non-streaming handler and yield a single finish chunk
+      const self = this;
+      return (async function* () {
+        try {
+          const startTime = performance.now();
+          // Use the non-streaming handler directly to avoid recursion
+          const result = await self.useModelNonStreaming(modelType, params, provider);
+          const elapsedTime = performance.now() - startTime;
+          yield { event: 'finish', output: result, latencyMs: Number(elapsedTime.toFixed(2)) } as ModelStreamFinishChunk<ModelResultMap[T]>;
+        } catch (error) {
+          yield { event: 'error', error } as ModelStreamErrorChunk;
+        }
+      })();
+    }
+
+    const startTime = performance.now();
+    const raw = await streamHandler(this, paramsWithRuntime);
+    const iterable = this.wrapReadableStream<ModelStreamChunkMap[T]>(raw);
+
+    const self = this;
+    return (async function* () {
+      let hasError = false;
+      try {
+        for await (const chunk of iterable) {
+          // Emit events for observability
+          await self.emitEvent?.('model:stream:chunk', { 
+            modelType: modelKey, 
+            chunk, 
+            runId,
+            provider: provider || self.streamModels.get(modelKey)?.[0]?.provider
+          });
+          yield chunk;
+        }
+      } catch (error) {
+        hasError = true;
+        await self.emitEvent?.('model:stream:error', { 
+          modelType: modelKey, 
+          error, 
+          runId,
+          provider: provider || self.streamModels.get(modelKey)?.[0]?.provider
+        });
+        throw error;
+      } finally {
+        if (!hasError) {
+          const elapsedTime = performance.now() - startTime;
+          await self.emitEvent?.('model:stream:finish', { 
+            modelType: modelKey, 
+            runId, 
+            latencyMs: Number(elapsedTime.toFixed(2)),
+            provider: provider || self.streamModels.get(modelKey)?.[0]?.provider
+          });
+        }
+      }
+    })();
+  }
+
+  async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    eventOrProvider?: 'STREAMING_TEXT' | 'STREAMING_TRANSCRIPTION' | 'STREAMING_TTS' | string,
+    provider?: string
+  ): Promise<R | ModelStream<ModelStreamChunkMap[T]>> {
+    // Check if third argument is a streaming event
+    const streamingEvents = ['STREAMING_TEXT', 'STREAMING_TRANSCRIPTION', 'STREAMING_TTS'];
+    if (eventOrProvider && streamingEvents.includes(eventOrProvider)) {
+      // Route to streaming path
+      return await this.useModelStreamInternal(modelType, params, provider) as R | ModelStream<ModelStreamChunkMap[T]>;
+    }
+    
+    // For backward compatibility: if eventOrProvider is a string but not a streaming event,
+    // treat it as a provider (old 3-arg signature)
+    const actualProvider = (typeof eventOrProvider === 'string' && !streamingEvents.includes(eventOrProvider)) 
+      ? eventOrProvider 
+      : provider;
+    
+    // Non-streaming behavior
+    return await this.useModelNonStreaming(modelType, params, actualProvider);
+  }
+
+  private async useModelNonStreaming<T extends ModelTypeName, R = ModelResultMap[T]>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    provider?: string
+  ): Promise<R> {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const handler = this.getModel(modelKey, provider);
+    if (!handler) {
+      // Preserve legacy error message for backward compatibility
+      throw new Error(`No handler found for delegate type: ${modelKey}`);
+    }
+    let paramsWithRuntime: ModelParamsMap[T];
+    if (
+      params === null ||
+      params === undefined ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+    ) {
+      paramsWithRuntime = params;
+    } else {
+      const modelSettings = this.getModelSettings(modelKey);
+      paramsWithRuntime = modelSettings
+        ? { ...modelSettings, ...params, runtime: this }
+        : { ...params, runtime: this };
+    }
+    const promptContent =
+      params?.prompt || params?.input || (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
+    
+    const startTime = performance.now();
+    try {
+      const result = (await handler(this, paramsWithRuntime)) as R;
+      const elapsedTime = performance.now() - startTime;
+      
+      // Log input parameters (debug level)
+      this.logger.debug(
+        `[useModel] ${modelKey} input: ` +
+          JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+      );
+      
+      // Log output (debug level)
+      this.logger.debug(
+        `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
+        Array.isArray(result)
+          ? `${JSON.stringify(result.slice(0, 5))}...${JSON.stringify(result.slice(-5))} (${result.length} items)`
+          : JSON.stringify(result, safeReplacer(), 2).replace(/\\n/g, '\n')
+      );
+      
+      // Track prompts in action context if available (excluding embeddings)
+      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent && this.currentActionContext) {
+        this.currentActionContext.prompts.push({
+          modelType: modelKey,
+          prompt: promptContent,
+          timestamp: Date.now(),
+        });
+      }
+      
+      // Emit model usage event
+      await this.emitEvent?.('model:used', {
+        modelType: modelKey,
+        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+        prompt: promptContent,
+        latencyMs: Number(elapsedTime.toFixed(2)),
+        runId: this.getCurrentRunId(),
+      });
+      
+      // Log to adapter for backward compatibility
+      await this.adapter?.log?.({
+        entityId: this.agentId,
+        roomId: this.agentId,
+        body: {
+          modelType,
+          modelKey,
+          params: {
+            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+            prompt: promptContent,
+          },
+        },
+        type: `useModel:${modelKey}`,
+      });
+      
+      return result;
+    } catch (error) {
+      this.logger.error(`[useModel] ${modelKey} failed:`, error);
+      throw error;
+    }
+  }
   getModel(
     modelType: ModelTypeName,
     provider?: string
@@ -1697,117 +1987,7 @@ export class AgentRuntime implements IAgentRuntime {
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;
   }
 
-  async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
-    modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any,
-    provider?: string
-  ): Promise<R> {
-    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
-    const promptContent =
-      params?.prompt ||
-      params?.input ||
-      (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
-    const model = this.getModel(modelKey, provider);
-    if (!model) {
-      const errorMsg = `No handler found for delegate type: ${modelKey}`;
-      throw new Error(errorMsg);
-    }
-
-    // Log input parameters (keep debug log if useful)
-    this.logger.debug(
-      `[useModel] ${modelKey} input: ` +
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
-    );
-    let paramsWithRuntime: any;
-    if (
-      params === null ||
-      params === undefined ||
-      typeof params !== 'object' ||
-      Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
-    ) {
-      paramsWithRuntime = params;
-    } else {
-      // Include model settings from character configuration if available
-      const modelSettings = this.getModelSettings(modelKey);
-
-      if (modelSettings) {
-        // Apply model settings if configured
-        paramsWithRuntime = {
-          ...modelSettings, // Apply model settings first (includes defaults and model-specific)
-          ...params, // Then apply specific params (allowing overrides)
-          runtime: this,
-        };
-      } else {
-        // No model settings configured, use params as-is
-        paramsWithRuntime = {
-          ...params,
-          runtime: this,
-        };
-      }
-    }
-    const startTime = performance.now();
-    try {
-      const response = await model(this, paramsWithRuntime);
-      const elapsedTime = performance.now() - startTime;
-
-      // Log timing / response (keep debug log if useful)
-      this.logger.debug(
-        `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
-        Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
-              response.length
-            } items)`
-          : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
-      );
-
-      // Log all prompts except TEXT_EMBEDDING to track agent behavior
-      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-        // If we're in an action context, collect the prompt
-        if (this.currentActionContext) {
-          this.currentActionContext.prompts.push({
-            modelType: modelKey,
-            prompt: promptContent,
-            timestamp: Date.now(),
-          });
-        }
-      }
-
-      // Keep the existing model logging for backward compatibility
-      this.adapter.log({
-        entityId: this.agentId,
-        roomId: this.agentId,
-        body: {
-          modelType,
-          modelKey,
-          params: {
-            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-            prompt: promptContent,
-          },
-          prompt: promptContent,
-          runId: this.getCurrentRunId(),
-          timestamp: Date.now(),
-          executionTime: elapsedTime,
-          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-          actionContext: this.currentActionContext
-            ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
-            : undefined,
-          response:
-            Array.isArray(response) && response.every((x) => typeof x === 'number')
-              ? '[array]'
-              : response,
-        },
-        type: `useModel:${modelKey}`,
-      });
-
-      return response as R;
-    } catch (error: any) {
-      throw error;
-    }
-  }
+  
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
     if (!this.events.has(event)) {
@@ -1853,7 +2033,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       this.logger.debug(`[AgentRuntime][${this.character.name}] Getting embedding dimensions`);
-      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null) as number[];
       if (!embedding || !embedding.length) {
         throw new Error(`[AgentRuntime][${this.character.name}] Invalid embedding received`);
       }
@@ -2012,10 +2192,10 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
         text: memoryText,
-      });
+      }) as number[];
     } catch (error: any) {
       this.logger.error('Failed to generate embedding:', error);
-      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null) as number[];
     }
     return memory;
   }
