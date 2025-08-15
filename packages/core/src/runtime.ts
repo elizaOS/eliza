@@ -290,7 +290,9 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.routes) {
       for (const route of plugin.routes) {
-        this.routes.push(route);
+        // namespace plugin name infront of paths
+        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+        this.routes.push({...route, path: '/' + plugin.name + routePath});
       }
     }
     if (plugin.events) {
@@ -1159,7 +1161,10 @@ export class AgentRuntime implements IAgentRuntime {
         firstRoom.id
       );
       // pglite handle this at over 10k records fine though
-      await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
+      const batches = chunkArray(missingIdsInRoom, 5000);
+      for (const batch of batches) {
+        await this.addParticipantsRoom(batch, firstRoom.id);
+      }
     }
 
     this.logger.success(`Success: Successfully connected world`);
@@ -1414,7 +1419,10 @@ export class AgentRuntime implements IAgentRuntime {
           const result = await provider.get(this, message, cachedState);
           const duration = Date.now() - start;
 
-          this.logger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+          // only need to inform if it's taking a long time
+          if (duration > 100) {
+            this.logger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+          }
           return {
             ...result,
             providerName: provider.name,
@@ -1820,6 +1828,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.events.get(event);
   }
 
+  // probably should be <T> typed for params
   async emitEvent(event: string | string[], params: any) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
