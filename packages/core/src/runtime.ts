@@ -103,6 +103,7 @@ export class AgentRuntime implements IAgentRuntime {
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
   models = new Map<string, ModelHandler[]>();
+  streamModels = new Map<string, { handler: (runtime: IAgentRuntime, params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>; provider: string; priority?: number; registrationOrder?: number }[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
@@ -1589,6 +1590,147 @@ export class AgentRuntime implements IAgentRuntime {
     });
   }
 
+  registerModelStream(
+    modelType: ModelTypeName,
+    handler: (params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>,
+    provider: string,
+    priority?: number
+  ) {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    if (!this.streamModels.has(modelKey)) {
+      this.streamModels.set(modelKey, []);
+    }
+    const registrationOrder = Date.now();
+    this.streamModels.get(modelKey)?.push({
+      handler: async (_runtime: IAgentRuntime, p: any) => handler(p),
+      provider,
+      priority: priority || 0,
+      registrationOrder,
+    });
+    this.streamModels.get(modelKey)?.sort((a, b) => {
+      if ((b.priority || 0) !== (a.priority || 0)) {
+        return (b.priority || 0) - (a.priority || 0);
+      }
+      return a.registrationOrder - b.registrationOrder;
+    });
+  }
+
+  getModelStream(
+    modelType: ModelTypeName,
+    provider?: string
+  ): ((runtime: IAgentRuntime, params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>) | undefined {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const models = this.streamModels.get(modelKey);
+    if (!models?.length) {
+      return undefined;
+    }
+    if (provider) {
+      const modelWithProvider = models.find((m) => m.provider === provider);
+      if (modelWithProvider) {
+        this.logger.debug(
+          `[AgentRuntime][${this.character.name}] Using streaming model ${modelKey} from provider ${provider}`
+        );
+        return modelWithProvider.handler;
+      } else {
+        this.logger.warn(
+          `[AgentRuntime][${this.character.name}] No streaming model found for provider ${provider}`
+        );
+      }
+    }
+    this.logger.debug(
+      `[AgentRuntime][${this.character.name}] Using streaming model ${modelKey} from provider ${models[0].provider}`
+    );
+    return models[0].handler;
+  }
+
+  private async *wrapReadableStream<T>(stream: any): AsyncIterable<T> {
+    // Normalize web ReadableStream or Node stream.Readable into AsyncIterable
+    if (stream && typeof stream[Symbol.asyncIterator] === 'function') {
+      for await (const chunk of stream as AsyncIterable<T>) {
+        yield chunk;
+      }
+      return;
+    }
+    if (stream && typeof stream.getReader === 'function') {
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          yield value as T;
+        }
+      } finally {
+        reader.releaseLock?.();
+      }
+      return;
+    }
+  }
+
+  async useModelStream<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    provider?: string
+  ): Promise<AsyncIterable<any>> {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const streamHandler = this.getModelStream(modelKey, provider);
+    // Compose params with runtime and settings similar to useModel
+    let paramsWithRuntime: any;
+    if (
+      params === null ||
+      params === undefined ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+    ) {
+      paramsWithRuntime = params;
+    } else {
+      const modelSettings = this.getModelSettings(modelKey);
+      paramsWithRuntime = modelSettings
+        ? { ...modelSettings, ...params, runtime: this }
+        : { ...params, runtime: this };
+    }
+
+    const runId = this.getCurrentRunId();
+    const promptContent =
+      params?.prompt || params?.input || (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
+
+    if (!streamHandler) {
+      // Fallback: call non-streaming useModel and yield a single finish chunk
+      const self = this;
+      const fallback = async function* () {
+        try {
+          const startTime = performance.now();
+          const result = await self.useModel(modelKey as any, paramsWithRuntime);
+          const elapsedTime = performance.now() - startTime;
+          yield { event: 'finish', output: result, latencyMs: Number(elapsedTime.toFixed(2)) } as any;
+        } catch (error) {
+          yield { event: 'error', error } as any;
+        }
+      }();
+      return fallback;
+    }
+
+    const startTime = performance.now();
+    const raw = await streamHandler(this, paramsWithRuntime);
+    const iterable = this.wrapReadableStream<any>(raw);
+
+    const self = this;
+    async function* instrumented() {
+      try {
+        for await (const chunk of iterable) {
+          // Emit events for observability
+          await self.emitEvent?.('model:stream:chunk', { modelType: modelKey, chunk, runId });
+          yield chunk;
+        }
+        const elapsedTime = performance.now() - startTime;
+        await self.emitEvent?.('model:stream:finish', { modelType: modelKey, runId, latencyMs: Number(elapsedTime.toFixed(2)) });
+      } catch (error) {
+        await self.emitEvent?.('model:stream:error', { modelType: modelKey, error, runId });
+        throw error;
+      }
+    }
+    return instrumented();
+  }
   getModel(
     modelType: ModelTypeName,
     provider?: string

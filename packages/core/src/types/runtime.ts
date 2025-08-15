@@ -5,7 +5,12 @@ import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
 import { Memory } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
-import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
+import type {
+  ModelParamsMap,
+  ModelResultMap,
+  ModelTypeName,
+  ModelStreamChunkMap,
+} from './model';
 import type { Plugin, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
@@ -128,6 +133,16 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R>;
 
+  /**
+   * Streaming variant of useModel. Returns an AsyncIterable of typed chunks.
+   * If no streaming handler is registered, falls back to a single 'finish' chunk with the non-streaming result.
+   */
+  useModelStream<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    provider?: string
+  ): Promise<AsyncIterable<ModelStreamChunkMap[T]>>;
+
   registerModel(
     modelType: ModelTypeName | string,
     handler: (params: any) => Promise<any>,
@@ -138,6 +153,24 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getModel(
     modelType: ModelTypeName | string
   ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
+
+  /**
+   * Register a streaming model handler for a given model type.
+   */
+  registerModelStream(
+    modelType: ModelTypeName | string,
+    handler: (params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>,
+    provider: string,
+    priority?: number
+  ): void;
+
+  /**
+   * Resolve a streaming model handler for a given model type.
+   */
+  getModelStream(
+    modelType: ModelTypeName | string,
+    provider?: string
+  ): ((runtime: IAgentRuntime, params: any) => AsyncIterable<any> | Promise<AsyncIterable<any>>) | undefined;
 
   registerEvent(event: string, handler: (params: any) => Promise<void>): void;
 

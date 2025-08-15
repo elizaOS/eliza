@@ -155,6 +155,10 @@ export interface DetokenizeTextParams {
 export interface BaseModelParams {
   /** The agent runtime for accessing services and utilities */
   runtime: IAgentRuntime;
+  /** Optional. Indicates the caller prefers a streaming response when available */
+  stream?: boolean;
+  /** Optional. Signal to cancel long-running or streaming operations */
+  abortSignal?: { readonly aborted: boolean; addEventListener?: (...args: any[]) => any; removeEventListener?: (...args: any[]) => any } | undefined;
 }
 
 /**
@@ -355,5 +359,94 @@ export interface ModelHandler {
    */
   priority?: number; // Optional priority for selection order
 
+  registrationOrder?: number;
+}
+
+/**
+ * Generic stream chunk base for model streaming
+ */
+export interface ModelStreamChunkBase {
+  event: 'delta' | 'partial' | 'usage' | 'finish' | 'error' | string;
+}
+
+/**
+ * Standard finish chunk containing the final output for the streamed operation
+ */
+export interface ModelStreamFinishChunk<T = any> extends ModelStreamChunkBase {
+  event: 'finish';
+  output: T;
+}
+
+/**
+ * Standard error chunk
+ */
+export interface ModelStreamErrorChunk extends ModelStreamChunkBase {
+  event: 'error';
+  error: any;
+}
+
+/**
+ * Standard usage/metrics chunk
+ */
+export interface ModelStreamUsageChunk extends ModelStreamChunkBase {
+  event: 'usage';
+  tokens?: { prompt?: number; completion?: number; total?: number };
+  cost?: number;
+  latencyMs?: number;
+}
+
+/**
+ * Text streaming chunk variants
+ */
+export type TextStreamChunk =
+  | (ModelStreamChunkBase & { event: 'delta'; delta: string })
+  | ModelStreamUsageChunk
+  | ModelStreamErrorChunk
+  | ModelStreamFinishChunk<string>;
+
+/**
+ * Transcription streaming chunk variants
+ */
+export type TranscriptionStreamChunk =
+  | (ModelStreamChunkBase & { event: 'partial'; text: string })
+  | ModelStreamUsageChunk
+  | ModelStreamErrorChunk
+  | ModelStreamFinishChunk<string>;
+
+/**
+ * Text-to-speech streaming chunk variants
+ */
+export type TextToSpeechStreamChunk =
+  | (ModelStreamChunkBase & { event: 'audio'; chunk: any })
+  | ModelStreamUsageChunk
+  | ModelStreamErrorChunk
+  | ModelStreamFinishChunk<any>;
+
+/**
+ * Map of model types to their stream chunk shapes
+ */
+export interface ModelStreamChunkMap {
+  [ModelType.TEXT_SMALL]: TextStreamChunk;
+  [ModelType.TEXT_LARGE]: TextStreamChunk;
+  [ModelType.TEXT_REASONING_SMALL]: TextStreamChunk;
+  [ModelType.TEXT_REASONING_LARGE]: TextStreamChunk;
+  [ModelType.TRANSCRIPTION]: TranscriptionStreamChunk;
+  [ModelType.TEXT_TO_SPEECH]: TextToSpeechStreamChunk;
+  // Default fallback for custom/other types
+  [key: string]: ModelStreamChunkBase | any;
+}
+
+/**
+ * A model stream is represented as an AsyncIterable of typed chunks
+ */
+export type ModelStream<T> = AsyncIterable<T>;
+
+/**
+ * Streaming model handler registration
+ */
+export interface ModelStreamHandler {
+  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => ModelStream<any> | Promise<ModelStream<any>>;
+  provider: string;
+  priority?: number;
   registrationOrder?: number;
 }
