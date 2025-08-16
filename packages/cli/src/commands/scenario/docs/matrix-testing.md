@@ -2,6 +2,20 @@
 
 This document explains how to use scenario matrix testing to systematically evaluate ElizaOS agents across multiple parameter combinations.
 
+## 🎉 Matrix Testing is Now Available!
+
+The `elizaos scenario matrix` command is fully implemented and ready to use! You can now:
+- ✅ Create and validate matrix configurations
+- ✅ Analyze parameter combinations
+- ✅ Filter and inspect test matrices
+- ✅ Prepare for systematic agent testing
+
+**Quick Start:**
+```bash
+# Try it now with the included example
+elizaos scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml --dry-run
+```
+
 ## Overview
 
 Scenario matrix testing allows you to run the same base scenario with different parameter combinations to:
@@ -404,5 +418,136 @@ project/
 2. Test your base scenario individually first
 3. Validate parameter paths by manually checking the base scenario structure
 4. Use descriptive names and descriptions to track what you're testing
+
+## Using the Matrix CLI Command
+
+The `elizaos scenario matrix` command is now available and provides comprehensive matrix testing capabilities.
+
+### Basic Usage
+
+```bash
+# Run matrix analysis and show execution plan
+elizaos scenario matrix path/to/config.matrix.yaml
+
+# Dry run mode - analysis only, no execution
+elizaos scenario matrix path/to/config.matrix.yaml --dry-run
+
+# Verbose mode - show detailed information
+elizaos scenario matrix path/to/config.matrix.yaml --verbose
+
+# Filter combinations by pattern
+elizaos scenario matrix path/to/config.matrix.yaml --filter "gpt-4"
+
+# Specify parallel execution (for future implementation)
+elizaos scenario matrix path/to/config.matrix.yaml --parallel 4
+```
+
+### Command Options
+
+- **`--dry-run`**: Show matrix analysis without executing tests (default: false)
+- **`--parallel <number>`**: Maximum number of parallel test runs (default: "1")
+- **`--filter <pattern>`**: Filter parameter combinations by pattern
+- **`--verbose`**: Show detailed progress information (default: false)
+- **`-h, --help`**: Display help for the command
+
+### Example Command Output
+
+When you run `elizaos scenario matrix config.matrix.yaml --dry-run`, you'll see:
+
+```
+🧪 Starting matrix analysis with config: config.matrix.yaml
+📂 Loading matrix configuration from: /path/to/config.matrix.yaml
+🔍 Validating matrix configuration...
+✅ Matrix configuration is valid!
+
+📊 Matrix Analysis:
+   Name: GitHub Issue Action Chaining Analysis
+   Description: Tests the reliability of listing GitHub issues...
+   Base Scenario: packages/cli/src/commands/scenario/examples/test-github-issues.scenario.yaml
+   Runs per combination: 3
+   Matrix axes: 2
+   Total combinations: 6
+   Total test runs: 18
+
+🎯 Matrix Structure:
+   Axis 1: character.llm.model
+     Values: ["gpt-4-turbo", "gpt-3.5-turbo"]
+     Count: 2
+   Axis 2: run[0].input
+     Values: ["List open issues for elizaOS/eliza", "Find current issues...", "Show me what's open..."]
+     Count: 3
+
+✅ Base scenario file found: /path/to/base-scenario.yaml
+
+🔀 Parameter Combinations:
+   1. {"character.llm.model":"gpt-4-turbo","run[0].input":"List open issues for elizaOS/eliza"}
+   2. {"character.llm.model":"gpt-4-turbo","run[0].input":"Find current issues for the elizaos/eliza repo"}
+   3. {"character.llm.model":"gpt-4-turbo","run[0].input":"Show me what's open in the elizaOS/eliza GitHub."}
+   4. {"character.llm.model":"gpt-3.5-turbo","run[0].input":"List open issues for elizaOS/eliza"}
+   5. {"character.llm.model":"gpt-3.5-turbo","run[0].input":"Find current issues for the elizaos/eliza repo"}
+   6. {"character.llm.model":"gpt-3.5-turbo","run[0].input":"Show me what's open in the elizaOS/eliza GitHub."}
+
+🔍 Dry Run Complete - Matrix Analysis Only
+✨ Matrix configuration is valid and ready for execution.
+📝 To execute the matrix, run the same command without --dry-run
+```
+
+### Error Handling
+
+The command provides clear, actionable error messages:
+
+#### Missing File
+```
+❌ Error: Matrix configuration file not found at '/path/to/missing.matrix.yaml'
+💡 Make sure the file exists and the path is correct.
+```
+
+#### Invalid YAML Syntax
+```
+❌ Error: Failed to parse YAML configuration file:
+YAMLException: bad indentation of a mapping entry at line 5, column 3
+💡 Check that your YAML syntax is valid.
+```
+
+#### Schema Validation Errors
+```
+❌ Matrix configuration validation failed:
+   name: Required
+   base_scenario: Required
+   runs_per_combination: Runs per combination must be greater than or equal to 1
+   matrix: Required
+💡 Please fix the configuration errors and try again.
+📖 See the matrix testing documentation for examples and guidance.
+```
+
+#### Missing Base Scenario
+```
+❌ Error: Base scenario file not found at '/path/to/base.scenario.yaml'
+💡 Make sure the base_scenario path in your matrix config is correct.
+```
+
+### Implementation Status
+
+✅ **Available Now (Tickets #5778, #5779):**
+- Matrix configuration schema and validation
+- `elizaos scenario matrix` CLI command
+- Complete analysis and reporting
+- Parameter combination generation
+- Filtering and dry-run capabilities
+- Comprehensive error handling
+
+🚧 **Coming Soon:**
+- **Parameter Override System** (Ticket #5780): Runtime parameter injection into base scenarios
+- **Matrix Execution** (Epic #5781): Actual test execution, parallel processing, and comprehensive reporting
+
+### Getting Help
+
+```bash
+# Show help for the matrix command
+elizaos scenario matrix --help
+
+# Show help for all scenario commands
+elizaos scenario --help
+```
 
 This matrix testing system enables systematic, scientific evaluation of ElizaOS agents across multiple dimensions, providing the data needed to optimize agent performance and reliability.

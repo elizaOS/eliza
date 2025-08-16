@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
 import { ScenarioSchema, Scenario } from "../scenario/src/schema"
+import { validateMatrixConfig, calculateTotalCombinations, calculateTotalRuns, generateParameterCombinations } from './src/matrix-schema';
 import { LocalEnvironmentProvider } from '../scenario/src/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../scenario/src/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../scenario/src/providers';
@@ -244,6 +245,178 @@ export const scenario = new Command()
                     // Report final result and exit with appropriate code
                     reporter?.reportFinalResult(finalStatus);
                     process.exit(finalStatus ? 0 : 1);
+                }
+            })
+    )
+    .addCommand(
+        new Command('matrix')
+            .argument('<configPath>', 'Path to the matrix configuration .yaml file')
+            .option('--dry-run', 'Show matrix analysis without executing tests', false)
+            .option('--parallel <number>', 'Maximum number of parallel test runs', '1')
+            .option('--filter <pattern>', 'Filter parameter combinations by pattern')
+            .option('--verbose', 'Show detailed progress information', false)
+            .description('Execute a scenario matrix from a configuration file')
+            .action(async (configPath: string, options: {
+                dryRun: boolean;
+                parallel: string;
+                filter?: string;
+                verbose: boolean
+            }) => {
+                const logger = elizaLogger || console;
+                logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
+
+                if (options.verbose) {
+                    logger.info(`Options: ${JSON.stringify(options, null, 2)}`);
+                }
+
+                try {
+                    // Step 1: Load and validate configuration file
+                    const fullPath = path.resolve(configPath);
+                    logger.info(`📂 Loading matrix configuration from: ${fullPath}`);
+
+                    if (!fs.existsSync(fullPath)) {
+                        logger.error(`❌ Error: Matrix configuration file not found at '${fullPath}'`);
+                        logger.info('💡 Make sure the file exists and the path is correct.');
+                        process.exit(1);
+                    }
+
+                    const fileContents = fs.readFileSync(fullPath, 'utf8');
+                    let rawMatrixConfig: any;
+
+                    try {
+                        rawMatrixConfig = yaml.load(fileContents);
+                    } catch (yamlError) {
+                        logger.error(`❌ Error: Failed to parse YAML configuration file:`);
+                        logger.error(yamlError instanceof Error ? yamlError.message : String(yamlError));
+                        logger.info('💡 Check that your YAML syntax is valid.');
+                        process.exit(1);
+                    }
+
+                    // Step 2: Validate matrix configuration
+                    logger.info('🔍 Validating matrix configuration...');
+                    const validationResult = validateMatrixConfig(rawMatrixConfig);
+
+                    if (!validationResult.success) {
+                        logger.error('❌ Matrix configuration validation failed:');
+                        const errors = validationResult.error.format();
+
+                        // Display user-friendly error messages
+                        const formatErrors = (obj: any, path: string = ''): void => {
+                            if (obj._errors && obj._errors.length > 0) {
+                                obj._errors.forEach((error: string) => {
+                                    logger.error(`   ${path}: ${error}`);
+                                });
+                            }
+
+                            Object.keys(obj).forEach(key => {
+                                if (key !== '_errors' && typeof obj[key] === 'object') {
+                                    const newPath = path ? `${path}.${key}` : key;
+                                    formatErrors(obj[key], newPath);
+                                }
+                            });
+                        };
+
+                        formatErrors(errors);
+                        logger.info('💡 Please fix the configuration errors and try again.');
+                        logger.info('📖 See the matrix testing documentation for examples and guidance.');
+                        process.exit(1);
+                    }
+
+                    const matrixConfig = validationResult.data;
+                    logger.info('✅ Matrix configuration is valid!');
+
+                    // Step 3: Analyze matrix dimensions
+                    const totalCombinations = calculateTotalCombinations(matrixConfig);
+                    const totalRuns = calculateTotalRuns(matrixConfig);
+
+                    // Step 4: Display matrix analysis
+                    logger.info('\n📊 Matrix Analysis:');
+                    logger.info(`   Name: ${matrixConfig.name}`);
+                    if (matrixConfig.description) {
+                        logger.info(`   Description: ${matrixConfig.description}`);
+                    }
+                    logger.info(`   Base Scenario: ${matrixConfig.base_scenario}`);
+                    logger.info(`   Runs per combination: ${matrixConfig.runs_per_combination}`);
+                    logger.info(`   Matrix axes: ${matrixConfig.matrix.length}`);
+                    logger.info(`   Total combinations: ${totalCombinations}`);
+                    logger.info(`   Total test runs: ${totalRuns}`);
+
+                    // Display matrix structure
+                    logger.info('\n🎯 Matrix Structure:');
+                    matrixConfig.matrix.forEach((axis, index) => {
+                        logger.info(`   Axis ${index + 1}: ${axis.parameter}`);
+                        logger.info(`     Values: [${axis.values.map(v => JSON.stringify(v)).join(', ')}]`);
+                        logger.info(`     Count: ${axis.values.length}`);
+                    });
+
+                    // Step 5: Verify base scenario exists
+                    const baseScenarioPath = path.resolve(matrixConfig.base_scenario);
+                    if (!fs.existsSync(baseScenarioPath)) {
+                        logger.error(`\n❌ Error: Base scenario file not found at '${baseScenarioPath}'`);
+                        logger.info('💡 Make sure the base_scenario path in your matrix config is correct.');
+                        process.exit(1);
+                    }
+                    logger.info(`✅ Base scenario file found: ${baseScenarioPath}`);
+
+                    // Step 6: Generate parameter combinations
+                    const combinations = generateParameterCombinations(matrixConfig);
+
+                    if (options.verbose || options.dryRun) {
+                        logger.info('\n🔀 Parameter Combinations:');
+                        combinations.forEach((combo, index) => {
+                            logger.info(`   ${index + 1}. ${JSON.stringify(combo, null, 0)}`);
+                        });
+                    }
+
+                    // Step 7: Apply filters if specified
+                    let filteredCombinations = combinations;
+                    if (options.filter) {
+                        logger.info(`\n🔍 Applying filter: ${options.filter}`);
+                        // Basic filter implementation - can be enhanced later
+                        filteredCombinations = combinations.filter(combo => {
+                            const comboStr = JSON.stringify(combo);
+                            return comboStr.includes(options.filter!);
+                        });
+                        logger.info(`   Filtered to ${filteredCombinations.length} combinations`);
+                    }
+
+                    // Step 8: Warn about large matrices
+                    if (totalRuns > 50) {
+                        logger.info(`\n⚠️  Warning: This matrix will execute ${totalRuns} total test runs.`);
+                        logger.info('   This may take a significant amount of time and resources.');
+                        logger.info('   Consider using --filter to reduce the scope or increasing --parallel for faster execution.');
+                    }
+
+                    // Step 9: Show execution plan
+                    if (options.dryRun) {
+                        logger.info('\n🔍 Dry Run Complete - Matrix Analysis Only');
+                        logger.info('✨ Matrix configuration is valid and ready for execution.');
+                        logger.info('📝 To execute the matrix, run the same command without --dry-run');
+                        process.exit(0);
+                    } else {
+                        logger.info('\n🚀 Matrix Execution Plan:');
+                        logger.info(`   Parallel execution: ${options.parallel} concurrent runs`);
+                        logger.info(`   Total combinations to execute: ${filteredCombinations.length}`);
+                        logger.info(`   Total runs: ${filteredCombinations.length * matrixConfig.runs_per_combination}`);
+
+                        // Placeholder for actual execution (tickets #5780 and #5781)
+                        logger.info('\n🔧 Matrix execution is not yet implemented.');
+                        logger.info('   This feature will be available in tickets #5780 (Parameter Override System)');
+                        logger.info('   and #5781 (Matrix Runner and Reporting System).');
+                        logger.info('\n✅ Matrix configuration validated and ready for implementation!');
+
+                        // For now, we exit successfully to indicate the config is valid
+                        process.exit(0);
+                    }
+
+                } catch (error) {
+                    logger.error('❌ An error occurred during matrix analysis:');
+                    logger.error(error instanceof Error ? error.message : String(error));
+                    if (options.verbose && error instanceof Error) {
+                        logger.error('Stack trace:', error.stack);
+                    }
+                    logger.info('💡 Use --verbose for more detailed error information.');
+                    process.exit(1);
                 }
             })
     );
