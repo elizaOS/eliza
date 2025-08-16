@@ -56,6 +56,37 @@ export class EvaluationEngine {
 
     return results;
   }
+
+  /**
+   * NEW: Enhanced evaluation method for ticket #5783
+   * Returns structured JSON output while maintaining backward compatibility
+   */
+  public async runEnhancedEvaluations(
+    evaluations: EvaluationSchema[],
+    runResult: ExecutionResult
+  ): Promise<import('./schema').EnhancedEvaluationResult[]> {
+    // Use feature flag to enable enhanced evaluations
+    const useEnhanced = process.env.ELIZA_ENHANCED_EVALUATIONS === 'true';
+    
+    if (!useEnhanced) {
+      // Fallback to legacy behavior with structured wrapper
+      const legacyResults = await this.runEvaluations(evaluations, runResult);
+      return legacyResults.map((result, index) => ({
+        evaluator_type: evaluations[index]?.type || 'unknown',
+        success: result.success,
+        summary: result.message,
+        details: {
+          legacy_result: result,
+          message: result.message
+        }
+      }));
+    }
+
+    // Use enhanced evaluation engine
+    const { EnhancedEvaluationEngine } = await import('./EnhancedEvaluationEngine');
+    const enhancedEngine = new EnhancedEvaluationEngine(this.runtime);
+    return enhancedEngine.runEnhancedEvaluations(evaluations, runResult);
+  }
 }
 
 // --- IMPLEMENTATIONS ---

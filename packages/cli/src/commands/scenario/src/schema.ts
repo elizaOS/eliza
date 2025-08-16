@@ -2,6 +2,45 @@ import { z } from 'zod';
 
 // Base schema for any evaluation
 // For scenario matrix testing, see matrix-schema.ts
+
+// NEW: Enhanced evaluation result interfaces for ticket #5783
+// These are ADDITIVE and maintain backward compatibility
+export interface EnhancedEvaluationResult {
+  evaluator_type: string;
+  success: boolean;
+  summary: string;
+  details: Record<string, any>;
+}
+
+export interface LLMJudgeResult {
+  qualitative_summary: string;
+  capability_checklist: CapabilityCheck[];
+}
+
+export interface CapabilityCheck {
+  capability: string;
+  achieved: boolean;
+  reasoning: string;
+}
+
+// Schema for enhanced evaluation result validation
+export const EnhancedEvaluationResultSchema = z.object({
+  evaluator_type: z.string(),
+  success: z.boolean(),
+  summary: z.string(),
+  details: z.record(z.any()),
+});
+
+export const CapabilityCheckSchema = z.object({
+  capability: z.string(),
+  achieved: z.boolean(),
+  reasoning: z.string(),
+});
+
+export const LLMJudgeResultSchema = z.object({
+  qualitative_summary: z.string(),
+  capability_checklist: z.array(CapabilityCheckSchema),
+});
 export type EvaluationType =
   | 'string_contains'
   | 'regex_match'
