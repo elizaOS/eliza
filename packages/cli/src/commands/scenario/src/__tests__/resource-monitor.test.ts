@@ -1,431 +1,431 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import {
-  ResourceMonitor,
-  SystemResources,
-  ResourceThresholds,
-  ResourceAlert,
-  createResourceMonitor,
-  getSystemResources,
-  calculateDiskUsage,
-  formatBytes,
+    ResourceMonitor,
+    SystemResources,
+    ResourceThresholds,
+    ResourceAlert,
+    createResourceMonitor,
+    getSystemResources,
+    calculateDiskUsage,
+    formatBytes,
 } from '../resource-monitor';
 
 describe('Resource Monitor', () => {
-  let resourceMonitor: ResourceMonitor;
-  let mockAlertCallback: (alert: ResourceAlert) => void;
-  let alerts: ResourceAlert[];
+    let resourceMonitor: ResourceMonitor;
+    let mockAlertCallback: (alert: ResourceAlert) => void;
+    let alerts: ResourceAlert[];
 
-  beforeEach(() => {
-    alerts = [];
-    mockAlertCallback = mock((alert: ResourceAlert) => {
-      alerts.push(alert);
+    beforeEach(() => {
+        alerts = [];
+        mockAlertCallback = mock((alert: ResourceAlert) => {
+            alerts.push(alert);
+        });
+
+        resourceMonitor = createResourceMonitor({
+            thresholds: {
+                memoryWarning: 75,
+                memoryCritical: 90,
+                diskWarning: 80,
+                diskCritical: 95,
+                cpuWarning: 80,
+                cpuCritical: 95,
+            },
+            onAlert: mockAlertCallback,
+            checkInterval: 100, // Fast interval for testing
+        });
     });
 
-    resourceMonitor = createResourceMonitor({
-      thresholds: {
-        memoryWarning: 75,
-        memoryCritical: 90,
-        diskWarning: 80,
-        diskCritical: 95,
-        cpuWarning: 80,
-        cpuCritical: 95,
-      },
-      onAlert: mockAlertCallback,
-      checkInterval: 100, // Fast interval for testing
-    });
-  });
-
-  afterEach(() => {
-    resourceMonitor.stop();
-  });
-
-  describe('System Resource Detection', () => {
-    it('should detect current system resources', async () => {
-      const resources = await getSystemResources();
-
-      expect(resources).toHaveProperty('memoryUsage');
-      expect(resources).toHaveProperty('totalMemory');
-      expect(resources).toHaveProperty('freeMemory');
-      expect(resources).toHaveProperty('diskUsage');
-      expect(resources).toHaveProperty('totalDisk');
-      expect(resources).toHaveProperty('freeDisk');
-      expect(resources).toHaveProperty('cpuUsage');
-
-      // Values should be reasonable
-      expect(resources.memoryUsage).toBeGreaterThanOrEqual(0);
-      expect(resources.memoryUsage).toBeLessThanOrEqual(100);
-      expect(resources.diskUsage).toBeGreaterThanOrEqual(0);
-      expect(resources.diskUsage).toBeLessThanOrEqual(100);
-      expect(resources.cpuUsage).toBeGreaterThanOrEqual(0);
+    afterEach(() => {
+        resourceMonitor.stop();
     });
 
-    it('should calculate memory usage percentage correctly', async () => {
-      const resources = await getSystemResources();
+    describe('System Resource Detection', () => {
+        it('should detect current system resources', async () => {
+            const resources = await getSystemResources();
 
-      const expectedUsage =
-        ((resources.totalMemory - resources.freeMemory) / resources.totalMemory) * 100;
-      expect(Math.abs(resources.memoryUsage - expectedUsage)).toBeLessThan(1); // Allow small rounding difference
+            expect(resources).toHaveProperty('memoryUsage');
+            expect(resources).toHaveProperty('totalMemory');
+            expect(resources).toHaveProperty('freeMemory');
+            expect(resources).toHaveProperty('diskUsage');
+            expect(resources).toHaveProperty('totalDisk');
+            expect(resources).toHaveProperty('freeDisk');
+            expect(resources).toHaveProperty('cpuUsage');
+
+            // Values should be reasonable
+            expect(resources.memoryUsage).toBeGreaterThanOrEqual(0);
+            expect(resources.memoryUsage).toBeLessThanOrEqual(100);
+            expect(resources.diskUsage).toBeGreaterThanOrEqual(0);
+            expect(resources.diskUsage).toBeLessThanOrEqual(100);
+            expect(resources.cpuUsage).toBeGreaterThanOrEqual(0);
+        });
+
+        it('should calculate memory usage percentage correctly', async () => {
+            const resources = await getSystemResources();
+
+            const expectedUsage =
+                ((resources.totalMemory - resources.freeMemory) / resources.totalMemory) * 100;
+            expect(Math.abs(resources.memoryUsage - expectedUsage)).toBeLessThan(1); // Allow small rounding difference
+        });
+
+        it('should calculate disk usage for specific directory', async () => {
+            const testDir = process.cwd();
+            const diskUsage = await calculateDiskUsage(testDir);
+
+            expect(diskUsage).toHaveProperty('total');
+            expect(diskUsage).toHaveProperty('used');
+            expect(diskUsage).toHaveProperty('free');
+            expect(diskUsage).toHaveProperty('usage');
+
+            expect(diskUsage.total).toBeGreaterThan(0);
+            expect(diskUsage.used).toBeGreaterThanOrEqual(0);
+            expect(diskUsage.free).toBeGreaterThanOrEqual(0);
+            expect(diskUsage.usage).toBeGreaterThanOrEqual(0);
+            expect(diskUsage.usage).toBeLessThanOrEqual(100);
+        });
     });
 
-    it('should calculate disk usage for specific directory', async () => {
-      const testDir = process.cwd();
-      const diskUsage = await calculateDiskUsage(testDir);
+    describe('Resource Monitoring and Alerts', () => {
+        it('should start monitoring and provide periodic updates', async () => {
+            let updateCount = 0;
+            const mockUpdateCallback = mock((resources: SystemResources) => {
+                updateCount++;
+            });
 
-      expect(diskUsage).toHaveProperty('total');
-      expect(diskUsage).toHaveProperty('used');
-      expect(diskUsage).toHaveProperty('free');
-      expect(diskUsage).toHaveProperty('usage');
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 75,
+                    memoryCritical: 90,
+                    diskWarning: 80,
+                    diskCritical: 95,
+                    cpuWarning: 80,
+                    cpuCritical: 95,
+                },
+                onUpdate: mockUpdateCallback,
+                checkInterval: 50,
+            });
 
-      expect(diskUsage.total).toBeGreaterThan(0);
-      expect(diskUsage.used).toBeGreaterThanOrEqual(0);
-      expect(diskUsage.free).toBeGreaterThanOrEqual(0);
-      expect(diskUsage.usage).toBeGreaterThanOrEqual(0);
-      expect(diskUsage.usage).toBeLessThanOrEqual(100);
-    });
-  });
+            monitor.start();
 
-  describe('Resource Monitoring and Alerts', () => {
-    it('should start monitoring and provide periodic updates', async () => {
-      let updateCount = 0;
-      const mockUpdateCallback = mock((resources: SystemResources) => {
-        updateCount++;
-      });
+            // Wait for a few updates
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 75,
-          memoryCritical: 90,
-          diskWarning: 80,
-          diskCritical: 95,
-          cpuWarning: 80,
-          cpuCritical: 95,
-        },
-        onUpdate: mockUpdateCallback,
-        checkInterval: 50,
-      });
+            monitor.stop();
 
-      monitor.start();
+            expect(updateCount).toBeGreaterThan(0);
+        });
 
-      // Wait for a few updates
-      await new Promise((resolve) => setTimeout(resolve, 200));
+        it('should trigger alerts when thresholds are exceeded', async () => {
+            // Create monitor with very low thresholds to trigger alerts
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 1, // Very low threshold
+                    memoryCritical: 5,
+                    diskWarning: 1,
+                    diskCritical: 5,
+                    cpuWarning: 1,
+                    cpuCritical: 5,
+                },
+                onAlert: mockAlertCallback,
+                checkInterval: 50,
+            });
 
-      monitor.stop();
+            monitor.start();
 
-      expect(updateCount).toBeGreaterThan(0);
-    });
+            // Wait for alerts to trigger
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-    it('should trigger alerts when thresholds are exceeded', async () => {
-      // Create monitor with very low thresholds to trigger alerts
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 1, // Very low threshold
-          memoryCritical: 5,
-          diskWarning: 1,
-          diskCritical: 5,
-          cpuWarning: 1,
-          cpuCritical: 5,
-        },
-        onAlert: mockAlertCallback,
-        checkInterval: 50,
-      });
+            monitor.stop();
 
-      monitor.start();
+            // Should have triggered some alerts
+            expect(alerts.length).toBeGreaterThan(0);
 
-      // Wait for alerts to trigger
-      await new Promise((resolve) => setTimeout(resolve, 200));
+            // Check alert structure
+            const alert = alerts[0];
+            expect(alert).toHaveProperty('type');
+            expect(alert).toHaveProperty('resource');
+            expect(alert).toHaveProperty('currentUsage');
+            expect(alert).toHaveProperty('threshold');
+            expect(alert).toHaveProperty('timestamp');
+            expect(alert).toHaveProperty('message');
+        });
 
-      monitor.stop();
+        it('should differentiate between warning and critical alerts', async () => {
+            // Use very low thresholds to guarantee alerts on any system
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 0.1, // 0.1% - extremely low to ensure triggering
+                    memoryCritical: 0.2, // 0.2% - extremely low to ensure triggering
+                    diskWarning: 0.1,
+                    diskCritical: 0.2,
+                    cpuWarning: 0.1,
+                    cpuCritical: 0.2,
+                },
+                onAlert: mockAlertCallback,
+                checkInterval: 50,
+            });
 
-      // Should have triggered some alerts
-      expect(alerts.length).toBeGreaterThan(0);
+            monitor.start();
+            await new Promise((resolve) => setTimeout(resolve, 250)); // Longer wait
+            monitor.stop();
 
-      // Check alert structure
-      const alert = alerts[0];
-      expect(alert).toHaveProperty('type');
-      expect(alert).toHaveProperty('resource');
-      expect(alert).toHaveProperty('currentUsage');
-      expect(alert).toHaveProperty('threshold');
-      expect(alert).toHaveProperty('timestamp');
-      expect(alert).toHaveProperty('message');
-    });
+            const warningAlerts = alerts.filter((a) => a.type === 'warning');
+            const criticalAlerts = alerts.filter((a) => a.type === 'critical');
 
-    it('should differentiate between warning and critical alerts', async () => {
-      // Use very low thresholds to guarantee alerts on any system
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 0.1, // 0.1% - extremely low to ensure triggering
-          memoryCritical: 0.2, // 0.2% - extremely low to ensure triggering
-          diskWarning: 0.1,
-          diskCritical: 0.2,
-          cpuWarning: 0.1,
-          cpuCritical: 0.2,
-        },
-        onAlert: mockAlertCallback,
-        checkInterval: 50,
-      });
+            // With extremely low thresholds, we should have alerts
+            // But if the system is somehow at 0% usage, we should still have at least some alerts
+            expect(alerts.length).toBeGreaterThan(0);
 
-      monitor.start();
-      await new Promise((resolve) => setTimeout(resolve, 250)); // Longer wait
-      monitor.stop();
-
-      const warningAlerts = alerts.filter((a) => a.type === 'warning');
-      const criticalAlerts = alerts.filter((a) => a.type === 'critical');
-
-      // With extremely low thresholds, we should have alerts
-      // But if the system is somehow at 0% usage, we should still have at least some alerts
-      expect(alerts.length).toBeGreaterThan(0);
-      
-      // If we have alerts, they should be properly categorized
-      if (alerts.length > 0) {
-        const hasWarning = warningAlerts.length > 0;
-        const hasCritical = criticalAlerts.length > 0;
-        expect(hasWarning || hasCritical).toBe(true);
-      }
-    });
-  });
-
-  describe('Resource Threshold Management', () => {
-    it('should allow updating thresholds dynamically', () => {
-      const newThresholds: ResourceThresholds = {
-        memoryWarning: 80,
-        memoryCritical: 95,
-        diskWarning: 85,
-        diskCritical: 98,
-        cpuWarning: 75,
-        cpuCritical: 90,
-      };
-
-      resourceMonitor.updateThresholds(newThresholds);
-
-      const currentThresholds = resourceMonitor.getThresholds();
-      expect(currentThresholds).toEqual(newThresholds);
+            // If we have alerts, they should be properly categorized
+            if (alerts.length > 0) {
+                const hasWarning = warningAlerts.length > 0;
+                const hasCritical = criticalAlerts.length > 0;
+                expect(hasWarning || hasCritical).toBe(true);
+            }
+        });
     });
 
-    it('should validate threshold values', () => {
-      const invalidThresholds: ResourceThresholds = {
-        memoryWarning: 95, // Warning higher than critical
-        memoryCritical: 90,
-        diskWarning: 80,
-        diskCritical: 95,
-        cpuWarning: 80,
-        cpuCritical: 95,
-      };
+    describe('Resource Threshold Management', () => {
+        it('should allow updating thresholds dynamically', () => {
+            const newThresholds: ResourceThresholds = {
+                memoryWarning: 80,
+                memoryCritical: 95,
+                diskWarning: 85,
+                diskCritical: 98,
+                cpuWarning: 75,
+                cpuCritical: 90,
+            };
 
-      expect(() => {
-        resourceMonitor.updateThresholds(invalidThresholds);
-      }).toThrow();
-    });
-  });
+            resourceMonitor.updateThresholds(newThresholds);
 
-  describe('Resource History and Statistics', () => {
-    it('should maintain resource usage history', async () => {
-      resourceMonitor.start();
+            const currentThresholds = resourceMonitor.getThresholds();
+            expect(currentThresholds).toEqual(newThresholds);
+        });
 
-      // Let it collect some data
-      await new Promise((resolve) => setTimeout(resolve, 200));
+        it('should validate threshold values', () => {
+            const invalidThresholds: ResourceThresholds = {
+                memoryWarning: 95, // Warning higher than critical
+                memoryCritical: 90,
+                diskWarning: 80,
+                diskCritical: 95,
+                cpuWarning: 80,
+                cpuCritical: 95,
+            };
 
-      resourceMonitor.stop();
-
-      const history = resourceMonitor.getResourceHistory();
-
-      expect(history.length).toBeGreaterThan(0);
-      expect(history[0]).toHaveProperty('timestamp');
-      expect(history[0]).toHaveProperty('memoryUsage');
-      expect(history[0]).toHaveProperty('diskUsage');
-      expect(history[0]).toHaveProperty('cpuUsage');
-    });
-
-    it('should calculate resource usage statistics', async () => {
-      resourceMonitor.start();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      resourceMonitor.stop();
-
-      const stats = resourceMonitor.getStatistics();
-
-      expect(stats).toHaveProperty('memory');
-      expect(stats).toHaveProperty('disk');
-      expect(stats).toHaveProperty('cpu');
-
-      expect(stats.memory).toHaveProperty('average');
-      expect(stats.memory).toHaveProperty('min');
-      expect(stats.memory).toHaveProperty('max');
-      expect(stats.memory).toHaveProperty('current');
-
-      expect(stats.memory.min).toBeLessThanOrEqual(stats.memory.average);
-      expect(stats.memory.average).toBeLessThanOrEqual(stats.memory.max);
+            expect(() => {
+                resourceMonitor.updateThresholds(invalidThresholds);
+            }).toThrow();
+        });
     });
 
-    it('should limit history size to prevent memory growth', async () => {
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 75,
-          memoryCritical: 90,
-          diskWarning: 80,
-          diskCritical: 95,
-          cpuWarning: 80,
-          cpuCritical: 95,
-        },
-        maxHistorySize: 10,
-        checkInterval: 10,
-      });
+    describe('Resource History and Statistics', () => {
+        it('should maintain resource usage history', async () => {
+            resourceMonitor.start();
 
-      monitor.start();
+            // Let it collect some data
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // Let it collect more data than the limit
-      await new Promise((resolve) => setTimeout(resolve, 200));
+            resourceMonitor.stop();
 
-      monitor.stop();
+            const history = resourceMonitor.getResourceHistory();
 
-      const history = monitor.getResourceHistory();
-      expect(history.length).toBeLessThanOrEqual(10);
-    });
-  });
+            expect(history.length).toBeGreaterThan(0);
+            expect(history[0]).toHaveProperty('timestamp');
+            expect(history[0]).toHaveProperty('memoryUsage');
+            expect(history[0]).toHaveProperty('diskUsage');
+            expect(history[0]).toHaveProperty('cpuUsage');
+        });
 
-  describe('System Resource Protection', () => {
-    it('should recommend reducing parallel execution under high load', async () => {
-      const recommendations: string[] = [];
-      const mockRecommendationCallback = mock((recommendation: string) => {
-        recommendations.push(recommendation);
-      });
+        it('should calculate resource usage statistics', async () => {
+            resourceMonitor.start();
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            resourceMonitor.stop();
 
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 1, // Very low to trigger recommendations
-          memoryCritical: 5,
-          diskWarning: 1,
-          diskCritical: 5,
-          cpuWarning: 1,
-          cpuCritical: 5,
-        },
-        onRecommendation: mockRecommendationCallback,
-        checkInterval: 50,
-      });
+            const stats = resourceMonitor.getStatistics();
 
-      monitor.start();
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      monitor.stop();
+            expect(stats).toHaveProperty('memory');
+            expect(stats).toHaveProperty('disk');
+            expect(stats).toHaveProperty('cpu');
 
-      const parallelRecommendation = recommendations.find(
-        (r) => r.includes('parallel') || r.includes('concurrent')
-      );
-      expect(parallelRecommendation).toBeDefined();
-    });
+            expect(stats.memory).toHaveProperty('average');
+            expect(stats.memory).toHaveProperty('min');
+            expect(stats.memory).toHaveProperty('max');
+            expect(stats.memory).toHaveProperty('current');
 
-    it('should detect insufficient disk space for matrix execution', async () => {
-      const requiredSpace = 1024 * 1024 * 1024 * 1000; // 1TB - unreasonably large
-      const hasSpace = resourceMonitor.checkDiskSpace(requiredSpace);
+            expect(stats.memory.min).toBeLessThanOrEqual(stats.memory.average);
+            expect(stats.memory.average).toBeLessThanOrEqual(stats.memory.max);
+        });
 
-      expect(hasSpace).toBe(false);
+        it('should limit history size to prevent memory growth', async () => {
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 75,
+                    memoryCritical: 90,
+                    diskWarning: 80,
+                    diskCritical: 95,
+                    cpuWarning: 80,
+                    cpuCritical: 95,
+                },
+                maxHistorySize: 10,
+                checkInterval: 10,
+            });
 
-      // Should trigger disk space alert
-      expect(alerts.some((a) => a.resource === 'disk')).toBe(true);
-    });
-  });
+            monitor.start();
 
-  describe('Utility Functions', () => {
-    it('should format bytes in human-readable format', () => {
-      expect(formatBytes(0)).toBe('0 B');
-      expect(formatBytes(1024)).toBe('1.00 KB');
-      expect(formatBytes(1024 * 1024)).toBe('1.00 MB');
-      expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB');
-      expect(formatBytes(1024 * 1024 * 1024 * 1024)).toBe('1.00 TB');
+            // Let it collect more data than the limit
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-      // Test with decimal values
-      expect(formatBytes(1536)).toBe('1.50 KB'); // 1.5 KB
-      expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.50 MB');
+            monitor.stop();
+
+            const history = monitor.getResourceHistory();
+            expect(history.length).toBeLessThanOrEqual(10);
+        });
     });
 
-    it('should parse bytes from human-readable format', () => {
-      expect(resourceMonitor.parseBytes('1 KB')).toBe(1024);
-      expect(resourceMonitor.parseBytes('2.5 MB')).toBe(2.5 * 1024 * 1024);
-      expect(resourceMonitor.parseBytes('1.5 GB')).toBe(1.5 * 1024 * 1024 * 1024);
-    });
-  });
+    describe('System Resource Protection', () => {
+        it('should recommend reducing parallel execution under high load', async () => {
+            const recommendations: string[] = [];
+            const mockRecommendationCallback = mock((recommendation: string) => {
+                recommendations.push(recommendation);
+            });
 
-  describe('Error Handling', () => {
-    it('should handle system resource detection failures gracefully', async () => {
-      // Mock system resource failure
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'unknown' });
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 1, // Very low to trigger recommendations
+                    memoryCritical: 5,
+                    diskWarning: 1,
+                    diskCritical: 5,
+                    cpuWarning: 1,
+                    cpuCritical: 5,
+                },
+                onRecommendation: mockRecommendationCallback,
+                checkInterval: 50,
+            });
 
-      const resources = await getSystemResources();
+            monitor.start();
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            monitor.stop();
 
-      // Should provide fallback values
-      expect(resources).toHaveProperty('memoryUsage');
-      expect(resources.memoryUsage).toBeGreaterThanOrEqual(0);
+            const parallelRecommendation = recommendations.find(
+                (r) => r.includes('parallel') || r.includes('concurrent')
+            );
+            expect(parallelRecommendation).toBeDefined();
+        });
 
-      // Restore original platform
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    });
+        it('should detect insufficient disk space for matrix execution', async () => {
+            const requiredSpace = 1024 * 1024 * 1024 * 1000; // 1TB - unreasonably large
+            const hasSpace = resourceMonitor.checkDiskSpace(requiredSpace);
 
-    it('should continue monitoring even after individual check failures', async () => {
-      let updateCount = 0;
-      const mockUpdateCallback = mock((resources: SystemResources) => {
-        updateCount++;
-        if (updateCount === 2) {
-          throw new Error('Simulated monitoring error');
-        }
-      });
+            expect(hasSpace).toBe(false);
 
-      const monitor = createResourceMonitor({
-        thresholds: {
-          memoryWarning: 75,
-          memoryCritical: 90,
-          diskWarning: 80,
-          diskCritical: 95,
-          cpuWarning: 80,
-          cpuCritical: 95,
-        },
-        onUpdate: mockUpdateCallback,
-        checkInterval: 50,
-      });
-
-      monitor.start();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      monitor.stop();
-
-      // Should have attempted multiple updates despite error
-      expect(updateCount).toBeGreaterThan(2);
-    });
-  });
-
-  describe('Performance Impact', () => {
-    it('should have minimal performance impact during monitoring', async () => {
-      const startTime = Date.now();
-
-      resourceMonitor.start();
-
-      // Simulate some work
-      let sum = 0;
-      for (let i = 0; i < 1000000; i++) {
-        sum += i;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      resourceMonitor.stop();
-
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-
-      // Monitoring should not significantly impact performance
-      expect(duration).toBeLessThan(500);
+            // Should trigger disk space alert
+            expect(alerts.some((a) => a.resource === 'disk')).toBe(true);
+        });
     });
 
-    it('should efficiently handle rapid resource checks', async () => {
-      const startTime = Date.now();
+    describe('Utility Functions', () => {
+        it('should format bytes in human-readable format', () => {
+            expect(formatBytes(0)).toBe('0 B');
+            expect(formatBytes(1024)).toBe('1.00 KB');
+            expect(formatBytes(1024 * 1024)).toBe('1.00 MB');
+            expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB');
+            expect(formatBytes(1024 * 1024 * 1024 * 1024)).toBe('1.00 TB');
 
-      // Perform many rapid resource checks
-      const promises = Array(100)
-        .fill(0)
-        .map(() => getSystemResources());
-      await Promise.all(promises);
+            // Test with decimal values
+            expect(formatBytes(1536)).toBe('1.50 KB'); // 1.5 KB
+            expect(formatBytes(2.5 * 1024 * 1024)).toBe('2.50 MB');
+        });
 
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-
-      // Should complete quickly
-      expect(duration).toBeLessThan(1000);
+        it('should parse bytes from human-readable format', () => {
+            expect(resourceMonitor.parseBytes('1 KB')).toBe(1024);
+            expect(resourceMonitor.parseBytes('2.5 MB')).toBe(2.5 * 1024 * 1024);
+            expect(resourceMonitor.parseBytes('1.5 GB')).toBe(1.5 * 1024 * 1024 * 1024);
+        });
     });
-  });
+
+    describe('Error Handling', () => {
+        it('should handle system resource detection failures gracefully', async () => {
+            // Mock system resource failure
+            const originalPlatform = process.platform;
+            Object.defineProperty(process, 'platform', { value: 'unknown' });
+
+            const resources = await getSystemResources();
+
+            // Should provide fallback values
+            expect(resources).toHaveProperty('memoryUsage');
+            expect(resources.memoryUsage).toBeGreaterThanOrEqual(0);
+
+            // Restore original platform
+            Object.defineProperty(process, 'platform', { value: originalPlatform });
+        });
+
+        it('should continue monitoring even after individual check failures', async () => {
+            let updateCount = 0;
+            const mockUpdateCallback = mock((resources: SystemResources) => {
+                updateCount++;
+                if (updateCount === 2) {
+                    throw new Error('Simulated monitoring error');
+                }
+            });
+
+            const monitor = createResourceMonitor({
+                thresholds: {
+                    memoryWarning: 75,
+                    memoryCritical: 90,
+                    diskWarning: 80,
+                    diskCritical: 95,
+                    cpuWarning: 80,
+                    cpuCritical: 95,
+                },
+                onUpdate: mockUpdateCallback,
+                checkInterval: 50,
+            });
+
+            monitor.start();
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            monitor.stop();
+
+            // Should have attempted multiple updates despite error
+            expect(updateCount).toBeGreaterThan(2);
+        });
+    });
+
+    describe('Performance Impact', () => {
+        it('should have minimal performance impact during monitoring', async () => {
+            const startTime = Date.now();
+
+            resourceMonitor.start();
+
+            // Simulate some work
+            let sum = 0;
+            for (let i = 0; i < 1000000; i++) {
+                sum += i;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
+            resourceMonitor.stop();
+
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+
+            // Monitoring should not significantly impact performance
+            expect(duration).toBeLessThan(500);
+        });
+
+        it('should efficiently handle rapid resource checks', async () => {
+            const startTime = Date.now();
+
+            // Perform many rapid resource checks
+            const promises = Array(100)
+                .fill(0)
+                .map(() => getSystemResources());
+            await Promise.all(promises);
+
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+
+            // Should complete quickly
+            expect(duration).toBeLessThan(1000);
+        });
+    });
 });
