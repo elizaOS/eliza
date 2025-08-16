@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
 import { ScenarioSchema, Scenario } from "../scenario/src/schema"
-import { validateMatrixConfig, calculateTotalCombinations, calculateTotalRuns, generateParameterCombinations } from './src/matrix-schema';
 import { LocalEnvironmentProvider } from '../scenario/src/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../scenario/src/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../scenario/src/providers';
@@ -267,6 +266,10 @@ export const scenario = new Command()
                 filter?: string;
                 verbose: boolean
             }) => {
+                // Import matrix-specific modules only when needed
+                const { validateMatrixConfig, calculateTotalCombinations, calculateTotalRuns } = await import('./src/matrix-schema');
+                const { generateMatrixCombinations, createExecutionContext, filterCombinations, calculateExecutionStats, formatDuration } = await import('./src/matrix-runner');
+
                 const logger = elizaLogger || console;
                 logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
 
@@ -354,7 +357,7 @@ export const scenario = new Command()
                         logger.info(`     Count: ${axis.values.length}`);
                     });
 
-                    // Step 5: Verify base scenario exists
+                    // Step 5: Verify base scenario exists and load it
                     const baseScenarioPath = path.resolve(matrixConfig.base_scenario);
                     if (!fs.existsSync(baseScenarioPath)) {
                         logger.error(`\n❌ Error: Base scenario file not found at '${baseScenarioPath}'`);
@@ -363,25 +366,61 @@ export const scenario = new Command()
                     }
                     logger.info(`✅ Base scenario file found: ${baseScenarioPath}`);
 
-                    // Step 6: Generate parameter combinations
-                    const combinations = generateParameterCombinations(matrixConfig);
+                    // Load and validate base scenario
+                    let baseScenario: any;
+                    try {
+                        const baseScenarioContents = fs.readFileSync(baseScenarioPath, 'utf8');
+                        baseScenario = yaml.load(baseScenarioContents);
+
+                        // Validate base scenario structure
+                        const baseValidationResult = ScenarioSchema.safeParse(baseScenario);
+                        if (!baseValidationResult.success) {
+                            logger.error(`\n❌ Error: Base scenario file is invalid:`);
+                            logger.error(JSON.stringify(baseValidationResult.error.format(), null, 2));
+                            process.exit(1);
+                        }
+                        logger.info(`✅ Base scenario is valid`);
+                    } catch (yamlError) {
+                        logger.error(`\n❌ Error: Failed to parse base scenario YAML file:`);
+                        logger.error(yamlError instanceof Error ? yamlError.message : String(yamlError));
+                        process.exit(1);
+                    }
+
+                    // Step 5.5: Matrix parameter validation (placeholder for future #5780 integration)
+                    logger.info('🔍 Matrix parameter paths will be validated during execution');
+                    logger.info(`✅ Matrix configuration analysis complete`);
+
+                    // Step 6: Generate matrix combinations using proper API from ticket #5779
+                    const combinations = generateMatrixCombinations(matrixConfig);
 
                     if (options.verbose || options.dryRun) {
-                        logger.info('\n🔀 Parameter Combinations:');
+                        logger.info('\n🔀 Matrix Combinations:');
                         combinations.forEach((combo, index) => {
-                            logger.info(`   ${index + 1}. ${JSON.stringify(combo, null, 0)}`);
+                            logger.info(`   ${index + 1}. ${combo.id}: ${JSON.stringify(combo.parameters, null, 0)}`);
                         });
+
+                        // Show parameter combination details for the first combination
+                        if (combinations.length > 0 && options.verbose) {
+                            logger.info('\n🛠️  Combination Details Preview:');
+                            const firstCombination = combinations[0];
+                            logger.info(`   📋 Example: ${firstCombination.id}`);
+                            logger.info(`   📊 Metadata: ${firstCombination.metadata.combinationIndex + 1} of ${firstCombination.metadata.totalCombinations}`);
+                            logger.info(`   📝 Parameters to override:`);
+
+                            // Show specific parameter changes
+                            Object.entries(firstCombination.parameters).forEach(([path, value]) => {
+                                logger.info(`   🔧 ${path}: ${JSON.stringify(value)}`);
+                            });
+
+                            logger.info(`   📝 This combination will run ${matrixConfig.runs_per_combination} time(s)`);
+                        }
                     }
 
                     // Step 7: Apply filters if specified
                     let filteredCombinations = combinations;
                     if (options.filter) {
                         logger.info(`\n🔍 Applying filter: ${options.filter}`);
-                        // Basic filter implementation - can be enhanced later
-                        filteredCombinations = combinations.filter(combo => {
-                            const comboStr = JSON.stringify(combo);
-                            return comboStr.includes(options.filter!);
-                        });
+                        filteredCombinations = filterCombinations(combinations, options.filter);
                         logger.info(`   Filtered to ${filteredCombinations.length} combinations`);
                     }
 
@@ -399,16 +438,37 @@ export const scenario = new Command()
                         logger.info('📝 To execute the matrix, run the same command without --dry-run');
                         process.exit(0);
                     } else {
+                        // Calculate execution statistics
+                        const executionStats = calculateExecutionStats(filteredCombinations, matrixConfig.runs_per_combination);
+
                         logger.info('\n🚀 Matrix Execution Plan:');
                         logger.info(`   Parallel execution: ${options.parallel} concurrent runs`);
-                        logger.info(`   Total combinations to execute: ${filteredCombinations.length}`);
-                        logger.info(`   Total runs: ${filteredCombinations.length * matrixConfig.runs_per_combination}`);
+                        logger.info(`   Total combinations to execute: ${executionStats.totalCombinations}`);
+                        logger.info(`   Total runs: ${executionStats.totalRuns}`);
+                        logger.info(`   Estimated duration: ${formatDuration(executionStats.estimatedDuration.realistic)} (realistic)`);
+                        logger.info(`   Duration range: ${formatDuration(executionStats.estimatedDuration.optimistic)} - ${formatDuration(executionStats.estimatedDuration.pessimistic)}`);
 
-                        // Placeholder for actual execution (tickets #5780 and #5781)
-                        logger.info('\n🔧 Matrix execution is not yet implemented.');
-                        logger.info('   This feature will be available in tickets #5780 (Parameter Override System)');
-                        logger.info('   and #5781 (Matrix Runner and Reporting System).');
-                        logger.info('\n✅ Matrix configuration validated and ready for implementation!');
+                        // Create execution context for future use
+                        const executionContext = createExecutionContext(matrixConfig, filteredCombinations, {
+                            parallelism: parseInt(options.parallel, 10),
+                            dryRun: false,
+                            filter: options.filter,
+                            verbose: options.verbose
+                        });
+
+                        logger.info('\n✅ Matrix Ready for Execution:');
+                        logger.info('   🎯 Matrix configuration: ✅ Valid');
+                        logger.info('   🎯 Parameter combinations: ✅ Generated');
+                        logger.info('   🎯 Execution context: ✅ Prepared');
+                        logger.info('   🎯 Base scenario: ✅ Validated');
+
+                        logger.info('\n🚧 Next: Actual Execution (Tickets #5780 & #5781)');
+                        logger.info('   ⏳ Parameter override application');
+                        logger.info('   ⏳ Scenario execution with overrides');
+                        logger.info('   ⏳ Parallel test processing');
+                        logger.info('   ⏳ Comprehensive result reporting');
+
+                        logger.info(`\n🎉 Matrix configuration complete! Execution context prepared with ${executionContext.combinations.length} combinations.`);
 
                         // For now, we exit successfully to indicate the config is valid
                         process.exit(0);
@@ -417,8 +477,8 @@ export const scenario = new Command()
                 } catch (error) {
                     logger.error('❌ An error occurred during matrix analysis:');
                     logger.error(error instanceof Error ? error.message : String(error));
-                    if (options.verbose && error instanceof Error) {
-                        logger.error({ stack: error.stack }, 'Stack trace:');
+                    if (options.verbose && error instanceof Error && error.stack) {
+                        logger.error(`Stack trace: ${error.stack}`);
                     }
                     logger.info('💡 Use --verbose for more detailed error information.');
                     process.exit(1);
