@@ -21,8 +21,19 @@ const envSettings = process.env as RuntimeSettings;
 export async function createScenarioServerAndAgent(
   existingServer: AgentServer | null = null,
   desiredPort: number = 3000,
-  pluginNames: string[] = ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap', '@elizaos/plugin-e2b']
-): Promise<{ server: AgentServer; runtime: IAgentRuntime; agentId: UUID; port: number; createdServer: boolean }> {
+  pluginNames: string[] = [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-e2b',
+  ]
+): Promise<{
+  server: AgentServer;
+  runtime: IAgentRuntime;
+  agentId: UUID;
+  port: number;
+  createdServer: boolean;
+}> {
   let server: AgentServer;
   let createdServer = false;
   let port = desiredPort;
@@ -32,7 +43,8 @@ export async function createScenarioServerAndAgent(
   } else {
     server = new AgentServer();
     // Prefer unique directory per scenario run under PGLite root (env or default .eliza/.elizadb)
-    const pgliteRoot = process.env.PGLITE_DATA_DIR || path.join(process.cwd(), '.eliza', '.elizadb');
+    const pgliteRoot =
+      process.env.PGLITE_DATA_DIR || path.join(process.cwd(), '.eliza', '.elizadb');
     const uniqueDataDir = path.join(
       pgliteRoot,
       `scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -45,7 +57,9 @@ export async function createScenarioServerAndAgent(
     // Persist the chosen directory for downstream consumers
     process.env.PGLITE_DATA_DIR = uniqueDataDir;
     await server.initialize({ dataDir: uniqueDataDir });
-    const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import('../../start/actions/agent-start');
+    const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
+      '../../start/actions/agent-start'
+    );
     server.startAgent = (character) => serverStartAgent(character, server!);
     server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
     await server.start(port);
@@ -62,7 +76,8 @@ export async function createScenarioServerAndAgent(
       },
     },
     // Always respond: set system prompt and template to ensure reply
-    system: 'Always respond to every message, even if the input is unclear or empty. Never ignore a user message.',
+    system:
+      'Always respond to every message, even if the input is unclear or empty. Never ignore a user message.',
     // Add minimal required fields for Character type
     topics: ['testing', 'scenarios', 'automation'],
     adjectives: ['responsive', 'reliable', 'test-oriented'],
@@ -104,25 +119,28 @@ export async function askAgentViaApi(
       server_id: defaultServer.id,
       participantCentralUserIds: [testUserId],
       type: ChannelType.GROUP,
-      metadata: { scenario: true }
-    })
+      metadata: { scenario: true },
+    }),
   });
   if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
   const channelResult = await channelResponse.json();
   const channel = channelResult.data;
   await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
   // Post a message using the server's expected payload (requires author_id and server_id)
-  const postResp = await fetch(`http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      author_id: testUserId,
-      content: input,
-      server_id: defaultServer.id,
-      metadata: { scenario: true, user_display_name: 'Scenario User' },
-      source_type: 'scenario_message'
-    })
-  });
+  const postResp = await fetch(
+    `http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        author_id: testUserId,
+        content: input,
+        server_id: defaultServer.id,
+        metadata: { scenario: true, user_display_name: 'Scenario User' },
+        source_type: 'scenario_message',
+      }),
+    }
+  );
   if (!postResp.ok) {
     const errText = await postResp.text();
     throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
@@ -131,19 +149,16 @@ export async function askAgentViaApi(
   const startTime = Date.now();
 
   // Preemptively wait for action response
-  await new Promise(resolve => setTimeout(resolve, timeoutMs));
+  await new Promise((resolve) => setTimeout(resolve, timeoutMs));
   const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
-  const agentMessages = messages.messages.filter((msg: any) =>
-    msg.authorId === agentId && msg.created_at > startTime
+  const agentMessages = messages.messages.filter(
+    (msg: any) => msg.authorId === agentId && msg.created_at > startTime
   );
   if (agentMessages.length > 0) {
-    const latestMessage = agentMessages.sort((a: any, b: any) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    const latestMessage = agentMessages.sort(
+      (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
     return latestMessage.content;
   }
   throw new Error('Timeout waiting for agent response');
 }
-
-
-

@@ -9,9 +9,9 @@ import path from 'path';
 export function loadEnvironmentVariables(): void {
   // Try loading .env from multiple locations
   const possibleEnvPaths = [
-    path.join(process.cwd(), '.env'),                    // Project root
-    path.join(__dirname, '..', '..', '.env'),           // CLI package root
-    path.join(__dirname, '..', '..', '..', '..', '.env') // Monorepo root
+    path.join(process.cwd(), '.env'), // Project root
+    path.join(__dirname, '..', '..', '.env'), // CLI package root
+    path.join(__dirname, '..', '..', '..', '..', '.env'), // Monorepo root
   ];
 
   let loadedFrom = null;
@@ -44,7 +44,10 @@ export function loadEnvironmentVariables(): void {
   for (const varName of criticalVars) {
     if (process.env[varName]) {
       const valuePreview = (process.env[varName] || '').toString();
-      const redacted = valuePreview.length > 8 ? `${valuePreview.slice(0, 4)}****${valuePreview.slice(-4)}` : '****';
+      const redacted =
+        valuePreview.length > 8
+          ? `${valuePreview.slice(0, 4)}****${valuePreview.slice(-4)}`
+          : '****';
       console.log(`[ENV] ${varName} found in process.env: ${redacted}`);
     } else {
       console.log(`[ENV] ⚠️ ${varName} not found in process.env`);
@@ -63,4 +66,4 @@ export function loadEnvironmentVariables(): void {
     }
   }
   console.log('[ENV] Safe env preview:', JSON.stringify(safeEnv));
-} 
+}

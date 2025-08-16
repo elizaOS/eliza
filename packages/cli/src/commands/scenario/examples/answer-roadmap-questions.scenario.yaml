@@ -1,20 +1,20 @@
 # scenarios/definitions/answer-roadmap-questions.scenario.yaml
 
-name: "Verify Agent Can Answer Roadmap Questions"
+name: 'Verify Agent Can Answer Roadmap Questions'
 description: "Tests the agent's ability to search its own GitHub issues, code, and documentation to synthesize a coherent roadmap."
 
 plugins:
-  - name: "@elizaos/plugin-bootstrap"
+  - name: '@elizaos/plugin-bootstrap'
     enabled: true
-  - name: "@elizaos/plugin-github"
+  - name: '@elizaos/plugin-github'
     enabled: true
 
 environment:
   type: local
 
 run:
-  - name: "Ask agent about its development roadmap"
-    input: "What new features are you planning to add?"
+  - name: 'Ask agent about its development roadmap'
+    input: 'What new features are you planning to add?'
     evaluations:
       - type: trajectory_contains_action
         action: SEARCH_GITHUB_ISSUES
@@ -26,9 +26,9 @@ run:
         action: SEARCH_GITHUB_CODE
         description: Verify that the SEARCH_GITHUB_CODE action was executed
 
-      - type: "llm_judge"
-        prompt: "The user asked about the development roadmap. Did the agent provide a helpful and coherent summary based on the available information it found?"
-        expected: "yes"
+      - type: 'llm_judge'
+        prompt: 'The user asked about the development roadmap. Did the agent provide a helpful and coherent summary based on the available information it found?'
+        expected: 'yes'
 
 judgment:
-  strategy: "all_pass" 
+  strategy: 'all_pass'

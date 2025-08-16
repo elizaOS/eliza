@@ -10,12 +10,12 @@ For a high-level overview of the "why" behind this system, please see [`scenario
 
 The Scenario Runner is exposed through the main `elizaos` CLI application.
 
--   **Command**: `elizaos scenario run [filePath]`
--   **Arguments**:
-    -   `filePath`: The required path to the `.scenario.yaml` file to be executed.
--   **Options**:
-    -   `--live`: (Boolean, default: `false`) When this flag is present, the runner will execute in "Live Mode," which ignores all `setup.mocks` and connects to real services.
-    -   `--env-file`: (String) Path to a custom `.env` file to load for the execution.
+- **Command**: `elizaos scenario run [filePath]`
+- **Arguments**:
+  - `filePath`: The required path to the `.scenario.yaml` file to be executed.
+- **Options**:
+  - `--live`: (Boolean, default: `false`) When this flag is present, the runner will execute in "Live Mode," which ignores all `setup.mocks` and connects to real services.
+  - `--env-file`: (String) Path to a custom `.env` file to load for the execution.
 
 The command will be registered within the `packages/cli` using the `yargs` library, similar to other commands like `test` and `start`.
 
@@ -61,9 +61,9 @@ graph TD
 2.  **Validate Schema**: The parsed object is validated against a set of TypeScript interfaces to ensure it is well-formed. Mismatches will cause an immediate exit with a clear error.
 3.  **Initialize Environment Provider**: Based on the `environment.type` field (`e2b` or `local`), instantiate the corresponding provider. If `e2b` is specified, the runner will verify that the `@elizaos/plugin-e2b` is available.
 4.  **Execute `setup` Block**: The runner sequentially processes the `setup` instructions:
-    -   **Mocks**: The Mocking Engine (see below) is configured.
-    -   **Virtual FS**: Files are written to the environment via the provider.
-    -   **Database Seeding**: The database adapter is called to execute seeding.
+    - **Mocks**: The Mocking Engine (see below) is configured.
+    - **Virtual FS**: Files are written to the environment via the provider.
+    - **Database Seeding**: The database adapter is called to execute seeding.
 5.  **Execute `run` Block**: The `run.input` is sent to the agent within the configured environment. The runner waits for the agent to complete the task.
 6.  **Execute `evaluations` Block**: Each item in the `evaluations` array is executed by the Evaluation Engine.
 7.  **Process `judgment`**: The results of the evaluations are aggregated based on the `judgment.strategy`.
@@ -109,8 +109,8 @@ interface EnvironmentProvider {
 }
 ```
 
--   **`LocalEnvironmentProvider`**: Implements the interface using Node.js `child_process` for execution and `fs` for file operations on the host machine.
--   **`E2BEnvironmentProvider`**: Implements the interface by calling the `@elizaos/plugin-e2b` service. It uses `e2bService.writeFileToSandbox()` and `e2bService.runCommand()` under the hood.
+- **`LocalEnvironmentProvider`**: Implements the interface using Node.js `child_process` for execution and `fs` for file operations on the host machine.
+- **`E2BEnvironmentProvider`**: Implements the interface by calling the `@elizaos/plugin-e2b` service. It uses `e2bService.writeFileToSandbox()` and `e2bService.runCommand()` under the hood.
 
 ---
 
@@ -130,7 +130,7 @@ class AgentRuntime {
   public getService<T>(name: string): T {
     const serviceMethodKey = `${name}.${methodName}`; // e.g., "github-service.readFile"
     if (this.mockRegistry.has(serviceMethodKey)) {
-        // Return a proxy that calls the mock function
+      // Return a proxy that calls the mock function
     }
     // ... existing logic
   }
@@ -164,12 +164,12 @@ interface Evaluator {
 
 **Initial Set of Evaluators:**
 
-| Type                          | Description                                                                                       | Parameters                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------- |
-| `string_contains`             | Checks if the agent's final response contains a given substring.                                    | `value`, `case_sensitive`  |
-| `regex_match`                 | Checks if the agent's final response matches a regular expression.                                | `pattern`                  |
-| `file_exists`                 | Checks if a file exists in the execution environment at a given path.                             | `path`                     |
-| `file_contains`               | Checks if a file's content contains a given substring.                                            | `path`, `value`            |
-| `command_exit_code_is`        | Checks the exit code of a command run inside the environment.                                     | `command`, `expected_code` |
-| `trajectory_contains_action`  | Checks the agent's internal event log to see if a specific action was executed.                   | `action`                   |
-| `llm_judge`                   | Asks an LLM to judge the agent's response based on a given prompt and expected answer.            | `prompt`, `expected`       | 
+| Type                         | Description                                                                            | Parameters                 |
+| ---------------------------- | -------------------------------------------------------------------------------------- | -------------------------- |
+| `string_contains`            | Checks if the agent's final response contains a given substring.                       | `value`, `case_sensitive`  |
+| `regex_match`                | Checks if the agent's final response matches a regular expression.                     | `pattern`                  |
+| `file_exists`                | Checks if a file exists in the execution environment at a given path.                  | `path`                     |
+| `file_contains`              | Checks if a file's content contains a given substring.                                 | `path`, `value`            |
+| `command_exit_code_is`       | Checks the exit code of a command run inside the environment.                          | `command`, `expected_code` |
+| `trajectory_contains_action` | Checks the agent's internal event log to see if a specific action was executed.        | `action`                   |
+| `llm_judge`                  | Asks an LLM to judge the agent's response based on a given prompt and expected answer. | `prompt`, `expected`       |

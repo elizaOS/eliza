@@ -5,6 +5,7 @@ This guide covers the scenario testing functionality implemented through tickets
 ## Overview
 
 Scenarios allow you to test ElizaOS agents in both local and sandboxed environments. Each scenario is defined in YAML and can include:
+
 - Environment setup
 - Mock service responses
 - Action tracking
@@ -18,6 +19,7 @@ The scenario system is currently being expanded with several improvements:
 1. **ElizaOS-Specific Scenarios**
    - Adding specialized scenarios for ElizaOS plugin-specific functionality and more complex projects
 2. **New Evaluators**
+
    - Implementing `TrajectoryContainsActionEvaluator` for testing action sequences
    - Verify specific actions occur in expected order
    - Track complex multi-step agent behaviors
@@ -43,6 +45,7 @@ The scenario system is currently being expanded with several improvements:
 **Important**: Run all scenario commands from the project root directory for plugins to be loaded correctly.
 
 ### 1. Local Environment Tests
+
 ```bash
 # Run a simple local test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
@@ -55,6 +58,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ```
 
 ### 2. E2B Sandboxed Tests
+
 ```bash
 # Run E2B environment test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
@@ -67,6 +71,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ```
 
 ### 3. Mock Service Tests
+
 ```bash
 # Run simple mock test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-mock-test.scenario.yaml
@@ -76,6 +81,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ```
 
 ### 4. LLM Judge Tests
+
 ```bash
 # Run LLM judgment test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/llm-judge-test.scenario.yaml
@@ -85,6 +91,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ```
 
 ### 5. Other Test Types
+
 ```bash
 # Run multi-step scenario
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/multi-step.scenario.yaml
@@ -103,6 +110,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ## Running All Scenarios
 
 To run all scenarios in sequence:
+
 ```bash
 # From the project root directory
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/*.scenario.yaml
@@ -115,6 +123,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 If you encounter issues with plugins not being loaded during scenario testing:
 
 1. **First, ensure you're running from the project root directory**
+
    ```bash
    # Always run scenario commands from the project root
    cd /path/to/eliza
@@ -122,12 +131,14 @@ If you encounter issues with plugins not being loaded during scenario testing:
    ```
 
 2. **If plugins still fail to load, add them as dependencies**
+
    ```bash
    # From the project root directory
    bun add elizaos/plugin-name
    ```
 
    Common plugin examples:
+
    ```bash
    bun add elizaos/plugin-bootstrap
    bun add elizaos/plugin-sql
@@ -142,18 +153,21 @@ If you encounter issues with plugins not being loaded during scenario testing:
 
 This approach ensures that the plugin is properly installed and available for the ElizaOS runtime to load during scenario execution.
 
-# Remember if you make a change to run 
+# Remember if you make a change to run
+
 bun x tsup inside of cli or bun run build inside or outside of cli
 
 ## Environment Setup
 
 1. Required environment variables:
+
 ```env
 E2B_API_KEY=your_key_here  # Required for E2B tests
 OPENAI_API_KEY=your_key_here  # Required for LLM judge tests
 ```
 
 2. Local development setup:
+
 ```bash
 cd packages/cli
 bun install
@@ -161,6 +175,7 @@ bun x tsup  # Build the CLI
 ```
 
 3. Verify setup:
+
 ```bash
 # Test that the CLI builds correctly
 bun packages/cli/dist/index.js --help
@@ -172,47 +187,47 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ## Scenario File Structure
 
 ```yaml
-name: "Test Name"
-description: "Test Description"
+name: 'Test Name'
+description: 'Test Description'
 environment:
-  type: "local" # or "e2b"
+  type: 'local' # or "e2b"
   setup:
     # Environment-specific setup
 mocks:
-  - service: "ServiceName"
-    method: "methodName"
-    response: { }
+  - service: 'ServiceName'
+    method: 'methodName'
+    response: {}
 evaluators:
-  - type: "action-tracking"
-    config: { }
-  - type: "llm-judge"
-    config: { }
+  - type: 'action-tracking'
+    config: {}
+  - type: 'llm-judge'
+    config: {}
 steps:
-  - input: "User input"
-    expected: "Expected response"
+  - input: 'User input'
+    expected: 'Expected response'
 ```
 
 ### Example Scenario
 
 ```yaml
-name: "Simple File Creation Test"
-description: "Tests basic file creation in local environment"
+name: 'Simple File Creation Test'
+description: 'Tests basic file creation in local environment'
 environment:
-  type: "e2b"
+  type: 'e2b'
   setup:
-    workingDirectory: "/tmp/test"
+    workingDirectory: '/tmp/test'
 mocks:
-  - service: "FileService"
-    method: "createFile"
+  - service: 'FileService'
+    method: 'createFile'
     response:
       success: true
-      path: "/tmp/test/example.txt"
+      path: '/tmp/test/example.txt'
 evaluators:
-  - type: "action-tracking"
+  - type: 'action-tracking'
     config:
-      requiredActions: ["createFile"]
+      requiredActions: ['createFile']
 steps:
-  - input: "Create a file called example.txt"
+  - input: 'Create a file called example.txt'
     expected: "I'll create that file for you"
 ```
 
@@ -221,18 +236,22 @@ steps:
 The scenario system is built on several key components:
 
 1. **YAML Parser** ([#5574](https://github.com/elizaOS/eliza/issues/5574))
+
    - Validates scenario file structure
    - Provides type-safe scenario configuration
 
 2. **Environment Providers**
+
    - Local ([#5575](https://github.com/elizaOS/eliza/issues/5575))
    - E2B Sandbox ([#5576](https://github.com/elizaOS/eliza/issues/5576))
 
 3. **Mock Engine** ([#5577](https://github.com/elizaOS/eliza/issues/5577))
+
    - Service call interception
    - Response mocking
 
 4. **Evaluation Engine** ([#5578](https://github.com/elizaOS/eliza/issues/5578))
+
    - Action tracking
    - Response validation
    - Trajectory analysis
@@ -244,6 +263,7 @@ The scenario system is built on several key components:
 ## Common Issues
 
 1. **E2B Hanging**: If E2B tests hang, check:
+
    - E2B_API_KEY is set correctly
    - Network connectivity
    - E2B service status
@@ -251,11 +271,13 @@ The scenario system is built on several key components:
    - Database initialization problems
 
 2. **Mock Failures**: For mock test failures:
+
    - Verify mock service name matches exactly
    - Check response format matches service expectations
    - Ensure all required methods are mocked
 
 3. **Evaluation Failures**: For evaluation issues:
+
    - Check evaluator configuration
    - Verify expected responses match format
    - Review action tracking configuration
@@ -269,6 +291,7 @@ The scenario system is built on several key components:
 ## Contributing
 
 When adding new scenarios:
+
 1. Place YAML files in `src/commands/scenario/examples/`
 2. Follow existing naming conventions
 3. Include comprehensive descriptions

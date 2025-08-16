@@ -1,119 +1,119 @@
-name: "Arrays Heavy Scenario"
-description: "A scenario with many arrays for testing array indexing overrides"
+name: 'Arrays Heavy Scenario'
+description: 'A scenario with many arrays for testing array indexing overrides'
 
 character:
-  name: "ArrayTestAgent"
+  name: 'ArrayTestAgent'
   skills:
-    - "data-analysis"
-    - "pattern-recognition"
-    - "statistical-modeling"
+    - 'data-analysis'
+    - 'pattern-recognition'
+    - 'statistical-modeling'
   languages:
-    - code: "python"
+    - code: 'python'
       proficiency: 0.95
-    - code: "javascript"
+    - code: 'javascript'
       proficiency: 0.85
-    - code: "sql"
+    - code: 'sql'
       proficiency: 0.90
 
 datasets:
-  - name: "sales-data"
-    format: "csv"
+  - name: 'sales-data'
+    format: 'csv'
     columns:
-      - name: "date"
-        type: "datetime"
+      - name: 'date'
+        type: 'datetime'
         nullable: false
-      - name: "amount"
-        type: "decimal"
+      - name: 'amount'
+        type: 'decimal'
         nullable: false
-      - name: "region"
-        type: "string"
+      - name: 'region'
+        type: 'string'
         nullable: true
     validation:
       rules:
-        - field: "amount"
-          constraint: "positive"
-        - field: "date"
-          constraint: "not_future"
-  - name: "user-behavior"
-    format: "json"
+        - field: 'amount'
+          constraint: 'positive'
+        - field: 'date'
+          constraint: 'not_future'
+  - name: 'user-behavior'
+    format: 'json'
     schema:
       properties:
-        - name: "user_id"
-          type: "integer"
-        - name: "actions"
-          type: "array"
+        - name: 'user_id'
+          type: 'integer'
+        - name: 'actions'
+          type: 'array'
           items:
-            - event: "string"
-            - timestamp: "datetime"
-            - metadata: "object"
+            - event: 'string'
+            - timestamp: 'datetime'
+            - metadata: 'object'
 
 workflows:
-  - name: "data-processing"
+  - name: 'data-processing'
     steps:
-      - action: "load"
-        source: "sales-data"
+      - action: 'load'
+        source: 'sales-data'
         config:
           batchSize: 1000
           parallel: true
-      - action: "validate"
+      - action: 'validate'
         rules:
-          - "check_nulls"
-          - "validate_types"
-          - "business_rules"
-      - action: "transform"
+          - 'check_nulls'
+          - 'validate_types'
+          - 'business_rules'
+      - action: 'transform'
         operations:
-          - type: "aggregation"
-            groupBy: ["region", "date"]
-            metrics: ["sum", "avg", "count"]
-          - type: "filtering"
+          - type: 'aggregation'
+            groupBy: ['region', 'date']
+            metrics: ['sum', 'avg', 'count']
+          - type: 'filtering'
             conditions:
-              - field: "amount"
-                operator: ">"
+              - field: 'amount'
+                operator: '>'
                 value: 0
-      - action: "export"
-        destination: "processed-data"
-        format: "parquet"
+      - action: 'export'
+        destination: 'processed-data'
+        format: 'parquet'
 
 tests:
-  - suite: "unit-tests"
+  - suite: 'unit-tests'
     cases:
-      - name: "test-data-loading"
+      - name: 'test-data-loading'
         input:
-          file: "sample-sales.csv"
+          file: 'sample-sales.csv'
           rows: 100
         expected:
           loaded: 100
           errors: 0
-      - name: "test-validation-rules"
+      - name: 'test-validation-rules'
         input:
           data:
-            - date: "2024-01-01"
+            - date: '2024-01-01'
               amount: 100.50
-              region: "north"
-            - date: "2024-01-02"
+              region: 'north'
+            - date: '2024-01-02'
               amount: -50.00
-              region: "south"
+              region: 'south'
         expected:
           valid: 1
           invalid: 1
           errors:
-            - field: "amount"
+            - field: 'amount'
               value: -50.00
-              rule: "positive"
+              rule: 'positive'
 
-  - suite: "integration-tests"
+  - suite: 'integration-tests'
     cases:
-      - name: "test-full-workflow"
+      - name: 'test-full-workflow'
         input:
-          dataset: "sales-data"
-          size: "large"
+          dataset: 'sales-data'
+          size: 'large'
         expected:
           duration: 300
           records: 10000
           accuracy: 0.99
-      - name: "test-error-handling"
+      - name: 'test-error-handling'
         input:
-          dataset: "corrupted-data"
+          dataset: 'corrupted-data'
           errorRate: 0.05
         expected:
           recovered: true
@@ -121,43 +121,43 @@ tests:
 
 metrics:
   performance:
-    - name: "throughput"
+    - name: 'throughput'
       target: 1000
-      unit: "records/second"
-    - name: "latency"
+      unit: 'records/second'
+    - name: 'latency'
       target: 100
-      unit: "milliseconds"
-    - name: "memory"
+      unit: 'milliseconds'
+    - name: 'memory'
       target: 2
-      unit: "GB"
+      unit: 'GB'
   quality:
-    - name: "accuracy"
+    - name: 'accuracy'
       target: 0.95
-      measurement: "percentage"
-    - name: "completeness"
+      measurement: 'percentage'
+    - name: 'completeness'
       target: 0.98
-      measurement: "percentage"
+      measurement: 'percentage'
 
 run:
-  - input: "Process the quarterly sales dataset"
+  - input: 'Process the quarterly sales dataset'
     config:
       dataset: 0
       workflow: 0
       tests: [0, 1]
     evaluations:
-      - type: "workflow_execution"
+      - type: 'workflow_execution'
         metrics: [0, 1, 2]
-        description: "Should execute workflow successfully"
+        description: 'Should execute workflow successfully'
 
-  - input: "Run comprehensive data validation"
+  - input: 'Run comprehensive data validation'
     config:
       datasets: [0, 1]
       workflows: [0]
       tests: [0]
     evaluations:
-      - type: "data_quality"
+      - type: 'data_quality'
         metrics: [3, 4]
         thresholds:
           accuracy: 0.95
           completeness: 0.98
-        description: "Should meet data quality standards"
+        description: 'Should meet data quality standards'
