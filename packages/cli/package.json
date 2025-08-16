@@ -47,6 +47,7 @@
     "test:unit": "bun test --timeout 30000",
     "test:unit:watch": "bun test --watch --timeout 30000",
     "test:unit:coverage": "bun test --coverage --timeout 30000",
+    "test:matrix": "bun test src/commands/scenario/src/__tests__/matrix-*.test.ts --timeout 30000",
     "test:bats": "bats tests/bats",
     "test:bats:commands": "bats tests/bats/commands",
     "test:bats:integration": "bats tests/bats/integration",

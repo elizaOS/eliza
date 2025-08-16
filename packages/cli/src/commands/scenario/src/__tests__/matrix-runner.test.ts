@@ -79,9 +79,9 @@ describe('Matrix Runner', () => {
                 // ID should be unique and follow pattern
                 expect(combo.id).toMatch(/^combo-\d{3}-[a-f0-9]+$/);
 
-                // Parameters should contain all matrix dimensions
-                expect(combo.parameters).toHaveProperty('character.llm.model');
-                expect(combo.parameters).toHaveProperty('run[0].input');
+                        // Parameters should contain all matrix dimensions
+        expect(Object.keys(combo.parameters)).toContain('character.llm.model');
+        expect(Object.keys(combo.parameters)).toContain('run[0].input');
 
                 // Metadata should be correct
                 expect(combo.metadata.combinationIndex).toBe(index);
@@ -132,12 +132,12 @@ describe('Matrix Runner', () => {
             const combinations = generateMatrixCombinations(singleAxisConfig);
             expect(combinations).toHaveLength(3);
 
-            combinations.forEach((combo, index) => {
-                expect(combo.parameters).toHaveProperty('character.name');
-                expect(['Alice', 'Bob', 'Charlie']).toContain(combo.parameters['character.name']);
-                expect(combo.metadata.combinationIndex).toBe(index);
-                expect(combo.metadata.totalCombinations).toBe(3);
-            });
+                  combinations.forEach((combo, index) => {
+        expect(Object.keys(combo.parameters)).toContain('character.name');
+        expect(['Alice', 'Bob', 'Charlie']).toContain(combo.parameters['character.name']);
+        expect(combo.metadata.combinationIndex).toBe(index);
+        expect(combo.metadata.totalCombinations).toBe(3);
+      });
         });
 
         it('should handle empty matrix gracefully', () => {
