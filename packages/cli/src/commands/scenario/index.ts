@@ -14,6 +14,56 @@ import { EvaluationEngine } from './src/EvaluationEngine';
 import { Reporter } from './src/Reporter';
 import { PluginParser } from './src/plugin-parser';
 
+/**
+ * Safe evaluation runner with fallback mechanism for ticket #5783
+ * Uses enhanced evaluations by default, falls back to original boolean evaluations on any error
+ */
+async function runEvaluationsWithFallback(
+  evaluationEngine: EvaluationEngine,
+  evaluations: any[],
+  result: any
+) {
+  const logger = elizaLogger || console;
+
+  try {
+    // Attempt enhanced evaluations (default behavior)
+    logger.debug('[Evaluation] Using enhanced evaluations with structured output');
+    const enhancedResults = await evaluationEngine.runEnhancedEvaluations(evaluations, result);
+    
+    // Validate that we got proper structured results
+    if (Array.isArray(enhancedResults) && enhancedResults.length > 0) {
+      const firstResult = enhancedResults[0];
+      if (firstResult && 
+          typeof firstResult.evaluator_type === 'string' &&
+          typeof firstResult.success === 'boolean' &&
+          typeof firstResult.summary === 'string' &&
+          typeof firstResult.details === 'object') {
+        
+        logger.debug(`[Evaluation] Enhanced evaluations successful - ${enhancedResults.length} structured results`);
+        
+        // Convert enhanced results back to legacy format for compatibility
+        return enhancedResults.map(enhanced => ({
+          success: enhanced.success,
+          message: enhanced.summary,
+          // Store enhanced data for future use
+          _enhanced: enhanced
+        }));
+      }
+    }
+    
+    // Enhanced results invalid - fall through to legacy
+    logger.warn('[Evaluation] Enhanced results invalid, falling back to legacy evaluations');
+    
+  } catch (error) {
+    // Enhanced evaluations failed - fall back to legacy
+    logger.warn(`[Evaluation] Enhanced evaluations failed (${error.message}), falling back to legacy evaluations`);
+  }
+
+  // Fallback to original evaluation system
+  logger.debug('[Evaluation] Using legacy evaluation system (fallback)');
+  return await evaluationEngine.runEvaluations(evaluations, result);
+}
+
 export const scenario = new Command()
   .name('scenario')
   .description('Manage and execute ElizaOS scenarios')
@@ -158,7 +208,8 @@ export const scenario = new Command()
               const result = results[i];
 
               if (step.evaluations && step.evaluations.length > 0) {
-                const evaluationResults = await evaluationEngine.runEvaluations(
+                const evaluationResults = await runEvaluationsWithFallback(
+                  evaluationEngine,
                   step.evaluations,
                   result
                 );
