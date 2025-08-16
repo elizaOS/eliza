@@ -17,3 +17,4 @@ run:
       - type: execution_time
         max_duration_ms: 10000
         description: "Should respond within 10 seconds"
+

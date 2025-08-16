@@ -474,3 +474,4 @@ export class ProgressTracker {
 export function createProgressTracker(config: ProgressTrackerConfig): ProgressTracker {
   return new ProgressTracker(config);
 }
+

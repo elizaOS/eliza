@@ -81,6 +81,7 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
   model_type: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
   json_schema: z.record(z.any()).optional(), // JSON schema object for response validation
+  capabilities: z.array(z.string()).min(1, "Capabilities array must not be empty").optional(), // Custom capabilities for evaluation
 });
 
 const ExecutionTimeEvaluationSchema = BaseEvaluationSchema.extend({
@@ -90,7 +91,7 @@ const ExecutionTimeEvaluationSchema = BaseEvaluationSchema.extend({
   target_duration_ms: z.number().optional(),
 });
 
-const EvaluationSchema = z.discriminatedUnion('type', [
+export const EvaluationSchema = z.discriminatedUnion('type', [
   StringContainsEvaluationSchema,
   RegexMatchEvaluationSchema,
   FileExistsEvaluationSchema,

@@ -361,3 +361,4 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
     });
   });
 });
+

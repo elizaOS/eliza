@@ -625,3 +625,4 @@ export function formatBytes(bytes: number): string {
 export function createResourceMonitor(config: ResourceMonitorConfig): ResourceMonitor {
   return new ResourceMonitor(config);
 }
+

@@ -9,7 +9,7 @@
 
 import { AgentRuntime, ModelType } from '@elizaos/core';
 import { ExecutionResult } from './providers';
-import { Evaluation as EvaluationSchema, EnhancedEvaluationResult, LLMJudgeResult, CapabilityCheck } from './schema';
+import { Evaluation as EvaluationSchema, EnhancedEvaluationResult, LLMJudgeResult, CapabilityCheck, EvaluationSchema as EvaluationZodSchema } from './schema';
 import { EvaluationResult, Evaluator } from './EvaluationEngine'; // Import existing types
 import { z } from 'zod';
 import type { ObjectGenerationParams } from '@elizaos/core';
@@ -353,8 +353,21 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
         let modelType: ModelType =
             candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
-        // Enhanced structured prompt for qualitative analysis
-        const structuredPrompt = this.createStructuredPrompt(runResult, prompt, expected);
+        // Enhanced structured prompt for qualitative analysis with dynamic capabilities
+        const capabilities = (params as any).capabilities; // Extract capabilities from params
+
+        // Validate capabilities if provided - use schema validation for proper error messages
+        if (capabilities !== undefined) {
+            try {
+                // Validate just the capabilities array using schema validation
+                const capabilitiesSchema = z.array(z.string()).min(1, "Capabilities array must not be empty");
+                capabilitiesSchema.parse(capabilities);
+            } catch (error: any) {
+                throw new Error(`Invalid capabilities: ${error.message}`);
+            }
+        }
+
+        const structuredPrompt = this.createStructuredPrompt(runResult, prompt, expected, capabilities);
         const jsonSchema = this.getStructuredJudgmentSchema();
 
         try {
@@ -389,7 +402,27 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
             ]);
 
             // Parse and validate the structured response
-            const parsedResponse = this.validateStructuredResponse(response, jsonSchema);
+            let parsedResponse;
+            try {
+                parsedResponse = this.validateStructuredResponse(response, jsonSchema);
+            } catch (parseError: any) {
+                return {
+                    evaluator_type: 'llm_judge',
+                    success: false,
+                    summary: `LLM Judge FAILED: Invalid LLM response - ${parseError.message}`,
+                    details: {
+                        error: 'llm_parse_error',
+                        error_type: 'llm_parse_error',
+                        error_message: parseError.message,
+                        model_used: modelType,
+                        prompt,
+                        expected,
+                        raw_llm_response: response,
+                        custom_capabilities_provided: !!(capabilities && capabilities.length > 0),
+                        capabilities_count: capabilities ? capabilities.length : 0
+                    }
+                };
+            }
             const success = this.compareWithExpected(parsedResponse, expected);
 
             return {
@@ -397,14 +430,18 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
                 success,
                 summary: `LLM Judge ${success ? 'PASSED' : 'FAILED'}: ${parsedResponse.qualitative_summary.substring(0, 150)}${parsedResponse.qualitative_summary.length > 150 ? '...' : ''}`,
                 details: {
-                    qualitative_summary: parsedResponse.qualitative_summary,
-                    capability_checklist: parsedResponse.capability_checklist,
+                    llm_judge_result: {
+                        qualitative_summary: parsedResponse.qualitative_summary,
+                        capability_checklist: parsedResponse.capability_checklist
+                    },
+                    custom_capabilities_provided: !!(capabilities && capabilities.length > 0),
+                    capabilities_count: capabilities ? capabilities.length : 5, // Default capabilities count
                     judgment_confidence: parsedResponse.confidence,
                     expected_outcome: expected,
                     model_used: modelType,
                     prompt_used: prompt,
                     raw_llm_response: response
-                } as LLMJudgeResult & { judgment_confidence: number; expected_outcome: string; model_used: string; prompt_used: string; raw_llm_response: any }
+                }
             };
         } catch (error: any) {
             const msg = error?.message || String(error);
@@ -418,17 +455,36 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
                     : `LLM Judge FAILED: ${msg}`,
                 details: {
                     error: isTimeout ? 'llm_timeout' : 'llm_error',
+                    error_type: isTimeout ? 'llm_timeout' : 'llm_error',
                     error_message: msg,
                     timeout_ms: timeoutMs,
                     model_attempted: modelType,
                     prompt,
-                    expected
+                    expected,
+                    custom_capabilities_provided: !!(capabilities && capabilities.length > 0),
+                    capabilities_count: capabilities ? capabilities.length : 0
                 }
             };
         }
     }
 
-    private createStructuredPrompt(runResult: ExecutionResult, userPrompt: string, expected: string): string {
+    private createStructuredPrompt(runResult: ExecutionResult, userPrompt: string, expected: string, capabilities?: string[]): string {
+        // Default capabilities if none provided
+        const defaultCapabilities = [
+            'Task Completion',
+            'Response Quality',
+            'User Intent Understanding',
+            'Error Handling',
+            'Appropriate Response Format'
+        ];
+
+        const capabilitiesToUse = capabilities && capabilities.length > 0 ? capabilities : defaultCapabilities;
+
+        // Build capabilities list for prompt
+        const capabilitiesSection = capabilitiesToUse.map((capability, index) => {
+            return `${index + 1}. ${capability}`;
+        }).join('\n');
+
         return `You are an expert evaluator analyzing an AI agent's performance. Provide a comprehensive, structured assessment.
 
 ## Execution Context
@@ -444,12 +500,17 @@ ${userPrompt}
 ${expected}
 
 ## Instructions
-Analyze the agent's performance and provide a detailed assessment. Focus on:
+Analyze the agent's performance and provide a detailed assessment. You must evaluate the agent against the following specific capabilities:
 
-1. **Overall Performance**: Did the agent meet the expected outcome?
-2. **Capability Analysis**: Assess specific capabilities demonstrated
-3. **Quality of Execution**: How well was the task executed?
-4. **Areas for Improvement**: What could be done better?
+${capabilitiesSection}
+
+For each capability listed above, you must assess whether the agent achieved it and provide detailed reasoning. Your response should include:
+
+1. **Qualitative Summary**: A comprehensive paragraph summarizing overall performance
+2. **Capability Checklist**: For each capability above, provide:
+   - capability: The exact capability name from the list
+   - achieved: Boolean indicating if the capability was demonstrated
+   - reasoning: Detailed explanation of your assessment
 
 Provide your assessment as a structured JSON response with detailed reasoning for each capability.`;
     }
@@ -513,6 +574,17 @@ Provide your assessment as a structured JSON response with detailed reasoning fo
                     reasoning: 'Default capability assessment based on overall success'
                 }
             ];
+        }
+
+        // Provide default values for missing fields
+        if (response.confidence === undefined) {
+            response.confidence = 0.8; // Default confidence
+        }
+
+        if (response.overall_success === undefined) {
+            // Determine overall success based on capability checklist
+            const allAchieved = response.capability_checklist.every((cap: any) => cap.achieved === true);
+            response.overall_success = allAchieved;
         }
 
         return response;

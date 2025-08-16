@@ -57,10 +57,10 @@ export class EvaluationEngine {
     return results;
   }
 
-    /**
-   * NEW: Enhanced evaluation method for ticket #5783
-   * Returns structured JSON output using the enhanced evaluation engine
-   */
+  /**
+ * NEW: Enhanced evaluation method for ticket #5783
+ * Returns structured JSON output using the enhanced evaluation engine
+ */
   public async runEnhancedEvaluations(
     evaluations: EvaluationSchema[],
     runResult: ExecutionResult

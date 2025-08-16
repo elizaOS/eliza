@@ -313,12 +313,12 @@ describe('Enhanced Evaluation Engine (Ticket #5783)', () => {
             expect(result.summary).toContain('PASSED');
 
             // Check LLMJudgeResult details structure
-            const details = result.details as LLMJudgeResult & any;
-            expect(details.qualitative_summary).toContain('successfully completed');
-            expect(details.capability_checklist).toHaveLength(2);
-            expect(details.capability_checklist[0].capability).toBe('Task Understanding');
-            expect(details.capability_checklist[0].achieved).toBe(true);
-            expect(details.capability_checklist[0].reasoning).toContain('correctly interpreted');
+            const details = result.details as any;
+            expect(details.llm_judge_result.qualitative_summary).toContain('successfully completed');
+            expect(details.llm_judge_result.capability_checklist).toHaveLength(2);
+            expect(details.llm_judge_result.capability_checklist[0].capability).toBe('Task Understanding');
+            expect(details.llm_judge_result.capability_checklist[0].achieved).toBe(true);
+            expect(details.llm_judge_result.capability_checklist[0].reasoning).toContain('correctly interpreted');
         });
 
         it('should handle LLM errors gracefully', async () => {
