@@ -269,6 +269,7 @@ export const scenario = new Command()
                 // Import matrix-specific modules only when needed
                 const { validateMatrixConfig, calculateTotalCombinations, calculateTotalRuns } = await import('./src/matrix-schema');
                 const { generateMatrixCombinations, createExecutionContext, filterCombinations, calculateExecutionStats, formatDuration } = await import('./src/matrix-runner');
+                const { validateMatrixParameterPaths, combinationToOverrides, applyParameterOverrides } = await import('./src/parameter-override');
 
                 const logger = elizaLogger || console;
                 logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
@@ -386,9 +387,19 @@ export const scenario = new Command()
                         process.exit(1);
                     }
 
-                    // Step 5.5: Matrix parameter validation (placeholder for future #5780 integration)
-                    logger.info('🔍 Matrix parameter paths will be validated during execution');
-                    logger.info(`✅ Matrix configuration analysis complete`);
+                    // Step 5.5: Validate matrix parameter paths against base scenario
+                    logger.info(`🔍 Validating matrix parameter paths...`);
+                    const pathValidation = validateMatrixParameterPaths(baseScenario, matrixConfig.matrix);
+                    if (!pathValidation.valid) {
+                        logger.error(`\n❌ Error: Invalid parameter paths in matrix configuration:`);
+                        pathValidation.invalidPaths.forEach(invalidPath => {
+                            logger.error(`   - ${invalidPath}`);
+                        });
+                        logger.info('💡 Make sure all parameter paths exist in your base scenario.');
+                        logger.info('📖 Check the matrix testing documentation for parameter path examples.');
+                        process.exit(1);
+                    }
+                    logger.info(`✅ All matrix parameter paths are valid`);
 
                     // Step 6: Generate matrix combinations using proper API from ticket #5779
                     const combinations = generateMatrixCombinations(matrixConfig);
@@ -399,20 +410,29 @@ export const scenario = new Command()
                             logger.info(`   ${index + 1}. ${combo.id}: ${JSON.stringify(combo.parameters, null, 0)}`);
                         });
 
-                        // Show parameter combination details for the first combination
+                                                // Show parameter combination details for the first combination
                         if (combinations.length > 0 && options.verbose) {
-                            logger.info('\n🛠️  Combination Details Preview:');
-                            const firstCombination = combinations[0];
-                            logger.info(`   📋 Example: ${firstCombination.id}`);
-                            logger.info(`   📊 Metadata: ${firstCombination.metadata.combinationIndex + 1} of ${firstCombination.metadata.totalCombinations}`);
-                            logger.info(`   📝 Parameters to override:`);
-
-                            // Show specific parameter changes
-                            Object.entries(firstCombination.parameters).forEach(([path, value]) => {
-                                logger.info(`   🔧 ${path}: ${JSON.stringify(value)}`);
-                            });
-
-                            logger.info(`   📝 This combination will run ${matrixConfig.runs_per_combination} time(s)`);
+                            logger.info('\n🛠️  Parameter Override Preview:');
+                            try {
+                                const firstCombination = combinations[0];
+                                const overrides = combinationToOverrides(firstCombination.parameters);
+                                const modifiedScenario = applyParameterOverrides(baseScenario, overrides);
+                                
+                                logger.info(`   📋 Example: ${firstCombination.id}`);
+                                logger.info(`   📊 Metadata: ${firstCombination.metadata.combinationIndex + 1} of ${firstCombination.metadata.totalCombinations}`);
+                                logger.info(`   📝 Original scenario name: "${baseScenario.name}"`);
+                                logger.info(`   📝 Modified scenario ready for execution`);
+                                logger.info(`   📝 Parameters applied:`);
+                                
+                                // Show specific parameter changes
+                                overrides.forEach(override => {
+                                    logger.info(`   🔧 ${override.path}: ${JSON.stringify(override.value)}`);
+                                });
+                                
+                                logger.info(`   📝 This combination will run ${matrixConfig.runs_per_combination} time(s)`);
+                            } catch (error) {
+                                logger.warn(`   ⚠️  Could not generate override preview: ${error instanceof Error ? error.message : String(error)}`);
+                            }
                         }
                     }
 

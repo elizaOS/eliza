@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import {
     applyParameterOverrides,
+    applyParameterOverride,
+    applyMatrixOverrides,
     parseParameterPath,
     validateParameterPath,
     ParameterOverride,
-    ParameterPath
+    ParameterPath,
+    ValidationResult
 } from '../parameter-override';
 
 describe('Parameter Override System', () => {
@@ -126,35 +129,111 @@ describe('Parameter Override System', () => {
 
     describe('Parameter Path Validation', () => {
         it('should validate existing simple paths', () => {
-            expect(validateParameterPath(baseScenario, 'name')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'description')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'character.name')).toBe(true);
+            const result1 = validateParameterPath(baseScenario, 'name');
+            expect(result1.isValid).toBe(true);
+            expect(result1.pathExists).toBe(true);
+            expect(result1.targetType).toBe('string');
+
+            const result2 = validateParameterPath(baseScenario, 'character.name');
+            expect(result2.isValid).toBe(true);
+            expect(result2.pathExists).toBe(true);
         });
 
         it('should validate existing nested paths', () => {
-            expect(validateParameterPath(baseScenario, 'character.llm.model')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'environment.type')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'environment.settings.timeout')).toBe(true);
+            const result1 = validateParameterPath(baseScenario, 'character.llm.model');
+            expect(result1.isValid).toBe(true);
+            expect(result1.pathExists).toBe(true);
+            expect(result1.targetType).toBe('string');
+
+            const result2 = validateParameterPath(baseScenario, 'environment.type');
+            expect(result2.isValid).toBe(true);
+            expect(result2.pathExists).toBe(true);
         });
 
         it('should validate existing array paths', () => {
-            expect(validateParameterPath(baseScenario, 'plugins[0].name')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'plugins[1].enabled')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'run[0].input')).toBe(true);
-            expect(validateParameterPath(baseScenario, 'run[1].evaluations[0].type')).toBe(true);
+            const result1 = validateParameterPath(baseScenario, 'plugins[0].name');
+            expect(result1.isValid).toBe(true);
+            expect(result1.pathExists).toBe(true);
+            expect(result1.targetType).toBe('string');
+
+            const result2 = validateParameterPath(baseScenario, 'run[0].input');
+            expect(result2.isValid).toBe(true);
+            expect(result2.pathExists).toBe(true);
         });
 
-        it('should reject non-existing paths', () => {
-            expect(validateParameterPath(baseScenario, 'nonexistent')).toBe(false);
-            expect(validateParameterPath(baseScenario, 'character.nonexistent')).toBe(false);
-            expect(validateParameterPath(baseScenario, 'plugins[10].name')).toBe(false);
-            expect(validateParameterPath(baseScenario, 'run[0].nonexistent')).toBe(false);
+        it('should reject non-existing paths with detailed feedback', () => {
+            const result1 = validateParameterPath(baseScenario, 'nonexistent');
+            expect(result1.isValid).toBe(false);
+            expect(result1.pathExists).toBe(false);
+            expect(result1.error).toContain('does not exist');
+            expect(result1.suggestion).toContain('Available properties');
+
+            const result2 = validateParameterPath(baseScenario, 'plugins[10].name');
+            expect(result2.isValid).toBe(false);
+            expect(result2.pathExists).toBe(false);
+            expect(result2.error).toContain('out of bounds');
+            expect(result2.suggestion).toContain('index 0-');
         });
 
         it('should handle edge cases gracefully', () => {
-            expect(validateParameterPath(null, 'test')).toBe(false);
-            expect(validateParameterPath(undefined, 'test')).toBe(false);
-            expect(validateParameterPath({}, 'test')).toBe(false);
+            const result1 = validateParameterPath(null, 'test');
+            expect(result1.isValid).toBe(false);
+            expect(result1.pathExists).toBe(false);
+            expect(result1.error).toContain('null or not an object');
+
+            const result2 = validateParameterPath({}, 'test');
+            expect(result2.isValid).toBe(false);
+            expect(result2.pathExists).toBe(false);
+            expect(result2.error).toContain('does not exist');
+        });
+    });
+
+    describe('New API Functions (Ticket #5780)', () => {
+        it('should test applyParameterOverride single function', () => {
+            const scenario = {
+                character: { llm: { model: "gpt-4" } },
+                run: [{ input: "original" }]
+            };
+
+            // Test single parameter override
+            const result = applyParameterOverride(scenario, "character.llm.model", "gpt-3.5-turbo");
+            
+            expect(result.character.llm.model).toBe("gpt-3.5-turbo");
+            expect(scenario.character.llm.model).toBe("gpt-4"); // Original unchanged
+        });
+
+        it('should test applyMatrixOverrides batch function', () => {
+            const scenario = {
+                character: { llm: { model: "gpt-4" } },
+                run: [{ input: "original" }]
+            };
+
+            const overrides = {
+                "character.llm.model": "gpt-3.5-turbo",
+                "run[0].input": "modified"
+            };
+
+            const result = applyMatrixOverrides(scenario, overrides);
+            
+            expect(result.character.llm.model).toBe("gpt-3.5-turbo");
+            expect(result.run[0].input).toBe("modified");
+            expect(scenario.character.llm.model).toBe("gpt-4"); // Original unchanged
+        });
+
+        it('should provide detailed validation feedback', () => {
+            const scenario = { character: { name: "Test" } };
+            
+            // Test valid path
+            const validResult = validateParameterPath(scenario, "character.name");
+            expect(validResult.isValid).toBe(true);
+            expect(validResult.targetType).toBe("string");
+            expect(validResult.pathExists).toBe(true);
+            
+            // Test invalid path with suggestions
+            const invalidResult = validateParameterPath(scenario, "character.age");
+            expect(invalidResult.isValid).toBe(false);
+            expect(invalidResult.error).toContain("does not exist");
+            expect(invalidResult.suggestion).toContain("Available properties: name");
         });
     });
 

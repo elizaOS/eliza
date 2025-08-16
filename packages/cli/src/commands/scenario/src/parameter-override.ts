@@ -16,6 +16,51 @@ export interface ParameterOverride {
 }
 
 /**
+ * Result of parameter path validation with detailed feedback.
+ * Required by ticket #5780.
+ */
+export interface ValidationResult {
+    /** Whether the path is valid and can be used for overrides */
+    isValid: boolean;
+    /** Error message if validation failed */
+    error?: string;
+    /** Suggested correction for common mistakes */
+    suggestion?: string;
+    /** Whether the path exists in the target object */
+    pathExists: boolean;
+    /** Type of the value at the target path */
+    targetType?: string;
+}
+
+/**
+ * Details about a single parameter override operation.
+ * Used for tracking and debugging override applications.
+ */
+export interface OverrideOperation {
+    /** The dot-notation path that was modified */
+    path: string;
+    /** The new value that was set */
+    value: any;
+    /** The original value that was replaced (if any) */
+    originalValue?: any;
+    /** Whether this operation created new intermediate objects */
+    wasCreated: boolean;
+}
+
+/**
+ * Complete result of applying parameter overrides.
+ * Includes the modified scenario and metadata about operations.
+ */
+export interface OverrideResult {
+    /** The scenario object with overrides applied */
+    scenario: any;
+    /** Details about each override operation performed */
+    operations: OverrideOperation[];
+    /** Any warnings generated during override application */
+    warnings: string[];
+}
+
+/**
  * Represents a parsed parameter path with segments and metadata.
  */
 export interface ParameterPath {
@@ -111,50 +156,129 @@ export function parseParameterPath(path: string): ParameterPath {
 }
 
 /**
- * Validates that a parameter path exists in the given object.
+ * Validates that a parameter path exists in the given object with detailed feedback.
+ * This enhanced version returns ValidationResult as required by ticket #5780.
  * 
  * @param obj - The object to validate against
  * @param path - The dot-notation path to validate
- * @returns True if the path exists, false otherwise
+ * @returns ValidationResult with detailed information about the path
  * 
  * @example
  * ```typescript
  * const scenario = { character: { llm: { model: "gpt-4" } } };
- * validateParameterPath(scenario, "character.llm.model"); // true
- * validateParameterPath(scenario, "character.nonexistent"); // false
+ * const result = validateParameterPath(scenario, "character.llm.model");
+ * // result.isValid === true, result.targetType === "string"
+ * 
+ * const invalid = validateParameterPath(scenario, "character.nonexistent");
+ * // invalid.isValid === false, invalid.suggestion === "Available properties: llm"
  * ```
  */
-export function validateParameterPath(obj: any, path: string): boolean {
+export function validateParameterPath(obj: any, path: string): ValidationResult {
     if (!obj || typeof obj !== 'object') {
-        return false;
+        return {
+            isValid: false,
+            error: "Target object is null or not an object",
+            pathExists: false,
+            targetType: typeof obj
+        };
     }
 
     try {
         const parsedPath = parseParameterPath(path);
         let current = obj;
+        let currentPath = "";
 
         for (let i = 0; i < parsedPath.segments.length; i++) {
             const segment = parsedPath.segments[i];
-
+            
             if (typeof segment === 'number') {
-                // Array index
-                if (!Array.isArray(current) || segment >= current.length || segment < 0) {
-                    return false;
+                currentPath += `[${segment}]`;
+                
+                if (!Array.isArray(current)) {
+                    return {
+                        isValid: false,
+                        error: `Expected array at path '${currentPath}', but found ${typeof current}`,
+                        pathExists: false,
+                        targetType: typeof current
+                    };
                 }
+                
+                if (segment >= current.length || segment < 0) {
+                    return {
+                        isValid: false,
+                        error: `Array index ${segment} is out of bounds at path '${currentPath}' (array length: ${current.length})`,
+                        suggestion: segment >= current.length ? 
+                            `Use index 0-${current.length - 1} or add more elements to the array` :
+                            "Array indices must be non-negative",
+                        pathExists: false,
+                        targetType: "array"
+                    };
+                }
+                
                 current = current[segment];
             } else {
-                // Object property
-                if (!current || typeof current !== 'object' || !(segment in current)) {
-                    return false;
+                currentPath += currentPath ? `.${segment}` : segment;
+                
+                if (!current || typeof current !== 'object') {
+                    return {
+                        isValid: false,
+                        error: `Expected object at path '${currentPath}', but found ${typeof current}`,
+                        pathExists: false,
+                        targetType: typeof current
+                    };
                 }
+                
+                if (!(segment in current)) {
+                    const availableProps = Object.keys(current).slice(0, 5);
+                    const suggestion = availableProps.length > 0 ? 
+                        `Available properties: ${availableProps.join(", ")}${Object.keys(current).length > 5 ? "..." : ""}` :
+                        "Object has no properties";
+                        
+                    return {
+                        isValid: false,
+                        error: `Property '${segment}' does not exist at path '${currentPath}'`,
+                        suggestion,
+                        pathExists: false,
+                        targetType: "object"
+                    };
+                }
+                
                 current = current[segment];
             }
         }
 
-        return true;
-    } catch {
-        return false;
+        return {
+            isValid: true,
+            pathExists: true,
+            targetType: Array.isArray(current) ? "array" : typeof current
+        };
+        
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let suggestion = "";
+        
+        if (errorMessage.includes("bracket")) {
+            suggestion = "Use bracket notation for arrays: run[0].input instead of run.0.input";
+        } else if (errorMessage.includes("invalid")) {
+            suggestion = "Check path syntax: use dots for objects and brackets for arrays";
+        }
+        
+        return {
+            isValid: false,
+            error: `Invalid path format: ${errorMessage}`,
+            suggestion,
+            pathExists: false
+        };
     }
+}
+
+/**
+ * Legacy function for backward compatibility.
+ * Returns boolean like the original function.
+ */
+export function validateParameterPathLegacy(obj: any, path: string): boolean {
+    const result = validateParameterPath(obj, path);
+    return result.isValid;
 }
 
 /**
@@ -285,6 +409,63 @@ export function deepClone<T>(obj: T): T {
     }
 
     return obj;
+}
+
+/**
+ * Applies a single parameter override to a scenario object.
+ * This is the core function required by ticket #5780.
+ * 
+ * @param scenario - The scenario object to modify
+ * @param path - Dot-notation path to the parameter (e.g., "character.llm.model")
+ * @param value - The value to set at the specified path
+ * @returns A deep clone of the scenario with the override applied
+ * @throws Error if the path is invalid or cannot be applied
+ * 
+ * @example
+ * ```typescript
+ * const scenario = { character: { llm: { model: "gpt-4" } } };
+ * const result = applyParameterOverride(scenario, "character.llm.model", "gpt-3.5-turbo");
+ * // result.character.llm.model === "gpt-3.5-turbo"
+ * // original scenario is unchanged
+ * ```
+ */
+export function applyParameterOverride(scenario: any, path: string, value: any): any {
+    // Create a deep clone to avoid mutating the original
+    const clonedScenario = deepClone(scenario);
+    
+    // Apply the single override
+    setValueAtPath(clonedScenario, path, value);
+    
+    return clonedScenario;
+}
+
+/**
+ * Applies a set of parameter overrides from a Record<string, any> format.
+ * This is the batch function required by ticket #5780.
+ * 
+ * @param baseScenario - The base scenario object to modify
+ * @param overrides - Record mapping parameter paths to values
+ * @returns A deep clone of the scenario with all overrides applied
+ * @throws Error if any path is invalid or cannot be applied
+ * 
+ * @example
+ * ```typescript
+ * const overrides = {
+ *   "character.llm.model": "gpt-3.5-turbo",
+ *   "run[0].input": "Hello world"
+ * };
+ * const result = applyMatrixOverrides(baseScenario, overrides);
+ * ```
+ */
+export function applyMatrixOverrides(baseScenario: any, overrides: Record<string, any>): any {
+    // Convert Record to ParameterOverride array
+    const parameterOverrides: ParameterOverride[] = Object.entries(overrides).map(([path, value]) => ({
+        path,
+        value
+    }));
+    
+    // Use the existing batch function
+    return applyParameterOverrides(baseScenario, parameterOverrides);
 }
 
 /**
@@ -438,7 +619,8 @@ export function validateMatrixParameterPaths(
     const invalidPaths: string[] = [];
 
     for (const axis of matrixAxes) {
-        if (!validateParameterPath(baseScenario, axis.parameter)) {
+        const validation = validateParameterPath(baseScenario, axis.parameter);
+        if (!validation.isValid) {
             invalidPaths.push(axis.parameter);
         }
     }
