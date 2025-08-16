@@ -86,6 +86,11 @@ export const scenario = new Command()
                         '@elizaos/plugin-e2b',
                         '@elizaos/plugin-openai',
                     ];
+                    // Ensure PGLite uses isolated directory per scenario run when not overridden
+                    if (!process.env.PGLITE_DATA_DIR) {
+                        const uniqueDir = `${process.cwd()}/test-data/scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                        process.env.PGLITE_DATA_DIR = uniqueDir;
+                    }
                     // Extract plugin names from scenario configuration, filtering by enabled status
                     const scenarioPlugins = Array.isArray((scenario as any).plugins)
                         ? (scenario as any).plugins
@@ -413,7 +418,7 @@ export const scenario = new Command()
                     logger.error('❌ An error occurred during matrix analysis:');
                     logger.error(error instanceof Error ? error.message : String(error));
                     if (options.verbose && error instanceof Error) {
-                        logger.error('Stack trace:', error.stack);
+                        logger.error({ stack: error.stack }, 'Stack trace:');
                     }
                     logger.info('💡 Use --verbose for more detailed error information.');
                     process.exit(1);

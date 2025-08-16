@@ -4,6 +4,8 @@ import { setDefaultSecretsFromEnv } from '../../start';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // --- Start of Pre-emptive Environment Loading ---
 loadEnvironmentVariables();
@@ -29,7 +31,20 @@ export async function createScenarioServerAndAgent(
     server = existingServer;
   } else {
     server = new AgentServer();
-    await server.initialize({ dataDir: './test-data' });
+    // Prefer unique directory per scenario run under PGLite root (env or default .eliza/.elizadb)
+    const pgliteRoot = process.env.PGLITE_DATA_DIR || path.join(process.cwd(), '.eliza', '.elizadb');
+    const uniqueDataDir = path.join(
+      pgliteRoot,
+      `scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+    try {
+      fs.mkdirSync(uniqueDataDir, { recursive: true });
+    } catch {
+      // Best-effort; initialization will surface errors if any
+    }
+    // Persist the chosen directory for downstream consumers
+    process.env.PGLITE_DATA_DIR = uniqueDataDir;
+    await server.initialize({ dataDir: uniqueDataDir });
     const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import('../../start/actions/agent-start');
     server.startAgent = (character) => serverStartAgent(character, server!);
     server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
@@ -95,7 +110,7 @@ export async function askAgentViaApi(
   if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
   const channelResult = await channelResponse.json();
   const channel = channelResult.data;
-  const addAgentResp = await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
+  await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
   // Post a message using the server's expected payload (requires author_id and server_id)
   const postResp = await fetch(`http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`, {
     method: 'POST',
@@ -112,13 +127,12 @@ export async function askAgentViaApi(
     const errText = await postResp.text();
     throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
   }
-  const rawResponse = await postResp.json();
+  await postResp.json();
   const startTime = Date.now();
 
   // Preemptively wait for action response
   await new Promise(resolve => setTimeout(resolve, timeoutMs));
   const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
-  const messagesJson = JSON.stringify(messages, null, 2);
   const agentMessages = messages.messages.filter((msg: any) =>
     msg.authorId === agentId && msg.created_at > startTime
   );
@@ -126,7 +140,6 @@ export async function askAgentViaApi(
     const latestMessage = agentMessages.sort((a: any, b: any) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
-    const messageTime = new Date(latestMessage?.createdAt).getTime();
     return latestMessage.content;
   }
   throw new Error('Timeout waiting for agent response');
