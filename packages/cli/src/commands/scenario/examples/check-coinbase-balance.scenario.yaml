@@ -3,7 +3,6 @@
 name: "Verify Agent Can Report Coinbase Wallet Balance"
 description: "Tests the agent's ability to access its context from the Coinbase Wallet Provider and report the balances of all tokens for its default address."
 
-# The Coinbase plugin is required for wallet context, and bootstrap is needed for basic reply actions.
 plugins:
   - name: "@elizaos/plugin-bootstrap"
     enabled: true
@@ -13,7 +12,6 @@ plugins:
 environment:
   type: local
 
-# The core execution of the scenario. We send a single prompt to the agent.
 run:
   - name: "Ask agent for its balance"
     input: "Read the balance of address 0xbcF7C64B880FA89a015970dC104E848d485f99A3 from the ERC20 contract at 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 on eth"
