@@ -3,7 +3,25 @@
  * 
  * This module provides functionality to dynamically override parameters in scenario
  * configurations using dot-notation paths and array indexing.
+ * 
+ * Core implementation for ticket #5780.
  */
+
+import {
+    parseParameterPath,
+    isValidPathSyntax,
+    normalizeParameterPath,
+    ParameterPath
+} from './path-parser';
+import {
+    deepClone,
+    hasCircularReference,
+    deepCloneWithLimit
+} from './deep-clone';
+
+// Re-export functions from modules for backward compatibility
+export { parseParameterPath, isValidPathSyntax, normalizeParameterPath, ParameterPath } from './path-parser';
+export { deepClone, hasCircularReference, deepCloneWithLimit } from './deep-clone';
 
 /**
  * Represents a single parameter override.
@@ -60,100 +78,9 @@ export interface OverrideResult {
     warnings: string[];
 }
 
-/**
- * Represents a parsed parameter path with segments and metadata.
- */
-export interface ParameterPath {
-    /** Array of path segments, where numbers represent array indices */
-    segments: (string | number)[];
-    /** Whether the path contains array access notation */
-    hasArrayAccess: boolean;
-    /** Original path string */
-    originalPath: string;
-}
+// ParameterPath interface is now imported from './path-parser'
 
-/**
- * Parses a dot-notation parameter path into segments.
- * 
- * Supports:
- * - Simple paths: "character.name"
- * - Nested paths: "character.llm.model"
- * - Array access: "run[0].input"
- * - Mixed access: "plugins[1].config.apiKey"
- * 
- * @param path - The dot-notation path to parse
- * @returns Parsed path object with segments
- * @throws Error if the path is malformed
- * 
- * @example
- * ```typescript
- * parseParameterPath("character.llm.model")
- * // Returns: { segments: ["character", "llm", "model"], hasArrayAccess: false }
- * 
- * parseParameterPath("run[0].input")
- * // Returns: { segments: ["run", 0, "input"], hasArrayAccess: true }
- * ```
- */
-export function parseParameterPath(path: string): ParameterPath {
-    if (!path || typeof path !== 'string') {
-        throw new Error('Parameter path must be a non-empty string');
-    }
-
-    if (path.startsWith('.') || path.endsWith('.')) {
-        throw new Error('Parameter path cannot start or end with a dot');
-    }
-
-    if (path === '.') {
-        throw new Error('Parameter path cannot be just a dot');
-    }
-
-    const segments: (string | number)[] = [];
-    let hasArrayAccess = false;
-
-    // Split by dots first, then handle array notation
-    const dotSegments = path.split('.');
-
-    for (const segment of dotSegments) {
-        if (!segment) {
-            throw new Error('Parameter path cannot contain empty segments');
-        }
-
-        // Check for array notation like "run[0]" or "plugins[1]"
-        const arrayMatch = segment.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\[(.+)\]$/);
-
-        if (arrayMatch) {
-            const [, property, indexStr] = arrayMatch;
-
-            // Validate that it's a valid numeric index
-            if (!/^\d+$/.test(indexStr)) {
-                throw new Error(`Invalid array index: ${indexStr}`);
-            }
-
-            const index = parseInt(indexStr, 10);
-
-            if (isNaN(index) || index < 0) {
-                throw new Error(`Invalid array index: ${indexStr}`);
-            }
-
-            segments.push(property);
-            segments.push(index);
-            hasArrayAccess = true;
-        } else {
-            // Validate that the segment is a valid property name
-            if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(segment)) {
-                throw new Error(`Invalid property name in path: ${segment}`);
-            }
-
-            segments.push(segment);
-        }
-    }
-
-    return {
-        segments,
-        hasArrayAccess,
-        originalPath: path
-    };
-}
+// parseParameterPath function is now imported from './path-parser'
 
 /**
  * Validates that a parameter path exists in the given object with detailed feedback.
@@ -190,10 +117,10 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
 
         for (let i = 0; i < parsedPath.segments.length; i++) {
             const segment = parsedPath.segments[i];
-            
+
             if (typeof segment === 'number') {
                 currentPath += `[${segment}]`;
-                
+
                 if (!Array.isArray(current)) {
                     return {
                         isValid: false,
@@ -202,23 +129,23 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
                         targetType: typeof current
                     };
                 }
-                
+
                 if (segment >= current.length || segment < 0) {
                     return {
                         isValid: false,
                         error: `Array index ${segment} is out of bounds at path '${currentPath}' (array length: ${current.length})`,
-                        suggestion: segment >= current.length ? 
+                        suggestion: segment >= current.length ?
                             `Use index 0-${current.length - 1} or add more elements to the array` :
                             "Array indices must be non-negative",
                         pathExists: false,
                         targetType: "array"
                     };
                 }
-                
+
                 current = current[segment];
             } else {
                 currentPath += currentPath ? `.${segment}` : segment;
-                
+
                 if (!current || typeof current !== 'object') {
                     return {
                         isValid: false,
@@ -227,13 +154,13 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
                         targetType: typeof current
                     };
                 }
-                
+
                 if (!(segment in current)) {
                     const availableProps = Object.keys(current).slice(0, 5);
-                    const suggestion = availableProps.length > 0 ? 
+                    const suggestion = availableProps.length > 0 ?
                         `Available properties: ${availableProps.join(", ")}${Object.keys(current).length > 5 ? "..." : ""}` :
                         "Object has no properties";
-                        
+
                     return {
                         isValid: false,
                         error: `Property '${segment}' does not exist at path '${currentPath}'`,
@@ -242,7 +169,7 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
                         targetType: "object"
                     };
                 }
-                
+
                 current = current[segment];
             }
         }
@@ -252,17 +179,17 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
             pathExists: true,
             targetType: Array.isArray(current) ? "array" : typeof current
         };
-        
+
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         let suggestion = "";
-        
+
         if (errorMessage.includes("bracket")) {
             suggestion = "Use bracket notation for arrays: run[0].input instead of run.0.input";
         } else if (errorMessage.includes("invalid")) {
             suggestion = "Check path syntax: use dots for objects and brackets for arrays";
         }
-        
+
         return {
             isValid: false,
             error: `Invalid path format: ${errorMessage}`,
@@ -379,37 +306,7 @@ export function setValueAtPath(obj: any, path: string, value: any): void {
     }
 }
 
-/**
- * Creates a deep copy of an object to ensure immutability.
- * 
- * @param obj - The object to clone
- * @returns A deep copy of the object
- */
-export function deepClone<T>(obj: T): T {
-    if (obj === null || typeof obj !== 'object') {
-        return obj;
-    }
-
-    if (obj instanceof Date) {
-        return new Date(obj.getTime()) as T;
-    }
-
-    if (Array.isArray(obj)) {
-        return obj.map(item => deepClone(item)) as T;
-    }
-
-    if (typeof obj === 'object') {
-        const cloned = {} as T;
-        for (const key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                cloned[key] = deepClone(obj[key]);
-            }
-        }
-        return cloned;
-    }
-
-    return obj;
-}
+// deepClone function is now imported from './deep-clone'
 
 /**
  * Applies a single parameter override to a scenario object.
@@ -432,10 +329,10 @@ export function deepClone<T>(obj: T): T {
 export function applyParameterOverride(scenario: any, path: string, value: any): any {
     // Create a deep clone to avoid mutating the original
     const clonedScenario = deepClone(scenario);
-    
+
     // Apply the single override
     setValueAtPath(clonedScenario, path, value);
-    
+
     return clonedScenario;
 }
 
@@ -463,7 +360,7 @@ export function applyMatrixOverrides(baseScenario: any, overrides: Record<string
         path,
         value
     }));
-    
+
     // Use the existing batch function
     return applyParameterOverrides(baseScenario, parameterOverrides);
 }

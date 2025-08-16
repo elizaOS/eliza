@@ -197,7 +197,7 @@ describe('Parameter Override System', () => {
 
             // Test single parameter override
             const result = applyParameterOverride(scenario, "character.llm.model", "gpt-3.5-turbo");
-            
+
             expect(result.character.llm.model).toBe("gpt-3.5-turbo");
             expect(scenario.character.llm.model).toBe("gpt-4"); // Original unchanged
         });
@@ -214,7 +214,7 @@ describe('Parameter Override System', () => {
             };
 
             const result = applyMatrixOverrides(scenario, overrides);
-            
+
             expect(result.character.llm.model).toBe("gpt-3.5-turbo");
             expect(result.run[0].input).toBe("modified");
             expect(scenario.character.llm.model).toBe("gpt-4"); // Original unchanged
@@ -222,13 +222,13 @@ describe('Parameter Override System', () => {
 
         it('should provide detailed validation feedback', () => {
             const scenario = { character: { name: "Test" } };
-            
+
             // Test valid path
             const validResult = validateParameterPath(scenario, "character.name");
             expect(validResult.isValid).toBe(true);
             expect(validResult.targetType).toBe("string");
             expect(validResult.pathExists).toBe(true);
-            
+
             // Test invalid path with suggestions
             const invalidResult = validateParameterPath(scenario, "character.age");
             expect(invalidResult.isValid).toBe(false);

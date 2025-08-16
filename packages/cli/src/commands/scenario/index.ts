@@ -410,25 +410,25 @@ export const scenario = new Command()
                             logger.info(`   ${index + 1}. ${combo.id}: ${JSON.stringify(combo.parameters, null, 0)}`);
                         });
 
-                                                // Show parameter combination details for the first combination
+                        // Show parameter combination details for the first combination
                         if (combinations.length > 0 && options.verbose) {
                             logger.info('\n🛠️  Parameter Override Preview:');
                             try {
                                 const firstCombination = combinations[0];
                                 const overrides = combinationToOverrides(firstCombination.parameters);
                                 const modifiedScenario = applyParameterOverrides(baseScenario, overrides);
-                                
+
                                 logger.info(`   📋 Example: ${firstCombination.id}`);
                                 logger.info(`   📊 Metadata: ${firstCombination.metadata.combinationIndex + 1} of ${firstCombination.metadata.totalCombinations}`);
                                 logger.info(`   📝 Original scenario name: "${baseScenario.name}"`);
                                 logger.info(`   📝 Modified scenario ready for execution`);
                                 logger.info(`   📝 Parameters applied:`);
-                                
+
                                 // Show specific parameter changes
                                 overrides.forEach(override => {
                                     logger.info(`   🔧 ${override.path}: ${JSON.stringify(override.value)}`);
                                 });
-                                
+
                                 logger.info(`   📝 This combination will run ${matrixConfig.runs_per_combination} time(s)`);
                             } catch (error) {
                                 logger.warn(`   ⚠️  Could not generate override preview: ${error instanceof Error ? error.message : String(error)}`);
