@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 // Base schema for any evaluation
+// For scenario matrix testing, see matrix-schema.ts
 export type EvaluationType = 'string_contains' | 'regex_match' | 'file_exists' | 'trajectory_contains_action' | 'llm_judge' | 'execution_time';
 
 const BaseEvaluationSchema = z.object({
