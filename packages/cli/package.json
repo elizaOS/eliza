@@ -64,7 +64,6 @@
     "@types/node": "^24.0.3",
     "@types/prompts": "^2.4.2",
     "@types/semver": "^7.5.8",
-    "bats-assert": "^2.0.0",
     "bats-support": "^0.3.0",
     "cross-env": "^7.0.3",
     "esbuild-plugin-copy": "^2.1.1",
