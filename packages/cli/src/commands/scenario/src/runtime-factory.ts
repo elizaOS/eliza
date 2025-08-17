@@ -19,20 +19,39 @@ const envSettings = process.env as RuntimeSettings;
  * Find an available port in the given range
  */
 async function findAvailablePort(startPort: number, endPort: number): Promise<number> {
-  for (let port = startPort; port <= endPort; port++) {
+  console.log(`🔧 [DEBUG] Searching for available port in range ${startPort}-${endPort}...`);
+
+  // Try ports in random order to avoid conflicts
+  const ports = Array.from({ length: endPort - startPort + 1 }, (_, i) => startPort + i);
+  for (let i = ports.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ports[i], ports[j]] = [ports[j], ports[i]];
+  }
+
+  for (const port of ports) {
     try {
+      console.log(`🔧 [DEBUG] Testing port ${port}...`);
       const server = createServer();
       await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          server.close();
+          reject(new Error('Port check timeout'));
+        }, 500); // Reduced timeout
+
         server.listen(port, () => {
+          clearTimeout(timeout);
           server.close();
           resolve();
         });
-        server.on('error', () => {
-          reject();
+        server.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
         });
       });
+      console.log(`🔧 [DEBUG] Port ${port} is available`);
       return port;
-    } catch {
+    } catch (error) {
+      console.log(`🔧 [DEBUG] Port ${port} is in use: ${error}`);
       // Port is in use, try next one
       continue;
     }
@@ -60,42 +79,70 @@ export async function createScenarioServerAndAgent(
   port: number;
   createdServer: boolean;
 }> {
-  let server: AgentServer;
+  let server: AgentServer | undefined;
   let createdServer = false;
   let port = desiredPort;
 
   // If port is 0, find an available port
   if (port === 0) {
-    port = await findAvailablePort(3000, 3100);
+    console.log('🔧 [DEBUG] Finding available port in range 3001-4000...');
+    port = await findAvailablePort(3001, 4000);
+    console.log(`🔧 [DEBUG] Found available port: ${port}`);
   }
 
-  if (existingServer) {
-    server = existingServer;
-  } else {
-    server = new AgentServer();
-    // Prefer unique directory per scenario run under PGLite root (env or default .eliza/.elizadb)
-    const pgliteRoot =
-      process.env.PGLITE_DATA_DIR || path.join(process.cwd(), '.eliza', '.elizadb');
-    const uniqueDataDir = path.join(
-      pgliteRoot,
-      `scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    );
+  // Try to start the server with retry logic
+  let retryCount = 0;
+  const maxRetries = 3;
+
+  while (retryCount < maxRetries) {
     try {
-      fs.mkdirSync(uniqueDataDir, { recursive: true });
-    } catch {
-      // Best-effort; initialization will surface errors if any
+      if (existingServer) {
+        server = existingServer;
+      } else {
+        server = new AgentServer();
+        // Prefer unique directory per scenario run under PGLite root (env or default .eliza/.elizadb)
+        const pgliteRoot =
+          process.env.PGLITE_DATA_DIR || path.join(process.cwd(), '.eliza', '.elizadb');
+        const uniqueDataDir = path.join(
+          pgliteRoot,
+          `scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        );
+        try {
+          fs.mkdirSync(uniqueDataDir, { recursive: true });
+        } catch {
+          // Best-effort; initialization will surface errors if any
+        }
+        // Persist the chosen directory for downstream consumers
+        process.env.PGLITE_DATA_DIR = uniqueDataDir;
+        await server.initialize({ dataDir: uniqueDataDir });
+        const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
+          '../../start/actions/agent-start'
+        );
+        server.startAgent = (character) => serverStartAgent(character, server!);
+        server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
+        await server.start(port);
+        createdServer = true;
+      }
+      break; // Success, exit retry loop
+    } catch (error) {
+      retryCount++;
+      console.log(`🔧 [DEBUG] Failed to start server on port ${port}, attempt ${retryCount}/${maxRetries}: ${error}`);
+
+      if (retryCount >= maxRetries) {
+        throw error;
+      }
+
+      // Try a different port
+      port = await findAvailablePort(port + 1, 3100);
+      console.log(`🔧 [DEBUG] Retrying with new port: ${port}`);
     }
-    // Persist the chosen directory for downstream consumers
-    process.env.PGLITE_DATA_DIR = uniqueDataDir;
-    await server.initialize({ dataDir: uniqueDataDir });
-    const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
-      '../../start/actions/agent-start'
-    );
-    server.startAgent = (character) => serverStartAgent(character, server!);
-    server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
-    await server.start(port);
-    createdServer = true;
   }
+
+  // Ensure server is defined
+  if (!server) {
+    throw new Error('Failed to create or initialize server after retries');
+  }
+
   const character: Character = {
     name: 'scenario-agent',
     id: stringToUuid('scenario-agent'),
@@ -134,7 +181,7 @@ export async function askAgentViaApi(
   server: AgentServer,
   agentId: UUID,
   input: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 15000
 ): Promise<{ response: string; roomId: UUID }> {
   const port = (server as any)?.port ?? 3000;
   const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });

@@ -252,11 +252,31 @@ export async function executeMatrixRuns(
       console.log('🔧 [DEBUG] About to start processing runs for this combination');
       for (let runIndex = 0; runIndex < config.runs_per_combination; runIndex++) {
         console.log(`🔧 [DEBUG] About to process run ${runIndex + 1} of ${config.runs_per_combination}`);
+        console.log(`🔧 [DEBUG] Current active runs count: ${activeRuns.size}`);
+        console.log(`🔧 [DEBUG] Max parallel execution: ${maxParallel}`);
+        const memoryUsage = process.memoryUsage();
+        console.log(`🔧 [DEBUG] Current memory usage: ${memoryUsage.heapUsed / 1024 / 1024} MB`);
+        console.log(`🔧 [DEBUG] Total memory usage: ${memoryUsage.heapTotal / 1024 / 1024} MB`);
+
+        // Check if memory usage is too high and force cleanup
+        if (memoryUsage.heapUsed > 500 * 1024 * 1024) { // 500MB threshold
+          console.log(`🔧 [DEBUG] High memory usage detected, forcing cleanup...`);
+          if (global.gc) {
+            global.gc();
+            console.log(`🔧 [DEBUG] Forced garbage collection due to high memory usage`);
+          }
+        }
+
         runCounter++;
         const runId = `run-${String(runCounter).padStart(3, '0')}-${combination.id.split('-')[2]}`;
+        console.log(`🔧 [DEBUG] Generated runId: ${runId}`);
+        console.log(`🔧 [DEBUG] Combination parameters:`, JSON.stringify(combination.parameters, null, 2));
 
         // Wait for available slot if we're at max parallelism
+        console.log(`🔧 [DEBUG] Waiting for available slot... (active runs: ${activeRuns.size}/${maxParallel})`);
         await waitForAvailableSlot(activeRuns, maxParallel);
+        console.log(`🔧 [DEBUG] Slot available, about to start the run ${runId}`);
+        console.log(`🔧 [DEBUG] About to call executeIndividualRun with timeout: ${runTimeout}ms`);
 
         // Start the run
         const runPromise = executeIndividualRun(
@@ -270,7 +290,9 @@ export async function executeMatrixRuns(
         );
 
         // Track active run
+        console.log(`🔧 [DEBUG] Creating isolated environment for runId: ${runId}`);
         const context = await createIsolatedEnvironment(runId, outputDir);
+        console.log(`🔧 [DEBUG] Isolated environment created, adding to active runs`);
         activeRuns.set(runId, {
           runId,
           combinationId: combination.id,
@@ -279,10 +301,13 @@ export async function executeMatrixRuns(
           startTime: new Date(),
           promise: runPromise,
         });
+        console.log(`🔧 [DEBUG] Active runs after adding: ${activeRuns.size}`);
 
         // Handle run completion
+        console.log(`🔧 [DEBUG] Setting up completion handlers for runId: ${runId}`);
         runPromise
           .then(async (result) => {
+            console.log(`🔧 [DEBUG] Run ${runId} completed successfully`);
             results.push(result);
             combinationResults.push(result);
 
@@ -292,11 +317,25 @@ export async function executeMatrixRuns(
             // Cleanup active run tracking
             const activeRun = activeRuns.get(runId);
             if (activeRun) {
-              await activeRun.context.cleanup();
+              console.log(`🔧 [DEBUG] Cleaning up resources for runId: ${runId}`);
+              try {
+                await activeRun.context.cleanup();
+                console.log(`🔧 [DEBUG] Context cleanup completed for runId: ${runId}`);
+              } catch (cleanupError) {
+                console.log(`🔧 [DEBUG] Context cleanup failed for runId: ${runId}: ${cleanupError}`);
+              }
               activeRuns.delete(runId);
+              console.log(`🔧 [DEBUG] Active runs after cleanup: ${activeRuns.size}`);
+
+              // Force garbage collection if available
+              if (global.gc) {
+                global.gc();
+                console.log(`🔧 [DEBUG] Forced garbage collection after runId: ${runId}`);
+              }
             }
           })
           .catch(async (error) => {
+            console.log(`🔧 [DEBUG] Run ${runId} failed with error: ${error.message}`);
             // Handle run failure
             const failedResult: MatrixRunResult = {
               runId,
@@ -316,11 +355,24 @@ export async function executeMatrixRuns(
             results.push(failedResult);
             await saveRunResult(failedResult, outputDir);
 
-            // Cleanup
+            // Enhanced cleanup for failed runs
             const activeRun = activeRuns.get(runId);
             if (activeRun) {
-              await activeRun.context.cleanup();
+              console.log(`🔧 [DEBUG] Cleaning up failed run resources for runId: ${runId}`);
+              try {
+                await activeRun.context.cleanup();
+                console.log(`🔧 [DEBUG] Failed run context cleanup completed for runId: ${runId}`);
+              } catch (cleanupError) {
+                console.log(`🔧 [DEBUG] Failed run context cleanup failed for runId: ${runId}: ${cleanupError}`);
+              }
               activeRuns.delete(runId);
+              console.log(`🔧 [DEBUG] Active runs after failed run cleanup: ${activeRuns.size}`);
+
+              // Force garbage collection if available
+              if (global.gc) {
+                global.gc();
+                console.log(`🔧 [DEBUG] Forced garbage collection after failed runId: ${runId}`);
+              }
             }
 
             if (!continueOnFailure) {
@@ -330,7 +382,18 @@ export async function executeMatrixRuns(
       }
 
       // Wait for all runs in this combination to complete
-      await waitForCombinationCompletion(combination.id, activeRuns);
+      console.log(`🔧 [DEBUG] Waiting for combination ${combination.id} to complete...`);
+      try {
+        await waitForCombinationCompletion(combination.id, activeRuns);
+        console.log(`🔧 [DEBUG] Combination ${combination.id} completed successfully`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log(`🔧 [DEBUG] Combination ${combination.id} failed: ${errorMessage}`);
+        // Continue with next combination even if this one failed
+        if (!continueOnFailure) {
+          throw error;
+        }
+      }
 
       // Mark combination as complete
       progressTracker.completeCombination(combination.id);
@@ -379,8 +442,15 @@ async function executeIndividualRun(
   resourceMonitor: ResourceMonitor,
   timeout: number
 ): Promise<MatrixRunResult> {
-  console.log(`🔧 [DEBUG] executeIndividualRun started for runId: ${runId}`);
+  console.log(`🔧 [DEBUG] executeIndividualRun started for runId: ${runId} with timeout: ${timeout}ms`);
   const startTime = new Date();
+
+  // Add timeout wrapper to prevent hanging
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Run ${runId} timed out after ${timeout}ms`));
+    }, timeout);
+  });
 
   try {
     console.log(`🔧 [DEBUG] executeIndividualRun: Starting progress tracking for runId: ${runId}`);
@@ -404,15 +474,18 @@ async function executeIndividualRun(
       console.log(`🔧 [DEBUG] executeIndividualRun: Resource snapshot before run completed for runId: ${runId}`);
 
       console.log(`🔧 [DEBUG] executeIndividualRun: About to execute scenario with timeout for runId: ${runId}, timeout: ${timeout}ms`);
-      // Execute scenario with timeout
-      const scenarioResult = await executeScenarioWithTimeout(
-        context.scenarioPath,
-        context,
-        timeout,
-        (progress, status) => {
-          progressTracker.updateRunProgress(runId, progress, status);
-        }
-      );
+      // Execute scenario with timeout and race against timeout wrapper
+      const scenarioResult = await Promise.race([
+        executeScenarioWithTimeout(
+          context.scenarioPath,
+          context,
+          timeout,
+          (progress, status) => {
+            progressTracker.updateRunProgress(runId, progress, status);
+          }
+        ),
+        timeoutPromise
+      ]);
       console.log(`🔧 [DEBUG] executeIndividualRun: Scenario execution completed successfully for runId: ${runId}`);
 
       console.log(`🔧 [DEBUG] executeIndividualRun: About to get resource snapshot after run for runId: ${runId}`);
@@ -565,8 +638,9 @@ async function executeScenarioWithTimeout(
         const evaluationEngine = new EvaluationEngine(runtime as any);
 
         const evaluationResults = [];
-        if (scenario.evaluations) {
-          const results = await evaluationEngine.runEvaluations(scenario.evaluations, executionResults);
+        if (scenario.evaluations && executionResults.length > 0) {
+          // Run evaluations on the first execution result
+          const results = await evaluationEngine.runEvaluations(scenario.evaluations, executionResults[0]);
           evaluationResults.push(...results);
         }
 

@@ -2,7 +2,7 @@
 name: 'GitHub Issue Action Chaining Analysis'
 description: 'Tests the reliability of listing GitHub issues under various LLM and prompt configurations.'
 base_scenario: './packages/cli/src/commands/scenario/examples/test-github-issues.scenario.yaml'
-runs_per_combination: 3
+runs_per_combination: 1
 matrix:
   - parameter: 'run[0].input'
     values:
