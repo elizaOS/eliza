@@ -18,7 +18,8 @@ describe('processAttachments', () => {
 
   beforeEach(() => {
     mockRuntime = createMockRuntime();
-    mock.restore();
+    // Reset useModel mock for each test
+    mockRuntime.useModel = mock();
   });
 
   afterEach(() => {

@@ -5,8 +5,8 @@ describe('Plugin Configuration', () => {
   it('should not have custom configuration (relies on character settings)', () => {
     // Our plugin has config properties for TEE_MODE and WALLET_SECRET_SALT
     expect(teeStarterPlugin.config).toBeDefined();
-    expect(teeStarterPlugin.config?.TEE_MODE).toBe(process.env.TEE_MODE);
-    expect(teeStarterPlugin.config?.WALLET_SECRET_SALT).toBe(process.env.WALLET_SECRET_SALT);
+    expect(teeStarterPlugin.config?.TEE_MODE).toBe('OFF');
+    expect(teeStarterPlugin.config?.WALLET_SECRET_SALT).toBe('test_default_salt_12345');
     expect(teeStarterPlugin.init).toBeDefined();
   });
 

@@ -210,14 +210,17 @@ export class StarterService extends Service {
   }
 }
 
+// Parse environment variables through schema to apply defaults and validation
+const parsedConfig = configSchema.parse({
+  TEE_MODE: process.env.TEE_MODE,
+  TEE_VENDOR: process.env.TEE_VENDOR,
+  WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
+});
+
 const teeStarterPlugin: Plugin = {
   name: 'mr-tee-starter-plugin',
   description: "Mr. TEE's starter plugin - using plugin-tee for attestation",
-  config: {
-    TEE_MODE: process.env.TEE_MODE,
-    TEE_VENDOR: process.env.TEE_VENDOR,
-    WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
-  },
+  config: parsedConfig,
   async init(config: Record<string, string>, runtime: IAgentRuntime) {
     logger.info('*** Initializing Mr. TEE plugin ***');
     try {
