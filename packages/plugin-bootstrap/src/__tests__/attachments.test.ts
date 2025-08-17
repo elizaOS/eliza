@@ -1,27 +1,16 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 // Defer importing module under test until after mocks are set
-let processAttachments: (
+let processAttachments: (attachments: Media[] | null, runtime: IAgentRuntime) => Promise<Media[]>;
+import type { IAgentRuntime, Media } from '@elizaos/core';
+const { ModelType, ContentType } = await import('@elizaos/core');
+import { createMockRuntime, MockRuntime } from './test-utils';
+
+// Import the module under test after types/constants are ready
+const bootstrapModule = await import('../index');
+processAttachments = (bootstrapModule.processAttachments as unknown) as (
   attachments: Media[] | null,
   runtime: IAgentRuntime
 ) => Promise<Media[]>;
-import { IAgentRuntime, Media, ModelType, ContentType } from '@elizaos/core';
-import { createMockRuntime, MockRuntime } from './test-utils';
-
-// Preserve all core exports and only override logger to avoid breaking other imports
-const coreModule = await import('@elizaos/core');
-mock.module('@elizaos/core', () => ({
-  ...coreModule,
-  logger: {
-    debug: mock(),
-    warn: mock(),
-    error: mock(),
-    info: mock(),
-  },
-}));
-
-// Import the module under test after setting up the module mock
-const bootstrapModule = await import('../index');
-processAttachments = bootstrapModule.processAttachments;
 
 describe('processAttachments', () => {
   let mockRuntime: MockRuntime;
