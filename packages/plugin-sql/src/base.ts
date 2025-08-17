@@ -2032,7 +2032,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          `Error removing participants from room: ${error instanceof Error ? error.message : String(error)}, entityIdSample: ${entityIds[0]}, roomId: ${roomId}, agentId: ${this.agentId}`
+          `Error adding participants to room: ${error instanceof Error ? error.message : String(error)}, entityIdSample: ${entityIds[0]}, roomId: ${roomId}, agentId: ${this.agentId}`
         );
         return false;
       }
