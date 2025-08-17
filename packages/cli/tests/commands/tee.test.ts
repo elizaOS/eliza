@@ -136,5 +136,22 @@ describe('TEE Command', () => {
         phalaCliCommand.parseOptions(testArgs);
       }).not.toThrow();
     });
+
+    it('should handle arguments containing "phala" without confusion', () => {
+      // Test that arguments containing 'phala' don't confuse the command extraction
+      const testArgs = [
+        'node', 'script',
+        'tee',
+        'phala',  // The actual command
+        'deploy',
+        '--project', 'my-phala-app',  // Argument value containing 'phala'
+        '--name', 'phala-test'  // Another argument containing 'phala'
+      ];
+
+      // This should not throw an error
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgs);
+      }).not.toThrow();
+    });
   });
 });
