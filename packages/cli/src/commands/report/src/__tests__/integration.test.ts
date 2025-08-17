@@ -139,12 +139,25 @@ describe('Report Generation Integration', () => {
         // Execute the report generation command
         await executeGenerateCommand(inputDir, { outputPath });
 
-        // Verify the output file was created
-        const reportExists = await fs.access(outputPath).then(() => true).catch(() => false);
+        // Verify the output file was created in the organized structure
+        // The organized reports create a timestamped subdirectory
+        const outputDir = outputPath; // Keep the full path including .json extension
+        const runDirs = await fs.readdir(outputDir);
+        const runDir = runDirs
+            .filter(dir => dir.startsWith('run-'))
+            .sort()
+            .pop();
+
+        expect(runDir).toBeDefined();
+
+        const runPath = join(outputDir, runDir!);
+        const actualReportPath = join(runPath, 'report.json');
+
+        const reportExists = await fs.access(actualReportPath).then(() => true).catch(() => false);
         expect(reportExists).toBe(true);
 
         // Read and parse the generated report
-        const reportContent = await fs.readFile(outputPath, 'utf8');
+        const reportContent = await fs.readFile(actualReportPath, 'utf8');
         const reportData: ReportData = JSON.parse(reportContent);
 
         // Verify report structure and content
@@ -221,7 +234,20 @@ describe('Report Generation Integration', () => {
         // Should process the valid file and skip the malformed one
         await executeGenerateCommand(inputDir, { outputPath });
 
-        const reportContent = await fs.readFile(outputPath, 'utf8');
+        // The organized reports create a timestamped subdirectory
+        const outputDir = outputPath; // Keep the full path including .json extension
+        const runDirs = await fs.readdir(outputDir);
+        const runDir = runDirs
+            .filter(dir => dir.startsWith('run-'))
+            .sort()
+            .pop();
+
+        expect(runDir).toBeDefined();
+
+        const runPath = join(outputDir, runDir!);
+        const actualReportPath = join(runPath, 'report.json');
+
+        const reportContent = await fs.readFile(actualReportPath, 'utf8');
         const reportData: ReportData = JSON.parse(reportContent);
 
         expect(reportData.metadata.processed_files).toBe(1);
@@ -254,14 +280,35 @@ describe('Report Generation Integration', () => {
         // Execute without specifying output path
         await executeGenerateCommand(inputDir, {});
 
-        // Should create report.json in the input directory
-        const defaultOutputPath = join(inputDir, 'report.json');
-        const reportExists = await fs.access(defaultOutputPath).then(() => true).catch(() => false);
+        // Should create organized reports in the default location (scenario logs)
+        const defaultOutputDir = join(process.cwd(), 'packages/cli/src/commands/scenario/_logs_');
+
+        // Find the most recent run directory by checking timestamps
+        const runDirs = await fs.readdir(defaultOutputDir);
+        const runDirNames = runDirs.filter(dir => dir.startsWith('run-'));
+
+        // Sort by timestamp (newest first) and take the first one
+        runDirNames.sort((a, b) => {
+            const timestampA = a.replace('run-', '').replace(/_/g, 'T').replace(/-/g, ':');
+            const timestampB = b.replace('run-', '').replace(/_/g, 'T').replace(/-/g, ':');
+            return new Date(timestampB).getTime() - new Date(timestampA).getTime();
+        });
+
+        const runDir = runDirNames[0];
+        expect(runDir).toBeDefined();
+
+        const runPath = join(defaultOutputDir, runDir);
+        const reportPath = join(runPath, 'report.json');
+
+        const reportExists = await fs.access(reportPath).then(() => true).catch(() => false);
         expect(reportExists).toBe(true);
 
-        const reportContent = await fs.readFile(defaultOutputPath, 'utf8');
+        const reportContent = await fs.readFile(reportPath, 'utf8');
         const reportData: ReportData = JSON.parse(reportContent);
         expect(reportData.summary_stats.total_runs).toBe(1);
+
+        // Clean up the generated run directory
+        await fs.rm(runPath, { recursive: true, force: true });
     });
 
     test('should create output directory if it does not exist', async () => {
@@ -280,15 +327,29 @@ describe('Report Generation Integration', () => {
         await fs.writeFile(join(inputDir, 'run-001.json'), JSON.stringify(validRun));
 
         // Use an output path in a non-existent directory
-        const deepOutputPath = join(testDir, 'reports', 'nested', 'deep', 'report.json');
+        const deepOutputDir = join(testDir, 'reports', 'nested', 'deep');
+        const deepOutputPath = join(deepOutputDir, 'report.json');
 
         await executeGenerateCommand(inputDir, { outputPath: deepOutputPath });
 
         // Verify the file was created and directory structure was created
-        const reportExists = await fs.access(deepOutputPath).then(() => true).catch(() => false);
+        // The organized reports create a timestamped subdirectory
+        const outputDir = deepOutputPath; // Keep the full path including .json extension
+        const runDirs = await fs.readdir(outputDir);
+        const runDir = runDirs
+            .filter(dir => dir.startsWith('run-'))
+            .sort()
+            .pop();
+
+        expect(runDir).toBeDefined();
+
+        const runPath = join(outputDir, runDir!);
+        const actualReportPath = join(runPath, 'report.json');
+
+        const reportExists = await fs.access(actualReportPath).then(() => true).catch(() => false);
         expect(reportExists).toBe(true);
 
-        const reportContent = await fs.readFile(deepOutputPath, 'utf8');
+        const reportContent = await fs.readFile(actualReportPath, 'utf8');
         const reportData: ReportData = JSON.parse(reportContent);
         expect(reportData.summary_stats.total_runs).toBe(1);
     });
