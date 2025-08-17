@@ -46,6 +46,12 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     services: new Map(),
     events: new Map(),
     routes: [],
+    logger: {
+      debug: mock(),
+      warn: mock(),
+      error: mock(),
+      info: mock(),
+    },
 
     // Core methods
     registerPlugin: mock().mockResolvedValue(undefined),
@@ -142,6 +148,9 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       serverId: 'test-server-id',
     }),
     getRooms: mock().mockResolvedValue([
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+    ]),
+    getRoomsByIds: mock().mockResolvedValue([
       { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
     ]),
     getWorld: mock().mockResolvedValue({
@@ -379,6 +388,12 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
   services: Map<string, Service>;
   events: Map<string, ((params: any) => Promise<void>)[]>;
   routes: Route[];
+  logger: {
+    debug: ReturnType<typeof mock>;
+    warn: ReturnType<typeof mock>;
+    error: ReturnType<typeof mock>;
+    info: ReturnType<typeof mock>;
+  };
 
   // Additional properties and methods commonly used in tests
   useModel: ReturnType<typeof mock>;
@@ -387,6 +402,7 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
   createMemory: ReturnType<typeof mock>;
   getRoom: ReturnType<typeof mock>;
   getRooms: ReturnType<typeof mock>;
+  getRoomsByIds: ReturnType<typeof mock>;
   getWorld: ReturnType<typeof mock>;
   addEmbeddingToMemory: ReturnType<typeof mock>;
   createRelationship: ReturnType<typeof mock>;

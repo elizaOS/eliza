@@ -638,8 +638,8 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
     // Check the warning was logged
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Error in prompt'),
-      expect.any(Error)
+      { error: expect.any(Error) },
+      expect.stringContaining('Error in prompt')
     );
 
     // The result should include the successful prompt's response and an error for the failed one
