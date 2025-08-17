@@ -180,6 +180,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       roomId: 'test-room-id',
       content: { text: 'Test fact' },
     }),
+    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
     createRelationship: mock().mockResolvedValue(true),
     updateRelationship: mock().mockResolvedValue(true),
     getRelationships: mock().mockResolvedValue([]),

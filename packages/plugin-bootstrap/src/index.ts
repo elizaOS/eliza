@@ -40,6 +40,7 @@ import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
+import { EmbeddingGenerationService } from './services/embedding.ts';
 
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
@@ -414,28 +415,24 @@ const messageReceivedHandler = async ({
         );
 
         // First, save the incoming message
-        runtime.logger.debug('[Bootstrap] Saving message to memory and embeddings');
+        runtime.logger.debug('[Bootstrap] Saving message to memory and queueing embeddings');
 
         // Check if memory already exists (it might have been created by MessageBusService)
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
             runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
-            // Still add embedding if needed
-            await runtime.addEmbeddingToMemory(message);
+            // Queue embedding generation asynchronously (non-blocking)
+            await runtime.queueEmbeddingGeneration(message, 'high');
           } else {
-            // Create memory if it doesn't exist
-            await Promise.all([
-              runtime.addEmbeddingToMemory(message),
-              runtime.createMemory(message, 'messages'),
-            ]);
+            // Create memory and queue embedding generation
+            await runtime.createMemory(message, 'messages');
+            await runtime.queueEmbeddingGeneration(message, 'high');
           }
         } else {
-          // No ID, create new memory
-          await Promise.all([
-            runtime.addEmbeddingToMemory(message),
-            runtime.createMemory(message, 'messages'),
-          ]);
+          // No ID, create new memory and queue embedding
+          await runtime.createMemory(message, 'messages');
+          await runtime.queueEmbeddingGeneration(message, 'normal');
         }
 
         const agentUserState = await runtime.getParticipantUserState(
@@ -1672,7 +1669,7 @@ export const bootstrapPlugin: Plugin = {
     providers.recentMessagesProvider,
     providers.worldProvider,
   ],
-  services: [TaskService],
+  services: [TaskService, EmbeddingGenerationService],
 };
 
 export default bootstrapPlugin;

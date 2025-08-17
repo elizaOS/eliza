@@ -137,6 +137,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getTaskWorker: mock().mockReturnValue(undefined),
     stop: mock().mockResolvedValue(undefined),
     addEmbeddingToMemory: mock().mockImplementation((memory: Memory) => Promise.resolve(memory)),
+    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
     createRunId: mock().mockReturnValue('test-run-id' as UUID),
     startRun: mock().mockReturnValue('test-run-id' as UUID),
     endRun: mock(),

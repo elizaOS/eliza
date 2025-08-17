@@ -152,6 +152,15 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
+  /**
+   * Queue a memory for async embedding generation.
+   * This method is non-blocking and returns immediately.
+   * The embedding will be generated asynchronously via event handlers.
+   * @param memory The memory to generate embeddings for
+   * @param priority Priority level for the embedding generation
+   */
+  queueEmbeddingGeneration(memory: Memory, priority?: 'high' | 'normal' | 'low'): Promise<void>;
+
   getAllMemories(): Promise<Memory[]>;
 
   clearAllAgentMemories(): Promise<void>;
