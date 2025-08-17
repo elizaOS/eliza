@@ -210,40 +210,26 @@ export class StarterService extends Service {
   }
 }
 
-// Parse environment variables through schema to apply defaults and validation
-const parsedConfig = configSchema.parse({
-  TEE_MODE: process.env.TEE_MODE,
-  TEE_VENDOR: process.env.TEE_VENDOR,
-  WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
-});
-
 const teeStarterPlugin: Plugin = {
   name: 'mr-tee-starter-plugin',
   description: "Mr. TEE's starter plugin - using plugin-tee for attestation",
-  config: parsedConfig,
+  config: {
+    TEE_MODE: process.env.TEE_MODE,
+    TEE_VENDOR: process.env.TEE_VENDOR,
+    WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
+  },
   async init(config: Record<string, string>, runtime: IAgentRuntime) {
     logger.info('*** Initializing Mr. TEE plugin ***');
     try {
       // Merge process.env values with config, config takes precedence
-      const mergedConfig = {
+      const rawConfig = {
         TEE_MODE: config.TEE_MODE ?? process.env.TEE_MODE,
         TEE_VENDOR: config.TEE_VENDOR ?? process.env.TEE_VENDOR,
         WALLET_SECRET_SALT: config.WALLET_SECRET_SALT ?? process.env.WALLET_SECRET_SALT,
       };
 
-      // Apply test defaults if in test environment
-      const isTestEnvironment = process.env.NODE_ENV === 'test' || process.argv.includes('test');
-
-      if (isTestEnvironment) {
-        // Apply test-only defaults - NEVER use these in production
-        mergedConfig.TEE_MODE = mergedConfig.TEE_MODE || 'OFF';
-        mergedConfig.TEE_VENDOR = mergedConfig.TEE_VENDOR || 'phala';
-        // Test salt - this is ONLY for test environments and should NEVER be used in production
-        mergedConfig.WALLET_SECRET_SALT =
-          mergedConfig.WALLET_SECRET_SALT || 'test_default_salt_12345';
-      }
-
-      const validatedConfig = await configSchema.parseAsync(mergedConfig);
+      // Parse and validate configuration with schema (includes test defaults)
+      const validatedConfig = configSchema.parse(rawConfig);
 
       // Production safety check - ensure test defaults aren't used in production
       if (
