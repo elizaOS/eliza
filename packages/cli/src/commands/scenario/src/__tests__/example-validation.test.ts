@@ -16,18 +16,18 @@ describe('Example Matrix Configuration Validation', () => {
     if (result.success) {
       expect(result.data.name).toBe('GitHub Issue Action Chaining Analysis');
       expect(result.data.base_scenario).toBe(
-        'packages/cli/src/commands/scenario/examples/test-github-issues.scenario.yaml'
+        'src/commands/scenario/examples/test-github-issues.scenario.yaml'
       );
       expect(result.data.runs_per_combination).toBe(3);
       expect(result.data.matrix).toHaveLength(2);
 
       // Verify first matrix axis
-      expect(result.data.matrix[0].parameter).toBe('character.llm.model');
-      expect(result.data.matrix[0].values).toEqual(['gpt-4-turbo', 'gpt-3.5-turbo']);
+      expect(result.data.matrix[0].parameter).toBe('run[0].input');
+      expect(result.data.matrix[0].values).toHaveLength(3);
 
       // Verify second matrix axis
-      expect(result.data.matrix[1].parameter).toBe('run[0].input');
-      expect(result.data.matrix[1].values).toHaveLength(3);
+      expect(result.data.matrix[1].parameter).toBe('run[0].evaluations[0].value');
+      expect(result.data.matrix[1].values).toEqual(['issues', 'GitHub']);
     }
   });
 });

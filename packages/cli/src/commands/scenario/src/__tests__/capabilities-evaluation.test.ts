@@ -111,8 +111,9 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         expected: 'yes',
         capabilities: [
           'Valid capability',
+          42, // Invalid: number instead of string
           'Another valid capability'
-        ] as any // Cast to any for this test to simulate invalid input
+        ] as any // Cast to any to bypass TypeScript but still test runtime validation
       };
 
       // Should return failed result for non-string capability
