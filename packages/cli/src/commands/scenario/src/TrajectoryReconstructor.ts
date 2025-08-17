@@ -8,23 +8,20 @@
 import { AgentRuntime, UUID } from '@elizaos/core';
 
 /**
- * Agent trajectory step (matching expected format from test data)
+ * Agent trajectory step (matching GitHub ticket #5785 specification)
  */
 export interface TrajectoryStep {
-    /** Unix timestamp (seconds) */
-    timestamp: number;
+    /** Step type: 'thought', 'action', or 'observation' */
+    type: 'thought' | 'action' | 'observation';
 
-    /** The agent's thought/reasoning process */
-    thought: string;
+    /** ISO timestamp string */
+    timestamp: string;
 
-    /** The name of the action being executed */
-    action: string;
-
-    /** The parameters passed to the action */
-    action_input: Record<string, any>;
-
-    /** The result/observation from the action */
-    observation: string;
+    /** Step content based on type */
+    content: string | {
+        name: string;
+        parameters: Record<string, any>;
+    } | any;
 }
 
 export interface ReconstructedTrajectory {
@@ -135,13 +132,14 @@ export class TrajectoryReconstructor {
             console.log(`   actionParams:`, content?.actionParams);
             console.log(`   actionResult:`, content?.actionResult);
             console.log(`   thought:`, content?.thought);
+            console.log(`   planThought:`, content?.planThought);
             console.log(`   actionStatus:`, content?.actionStatus);
 
             // Extract action information (same structure as TrajectoryContainsActionEvaluator)
             const actionName = content?.actionName || 'unknown';
             const actionParams = content?.actionParams || {};
             const actionResult = content?.actionResult || {};
-            const thought = content?.thought || '';
+            const thought = content?.thought || content?.planThought || '';
 
             // Get observation content from various possible locations
             let observationContent = '';
@@ -159,21 +157,44 @@ export class TrajectoryReconstructor {
 
             console.log(`   📋 Extracted observation (${observationContent.length} chars):`, observationContent.substring(0, 200));
 
-            // Create unified trajectory step (matching expected format from test data)
-            const step: TrajectoryStep = {
-                timestamp: Math.floor((memory.createdAt || Date.now()) / 1000), // Convert to seconds
-                thought,
-                action: actionName,
-                action_input: actionParams,
-                observation: observationContent
-            };
+            // Create trajectory steps matching GitHub ticket #5785 format
+            const timestamp = new Date(memory.createdAt || Date.now()).toISOString();
 
-            console.log(`   ✅ Created trajectory step:`, JSON.stringify(step, null, 2));
-            steps.push(step);
+            // Step 1: Thought (if available)
+            if (thought && thought.trim()) {
+                const thoughtStep: TrajectoryStep = {
+                    type: 'thought',
+                    timestamp,
+                    content: thought
+                };
+                steps.push(thoughtStep);
+                console.log(`   💭 Created thought step:`, JSON.stringify(thoughtStep, null, 2));
+            }
+
+            // Step 2: Action
+            const actionStep: TrajectoryStep = {
+                type: 'action',
+                timestamp,
+                content: {
+                    name: actionName,
+                    parameters: actionParams
+                }
+            };
+            steps.push(actionStep);
+            console.log(`   ⚡ Created action step:`, JSON.stringify(actionStep, null, 2));
+
+            // Step 3: Observation
+            const observationStep: TrajectoryStep = {
+                type: 'observation',
+                timestamp,
+                content: observationContent
+            };
+            steps.push(observationStep);
+            console.log(`   👁️ Created observation step:`, JSON.stringify(observationStep, null, 2));
         }
 
-        // Sort all steps by timestamp
-        steps.sort((a, b) => a.timestamp - b.timestamp);
+        // Sort all steps by timestamp (ISO string comparison)
+        steps.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
         return {
             steps,
@@ -206,7 +227,9 @@ export class TrajectoryReconstructor {
 
             if (trajectory.steps.length > 0) {
                 console.log(`✅ [TrajectoryReconstructor] SUCCESS on attempt ${attempt}: Found ${trajectory.steps.length} trajectory steps`);
-                console.log(`📊 [TrajectoryReconstructor] Actions found:`, trajectory.steps.map(s => s.action));
+                console.log(`📊 [TrajectoryReconstructor] Actions found:`, trajectory.steps
+                    .filter(s => s.type === 'action')
+                    .map(s => (s.content as any).name));
                 console.log(`📊 [TrajectoryReconstructor] First step sample:`, JSON.stringify(trajectory.steps[0], null, 2));
                 console.log(`📊 [TrajectoryReconstructor] ===== SUCCESS END =====\n`);
                 return trajectory.steps;
