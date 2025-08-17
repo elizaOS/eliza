@@ -200,15 +200,16 @@ export async function processAttachments(
               );
             } else {
               // Fallback: Try simple regex parsing if parseKeyValueXml fails
-              const titleMatch = response.match(/<title>([^<]+)<\/title>/);
-              const descMatch = response.match(/<description>([^<]+)<\/description>/);
-              const textMatch = response.match(/<text>([^<]+)<\/text>/);
-              
+              const responseStr = response as string;
+              const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
+              const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+              const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
+
               if (titleMatch || descMatch || textMatch) {
                 processedAttachment.title = titleMatch?.[1] || 'Image';
                 processedAttachment.description = descMatch?.[1] || '';
                 processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
-                
+
                 runtime.logger.debug(
                   `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
                 );
