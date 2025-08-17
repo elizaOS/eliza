@@ -18,6 +18,46 @@ describe('Plugin Configuration', () => {
     );
   });
 
+  it('should parse and validate config during initialization', async () => {
+    // Mock runtime for testing
+    const mockRuntime = {
+      logger: {
+        info: () => {},
+        warn: () => {},
+        debug: () => {},
+        error: () => {},
+      },
+    } as any;
+
+    // Test that config parsing happens during init, not at import time
+    const originalEnv = {
+      NODE_ENV: process.env.NODE_ENV,
+      TEE_MODE: process.env.TEE_MODE,
+      WALLET_SECRET_SALT: process.env.WALLET_SECRET_SALT,
+    };
+
+    try {
+      // Set test environment with valid defaults
+      process.env.NODE_ENV = 'test';
+      process.env.TEE_MODE = 'OFF';
+      process.env.WALLET_SECRET_SALT = 'test_salt_12345';
+
+      // Config should be parsed and validated during init without throwing
+      await expect(teeStarterPlugin.init({}, mockRuntime)).resolves.toBeUndefined();
+
+      // Test with invalid config should fail validation during init
+      const invalidConfig = { TEE_MODE: 'INVALID_MODE' };
+      await expect(teeStarterPlugin.init(invalidConfig, mockRuntime)).rejects.toThrow(
+        'Invalid plugin configuration'
+      );
+    } finally {
+      // Restore original environment
+      process.env.NODE_ENV = originalEnv.NODE_ENV;
+      process.env.TEE_MODE = originalEnv.TEE_MODE;
+      process.env.WALLET_SECRET_SALT = originalEnv.WALLET_SECRET_SALT;
+    }
+  });
+
   it('should be a TEE-focused plugin with appropriate components', () => {
     // Verify plugin has TEE-specific components
     expect(teeStarterPlugin.actions).toEqual([]);
