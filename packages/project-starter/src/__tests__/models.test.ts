@@ -57,7 +57,7 @@ const runCoreModelTests = async (
     expect(typeof basicResponse).toBe('string');
   } catch (e) {
     basicError = e as Error;
-    logger.error(`${modelType} model call failed:`, e);
+    logger.error({ error: e }, `${modelType} model call failed:`);
   }
 
   // Test with empty prompt
@@ -72,7 +72,7 @@ const runCoreModelTests = async (
     emptyResponse = await modelFn(mockRuntime, emptyParams);
   } catch (e) {
     emptyError = e as Error;
-    logger.error(`${modelType} empty prompt test failed:`, e);
+    logger.error({ error: e }, `${modelType} empty prompt test failed:`);
   }
 
   // Test with all parameters
@@ -92,7 +92,7 @@ const runCoreModelTests = async (
     fullResponse = await modelFn(mockRuntime, fullParams);
   } catch (e) {
     fullError = e as Error;
-    logger.error(`${modelType} all parameters test failed:`, e);
+    logger.error({ error: e }, `${modelType} all parameters test failed:`);
   }
 
   return {

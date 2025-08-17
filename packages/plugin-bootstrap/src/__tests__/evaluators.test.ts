@@ -466,7 +466,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -591,7 +591,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -638,8 +638,8 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
     // Check the warning was logged
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Error in prompt'),
-      expect.any(Error)
+      { error: expect.any(Error) },
+      expect.stringContaining('Error in prompt')
     );
 
     // The result should include the successful prompt's response and an error for the failed one

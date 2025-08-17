@@ -56,7 +56,7 @@ export const capabilitiesProvider: Provider = {
         text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
       };
     } catch (error) {
-      logger.error('Error in capabilities provider:', error);
+      logger.error({ error }, 'Error in capabilities provider:');
       return {
         text: 'Error retrieving capabilities from services.',
       };

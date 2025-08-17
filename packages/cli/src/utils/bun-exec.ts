@@ -228,7 +228,7 @@ export async function bunExec(
     if (!success && options.stdio !== 'ignore') {
       logger.debug(`[bunExec] Command failed with exit code ${exitCode}`);
       if (stderr) {
-        logger.debug(`[bunExec] stderr: ${stderr}`);
+        logger.debug({ stderr }, `[bunExec] stderr:`);
       }
     }
 

@@ -88,7 +88,7 @@ const helloWorldAction: Action = {
         },
       };
     } catch (error) {
-      logger.error('Error in HelloWorld action:', error);
+      logger.error({ error }, 'Error in HelloWorld action:');
       return {
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
@@ -244,28 +244,28 @@ export const starterPlugin: Plugin = {
       async (params) => {
         logger.debug('MESSAGE_RECEIVED event received');
         // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug({ keys: Object.keys(params) }, 'MESSAGE_RECEIVED param keys');
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
       async (params) => {
         logger.debug('VOICE_MESSAGE_RECEIVED event received');
         // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug({ keys: Object.keys(params) }, 'VOICE_MESSAGE_RECEIVED param keys');
       },
     ],
     WORLD_CONNECTED: [
       async (params) => {
         logger.debug('WORLD_CONNECTED event received');
         // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug({ keys: Object.keys(params) }, 'WORLD_CONNECTED param keys');
       },
     ],
     WORLD_JOINED: [
       async (params) => {
         logger.debug('WORLD_JOINED event received');
         // print the keys
-        logger.debug(Object.keys(params));
+        logger.debug({ keys: Object.keys(params) }, 'WORLD_JOINED param keys');
       },
     ],
   },

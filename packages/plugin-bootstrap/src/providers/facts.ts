@@ -103,7 +103,7 @@ const factsProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error('Error in factsProvider:', error);
+      logger.error({ error }, 'Error in factsProvider:');
       return {
         values: {
           facts: '',

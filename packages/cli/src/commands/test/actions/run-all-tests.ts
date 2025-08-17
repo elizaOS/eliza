@@ -15,7 +15,12 @@ export async function runAllTests(
 ): Promise<void> {
   // Run component tests first
   const projectInfo = getProjectType(testPath);
-  const componentResult = await runComponentTests(testPath, options, projectInfo);
+  let componentResult = { failed: false };
+  if (!options.skipBuild) {
+    componentResult = await runComponentTests(testPath, options, projectInfo);
+  } else {
+    logger.info('Skipping component tests due to --skip-build option');
+  }
 
   // Run e2e tests
   const e2eResult = await runE2eTests(testPath, options, projectInfo);

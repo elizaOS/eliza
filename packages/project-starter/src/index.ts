@@ -5,7 +5,7 @@ import { ProjectStarterTestSuite } from './__tests__/e2e/project-starter.e2e';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info('Initializing character');
-  logger.info('Name: ', character.name);
+  logger.info({ name: character.name }, 'Name:');
 };
 
 export const projectAgent: ProjectAgent = {

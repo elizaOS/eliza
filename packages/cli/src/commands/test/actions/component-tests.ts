@@ -86,7 +86,7 @@ export async function runComponentTests(
     logger.info('Component tests completed');
     return { failed: !result.success };
   } catch (error) {
-    logger.error('Error running component tests:', error);
+    logger.error({ error }, 'Error running component tests:');
     return { failed: true };
   }
 }

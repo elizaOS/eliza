@@ -190,16 +190,32 @@ export async function processAttachments(
             // Parse XML response
             const parsedXml = parseKeyValueXml(response);
 
-            if (parsedXml?.description && parsedXml?.text) {
-              processedAttachment.description = parsedXml.description;
+            if (parsedXml && (parsedXml.description || parsedXml.text)) {
+              processedAttachment.description = parsedXml.description || '';
               processedAttachment.title = parsedXml.title || 'Image';
-              processedAttachment.text = parsedXml.text;
+              processedAttachment.text = parsedXml.text || parsedXml.description || '';
 
               runtime.logger.debug(
                 `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
               );
             } else {
-              runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+              // Fallback: Try simple regex parsing if parseKeyValueXml fails
+              const responseStr = response as string;
+              const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
+              const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+              const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
+
+              if (titleMatch || descMatch || textMatch) {
+                processedAttachment.title = titleMatch?.[1] || 'Image';
+                processedAttachment.description = descMatch?.[1] || '';
+                processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
+
+                runtime.logger.debug(
+                  `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
+                );
+              } else {
+                runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+              }
             }
           } else if (response && typeof response === 'object' && 'description' in response) {
             // Handle object responses for backwards compatibility
@@ -214,7 +230,7 @@ export async function processAttachments(
             runtime.logger.warn(`[Bootstrap] Unexpected response format for image description`);
           }
         } catch (error) {
-          runtime.logger.error(`[Bootstrap] Error generating image description:`, error);
+          runtime.logger.error({ error }, `[Bootstrap] Error generating image description:`);
           // Continue processing without description
         }
       } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
@@ -241,7 +257,10 @@ export async function processAttachments(
 
       processedAttachments.push(processedAttachment);
     } catch (error) {
-      runtime.logger.error(`[Bootstrap] Failed to process attachment ${attachment.url}:`, error);
+      runtime.logger.error(
+        { error, attachmentUrl: attachment.url },
+        `[Bootstrap] Failed to process attachment ${attachment.url}:`
+      );
       // Add the original attachment if processing fails
       processedAttachments.push(attachment);
     }
@@ -520,7 +539,7 @@ const messageReceivedHandler = async ({
           // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
           const responseObject = parseKeyValueXml(response);
-          runtime.logger.debug('[Bootstrap] Parsed response:', responseObject);
+          runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
 
           // If an action is provided, the agent intends to respond in some way
           // Only exclude explicit non-response actions
@@ -565,11 +584,11 @@ const messageReceivedHandler = async ({
               prompt,
             });
 
-            runtime.logger.debug('[Bootstrap] *** Raw LLM Response ***\n', response);
+            runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
 
             // Attempt to parse the XML response
             const parsedXml = parseKeyValueXml(response);
-            runtime.logger.debug('[Bootstrap] *** Parsed XML Content ***\n', parsedXml);
+            runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
 
             // Map parsed XML to Content type, handling potential missing fields
             if (parsedXml) {
@@ -588,10 +607,8 @@ const messageReceivedHandler = async ({
             retries++;
             if (!responseContent?.thought || !responseContent?.actions) {
               runtime.logger.warn(
-                '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***\n',
-                response,
-                parsedXml,
-                responseContent
+                { response, parsedXml, responseContent },
+                '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
               );
             }
           }
@@ -685,8 +702,8 @@ const messageReceivedHandler = async ({
             // Log provider usage for simple responses
             if (responseContent.providers && responseContent.providers.length > 0) {
               runtime.logger.debug(
-                '[Bootstrap] Simple response used providers',
-                responseContent.providers
+                { providers: responseContent.providers },
+                '[Bootstrap] Simple response used providers'
               );
             }
 
@@ -694,7 +711,7 @@ const messageReceivedHandler = async ({
             await callback(responseContent);
           } else {
             await runtime.processActions(message, responseMessages, state, async (content) => {
-              runtime.logger.debug('action callback', content);
+              runtime.logger.debug({ content }, 'action callback');
               if (responseContent) {
                 responseContent.actionCallbacks = content;
               }
@@ -706,7 +723,7 @@ const messageReceivedHandler = async ({
             state,
             shouldRespond,
             async (content) => {
-              runtime.logger.debug('evaluate callback', content);
+              runtime.logger.debug({ content }, 'evaluate callback');
               if (responseContent) {
                 responseContent.evalCallbacks = content;
               }
@@ -917,7 +934,7 @@ const reactionReceivedHandler = async ({
       runtime.logger.warn('[Bootstrap] Duplicate reaction memory, skipping');
       return;
     }
-    runtime.logger.error('[Bootstrap] Error in reaction handler:', error);
+    runtime.logger.error({ error }, '[Bootstrap] Error in reaction handler:');
   }
 };
 
@@ -949,9 +966,12 @@ const messageDeletedHandler = async ({
       message.roomId
     );
     await runtime.deleteMemory(message.id);
-    runtime.logger.debug('[Bootstrap] Successfully deleted memory for message', message.id);
+    runtime.logger.debug(
+      { messageId: message.id },
+      '[Bootstrap] Successfully deleted memory for message'
+    );
   } catch (error: unknown) {
-    runtime.logger.error('[Bootstrap] Error in message deleted handler:', error);
+    runtime.logger.error({ error }, '[Bootstrap] Error in message deleted handler:');
   }
 };
 
@@ -995,7 +1015,10 @@ const channelClearedHandler = async ({
           await runtime.deleteMemory(memory.id);
           deletedCount++;
         } catch (error) {
-          runtime.logger.warn(`[Bootstrap] Failed to delete message memory ${memory.id}:`, error);
+          runtime.logger.warn(
+            { error, memoryId: memory.id },
+            `[Bootstrap] Failed to delete message memory ${memory.id}:`
+          );
         }
       }
     }
@@ -1004,7 +1027,7 @@ const channelClearedHandler = async ({
       `[Bootstrap] Successfully cleared ${deletedCount}/${memories.length} message memories from channel ${channelId}`
     );
   } catch (error: unknown) {
-    runtime.logger.error('[Bootstrap] Error in channel cleared handler:', error);
+    runtime.logger.error({ error }, '[Bootstrap] Error in channel cleared handler:');
   }
 };
 
@@ -1183,7 +1206,7 @@ const postGeneratedHandler = async ({
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-        runtime.logger.info('[Bootstrap] Already recently posted that, retrying', cleanedText);
+        runtime.logger.info({ cleanedText }, '[Bootstrap] Already recently posted that, retrying');
         postGeneratedHandler({
           runtime,
           callback,
@@ -1214,7 +1237,7 @@ const postGeneratedHandler = async ({
     googleRefusalRegex.test(cleanedText) ||
     generalRefusalRegex.test(cleanedText)
   ) {
-    runtime.logger.info('[Bootstrap] Got prompt moderation refusal, retrying', cleanedText);
+    runtime.logger.info({ cleanedText }, '[Bootstrap] Got prompt moderation refusal, retrying');
     postGeneratedHandler({
       runtime,
       callback,
@@ -1301,14 +1324,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-            ownership: {
-              ownerId: entityId,
-            },
-            roles: {
-              [entityId]: Role.OWNER,
-            },
-            settings: {}, // Initialize empty settings for onboarding
-          }
+          ownership: {
+            ownerId: entityId,
+          },
+          roles: {
+            [entityId]: Role.OWNER,
+          },
+          settings: {}, // Initialize empty settings for onboarding
+        }
         : undefined;
 
     runtime.logger.info(
