@@ -420,7 +420,7 @@
     <!-- Chart.js Library (Embedded) -->
     <script>
         // Chart.js v4.4.1 - Embedded for self-contained report
-        !function (t, e) { "object" == typeof exports && "undefined" != typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define(e) : (t = "undefined" != typeof globalThis ? globalThis : t || self).Chart = e() }(this, function () { "use strict"; var t = Object.freeze({ __proto__: null, linear: function (t) { return t }, easeInQuad: function (t) { return t * t }, easeOutQuad: function (t) { return -t * (t - 2) }, easeInOutQuad: function (t) { return (t /= .5) < 1 ? .5 * t * t : -.5 * (--t * (t - 2) - 1) }, easeInCubic: function (t) { return t * t * t }, easeOutCubic: function (t) { return (t -= 1) * t * t + 1 }, easeInOutCubic: function (t) { return (t /= .5) < 1 ? .5 * t * t * t : .5 * ((t -= 2) * t * t + 2) }, easeInQuart: function (t) { return t * t * t * t }, easeOutQuart: function (t) { return -((t -= 1) * t * t * t - 1) }, easeInOutQuart: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t : -.5 * ((t -= 2) * t * t * t - 2) }, easeInQuint: function (t) { return t * t * t * t * t }, easeOutQuint: function (t) { return (t -= 1) * t * t * t * t + 1 }, easeInOutQuint: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t * t : .5 * ((t -= 2) * t * t * t * t + 2) }, easeInSine: function (t) { return 1 - Math.cos(t * (Math.PI / 2)) }, easeOutSine: function (t) { return Math.sin(t * (Math.PI / 2)) }, easeInOutSine: function (t) { return -.5 * (Math.cos(Math.PI * t) - 1) }, easeInExpo: function (t) { return 0 === t ? 0 : Math.pow(2, 10 * (t - 1)) }, easeOutExpo: function (t) { return 1 === t ? 1 : 1 - Math.pow(2, -10 * t) }, easeInOutExpo: function (t) { return 0 === t ? 0 : 1 === t ? 1 : (t /= .5) < 1 ? .5 * Math.pow(2, 10 * (t - 1)) : .5 * (2 - Math.pow(2, -10 * --t)) }, easeInCirc: function (t) { return t >= 1 ? t : -(Math.sqrt(1 - t * t) - 1) }, easeOutCirc: function (t) { return Math.sqrt(1 - (t -= 1) * t) }, easeInOutCirc: function (t) { return (t /= .5) < 1 ? -.5 * (Math.sqrt(1 - t * t) - 1) : .5 * (Math.sqrt(1 - (t -= 2) * t) + 1) }, easeInElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), -s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i)) }, easeOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), s * Math.pow(2, -10 * t) * Math.sin((t - e) * (2 * Math.PI) / i) + 1) }, easeInOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 2 == (t /= .5) ? 1 : (i || (i = .45), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), t < 1 ? s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * -.5 : s * Math.pow(2, -10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * .5 + 1) }, easeInBack: function (t) { return t * t * (2.70158 * t - 1.70158) }, easeOutBack: function (t) { return (t -= 1) * t * (2.70158 * t + 1.70158) + 1 }, easeInOutBack: function (t) { var e = 1.70158; return (t /= .5) < 1 ? t * t * ((1 + (e *= 1.525)) * t - e) * .5 : .5 * ((t -= 2) * t * ((1 + (e *= 1.525)) * t + e) + 2) }, easeInBounce: function (t) { return 1 - i.easeOutBounce(1 - t) }, easeOutBounce: function (t) { return t < 1 / 2.75 ? 7.5625 * t * t : t < 2 / 2.75 ? 7.5625 * (t -= 1.5 / 2.75) * t + .75 : t < 2.5 / 2.75 ? 7.5625 * (t -= 2.25 / 2.75) * t + .9375 : 7.5625 * (t -= 2.625 / 2.75) * t + .984375 }, easeInOutBounce: function (t) { return t < .5 ? .5 * i.easeInBounce(2 * t) : .5 * i.easeOutBounce(2 * t - 1) + .5 } }), e = { canvas: function (t) { return t && t.getContext && t.getContext("2d") || document.createElement("canvas").getContext("2d") }, currentDevicePixelRatio: function () { return window.devicePixelRatio || 1 }, getRelativePosition: function (t, i) { var s, n, o = t.changedTouches; if (o && o.length > 0) s = o[0], n = o[0]; else { if (t.clientX === undefined) return null; s = t, n = t } var a = i.getBoundingClientRect(); return { x: s.clientX - a.left, y: n.clientY - a.top } }, fontString: function (t, e, i) { return e + " " + t + "px " + i }, clone: function a(t) { var e = {}; for (var i in t) t.hasOwnProperty(i) && (e[i] = "object" == typeof t[i] && null !== t[i] && t[i].constructor === Object ? a(t[i]) : t[i]); return e }, merge: function r(t) { for (var e = Array.prototype.slice.call(arguments, 1), i = 0, s = e.length; i < s; ++i) { var n = e[i]; for (var o in n) n.hasOwnProperty(o) && ("object" == typeof n[o] && null !== n[o] && n[o].constructor === Object && "object" == typeof t[o] && null !== t[o] && t[o].constructor === Object ? r(t[o], n[o]) : t[o] = n[o]) } return t } }; class i { constructor() { this._request = null, this._running = !1, this._lastId = 0 } start(t) { this._running || (this._running = !0, this._request = { id: ++this._lastId, fn: t, ctx: this }, this._request.id === this._lastId && this._run()) } stop() { this._running = !1, this._request = null } _run() { this._running && this._request && (this._request.fn.call(this._request.ctx), this._request = null, this.start(this._request.fn)) } } var s = "undefined" != typeof window ? window : {}; s.addEventListener || (s.addEventListener = function () { }); var n = new i, o = !!s.CanvasRenderingContext2D; function a(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.min.apply(Math, i) } } function r(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.max.apply(Math, i) } } var h = { responsive: !0, plugins: { title: { display: !1 }, legend: { display: !0, position: "top" }, tooltip: { enabled: !0 } } }; function l(t, i) { var s = document.createElement("canvas"); return s.width = i.width || 400, s.height = i.height || 400, t.appendChild(s), s } function c(t, i) { var s = t.getBoundingClientRect(), n = e.getRelativePosition(i, t); return { x: n.x, y: n.y, top: s.top, left: s.left, right: s.right, bottom: s.bottom, width: s.width, height: s.height } } if (!o) return { Chart: function () { throw new Error("Canvas is not available. If you're using a server, please use CanvasJS server renderer.") }, registerables: [] }; var d = function () { function t(t, i) { if (this.platform = new u, this.platform.acquireContext(t, i), !this.platform || !this.platform.isAttached()) throw new Error("Failed to create chart"); this.canvas = this.platform.canvas, this.ctx = this.platform.getContext("2d"), this.width = this.canvas.width, this.height = this.canvas.height, this._options = i || {}, this._type = this._options.type || "line", this._plugins = [], this._listeners = [], this._sortedMetasets = [], this.scales = {}, this._metasets = [], this.data = this._options.data || { labels: [], datasets: [] }, this.initialize() } var i = t.prototype; return i.initialize = function () { var t = this; return this.notifyPlugins("beforeInit"), this._options.responsive && this.platform.updateCanvas(), this.bindEvents(), this.ensureScalesHaveIDs(), this.buildScales(), this.initializeData(), this.buildMetadata(), this.bindTooltip(), this.notifyPlugins("afterInit"), this }, i.bindEvents = function () { var t = this; this._listeners.forEach(function (e) { t.platform.addEventListener(t, e.type, e.listener) }) }, i.buildScales = function () { }, i.initializeData = function () { }, i.buildMetadata = function () { }, i.bindTooltip = function () { }, i.notifyPlugins = function (t, e) { }, i.ensureScalesHaveIDs = function () { }, i.render = function () { this.draw() }, i.draw = function () { var t = this.ctx; t.clearRect(0, 0, this.width, this.height); var e = this.data; if (e.datasets && e.datasets.length > 0) for (var i = 0; i < e.datasets.length; i++)this.drawDataset(e.datasets[i], i) }, i.drawDataset = function (t, i) { var s = this.ctx; if ("pie" === this._type) this.drawPie(); else if ("doughnut" === this._type) this.drawDoughnut(); else if ("bar" === this._type) this.drawBar(); else this.drawLine() }, i.drawLine = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / (s.length - 1), h = r(this), l = Math.abs(this.height / (h - Math.min.apply(Math, o))); t.beginPath(), t.strokeStyle = n.borderColor || "rgba(75,192,192,1)", t.lineWidth = 2; for (var c = 0; c < o.length; c++) { var d = c * a, u = this.height - o[c] * l; 0 === c ? t.moveTo(d, u) : t.lineTo(d, u) } t.stroke() } }, i.drawBar = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / s.length, h = r(this), l = this.height / (h || 1); t.fillStyle = n.backgroundColor || "rgba(54,162,235,0.8)"; for (var c = 0; c < o.length; c++) { var d = c * a, u = o[c] * l; t.fillRect(d, this.height - u, a * .8, u) } } }, i.drawPie = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = 0; t.translate(a, r); for (var c = 0; c < n.length; c++) { var d = n[c] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, l, l + d), t.lineTo(0, 0), t.fillStyle = this.getColor(c), t.fill(), l += d } t.translate(-a, -r) }, i.drawDoughnut = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = h - 20, c = 0; t.translate(a, r); for (var d = 0; d < n.length; d++) { var u = n[d] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, c, c + u), t.arc(0, 0, l, c + u, c, !0), t.closePath(), t.fillStyle = this.getColor(d), t.fill(), c += u } t.translate(-a, -r) }, i.getColor = function (t) { return ["rgba(255,99,132,0.8)", "rgba(54,162,235,0.8)", "rgba(255,205,86,0.8)", "rgba(75,192,192,0.8)", "rgba(153,102,255,0.8)", "rgba(255,159,64,0.8)"][t % 6] }, i.update = function () { this.draw() }, i.destroy = function () { this.platform && this.platform.releaseContext(this) }, t }(); class u { acquireContext(t, e) { return "string" == typeof t && (t = document.getElementById(t)), t && t.getContext ? t.getContext("2d") : null } releaseContext(t) { } updateCanvas(t) { } addEventListener(t, e, i) { } removeEventListener(t, e, i) { } isAttached(t) { return !0 } } return d.helpers = e, d.defaults = h, d.registerables = [], d });
+        !function (t, e) { "object" == typeof exports && "undefined" != typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define(e) : (t = "undefined" != typeof globalThis ? globalThis : t || self).Chart = e() }(this, function () { "use strict"; var t = Object.freeze({ __proto__: null, linear: function (t) { return t }, easeInQuad: function (t) { return t * t }, easeOutQuad: function (t) { return -t * (t - 2) }, easeInOutQuad: function (t) { return (t /= .5) < 1 ? .5 * t * t : -.5 * (--t * (t - 2) - 1) }, easeInCubic: function (t) { return t * t * t }, easeOutCubic: function (t) { return (t -= 1) * t * t + 1 }, easeInOutCubic: function (t) { return (t /= .5) < 1 ? .5 * t * t * t : .5 * ((t -= 2) * t * t + 2) }, easeInQuart: function (t) { return t * t * t * t }, easeOutQuart: function (t) { return -((t -= 1) * t * t * t - 1) }, easeInOutQuart: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t : -.5 * ((t -= 2) * t * t * t - 2) }, easeInQuint: function (t) { return t * t * t * t * t }, easeOutQuint: function (t) { return (t -= 1) * t * t * t * t + 1 }, easeInOutQuint: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t * t : .5 * ((t -= 2) * t * t * t * t + 2) }, easeInSine: function (t) { return 1 - Math.cos(t * (Math.PI / 2)) }, easeOutSine: function (t) { return Math.sin(t * (Math.PI / 2)) }, easeInOutSine: function (t) { return -.5 * (Math.cos(Math.PI * t) - 1) }, easeInExpo: function (t) { return 0 === t ? 0 : Math.pow(2, 10 * (t - 1)) }, easeOutExpo: function (t) { return 1 === t ? 1 : 1 - Math.pow(2, -10 * t) }, easeInOutExpo: function (t) { return 0 === t ? 0 : 1 === t ? 1 : (t /= .5) < 1 ? .5 * Math.pow(2, 10 * (t - 1)) : .5 * (2 - Math.pow(2, -10 * --t)) }, easeInCirc: function (t) { return t >= 1 ? t : -(Math.sqrt(1 - t * t) - 1) }, easeOutCirc: function (t) { return Math.sqrt(1 - (t -= 1) * t) }, easeInOutCirc: function (t) { return (t /= .5) < 1 ? -.5 * (Math.sqrt(1 - t * t) - 1) : .5 * (Math.sqrt(1 - (t -= 2) * t) + 1) }, easeInElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), -s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i)) }, easeOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), s * Math.pow(2, -10 * t) * Math.sin((t - e) * (2 * Math.PI) / i) + 1) }, easeInOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 2 == (t /= .5) ? 1 : (i || (i = .45), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), t < 1 ? s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * -.5 : s * Math.pow(2, -10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * .5 + 1) }, easeInBack: function (t) { return t * t * (2.70158 * t - 1.70158) }, easeOutBack: function (t) { return (t -= 1) * t * (2.70158 * t + 1.70158) + 1 }, easeInOutBack: function (t) { var e = 1.70158; return (t /= .5) < 1 ? t * t * ((1 + (e *= 1.525)) * t - e) * .5 : .5 * ((t -= 2) * t * ((1 + (e *= 1.525)) * t + e) + 2) }, easeInBounce: function (t) { return 1 - i.easeOutBounce(1 - t) }, easeOutBounce: function (t) { return t < 1 / 2.75 ? 7.5625 * t * t : t < 2 / 2.75 ? 7.5625 * (t -= 1.5 / 2.75) * t + .75 : t < 2.5 / 2.75 ? 7.5625 * (t -= 2.25 / 2.75) * t + .9375 : 7.5625 * (t -= 2.625 / 2.75) * t + .984375 }, easeInOutBounce: function (t) { return t < .5 ? .5 * i.easeInBounce(2 * t) : .5 * i.easeOutBounce(2 * t - 1) + .5 } }), e = { canvas: function (t) { return t && t.getContext && t.getContext("2d") || document.createElement("canvas").getContext("2d") }, currentDevicePixelRatio: function () { return window.devicePixelRatio || 1 }, getRelativePosition: function (t, i) { var s, n, o = t.changedTouches; if (o && o.length > 0) s = o[0], n = o[0]; else { if (t.clientX === undefined) return null; s = t, n = t } var a = i.getBoundingClientRect(); return { x: s.clientX - a.left, y: n.clientY - a.top } }, fontString: function (t, e, i) { return e + " " + t + "px " + i }, clone: function a(t) { var e = {}; for (var i in t) t.hasOwnProperty(i) && (e[i] = "object" == typeof t[i] && null !== t[i] && t[i].constructor === Object ? a(t[i]) : t[i]); return e }, merge: function r(t) { for (var e = Array.prototype.slice.call(arguments, 1), i = 0, s = e.length; i < s; ++i) { var n = e[i]; for (var o in n) n.hasOwnProperty(o) && ("object" == typeof n[o] && null !== n[o] && n[o].constructor === Object && "object" == typeof t[o] && null !== t[o] && t[o].constructor === Object ? r(t[o], n[o]) : t[o] = n[o]) } return t } }; class i { constructor() { this._request = null, this._running = !1, this._lastId = 0 } start(t) { this._running || (this._running = !0, this._request = { id: ++this._lastId, fn: t, ctx: this }, this._request.id === this._lastId && this._run()) } stop() { this._running = !1, this._request = null } _run() { this._running && this._request && (this._request.fn.call(this._request.ctx), this._request = null, this.start(this._request.fn)) } } var s = "undefined" != typeof window ? window : {}; s.addEventListener || (s.addEventListener = function () { }); var n = new i, o = !!s.CanvasRenderingContext2D; function a(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.min.apply(Math, i) } } function r(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.max.apply(Math, i) } } var h = { responsive: !0, plugins: { title: { display: !1 }, legend: { display: !0, position: "top" }, tooltip: { enabled: !0 } } }; function l(t, i) { var s = document.createElement("canvas"); return s.width = i.width || 400, s.height = i.height || 400, t.appendChild(s), s } function c(t, i) { var s = t.getBoundingClientRect(), n = e.getRelativePosition(i, t); return { x: n.x, y: n.y, top: s.top, left: s.left, right: s.right, bottom: s.bottom, width: s.width, height: s.height } } if (!o) return { Chart: function () { throw new Error("Canvas is not available. If you're using a server, please use CanvasJS server renderer.") }, registerables: [] }; var d = function () { function t(t, i) { if (this.platform = new u, this.platform.acquireContext(t, i), !this.platform || !this.platform.isAttached()) throw new Error("Failed to create chart"); this.canvas = this.platform.canvas, this.ctx = this.platform.getContext("2d"), this.width = this.canvas.width, this.height = this.canvas.height, this._options = i || {}, this._type = this._options.type || "line", this._plugins = [], this._listeners = [], this._sortedMetasets = [], this.scales = {}, this._metasets = [], this.data = this._options.data || { labels: [], datasets: [] }, this.initialize() } var i = t.prototype; return i.initialize = function () { var t = this; return this.notifyPlugins("beforeInit"), this._options.responsive && this.platform.updateCanvas(), this.bindEvents(), this.ensureScalesHaveIDs(), this.buildScales(), this.initializeData(), this.buildMetadata(), this.bindTooltip(), this.notifyPlugins("afterInit"), this }, i.bindEvents = function () { var t = this; this._listeners.forEach(function (e) { t.platform.addEventListener(t, e.type, e.listener) }) }, i.buildScales = function () { }, i.initializeData = function () { }, i.buildMetadata = function () { }, i.bindTooltip = function () { }, i.notifyPlugins = function (t, e) { }, i.ensureScalesHaveIDs = function () { }, i.render = function () { this.draw() }, i.draw = function () { var t = this.ctx; t.clearRect(0, 0, this.width, this.height); var e = this.data; if (e.datasets && e.datasets.length > 0) for (var i = 0; i < e.datasets.length; i++)this.drawDataset(e.datasets[i], i) }, i.drawDataset = function (t, i) { var s = this.ctx; if ("pie" === this._type) this.drawPie(); else if ("doughnut" === this._type) this.drawDoughnut(); else if ("bar" === this._type) this.drawBar(); else this.drawLine() }, i.drawLine = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / (s.length - 1), h = r(this), l = Math.abs(this.height / (h - Math.min.apply(Math, o))); t.beginPath(), t.strokeStyle = n.borderColor || "rgba(75,192,192,1)", t.lineWidth = 2; for (var c = 0; c < o.length; c++) { var d = c * a, u = this.height - o[c] * l; 0 === c ? t.moveTo(d, u) : t.lineTo(d, u) } t.stroke() } }, i.drawBar = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / s.length, h = r(this), l = this.height / (h || 1); t.fillStyle = n.backgroundColor || "rgba(54,162,235,0.8)"; for (var c = 0; c < o.length; c++) { var d = c * a, u = o[c] * l; t.fillRect(d, this.height - u, a * .8, u) } } }, i.drawPie = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = 0; t.translate(a, r); for (var c = 0; c < n.length; c++) { var d = n[c] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, l, l + d), t.lineTo(0, 0), t.fillStyle = this.getColor(c), t.fill(), l += d } t.translate(-a, -r) }, i.drawDoughnut = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = h - 20, c = 0; t.translate(a, r); for (var d = 0; d < n.length; d++) { var u = n[d] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, c, c + u), t.arc(0, 0, l, c + u, c, !0), t.closePath(), t.fillStyle = this.getColor(d), t.fill(), c += u } t.translate(-a, -r) }, i.getColor = function (t) { return ["rgba(255,99,132,0.8)", "rgba(54,162,235,0.8)", "rgba(255,205,86,0.8)", "rgba(75,192,192,0.8)", "rgba(153,102,255,0.8)", "rgba(255,159,64,0.8)"][t % 6] }, i.update = function () { this.draw() }, i.destroy = function () { this.platform && this.platform.releaseContext(this) }, t }(); class u { constructor() { this.canvas = null; this.context = null; } acquireContext(t, e) { const canvas = "string" == typeof t ? document.getElementById(t) : t; if (canvas && canvas.getContext) { this.canvas = canvas; this.context = canvas.getContext("2d"); return this.context; } return null; } getContext() { return this.context; } releaseContext(t) { this.canvas = null; this.context = null; } updateCanvas(t) { } addEventListener(t, e, i) { } removeEventListener(t, e, i) { } isAttached(t) { return !0 } } return d.helpers = e, d.defaults = h, d.registerables = [], d });
         // Simplified Chart.js interface for our needs
         window.Chart = window.Chart || {};
     </script>
@@ -429,28 +429,36 @@
     <script>
         // Main rendering function
         function renderReport(data) {
+            console.log('🚀 renderReport called with data:', data);
             try {
                 // Render metadata and header
+                console.log('📋 Rendering header...');
                 renderReportHeader(data.metadata);
 
                 // Render summary statistics
+                console.log('📊 Rendering summary stats...');
                 renderSummaryStats(data.summary_stats);
 
                 // Render capability analysis
+                console.log('🎯 Rendering capability analysis...');
+                console.log('Capability rates:', data.summary_stats.capability_success_rates);
                 renderCapabilityAnalysis(data.summary_stats.capability_success_rates);
 
                 // Render parameter results
+                console.log('⚙️ Rendering parameter results...');
                 renderParameterResults(data.results_by_parameter);
 
                 // Render trajectory analysis
+                console.log('🔄 Rendering trajectory analysis...');
                 renderTrajectoryAnalysis(data.common_trajectories);
 
                 // Render detailed runs
+                console.log('📄 Rendering detailed runs...');
                 renderDetailedRuns(data.raw_results);
 
-                console.log('Report rendered successfully');
+                console.log('✅ Report rendered successfully');
             } catch (error) {
-                console.error('Error rendering report:', error);
+                console.error('❌ Error rendering report:', error);
                 showError('Failed to render report: ' + error.message);
             }
         }
@@ -586,8 +594,21 @@
                 return;
             }
 
+            // Store original data for sorting/filtering
+            window.runData = rawResults;
+
+            // Add search functionality
+            addTableSearch();
+
+            // Render initial table
+            renderRunsTable(rawResults);
+        }
+
+        function renderRunsTable(runs) {
+            const tbody = document.getElementById('detailed-runs-tbody');
+
             let html = '';
-            rawResults.forEach(run => {
+            runs.forEach((run, index) => {
                 const status = run.error ? 'error' : 'success';
                 const statusText = run.error ? 'Failed' : 'Success';
                 const executionTime = run.metrics.execution_time_seconds.toFixed(2);
@@ -601,13 +622,13 @@
                     .join(', ');
 
                 html += `
-                    <tr>
+                    <tr data-index="${index}">
                         <td><code>${run.run_id}</code></td>
                         <td><span class="status ${status}">${statusText}</span></td>
                         <td title="${params}">${params.length > 50 ? params.substring(0, 50) + '...' : params}</td>
-                        <td>${executionTime}s</td>
-                        <td>${tokens}</td>
-                        <td>${successfulEvals}/${evaluationCount} passed</td>
+                        <td data-sort="${run.metrics.execution_time_seconds}">${executionTime}s</td>
+                        <td data-sort="${tokens}">${tokens}</td>
+                        <td data-sort="${successfulEvals / evaluationCount}">${successfulEvals}/${evaluationCount} passed</td>
                     </tr>
                 `;
             });
@@ -615,44 +636,334 @@
             tbody.innerHTML = html;
         }
 
-        // Chart rendering functions (simplified for demo)
-        function renderCapabilityChart(capabilityRates) {
-            const canvas = document.getElementById('capability-chart');
-            if (!canvas || Object.keys(capabilityRates).length === 0) return;
+        function addTableSearch() {
+            // Add search box if it doesn't exist
+            const searchContainer = document.createElement('div');
+            searchContainer.id = 'table-search-container';
+            searchContainer.style.cssText = 'margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;';
+            searchContainer.innerHTML = `
+                <div>
+                    <input type="text" id="table-search" placeholder="Search runs..." 
+                           style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; width: 250px;">
+                    <button id="clear-search" style="margin-left: 0.5rem; padding: 0.5rem 1rem; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer;">Clear</button>
+                </div>
+                <div>
+                    <label for="sort-by">Sort by: </label>
+                    <select id="sort-by" style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; margin-left: 0.5rem;">
+                        <option value="">Default</option>
+                        <option value="status">Status</option>
+                        <option value="time">Execution Time</option>
+                        <option value="tokens">Tokens</option>
+                        <option value="success-rate">Success Rate</option>
+                    </select>
+                    <select id="sort-order" style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; margin-left: 0.5rem;">
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                    </select>
+                </div>
+            `;
 
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#6b7280';
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('Capability Success Rates Chart', canvas.width / 2, canvas.height / 2);
-            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+            // Insert before the table
+            const tableContainer = document.querySelector('.table-container');
+            if (tableContainer && !document.getElementById('table-search-container')) {
+                tableContainer.parentNode.insertBefore(searchContainer, tableContainer);
+
+                // Add event listeners
+                document.getElementById('table-search').addEventListener('input', filterTable);
+                document.getElementById('clear-search').addEventListener('click', clearSearch);
+                document.getElementById('sort-by').addEventListener('change', sortTable);
+                document.getElementById('sort-order').addEventListener('change', sortTable);
+            }
+        }
+
+        function filterTable() {
+            const searchTerm = document.getElementById('table-search').value.toLowerCase();
+            const filteredRuns = window.runData.filter(run => {
+                const searchText = [
+                    run.run_id,
+                    run.error ? 'failed' : 'success',
+                    Object.entries(run.parameters).map(([k, v]) => `${k}: ${v}`).join(' '),
+                    run.metrics.execution_time_seconds.toString(),
+                    run.metrics.total_tokens.toString()
+                ].join(' ').toLowerCase();
+
+                return searchText.includes(searchTerm);
+            });
+
+            renderRunsTable(filteredRuns);
+        }
+
+        function clearSearch() {
+            document.getElementById('table-search').value = '';
+            document.getElementById('sort-by').value = '';
+            renderRunsTable(window.runData);
+        }
+
+        function sortTable() {
+            const sortBy = document.getElementById('sort-by').value;
+            const sortOrder = document.getElementById('sort-order').value;
+
+            if (!sortBy) {
+                renderRunsTable(window.runData);
+                return;
+            }
+
+            const sortedRuns = [...window.runData].sort((a, b) => {
+                let aVal, bVal;
+
+                switch (sortBy) {
+                    case 'status':
+                        aVal = a.error ? 0 : 1;
+                        bVal = b.error ? 0 : 1;
+                        break;
+                    case 'time':
+                        aVal = a.metrics.execution_time_seconds;
+                        bVal = b.metrics.execution_time_seconds;
+                        break;
+                    case 'tokens':
+                        aVal = a.metrics.total_tokens;
+                        bVal = b.metrics.total_tokens;
+                        break;
+                    case 'success-rate':
+                        aVal = a.evaluations.filter(e => e.success).length / a.evaluations.length;
+                        bVal = b.evaluations.filter(e => e.success).length / b.evaluations.length;
+                        break;
+                    default:
+                        return 0;
+                }
+
+                if (sortOrder === 'desc') {
+                    return bVal - aVal;
+                } else {
+                    return aVal - bVal;
+                }
+            });
+
+            renderRunsTable(sortedRuns);
+        }
+
+        // Simplified Chart.js integration functions
+        function renderCapabilityChart(capabilityRates) {
+            console.log('🎯 renderCapabilityChart called with:', capabilityRates);
+
+            const canvas = document.getElementById('capability-chart');
+            if (!canvas) {
+                console.error('❌ Canvas element capability-chart not found');
+                return;
+            }
+
+            if (Object.keys(capabilityRates).length === 0) {
+                console.log('⚠️ No capability rates data, skipping chart');
+                return;
+            }
+
+            const capabilities = Object.keys(capabilityRates);
+            const successRates = Object.values(capabilityRates).map(rate => (rate * 100));
+
+            console.log('📊 Rendering capability chart with:', { capabilities, successRates });
+
+            // Skip Chart.js and use our custom drawing directly
+            console.log('🎨 Using custom chart drawing (Chart.js is non-functional)');
+            try {
+                drawSimpleBarChart(canvas, capabilities, successRates, 'Capability Success Rates');
+                console.log('✅ Custom capability chart successful');
+            } catch (fallbackError) {
+                console.error('❌ Custom chart failed:', fallbackError.message);
+                // Ultra-simple fallback - just draw text
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#333';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Chart Error - See Console', canvas.width / 2, canvas.height / 2);
+                ctx.fillText(`Data: ${capabilities.join(', ')}`, canvas.width / 2, canvas.height / 2 + 20);
+            }
         }
 
         function renderParameterChart(parameterResults) {
-            const canvas = document.getElementById('parameter-chart');
-            if (!canvas) return;
+            console.log('⚙️ renderParameterChart called with:', parameterResults);
 
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#6b7280';
-            ctx.font = '16px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('Parameter Performance Comparison', canvas.width / 2, canvas.height / 2);
-            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+            const canvas = document.getElementById('parameter-chart');
+            if (!canvas) {
+                console.error('❌ Canvas element parameter-chart not found');
+                return;
+            }
+
+            if (Object.keys(parameterResults).length === 0) {
+                console.log('⚠️ No parameter results data, skipping chart');
+                return;
+            }
+
+            // Get the first parameter for demonstration
+            const parameterNames = Object.keys(parameterResults);
+            const firstParam = parameterNames[0];
+            const paramData = parameterResults[firstParam];
+
+            const labels = Object.keys(paramData);
+            const successRates = labels.map(label => (paramData[label].overall_success_rate * 100));
+
+            console.log('📊 Rendering parameter chart with:', { firstParam, labels, successRates });
+
+            // Use custom drawing directly
+            try {
+                drawSimpleBarChart(canvas, labels, successRates, `Performance by ${firstParam}`);
+                console.log('✅ Custom parameter chart successful');
+            } catch (error) {
+                console.error('❌ Custom parameter chart failed:', error.message);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#333';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Parameter Chart Error', canvas.width / 2, canvas.height / 2);
+            }
         }
 
         function renderTrajectoryChart(trajectories) {
-            const canvas = document.getElementById('trajectory-chart');
-            if (!canvas) return;
+            console.log('🔄 renderTrajectoryChart called with:', trajectories);
 
+            const canvas = document.getElementById('trajectory-chart');
+            if (!canvas) {
+                console.error('❌ Canvas element trajectory-chart not found');
+                return;
+            }
+
+            if (trajectories.length === 0) {
+                console.log('⚠️ No trajectory data, skipping chart');
+                return;
+            }
+
+            const counts = trajectories.map(traj => traj.count);
+            const labels = trajectories.map((traj, index) => `Pattern ${index + 1}`);
+
+            console.log('📊 Rendering trajectory chart with:', { labels, counts });
+
+            // Use custom drawing directly
+            try {
+                drawSimplePieChart(canvas, labels, counts, 'Trajectory Patterns');
+                console.log('✅ Custom trajectory chart successful');
+            } catch (error) {
+                console.error('❌ Custom trajectory chart failed:', error.message);
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#333';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Trajectory Chart Error', canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        // Fallback canvas drawing functions
+        function drawSimpleBarChart(canvas, labels, data, title) {
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#6b7280';
-            ctx.font = '16px sans-serif';
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw title
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('Common Trajectory Patterns', canvas.width / 2, canvas.height / 2);
-            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+            ctx.fillText(title, width / 2, 30);
+
+            // Chart area
+            const chartTop = 50;
+            const chartBottom = height - 80;
+            const chartLeft = 80;
+            const chartRight = width - 40;
+            const chartHeight = chartBottom - chartTop;
+            const chartWidth = chartRight - chartLeft;
+
+            // Find max value for scaling
+            const maxValue = Math.max(...data);
+            const scale = chartHeight / (maxValue * 1.1); // 10% padding
+
+            // Draw bars
+            const barWidth = chartWidth / labels.length * 0.8;
+            const barSpacing = chartWidth / labels.length;
+
+            data.forEach((value, index) => {
+                const barHeight = value * scale;
+                const x = chartLeft + index * barSpacing + barSpacing * 0.1;
+                const y = chartBottom - barHeight;
+
+                // Draw bar
+                ctx.fillStyle = `hsl(${index * 60}, 70%, 50%)`;
+                ctx.fillRect(x, y, barWidth, barHeight);
+
+                // Draw value on top
+                ctx.fillStyle = '#333';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(value.toFixed(1), x + barWidth / 2, y - 5);
+
+                // Draw label
+                ctx.save();
+                ctx.translate(x + barWidth / 2, chartBottom + 15);
+                ctx.rotate(-Math.PI / 4);
+                ctx.textAlign = 'right';
+                ctx.fillText(labels[index], 0, 0);
+                ctx.restore();
+            });
+
+            // Draw axes
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(chartLeft, chartTop);
+            ctx.lineTo(chartLeft, chartBottom);
+            ctx.lineTo(chartRight, chartBottom);
+            ctx.stroke();
+        }
+
+        function drawSimplePieChart(canvas, labels, data, title) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw title
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(title, width / 2, 30);
+
+            // Chart area
+            const centerX = width / 2;
+            const centerY = height / 2 + 10;
+            const radius = Math.min(width, height) / 3;
+
+            const total = data.reduce((sum, value) => sum + value, 0);
+
+            let currentAngle = -Math.PI / 2; // Start at top
+
+            data.forEach((value, index) => {
+                const sliceAngle = (value / total) * 2 * Math.PI;
+
+                // Draw slice
+                ctx.fillStyle = `hsl(${index * 60}, 70%, 60%)`;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, currentAngle, currentAngle + sliceAngle);
+                ctx.closePath();
+                ctx.fill();
+
+                // Draw label
+                const labelAngle = currentAngle + sliceAngle / 2;
+                const labelX = centerX + Math.cos(labelAngle) * (radius + 30);
+                const labelY = centerY + Math.sin(labelAngle) * (radius + 30);
+
+                ctx.fillStyle = '#333';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${labels[index]} (${value})`, labelX, labelY);
+
+                currentAngle += sliceAngle;
+            });
         }
 
         function showError(message) {
