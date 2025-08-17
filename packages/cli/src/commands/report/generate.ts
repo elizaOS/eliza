@@ -15,6 +15,7 @@ import { AnalysisEngine } from './src/analysis-engine';
 import { ScenarioRunResult, ScenarioRunResultSchema } from '../scenario/src/schema';
 import { MatrixConfig } from '../scenario/src/matrix-schema';
 import { ReportData, ReportDataSchema } from './src/report-schema';
+import { generatePerformanceReportPdf } from './src/pdf-generator';
 
 export interface GenerateCommandOptions {
   outputPath?: string;
@@ -44,7 +45,7 @@ export function createGenerateCommand(): Command {
     )
     .option(
       '--format <format>',
-      'Output format: json or html (default: json)',
+      'Output format: json, html, or pdf (default: json)',
       'json'
     )
     .action(async (inputDir: string, options: GenerateCommandOptions) => {
@@ -106,7 +107,8 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
 
   // Determine output path and format
   const format = options.format || 'json';
-  const defaultFileName = format === 'html' ? 'report.html' : 'report.json';
+  const defaultFileName = format === 'html' ? 'report.html' :
+    format === 'pdf' ? 'report.pdf' : 'report.json';
   const outputPath = options.outputPath || join(resolvedInputDir, defaultFileName);
   const resolvedOutputPath = resolve(outputPath);
 
@@ -118,8 +120,10 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
     await generateHtmlReport(reportData, resolvedOutputPath);
   } else if (format === 'json') {
     await generateJsonReport(reportData, resolvedOutputPath);
+  } else if (format === 'pdf') {
+    await generatePdfReport(reportData, resolvedOutputPath);
   } else {
-    throw new Error(`Unsupported format: ${format}. Supported formats: json, html`);
+    throw new Error(`Unsupported format: ${format}. Supported formats: json, html, pdf`);
   }
 
   console.log(`✅ Report generated successfully:`);
@@ -305,7 +309,7 @@ async function generateJsonReport(reportData: ReportData, outputPath: string): P
  */
 async function generateHtmlReport(reportData: ReportData, outputPath: string): Promise<void> {
   // Load the HTML template
-  const templatePath = join(__dirname, 'src', 'assets', 'report_template.html');
+  const templatePath = join(process.cwd(), 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
 
   try {
     const templateContent = await fs.readFile(templatePath, 'utf-8');
@@ -321,5 +325,43 @@ async function generateHtmlReport(reportData: ReportData, outputPath: string): P
 
   } catch (error) {
     throw new Error(`Failed to generate HTML report: ${(error as Error).message}. Make sure the HTML template exists at ${templatePath}`);
+  }
+}
+
+/**
+ * Generate PDF report file by first creating HTML then converting to PDF
+ */
+async function generatePdfReport(reportData: ReportData, outputPath: string): Promise<void> {
+  console.log('📋 Generating PDF report...');
+
+  try {
+    // First generate the HTML content (same as HTML report)
+    const templatePath = join(process.cwd(), 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+    const templateContent = await fs.readFile(templatePath, 'utf-8');
+
+    // Inject the real data into the template
+    const htmlContent = templateContent.replace(
+      '<script id="report-data" type="application/json">\n        {}\n    </script>',
+      `<script id="report-data" type="application/json">\n        ${JSON.stringify(reportData, null, 2)}\n    </script>`
+    );
+
+    console.log('🔄 Converting HTML to PDF using Puppeteer...');
+
+    // Use our PDF generator to convert HTML to PDF
+    await generatePerformanceReportPdf(htmlContent, outputPath);
+
+    console.log('✅ PDF report generated successfully');
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    // Provide helpful error messages for common issues
+    if (errorMessage.includes('Could not find Chromium')) {
+      throw new Error('PDF generation failed: Chromium browser not found. Please install Puppeteer dependencies or use --format html instead.');
+    } else if (errorMessage.includes('Navigation timeout')) {
+      throw new Error('PDF generation failed: Timeout while loading report. The report may be too large or complex.');
+    } else {
+      throw new Error(`Failed to generate PDF report: ${errorMessage}`);
+    }
   }
 }

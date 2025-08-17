@@ -72,6 +72,7 @@
     "esbuild-plugin-copy": "^2.1.1",
     "node-html-parser": "^7.0.1",
     "prettier": "3.5.3",
+    "puppeteer": "^22.15.0",
     "tsup": "8.5.0",
     "typescript": "5.8.3",
     "vite": "^6.3.5"

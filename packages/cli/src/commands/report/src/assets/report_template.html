@@ -322,6 +322,208 @@
         .hidden {
             display: none;
         }
+
+        /* Print-specific styles for PDF generation */
+        @media print {
+
+            /* Optimize page layout for printing */
+            body {
+                font-size: 10pt;
+                line-height: 1.4;
+                margin: 0;
+                padding: 10px;
+                background: white !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                max-width: 100% !important;
+            }
+
+            /* Optimize typography for print */
+            h1 {
+                font-size: 18pt;
+                margin-bottom: 8pt;
+                page-break-after: avoid;
+            }
+
+            h2 {
+                font-size: 14pt;
+                margin: 12pt 0 6pt 0;
+                page-break-after: avoid;
+            }
+
+            h3 {
+                font-size: 12pt;
+                margin: 8pt 0 4pt 0;
+                page-break-after: avoid;
+            }
+
+            /* Hide interactive elements in print */
+            .no-print,
+            .interactive-controls,
+            #table-search-container,
+            button,
+            input[type="text"],
+            select {
+                display: none !important;
+            }
+
+            /* Optimize sections for page breaks */
+            .section {
+                page-break-inside: avoid;
+                margin-bottom: 16pt;
+            }
+
+            /* Chart containers - ensure they don't break across pages */
+            .chart-container {
+                page-break-inside: avoid;
+                margin-bottom: 12pt;
+                background: white !important;
+                box-shadow: none !important;
+                border: 1px solid #ddd;
+            }
+
+            .chart-container canvas {
+                page-break-inside: avoid;
+                max-width: 100% !important;
+                height: auto !important;
+            }
+
+            /* Summary cards - optimize for print */
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 8pt;
+                margin-bottom: 12pt;
+            }
+
+            .summary-card {
+                background: #f5f5f5 !important;
+                color: #333 !important;
+                border: 1px solid #ddd;
+                page-break-inside: avoid;
+            }
+
+            /* Data tables - optimize for print readability */
+            .table-container {
+                page-break-inside: avoid;
+                overflow: visible !important;
+                background: white !important;
+                box-shadow: none !important;
+                border: 1px solid #ddd;
+            }
+
+            table {
+                font-size: 8pt;
+                width: 100% !important;
+            }
+
+            th {
+                background: #f0f0f0 !important;
+                color: #333 !important;
+                font-size: 8pt;
+                padding: 4pt;
+                border: 1px solid #ddd;
+            }
+
+            td {
+                padding: 3pt;
+                font-size: 8pt;
+                border: 1px solid #eee;
+                page-break-inside: avoid;
+            }
+
+            /* Parameter groups */
+            .parameter-group {
+                page-break-inside: avoid;
+                background: #f8f8f8 !important;
+                border: 1px solid #ddd;
+                margin-bottom: 8pt;
+            }
+
+            .parameter-values {
+                grid-template-columns: 1fr !important;
+                gap: 4pt;
+            }
+
+            .parameter-value-card {
+                background: white !important;
+                border: 1px solid #ddd;
+                page-break-inside: avoid;
+            }
+
+            /* Trajectory items */
+            .trajectory-item {
+                page-break-inside: avoid;
+                background: white !important;
+                border: 1px solid #ddd;
+                margin-bottom: 6pt;
+            }
+
+            /* Status indicators - ensure they're readable in print */
+            .status {
+                color: #333 !important;
+                background: #f0f0f0 !important;
+                border: 1px solid #ccc;
+            }
+
+            .status.success {
+                background: #e8f5e8 !important;
+                color: #2d5a2d !important;
+            }
+
+            .status.error {
+                background: #ffe8e8 !important;
+                color: #5a2d2d !important;
+            }
+
+            .status.warning {
+                background: #fff8e8 !important;
+                color: #5a4d2d !important;
+            }
+
+            /* Reduce margins for print efficiency */
+            .metadata {
+                flex-direction: row !important;
+                font-size: 9pt;
+                gap: 12pt;
+                margin-bottom: 12pt;
+            }
+
+            /* Ensure links are visible in print */
+            a {
+                color: #333 !important;
+                text-decoration: underline;
+            }
+
+            /* Page break controls */
+            .page-break-before {
+                page-break-before: always;
+            }
+
+            .page-break-after {
+                page-break-after: always;
+            }
+
+            .page-break-avoid {
+                page-break-inside: avoid;
+            }
+
+            /* Disable shadows and rounded corners for print */
+            * {
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+
+            /* Ensure adequate contrast for printing */
+            .text-muted {
+                color: #666 !important;
+            }
+
+            /* Charts: disable animations and ensure static rendering */
+            canvas {
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+        }
     </style>
 </head>
 
