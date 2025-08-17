@@ -79,7 +79,7 @@
   ],
   "dependencies": {
     "@elizaos/plugin-coinbase": "^1.0.2",
-    "@elizaos/plugin-e2b": "^1.2.0",
+    "@elizaos/plugin-e2b": "1.2.0",
     "@elizaos/plugin-openai": "^1.0.9",
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.0",

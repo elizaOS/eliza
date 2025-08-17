@@ -185,3 +185,93 @@ export type Scenario = z.infer<typeof ScenarioSchema>;
 export type Evaluation = z.infer<typeof EvaluationSchema>;
 export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 export type PluginReference = z.infer<typeof PluginReferenceSchema>;
+
+// NEW: Centralized Run Data Interfaces for Ticket #5786
+
+/**
+ * Trajectory step interface (matches GitHub ticket #5785 specification)
+ */
+export interface TrajectoryStep {
+  /** Step type: 'thought', 'action', or 'observation' */
+  type: 'thought' | 'action' | 'observation';
+
+  /** ISO timestamp string */
+  timestamp: string;
+
+  /** Step content based on type */
+  content: string | {
+    name: string;
+    parameters: Record<string, any>;
+  } | any;
+}
+
+/**
+ * Performance and resource metrics for a scenario run
+ */
+export interface ScenarioRunMetrics {
+  /** Total execution time in seconds */
+  execution_time_seconds: number;
+
+  /** Number of LLM API calls made during the run */
+  llm_calls: number;
+
+  /** Total tokens consumed (input + output) */
+  total_tokens: number;
+
+  /** Additional custom metrics */
+  [key: string]: number;
+}
+
+/**
+ * Comprehensive result structure for a single scenario run.
+ * This is the master interface for ticket #5786 that consolidates
+ * all data from a scenario execution into a structured JSON output.
+ */
+export interface ScenarioRunResult {
+  /** Unique identifier for this specific run */
+  run_id: string;
+
+  /** Identifier linking this run to a specific matrix combination */
+  matrix_combination_id: string;
+
+  /** The specific parameter values used for this run */
+  parameters: Record<string, any>;
+
+  /** Performance and resource metrics collected during execution */
+  metrics: ScenarioRunMetrics;
+
+  /** The final text/object response from the agent to the user */
+  final_agent_response?: string;
+
+  /** Array of structured evaluation results from the EvaluationEngine */
+  evaluations: EnhancedEvaluationResult[];
+
+  /** Array of trajectory steps showing the agent's cognitive process */
+  trajectory: TrajectoryStep[];
+
+  /** Error message if the run failed unexpectedly (null for successful runs) */
+  error: string | null;
+}
+
+// Zod schema for validation of ScenarioRunResult
+export const ScenarioRunResultSchema = z.object({
+  run_id: z.string().min(1, 'Run ID cannot be empty'),
+  matrix_combination_id: z.string().min(1, 'Matrix combination ID cannot be empty'),
+  parameters: z.record(z.any()),
+  metrics: z.object({
+    execution_time_seconds: z.number().min(0),
+    llm_calls: z.number().int().min(0),
+    total_tokens: z.number().int().min(0),
+  }).catchall(z.number()), // Allow additional numeric metrics
+  final_agent_response: z.string().optional(),
+  evaluations: z.array(EnhancedEvaluationResultSchema),
+  trajectory: z.array(z.object({
+    type: z.enum(['thought', 'action', 'observation']),
+    timestamp: z.string().refine(
+      (val) => !isNaN(Date.parse(val)),
+      { message: 'Timestamp must be a valid ISO string' }
+    ),
+    content: z.any(),
+  })),
+  error: z.string().nullable(),
+});

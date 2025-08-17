@@ -13,6 +13,8 @@ import { MockEngine } from './src/MockEngine';
 import { EvaluationEngine } from './src/EvaluationEngine';
 import { Reporter } from './src/Reporter';
 import { PluginParser } from './src/plugin-parser';
+import { RunDataAggregator } from './src/data-aggregator';
+import { TrajectoryReconstructor } from './src/TrajectoryReconstructor';
 
 /**
  * Safe evaluation runner with fallback mechanism for ticket #5783
@@ -56,7 +58,7 @@ async function runEvaluationsWithFallback(
 
     } catch (error) {
         // Enhanced evaluations failed - fall back to legacy
-        logger.warn(`[Evaluation] Enhanced evaluations failed (${error.message}), falling back to legacy evaluations`);
+        logger.warn(`[Evaluation] Enhanced evaluations failed (${error instanceof Error ? error.message : String(error)}), falling back to legacy evaluations`);
     }
 
     // Fallback to original evaluation system
@@ -87,6 +89,9 @@ export const scenario = new Command()
                 // Create unique scenario run identifier
                 const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', '_logs_');
+
+                // Initialize RunDataAggregator for centralized data collection (Ticket #5786)
+                let dataAggregator: RunDataAggregator | null = null;
 
                 try {
                     const fullPath = path.resolve(filePath);
@@ -199,8 +204,28 @@ export const scenario = new Command()
 
                     logger.info(`Setting up '${scenario.environment.type}' environment...`);
                     await provider.setup(scenario);
+
+                    // Initialize data aggregator if we have a runtime (Ticket #5786)
+                    if (runtime) {
+                        const trajectoryReconstructor = new TrajectoryReconstructor(runtime);
+                        const evaluationEngine = new EvaluationEngine(runtime);
+                        dataAggregator = new RunDataAggregator(runtime, trajectoryReconstructor, evaluationEngine);
+
+                        // Start the run tracking
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                        const scenarioName = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+                        const runId = `run-${scenarioName}-${timestamp}`;
+                        const combinationId = `single-${scenarioRunId}`; // For single runs, not matrix
+                        const parameters = { 'scenario.file': filePath }; // Basic parameter tracking
+
+                        dataAggregator.startRun(runId, combinationId, parameters);
+                        logger.info(`📊 [DataAggregator] Started tracking run: ${runId}`);
+                    }
+
                     logger.info('Executing run block...');
+                    const startTime = Date.now();
                     const results = await provider.run(scenario);
+                    const endTime = Date.now();
 
                     // Report execution results using Reporter
                     results.forEach((result) => {
@@ -309,9 +334,79 @@ export const scenario = new Command()
                         // Default to fail for unknown strategies
                         finalStatus = false;
                     }
+
+                    // Generate centralized ScenarioRunResult (Ticket #5786)
+                    if (dataAggregator && runtime) {
+                        try {
+                            // Record execution metrics
+                            const executionTimeSeconds = (endTime - startTime) / 1000;
+                            dataAggregator.recordMetrics({
+                                execution_time_seconds: executionTimeSeconds,
+                                llm_calls: 1, // TODO: Track actual LLM calls
+                                total_tokens: 500 // TODO: Track actual token usage
+                            });
+
+                            // Record final agent response (from last result)
+                            const lastResult = results[results.length - 1];
+                            if (lastResult && lastResult.stdout) {
+                                dataAggregator.recordFinalResponse(lastResult.stdout);
+                            }
+
+                            // Build the centralized result
+                            const roomId = agentId; // Use agentId as roomId for single runs
+                            const allEvaluations = scenario.run.flatMap(step => step.evaluations || []);
+                            const combinedExecutionResult = {
+                                exitCode: finalStatus ? 0 : 1,
+                                stdout: results.map(r => r.stdout).join('\n'),
+                                stderr: results.map(r => r.stderr).join('\n'),
+                                durationMs: endTime - startTime
+                            };
+
+                            const scenarioRunResult = await dataAggregator.buildResult(
+                                roomId,
+                                allEvaluations,
+                                combinedExecutionResult
+                            );
+
+                            // Write centralized result to file with new naming pattern
+                            const centralizedFilename = `run-${scenarioRunResult.run_id}.json`;
+                            const centralizedPath = path.join(logsDir, centralizedFilename);
+                            fs.writeFileSync(centralizedPath, JSON.stringify(scenarioRunResult, null, 2));
+                            logger.info(`📋 [DataAggregator] Centralized result written to: ${centralizedPath}`);
+
+                        } catch (aggregatorError) {
+                            logger.error(`[DataAggregator] Failed to generate centralized result: ${aggregatorError}`);
+                            // Don't fail the entire scenario due to aggregator issues
+                        }
+                    }
                 } catch (error) {
                     logger.error('An error occurred during scenario execution:');
                     logger.error(error instanceof Error ? error.message : String(error));
+
+                    // Record error in data aggregator if available (Ticket #5786)
+                    if (dataAggregator) {
+                        try {
+                            dataAggregator.recordError(error instanceof Error ? error : new Error(String(error)));
+
+                            // Try to generate a result even for failed runs
+                            const roomId = agentId || 'unknown';
+                            const failedResult = await dataAggregator.buildResult(roomId, [], {
+                                exitCode: 1,
+                                stdout: '',
+                                stderr: error instanceof Error ? error.message : String(error),
+                                durationMs: 0
+                            });
+
+                            const errorFilename = `run-${failedResult.run_id}.json`;
+                            const errorPath = path.join(logsDir, errorFilename);
+                            fs.writeFileSync(errorPath, JSON.stringify(failedResult, null, 2));
+                            logger.info(`💥 [DataAggregator] Error result written to: ${errorPath}`);
+
+                        } catch (aggregatorError) {
+                            logger.error(`[DataAggregator] Failed to record error: ${aggregatorError}`);
+                        }
+                    }
+
                     process.exit(1);
                 } finally {
                     // Revert mocks first to ensure clean state
