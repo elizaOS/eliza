@@ -199,7 +199,22 @@ export async function processAttachments(
                 `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
               );
             } else {
-              runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+              // Fallback: Try simple regex parsing if parseKeyValueXml fails
+              const titleMatch = response.match(/<title>([^<]+)<\/title>/);
+              const descMatch = response.match(/<description>([^<]+)<\/description>/);
+              const textMatch = response.match(/<text>([^<]+)<\/text>/);
+              
+              if (titleMatch || descMatch || textMatch) {
+                processedAttachment.title = titleMatch?.[1] || 'Image';
+                processedAttachment.description = descMatch?.[1] || '';
+                processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
+                
+                runtime.logger.debug(
+                  `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
+                );
+              } else {
+                runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+              }
             }
           } else if (response && typeof response === 'object' && 'description' in response) {
             // Handle object responses for backwards compatibility
