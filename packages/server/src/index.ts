@@ -71,9 +71,9 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   }
 
   const base =
-    dir ||
-    process.env.PGLITE_DATA_DIR ||
-    fallbackDir ||
+    dir ??
+    process.env.PGLITE_DATA_DIR ??
+    fallbackDir ??
     path.join(process.cwd(), '.eliza', '.elizadb');
 
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
