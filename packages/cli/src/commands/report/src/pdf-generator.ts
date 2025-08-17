@@ -80,22 +80,15 @@ export async function generatePdfFromHtml(
         
         console.log('🚀 Launching headless Chrome for PDF generation...');
         
-        // Launch Puppeteer with optimized settings
+        // Launch Puppeteer with minimal settings to prevent hanging
         browser = await puppeteer.launch({
             headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding'
+                '--disable-dev-shm-usage'
             ],
-            timeout: 60000
+            timeout: 30000 // Reduced timeout
         });
         
         console.log('📄 Creating new page...');
@@ -119,23 +112,8 @@ export async function generatePdfFromHtml(
         // Wait for charts and other dynamic content to finish rendering
         await new Promise(resolve => setTimeout(resolve, config.chartRenderingWaitTime));
         
-        // Optional: Wait for specific elements to ensure charts are ready
-        try {
-            await page.waitForFunction(
-                () => {
-                    // Check if all canvas elements have been drawn on
-                    const canvases = document.querySelectorAll('canvas');
-                    return Array.from(canvases).every(canvas => {
-                        const ctx = canvas.getContext('2d');
-                        return ctx && canvas.width > 0 && canvas.height > 0;
-                    });
-                },
-                { timeout: 5000 }
-            );
-            console.log('✅ Charts confirmed ready');
-        } catch (error) {
-            console.log('⚠️ Chart readiness check timeout (proceeding anyway)');
-        }
+        // Simplified: Skip complex chart readiness check to prevent hanging
+        console.log('⚠️ Skipping chart readiness check to prevent hanging');
         
         console.log('📋 Generating PDF...');
         // Generate the PDF
@@ -194,7 +172,7 @@ export async function generatePerformanceReportPdf(
             bottom: '20px',
             left: '20px'
         },
-        chartRenderingWaitTime: 4000, // Extra time for complex charts
+        chartRenderingWaitTime: 500, // Reduced timeout to prevent hanging
         displayHeaderFooter: true,
         headerTemplate: `
             <div style="font-size: 10px; color: #666; width: 100%; text-align: center; margin: 0 20px;">

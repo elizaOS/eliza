@@ -8,7 +8,7 @@
  */
 
 import { Command } from 'commander';
-import { promises as fs } from 'fs';
+import { promises as fs, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { glob } from 'glob';
 import { AnalysisEngine } from './src/analysis-engine';
@@ -308,8 +308,18 @@ async function generateJsonReport(reportData: ReportData, outputPath: string): P
  * Generate HTML report file using the template
  */
 async function generateHtmlReport(reportData: ReportData, outputPath: string): Promise<void> {
-  // Load the HTML template
-  const templatePath = join(process.cwd(), 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+  // Load the HTML template - try built path first, then source path for development
+  const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+  const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+  
+  let templatePath: string;
+  if (existsSync(builtTemplatePath)) {
+      templatePath = builtTemplatePath;
+  } else if (existsSync(sourceTemplatePath)) {
+      templatePath = sourceTemplatePath;
+  } else {
+      throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+  }
 
   try {
     const templateContent = await fs.readFile(templatePath, 'utf-8');
@@ -336,7 +346,18 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
 
   try {
     // First generate the HTML content (same as HTML report)
-    const templatePath = join(process.cwd(), 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+    // Try built path first, then source path for development
+    const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+    const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+    
+    let templatePath: string;
+    if (existsSync(builtTemplatePath)) {
+        templatePath = builtTemplatePath;
+    } else if (existsSync(sourceTemplatePath)) {
+        templatePath = sourceTemplatePath;
+    } else {
+        throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+    }
     const templateContent = await fs.readFile(templatePath, 'utf-8');
 
     // Inject the real data into the template
