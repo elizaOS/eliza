@@ -1,5 +1,9 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
-import { processAttachments } from '../index';
+// Defer importing module under test until after mocks are set
+let processAttachments: (
+  attachments: Media[] | null,
+  runtime: IAgentRuntime
+) => Promise<Media[]>;
 import { IAgentRuntime, Media, ModelType, ContentType } from '@elizaos/core';
 import { createMockRuntime, MockRuntime } from './test-utils';
 
@@ -14,6 +18,10 @@ mock.module('@elizaos/core', () => ({
     info: mock(),
   },
 }));
+
+// Import the module under test after setting up the module mock
+const bootstrapModule = await import('../index');
+processAttachments = bootstrapModule.processAttachments;
 
 describe('processAttachments', () => {
   let mockRuntime: MockRuntime;
