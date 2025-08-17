@@ -13,9 +13,16 @@ The `elizaos scenario matrix` command is fully implemented and ready to use! You
 
 **Quick Start:**
 
+**Production Command:**
 ```bash
 # Try it now with the included example
 elizaos scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml --dry-run
+```
+
+**Local Development Command:**
+```bash
+# For local development
+bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml --dry-run
 ```
 
 ## Overview
@@ -456,6 +463,7 @@ The `elizaos scenario matrix` command is now available and provides comprehensiv
 
 ### Basic Usage
 
+**Production Commands:**
 ```bash
 # Run matrix analysis and show execution plan
 elizaos scenario matrix path/to/config.matrix.yaml
@@ -471,6 +479,24 @@ elizaos scenario matrix path/to/config.matrix.yaml --filter "gpt-4"
 
 # Specify parallel execution (for future implementation)
 elizaos scenario matrix path/to/config.matrix.yaml --parallel 4
+```
+
+**Local Development Commands:**
+```bash
+# Run matrix analysis and show execution plan
+bun packages/cli/dist/index.js scenario matrix path/to/config.matrix.yaml
+
+# Dry run mode - analysis only, no execution
+bun packages/cli/dist/index.js scenario matrix path/to/config.matrix.yaml --dry-run
+
+# Verbose mode - show detailed information
+bun packages/cli/dist/index.js scenario matrix path/to/config.matrix.yaml --verbose
+
+# Filter combinations by pattern
+bun packages/cli/dist/index.js scenario matrix path/to/config.matrix.yaml --filter "gpt-4"
+
+# Specify parallel execution (for future implementation)
+bun packages/cli/dist/index.js scenario matrix path/to/config.matrix.yaml --parallel 4
 ```
 
 ### Command Options
@@ -579,12 +605,22 @@ YAMLException: bad indentation of a mapping entry at line 5, column 3
 
 ### Getting Help
 
+**Production Commands:**
 ```bash
 # Show help for the matrix command
 elizaos scenario matrix --help
 
 # Show help for all scenario commands
 elizaos scenario --help
+```
+
+**Local Development Commands:**
+```bash
+# Show help for the matrix command
+bun packages/cli/dist/index.js scenario matrix --help
+
+# Show help for all scenario commands
+bun packages/cli/dist/index.js scenario --help
 ```
 
 This matrix testing system enables systematic, scientific evaluation of ElizaOS agents across multiple dimensions, providing the data needed to optimize agent performance and reliability.

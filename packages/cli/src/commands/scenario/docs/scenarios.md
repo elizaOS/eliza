@@ -28,7 +28,7 @@ run:
         value: 'Hello, World!'
 ```
 
-When you run this with `elizaos scenario run`, the system will spin up a sandbox, give the agent your instruction, and then check if the file was created with the correct content. This simple, readable format is the core of the Scenario System.
+When you run this with `elizaos scenario run` (or `bun packages/cli/dist/index.js scenario run` for local development), the system will spin up a sandbox, give the agent your instruction, and then check if the file was created with the correct content. This simple, readable format is the core of the Scenario System.
 
 ---
 
@@ -68,11 +68,15 @@ Scenarios are executed via a dedicated top-level `elizaos scenario` command, whi
 
 The runner supports two primary modes of operation on the same scenario file:
 
-- **Test Mode**: `elizaos scenario run <scenario_file.yaml>`
+- **Test Mode**: 
+  - Production: `elizaos scenario run <scenario_file.yaml>`
+  - Local Development: `bun packages/cli/dist/index.js scenario run <scenario_file.yaml>`
   - This is the default mode.
   - It provisions sandboxed environments, uses mocks, and seeds databases as defined in the file.
   - Its primary purpose is to output a pass/fail result for CI/CD and local development.
-- **Live Mode**: `elizaos scenario run <scenario_file.yaml> --live`
+- **Live Mode**: 
+  - Production: `elizaos scenario run <scenario_file.yaml> --live`
+  - Local Development: `bun packages/cli/dist/index.js scenario run <scenario_file.yaml> --live`
   - In this mode, the runner ignores mocks and database seeding instructions.
   - It connects to real databases and interacts with live third-party services as configured in the agent's environment.
   - Its purpose is to execute a proven, real-world workflow.

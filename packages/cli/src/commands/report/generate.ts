@@ -41,12 +41,11 @@ export function createGenerateCommand(): Command {
     .argument('<input_dir>', 'Directory containing run-*.json files from a matrix execution')
     .option(
       '--output-path <path>',
-      'Path where the report file will be saved (defaults to <input_dir>/report.json or report.html)'
+      'Path where the report file will be saved. When no format is specified, creates timestamped folder with all formats.'
     )
     .option(
       '--format <format>',
-      'Output format: json, html, or pdf (default: json)',
-      'json'
+      'Output format: json, html, pdf, or all. If not specified, generates all formats in organized folder structure.'
     )
     .action(async (inputDir: string, options: GenerateCommandOptions) => {
       try {
@@ -105,11 +104,83 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
     console.warn('⚠️  Generated report data failed schema validation:', validationError);
   }
 
+  // Determine output behavior based on format option
+  const format = options.format;
+
+  if (!format || format === 'all') {
+    // Default behavior: Generate all formats in organized timestamped folder
+    await generateOrganizedReports(reportData, resolvedInputDir, options.outputPath);
+  } else {
+    // Specific format requested: Generate single format
+    await generateSingleFormatReport(reportData, format, resolvedInputDir, options.outputPath);
+  }
+}
+
+/**
+ * Generate all report formats in an organized timestamped folder structure
+ */
+async function generateOrganizedReports(reportData: ReportData, inputDir: string, customOutputPath?: string): Promise<void> {
+  // Create timestamped run folder
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  const runId = `run-${timestamp}`;
+
+  // Use custom output path or default to scenario logs subfolder
+  const baseOutputDir = customOutputPath || join(process.cwd(), 'packages/cli/src/commands/scenario/_logs_');
+  const runDir = join(baseOutputDir, runId);
+
+  // Ensure run directory exists
+  await fs.mkdir(runDir, { recursive: true });
+
+  console.log(`📁 Creating organized reports in: ${runDir}`);
+
+  // Generate all three formats
+  const jsonPath = join(runDir, 'report.json');
+  const htmlPath = join(runDir, 'report.html');
+  const pdfPath = join(runDir, 'report.pdf');
+
+  try {
+    // Generate JSON report
+    console.log('📊 Generating JSON report...');
+    await generateJsonReport(reportData, jsonPath);
+
+    // Generate HTML report
+    console.log('🌐 Generating HTML report...');
+    await generateHtmlReport(reportData, htmlPath);
+
+    // Generate PDF report using external Puppeteer (workaround for Chrome hanging issue)
+    console.log('📄 Generating PDF report...');
+    await generatePdfReportWorkaround(htmlPath, pdfPath);
+
+    // Create run summary
+    const readmePath = join(runDir, 'README.md');
+    const readmeContent = createRunSummary(runId, reportData);
+    await fs.writeFile(readmePath, readmeContent, 'utf-8');
+
+    // Report success
+    console.log(`✅ All reports generated successfully:`);
+    console.log(`   • Location: ${runDir}`);
+    console.log(`   • JSON Report: report.json`);
+    console.log(`   • HTML Report: report.html`);
+    console.log(`   • PDF Report: report.pdf`);
+    console.log(`   • Run Summary: README.md`);
+    console.log(`   • Total runs analyzed: ${reportData.summary_stats.total_runs}`);
+    console.log(`   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`);
+    console.log(`   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`);
+    console.log(`   • Common trajectory patterns: ${reportData.common_trajectories.length}`);
+
+  } catch (error) {
+    throw new Error(`Failed to generate organized reports: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+/**
+ * Generate a single format report (legacy behavior for specific format requests)
+ */
+async function generateSingleFormatReport(reportData: ReportData, format: string, inputDir: string, customOutputPath?: string): Promise<void> {
   // Determine output path and format
-  const format = options.format || 'json';
   const defaultFileName = format === 'html' ? 'report.html' :
     format === 'pdf' ? 'report.pdf' : 'report.json';
-  const outputPath = options.outputPath || join(resolvedInputDir, defaultFileName);
+  const outputPath = customOutputPath || join(inputDir, defaultFileName);
   const resolvedOutputPath = resolve(outputPath);
 
   // Ensure output directory exists
@@ -123,7 +194,7 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
   } else if (format === 'pdf') {
     await generatePdfReport(reportData, resolvedOutputPath);
   } else {
-    throw new Error(`Unsupported format: ${format}. Supported formats: json, html, pdf`);
+    throw new Error(`Unsupported format: ${format}. Supported formats: json, html, pdf, all`);
   }
 
   console.log(`✅ Report generated successfully:`);
@@ -132,6 +203,96 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
   console.log(`   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`);
   console.log(`   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`);
   console.log(`   • Common trajectory patterns: ${reportData.common_trajectories.length}`);
+}
+
+/**
+ * Create a run summary markdown file
+ */
+function createRunSummary(runId: string, reportData: ReportData): string {
+  return `# Run Summary: ${runId}
+
+## Generated Reports
+- **JSON Report**: report.json - Raw data and analysis results
+- **HTML Report**: report.html - Interactive web report with charts  
+- **PDF Report**: report.pdf - Print-ready formatted report
+
+## Run Details
+- **Timestamp**: ${new Date().toISOString()}
+- **Total Runs Analyzed**: ${reportData.summary_stats.total_runs}
+- **Overall Success Rate**: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%
+- **Average Execution Time**: ${reportData.summary_stats.average_execution_time.toFixed(2)}s
+- **Common Trajectory Patterns**: ${reportData.common_trajectories.length}
+
+## Analysis Summary
+${reportData.summary_stats.total_runs > 0 ? `
+- **Total Test Cases**: ${reportData.summary_stats.total_runs}
+- **Successful Runs**: ${Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
+- **Failed Runs**: ${reportData.summary_stats.total_runs - Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
+- **Average Duration**: ${reportData.summary_stats.average_execution_time.toFixed(2)} seconds
+` : 'No run data available.'}
+
+## Usage
+- Open \`report.html\` in a web browser for interactive viewing
+- Use \`report.json\` for programmatic analysis  
+- Print or share \`report.pdf\` for formal reports
+
+## Matrix Parameters
+${Object.keys(reportData.results_by_parameter).length > 0 ?
+      Object.keys(reportData.results_by_parameter).map(param =>
+        `- **${param}**: ${Object.keys(reportData.results_by_parameter[param]).length} variations`
+      ).join('\n') :
+      'No parameter variations detected.'
+    }
+`;
+}
+
+/**
+ * Generate PDF using external Puppeteer (workaround for Chrome hanging in CLI context)
+ */
+async function generatePdfReportWorkaround(htmlPath: string, pdfPath: string): Promise<void> {
+  const { spawn } = await import('child_process');
+
+  return new Promise((resolve, reject) => {
+    const nodeScript = `
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+
+(async () => {
+  try {
+    console.log('📄 Reading HTML from:', '${htmlPath}');
+    const htmlContent = fs.readFileSync('${htmlPath}', 'utf-8');
+    console.log('🚀 Launching Chrome for PDF conversion...');
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setContent(htmlContent);
+    console.log('📋 Generating PDF...');
+    await page.pdf({ path: '${pdfPath}', format: 'A4', printBackground: true });
+    await browser.close();
+    console.log('✅ PDF generated successfully');
+  } catch (error) {
+    console.error('❌ PDF generation failed:', error.message);
+    process.exit(1);
+  }
+})();
+`;
+
+    const nodeProcess = spawn('node', ['-e', nodeScript], {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+
+    nodeProcess.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`PDF generation process exited with code ${code}`));
+      }
+    });
+
+    nodeProcess.on('error', (error) => {
+      reject(new Error(`Failed to spawn PDF generation process: ${error.message}`));
+    });
+  });
 }
 
 /**
@@ -311,14 +472,14 @@ async function generateHtmlReport(reportData: ReportData, outputPath: string): P
   // Load the HTML template - try built path first, then source path for development
   const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
   const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
-  
+
   let templatePath: string;
   if (existsSync(builtTemplatePath)) {
-      templatePath = builtTemplatePath;
+    templatePath = builtTemplatePath;
   } else if (existsSync(sourceTemplatePath)) {
-      templatePath = sourceTemplatePath;
+    templatePath = sourceTemplatePath;
   } else {
-      throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+    throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
   }
 
   try {
@@ -349,14 +510,14 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
     // Try built path first, then source path for development
     const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
     const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
-    
+
     let templatePath: string;
     if (existsSync(builtTemplatePath)) {
-        templatePath = builtTemplatePath;
+      templatePath = builtTemplatePath;
     } else if (existsSync(sourceTemplatePath)) {
-        templatePath = sourceTemplatePath;
+      templatePath = sourceTemplatePath;
     } else {
-        throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+      throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
     }
     const templateContent = await fs.readFile(templatePath, 'utf-8');
 

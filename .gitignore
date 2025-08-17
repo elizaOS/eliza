@@ -20,10 +20,6 @@ dist/
 *.mp3
 
 logs/
-
-test-report.json
-test_data/
-test-data/
 tokencache/
 
 # Character configurations

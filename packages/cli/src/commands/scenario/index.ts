@@ -88,7 +88,7 @@ export const scenario = new Command()
 
                 // Create unique scenario run identifier
                 const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', '_logs_');
+                const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'scenario', '_logs_');
 
                 // Initialize RunDataAggregator for centralized data collection (Ticket #5786)
                 let dataAggregator: RunDataAggregator | null = null;
@@ -707,9 +707,9 @@ export const scenario = new Command()
 
                             logger.info('\n🚀 Starting Matrix Execution...');
 
-                            // Create output directory with timestamp
+                            // Create output directory with timestamp in scenario logs
                             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                            const outputDir = path.resolve(`output/matrix-${timestamp}`);
+                            const outputDir = path.resolve(`packages/cli/src/commands/scenario/_logs_/matrix-${timestamp}`);
 
                             // Execute the matrix with full orchestration
                             const results = await executeMatrixRuns(matrixConfig, filteredCombinations, {
