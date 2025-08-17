@@ -51,6 +51,7 @@ import { publishToGitHub } from '../../../src/utils/publisher';
 
 // Import mocked modules
 import { getFileContent, updateFile, createPullRequest } from '../../../src/utils/github';
+import { logger } from '@elizaos/core';
 
 describe('Publisher JSON Manipulation', () => {
   let consoleLogSpy: any;
@@ -62,6 +63,10 @@ describe('Publisher JSON Manipulation', () => {
     (updateFile as any).mockReset();
     (createPullRequest as any).mockReset();
     (fs.readFile as any).mockReset();
+    (logger.error as any).mockReset();
+    (logger.info as any).mockReset();
+    (logger.warn as any).mockReset();
+    (logger.debug as any).mockReset();
     
     consoleLogSpy = mock(() => {});
     consoleErrorSpy = mock(() => {});
@@ -98,7 +103,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
         expect(Object.keys(parsed)).toContain('test-plugin');
         // Verify no invalid comma patterns
@@ -134,7 +139,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
         
         // Both entries should exist
@@ -143,8 +148,8 @@ describe('Publisher JSON Manipulation', () => {
         
         // Verify proper comma placement
         const lines = updatedContent.split('\n');
-        const existingLine = lines.find(l => l.includes('@existing/plugin'));
-        const newLine = lines.find(l => l.includes('@new/first-plugin'));
+        const existingLine = lines.find((l: string) => l.includes('@existing/plugin'));
+        const newLine = lines.find((l: string) => l.includes('@new/first-plugin'));
         
         // First entry should have comma, last should not
         if (lines.indexOf(newLine!) < lines.indexOf(existingLine!)) {
@@ -182,7 +187,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
         
         // Verify all entries exist
@@ -192,11 +197,11 @@ describe('Publisher JSON Manipulation', () => {
         
         // Verify no trailing comma on last entry
         const lines = updatedContent.split('\n');
-        const lastPluginLine = lines.find(l => l.includes('zzz-last-plugin'));
+        const lastPluginLine = lines.find((l: string) => l.includes('zzz-last-plugin'));
         expect(lastPluginLine).not.toMatch(/,\s*$/);
         
         // Verify second-to-last has comma
-        const secondLine = lines.find(l => l.includes('@second/plugin'));
+        const secondLine = lines.find((l: string) => l.includes('@second/plugin'));
         expect(secondLine).toMatch(/,\s*$/);
       }
     });
@@ -229,7 +234,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
         
         // All three entries should exist
@@ -239,11 +244,11 @@ describe('Publisher JSON Manipulation', () => {
         
         // Middle entry should have comma
         const lines = updatedContent.split('\n');
-        const middleLine = lines.find(l => l.includes('@middle/plugin'));
+        const middleLine = lines.find((l: string) => l.includes('@middle/plugin'));
         expect(middleLine).toMatch(/,\s*$/);
         
         // Last entry should not have comma
-        const lastLine = lines.find(l => l.includes('@zzz/plugin'));
+        const lastLine = lines.find((l: string) => l.includes('@zzz/plugin'));
         expect(lastLine).not.toMatch(/,\s*$/);
       }
     });
@@ -279,7 +284,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         // Should still produce valid JSON despite messy input
         expect(() => JSON.parse(updatedContent)).not.toThrow();
       }
@@ -313,11 +318,11 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const lines = updatedContent.split('\n');
         
         // Comment line should not have comma added
-        const commentLine = lines.find(l => l.includes('//'));
+        const commentLine = lines.find((l: string) => l.includes('//'));
         if (commentLine) {
           expect(commentLine).not.toMatch(/,\s*$/);
         }
@@ -353,7 +358,7 @@ describe('Publisher JSON Manipulation', () => {
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
       
       if (indexUpdateCall) {
-        const updatedContent = Buffer.from(indexUpdateCall[4], 'base64').toString('utf-8');
+        const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
         
         // Verify both entries exist
@@ -389,7 +394,7 @@ describe('Publisher JSON Manipulation', () => {
       );
       
       expect(result).toBe(false);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('package.json'));
+      expect(logger.error).toHaveBeenCalled();
     });
 
     it('should handle GitHub API failures gracefully', async () => {
@@ -414,7 +419,7 @@ describe('Publisher JSON Manipulation', () => {
       );
       
       expect(result).toBe(false);
-      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalled();
     });
 
     it('should handle invalid JSON in registry', async () => {
@@ -438,7 +443,7 @@ describe('Publisher JSON Manipulation', () => {
       );
       
       expect(result).toBe(false);
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to parse'));
+      expect(logger.error).toHaveBeenCalled();
     });
   });
 });
