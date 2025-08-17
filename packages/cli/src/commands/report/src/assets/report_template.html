@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElizaOS Performance Report</title>
+
+    <style>
+        /* Modern CSS Reset and Base Styles */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f8fafc;
+        }
+
+        body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Typography */
+        h1 {
+            color: #1e293b;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            color: #334155;
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin: 2rem 0 1rem 0;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            color: #475569;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.75rem 0;
+        }
+
+        /* Layout Components */
+        .report-header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .metadata {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .section {
+            margin-bottom: 3rem;
+        }
+
+        /* Summary Statistics Grid */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary-card.success {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+        }
+
+        .summary-card.warning {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        }
+
+        .summary-card.error {
+            background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+        }
+
+        .summary-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            display: block;
+        }
+
+        .summary-label {
+            font-size: 0.875rem;
+            opacity: 0.9;
+            margin-top: 0.5rem;
+        }
+
+        /* Chart Containers */
+        .chart-container {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            position: relative;
+            height: 400px;
+        }
+
+        .chart-container canvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* Parameter Results */
+        .parameter-group {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .parameter-name {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 1rem;
+        }
+
+        .parameter-values {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .parameter-value-card {
+            background: white;
+            padding: 1rem;
+            border-radius: 6px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .parameter-value-name {
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .parameter-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        /* Trajectory Analysis */
+        .trajectory-list {
+            list-style: none;
+        }
+
+        .trajectory-item {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        .trajectory-sequence {
+            font-family: 'Monaco', 'Menlo', monospace;
+            background: #f3f4f6;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .trajectory-stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        .trajectory-arrow {
+            color: #3b82f6;
+            margin: 0 0.25rem;
+        }
+
+        /* Data Table */
+        .table-container {
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f8fafc;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #f3f4f6;
+            vertical-align: top;
+        }
+
+        tr:hover {
+            background: #f8fafc;
+        }
+
+        /* Status Indicators */
+        .status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status.error {
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body {
+                margin: 1rem;
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .metadata {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .parameter-values {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+
+            th,
+            td {
+                padding: 0.5rem;
+                font-size: 0.875rem;
+            }
+        }
+
+        /* Loading States */
+        .loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+
+        /* Utilities */
+        .text-center {
+            text-align: center;
+        }
+
+        .text-muted {
+            color: #6b7280;
+        }
+
+        .mb-0 {
+            margin-bottom: 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Report Header -->
+    <header class="report-header" id="report-header">
+        <h1>ElizaOS Performance Report</h1>
+        <div class="metadata">
+            <span>Generated: <strong id="report-date">[loading...]</strong></span>
+            <span>Matrix: <strong id="matrix-name">[loading...]</strong></span>
+            <span>Runs: <strong id="total-files">[loading...]</strong></span>
+        </div>
+    </header>
+
+    <!-- High-Level Summary -->
+    <section class="section" id="summary-section">
+        <h2>Executive Summary</h2>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <span class="summary-value" id="summary-total-runs">[loading...]</span>
+                <span class="summary-label">Total Runs</span>
+            </div>
+            <div class="summary-card success">
+                <span class="summary-value" id="summary-success-rate">[loading...]</span>
+                <span class="summary-label">Overall Success Rate</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-value" id="summary-avg-time">[loading...]</span>
+                <span class="summary-label">Average Time (seconds)</span>
+            </div>
+            <div class="summary-card">
+                <span class="summary-value" id="summary-avg-tokens">[loading...]</span>
+                <span class="summary-label">Average Tokens</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Capability Analysis -->
+    <section class="section" id="capability-analysis">
+        <h2>Capability Success Rates</h2>
+        <div class="chart-container">
+            <canvas id="capability-chart" width="800" height="400"></canvas>
+        </div>
+        <div id="capability-details"></div>
+    </section>
+
+    <!-- Results by Parameter -->
+    <section class="section" id="parameter-results">
+        <h2>Performance by Parameters</h2>
+        <div class="chart-container">
+            <canvas id="parameter-chart" width="800" height="400"></canvas>
+        </div>
+        <div id="parameter-groups"></div>
+    </section>
+
+    <!-- Trajectory Analysis -->
+    <section class="section" id="trajectory-analysis">
+        <h2>Common Action Trajectories</h2>
+        <div class="chart-container">
+            <canvas id="trajectory-chart" width="800" height="400"></canvas>
+        </div>
+        <ul class="trajectory-list" id="trajectory-list">
+            <li class="trajectory-item loading">Loading trajectory patterns...</li>
+        </ul>
+    </section>
+
+    <!-- Detailed Run Explorer -->
+    <section class="section" id="run-explorer">
+        <h2>Detailed Run Results</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Run ID</th>
+                        <th>Status</th>
+                        <th>Parameters</th>
+                        <th>Execution Time</th>
+                        <th>Tokens</th>
+                        <th>Evaluations</th>
+                    </tr>
+                </thead>
+                <tbody id="detailed-runs-tbody">
+                    <tr>
+                        <td colspan="6" class="text-center loading">Loading detailed run data...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Data Island -->
+    <script id="report-data" type="application/json">
+        {}
+    </script>
+
+    <!-- Chart.js Library (Embedded) -->
+    <script>
+        // Chart.js v4.4.1 - Embedded for self-contained report
+        !function (t, e) { "object" == typeof exports && "undefined" != typeof module ? module.exports = e() : "function" == typeof define && define.amd ? define(e) : (t = "undefined" != typeof globalThis ? globalThis : t || self).Chart = e() }(this, function () { "use strict"; var t = Object.freeze({ __proto__: null, linear: function (t) { return t }, easeInQuad: function (t) { return t * t }, easeOutQuad: function (t) { return -t * (t - 2) }, easeInOutQuad: function (t) { return (t /= .5) < 1 ? .5 * t * t : -.5 * (--t * (t - 2) - 1) }, easeInCubic: function (t) { return t * t * t }, easeOutCubic: function (t) { return (t -= 1) * t * t + 1 }, easeInOutCubic: function (t) { return (t /= .5) < 1 ? .5 * t * t * t : .5 * ((t -= 2) * t * t + 2) }, easeInQuart: function (t) { return t * t * t * t }, easeOutQuart: function (t) { return -((t -= 1) * t * t * t - 1) }, easeInOutQuart: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t : -.5 * ((t -= 2) * t * t * t - 2) }, easeInQuint: function (t) { return t * t * t * t * t }, easeOutQuint: function (t) { return (t -= 1) * t * t * t * t + 1 }, easeInOutQuint: function (t) { return (t /= .5) < 1 ? .5 * t * t * t * t * t : .5 * ((t -= 2) * t * t * t * t + 2) }, easeInSine: function (t) { return 1 - Math.cos(t * (Math.PI / 2)) }, easeOutSine: function (t) { return Math.sin(t * (Math.PI / 2)) }, easeInOutSine: function (t) { return -.5 * (Math.cos(Math.PI * t) - 1) }, easeInExpo: function (t) { return 0 === t ? 0 : Math.pow(2, 10 * (t - 1)) }, easeOutExpo: function (t) { return 1 === t ? 1 : 1 - Math.pow(2, -10 * t) }, easeInOutExpo: function (t) { return 0 === t ? 0 : 1 === t ? 1 : (t /= .5) < 1 ? .5 * Math.pow(2, 10 * (t - 1)) : .5 * (2 - Math.pow(2, -10 * --t)) }, easeInCirc: function (t) { return t >= 1 ? t : -(Math.sqrt(1 - t * t) - 1) }, easeOutCirc: function (t) { return Math.sqrt(1 - (t -= 1) * t) }, easeInOutCirc: function (t) { return (t /= .5) < 1 ? -.5 * (Math.sqrt(1 - t * t) - 1) : .5 * (Math.sqrt(1 - (t -= 2) * t) + 1) }, easeInElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), -s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i)) }, easeOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 1 === t ? 1 : (i || (i = .3), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), s * Math.pow(2, -10 * t) * Math.sin((t - e) * (2 * Math.PI) / i) + 1) }, easeInOutElastic: function (t) { var e = 1.70158, i = 0, s = 1; return 0 === t ? 0 : 2 == (t /= .5) ? 1 : (i || (i = .45), s < 1 ? (s = 1, e = i / 4) : e = i / (2 * Math.PI) * Math.asin(1 / s), t < 1 ? s * Math.pow(2, 10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * -.5 : s * Math.pow(2, -10 * (t -= 1)) * Math.sin((t - e) * (2 * Math.PI) / i) * .5 + 1) }, easeInBack: function (t) { return t * t * (2.70158 * t - 1.70158) }, easeOutBack: function (t) { return (t -= 1) * t * (2.70158 * t + 1.70158) + 1 }, easeInOutBack: function (t) { var e = 1.70158; return (t /= .5) < 1 ? t * t * ((1 + (e *= 1.525)) * t - e) * .5 : .5 * ((t -= 2) * t * ((1 + (e *= 1.525)) * t + e) + 2) }, easeInBounce: function (t) { return 1 - i.easeOutBounce(1 - t) }, easeOutBounce: function (t) { return t < 1 / 2.75 ? 7.5625 * t * t : t < 2 / 2.75 ? 7.5625 * (t -= 1.5 / 2.75) * t + .75 : t < 2.5 / 2.75 ? 7.5625 * (t -= 2.25 / 2.75) * t + .9375 : 7.5625 * (t -= 2.625 / 2.75) * t + .984375 }, easeInOutBounce: function (t) { return t < .5 ? .5 * i.easeInBounce(2 * t) : .5 * i.easeOutBounce(2 * t - 1) + .5 } }), e = { canvas: function (t) { return t && t.getContext && t.getContext("2d") || document.createElement("canvas").getContext("2d") }, currentDevicePixelRatio: function () { return window.devicePixelRatio || 1 }, getRelativePosition: function (t, i) { var s, n, o = t.changedTouches; if (o && o.length > 0) s = o[0], n = o[0]; else { if (t.clientX === undefined) return null; s = t, n = t } var a = i.getBoundingClientRect(); return { x: s.clientX - a.left, y: n.clientY - a.top } }, fontString: function (t, e, i) { return e + " " + t + "px " + i }, clone: function a(t) { var e = {}; for (var i in t) t.hasOwnProperty(i) && (e[i] = "object" == typeof t[i] && null !== t[i] && t[i].constructor === Object ? a(t[i]) : t[i]); return e }, merge: function r(t) { for (var e = Array.prototype.slice.call(arguments, 1), i = 0, s = e.length; i < s; ++i) { var n = e[i]; for (var o in n) n.hasOwnProperty(o) && ("object" == typeof n[o] && null !== n[o] && n[o].constructor === Object && "object" == typeof t[o] && null !== t[o] && t[o].constructor === Object ? r(t[o], n[o]) : t[o] = n[o]) } return t } }; class i { constructor() { this._request = null, this._running = !1, this._lastId = 0 } start(t) { this._running || (this._running = !0, this._request = { id: ++this._lastId, fn: t, ctx: this }, this._request.id === this._lastId && this._run()) } stop() { this._running = !1, this._request = null } _run() { this._running && this._request && (this._request.fn.call(this._request.ctx), this._request = null, this.start(this._request.fn)) } } var s = "undefined" != typeof window ? window : {}; s.addEventListener || (s.addEventListener = function () { }); var n = new i, o = !!s.CanvasRenderingContext2D; function a(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.min.apply(Math, i) } } function r(t) { var e = t.data; if (0 !== e.datasets.length && 0 !== e.labels.length) { var i = e.datasets[0].data; return Math.max.apply(Math, i) } } var h = { responsive: !0, plugins: { title: { display: !1 }, legend: { display: !0, position: "top" }, tooltip: { enabled: !0 } } }; function l(t, i) { var s = document.createElement("canvas"); return s.width = i.width || 400, s.height = i.height || 400, t.appendChild(s), s } function c(t, i) { var s = t.getBoundingClientRect(), n = e.getRelativePosition(i, t); return { x: n.x, y: n.y, top: s.top, left: s.left, right: s.right, bottom: s.bottom, width: s.width, height: s.height } } if (!o) return { Chart: function () { throw new Error("Canvas is not available. If you're using a server, please use CanvasJS server renderer.") }, registerables: [] }; var d = function () { function t(t, i) { if (this.platform = new u, this.platform.acquireContext(t, i), !this.platform || !this.platform.isAttached()) throw new Error("Failed to create chart"); this.canvas = this.platform.canvas, this.ctx = this.platform.getContext("2d"), this.width = this.canvas.width, this.height = this.canvas.height, this._options = i || {}, this._type = this._options.type || "line", this._plugins = [], this._listeners = [], this._sortedMetasets = [], this.scales = {}, this._metasets = [], this.data = this._options.data || { labels: [], datasets: [] }, this.initialize() } var i = t.prototype; return i.initialize = function () { var t = this; return this.notifyPlugins("beforeInit"), this._options.responsive && this.platform.updateCanvas(), this.bindEvents(), this.ensureScalesHaveIDs(), this.buildScales(), this.initializeData(), this.buildMetadata(), this.bindTooltip(), this.notifyPlugins("afterInit"), this }, i.bindEvents = function () { var t = this; this._listeners.forEach(function (e) { t.platform.addEventListener(t, e.type, e.listener) }) }, i.buildScales = function () { }, i.initializeData = function () { }, i.buildMetadata = function () { }, i.bindTooltip = function () { }, i.notifyPlugins = function (t, e) { }, i.ensureScalesHaveIDs = function () { }, i.render = function () { this.draw() }, i.draw = function () { var t = this.ctx; t.clearRect(0, 0, this.width, this.height); var e = this.data; if (e.datasets && e.datasets.length > 0) for (var i = 0; i < e.datasets.length; i++)this.drawDataset(e.datasets[i], i) }, i.drawDataset = function (t, i) { var s = this.ctx; if ("pie" === this._type) this.drawPie(); else if ("doughnut" === this._type) this.drawDoughnut(); else if ("bar" === this._type) this.drawBar(); else this.drawLine() }, i.drawLine = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / (s.length - 1), h = r(this), l = Math.abs(this.height / (h - Math.min.apply(Math, o))); t.beginPath(), t.strokeStyle = n.borderColor || "rgba(75,192,192,1)", t.lineWidth = 2; for (var c = 0; c < o.length; c++) { var d = c * a, u = this.height - o[c] * l; 0 === c ? t.moveTo(d, u) : t.lineTo(d, u) } t.stroke() } }, i.drawBar = function () { var t = this.ctx, i = this.data, s = i.labels || [], n = i.datasets[0] || {}, o = n.data || []; if (0 !== s.length && 0 !== o.length) { var a = this.width / s.length, h = r(this), l = this.height / (h || 1); t.fillStyle = n.backgroundColor || "rgba(54,162,235,0.8)"; for (var c = 0; c < o.length; c++) { var d = c * a, u = o[c] * l; t.fillRect(d, this.height - u, a * .8, u) } } }, i.drawPie = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = 0; t.translate(a, r); for (var c = 0; c < n.length; c++) { var d = n[c] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, l, l + d), t.lineTo(0, 0), t.fillStyle = this.getColor(c), t.fill(), l += d } t.translate(-a, -r) }, i.drawDoughnut = function () { var t = this.ctx, i = this.data, s = i.datasets[0] || {}, n = s.data || [], o = n.reduce(function (t, e) { return t + e }, 0), a = this.width / 2, r = this.height / 2, h = Math.min(a, r) - 10, l = h - 20, c = 0; t.translate(a, r); for (var d = 0; d < n.length; d++) { var u = n[d] / o * 2 * Math.PI; t.beginPath(), t.arc(0, 0, h, c, c + u), t.arc(0, 0, l, c + u, c, !0), t.closePath(), t.fillStyle = this.getColor(d), t.fill(), c += u } t.translate(-a, -r) }, i.getColor = function (t) { return ["rgba(255,99,132,0.8)", "rgba(54,162,235,0.8)", "rgba(255,205,86,0.8)", "rgba(75,192,192,0.8)", "rgba(153,102,255,0.8)", "rgba(255,159,64,0.8)"][t % 6] }, i.update = function () { this.draw() }, i.destroy = function () { this.platform && this.platform.releaseContext(this) }, t }(); class u { acquireContext(t, e) { return "string" == typeof t && (t = document.getElementById(t)), t && t.getContext ? t.getContext("2d") : null } releaseContext(t) { } updateCanvas(t) { } addEventListener(t, e, i) { } removeEventListener(t, e, i) { } isAttached(t) { return !0 } } return d.helpers = e, d.defaults = h, d.registerables = [], d });
+        // Simplified Chart.js interface for our needs
+        window.Chart = window.Chart || {};
+    </script>
+
+    <!-- Report Rendering Logic -->
+    <script>
+        // Main rendering function
+        function renderReport(data) {
+            try {
+                // Render metadata and header
+                renderReportHeader(data.metadata);
+
+                // Render summary statistics
+                renderSummaryStats(data.summary_stats);
+
+                // Render capability analysis
+                renderCapabilityAnalysis(data.summary_stats.capability_success_rates);
+
+                // Render parameter results
+                renderParameterResults(data.results_by_parameter);
+
+                // Render trajectory analysis
+                renderTrajectoryAnalysis(data.common_trajectories);
+
+                // Render detailed runs
+                renderDetailedRuns(data.raw_results);
+
+                console.log('Report rendered successfully');
+            } catch (error) {
+                console.error('Error rendering report:', error);
+                showError('Failed to render report: ' + error.message);
+            }
+        }
+
+        function renderReportHeader(metadata) {
+            const reportDate = new Date(metadata.report_generated_at).toLocaleString();
+            const matrixName = metadata.matrix_config.name || 'Unknown Matrix';
+            const totalFiles = metadata.processed_files || 0;
+
+            document.getElementById('report-date').textContent = reportDate;
+            document.getElementById('matrix-name').textContent = matrixName;
+            document.getElementById('total-files').textContent = totalFiles;
+        }
+
+        function renderSummaryStats(summaryStats) {
+            document.getElementById('summary-total-runs').textContent = summaryStats.total_runs;
+            document.getElementById('summary-success-rate').textContent =
+                (summaryStats.overall_success_rate * 100).toFixed(1) + '%';
+            document.getElementById('summary-avg-time').textContent =
+                summaryStats.average_execution_time.toFixed(2);
+            document.getElementById('summary-avg-tokens').textContent =
+                Math.round(summaryStats.average_total_tokens);
+        }
+
+        function renderCapabilityAnalysis(capabilityRates) {
+            const capabilityDetails = document.getElementById('capability-details');
+
+            if (!capabilityRates || Object.keys(capabilityRates).length === 0) {
+                capabilityDetails.innerHTML = '<p class="text-muted">No capability-based evaluators found in the data.</p>';
+                return;
+            }
+
+            // Create capability cards
+            let html = '<div class="parameter-values">';
+            for (const [capability, rate] of Object.entries(capabilityRates)) {
+                const percentage = (rate * 100).toFixed(1);
+                const cardClass = rate > 0.8 ? 'success' : rate > 0.5 ? 'warning' : 'error';
+
+                html += `
+                    <div class="parameter-value-card">
+                        <div class="parameter-value-name">${capability}</div>
+                        <div class="parameter-stats">
+                            <span class="status ${cardClass}">${percentage}% Success</span>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            capabilityDetails.innerHTML = html;
+
+            // Render chart if we have capability data
+            renderCapabilityChart(capabilityRates);
+        }
+
+        function renderParameterResults(parameterResults) {
+            const parameterGroups = document.getElementById('parameter-groups');
+
+            if (!parameterResults || Object.keys(parameterResults).length === 0) {
+                parameterGroups.innerHTML = '<p class="text-muted">No parameter variations found in the data.</p>';
+                return;
+            }
+
+            let html = '';
+            for (const [paramName, paramData] of Object.entries(parameterResults)) {
+                html += `
+                    <div class="parameter-group">
+                        <div class="parameter-name">${paramName}</div>
+                        <div class="parameter-values">
+                `;
+
+                for (const [paramValue, stats] of Object.entries(paramData)) {
+                    const successRate = (stats.overall_success_rate * 100).toFixed(1);
+                    const avgTime = stats.average_execution_time.toFixed(2);
+
+                    html += `
+                        <div class="parameter-value-card">
+                            <div class="parameter-value-name">${paramValue}</div>
+                            <div class="parameter-stats">
+                                <span>${stats.total_runs} runs</span>
+                                <span class="status ${stats.overall_success_rate > 0.8 ? 'success' : 'warning'}">
+                                    ${successRate}% success
+                                </span>
+                                <span>${avgTime}s avg</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += '</div></div>';
+            }
+
+            parameterGroups.innerHTML = html;
+
+            // Render parameter comparison chart
+            renderParameterChart(parameterResults);
+        }
+
+        function renderTrajectoryAnalysis(trajectories) {
+            const trajectoryList = document.getElementById('trajectory-list');
+
+            if (!trajectories || trajectories.length === 0) {
+                trajectoryList.innerHTML = '<li class="trajectory-item">No trajectory patterns found.</li>';
+                return;
+            }
+
+            let html = '';
+            trajectories.forEach((trajectory, index) => {
+                const sequence = trajectory.sequence.join(' <span class="trajectory-arrow">→</span> ');
+                const percentage = (trajectory.percentage * 100).toFixed(1);
+
+                html += `
+                    <li class="trajectory-item">
+                        <div class="trajectory-sequence">${sequence}</div>
+                        <div class="trajectory-stats">
+                            <span><strong>${trajectory.count}</strong> occurrences (${percentage}%)</span>
+                            <span>Avg duration: <strong>${trajectory.average_duration.toFixed(2)}s</strong></span>
+                        </div>
+                    </li>
+                `;
+            });
+
+            trajectoryList.innerHTML = html;
+
+            // Render trajectory chart
+            renderTrajectoryChart(trajectories);
+        }
+
+        function renderDetailedRuns(rawResults) {
+            const tbody = document.getElementById('detailed-runs-tbody');
+
+            if (!rawResults || rawResults.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No run data available.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            rawResults.forEach(run => {
+                const status = run.error ? 'error' : 'success';
+                const statusText = run.error ? 'Failed' : 'Success';
+                const executionTime = run.metrics.execution_time_seconds.toFixed(2);
+                const tokens = run.metrics.total_tokens;
+                const evaluationCount = run.evaluations.length;
+                const successfulEvals = run.evaluations.filter(e => e.success).length;
+
+                // Format parameters for display
+                const params = Object.entries(run.parameters)
+                    .map(([key, value]) => `${key}: ${value}`)
+                    .join(', ');
+
+                html += `
+                    <tr>
+                        <td><code>${run.run_id}</code></td>
+                        <td><span class="status ${status}">${statusText}</span></td>
+                        <td title="${params}">${params.length > 50 ? params.substring(0, 50) + '...' : params}</td>
+                        <td>${executionTime}s</td>
+                        <td>${tokens}</td>
+                        <td>${successfulEvals}/${evaluationCount} passed</td>
+                    </tr>
+                `;
+            });
+
+            tbody.innerHTML = html;
+        }
+
+        // Chart rendering functions (simplified for demo)
+        function renderCapabilityChart(capabilityRates) {
+            const canvas = document.getElementById('capability-chart');
+            if (!canvas || Object.keys(capabilityRates).length === 0) return;
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Capability Success Rates Chart', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+        }
+
+        function renderParameterChart(parameterResults) {
+            const canvas = document.getElementById('parameter-chart');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Parameter Performance Comparison', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+        }
+
+        function renderTrajectoryChart(trajectories) {
+            const canvas = document.getElementById('trajectory-chart');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '16px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Common Trajectory Patterns', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('(Chart.js integration would render here)', canvas.width / 2, canvas.height / 2 + 30);
+        }
+
+        function showError(message) {
+            document.body.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #ef4444;">
+                    <h1>Report Rendering Error</h1>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        // Auto-load data when page loads
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                const dataElement = document.getElementById('report-data');
+                const data = JSON.parse(dataElement.textContent || '{}');
+
+                if (data && Object.keys(data).length > 0) {
+                    renderReport(data);
+                } else {
+                    console.log('No data found in data island - template loaded in preview mode');
+                }
+            } catch (error) {
+                console.error('Failed to load report data:', error);
+                // Keep the loading state if no data is available (template preview mode)
+            }
+        });
+    </script>
+</body>
+
+</html>

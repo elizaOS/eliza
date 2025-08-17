@@ -18,6 +18,7 @@ import { ReportData, ReportDataSchema } from './src/report-schema';
 
 export interface GenerateCommandOptions {
   outputPath?: string;
+  format?: string;
 }
 
 export interface DataIngestionResult {
@@ -39,7 +40,12 @@ export function createGenerateCommand(): Command {
     .argument('<input_dir>', 'Directory containing run-*.json files from a matrix execution')
     .option(
       '--output-path <path>',
-      'Path where the report.json file will be saved (defaults to <input_dir>/report.json)'
+      'Path where the report file will be saved (defaults to <input_dir>/report.json or report.html)'
+    )
+    .option(
+      '--format <format>',
+      'Output format: json or html (default: json)',
+      'json'
     )
     .action(async (inputDir: string, options: GenerateCommandOptions) => {
       try {
@@ -59,7 +65,7 @@ export function createGenerateCommand(): Command {
 export async function executeGenerateCommand(inputDir: string, options: GenerateCommandOptions): Promise<void> {
   // Resolve input directory path
   const resolvedInputDir = resolve(inputDir);
-  
+
   // Validate input directory exists
   await validateInputDirectory(resolvedInputDir);
 
@@ -98,19 +104,23 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
     console.warn('⚠️  Generated report data failed schema validation:', validationError);
   }
 
-  // Determine output path
-  const outputPath = options.outputPath || join(resolvedInputDir, 'report.json');
+  // Determine output path and format
+  const format = options.format || 'json';
+  const defaultFileName = format === 'html' ? 'report.html' : 'report.json';
+  const outputPath = options.outputPath || join(resolvedInputDir, defaultFileName);
   const resolvedOutputPath = resolve(outputPath);
 
   // Ensure output directory exists
   await fs.mkdir(resolve(resolvedOutputPath, '..'), { recursive: true });
 
-  // Write the report to file
-  await fs.writeFile(
-    resolvedOutputPath,
-    JSON.stringify(reportData, null, 2),
-    'utf8'
-  );
+  // Generate output based on format
+  if (format === 'html') {
+    await generateHtmlReport(reportData, resolvedOutputPath);
+  } else if (format === 'json') {
+    await generateJsonReport(reportData, resolvedOutputPath);
+  } else {
+    throw new Error(`Unsupported format: ${format}. Supported formats: json, html`);
+  }
 
   console.log(`✅ Report generated successfully:`);
   console.log(`   • Output file: ${resolvedOutputPath}`);
@@ -148,7 +158,7 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
   try {
     // Find all run-*.json files
     const runFiles = await glob('**/run-*.json', { cwd: inputDir, absolute: true });
-    
+
     if (runFiles.length === 0) {
       throw new Error('No run-*.json files found in the input directory');
     }
@@ -190,12 +200,12 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
       try {
         const fileContent = await fs.readFile(filePath, 'utf8');
         const runData = JSON.parse(fileContent);
-        
+
         // Validate against schema
         const validatedRun = ScenarioRunResultSchema.parse(runData);
         validRuns.push(validatedRun);
         fileStats.processed++;
-        
+
       } catch (error) {
         fileStats.skipped++;
         const fileName = filePath.split('/').pop() || filePath;
@@ -265,7 +275,7 @@ function collectParameterPaths(
 
   Object.entries(obj).forEach(([key, value]) => {
     const paramPath = currentPath ? `${currentPath}.${key}` : key;
-    
+
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       // Recurse into nested objects
       collectParameterPaths(value, paramPath, variations, maxDepth, currentDepth + 1);
@@ -277,4 +287,39 @@ function collectParameterPaths(
       variations.get(paramPath)!.add(value);
     }
   });
+}
+
+/**
+ * Generate JSON report file
+ */
+async function generateJsonReport(reportData: ReportData, outputPath: string): Promise<void> {
+  await fs.writeFile(
+    outputPath,
+    JSON.stringify(reportData, null, 2),
+    'utf8'
+  );
+}
+
+/**
+ * Generate HTML report file using the template
+ */
+async function generateHtmlReport(reportData: ReportData, outputPath: string): Promise<void> {
+  // Load the HTML template
+  const templatePath = join(__dirname, 'src', 'assets', 'report_template.html');
+
+  try {
+    const templateContent = await fs.readFile(templatePath, 'utf-8');
+
+    // Inject the real data into the template
+    const htmlReport = templateContent.replace(
+      '<script id="report-data" type="application/json">\n        {}\n    </script>',
+      `<script id="report-data" type="application/json">\n        ${JSON.stringify(reportData, null, 2)}\n    </script>`
+    );
+
+    // Write the complete HTML report
+    await fs.writeFile(outputPath, htmlReport, 'utf-8');
+
+  } catch (error) {
+    throw new Error(`Failed to generate HTML report: ${(error as Error).message}. Make sure the HTML template exists at ${templatePath}`);
+  }
 }
