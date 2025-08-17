@@ -10,6 +10,7 @@ import { env } from '@/src/commands/env';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
 import { monorepo } from '@/src/commands/monorepo';
+import { report } from '@/src/commands/report';
 import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
@@ -139,6 +140,7 @@ async function main() {
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish)
+    .addCommand(report)
     .addCommand(scenario);
 
   // if no args are passed, display the banner (it will handle its own update check)
