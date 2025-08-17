@@ -346,7 +346,7 @@
       "name": "@elizaos/plugin-dummy-services",
       "version": "1.4.2",
       "dependencies": {
-        "@elizaos/core": "1.4.2",
+        "@elizaos/core": "workspace:*",
         "uuid": "^9.0.0",
       },
       "devDependencies": {
@@ -481,8 +481,8 @@
       "name": "@elizaos/server",
       "version": "1.4.2",
       "dependencies": {
-        "@elizaos/core": "1.4.2",
-        "@elizaos/plugin-sql": "1.4.2",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
         "@types/express": "^5.0.2",
         "@types/helmet": "^4.0.0",
         "@types/multer": "^1.4.13",

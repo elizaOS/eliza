@@ -6,6 +6,7 @@ import { ElizaClient } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createServer } from 'node:net';
 
 // --- Start of Pre-emptive Environment Loading ---
 loadEnvironmentVariables();
@@ -13,6 +14,31 @@ loadEnvironmentVariables();
 // Get the loaded environment settings
 const envSettings = process.env as RuntimeSettings;
 // --- End of Pre-emptive Environment Loading ---
+
+/**
+ * Find an available port in the given range
+ */
+async function findAvailablePort(startPort: number, endPort: number): Promise<number> {
+  for (let port = startPort; port <= endPort; port++) {
+    try {
+      const server = createServer();
+      await new Promise<void>((resolve, reject) => {
+        server.listen(port, () => {
+          server.close();
+          resolve();
+        });
+        server.on('error', () => {
+          reject();
+        });
+      });
+      return port;
+    } catch {
+      // Port is in use, try next one
+      continue;
+    }
+  }
+  throw new Error(`No available ports found in range ${startPort}-${endPort}`);
+}
 
 /**
  * Create (or reuse) an AgentServer and start a minimal test agent for scenarios.
@@ -37,6 +63,11 @@ export async function createScenarioServerAndAgent(
   let server: AgentServer;
   let createdServer = false;
   let port = desiredPort;
+
+  // If port is 0, find an available port
+  if (port === 0) {
+    port = await findAvailablePort(3000, 3100);
+  }
 
   if (existingServer) {
     server = existingServer;

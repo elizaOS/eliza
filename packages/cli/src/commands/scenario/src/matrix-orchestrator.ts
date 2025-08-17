@@ -20,6 +20,7 @@ import { createProgressTracker, ProgressTracker, ProgressEventType } from './pro
 import { createResourceMonitor, ResourceMonitor, ResourceAlert } from './resource-monitor';
 import { MatrixCombination } from './matrix-types';
 import { applyParameterOverrides } from './parameter-override';
+import { MatrixConfig } from './matrix-schema';
 
 /**
  * Results from executing a single matrix run.
@@ -168,9 +169,12 @@ export async function executeMatrixRuns(
   combinations: MatrixCombination[],
   options: MatrixExecutionOptions
 ): Promise<MatrixRunResult[]> {
+  console.log('🔧 [DEBUG] executeMatrixRuns started');
   const startTime = new Date();
   const results: MatrixRunResult[] = [];
   const activeRuns = new Map<string, ActiveRun>();
+
+  console.log('🔧 [DEBUG] About to setup execution environment');
 
   // Setup execution environment
   const { outputDir, maxParallel = 1, continueOnFailure = true, runTimeout = 300000 } = options;
@@ -209,29 +213,45 @@ export async function executeMatrixRuns(
 
   try {
     // Load base scenario
+    console.log('🔧 [DEBUG] About to read base scenario file');
     const baseScenarioContent = await fs.readFile(config.base_scenario, 'utf8');
+    console.log('🔧 [DEBUG] Base scenario file read successfully');
     let baseScenario: any;
 
     try {
       // Try parsing as JSON first
+      console.log('🔧 [DEBUG] Attempting to parse as JSON');
       baseScenario = JSON.parse(baseScenarioContent);
+      console.log('🔧 [DEBUG] JSON parsing successful');
     } catch {
       // If JSON fails, try YAML
+      console.log('🔧 [DEBUG] JSON parsing failed, attempting YAML import');
       const yaml = await import('js-yaml');
+      console.log('🔧 [DEBUG] YAML import successful, parsing content');
       baseScenario = yaml.load(baseScenarioContent);
+      console.log('🔧 [DEBUG] YAML parsing successful');
     }
 
+    console.log('🔧 [DEBUG] About to save matrix configuration');
     // Copy matrix configuration to output directory
     await saveMatrixConfiguration(config, outputDir);
+    console.log('🔧 [DEBUG] Matrix configuration saved successfully');
 
+    console.log('🔧 [DEBUG] About to execute all combinations');
     // Execute all combinations
     let runCounter = 0;
+    console.log(`🔧 [DEBUG] Total combinations to execute: ${combinations.length}`);
 
+    console.log('🔧 [DEBUG] About to start execution loop');
     for (const combination of combinations) {
+      console.log(`🔧 [DEBUG] Processing combination: ${combination.id}`);
       const combinationResults: MatrixRunResult[] = [];
+      console.log(`🔧 [DEBUG] About to process ${config.runs_per_combination} runs for this combination`);
 
       // Execute all runs for this combination
+      console.log('🔧 [DEBUG] About to start processing runs for this combination');
       for (let runIndex = 0; runIndex < config.runs_per_combination; runIndex++) {
+        console.log(`🔧 [DEBUG] About to process run ${runIndex + 1} of ${config.runs_per_combination}`);
         runCounter++;
         const runId = `run-${String(runCounter).padStart(3, '0')}-${combination.id.split('-')[2]}`;
 
@@ -359,22 +379,31 @@ async function executeIndividualRun(
   resourceMonitor: ResourceMonitor,
   timeout: number
 ): Promise<MatrixRunResult> {
+  console.log(`🔧 [DEBUG] executeIndividualRun started for runId: ${runId}`);
   const startTime = new Date();
 
   try {
+    console.log(`🔧 [DEBUG] executeIndividualRun: Starting progress tracking for runId: ${runId}`);
     // Start progress tracking
     progressTracker.startRun(runId, combination.id, combination.parameters);
 
+    console.log(`🔧 [DEBUG] executeIndividualRun: About to create isolated environment for runId: ${runId}`);
     // Create isolated environment
     const context = await createIsolatedEnvironment(runId, outputDir);
+    console.log(`🔧 [DEBUG] executeIndividualRun: Isolated environment created successfully for runId: ${runId}`);
 
     try {
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to write temporary scenario for runId: ${runId}`);
       // Apply parameter overrides and write temporary scenario
       await writeTemporaryScenario(context.scenarioPath, baseScenario, combination.parameters);
+      console.log(`🔧 [DEBUG] executeIndividualRun: Temporary scenario written successfully for runId: ${runId}`);
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to get resource snapshot before run for runId: ${runId}`);
       // Monitor resources before run
       const resourcesBefore = await getResourceSnapshot();
+      console.log(`🔧 [DEBUG] executeIndividualRun: Resource snapshot before run completed for runId: ${runId}`);
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to execute scenario with timeout for runId: ${runId}, timeout: ${timeout}ms`);
       // Execute scenario with timeout
       const scenarioResult = await executeScenarioWithTimeout(
         context.scenarioPath,
@@ -384,10 +413,14 @@ async function executeIndividualRun(
           progressTracker.updateRunProgress(runId, progress, status);
         }
       );
+      console.log(`🔧 [DEBUG] executeIndividualRun: Scenario execution completed successfully for runId: ${runId}`);
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to get resource snapshot after run for runId: ${runId}`);
       // Monitor resources after run
       const resourcesAfter = await getResourceSnapshot();
+      console.log(`🔧 [DEBUG] executeIndividualRun: Resource snapshot after run completed for runId: ${runId}`);
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to calculate metrics for runId: ${runId}`);
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -399,8 +432,10 @@ async function executeIndividualRun(
         cpuUsage: resourcesAfter.cpuUsage,
       };
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to mark run as completed for runId: ${runId}`);
       // Mark run as completed
       progressTracker.completeRun(runId, true, duration);
+      console.log(`🔧 [DEBUG] executeIndividualRun: Run marked as completed for runId: ${runId}`);
 
       const result: MatrixRunResult = {
         runId,
@@ -414,12 +449,16 @@ async function executeIndividualRun(
         metrics,
       };
 
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to return result for runId: ${runId}`);
       return result;
     } finally {
+      console.log(`🔧 [DEBUG] executeIndividualRun: About to cleanup isolated environment for runId: ${runId}`);
       // Always cleanup isolated environment
       await context.cleanup();
+      console.log(`🔧 [DEBUG] executeIndividualRun: Isolated environment cleanup completed for runId: ${runId}`);
     }
   } catch (error) {
+    console.log(`🔧 [DEBUG] executeIndividualRun: Error occurred for runId: ${runId}, error: ${error}`);
     const endTime = new Date();
     const duration = endTime.getTime() - startTime.getTime();
 
@@ -473,7 +512,7 @@ async function executeScenarioWithTimeout(
       onProgress(0.2, 'Validating scenario...');
 
       // Import scenario validation
-      const { ScenarioSchema } = await import('../schema');
+      const { ScenarioSchema } = await import('./schema');
       const validationResult = ScenarioSchema.safeParse(scenario);
       if (!validationResult.success) {
         throw new Error(`Invalid scenario: ${JSON.stringify(validationResult.error.format())}`);
@@ -482,15 +521,21 @@ async function executeScenarioWithTimeout(
       onProgress(0.3, 'Setting up environment...');
 
       // Create isolated environment provider
-      const { LocalEnvironmentProvider } = await import('../LocalEnvironmentProvider');
-      const { createScenarioServerAndAgent } = await import('../runtime-factory');
+      const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
+      const { createScenarioServerAndAgent } = await import('./runtime-factory');
 
       // Create server and runtime for this isolated run
-      const isolatedEnv = createIsolatedEnvironmentVariables(context);
+      // Use the context directly for isolation
 
       // Override environment variables for isolation
       const originalEnv = process.env;
-      process.env = { ...originalEnv, ...isolatedEnv };
+      // Set up isolated environment variables
+      process.env = {
+        ...originalEnv,
+        ELIZAOS_DB_PATH: context.dbPath,
+        ELIZAOS_LOG_PATH: context.logPath,
+        ELIZAOS_TEMP_DIR: context.tempDir
+      };
 
       try {
         onProgress(0.4, 'Initializing agent runtime...');
@@ -501,7 +546,7 @@ async function executeScenarioWithTimeout(
           ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'] // Minimal plugins for matrix testing
         );
 
-        const provider = new LocalEnvironmentProvider(server, agentId, runtime);
+        const provider = new LocalEnvironmentProvider(server, agentId, runtime as any);
 
         onProgress(0.5, 'Setting up scenario environment...');
 
@@ -516,15 +561,13 @@ async function executeScenarioWithTimeout(
         onProgress(0.8, 'Running evaluations...');
 
         // Run evaluations
-        const { EvaluationEngine } = await import('../EvaluationEngine');
-        const evaluationEngine = new EvaluationEngine(runtime);
+        const { EvaluationEngine } = await import('./EvaluationEngine');
+        const evaluationEngine = new EvaluationEngine(runtime as any);
 
         const evaluationResults = [];
         if (scenario.evaluations) {
-          for (const evaluation of scenario.evaluations) {
-            const result = await evaluationEngine.evaluate(evaluation, executionResults, scenario);
-            evaluationResults.push(result);
-          }
+          const results = await evaluationEngine.runEvaluations(scenario.evaluations, executionResults);
+          evaluationResults.push(...results);
         }
 
         onProgress(0.9, 'Processing results...');

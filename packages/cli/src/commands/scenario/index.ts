@@ -703,15 +703,19 @@ export const scenario = new Command()
                             logger.info('   🎯 Base scenario: ✅ Validated');
 
                             // Import orchestrator for actual execution
+                            logger.info('🔧 [DEBUG] About to import matrix-orchestrator...');
                             const { executeMatrixRuns } = await import('./src/matrix-orchestrator');
+                            logger.info('🔧 [DEBUG] Successfully imported matrix-orchestrator');
 
                             logger.info('\n🚀 Starting Matrix Execution...');
 
                             // Create output directory with timestamp in scenario logs
+                            const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'scenario', '_logs_');
                             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                            const outputDir = path.resolve(`packages/cli/src/commands/scenario/_logs_/matrix-${timestamp}`);
+                            const outputDir = path.join(logsDir, `matrix-${timestamp}`);
 
                             // Execute the matrix with full orchestration
+                            logger.info('🔧 [DEBUG] About to call executeMatrixRuns...');
                             const results = await executeMatrixRuns(matrixConfig, filteredCombinations, {
                                 outputDir,
                                 maxParallel: parseInt(options.parallel, 10),
@@ -742,6 +746,7 @@ export const scenario = new Command()
                                     }
                                 },
                             });
+                            logger.info('🔧 [DEBUG] executeMatrixRuns completed successfully');
 
                             // Report final results
                             const successfulRuns = results.filter((r) => r.success).length;
