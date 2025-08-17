@@ -4,5 +4,4 @@ dist
 cache
 models
 templates/
-test-data/
-test_data/
+/src/_logs_/

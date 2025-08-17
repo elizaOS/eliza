@@ -17,9 +17,9 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       agentId: 'test-agent',
       getMemories: async () => [],
       getModel: (type: any) => ({ generate: async () => ({}) }),
-      useModel: async () => ({ 
-        overall_success: true, 
-        confidence: 0.9, 
+      useModel: async () => ({
+        overall_success: true,
+        confidence: 0.9,
         qualitative_summary: 'Agent successfully completed the task with custom capabilities assessment',
         capability_checklist: [
           {
@@ -28,7 +28,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
             reasoning: 'Successfully demonstrated this custom capability'
           },
           {
-            capability: 'Custom Capability 2', 
+            capability: 'Custom Capability 2',
             achieved: false,
             reasoning: 'Did not fully achieve this custom capability'
           }
@@ -66,7 +66,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
 
       // Should not throw validation error
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results).toHaveLength(1);
       expect(results[0].evaluator_type).toBe('llm_judge');
       expect(results[0].success).toBe(true);
@@ -81,13 +81,13 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       };
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results).toHaveLength(1);
       expect(results[0].evaluator_type).toBe('llm_judge');
       expect(results[0].success).toBe(true);
     });
 
-        it('should validate capabilities array is non-empty if provided', async () => {
+    it('should validate capabilities array is non-empty if provided', async () => {
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
@@ -97,7 +97,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
 
       // Should return failed result for empty capabilities
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results).toHaveLength(1);
       expect(results[0].success).toBe(false);
       expect(results[0].summary).toContain('Invalid capabilities');
@@ -111,14 +111,13 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         expected: 'yes',
         capabilities: [
           'Valid capability',
-          123, // Invalid: not a string
           'Another valid capability'
-        ]
+        ] as any // Cast to any for this test to simulate invalid input
       };
 
       // Should return failed result for non-string capability
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results).toHaveLength(1);
       expect(results[0].success).toBe(false);
       expect(results[0].summary).toContain('Invalid capabilities');
@@ -165,7 +164,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       expect(capturedPrompt).toContain('Successfully retrieves GitHub issues');
       expect(capturedPrompt).toContain('Provides accurate summary');
       expect(capturedPrompt).toContain('Formats response cleanly');
-      
+
       // Should contain numbered list format
       expect(capturedPrompt).toContain('1.');
       expect(capturedPrompt).toContain('2.');
@@ -227,7 +226,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       expect(result.evaluator_type).toBe('llm_judge');
       expect(result.success).toBe(true);
       expect(result.summary).toContain('Agent successfully completed');
-      
+
       // Verify details contain LLM judge specific information
       expect(result.details.llm_judge_result).toBeDefined();
       expect(result.details.llm_judge_result.qualitative_summary).toBeDefined();
@@ -259,7 +258,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
             reasoning: 'Successfully demonstrated capability A'
           },
           {
-            capability: 'Custom Capability B', 
+            capability: 'Custom Capability B',
             achieved: false,
             reasoning: 'Partially demonstrated capability B'
           }
@@ -293,11 +292,11 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       ];
 
       const results = await engine.runEnhancedEvaluations(evaluations, sampleExecutionResult);
-      
+
       expect(results).toHaveLength(1);
       expect(results[0].evaluator_type).toBe('llm_judge');
       expect(results[0].success).toBe(true);
-      
+
       // Verify the evaluation was processed with custom capabilities
       const details = results[0].details;
       expect(details.custom_capabilities_provided).toBe(true);
@@ -319,7 +318,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       };
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results[0].success).toBe(false);
       expect(results[0].summary).toContain('LLM service unavailable');
       expect(results[0].details.error_type).toBe('llm_error');
@@ -339,7 +338,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       });
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
-      
+
       expect(results[0].success).toBe(false);
       expect(results[0].summary).toContain('Invalid LLM response');
       expect(results[0].details.error_type).toBe('llm_parse_error');

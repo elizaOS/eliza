@@ -1,4 +1,5 @@
 import { Scenario } from './schema';
+import { TrajectoryStep } from './TrajectoryReconstructor';
 
 /**
  * The result of executing the 'run' block in a scenario.
@@ -13,6 +14,8 @@ export interface ExecutionResult {
   startedAtMs?: number; // epoch ms
   endedAtMs?: number; // epoch ms
   durationMs?: number; // derived convenience
+  // Agent trajectory logging (Ticket #5785)
+  trajectory?: TrajectoryStep[];
 }
 
 /**

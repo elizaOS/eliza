@@ -104,7 +104,7 @@ export async function askAgentViaApi(
   agentId: UUID,
   input: string,
   timeoutMs: number = 30000
-): Promise<string> {
+): Promise<{ response: string; roomId: UUID }> {
   const port = (server as any)?.port ?? 3000;
   const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
   const { servers } = await client.messaging.listServers();
@@ -158,7 +158,7 @@ export async function askAgentViaApi(
     const latestMessage = agentMessages.sort(
       (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0];
-    return latestMessage.content;
+    return { response: latestMessage.content, roomId: channel.id as UUID };
   }
   throw new Error('Timeout waiting for agent response');
 }

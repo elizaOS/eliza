@@ -3,17 +3,20 @@ import { Scenario } from './schema';
 import { AgentRuntime, UUID } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
 import { askAgentViaApi } from './runtime-factory';
+import { TrajectoryReconstructor } from './TrajectoryReconstructor';
 
 export class E2BEnvironmentProvider implements EnvironmentProvider {
   private runtime: AgentRuntime;
   private sandboxId: string | null = null;
   private server: AgentServer;
   private agentId: UUID;
+  private trajectoryReconstructor: TrajectoryReconstructor;
 
   constructor(runtime: AgentRuntime, server: AgentServer, agentId: UUID) {
     this.runtime = runtime;
     this.server = server;
     this.agentId = agentId;
+    this.trajectoryReconstructor = new TrajectoryReconstructor(runtime);
 
     // Verify the service exists
     const e2bService = runtime.getService('e2b');
@@ -98,7 +101,10 @@ print(json.dumps(files))
 
       if (step.input) {
         // Use the existing server + agent to get an NL response
-        const response = await askAgentViaApi(this.server, this.agentId, step.input);
+        const { response, roomId } = await askAgentViaApi(this.server, this.agentId, step.input);
+
+        // Reconstruct trajectory from database logs (Ticket #5785 - Non-invasive approach)
+        const trajectory = await this.trajectoryReconstructor.getLatestTrajectory(roomId);
 
         const endedAtMs = Date.now();
         const durationMs = endedAtMs - startedAtMs;
@@ -111,6 +117,7 @@ print(json.dumps(files))
           startedAtMs,
           endedAtMs,
           durationMs,
+          trajectory, // Add trajectory to execution result
         });
       } else if (step.code) {
         // Use the correct executeCode API: executeCode(code: string, language?: string)

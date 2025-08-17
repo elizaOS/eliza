@@ -161,7 +161,7 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
 
       // Filter for action_result memories
       const actionResults = actionMemories.filter(
-        (mem) => mem?.type === 'messages' && mem.content?.type === 'action_result'
+        (mem) => mem && typeof mem.content === 'object' && mem.content?.type === 'action_result'
       );
       // Normalize function to compare action names robustly (case/underscore insensitive)
       const normalize = (name: string | undefined): string =>
@@ -170,7 +170,10 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
 
       // Check if any action matches the specified name (normalized)
       const matchingAction = actionResults.find(
-        (mem) => normalize(mem.content?.actionName ?? '') === target
+        (mem) => {
+          const actionName = (mem.content as any)?.actionName;
+          return normalize(typeof actionName === 'string' ? actionName : '') === target;
+        }
       );
 
       if (!matchingAction) {
@@ -180,11 +183,11 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
         };
       }
 
-      const actionStatus = matchingAction.content?.actionStatus || 'unknown';
+      const actionStatus = (matchingAction.content as any)?.actionStatus || 'unknown';
       const message =
         actionStatus === 'completed'
-          ? `Action '${actionName}' was executed successfully`
-          : `Action '${actionName}' was executed but failed: ${matchingAction.content?.error || 'Unknown error'}`;
+          ? `Action '${params.action}' was executed successfully`
+          : `Action '${params.action}' was executed but failed: ${(matchingAction.content as any)?.error || 'Unknown error'}`;
 
       return {
         success: true, // Success means the action was found
@@ -216,7 +219,7 @@ class LLMJudgeEvaluator implements Evaluator {
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
-    let modelType: ModelType =
+    let modelType =
       candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Create a simple, clear prompt for object generation

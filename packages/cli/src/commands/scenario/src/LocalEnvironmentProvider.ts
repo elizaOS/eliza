@@ -1,8 +1,9 @@
 import { EnvironmentProvider, ExecutionResult } from './providers';
 import { Scenario } from './schema';
 import { AgentServer } from '@elizaos/server';
-import { UUID } from '@elizaos/core';
+import { UUID, AgentRuntime } from '@elizaos/core';
 import { askAgentViaApi } from './runtime-factory';
+import { TrajectoryReconstructor } from './TrajectoryReconstructor';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -15,10 +16,14 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
+  private runtime: AgentRuntime | null = null;
+  private trajectoryReconstructor: TrajectoryReconstructor | null = null;
 
-  constructor(server?: AgentServer, agentId?: UUID) {
+  constructor(server?: AgentServer, agentId?: UUID, runtime?: AgentRuntime) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
+    this.runtime = runtime ?? null;
+    this.trajectoryReconstructor = runtime ? new TrajectoryReconstructor(runtime) : null;
   }
 
   async setup(scenario: Scenario): Promise<void> {
@@ -87,7 +92,20 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             'LocalEnvironmentProvider requires a pre-created server and agent for NL input'
           );
         }
-        const response = await askAgentViaApi(this.server, this.agentId, step.input);
+        const { response, roomId } = await askAgentViaApi(this.server, this.agentId, step.input);
+
+        // Give database time to write logs before reconstructing trajectory 
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay to allow async DB writes
+
+        // Reconstruct trajectory from database logs (Ticket #5785 - Non-invasive approach)
+        const trajectory = this.trajectoryReconstructor && roomId ?
+          await this.trajectoryReconstructor.getLatestTrajectory(roomId) : [];
+
+        // Debug trajectory reconstruction
+        console.log(`🔍 [Trajectory Debug] Room ID: ${roomId}, Steps found: ${trajectory.length}`);
+        if (trajectory.length > 0) {
+          console.log(`📊 [Trajectory Debug] First step:`, JSON.stringify(trajectory[0], null, 2));
+        }
 
         const endedAtMs = Date.now();
         const durationMs = endedAtMs - startedAtMs;
@@ -100,6 +118,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           startedAtMs,
           endedAtMs,
           durationMs,
+          trajectory, // Add trajectory to execution result
         });
       } else if (step.code) {
         // Construct appropriate command based on language

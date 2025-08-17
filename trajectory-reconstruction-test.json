@@ -1,0 +1,166 @@
+{
+  "scenario_info": {
+    "name": "Trajectory Test",
+    "timestamp": "2025-08-16T22:33:59.708Z",
+    "agent_id": "test-agent-id"
+  },
+  "execution_result": {
+    "exitCode": 0,
+    "stdout": "Hello! How can I assist you today?",
+    "stderr": "",
+    "files": {},
+    "trajectory": [
+      {
+        "type": "observation",
+        "timestamp": "2024-01-16T23:10:01.000Z",
+        "content": {
+          "success": true,
+          "text": "Hello! How can I assist you today?",
+          "metadata": {
+            "generatedAt": "2025-01-16T22:30:00Z",
+            "model": "gpt-4o"
+          }
+        }
+      },
+      {
+        "type": "thought",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": "The user is greeting me. I should respond politely and offer assistance."
+      },
+      {
+        "type": "action",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": {
+          "name": "REPLY",
+          "parameters": {
+            "context": "greeting",
+            "priority": "normal",
+            "responseType": "friendly",
+            "input": "Hello! How can I assist you today?",
+            "prompts": [
+              {
+                "modelType": "TEXT_LARGE",
+                "prompt": "Generate a response to: Hello! Please help me.",
+                "timestamp": "2025-01-16T22:29:59Z"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "observation",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": {
+          "success": true,
+          "text": "Hello! How can I assist you today?",
+          "data": {
+            "messageGenerated": true,
+            "wordCount": 7,
+            "sentiment": "positive"
+          }
+        }
+      },
+      {
+        "type": "thought",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": "The user is greeting me. I should respond politely and offer assistance."
+      },
+      {
+        "type": "action",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": {
+          "name": "REPLY",
+          "parameters": {
+            "context": "greeting",
+            "priority": "normal",
+            "responseType": "friendly",
+            "input": "Hello! How can I assist you today?",
+            "prompts": [
+              {
+                "modelType": "TEXT_LARGE",
+                "prompt": "Generate a response to: Hello! Please help me.",
+                "timestamp": "2025-01-16T22:29:59Z"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "observation",
+        "timestamp": "2025-01-16T22:30:00.000Z",
+        "content": {
+          "success": true,
+          "text": "Hello! How can I assist you today?",
+          "data": {
+            "messageGenerated": true,
+            "wordCount": 7,
+            "sentiment": "positive"
+          }
+        }
+      },
+      {
+        "type": "thought",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": "I should update my knowledge about this user for future interactions."
+      },
+      {
+        "type": "action",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": {
+          "name": "UPDATE_CONTACT",
+          "parameters": {}
+        }
+      },
+      {
+        "type": "observation",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": {
+          "success": true,
+          "contactUpdated": true,
+          "previousInfo": null
+        }
+      },
+      {
+        "type": "thought",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": "I should update my knowledge about this user for future interactions."
+      },
+      {
+        "type": "action",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": {
+          "name": "UPDATE_CONTACT",
+          "parameters": {}
+        }
+      },
+      {
+        "type": "observation",
+        "timestamp": "2025-01-16T22:30:01.000Z",
+        "content": {
+          "success": true,
+          "contactUpdated": true,
+          "previousInfo": null
+        }
+      }
+    ],
+    "startedAtMs": 1755383339707,
+    "endedAtMs": 1755383639707,
+    "durationMs": 300000
+  },
+  "trajectory_analysis": {
+    "step_types": [
+      "observation",
+      "thought",
+      "action"
+    ],
+    "thought_count": 4,
+    "action_count": 4,
+    "observation_count": 5,
+    "actions_performed": [
+      "REPLY",
+      "REPLY",
+      "UPDATE_CONTACT",
+      "UPDATE_CONTACT"
+    ]
+  }
+}

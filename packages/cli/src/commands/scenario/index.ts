@@ -84,6 +84,10 @@ export const scenario = new Command()
                 let finalStatus = false; // Default to fail
                 let reporter: Reporter | null = null;
 
+                // Create unique scenario run identifier
+                const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', '_logs_');
+
                 try {
                     const fullPath = path.resolve(filePath);
                     logger.info(`Attempting to read scenario file from: ${fullPath}`);
@@ -101,6 +105,14 @@ export const scenario = new Command()
                         process.exit(1);
                     }
                     const scenario: Scenario = validationResult.data;
+
+                    // Ensure logs directory exists
+                    if (!fs.existsSync(logsDir)) {
+                        fs.mkdirSync(logsDir, { recursive: true });
+                    }
+
+                    // Sanitize scenario name for filename
+                    const scenarioNameSafe = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
 
                     // Parse and validate plugins if specified
                     if (scenario.plugins && scenario.plugins.length > 0) {
@@ -160,7 +172,7 @@ export const scenario = new Command()
                         const hasE2B = !!runtime.getService?.('e2b');
                         provider = hasE2B
                             ? new E2BEnvironmentProvider(runtime, server, agentId)
-                            : new LocalEnvironmentProvider(server, agentId);
+                            : new LocalEnvironmentProvider(server, agentId, runtime);
                     } else if (scenario.environment.type === 'local') {
                         // Local also may need NL interaction; pass server/agent if already created
                         if (!server || !runtime || !agentId) {
@@ -170,7 +182,7 @@ export const scenario = new Command()
                             agentId = created.agentId;
                             createdServer = created.createdServer;
                         }
-                        provider = new LocalEnvironmentProvider(server, agentId);
+                        provider = new LocalEnvironmentProvider(server, agentId, runtime);
                         logger.info('Using local environment');
                     } else {
                         logger.error(`Unsupported environment type: '${scenario.environment.type}'`);
@@ -195,6 +207,23 @@ export const scenario = new Command()
                         reporter?.reportExecutionResult(result);
                     });
 
+                    // Ensure _logs_ directory exists (already created at beginning)
+                    logger.info(`📂 Using logs directory: ${logsDir}`);
+
+                    // Generate scenario run identifier
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const scenarioName = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '_');
+                    const runId = `${scenarioName}_${timestamp}`;
+
+                    // Write execution results with trajectory data to JSON files (Ticket #5785)
+                    logger.info(`🔍 DEBUG: About to write ${results.length} execution results to ${logsDir}`);
+                    results.forEach((result, i) => {
+                        const executionFilename = `execution-results_${runId}_step-${i}.json`;
+                        const executionPath = path.join(logsDir, executionFilename);
+                        fs.writeFileSync(executionPath, JSON.stringify(result, null, 2));
+                        logger.info(`📄 Execution results written to: ${executionPath}`);
+                    });
+
                     // Run evaluations for each step
                     const allEvaluationResults: any[] = [];
 
@@ -213,7 +242,10 @@ export const scenario = new Command()
                                     step.evaluations,
                                     result
                                 );
-                                fs.writeFileSync(`./evaluation-results-${i}.json`, JSON.stringify(evaluationResults, null, 2));
+                                const evaluationFilename = `evaluation-results_${runId}_step-${i}.json`;
+                                const evaluationPath = path.join(logsDir, evaluationFilename);
+                                fs.writeFileSync(evaluationPath, JSON.stringify(evaluationResults, null, 2));
+                                logger.info(`📊 Evaluation results written to: ${evaluationPath}`);
                                 allEvaluationResults.push(...evaluationResults);
                             }
                         }
@@ -226,6 +258,8 @@ export const scenario = new Command()
                             const result = results[i];
 
                             if (step.evaluations && step.evaluations.length > 0) {
+                                const stepEvaluationResults: any[] = [];
+
                                 for (const evaluation of step.evaluations) {
                                     let evaluationResult: any;
 
@@ -250,8 +284,15 @@ export const scenario = new Command()
                                         };
                                     }
 
+                                    stepEvaluationResults.push(evaluationResult);
                                     allEvaluationResults.push(evaluationResult);
                                 }
+
+                                // Save basic evaluation results to file (same as runtime evaluations)
+                                const evaluationFilename = `evaluation-results_${runId}_step-${i}.json`;
+                                const evaluationPath = path.join(logsDir, evaluationFilename);
+                                fs.writeFileSync(evaluationPath, JSON.stringify(stepEvaluationResults, null, 2));
+                                logger.info(`📊 Basic evaluation results written to: ${evaluationPath}`);
                             }
                         }
                     }

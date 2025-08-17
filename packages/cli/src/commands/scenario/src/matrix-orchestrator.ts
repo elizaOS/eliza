@@ -18,7 +18,7 @@ import {
 } from './run-isolation';
 import { createProgressTracker, ProgressTracker, ProgressEventType } from './progress-tracker';
 import { createResourceMonitor, ResourceMonitor, ResourceAlert } from './resource-monitor';
-import { MatrixConfig, MatrixCombination } from './matrix-types';
+import { MatrixCombination } from './matrix-types';
 import { applyParameterOverrides } from './parameter-override';
 
 /**
@@ -501,7 +501,7 @@ async function executeScenarioWithTimeout(
           ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'] // Minimal plugins for matrix testing
         );
 
-        const provider = new LocalEnvironmentProvider(server, agentId);
+        const provider = new LocalEnvironmentProvider(server, agentId, runtime);
 
         onProgress(0.5, 'Setting up scenario environment...');
 
