@@ -18,8 +18,7 @@ describe('processAttachments', () => {
 
   beforeEach(() => {
     mockRuntime = createMockRuntime();
-    // Reset useModel mock for each test
-    mockRuntime.useModel = mock();
+    mockRuntime.useModel.mockReset();
   });
 
   afterEach(() => {
@@ -45,7 +44,7 @@ describe('processAttachments', () => {
     };
 
     // Mock the image description model response
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <title>Beautiful Sunset</title>
   <description>A stunning sunset over the ocean with vibrant colors</description>
   <text>This image captures a breathtaking sunset scene over a calm ocean. The sky is painted with brilliant hues of orange, pink, and purple as the sun dips below the horizon. Gentle waves lap at the shore, creating a peaceful and serene atmosphere.</text>
@@ -122,10 +121,10 @@ describe('processAttachments', () => {
       },
     ];
 
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <title>Test Image</title>
   <description>A test image description</description>
-  <text>Detailed description of the test image</text>
+  <text>This is a test image description.</text>
 </response>`);
 
     const result = await processAttachments(attachments, mockRuntime as IAgentRuntime);
@@ -147,7 +146,7 @@ describe('processAttachments', () => {
     };
 
     // Mock object response instead of XML
-    mockRuntime.useModel = mock().mockResolvedValue({
+    mockRuntime.useModel.mockResolvedValue({
       title: 'Object Response Title',
       description: 'Object response description',
       text: 'Object response text',
@@ -170,7 +169,7 @@ describe('processAttachments', () => {
     };
 
     // Mock malformed XML response
-    mockRuntime.useModel = mock().mockResolvedValue('This is not valid XML');
+    mockRuntime.useModel.mockResolvedValue('This is not valid XML');
 
     const result = await processAttachments([imageAttachment], mockRuntime as IAgentRuntime);
 
@@ -198,7 +197,7 @@ describe('processAttachments', () => {
     ];
 
     // Mock error for first image, success for second
-    mockRuntime.useModel = mock().mockRejectedValueOnce(new Error('Model API error'))
+    mockRuntime.useModel.mockRejectedValueOnce(new Error('Model API error'))
       .mockResolvedValueOnce(`<response>
   <title>Second Image</title>
   <description>Description of second image</description>
@@ -239,7 +238,7 @@ describe('processAttachments', () => {
     ];
 
     let callCount = 0;
-    mockRuntime.useModel = mock().mockImplementation(() => {
+    mockRuntime.useModel.mockImplementation(() => {
       callCount++;
       return Promise.resolve(`<response>
   <title>Image ${callCount}</title>
@@ -268,9 +267,9 @@ describe('processAttachments', () => {
     };
 
     // Mock response without title
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <description>A description without title</description>
-  <text>Detailed text without title</text>
+  <text>This is the text content without a title.</text>
 </response>`);
 
     const result = await processAttachments([imageAttachment], mockRuntime as IAgentRuntime);
