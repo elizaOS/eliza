@@ -1,23 +1,17 @@
 import { Sentry } from './sentry/instrument';
 
-// Singleton environment detector with cached results
-class EnvironmentDetector {
-  private static instance: EnvironmentDetector;
-  private cachedResult: { isBrowser: boolean; isNode: boolean } | null = null;
+// ============================================================================
+// Environment Detection
+// ============================================================================
+
+// Factory function to create environment detector with cached results
+function createEnvironmentDetector() {
+  let cachedResult: { isBrowser: boolean; isNode: boolean } | null = null;
   
-  private constructor() {}
-  
-  static getInstance(): EnvironmentDetector {
-    if (!EnvironmentDetector.instance) {
-      EnvironmentDetector.instance = new EnvironmentDetector();
-    }
-    return EnvironmentDetector.instance;
-  }
-  
-  getEnvironment(): { isBrowser: boolean; isNode: boolean } {
+  const getEnvironment = (): { isBrowser: boolean; isNode: boolean } => {
     // Return cached result if available (for performance)
-    if (this.cachedResult !== null) {
-      return this.cachedResult;
+    if (cachedResult !== null) {
+      return cachedResult;
     }
     
     const isBrowser = typeof globalThis !== 'undefined' && 
@@ -27,41 +21,52 @@ class EnvironmentDetector {
       typeof process.versions !== 'undefined' && 
       typeof process.versions.node !== 'undefined';
     
-    this.cachedResult = { isBrowser, isNode };
-    return this.cachedResult;
-  }
+    cachedResult = { isBrowser, isNode };
+    return cachedResult;
+  };
   
-  // Clear cache for testing purposes
-  clearCache(): void {
-    this.cachedResult = null;
-  }
+  const clearCache = (): void => {
+    cachedResult = null;
+  };
   
-  // Helper methods for common checks
-  isNode(): boolean {
-    return this.getEnvironment().isNode;
-  }
+  const isNode = (): boolean => {
+    return getEnvironment().isNode;
+  };
   
-  isBrowser(): boolean {
-    return this.getEnvironment().isBrowser;
-  }
+  const isBrowser = (): boolean => {
+    return getEnvironment().isBrowser;
+  };
   
-  hasProcess(): boolean {
+  const hasProcess = (): boolean => {
     return typeof process !== 'undefined';
-  }
+  };
   
-  getProcessEnv(key: string): string | undefined {
-    if (this.hasProcess() && process.env) {
+  const getProcessEnv = (key: string): string | undefined => {
+    if (hasProcess() && process.env) {
       return process.env[key];
     }
     return undefined;
-  }
+  };
+  
+  return {
+    getEnvironment,
+    clearCache,
+    isNode,
+    isBrowser,
+    hasProcess,
+    getProcessEnv
+  };
 }
 
 // Create singleton instance
-const envDetector = EnvironmentDetector.getInstance();
+const envDetector = createEnvironmentDetector();
 
 // Convenience function for backward compatibility
 const getEnvironment = () => envDetector.getEnvironment();
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
 // Local utility function to avoid circular dependency
 function parseBooleanFromText(value: string | undefined | null): boolean {
@@ -100,27 +105,20 @@ function safeStringify(obj: unknown): string {
   }
 }
 
-/**
- * Module Loading Strategy:
- * 
- * This module provides both synchronous and asynchronous logger factory functions
- * to support a gradual migration from CommonJS to ES modules:
- * 
- * 1. createLogger() - Synchronous, uses require() via sync loaders (backward compatible)
- * 2. createLoggerAsync() - Asynchronous, uses dynamic import() (recommended for new code)
- * 
- * The module loaders cache loaded modules to avoid redundant imports and improve performance.
- * 
- * Migration path:
- * - Existing code can continue using createLogger()
- * - New code should prefer createLoggerAsync() for full ES module support
- * - Future versions will deprecate the synchronous version
- */
+// ============================================================================
+// Module Loading Strategy
+// ============================================================================
+// This module provides both synchronous and asynchronous logger factory functions
+// to support a gradual migration from CommonJS to ES modules:
+// 
+// 1. createLogger() - Synchronous, uses require() via sync loaders (backward compatible)
+// 2. createLoggerAsync() - Asynchronous, uses dynamic import() (recommended for new code)
+// 
+// The module loaders cache loaded modules to avoid redundant imports and improve performance.
 
-// Module loader cache for dynamic imports
-/**
- * Type definitions for Pino module
- */
+// ============================================================================
+// Type Definitions
+// ============================================================================
 type PinoModule = {
   default?: unknown;
   (options?: PinoOptions, destination?: NodeJS.WritableStream | unknown): unknown;
@@ -168,11 +166,9 @@ async function loadPinoAsync(): Promise<PinoModule> {
   return moduleCache.pinoPromise;
 }
 
-// Note: pino-pretty async loading is not needed as createLoggerAsync uses
-// Pino's transport option to configure pino-pretty inline
-
-// Synchronous fallback loaders (using require) for backward compatibility
-// These will be used in createLogger until we can refactor to async
+// ============================================================================
+// Module Loaders
+// ============================================================================
 function loadPinoSync(): PinoModule {
   if (moduleCache.pino) {
     return moduleCache.pino;
@@ -215,6 +211,8 @@ interface LoggerBindings extends Record<string, unknown> {
 
 interface DestinationStream {
   write(data: string | LogEntry): void;
+  recentLogs?(): LogEntry[];
+  clear?(): void;
 }
 
 interface Logger {
@@ -238,7 +236,7 @@ const PINO_DESTINATION_SYMBOL = Symbol.for('pino-destination');
 
 // Extended Logger interface for Pino with custom properties
 interface ExtendedPinoLogger extends Logger {
-  [key: symbol]: InMemoryDestination | undefined;
+  [key: symbol]: DestinationStream | undefined;
 }
 
 // Pino configuration types
@@ -281,31 +279,19 @@ interface LogEntry {
   [key: string]: unknown;
 }
 
-// Custom destination that maintains recent logs in memory
+// ============================================================================
+// In-Memory Destination
+// ============================================================================
+
 /**
- * Class representing an in-memory destination stream for logging.
- * Implements DestinationStream interface.
+ * Factory function for creating an in-memory destination stream for logging.
+ * Returns object implementing DestinationStream interface.
  */
-class InMemoryDestination implements DestinationStream {
-  private logs: LogEntry[] = [];
-  private maxLogs = 1000; // Keep last 1000 logs
-  private stream: DestinationStream | null;
+function createInMemoryDestination(stream: DestinationStream | null): DestinationStream {
+  let logs: LogEntry[] = [];
+  const maxLogs = 1000; // Keep last 1000 logs
 
-  /**
-   * Constructor for creating a new instance of the class.
-   * @param {DestinationStream|null} stream - The stream to assign to the instance. Can be null.
-   */
-  constructor(stream: DestinationStream | null) {
-    this.stream = stream;
-  }
-
-  /**
-   * Writes a log entry to the memory buffer and forwards it to the pretty print stream if available.
-   *
-   * @param {string | LogEntry} data - The data to be written, which can be either a string or a LogEntry object.
-   * @returns {void}
-   */
-  write(data: string | LogEntry): void {
+  const write = (data: string | LogEntry): void => {
     // Parse the log entry if it's a string
     let logEntry: LogEntry;
     let stringData: string;
@@ -368,40 +354,36 @@ class InMemoryDestination implements DestinationStream {
     }
 
     // Add to memory buffer
-    this.logs.push(logEntry);
+    logs.push(logEntry);
 
     // Maintain buffer size
-    if (this.logs.length > this.maxLogs) {
-      this.logs.shift();
+    if (logs.length > maxLogs) {
+      logs.shift();
     }
 
     // Forward to pretty print stream if available
-    if (this.stream) {
-      this.stream.write(stringData);
+    if (stream) {
+      stream.write(stringData);
     }
-  }
+  };
 
-  /**
-   * Retrieves the recent logs from the system.
-   *
-   * @returns {LogEntry[]} An array of LogEntry objects representing the recent logs.
-   */
-  recentLogs(): LogEntry[] {
-    return this.logs;
-  }
-
-  /**
-   * Clears all logs from memory.
-   *
-   * @returns {void}
-   */
-  clear(): void {
-    this.logs = [];
-  }
+  const recentLogs = (): LogEntry[] => logs;
+  const clear = (): void => { logs = []; };
+  
+  // Return object implementing DestinationStream interface
+  return {
+    write,
+    recentLogs,
+    clear
+  };
 }
 
+// ============================================================================
+// Browser Logger Implementation
+// ============================================================================
+
 /**
- * Browser-compatible logger that mimics Pino's API but uses console.log
+ * Factory function to create browser-compatible logger that mimics Pino's API but uses console.log
  */
 // Define log level type and values
 type LogLevelName = 'fatal' | 'error' | 'warn' | 'info' | 'log' | 'progress' | 'success' | 'debug' | 'trace';
@@ -411,54 +393,76 @@ interface BrowserLoggerOptions {
   base?: Record<string, unknown>;
 }
 
-class BrowserLogger implements Logger {
-  private inMemoryDestination: InMemoryDestination;
-  private currentLevel: number;
-  private bindings: Record<string, unknown>;
-  private levelValues: Record<LogLevelName, number> = {
-    fatal: 60,
-    error: 50,
-    warn: 40,
-    info: 30,
-    log: 29,
-    progress: 28,
-    success: 27,
-    debug: 20,
-    trace: 10,
+// Level values configuration
+const levelValues: Record<LogLevelName, number> = {
+  fatal: 60,
+  error: 50,
+  warn: 40,
+  info: 30,
+  log: 29,
+  progress: 28,
+  success: 27,
+  debug: 20,
+  trace: 10,
+};
+
+function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
+  // Initialize in-memory logging
+  const inMemoryDestination = createInMemoryDestination(null);
+  
+  // Set log level
+  const level = options.level || 'info';
+  const currentLevel = levelValues[level as LogLevelName] || 30;
+  
+  // Store bindings for child loggers
+  const bindings = options.base || {};
+
+  const shouldLog = (logLevel: string): boolean => {
+    const levelValue = levelValues[logLevel as LogLevelName] || 30;
+    return levelValue >= currentLevel;
   };
 
-  constructor(options: BrowserLoggerOptions = {}) {
-    // Initialize in-memory logging
-    this.inMemoryDestination = new InMemoryDestination(null);
+  const getConsoleMethod = (logLevel: string): (...args: unknown[]) => void => {
+    const consoleObj = getConsole();
     
-    // Set log level
-    const level = options.level || 'info';
-    this.currentLevel = this.levelValues[level] || 30;
-    this.level = level;
-    
-    // Store bindings for child loggers
-    this.bindings = options.base || {};
-  }
+    if (!consoleObj) {
+      return () => {}; // No-op if console doesn't exist
+    }
 
-  level: string;
+    // Fallback to console.log if specific methods don't exist
+    const fallback = consoleObj.log ? consoleObj.log.bind(consoleObj) : () => {};
 
-  private shouldLog(level: string): boolean {
-    const levelValue = this.levelValues[level] || 30;
-    return levelValue >= this.currentLevel;
-  }
+    switch (logLevel) {
+      case 'trace':
+      case 'debug':
+        return consoleObj.debug ? consoleObj.debug.bind(consoleObj) : fallback;
+      case 'info':
+      case 'log':
+      case 'progress':
+      case 'success':
+        return consoleObj.info ? consoleObj.info.bind(consoleObj) : fallback;
+      case 'warn':
+        return consoleObj.warn ? consoleObj.warn.bind(consoleObj) : fallback;
+      case 'error':
+      case 'fatal':
+        return consoleObj.error ? consoleObj.error.bind(consoleObj) : fallback;
+      default:
+        return fallback;
+    }
+  };
 
-  private formatMessage(level: string, obj: unknown, msg?: string, ...args: unknown[]): void {
-    if (!this.shouldLog(level)) return;
+  const formatMessage = (logLevel: string, obj: unknown, msg?: string, ...args: unknown[]): void => {
+    if (!shouldLog(logLevel)) return;
 
     const timestamp = new Date().toISOString();
-    const levelLabel = level.toUpperCase();
+    const levelLabel = logLevel.toUpperCase();
     
     // Create log entry for in-memory storage
     const logEntry: LogEntry = {
       time: Date.now(),
-      level: this.levelValues[level],
+      level: levelValues[logLevel as LogLevelName],
       msg: '',
-      ...this.bindings
+      ...bindings
     };
 
     // Process arguments similar to pino
@@ -489,14 +493,14 @@ class BrowserLogger implements Logger {
     logEntry.msg = messageStr;
 
     // Store in memory
-    this.inMemoryDestination.write(logEntry);
+    inMemoryDestination.write(logEntry);
 
     // Format for console output
     const prefix = `[${timestamp}] ${levelLabel}:`;
     const hasContext = Object.keys(contextObj).length > 0;
     
     // Choose appropriate console method
-    const consoleMethod = this.getConsoleMethod(level);
+    const consoleMethod = getConsoleMethod(logLevel);
 
     // Log to console
     if (hasContext) {
@@ -511,95 +515,55 @@ class BrowserLogger implements Logger {
 
     // Handle Sentry logging if needed
     if (envDetector.hasProcess() && envDetector.getProcessEnv('SENTRY_LOGGING') !== 'false') {
-      if (obj instanceof Error || (level === 'error' || level === 'fatal')) {
+      if (obj instanceof Error || (logLevel === 'error' || logLevel === 'fatal')) {
         const error = obj instanceof Error ? obj : new Error(messageStr);
         Sentry.captureException(error);
       }
     }
-  }
-
-  private getConsoleMethod(level: string): (...args: unknown[]) => void {
-    const consoleObj = getConsole();
-    
-    if (!consoleObj) {
-      return () => {}; // No-op if console doesn't exist
-    }
-
-    // Fallback to console.log if specific methods don't exist
-    const fallback = consoleObj.log ? consoleObj.log.bind(consoleObj) : () => {};
-
-    switch (level) {
-      case 'trace':
-      case 'debug':
-        return consoleObj.debug ? consoleObj.debug.bind(consoleObj) : fallback;
-      case 'info':
-      case 'log':
-      case 'progress':
-      case 'success':
-        return consoleObj.info ? consoleObj.info.bind(consoleObj) : fallback;
-      case 'warn':
-        return consoleObj.warn ? consoleObj.warn.bind(consoleObj) : fallback;
-      case 'error':
-      case 'fatal':
-        return consoleObj.error ? consoleObj.error.bind(consoleObj) : fallback;
-      default:
-        return fallback;
-    }
-  }
-
-  trace: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('trace', obj, msg, ...args);
   };
 
-  debug: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('debug', obj, msg, ...args);
-  };
+  // Create log methods using a helper function to reduce repetition
+  const createLogMethod = (level: string): LogFn => 
+    (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
+      formatMessage(level, obj, msg, ...args);
+    };
 
-  info: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('info', obj, msg, ...args);
-  };
-
-  warn: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('warn', obj, msg, ...args);
-  };
-
-  error: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('error', obj, msg, ...args);
-  };
-
-  fatal: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('fatal', obj, msg, ...args);
-  };
-
-  // Custom log levels for ElizaOS compatibility
-  success: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('success', obj, msg, ...args);
-  };
-
-  progress: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('progress', obj, msg, ...args);
-  };
-
-  log: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-    this.formatMessage('log', obj, msg, ...args);
-  };
-
-  clear(): void {
-    this.inMemoryDestination.clear();
+  const clear = (): void => {
+    inMemoryDestination.clear();
     // Check if console.clear exists before calling it
     const consoleObj = getConsole();
     if (consoleObj && consoleObj.clear) {
       consoleObj.clear();
     }
-  }
+  };
 
-  child(bindings: Record<string, unknown>): Logger {
-    return new BrowserLogger({
-      level: this.level,
-      base: { ...this.bindings, ...bindings }
+  const child = (childBindings: Record<string, unknown>): Logger => {
+    return createBrowserLogger({
+      level: level,
+      base: { ...bindings, ...childBindings }
     });
-  }
+  };
+  
+  // Return object implementing Logger interface with all methods
+  return {
+    level,
+    trace: createLogMethod('trace'),
+    debug: createLogMethod('debug'),
+    info: createLogMethod('info'),
+    warn: createLogMethod('warn'),
+    error: createLogMethod('error'),
+    fatal: createLogMethod('fatal'),
+    success: createLogMethod('success'),
+    progress: createLogMethod('progress'),
+    log: createLogMethod('log'),
+    clear,
+    child
+  };
 }
+
+// ============================================================================
+// Configuration
+// ============================================================================
 
 const customLevels: Record<string, number> = {
   fatal: 60,
@@ -633,24 +597,32 @@ const showTimestamps = envDetector.hasProcess() && envDetector.getProcessEnv('LO
 function extractBindingsConfig(bindings: LoggerBindings | boolean): {
   level: string;
   base: Record<string, unknown>;
+  forceType?: 'browser' | 'node';
 } {
   let level = effectiveLogLevel;
   let base: Record<string, unknown> = {};
+  let forceType: 'browser' | 'node' | undefined;
   
   if (typeof bindings === 'object' && bindings !== null) {
+    // Extract __forceType if present
+    forceType = bindings.__forceType;
+    
     // Check if level is provided in bindings
     if ('level' in bindings) {
       level = bindings.level as string;
-      // Remove level from base bindings
-      const { level: _, ...rest } = bindings;
-      base = rest;
-    } else {
-      base = bindings;
     }
+    
+    // Remove special properties from base bindings
+    const { level: _, __forceType: __, ...rest } = bindings;
+    base = rest;
   }
   
-  return { level, base };
+  return { level, base, forceType };
 }
+
+// ============================================================================
+// Pino Configuration
+// ============================================================================
 
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
@@ -767,141 +739,40 @@ const options = {
   },
 };
 
-// Async logger factory function using dynamic imports (recommended for new code)
-const createLoggerAsync = async (bindings: LoggerBindings | boolean = false): Promise<Logger> => {
-  // Check for test environment flag to force BrowserLogger
-  const forceType = typeof bindings === 'object' && bindings !== null 
-    ? bindings.__forceType 
-    : undefined;
-    
-  if (forceType === 'browser') {
-    // Remove __forceType from bindings before passing to BrowserLogger
-    const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
-    const { level, base } = extractBindingsConfig(cleanBindings);
-    const opts: BrowserLoggerOptions = {
-      level,
-      base
-    };
-    return new BrowserLogger(opts);
-  }
-  
-  const { isBrowser, isNode } = getEnvironment();
-  
-  // Browser environment: use BrowserLogger
-  if (isBrowser) {
-    const { level, base } = extractBindingsConfig(bindings);
-    const opts: BrowserLoggerOptions = {
-      level,
-      base
-    };
-    return new BrowserLogger(opts);
-  }
-  
-  // Node.js environment: use Pino with dynamic imports
-  if (isNode) {
-    try {
-      // Load Pino module using dynamic import
-      const Pino = await loadPinoAsync();
-      const opts: PinoOptions = { ...options } as PinoOptions;
-      
-      if (bindings && typeof bindings === 'object') {
-        // Remove test-only properties before passing to Pino
-        const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
-        opts.base = cleanBindings;
-        opts.transport = {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            translateTime: showTimestamps ? 'SYS:standard' : false,
-            ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
-          },
-        };
-      }
-      
-      const pinoLogger = Pino(opts) as unknown as ExtendedPinoLogger;
-      
-      // Add clear method for compatibility
-      // Note: clear() is NOT a log level - it clears the console/logs
-      pinoLogger.clear = () => {
-        // For async Pino without destination tracking, just clear console
-        const consoleObj = getConsole();
-        if (consoleObj && consoleObj.clear) {
-          consoleObj.clear();
-        }
-      };
-      
-      // Add custom log levels for ElizaOS compatibility
-      pinoLogger.success = pinoLogger.info.bind(pinoLogger);
-      pinoLogger.progress = pinoLogger.info.bind(pinoLogger);
-      pinoLogger.log = pinoLogger.info.bind(pinoLogger);
-      
-      return pinoLogger;
-    } catch (error) {
-      // Fallback to BrowserLogger if Pino is not available
-      const consoleObj = getConsole();
-      if (consoleObj && consoleObj.warn) {
-        consoleObj.warn('Pino not available, falling back to BrowserLogger:', error);
-      }
-      const { level, base } = extractBindingsConfig(bindings);
-      const opts: BrowserLoggerOptions = {
-        level,
-        base
-      };
-      return new BrowserLogger(opts);
-    }
-  }
-  
-  // Default fallback
-  const { level, base } = extractBindingsConfig(bindings);
-  const opts: BrowserLoggerOptions = {
-    level,
-    base
-  };
-  return new BrowserLogger(opts);
-};
+// ============================================================================
+// Core Logger Factory
+// ============================================================================
 
-// Synchronous logger factory function (for backward compatibility)
-// Uses require() through sync loaders, will be deprecated in future versions
-const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
-  // Check for test environment flag to force BrowserLogger
-  const forceType = typeof bindings === 'object' && bindings !== null 
-    ? bindings.__forceType 
-    : undefined;
-    
+// Core logger creation logic shared between sync and async versions
+function createLoggerCore(
+  bindings: LoggerBindings | boolean,
+  pinoLoader: (() => any) | (() => Promise<any>),
+  isAsync: boolean = false
+): Logger | Promise<Logger> {
+  const { level, base, forceType } = extractBindingsConfig(bindings);
+  
+  // Force browser logger if requested (for testing)
   if (forceType === 'browser') {
-    // Remove __forceType from bindings before passing to BrowserLogger
-    const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
-    const { level, base } = extractBindingsConfig(cleanBindings);
-    const opts: BrowserLoggerOptions = {
-      level,
-      base
-    };
-    return new BrowserLogger(opts);
+    const opts: BrowserLoggerOptions = { level, base };
+    return createBrowserLogger(opts);
   }
   
   const { isBrowser, isNode } = getEnvironment();
   
   // Browser environment: use BrowserLogger
   if (isBrowser) {
-    const { level, base } = extractBindingsConfig(bindings);
-    const opts: BrowserLoggerOptions = {
-      level,
-      base
-    };
-    return new BrowserLogger(opts);
+    const opts: BrowserLoggerOptions = { level, base };
+    return createBrowserLogger(opts);
   }
   
   // Node.js environment: use Pino
   if (isNode) {
-    try {
-      // Load Pino module (uses cached version if available)
-      const Pino = loadPinoSync();
+    const createPinoLogger = (Pino: any) => {
       const opts: PinoOptions = { ...options } as PinoOptions;
+      opts.base = base;
       
-      if (bindings && typeof bindings === 'object') {
-        // Remove test-only properties before passing to Pino
-        const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
-        opts.base = cleanBindings;
+      // Add transport for async version
+      if (isAsync) {
         opts.transport = {
           target: 'pino-pretty',
           options: {
@@ -914,10 +785,7 @@ const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
       
       const pinoLogger = Pino(opts) as unknown as ExtendedPinoLogger;
       
-      // Add clear method for compatibility
-      // Note: clear() is NOT a log level - it clears the console/logs
       pinoLogger.clear = () => {
-        // For Pino without destination tracking in sync mode, just clear console
         const consoleObj = getConsole();
         if (consoleObj && consoleObj.clear) {
           consoleObj.clear();
@@ -936,30 +804,55 @@ const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
       }
       
       return pinoLogger;
-    } catch (e) {
-      // Fallback to BrowserLogger if Pino is not available
+    };
+
+    // Handle async loading
+    if (isAsync) {
+      return (pinoLoader as () => Promise<any>)()
+        .then(createPinoLogger)
+        .catch((error) => {
+          const consoleObj = getConsole();
+          if (consoleObj && consoleObj.warn) {
+            consoleObj.warn('Pino not available, falling back to BrowserLogger:', error);
+          }
+          const opts: BrowserLoggerOptions = { level, base };
+          return createBrowserLogger(opts);
+        });
+    }
+    
+    // Handle sync loading
+    try {
+      const Pino = (pinoLoader as () => any)();
+      return createPinoLogger(Pino);
+    } catch (error) {
       const consoleObj = getConsole();
       if (consoleObj && consoleObj.warn) {
-        consoleObj.warn('Pino not available, falling back to BrowserLogger');
+        consoleObj.warn('Pino not available, falling back to BrowserLogger:', error);
       }
-      
-      const { level, base } = extractBindingsConfig(bindings);
-      const opts = {
-        level,
-        base
-      };
-      return new BrowserLogger(opts);
+      const opts: BrowserLoggerOptions = { level, base };
+      return createBrowserLogger(opts);
     }
   }
   
   // Unknown environment: use BrowserLogger as safe fallback
-  const { level, base } = extractBindingsConfig(bindings);
-  const opts: BrowserLoggerOptions = {
-    level,
-    base
-  };
-  return new BrowserLogger(opts);
+  const opts: BrowserLoggerOptions = { level, base };
+  return createBrowserLogger(opts);
+}
+
+// Async logger factory function using dynamic imports (recommended for new code)
+const createLoggerAsync = async (bindings: LoggerBindings | boolean = false): Promise<Logger> => {
+  return createLoggerCore(bindings, loadPinoAsync, true) as Promise<Logger>;
 };
+
+// Synchronous logger factory function (for backward compatibility)
+// Uses require() through sync loaders, will be deprecated in future versions
+const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
+  return createLoggerCore(bindings, loadPinoSync, false) as Logger;
+};
+
+// ============================================================================
+// Global Logger Initialization
+// ============================================================================
 
 // Initialize logger based on environment
 let logger: Logger;
@@ -969,7 +862,7 @@ const currentEnv = getEnvironment();
 
 if (currentEnv.isBrowser) {
   // Browser environment: use BrowserLogger
-  logger = new BrowserLogger({
+  logger = createBrowserLogger({
     level: effectiveLogLevel
   });
 } else if (currentEnv.isNode) {
@@ -995,7 +888,7 @@ if (currentEnv.isBrowser) {
     }
     
     // Create logger with or without pretty printing
-    const destination = new InMemoryDestination(stream);
+    const destination = createInMemoryDestination(stream);
     const pinoLogger = Pino(options, destination) as unknown as ExtendedPinoLogger;
     
     // Store destination reference for clear method
@@ -1004,7 +897,7 @@ if (currentEnv.isBrowser) {
     // Add clear method to logger
     pinoLogger.clear = () => {
       const dest = pinoLogger[PINO_DESTINATION_SYMBOL];
-      if (dest instanceof InMemoryDestination) {
+      if (dest && typeof dest.clear === 'function') {
         dest.clear();
       }
     };
@@ -1027,16 +920,20 @@ if (currentEnv.isBrowser) {
     if (consoleObj && consoleObj.warn) {
       consoleObj.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
     }
-    logger = new BrowserLogger({
+    logger = createBrowserLogger({
       level: effectiveLogLevel
     });
   }
 } else {
   // Unknown environment: use BrowserLogger as safe fallback
-  logger = new BrowserLogger({
+  logger = createBrowserLogger({
     level: effectiveLogLevel
   });
 }
+
+// ============================================================================
+// Exports
+// ============================================================================
 
 // Extend the logger type to include custom methods
 export interface ElizaLogger extends Logger {
@@ -1048,12 +945,14 @@ export interface ElizaLogger extends Logger {
 // Cast logger to include custom methods
 const typedLogger = logger as ElizaLogger;
 
+// Main exports
 export { createLogger, createLoggerAsync, typedLogger as logger };
 
-// for backward compatibility
+// Backward compatibility
 export const elizaLogger = typedLogger;
 
-// Export envDetector for testing purposes
+// Testing utilities (only exposed in test environment)
 export { envDetector };
 
+// Default export
 export default typedLogger;
