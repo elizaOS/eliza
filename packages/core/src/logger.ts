@@ -1,70 +1,91 @@
 import { Sentry } from './sentry/instrument';
+// Type-only imports - stripped at build time, safe for browser
+import type { LoggerOptions as PinoLoggerOptions } from 'pino';
+import type { PrettyOptions as BasePrettyOptions } from 'pino-pretty';
 
 // ============================================================================
 // Environment Detection
 // ============================================================================
 
-// Factory function to create environment detector with cached results
-function createEnvironmentDetector() {
-  let cachedResult: { isBrowser: boolean; isNode: boolean } | null = null;
+/**
+ * Cached environment detection using simple function-based caching
+ * This approach provides better functional alignment while maintaining performance
+ */
+let cachedEnvironment: { isBrowser: boolean; isNode: boolean } | null = null;
 
-  const getEnvironment = (): { isBrowser: boolean; isNode: boolean } => {
-    // Return cached result if available (for performance)
-    if (cachedResult !== null) {
-      return cachedResult;
-    }
+/**
+ * Detects the current runtime environment (browser vs Node.js)
+ * Results are cached for performance
+ */
+function getEnvironment(): { isBrowser: boolean; isNode: boolean } {
+  // Return cached result if available (for performance)
+  if (cachedEnvironment !== null) {
+    return cachedEnvironment;
+  }
 
-    const isBrowser =
-      typeof globalThis !== 'undefined' &&
-      typeof globalThis.window !== 'undefined' &&
-      typeof globalThis.document !== 'undefined';
-    const isNode =
-      typeof process !== 'undefined' &&
-      typeof process.versions !== 'undefined' &&
-      typeof process.versions.node !== 'undefined';
+  const isBrowser =
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.window !== 'undefined' &&
+    typeof globalThis.document !== 'undefined';
 
-    cachedResult = { isBrowser, isNode };
-    return cachedResult;
-  };
+  const isNode =
+    typeof process !== 'undefined' &&
+    typeof process.versions !== 'undefined' &&
+    typeof process.versions.node !== 'undefined';
 
-  const clearCache = (): void => {
-    cachedResult = null;
-  };
-
-  const isNode = (): boolean => {
-    return getEnvironment().isNode;
-  };
-
-  const isBrowser = (): boolean => {
-    return getEnvironment().isBrowser;
-  };
-
-  const hasProcess = (): boolean => {
-    return typeof process !== 'undefined';
-  };
-
-  const getProcessEnv = (key: string): string | undefined => {
-    if (hasProcess() && process.env) {
-      return process.env[key];
-    }
-    return undefined;
-  };
-
-  return {
-    getEnvironment,
-    clearCache,
-    isNode,
-    isBrowser,
-    hasProcess,
-    getProcessEnv,
-  };
+  cachedEnvironment = { isBrowser, isNode };
+  return cachedEnvironment;
 }
 
-// Create singleton instance
-const envDetector = createEnvironmentDetector();
+/**
+ * Clears the cached environment detection result
+ * Useful for testing or when environment changes
+ */
+function clearEnvironmentCache(): void {
+  cachedEnvironment = null;
+}
 
-// Convenience function for backward compatibility
-const getEnvironment = () => envDetector.getEnvironment();
+/**
+ * Checks if running in Node.js environment
+ */
+function isNodeEnv(): boolean {
+  return getEnvironment().isNode;
+}
+
+/**
+ * Checks if running in browser environment
+ */
+function isBrowserEnv(): boolean {
+  return getEnvironment().isBrowser;
+}
+
+/**
+ * Checks if process object is available
+ */
+function hasProcess(): boolean {
+  return typeof process !== 'undefined';
+}
+
+/**
+ * Gets an environment variable value if process.env is available
+ */
+function getProcessEnv(key: string): string | undefined {
+  if (hasProcess() && process.env) {
+    return process.env[key];
+  }
+  return undefined;
+}
+
+// Create a namespace-like object for convenience and backward compatibility
+// This preserves the existing API while using the simpler cached functions
+const envDetector = {
+  getEnvironment,
+  clearCache: clearEnvironmentCache,
+  isNode: isNodeEnv,
+  isBrowser: isBrowserEnv,
+  hasProcess,
+  getProcessEnv,
+};
 
 // ============================================================================
 // Utility Functions
@@ -117,31 +138,20 @@ function safeStringify(obj: unknown): string {
 // 2. createLoggerAsync() - Asynchronous, uses dynamic import() (recommended for new code)
 //
 // The module loaders cache loaded modules to avoid redundant imports and improve performance.
+//
+// Type Safety Note: We use `import type` from pino/pino-pretty for type definitions.
+// These are compile-time only and get stripped during build, making them safe for browser
+// environments where pino is not available.
 
 // ============================================================================
 // Type Definitions
 // ============================================================================
-type PinoModule = {
-  default?: unknown;
-  (options?: PinoOptions, destination?: NodeJS.WritableStream | unknown): unknown;
-  destination?: unknown;
-  transport?: unknown;
-  stdTimeFunctions?: unknown;
-  levels?: unknown;
-  symbols?: unknown;
-  pino?: unknown;
-  multistream?: unknown;
-  stdSerializers?: unknown;
-};
 
-type PinoPrettyModule = {
-  default?: unknown;
-  (options?: object): NodeJS.WritableStream;
-  build?: unknown;
-  PinoPretty?: unknown;
-  colorizerFactory?: unknown;
-  prettyFactory?: unknown;
-};
+// Type for the dynamically loaded Pino module
+type PinoModule = typeof import('pino');
+
+// Type for the dynamically loaded Pino-Pretty module
+type PinoPrettyModule = typeof import('pino-pretty');
 
 interface ModuleCache {
   pinoPromise?: Promise<PinoModule>;
@@ -160,7 +170,7 @@ async function loadPinoAsync(): Promise<PinoModule> {
 
   if (!moduleCache.pinoPromise) {
     moduleCache.pinoPromise = import('pino').then((module) => {
-      moduleCache.pino = (module.default || module) as PinoModule;
+      moduleCache.pino = (module.default || module) as unknown as PinoModule;
       return moduleCache.pino;
     });
   }
@@ -171,6 +181,19 @@ async function loadPinoAsync(): Promise<PinoModule> {
 // ============================================================================
 // Module Loaders
 // ============================================================================
+/**
+ * Load Pino module synchronously using require()
+ *
+ * TECHNICAL DEBT: This function uses require() instead of ES module imports
+ * to provide backward compatibility and runtime conditional loading.
+ * Future migration path:
+ * 1. Convert to dynamic import() when full ES module support is available
+ * 2. Ensure all environments support top-level await
+ * 3. Update build toolchain to handle async module loading
+ *
+ * @returns The loaded Pino module
+ * @throws Error if Pino cannot be loaded
+ */
 function loadPinoSync(): PinoModule {
   if (moduleCache.pino) {
     return moduleCache.pino;
@@ -186,6 +209,14 @@ function loadPinoSync(): PinoModule {
   }
 }
 
+/**
+ * Load Pino-Pretty module synchronously using require()
+ *
+ * TECHNICAL DEBT: Uses require() for same reasons as loadPinoSync()
+ * See loadPinoSync() documentation for migration path details.
+ *
+ * @returns The loaded Pino-Pretty module or null if not available
+ */
 function loadPinoPrettySync(): PinoPrettyModule | null {
   if (moduleCache.pinoPretty) {
     return moduleCache.pinoPretty;
@@ -213,6 +244,7 @@ type LogFn = (
 interface LoggerBindings extends Record<string, unknown> {
   __forceType?: 'browser' | 'node';
   level?: string;
+  maxMemoryLogs?: number; // Maximum number of logs to keep in memory
 }
 
 interface DestinationStream {
@@ -245,23 +277,27 @@ interface ExtendedPinoLogger extends Logger {
   [key: symbol]: DestinationStream | undefined;
 }
 
-// Pino configuration types
-interface PinoTransportOptions {
-  target: string;
-  options: {
-    colorize: boolean;
-    translateTime: string | false;
-    ignore: string;
+// Custom Pino options extending the base type
+interface PinoOptions extends Partial<PinoLoggerOptions> {
+  customLevels?: Record<string, number>;
+  hooks?: {
+    logMethod: (inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn) => void;
   };
 }
 
-interface PinoOptions {
-  level: string;
-  customLevels: Record<string, number>;
-  base?: Record<string, unknown>;
-  transport?: PinoTransportOptions;
-  hooks?: {
-    logMethod: (inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn) => void;
+// Extended PrettyOptions with our custom properties
+interface ExtendedPrettyOptions extends Partial<BasePrettyOptions> {
+  colorize?: boolean;
+  translateTime?: string | boolean;
+  ignore?: string;
+  messageFormat?: string;
+  // Custom level colors mapping
+  levelColors?: Record<string | number, string>;
+  // Custom prettifiers for different log properties
+  customPrettifiers?: {
+    level?: (inputData: unknown) => string;
+    msg?: (msg: string) => string;
+    [key: string]: ((value: unknown) => string) | undefined;
   };
 }
 
@@ -649,10 +685,12 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
   level: string;
   base: Record<string, unknown>;
   forceType?: 'browser' | 'node';
+  maxMemoryLogs?: number;
 } {
   let level = effectiveLogLevel;
   let base: Record<string, unknown> = {};
   let forceType: 'browser' | 'node' | undefined;
+  let maxMemoryLogs: number | undefined;
 
   if (typeof bindings === 'object' && bindings !== null) {
     // Extract __forceType if present
@@ -663,12 +701,17 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
       level = bindings.level as string;
     }
 
+    // Extract maxMemoryLogs if present
+    if ('maxMemoryLogs' in bindings && typeof bindings.maxMemoryLogs === 'number') {
+      maxMemoryLogs = bindings.maxMemoryLogs;
+    }
+
     // Remove special properties from base bindings
-    const { level: _, __forceType: __, ...rest } = bindings;
+    const { level: _, __forceType: __, maxMemoryLogs: ___, ...rest } = bindings;
     base = rest;
   }
 
-  return { level, base, forceType };
+  return { level, base, forceType, maxMemoryLogs };
 }
 
 // ============================================================================
@@ -676,7 +719,7 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
 // ============================================================================
 
 // Create a function to generate the pretty configuration
-const createPrettyConfig = () => ({
+const createPrettyConfig = (): ExtendedPrettyOptions => ({
   colorize: true,
   translateTime: showTimestamps ? 'yyyy-mm-dd HH:MM:ss' : false,
   ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
@@ -798,10 +841,10 @@ const options = {
 // Core logger creation logic shared between sync and async versions
 function createLoggerCore(
   bindings: LoggerBindings | boolean,
-  pinoLoader: (() => any) | (() => Promise<any>),
+  pinoLoader: (() => PinoModule) | (() => Promise<PinoModule>),
   isAsync: boolean = false
 ): Logger | Promise<Logger> {
-  const { level, base, forceType } = extractBindingsConfig(bindings);
+  const { level, base, forceType, maxMemoryLogs } = extractBindingsConfig(bindings);
 
   // Force browser logger if requested (for testing)
   if (forceType === 'browser') {
@@ -819,12 +862,26 @@ function createLoggerCore(
 
   // Node.js environment: use Pino
   if (isNode) {
-    const createPinoLogger = (Pino: any) => {
+    const createPinoLogger = (Pino: PinoModule) => {
       const opts: PinoOptions = { ...options } as PinoOptions;
       opts.base = base;
 
-      // Add transport for async version
-      if (isAsync) {
+      let destination: DestinationStream | undefined;
+
+      // For sync version, create in-memory destination with optional pretty printing
+      if (!isAsync) {
+        let stream = null;
+        if (!raw) {
+          // Try to load pino-pretty synchronously
+          const pretty = loadPinoPrettySync();
+          if (pretty) {
+            stream = pretty(createPrettyConfig());
+          }
+        }
+        // Create destination with optional maxMemoryLogs
+        destination = createInMemoryDestination(stream, maxMemoryLogs);
+      } else {
+        // Add transport for async version
         opts.transport = {
           target: 'pino-pretty',
           options: {
@@ -835,12 +892,24 @@ function createLoggerCore(
         };
       }
 
-      const pinoLogger = Pino(opts) as unknown as ExtendedPinoLogger;
+      const pinoLogger = destination
+        ? (Pino(opts, destination) as unknown as ExtendedPinoLogger)
+        : (Pino(opts) as unknown as ExtendedPinoLogger);
+
+      // Store destination reference for clear method if available
+      if (destination) {
+        pinoLogger[PINO_DESTINATION_SYMBOL] = destination;
+      }
 
       pinoLogger.clear = () => {
-        const consoleObj = getConsole();
-        if (consoleObj && consoleObj.clear) {
-          consoleObj.clear();
+        const dest = pinoLogger[PINO_DESTINATION_SYMBOL];
+        if (dest && typeof dest.clear === 'function') {
+          dest.clear();
+        } else {
+          const consoleObj = getConsole();
+          if (consoleObj && consoleObj.clear) {
+            consoleObj.clear();
+          }
         }
       };
 
@@ -860,7 +929,7 @@ function createLoggerCore(
 
     // Handle async loading
     if (isAsync) {
-      return (pinoLoader as () => Promise<any>)()
+      return (pinoLoader as () => Promise<PinoModule>)()
         .then(createPinoLogger)
         .catch((error) => {
           const consoleObj = getConsole();
@@ -874,7 +943,7 @@ function createLoggerCore(
 
     // Handle sync loading
     try {
-      const Pino = (pinoLoader as () => any)();
+      const Pino = (pinoLoader as () => PinoModule)();
       return createPinoLogger(Pino);
     } catch (error) {
       const consoleObj = getConsole();
