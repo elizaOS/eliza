@@ -801,8 +801,17 @@ const createLoggerAsync = async (bindings: Record<string, unknown> | boolean = f
       
       const pinoLogger = Pino(opts) as ExtendedPinoLogger;
       
-      // Add custom log levels
-      pinoLogger.clear = pinoLogger.info.bind(pinoLogger);
+      // Add clear method for compatibility
+      // Note: clear() is NOT a log level - it clears the console/logs
+      pinoLogger.clear = () => {
+        // For async Pino without destination tracking, just clear console
+        const consoleObj = getConsole();
+        if (consoleObj && consoleObj.clear) {
+          consoleObj.clear();
+        }
+      };
+      
+      // Add custom log levels for ElizaOS compatibility
       pinoLogger.success = pinoLogger.info.bind(pinoLogger);
       pinoLogger.progress = pinoLogger.info.bind(pinoLogger);
       pinoLogger.log = pinoLogger.info.bind(pinoLogger);
@@ -885,8 +894,9 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
       const pinoLogger = Pino(opts) as ExtendedPinoLogger;
       
       // Add clear method for compatibility
+      // Note: clear() is NOT a log level - it clears the console/logs
       pinoLogger.clear = () => {
-        // For Pino, clear doesn't really apply, but we provide it for API compatibility
+        // For Pino without destination tracking in sync mode, just clear console
         const consoleObj = getConsole();
         if (consoleObj && consoleObj.clear) {
           consoleObj.clear();
