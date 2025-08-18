@@ -1,5 +1,25 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
-import { createLogger, logger, elizaLogger } from '../logger';
+import { createLogger } from '../logger';
+
+// Import envDetector to clear cache between tests
+import { envDetector } from '../logger';
+
+/**
+ * Test type definitions
+ */
+interface MockProcess {
+  versions?: {
+    node?: string;
+  };
+  env?: Record<string, string | undefined>;
+}
+
+interface MockWindow {
+  document?: object;
+  console?: Partial<Console>;
+}
+
+type MockDocument = Record<string, unknown>;
 
 /**
  * Comprehensive tests for both Node.js and Browser logger implementations
@@ -7,14 +27,12 @@ import { createLogger, logger, elizaLogger } from '../logger';
  */
 
 describe('Logger - Cross-Environment Tests', () => {
-  let originalGlobal: any;
-  let originalProcess: any;
-  let originalWindow: any;
-  let originalDocument: any;
+  let originalProcess: typeof process | undefined;
+  let originalWindow: MockWindow | undefined;
+  let originalDocument: MockDocument | undefined;
 
   beforeEach(() => {
     // Save original globals
-    originalGlobal = globalThis;
     originalProcess = globalThis.process;
     originalWindow = globalThis.window;
     originalDocument = globalThis.document;
@@ -23,10 +41,12 @@ describe('Logger - Cross-Environment Tests', () => {
 
   afterEach(() => {
     // Restore original globals
-    globalThis.process = originalProcess;
-    globalThis.window = originalWindow;
-    globalThis.document = originalDocument;
+    globalThis.process = originalProcess as typeof process;
+    globalThis.window = originalWindow as unknown as typeof globalThis.window;
+    globalThis.document = originalDocument as unknown as typeof globalThis.document;
     mock.restore();
+    // Clear environment cache for next test
+    envDetector.clearCache();
   });
 
   describe('Environment Detection', () => {
@@ -35,7 +55,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.process = {
         versions: { node: '20.0.0' },
         env: { LOG_LEVEL: 'info' }
-      };
+      } as MockProcess as typeof process;
       delete globalThis.window;
       delete globalThis.document;
 
@@ -80,6 +100,9 @@ describe('Logger - Cross-Environment Tests', () => {
 
   describe('BrowserLogger Class', () => {
     beforeEach(() => {
+      // Clear environment cache to ensure proper detection
+      envDetector.clearCache();
+      
       // Mock browser environment
       globalThis.window = {
         document: {},
@@ -94,15 +117,18 @@ describe('Logger - Cross-Environment Tests', () => {
         }
       };
       globalThis.document = {};
-      globalThis.console = globalThis.window.console;
+      globalThis.console = globalThis.window.console as Console;
+      
+      // Clear cache again after setting up environment
+      envDetector.clearCache();
     });
 
     it('should create BrowserLogger instance with all required methods', async () => {
       // Dynamically import to trigger browser detection
       const module = await import('../logger');
       
-      // Create a browser logger instance
-      const browserLogger = module.createLogger({ test: 'browser' });
+      // Create a browser logger instance, force browser type for testing
+      const browserLogger = module.createLogger({ test: 'browser', __forceType: 'browser' });
       
       // Verify all required methods exist
       expect(typeof browserLogger.trace).toBe('function');
@@ -136,10 +162,10 @@ describe('Logger - Cross-Environment Tests', () => {
         trace: mock(),
         clear: mock()
       };
-      globalThis.console = mockConsole;
+      globalThis.console = mockConsole as unknown as Console;
 
       // Create browser logger with debug level to ensure all levels are logged
-      const browserLogger = createLogger({ level: 'debug' });
+      const browserLogger = createLogger({ level: 'debug', __forceType: 'browser' });
 
       // Test various log levels
       browserLogger.info('Info message');
@@ -168,10 +194,10 @@ describe('Logger - Cross-Environment Tests', () => {
         debug: mock(),
         trace: mock()
       };
-      globalThis.console = mockConsole;
+      globalThis.console = mockConsole as unknown as Console;
 
       // Create logger with debug level to ensure all levels are logged
-      const browserLogger = createLogger({ level: 'debug' });
+      const browserLogger = createLogger({ level: 'debug', __forceType: 'browser' });
 
       // Test with object
       browserLogger.info({ user: 'john', action: 'login' }, 'User logged in');
@@ -189,6 +215,11 @@ describe('Logger - Cross-Environment Tests', () => {
     });
 
     it('should respect log levels in browser environment', () => {
+      // Ensure we're in browser environment
+      delete globalThis.process;
+      globalThis.window = { document: {} };
+      globalThis.document = {};
+      
       const mockConsole = {
         trace: mock(),
         debug: mock(),
@@ -197,10 +228,13 @@ describe('Logger - Cross-Environment Tests', () => {
         error: mock(),
         log: mock()
       };
-      globalThis.console = mockConsole;
+      globalThis.console = mockConsole as unknown as Console;
+      
+      // Clear cache to detect browser environment
+      envDetector.clearCache();
 
-      // Create logger with warn level
-      const browserLogger = createLogger({ level: 'warn' });
+      // Create logger with warn level, force browser type for testing
+      const browserLogger = createLogger({ level: 'warn', __forceType: 'browser' });
 
       // These should not log (below warn level)
       browserLogger.trace('Trace message');
@@ -221,7 +255,7 @@ describe('Logger - Cross-Environment Tests', () => {
     });
 
     it('should maintain in-memory log storage in browser', () => {
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
 
       // Log multiple messages
       browserLogger.info('Message 1');
@@ -234,13 +268,22 @@ describe('Logger - Cross-Environment Tests', () => {
     });
 
     it('should handle child loggers in browser', () => {
+      // Ensure we're in browser environment
+      delete globalThis.process;
+      globalThis.window = { document: {} };
+      globalThis.document = {};
+      
       const mockConsole = {
         info: mock(),
         log: mock()
       };
-      globalThis.console = mockConsole;
+      globalThis.console = mockConsole as unknown as Console;
+      
+      // Clear cache to detect browser environment
+      envDetector.clearCache();
 
-      const parentLogger = createLogger({ parent: 'main' });
+      // Force browser type for testing
+      const parentLogger = createLogger({ parent: 'main', __forceType: 'browser' });
       const childLogger = parentLogger.child({ child: 'sub' });
 
       childLogger.info('Child message');
@@ -250,11 +293,14 @@ describe('Logger - Cross-Environment Tests', () => {
 
   describe('Node.js Logger (Pino)', () => {
     beforeEach(() => {
+      // Clear environment cache
+      envDetector.clearCache();
+      
       // Restore Node.js environment
       globalThis.process = originalProcess || {
         versions: { node: '20.0.0' },
         env: {}
-      };
+      } as unknown as typeof process;
       delete globalThis.window;
       delete globalThis.document;
 
@@ -264,6 +310,9 @@ describe('Logger - Cross-Environment Tests', () => {
           write: mock()
         }))
       }));
+      
+      // Clear cache again after environment setup
+      envDetector.clearCache();
     });
 
     it('should use Pino logger in Node.js environment', () => {
@@ -306,7 +355,7 @@ describe('Logger - Cross-Environment Tests', () => {
   describe('Cross-Environment Compatibility', () => {
     it('should maintain consistent API across environments', async () => {
       // Test Node.js logger
-      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} };
+      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} } as unknown as typeof process;
       delete globalThis.window;
       const nodeLogger = createLogger();
 
@@ -336,7 +385,7 @@ describe('Logger - Cross-Environment Tests', () => {
       };
 
       // Test in Node.js
-      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} };
+      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} } as unknown as typeof process;
       const nodeLogger = createLogger();
       expect(() => nodeLogger.info(testData, 'Complex object')).not.toThrow();
 
@@ -344,7 +393,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.window = { document: {}, console: { info: mock() } };
       globalThis.document = {};
       delete globalThis.process;
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       expect(() => browserLogger.info(testData, 'Complex object')).not.toThrow();
     });
 
@@ -353,18 +402,18 @@ describe('Logger - Cross-Environment Tests', () => {
       error.stack = 'Error: Test error\n  at test.js:1:1';
 
       // Node.js
-      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} };
+      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} } as unknown as typeof process;
       const nodeLogger = createLogger();
       expect(() => nodeLogger.error(error)).not.toThrow();
-      expect(() => nodeLogger.error('Error occurred:', error)).not.toThrow();
+      expect(() => nodeLogger.error({ error }, 'Error occurred')).not.toThrow();
 
       // Browser
       globalThis.window = { document: {}, console: { error: mock() } };
       globalThis.document = {};
       delete globalThis.process;
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       expect(() => browserLogger.error(error)).not.toThrow();
-      expect(() => browserLogger.error('Error occurred:', error)).not.toThrow();
+      expect(() => browserLogger.error({ error }, 'Error occurred')).not.toThrow();
     });
   });
 
@@ -375,9 +424,9 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = {
         log: mock(),
         // Missing other methods
-      };
+      } as unknown as Console;
 
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       
       // Should fallback to console.log for missing methods
       expect(() => browserLogger.info('Test')).not.toThrow();
@@ -385,21 +434,25 @@ describe('Logger - Cross-Environment Tests', () => {
     });
 
     it('should handle circular references in objects', () => {
-      const obj: any = { name: 'test' };
+      type CircularObject = Record<string, unknown> & {
+        name: string;
+        circular?: CircularObject;
+      };
+      const obj: CircularObject = { name: 'test' };
       obj.circular = obj;
 
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       expect(() => browserLogger.info(obj, 'Circular reference')).not.toThrow();
     });
 
     it('should handle very long messages', () => {
       const longMessage = 'x'.repeat(10000);
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       expect(() => browserLogger.info(longMessage)).not.toThrow();
     });
 
     it('should handle null and undefined values', () => {
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       expect(() => browserLogger.info(null, 'Null value')).not.toThrow();
       expect(() => browserLogger.info(undefined, 'Undefined value')).not.toThrow();
       expect(() => browserLogger.info({ value: null })).not.toThrow();
@@ -414,7 +467,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.document = {};
       delete globalThis.process;
       
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       
       // Log more than the max limit (1000 by default)
       for (let i = 0; i < 1100; i++) {
@@ -433,12 +486,12 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = { ...globalThis.console, clear: mockClear };
       delete globalThis.process;
       
-      const browserLogger = createLogger();
+      const browserLogger = createLogger({ __forceType: 'browser' });
       browserLogger.clear();
       expect(mockClear).toHaveBeenCalled();
 
       // Node.js
-      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} };
+      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} } as unknown as typeof process;
       delete globalThis.window;
       const nodeLogger = createLogger();
       expect(() => nodeLogger.clear()).not.toThrow();

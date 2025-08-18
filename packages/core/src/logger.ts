@@ -118,24 +118,49 @@ function safeStringify(obj: unknown): string {
  */
 
 // Module loader cache for dynamic imports
+/**
+ * Type definitions for Pino module
+ */
+type PinoModule = {
+  default?: unknown;
+  (options?: PinoOptions, destination?: NodeJS.WritableStream | unknown): unknown;
+  destination?: unknown;
+  transport?: unknown;
+  stdTimeFunctions?: unknown;
+  levels?: unknown;
+  symbols?: unknown;
+  pino?: unknown;
+  multistream?: unknown;
+  stdSerializers?: unknown;
+};
+
+type PinoPrettyModule = {
+  default?: unknown;
+  (options?: object): NodeJS.WritableStream;
+  build?: unknown;
+  PinoPretty?: unknown;
+  colorizerFactory?: unknown;
+  prettyFactory?: unknown;
+};
+
 interface ModuleCache {
-  pinoPromise?: Promise<any>;
-  pinoPrettyPromise?: Promise<any>;
-  pino?: any;
-  pinoPretty?: any;
+  pinoPromise?: Promise<PinoModule>;
+  pinoPrettyPromise?: Promise<PinoPrettyModule>;
+  pino?: PinoModule;
+  pinoPretty?: PinoPrettyModule;
 }
 
 const moduleCache: ModuleCache = {};
 
 // Async module loader for Pino
-async function loadPinoAsync(): Promise<any> {
+async function loadPinoAsync(): Promise<PinoModule> {
   if (moduleCache.pino) {
     return moduleCache.pino;
   }
   
   if (!moduleCache.pinoPromise) {
     moduleCache.pinoPromise = import('pino').then(module => {
-      moduleCache.pino = module.default || module;
+      moduleCache.pino = (module.default || module) as PinoModule;
       return moduleCache.pino;
     });
   }
@@ -145,14 +170,14 @@ async function loadPinoAsync(): Promise<any> {
 
 // Async module loader for pino-pretty
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function loadPinoPrettyAsync(): Promise<any> {
+async function loadPinoPrettyAsync(): Promise<PinoPrettyModule> {
   if (moduleCache.pinoPretty) {
     return moduleCache.pinoPretty;
   }
   
   if (!moduleCache.pinoPrettyPromise) {
     moduleCache.pinoPrettyPromise = import('pino-pretty').then(module => {
-      moduleCache.pinoPretty = module.default || module;
+      moduleCache.pinoPretty = (module.default || module) as PinoPrettyModule;
       return moduleCache.pinoPretty;
     });
   }
@@ -162,7 +187,7 @@ async function loadPinoPrettyAsync(): Promise<any> {
 
 // Synchronous fallback loaders (using require) for backward compatibility
 // These will be used in createLogger until we can refactor to async
-function loadPinoSync(): any {
+function loadPinoSync(): PinoModule | null {
   if (moduleCache.pino) {
     return moduleCache.pino;
   }
@@ -170,14 +195,14 @@ function loadPinoSync(): any {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const module = require('pino');
-    moduleCache.pino = module;
-    return module;
+    moduleCache.pino = module as PinoModule;
+    return module as PinoModule;
   } catch (error) {
     throw new Error(`Failed to load Pino: ${(error as Error).message}`);
   }
 }
 
-function loadPinoPrettySync(): any {
+function loadPinoPrettySync(): PinoPrettyModule | null | undefined {
   if (moduleCache.pinoPretty) {
     return moduleCache.pinoPretty;
   }
@@ -185,8 +210,8 @@ function loadPinoPrettySync(): any {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const module = require('pino-pretty');
-    moduleCache.pinoPretty = module;
-    return module;
+    moduleCache.pinoPretty = module as PinoPrettyModule;
+    return module as PinoPrettyModule;
   } catch (error) {
     // pino-pretty is optional, so we can continue without it
     return null;
@@ -799,7 +824,7 @@ const createLoggerAsync = async (bindings: Record<string, unknown> | boolean = f
         };
       }
       
-      const pinoLogger = Pino(opts) as ExtendedPinoLogger;
+      const pinoLogger = Pino(opts) as unknown as ExtendedPinoLogger;
       
       // Add clear method for compatibility
       // Note: clear() is NOT a log level - it clears the console/logs
@@ -891,7 +916,7 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
         };
       }
       
-      const pinoLogger = Pino(opts) as ExtendedPinoLogger;
+      const pinoLogger = Pino(opts) as unknown as ExtendedPinoLogger;
       
       // Add clear method for compatibility
       // Note: clear() is NOT a log level - it clears the console/logs
@@ -975,7 +1000,7 @@ if (currentEnv.isBrowser) {
     
     // Create logger with or without pretty printing
     const destination = new InMemoryDestination(stream);
-    const pinoLogger = Pino(options, destination) as ExtendedPinoLogger;
+    const pinoLogger = Pino(options, destination) as unknown as ExtendedPinoLogger;
     
     // Store destination reference for clear method
     pinoLogger[PINO_DESTINATION_SYMBOL] = destination;
