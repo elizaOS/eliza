@@ -168,26 +168,12 @@ async function loadPinoAsync(): Promise<PinoModule> {
   return moduleCache.pinoPromise;
 }
 
-// Async module loader for pino-pretty
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function loadPinoPrettyAsync(): Promise<PinoPrettyModule> {
-  if (moduleCache.pinoPretty) {
-    return moduleCache.pinoPretty;
-  }
-  
-  if (!moduleCache.pinoPrettyPromise) {
-    moduleCache.pinoPrettyPromise = import('pino-pretty').then(module => {
-      moduleCache.pinoPretty = (module.default || module) as PinoPrettyModule;
-      return moduleCache.pinoPretty;
-    });
-  }
-  
-  return moduleCache.pinoPrettyPromise;
-}
+// Note: pino-pretty async loading is not needed as createLoggerAsync uses
+// Pino's transport option to configure pino-pretty inline
 
 // Synchronous fallback loaders (using require) for backward compatibility
 // These will be used in createLogger until we can refactor to async
-function loadPinoSync(): PinoModule | null {
+function loadPinoSync(): PinoModule {
   if (moduleCache.pino) {
     return moduleCache.pino;
   }
@@ -202,7 +188,7 @@ function loadPinoSync(): PinoModule | null {
   }
 }
 
-function loadPinoPrettySync(): PinoPrettyModule | null | undefined {
+function loadPinoPrettySync(): PinoPrettyModule | null {
   if (moduleCache.pinoPretty) {
     return moduleCache.pinoPretty;
   }
