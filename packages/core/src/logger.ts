@@ -1,21 +1,84 @@
 import { Sentry } from './sentry/instrument';
 
-// Detect if we're in a browser environment - needs to be dynamic for testing
-const getEnvironment = () => {
-  const isBrowser = typeof globalThis !== 'undefined' && 
-    typeof globalThis.window !== 'undefined' && 
-    typeof globalThis.document !== 'undefined';
-  const isNode = typeof process !== 'undefined' && 
-    typeof process.versions !== 'undefined' && 
-    typeof process.versions.node !== 'undefined';
-  return { isBrowser, isNode };
-};
+// Singleton environment detector with cached results
+class EnvironmentDetector {
+  private static instance: EnvironmentDetector;
+  private cachedResult: { isBrowser: boolean; isNode: boolean } | null = null;
+  
+  private constructor() {}
+  
+  static getInstance(): EnvironmentDetector {
+    if (!EnvironmentDetector.instance) {
+      EnvironmentDetector.instance = new EnvironmentDetector();
+    }
+    return EnvironmentDetector.instance;
+  }
+  
+  getEnvironment(): { isBrowser: boolean; isNode: boolean } {
+    // Return cached result if available (for performance)
+    if (this.cachedResult !== null) {
+      return this.cachedResult;
+    }
+    
+    const isBrowser = typeof globalThis !== 'undefined' && 
+      typeof globalThis.window !== 'undefined' && 
+      typeof globalThis.document !== 'undefined';
+    const isNode = typeof process !== 'undefined' && 
+      typeof process.versions !== 'undefined' && 
+      typeof process.versions.node !== 'undefined';
+    
+    this.cachedResult = { isBrowser, isNode };
+    return this.cachedResult;
+  }
+  
+  // Clear cache for testing purposes
+  clearCache(): void {
+    this.cachedResult = null;
+  }
+  
+  // Helper methods for common checks
+  isNode(): boolean {
+    return this.getEnvironment().isNode;
+  }
+  
+  isBrowser(): boolean {
+    return this.getEnvironment().isBrowser;
+  }
+  
+  hasProcess(): boolean {
+    return typeof process !== 'undefined';
+  }
+  
+  getProcessEnv(key: string): string | undefined {
+    if (this.hasProcess() && process.env) {
+      return process.env[key];
+    }
+    return undefined;
+  }
+}
+
+// Create singleton instance
+const envDetector = EnvironmentDetector.getInstance();
+
+// Convenience function for backward compatibility
+const getEnvironment = () => envDetector.getEnvironment();
 
 // Local utility function to avoid circular dependency
 function parseBooleanFromText(value: string | undefined | null): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase().trim();
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+// Utility function for safe console access
+function getConsole(): Console | null {
+  if (typeof globalThis !== 'undefined' && globalThis.console) {
+    return globalThis.console;
+  }
+  if (typeof console !== 'undefined') {
+    return console;
+  }
+  return null;
 }
 
 // Type definitions for cross-platform compatibility
@@ -140,10 +203,10 @@ class InMemoryDestination implements DestinationStream {
     }
 
     // Filter out service registration logs unless in debug mode
-    const isDebugMode = typeof process !== 'undefined' && 
-      (process.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
-    const isLoggingDiagnostic = typeof process !== 'undefined' && 
-      Boolean(process.env?.LOG_DIAGNOSTIC);
+    const isDebugMode = envDetector.hasProcess() && 
+      (envDetector.getProcessEnv('LOG_LEVEL') || '').toLowerCase() === 'debug';
+    const isLoggingDiagnostic = envDetector.hasProcess() && 
+      Boolean(envDetector.getProcessEnv('LOG_DIAGNOSTIC'));
 
     if (isLoggingDiagnostic) {
       // When diagnostic mode is on, add a marker to every log to see what's being processed
@@ -164,8 +227,9 @@ class InMemoryDestination implements DestinationStream {
             msg.includes('Started'))
         ) {
           if (isLoggingDiagnostic) {
-            if (typeof console !== 'undefined' && console.error) {
-              console.error('Filtered log:', stringData);
+            const consoleObj = getConsole();
+            if (consoleObj && consoleObj.error) {
+              consoleObj.error('Filtered log:', stringData);
             }
           }
           // This is a service registration/agent log, skip it
@@ -317,7 +381,7 @@ class BrowserLogger implements Logger {
     }
 
     // Handle Sentry logging if needed
-    if (typeof process !== 'undefined' && process.env?.SENTRY_LOGGING !== 'false') {
+    if (envDetector.hasProcess() && envDetector.getProcessEnv('SENTRY_LOGGING') !== 'false') {
       if (obj instanceof Error || (level === 'error' || level === 'fatal')) {
         const error = obj instanceof Error ? obj : new Error(messageStr);
         Sentry.captureException(error);
@@ -326,9 +390,7 @@ class BrowserLogger implements Logger {
   }
 
   private getConsoleMethod(level: string): (...args: unknown[]) => void {
-    // Use globalThis.console for better test compatibility
-    const consoleObj = (typeof globalThis !== 'undefined' && globalThis.console) ? globalThis.console :
-                       (typeof console !== 'undefined' ? console : null);
+    const consoleObj = getConsole();
     
     if (!consoleObj) {
       return () => {}; // No-op if console doesn't exist
@@ -396,8 +458,9 @@ class BrowserLogger implements Logger {
   clear(): void {
     this.inMemoryDestination.clear();
     // Check if console.clear exists before calling it
-    if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.clear) {
-      globalThis.console.clear();
+    const consoleObj = getConsole();
+    if (consoleObj && consoleObj.clear) {
+      consoleObj.clear();
     }
   }
 
@@ -421,21 +484,44 @@ const customLevels: Record<string, number> = {
   trace: 10,
 };
 
-const raw = typeof process !== 'undefined' 
-  ? parseBooleanFromText(process.env?.LOG_JSON_FORMAT) || false
+const raw = envDetector.hasProcess()
+  ? parseBooleanFromText(envDetector.getProcessEnv('LOG_JSON_FORMAT')) || false
   : false;
 
 // Set default log level to info to allow regular logs, but still filter service logs
-const isDebugMode = typeof process !== 'undefined'
-  ? (process.env?.LOG_LEVEL || '').toLowerCase() === 'debug'
+const isDebugMode = envDetector.hasProcess()
+  ? (envDetector.getProcessEnv('LOG_LEVEL') || '').toLowerCase() === 'debug'
   : false;
 const effectiveLogLevel = isDebugMode ? 'debug' : 
-  (typeof process !== 'undefined' ? process.env?.DEFAULT_LOG_LEVEL : null) || 'info';
+  (envDetector.hasProcess() ? envDetector.getProcessEnv('DEFAULT_LOG_LEVEL') : null) || 'info';
 
 // Check if user wants timestamps in logs (default: true)
-const showTimestamps = typeof process !== 'undefined' && process.env?.LOG_TIMESTAMPS !== undefined
-  ? parseBooleanFromText(process.env?.LOG_TIMESTAMPS)
+const showTimestamps = envDetector.hasProcess() && envDetector.getProcessEnv('LOG_TIMESTAMPS') !== undefined
+  ? parseBooleanFromText(envDetector.getProcessEnv('LOG_TIMESTAMPS'))
   : true;
+
+// Utility function to extract level and base from bindings
+function extractBindingsConfig(bindings: Record<string, unknown> | boolean): {
+  level: string;
+  base: Record<string, unknown>;
+} {
+  let level = effectiveLogLevel;
+  let base: Record<string, unknown> = {};
+  
+  if (typeof bindings === 'object' && bindings !== null) {
+    // Check if level is provided in bindings
+    if ('level' in bindings) {
+      level = bindings.level as string;
+      // Remove level from base bindings
+      const { level: _, ...rest } = bindings;
+      base = rest;
+    } else {
+      base = bindings;
+    }
+  }
+  
+  return { level, base };
+}
 
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
@@ -502,7 +588,7 @@ const options = {
   hooks: {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
-      if (typeof process !== 'undefined' && process.env?.SENTRY_LOGGING !== 'false') {
+      if (envDetector.hasProcess() && envDetector.getProcessEnv('SENTRY_LOGGING') !== 'false') {
         if (arg1 instanceof Error) {
           Sentry.captureException(arg1);
         } else {
@@ -558,22 +644,7 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
   
   // Browser environment: use BrowserLogger
   if (isBrowser) {
-    // Extract level if provided in bindings
-    let level = effectiveLogLevel;
-    let base = {};
-    
-    if (typeof bindings === 'object' && bindings !== null) {
-      // Check if level is provided in bindings
-      if ('level' in bindings) {
-        level = bindings.level as string;
-        // Remove level from base bindings
-        const { level: _, ...rest } = bindings;
-        base = rest;
-      } else {
-        base = bindings;
-      }
-    }
-    
+    const { level, base } = extractBindingsConfig(bindings);
     const opts: BrowserLoggerOptions = {
       level,
       base
@@ -605,8 +676,9 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
       // Add clear method for compatibility
       pinoLogger.clear = () => {
         // For Pino, clear doesn't really apply, but we provide it for API compatibility
-        if (typeof console !== 'undefined' && console.clear) {
-          console.clear();
+        const consoleObj = getConsole();
+        if (consoleObj && consoleObj.clear) {
+          consoleObj.clear();
         }
       };
       
@@ -624,25 +696,12 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
       return pinoLogger;
     } catch (e) {
       // Fallback to BrowserLogger if Pino is not available
-      // Use globalThis.console to ensure console exists
-      if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.warn) {
-        globalThis.console.warn('Pino not available, falling back to BrowserLogger');
+      const consoleObj = getConsole();
+      if (consoleObj && consoleObj.warn) {
+        consoleObj.warn('Pino not available, falling back to BrowserLogger');
       }
       
-      // Extract level if provided in bindings
-      let level = effectiveLogLevel;
-      let base = {};
-      
-      if (typeof bindings === 'object' && bindings !== null) {
-        if ('level' in bindings) {
-          level = bindings.level as string;
-          const { level: _, ...rest } = bindings;
-          base = rest;
-        } else {
-          base = bindings;
-        }
-      }
-      
+      const { level, base } = extractBindingsConfig(bindings);
       const opts = {
         level,
         base
@@ -652,20 +711,7 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
   }
   
   // Unknown environment: use BrowserLogger as safe fallback
-  // Extract level if provided in bindings
-  let level = effectiveLogLevel;
-  let base = {};
-  
-  if (typeof bindings === 'object' && bindings !== null) {
-    if ('level' in bindings) {
-      level = bindings.level as string;
-      const { level: _, ...rest } = bindings;
-      base = rest;
-    } else {
-      base = bindings;
-    }
-  }
-  
+  const { level, base } = extractBindingsConfig(bindings);
   const opts: BrowserLoggerOptions = {
     level,
     base
@@ -699,8 +745,9 @@ if (currentEnv.isBrowser) {
         stream = pretty(createPrettyConfig());
       } catch (e) {
         // pino-pretty not available, will use raw output
-        if (typeof console !== 'undefined' && console.warn) {
-          console.warn('pino-pretty not available, using raw output');
+        const consoleObj = getConsole();
+        if (consoleObj && consoleObj.warn) {
+          consoleObj.warn('pino-pretty not available, using raw output');
         }
       }
     }
@@ -734,8 +781,9 @@ if (currentEnv.isBrowser) {
     logger = pinoLogger;
   } catch (e) {
     // Pino not available, fall back to BrowserLogger
-    if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.warn) {
-      globalThis.console.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
+    const consoleObj = getConsole();
+    if (consoleObj && consoleObj.warn) {
+      consoleObj.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
     }
     logger = new BrowserLogger({
       level: effectiveLogLevel
