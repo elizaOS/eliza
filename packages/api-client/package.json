@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "1.4.2"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

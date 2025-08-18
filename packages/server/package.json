@@ -53,8 +53,8 @@
   },
   "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2",
   "dependencies": {
-    "@elizaos/core": "1.4.2",
-    "@elizaos/plugin-sql": "1.4.2",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",

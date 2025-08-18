@@ -1,22 +1,14 @@
-import { describe, expect, it, beforeEach, mock } from 'bun:test';
+import { describe, expect, it, beforeAll, afterAll, spyOn } from 'bun:test';
 import plugin from '../plugin';
 import { logger } from '@elizaos/core';
 
-// Mock logger
-mock.module('@elizaos/core', () => {
-  const actual = require('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: mock(),
-      error: mock(),
-    },
-  };
-});
-
 describe('Plugin Events', () => {
-  beforeEach(() => {
-    mock.restore();
+  // Use spyOn like all other tests in the codebase
+  beforeAll(() => {
+    spyOn(logger, 'info');
+    spyOn(logger, 'error');
+    spyOn(logger, 'warn');
+    spyOn(logger, 'debug');
   });
 
   it('should have events defined', () => {
@@ -47,9 +39,12 @@ describe('Plugin Events', () => {
       // Call the event handler
       await messageHandler(mockParams);
 
-      // Verify log was called
+      // Verify logger was called with correct Pino-style structured logging
       expect(logger.info).toHaveBeenCalledWith('MESSAGE_RECEIVED event received');
-      expect(logger.info).toHaveBeenCalledWith(expect.any(Array));
+      expect(logger.info).toHaveBeenCalledWith(
+        { keys: expect.any(Array) },
+        'MESSAGE_RECEIVED param keys'
+      );
     }
   });
 
@@ -74,9 +69,12 @@ describe('Plugin Events', () => {
       // Call the event handler
       await voiceHandler(mockParams);
 
-      // Verify log was called
+      // Verify logger was called with correct Pino-style structured logging
       expect(logger.info).toHaveBeenCalledWith('VOICE_MESSAGE_RECEIVED event received');
-      expect(logger.info).toHaveBeenCalledWith(expect.any(Array));
+      expect(logger.info).toHaveBeenCalledWith(
+        { keys: expect.any(Array) },
+        'VOICE_MESSAGE_RECEIVED param keys'
+      );
     }
   });
 
@@ -103,9 +101,12 @@ describe('Plugin Events', () => {
       // Call the event handler
       await connectedHandler(mockParams);
 
-      // Verify log was called
+      // Verify logger was called with correct Pino-style structured logging
       expect(logger.info).toHaveBeenCalledWith('WORLD_CONNECTED event received');
-      expect(logger.info).toHaveBeenCalledWith(expect.any(Array));
+      expect(logger.info).toHaveBeenCalledWith(
+        { keys: expect.any(Array) },
+        'WORLD_CONNECTED param keys'
+      );
     }
   });
 
@@ -136,9 +137,12 @@ describe('Plugin Events', () => {
       // Call the event handler
       await joinedHandler(mockParams);
 
-      // Verify log was called
+      // Verify logger was called with correct Pino-style structured logging
       expect(logger.info).toHaveBeenCalledWith('WORLD_JOINED event received');
-      expect(logger.info).toHaveBeenCalledWith(expect.any(Array));
+      expect(logger.info).toHaveBeenCalledWith(
+        { keys: expect.any(Array) },
+        'WORLD_JOINED param keys'
+      );
     }
   });
 });
