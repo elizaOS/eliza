@@ -43,15 +43,13 @@ interface Logger {
 
 /**
  * Interface representing a log entry.
- * @property {number} [time] - The timestamp of the log entry.
- * @property {unknown} [key] - Additional properties that can be added to the log entry.
- */
-/**
- * Interface representing a log entry.
- * @typedef {Object} LogEntry
- * @property {number} [time] - The time the log entry was created.
- * @property {string} key - The key for the log entry.
- * @property {unknown} value - The value associated with the key in the log entry.
+ * @property time - The timestamp of the log entry
+ * @property level - The log level as a number or string
+ * @property msg - The log message content
+ * @property diagnostic - Flag indicating if this is a diagnostic log
+ * @property agentName - Name of the agent that created the log
+ * @property agentId - ID of the agent that created the log
+ * @property [key: string] - Additional properties that can be added to the log entry
  */
 interface LogEntry {
   time?: number;
