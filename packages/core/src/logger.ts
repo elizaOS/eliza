@@ -805,7 +805,9 @@ const createLoggerAsync = async (bindings: LoggerBindings | boolean = false): Pr
       const opts: PinoOptions = { ...options } as PinoOptions;
       
       if (bindings && typeof bindings === 'object') {
-        opts.base = bindings;
+        // Remove test-only properties before passing to Pino
+        const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
+        opts.base = cleanBindings;
         opts.transport = {
           target: 'pino-pretty',
           options: {
@@ -897,7 +899,9 @@ const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
       const opts: PinoOptions = { ...options } as PinoOptions;
       
       if (bindings && typeof bindings === 'object') {
-        opts.base = bindings;
+        // Remove test-only properties before passing to Pino
+        const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
+        opts.base = cleanBindings;
         opts.transport = {
           target: 'pino-pretty',
           options: {
