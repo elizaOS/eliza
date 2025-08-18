@@ -283,13 +283,32 @@ interface LogEntry {
 // In-Memory Destination
 // ============================================================================
 
+// Default maximum number of logs to keep in memory
+const DEFAULT_MAX_MEMORY_LOGS = 1000;
+
+// Get max logs from environment or use default
+const getMaxMemoryLogs = (): number => {
+  if (envDetector.hasProcess()) {
+    const envValue = envDetector.getProcessEnv('LOG_MAX_MEMORY_SIZE');
+    if (envValue) {
+      const parsed = parseInt(envValue, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return DEFAULT_MAX_MEMORY_LOGS;
+};
+
 /**
  * Factory function for creating an in-memory destination stream for logging.
  * Returns object implementing DestinationStream interface.
+ * @param stream - Optional stream to forward logs to
+ * @param maxLogs - Maximum number of logs to keep in memory (default: 1000 or LOG_MAX_MEMORY_SIZE env var)
  */
-function createInMemoryDestination(stream: DestinationStream | null): DestinationStream {
+function createInMemoryDestination(stream: DestinationStream | null, maxLogs?: number): DestinationStream {
   let logs: LogEntry[] = [];
-  const maxLogs = 1000; // Keep last 1000 logs
+  const maxLogsLimit = maxLogs ?? getMaxMemoryLogs();
 
   const write = (data: string | LogEntry): void => {
     // Parse the log entry if it's a string
@@ -357,7 +376,7 @@ function createInMemoryDestination(stream: DestinationStream | null): Destinatio
     logs.push(logEntry);
 
     // Maintain buffer size
-    if (logs.length > maxLogs) {
+    if (logs.length > maxLogsLimit) {
       logs.shift();
     }
 
@@ -391,6 +410,7 @@ type LogLevelName = 'fatal' | 'error' | 'warn' | 'info' | 'log' | 'progress' | '
 interface BrowserLoggerOptions {
   level?: LogLevelName | string;
   base?: Record<string, unknown>;
+  maxMemoryLogs?: number;
 }
 
 // Level values configuration
@@ -408,7 +428,7 @@ const levelValues: Record<LogLevelName, number> = {
 
 function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
   // Initialize in-memory logging
-  const inMemoryDestination = createInMemoryDestination(null);
+  const inMemoryDestination = createInMemoryDestination(null, options.maxMemoryLogs);
   
   // Set log level
   const level = options.level || 'info';
@@ -687,7 +707,7 @@ const options = {
   level: effectiveLogLevel, // Use more restrictive level unless in debug mode
   customLevels,
   hooks: {
-    logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
+    logMethod: function(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
       if (envDetector.hasProcess() && envDetector.getProcessEnv('SENTRY_LOGGING') !== 'false') {
         if (arg1 instanceof Error) {
@@ -708,7 +728,7 @@ const options = {
 
       if (typeof arg1 === 'object') {
         if (arg1 instanceof Error) {
-          method({
+          method.call(this, {
             error: formatError(arg1),
           });
         } else {
@@ -716,7 +736,7 @@ const options = {
             typeof arg === 'string' ? arg : safeStringify(arg)
           );
           const message = messageParts.join(' ');
-          method(arg1, message);
+          method.call(this, arg1, message);
         }
       } else {
         const context = {};
@@ -731,7 +751,7 @@ const options = {
 
         Object.assign(context, ...jsonParts);
 
-        method(context, message);
+        method.call(this, context, message);
       }
     },
   },
