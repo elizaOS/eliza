@@ -1,12 +1,15 @@
 import { Sentry } from './sentry/instrument';
 
-// Detect if we're in a browser environment
-const isBrowser = typeof globalThis !== 'undefined' && 
-  typeof globalThis.window !== 'undefined' && 
-  typeof globalThis.document !== 'undefined';
-const isNode = typeof process !== 'undefined' && 
-  typeof process.versions !== 'undefined' && 
-  typeof process.versions.node !== 'undefined';
+// Detect if we're in a browser environment - needs to be dynamic for testing
+const getEnvironment = () => {
+  const isBrowser = typeof globalThis !== 'undefined' && 
+    typeof globalThis.window !== 'undefined' && 
+    typeof globalThis.document !== 'undefined';
+  const isNode = typeof process !== 'undefined' && 
+    typeof process.versions !== 'undefined' && 
+    typeof process.versions.node !== 'undefined';
+  return { isBrowser, isNode };
+};
 
 // Local utility function to avoid circular dependency
 function parseBooleanFromText(value: string | undefined | null): boolean {
@@ -16,7 +19,7 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
 }
 
 // Type definitions for cross-platform compatibility
-type LogFn = (obj: Record<string, any> | string, msg?: string, ...args: any[]) => void;
+type LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => void;
 
 interface DestinationStream {
   write(data: string | LogEntry): void;
@@ -29,8 +32,12 @@ interface Logger {
   warn: LogFn;
   error: LogFn;
   fatal: LogFn;
-  clear?: () => void;
-  child?: (bindings: Record<string, any>) => Logger;
+  // Custom ElizaOS log levels
+  success: LogFn;
+  progress: LogFn;
+  log: LogFn;
+  clear: () => void;
+  child: (bindings: Record<string, unknown>) => Logger;
   level?: string;
 }
 
@@ -50,6 +57,9 @@ interface LogEntry {
   time?: number;
   level?: number | string;
   msg?: string;
+  diagnostic?: boolean;
+  agentName?: string;
+  agentId?: string;
   [key: string]: unknown;
 }
 
@@ -104,8 +114,10 @@ class InMemoryDestination implements DestinationStream {
     }
 
     // Filter out service registration logs unless in debug mode
-    const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
-    const isLoggingDiagnostic = Boolean(process?.env?.LOG_DIAGNOSTIC);
+    const isDebugMode = typeof process !== 'undefined' && 
+      (process.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
+    const isLoggingDiagnostic = typeof process !== 'undefined' && 
+      Boolean(process.env?.LOG_DIAGNOSTIC);
 
     if (isLoggingDiagnostic) {
       // When diagnostic mode is on, add a marker to every log to see what's being processed
@@ -126,7 +138,9 @@ class InMemoryDestination implements DestinationStream {
             msg.includes('Started'))
         ) {
           if (isLoggingDiagnostic) {
-            console.error('Filtered log:', stringData);
+            if (typeof console !== 'undefined' && console.error) {
+              console.error('Filtered log:', stringData);
+            }
           }
           // This is a service registration/agent log, skip it
           return;
@@ -170,11 +184,19 @@ class InMemoryDestination implements DestinationStream {
 /**
  * Browser-compatible logger that mimics Pino's API but uses console.log
  */
+// Define log level type and values
+type LogLevelName = 'fatal' | 'error' | 'warn' | 'info' | 'log' | 'progress' | 'success' | 'debug' | 'trace';
+
+interface BrowserLoggerOptions {
+  level?: LogLevelName | string;
+  base?: Record<string, unknown>;
+}
+
 class BrowserLogger implements Logger {
   private inMemoryDestination: InMemoryDestination;
   private currentLevel: number;
-  private bindings: Record<string, any>;
-  private levelValues: Record<string, number> = {
+  private bindings: Record<string, unknown>;
+  private levelValues: Record<LogLevelName, number> = {
     fatal: 60,
     error: 50,
     warn: 40,
@@ -186,7 +208,7 @@ class BrowserLogger implements Logger {
     trace: 10,
   };
 
-  constructor(options: any = {}) {
+  constructor(options: BrowserLoggerOptions = {}) {
     // Initialize in-memory logging
     this.inMemoryDestination = new InMemoryDestination(null);
     
@@ -206,7 +228,7 @@ class BrowserLogger implements Logger {
     return levelValue >= this.currentLevel;
   }
 
-  private formatMessage(level: string, obj: any, msg?: string, ...args: any[]): void {
+  private formatMessage(level: string, obj: unknown, msg?: string, ...args: unknown[]): void {
     if (!this.shouldLog(level)) return;
 
     const timestamp = new Date().toISOString();
@@ -222,7 +244,7 @@ class BrowserLogger implements Logger {
 
     // Process arguments similar to pino
     let messageStr = '';
-    let contextObj: Record<string, any> = {};
+    let contextObj: Record<string, unknown> = {};
 
     if (typeof obj === 'string') {
       messageStr = obj;
@@ -236,7 +258,7 @@ class BrowserLogger implements Logger {
       contextObj = { error: { message: obj.message, stack: obj.stack } };
       messageStr = msg || obj.message;
     } else if (typeof obj === 'object' && obj !== null) {
-      contextObj = obj;
+      contextObj = obj as Record<string, unknown>;
       messageStr = msg || '';
       if (args.length > 0) {
         messageStr += ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
@@ -277,56 +299,83 @@ class BrowserLogger implements Logger {
     }
   }
 
-  private getConsoleMethod(level: string): (...args: any[]) => void {
+  private getConsoleMethod(level: string): (...args: unknown[]) => void {
+    // Use globalThis.console for better test compatibility
+    const consoleObj = (typeof globalThis !== 'undefined' && globalThis.console) ? globalThis.console :
+                       (typeof console !== 'undefined' ? console : null);
+    
+    if (!consoleObj) {
+      return () => {}; // No-op if console doesn't exist
+    }
+
+    // Fallback to console.log if specific methods don't exist
+    const fallback = consoleObj.log ? consoleObj.log.bind(consoleObj) : () => {};
+
     switch (level) {
       case 'trace':
       case 'debug':
-        return console.debug.bind(console);
+        return consoleObj.debug ? consoleObj.debug.bind(consoleObj) : fallback;
       case 'info':
       case 'log':
       case 'progress':
       case 'success':
-        return console.info.bind(console);
+        return consoleObj.info ? consoleObj.info.bind(consoleObj) : fallback;
       case 'warn':
-        return console.warn.bind(console);
+        return consoleObj.warn ? consoleObj.warn.bind(consoleObj) : fallback;
       case 'error':
       case 'fatal':
-        return console.error.bind(console);
+        return consoleObj.error ? consoleObj.error.bind(consoleObj) : fallback;
       default:
-        return console.log.bind(console);
+        return fallback;
     }
   }
 
-  trace: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  trace: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('trace', obj, msg, ...args);
   };
 
-  debug: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  debug: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('debug', obj, msg, ...args);
   };
 
-  info: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  info: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('info', obj, msg, ...args);
   };
 
-  warn: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  warn: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('warn', obj, msg, ...args);
   };
 
-  error: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  error: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('error', obj, msg, ...args);
   };
 
-  fatal: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+  fatal: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
     this.formatMessage('fatal', obj, msg, ...args);
+  };
+
+  // Custom log levels for ElizaOS compatibility
+  success: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
+    this.formatMessage('success', obj, msg, ...args);
+  };
+
+  progress: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
+    this.formatMessage('progress', obj, msg, ...args);
+  };
+
+  log: LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
+    this.formatMessage('log', obj, msg, ...args);
   };
 
   clear(): void {
     this.inMemoryDestination.clear();
-    console.clear();
+    // Check if console.clear exists before calling it
+    if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.clear) {
+      globalThis.console.clear();
+    }
   }
 
-  child(bindings: Record<string, any>): Logger {
+  child(bindings: Record<string, unknown>): Logger {
     return new BrowserLogger({
       level: this.level,
       base: { ...this.bindings, ...bindings }
@@ -346,17 +395,21 @@ const customLevels: Record<string, number> = {
   trace: 10,
 };
 
-const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
+const raw = typeof process !== 'undefined' 
+  ? parseBooleanFromText(process.env?.LOG_JSON_FORMAT) || false
+  : false;
 
 // Set default log level to info to allow regular logs, but still filter service logs
-const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
-const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
+const isDebugMode = typeof process !== 'undefined'
+  ? (process.env?.LOG_LEVEL || '').toLowerCase() === 'debug'
+  : false;
+const effectiveLogLevel = isDebugMode ? 'debug' : 
+  (typeof process !== 'undefined' ? process.env?.DEFAULT_LOG_LEVEL : null) || 'info';
 
 // Check if user wants timestamps in logs (default: true)
-const showTimestamps =
-  process?.env?.LOG_TIMESTAMPS !== undefined
-    ? parseBooleanFromText(process?.env?.LOG_TIMESTAMPS)
-    : true;
+const showTimestamps = typeof process !== 'undefined' && process.env?.LOG_TIMESTAMPS !== undefined
+  ? parseBooleanFromText(process.env?.LOG_TIMESTAMPS)
+  : true;
 
 // Create a function to generate the pretty configuration
 const createPrettyConfig = () => ({
@@ -376,10 +429,11 @@ const createPrettyConfig = () => ({
     '*': 'white', // default for any unspecified level
   },
   customPrettifiers: {
-    level: (inputData: any) => {
+    level: (inputData: unknown) => {
       let level;
       if (typeof inputData === 'object' && inputData !== null) {
-        level = inputData.level || inputData.value;
+        const data = inputData as Record<string, unknown>;
+        level = data.level || data.value;
       } else {
         level = inputData;
       }
@@ -422,7 +476,7 @@ const options = {
   hooks: {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
-      if (process.env.SENTRY_LOGGING !== 'false') {
+      if (typeof process !== 'undefined' && process.env?.SENTRY_LOGGING !== 'false') {
         if (arg1 instanceof Error) {
           Sentry.captureException(arg1);
         } else {
@@ -473,12 +527,30 @@ const options = {
 };
 
 // Create logger factory function that works in both environments
-const createLogger = (bindings: any | boolean = false): Logger => {
+const createLogger = (bindings: Record<string, unknown> | boolean = false): Logger => {
+  const { isBrowser, isNode } = getEnvironment();
+  
   // Browser environment: use BrowserLogger
   if (isBrowser) {
-    const opts: any = {
-      level: effectiveLogLevel,
-      base: typeof bindings === 'object' ? bindings : {}
+    // Extract level if provided in bindings
+    let level = effectiveLogLevel;
+    let base = {};
+    
+    if (typeof bindings === 'object' && bindings !== null) {
+      // Check if level is provided in bindings
+      if ('level' in bindings) {
+        level = bindings.level as string;
+        // Remove level from base bindings
+        const { level: _, ...rest } = bindings;
+        base = rest;
+      } else {
+        base = bindings;
+      }
+    }
+    
+    const opts: BrowserLoggerOptions = {
+      level,
+      base
     };
     return new BrowserLogger(opts);
   }
@@ -488,7 +560,7 @@ const createLogger = (bindings: any | boolean = false): Logger => {
     try {
       // Dynamically import Pino only in Node.js
       const Pino = require('pino');
-      const opts: any = { ...options }; // shallow copy
+      const opts: Record<string, any> = { ...options }; // shallow copy, using any for Pino's dynamic options
       
       if (bindings) {
         opts.base = bindings; // shallow change
@@ -502,22 +574,75 @@ const createLogger = (bindings: any | boolean = false): Logger => {
         };
       }
       
-      return Pino(opts);
+      const pinoLogger = Pino(opts);
+      
+      // Add clear method for compatibility
+      (pinoLogger as any).clear = () => {
+        // For Pino, clear doesn't really apply, but we provide it for API compatibility
+        if (typeof console !== 'undefined' && console.clear) {
+          console.clear();
+        }
+      };
+      
+      // Add custom ElizaOS methods if not present
+      if (!(pinoLogger as any).success) {
+        (pinoLogger as any).success = pinoLogger.info.bind(pinoLogger);
+      }
+      if (!(pinoLogger as any).progress) {
+        (pinoLogger as any).progress = pinoLogger.info.bind(pinoLogger);
+      }
+      if (!(pinoLogger as any).log) {
+        (pinoLogger as any).log = pinoLogger.info.bind(pinoLogger);
+      }
+      
+      return pinoLogger;
     } catch (e) {
       // Fallback to BrowserLogger if Pino is not available
-      console.warn('Pino not available, falling back to BrowserLogger');
-      const opts: any = {
-        level: effectiveLogLevel,
-        base: typeof bindings === 'object' ? bindings : {}
+      // Use globalThis.console to ensure console exists
+      if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.warn) {
+        globalThis.console.warn('Pino not available, falling back to BrowserLogger');
+      }
+      
+      // Extract level if provided in bindings
+      let level = effectiveLogLevel;
+      let base = {};
+      
+      if (typeof bindings === 'object' && bindings !== null) {
+        if ('level' in bindings) {
+          level = bindings.level as string;
+          const { level: _, ...rest } = bindings;
+          base = rest;
+        } else {
+          base = bindings;
+        }
+      }
+      
+      const opts = {
+        level,
+        base
       };
       return new BrowserLogger(opts);
     }
   }
   
   // Unknown environment: use BrowserLogger as safe fallback
-  const opts: any = {
-    level: effectiveLogLevel,
-    base: typeof bindings === 'object' ? bindings : {}
+  // Extract level if provided in bindings
+  let level = effectiveLogLevel;
+  let base = {};
+  
+  if (typeof bindings === 'object' && bindings !== null) {
+    if ('level' in bindings) {
+      level = bindings.level as string;
+      const { level: _, ...rest } = bindings;
+      base = rest;
+    } else {
+      base = bindings;
+    }
+  }
+  
+  const opts: BrowserLoggerOptions = {
+    level,
+    base
   };
   return new BrowserLogger(opts);
 };
@@ -525,12 +650,15 @@ const createLogger = (bindings: any | boolean = false): Logger => {
 // Initialize logger based on environment
 let logger: Logger;
 
-if (isBrowser) {
+// Get current environment
+const currentEnv = getEnvironment();
+
+if (currentEnv.isBrowser) {
   // Browser environment: use BrowserLogger
   logger = new BrowserLogger({
     level: effectiveLogLevel
   });
-} else if (isNode) {
+} else if (currentEnv.isNode) {
   // Node.js environment: use Pino with all the bells and whistles
   try {
     const Pino = require('pino');
@@ -545,7 +673,9 @@ if (isBrowser) {
         stream = pretty(createPrettyConfig());
       } catch (e) {
         // pino-pretty not available, will use raw output
-        console.warn('pino-pretty not available, using raw output');
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('pino-pretty not available, using raw output');
+        }
       }
     }
     
@@ -563,9 +693,22 @@ if (isBrowser) {
         dest.clear();
       }
     };
+    
+    // Add custom ElizaOS log methods for compatibility
+    if (!(logger as any).success) {
+      (logger as any).success = (logger as any).info.bind(logger);
+    }
+    if (!(logger as any).progress) {
+      (logger as any).progress = (logger as any).info.bind(logger);
+    }
+    if (!(logger as any).log) {
+      (logger as any).log = (logger as any).info.bind(logger);
+    }
   } catch (e) {
     // Pino not available, fall back to BrowserLogger
-    console.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
+    if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.warn) {
+      globalThis.console.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
+    }
     logger = new BrowserLogger({
       level: effectiveLogLevel
     });
@@ -577,9 +720,19 @@ if (isBrowser) {
   });
 }
 
-export { createLogger, logger };
+// Extend the logger type to include custom methods
+export interface ElizaLogger extends Logger {
+  success: LogFn;
+  progress: LogFn;
+  log: LogFn;
+}
+
+// Cast logger to include custom methods
+const typedLogger = logger as ElizaLogger;
+
+export { createLogger, typedLogger as logger };
 
 // for backward compatibility
-export const elizaLogger = logger;
+export const elizaLogger = typedLogger;
 
-export default logger;
+export default typedLogger;
