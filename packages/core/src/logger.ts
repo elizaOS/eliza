@@ -1,11 +1,37 @@
-import pino, { type DestinationStream, type LogFn } from 'pino';
 import { Sentry } from './sentry/instrument';
+
+// Detect if we're in a browser environment
+const isBrowser = typeof globalThis !== 'undefined' && 
+  typeof globalThis.window !== 'undefined' && 
+  typeof globalThis.document !== 'undefined';
+const isNode = typeof process !== 'undefined' && 
+  typeof process.versions !== 'undefined' && 
+  typeof process.versions.node !== 'undefined';
 
 // Local utility function to avoid circular dependency
 function parseBooleanFromText(value: string | undefined | null): boolean {
   if (!value) return false;
   const normalized = value.toLowerCase().trim();
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+// Type definitions for cross-platform compatibility
+type LogFn = (obj: Record<string, any> | string, msg?: string, ...args: any[]) => void;
+
+interface DestinationStream {
+  write(data: string | LogEntry): void;
+}
+
+interface Logger {
+  trace: LogFn;
+  debug: LogFn;
+  info: LogFn;
+  warn: LogFn;
+  error: LogFn;
+  fatal: LogFn;
+  clear?: () => void;
+  child?: (bindings: Record<string, any>) => Logger;
+  level?: string;
 }
 
 /**
@@ -22,6 +48,8 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
  */
 interface LogEntry {
   time?: number;
+  level?: number | string;
+  msg?: string;
   [key: string]: unknown;
 }
 
@@ -139,6 +167,173 @@ class InMemoryDestination implements DestinationStream {
   }
 }
 
+/**
+ * Browser-compatible logger that mimics Pino's API but uses console.log
+ */
+class BrowserLogger implements Logger {
+  private inMemoryDestination: InMemoryDestination;
+  private currentLevel: number;
+  private bindings: Record<string, any>;
+  private levelValues: Record<string, number> = {
+    fatal: 60,
+    error: 50,
+    warn: 40,
+    info: 30,
+    log: 29,
+    progress: 28,
+    success: 27,
+    debug: 20,
+    trace: 10,
+  };
+
+  constructor(options: any = {}) {
+    // Initialize in-memory logging
+    this.inMemoryDestination = new InMemoryDestination(null);
+    
+    // Set log level
+    const level = options.level || 'info';
+    this.currentLevel = this.levelValues[level] || 30;
+    this.level = level;
+    
+    // Store bindings for child loggers
+    this.bindings = options.base || {};
+  }
+
+  level: string;
+
+  private shouldLog(level: string): boolean {
+    const levelValue = this.levelValues[level] || 30;
+    return levelValue >= this.currentLevel;
+  }
+
+  private formatMessage(level: string, obj: any, msg?: string, ...args: any[]): void {
+    if (!this.shouldLog(level)) return;
+
+    const timestamp = new Date().toISOString();
+    const levelLabel = level.toUpperCase();
+    
+    // Create log entry for in-memory storage
+    const logEntry: LogEntry = {
+      time: Date.now(),
+      level: this.levelValues[level],
+      msg: '',
+      ...this.bindings
+    };
+
+    // Process arguments similar to pino
+    let messageStr = '';
+    let contextObj: Record<string, any> = {};
+
+    if (typeof obj === 'string') {
+      messageStr = obj;
+      if (msg) {
+        messageStr += ' ' + msg;
+      }
+      if (args.length > 0) {
+        messageStr += ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      }
+    } else if (obj instanceof Error) {
+      contextObj = { error: { message: obj.message, stack: obj.stack } };
+      messageStr = msg || obj.message;
+    } else if (typeof obj === 'object' && obj !== null) {
+      contextObj = obj;
+      messageStr = msg || '';
+      if (args.length > 0) {
+        messageStr += ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      }
+    }
+
+    // Update log entry
+    Object.assign(logEntry, contextObj);
+    logEntry.msg = messageStr;
+
+    // Store in memory
+    this.inMemoryDestination.write(logEntry);
+
+    // Format for console output
+    const prefix = `[${timestamp}] ${levelLabel}:`;
+    const hasContext = Object.keys(contextObj).length > 0;
+    
+    // Choose appropriate console method
+    const consoleMethod = this.getConsoleMethod(level);
+
+    // Log to console
+    if (hasContext) {
+      if (messageStr) {
+        consoleMethod(prefix, messageStr, contextObj);
+      } else {
+        consoleMethod(prefix, contextObj);
+      }
+    } else if (messageStr) {
+      consoleMethod(prefix, messageStr);
+    }
+
+    // Handle Sentry logging if needed
+    if (typeof process !== 'undefined' && process.env?.SENTRY_LOGGING !== 'false') {
+      if (obj instanceof Error || (level === 'error' || level === 'fatal')) {
+        const error = obj instanceof Error ? obj : new Error(messageStr);
+        Sentry.captureException(error);
+      }
+    }
+  }
+
+  private getConsoleMethod(level: string): (...args: any[]) => void {
+    switch (level) {
+      case 'trace':
+      case 'debug':
+        return console.debug.bind(console);
+      case 'info':
+      case 'log':
+      case 'progress':
+      case 'success':
+        return console.info.bind(console);
+      case 'warn':
+        return console.warn.bind(console);
+      case 'error':
+      case 'fatal':
+        return console.error.bind(console);
+      default:
+        return console.log.bind(console);
+    }
+  }
+
+  trace: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('trace', obj, msg, ...args);
+  };
+
+  debug: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('debug', obj, msg, ...args);
+  };
+
+  info: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('info', obj, msg, ...args);
+  };
+
+  warn: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('warn', obj, msg, ...args);
+  };
+
+  error: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('error', obj, msg, ...args);
+  };
+
+  fatal: LogFn = (obj: any, msg?: string, ...args: any[]) => {
+    this.formatMessage('fatal', obj, msg, ...args);
+  };
+
+  clear(): void {
+    this.inMemoryDestination.clear();
+    console.clear();
+  }
+
+  child(bindings: Record<string, any>): Logger {
+    return new BrowserLogger({
+      level: this.level,
+      base: { ...this.bindings, ...bindings }
+    });
+  }
+}
+
 const customLevels: Record<string, number> = {
   fatal: 60,
   error: 50,
@@ -220,15 +415,6 @@ const createPrettyConfig = () => ({
   messageFormat: '{msg}',
 });
 
-const createStream = async () => {
-  if (raw) {
-    return undefined;
-  }
-  // dynamically import pretty to avoid importing it in the browser
-  const pretty = await import('pino-pretty');
-  return pretty.default(createPrettyConfig());
-};
-
 // Create options with appropriate level
 const options = {
   level: effectiveLogLevel, // Use more restrictive level unless in debug mode
@@ -286,76 +472,109 @@ const options = {
   },
 };
 
-// allow runtime logger to inherent options set here
-const createLogger = (bindings: any | boolean = false) => {
-  const opts: any = { ...options }; // shallow copy
-  if (bindings) {
-    //opts.level = process.env.LOG_LEVEL || 'info'
-    opts.base = bindings; // shallow change
-    opts.transport = {
-      target: 'pino-pretty', // this is just a string, not a dynamic import
-      options: {
-        colorize: true,
-        translateTime: showTimestamps ? 'SYS:standard' : false,
-        ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
-      },
+// Create logger factory function that works in both environments
+const createLogger = (bindings: any | boolean = false): Logger => {
+  // Browser environment: use BrowserLogger
+  if (isBrowser) {
+    const opts: any = {
+      level: effectiveLogLevel,
+      base: typeof bindings === 'object' ? bindings : {}
     };
+    return new BrowserLogger(opts);
   }
-  const logger = pino(opts);
-  return logger;
-};
-
-// Create basic logger initially
-let logger = pino(options);
-// Add type for logger with clear method
-interface LoggerWithClear extends pino.Logger {
-  clear: () => void;
-}
-
-// Enhance logger with custom destination in Node.js environment
-if (typeof process !== 'undefined') {
-  // Create the destination with in-memory logging
-  // Instead of async initialization, initialize synchronously to avoid race conditions
-  let stream = null;
-
-  if (!raw) {
-    // If we're in a Node.js environment where require is available, use require for pino-pretty
-    // This will ensure synchronous loading
+  
+  // Node.js environment: use Pino
+  if (isNode) {
     try {
-      const pretty = require('pino-pretty');
-      stream = pretty.default ? pretty.default(createPrettyConfig()) : null;
-    } catch (e) {
-      // Fall back to async loading if synchronous loading fails
-      createStream().then((prettyStream) => {
-        const destination = new InMemoryDestination(prettyStream);
-        logger = pino(options, destination);
-        (logger as unknown)[Symbol.for('pino-destination')] = destination;
-
-        // Add clear method to logger
-        (logger as unknown as LoggerWithClear).clear = () => {
-          const destination = (logger as unknown)[Symbol.for('pino-destination')];
-          if (destination instanceof InMemoryDestination) {
-            destination.clear();
-          }
+      // Dynamically import Pino only in Node.js
+      const Pino = require('pino');
+      const opts: any = { ...options }; // shallow copy
+      
+      if (bindings) {
+        opts.base = bindings; // shallow change
+        opts.transport = {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: showTimestamps ? 'SYS:standard' : false,
+            ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
+          },
         };
-      });
+      }
+      
+      return Pino(opts);
+    } catch (e) {
+      // Fallback to BrowserLogger if Pino is not available
+      console.warn('Pino not available, falling back to BrowserLogger');
+      const opts: any = {
+        level: effectiveLogLevel,
+        base: typeof bindings === 'object' ? bindings : {}
+      };
+      return new BrowserLogger(opts);
     }
   }
+  
+  // Unknown environment: use BrowserLogger as safe fallback
+  const opts: any = {
+    level: effectiveLogLevel,
+    base: typeof bindings === 'object' ? bindings : {}
+  };
+  return new BrowserLogger(opts);
+};
 
-  // If stream was created synchronously, use it now
-  if (stream !== null || raw) {
+// Initialize logger based on environment
+let logger: Logger;
+
+if (isBrowser) {
+  // Browser environment: use BrowserLogger
+  logger = new BrowserLogger({
+    level: effectiveLogLevel
+  });
+} else if (isNode) {
+  // Node.js environment: use Pino with all the bells and whistles
+  try {
+    const Pino = require('pino');
+    
+    // Create the destination with in-memory logging
+    let stream = null;
+    
+    if (!raw) {
+      // Try to load pino-pretty synchronously
+      try {
+        const pretty = require('pino-pretty');
+        stream = pretty(createPrettyConfig());
+      } catch (e) {
+        // pino-pretty not available, will use raw output
+        console.warn('pino-pretty not available, using raw output');
+      }
+    }
+    
+    // Create logger with or without pretty printing
     const destination = new InMemoryDestination(stream);
-    logger = pino(options, destination);
-    (logger as unknown)[Symbol.for('pino-destination')] = destination;
-
+    logger = Pino(options, destination);
+    
+    // Store destination reference for clear method
+    (logger as any)[Symbol.for('pino-destination')] = destination;
+    
     // Add clear method to logger
-    (logger as unknown as LoggerWithClear).clear = () => {
-      const destination = (logger as unknown)[Symbol.for('pino-destination')];
-      if (destination instanceof InMemoryDestination) {
-        destination.clear();
+    (logger as any).clear = () => {
+      const dest = (logger as any)[Symbol.for('pino-destination')];
+      if (dest instanceof InMemoryDestination) {
+        dest.clear();
       }
     };
+  } catch (e) {
+    // Pino not available, fall back to BrowserLogger
+    console.warn('Pino not available in Node.js environment, falling back to BrowserLogger');
+    logger = new BrowserLogger({
+      level: effectiveLogLevel
+    });
   }
+} else {
+  // Unknown environment: use BrowserLogger as safe fallback
+  logger = new BrowserLogger({
+    level: effectiveLogLevel
+  });
 }
 
 export { createLogger, logger };
