@@ -302,8 +302,8 @@ function createInMemoryDestination(stream: DestinationStream | null): Destinatio
         logEntry = JSON.parse(data);
       } catch (e) {
         // If it's not valid JSON, just pass it through
-        if (this.stream) {
-          this.stream.write(data);
+        if (stream) {
+          stream.write(data);
         }
         return;
       }
@@ -708,17 +708,15 @@ const options = {
 
       if (typeof arg1 === 'object') {
         if (arg1 instanceof Error) {
-          method.apply(this, [
-            {
-              error: formatError(arg1),
-            },
-          ]);
+          method({
+            error: formatError(arg1),
+          });
         } else {
           const messageParts = rest.map((arg) =>
             typeof arg === 'string' ? arg : safeStringify(arg)
           );
           const message = messageParts.join(' ');
-          method.apply(this, [arg1, message]);
+          method(arg1, message);
         }
       } else {
         const context = {};
@@ -733,7 +731,7 @@ const options = {
 
         Object.assign(context, ...jsonParts);
 
-        method.apply(this, [context, message]);
+        method(context, message);
       }
     },
   },
