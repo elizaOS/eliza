@@ -100,6 +100,99 @@ function safeStringify(obj: unknown): string {
   }
 }
 
+/**
+ * Module Loading Strategy:
+ * 
+ * This module provides both synchronous and asynchronous logger factory functions
+ * to support a gradual migration from CommonJS to ES modules:
+ * 
+ * 1. createLogger() - Synchronous, uses require() via sync loaders (backward compatible)
+ * 2. createLoggerAsync() - Asynchronous, uses dynamic import() (recommended for new code)
+ * 
+ * The module loaders cache loaded modules to avoid redundant imports and improve performance.
+ * 
+ * Migration path:
+ * - Existing code can continue using createLogger()
+ * - New code should prefer createLoggerAsync() for full ES module support
+ * - Future versions will deprecate the synchronous version
+ */
+
+// Module loader cache for dynamic imports
+interface ModuleCache {
+  pinoPromise?: Promise<any>;
+  pinoPrettyPromise?: Promise<any>;
+  pino?: any;
+  pinoPretty?: any;
+}
+
+const moduleCache: ModuleCache = {};
+
+// Async module loader for Pino
+async function loadPinoAsync(): Promise<any> {
+  if (moduleCache.pino) {
+    return moduleCache.pino;
+  }
+  
+  if (!moduleCache.pinoPromise) {
+    moduleCache.pinoPromise = import('pino').then(module => {
+      moduleCache.pino = module.default || module;
+      return moduleCache.pino;
+    });
+  }
+  
+  return moduleCache.pinoPromise;
+}
+
+// Async module loader for pino-pretty
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function loadPinoPrettyAsync(): Promise<any> {
+  if (moduleCache.pinoPretty) {
+    return moduleCache.pinoPretty;
+  }
+  
+  if (!moduleCache.pinoPrettyPromise) {
+    moduleCache.pinoPrettyPromise = import('pino-pretty').then(module => {
+      moduleCache.pinoPretty = module.default || module;
+      return moduleCache.pinoPretty;
+    });
+  }
+  
+  return moduleCache.pinoPrettyPromise;
+}
+
+// Synchronous fallback loaders (using require) for backward compatibility
+// These will be used in createLogger until we can refactor to async
+function loadPinoSync(): any {
+  if (moduleCache.pino) {
+    return moduleCache.pino;
+  }
+  
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const module = require('pino');
+    moduleCache.pino = module;
+    return module;
+  } catch (error) {
+    throw new Error(`Failed to load Pino: ${(error as Error).message}`);
+  }
+}
+
+function loadPinoPrettySync(): any {
+  if (moduleCache.pinoPretty) {
+    return moduleCache.pinoPretty;
+  }
+  
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const module = require('pino-pretty');
+    moduleCache.pinoPretty = module;
+    return module;
+  } catch (error) {
+    // pino-pretty is optional, so we can continue without it
+    return null;
+  }
+}
+
 // Type definitions for cross-platform compatibility
 type LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => void;
 
@@ -657,7 +750,90 @@ const options = {
   },
 };
 
-// Create logger factory function that works in both environments
+// Async logger factory function using dynamic imports (recommended for new code)
+const createLoggerAsync = async (bindings: Record<string, unknown> | boolean = false): Promise<Logger> => {
+  // Check for test environment flag to force BrowserLogger
+  const forceType = typeof bindings === 'object' && bindings !== null 
+    ? (bindings as any).__forceType 
+    : undefined;
+    
+  if (forceType === 'browser') {
+    // Remove __forceType from bindings before passing to BrowserLogger
+    const { __forceType, ...cleanBindings } = bindings as any;
+    const { level, base } = extractBindingsConfig(cleanBindings);
+    const opts: BrowserLoggerOptions = {
+      level,
+      base
+    };
+    return new BrowserLogger(opts);
+  }
+  
+  const { isBrowser, isNode } = getEnvironment();
+  
+  // Browser environment: use BrowserLogger
+  if (isBrowser) {
+    const { level, base } = extractBindingsConfig(bindings);
+    const opts: BrowserLoggerOptions = {
+      level,
+      base
+    };
+    return new BrowserLogger(opts);
+  }
+  
+  // Node.js environment: use Pino with dynamic imports
+  if (isNode) {
+    try {
+      // Load Pino module using dynamic import
+      const Pino = await loadPinoAsync();
+      const opts: PinoOptions = { ...options } as PinoOptions;
+      
+      if (bindings && typeof bindings === 'object') {
+        opts.base = bindings;
+        opts.transport = {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: showTimestamps ? 'SYS:standard' : false,
+            ignore: showTimestamps ? 'pid,hostname' : 'pid,hostname,time',
+          },
+        };
+      }
+      
+      const pinoLogger = Pino(opts) as ExtendedPinoLogger;
+      
+      // Add custom log levels
+      pinoLogger.clear = pinoLogger.info.bind(pinoLogger);
+      pinoLogger.success = pinoLogger.info.bind(pinoLogger);
+      pinoLogger.progress = pinoLogger.info.bind(pinoLogger);
+      pinoLogger.log = pinoLogger.info.bind(pinoLogger);
+      
+      return pinoLogger;
+    } catch (error) {
+      // Fallback to BrowserLogger if Pino is not available
+      const consoleObj = getConsole();
+      if (consoleObj && consoleObj.warn) {
+        consoleObj.warn('Pino not available, falling back to BrowserLogger:', error);
+      }
+      const { level, base } = extractBindingsConfig(bindings);
+      const opts: BrowserLoggerOptions = {
+        level,
+        base
+      };
+      return new BrowserLogger(opts);
+    }
+  }
+  
+  // Default fallback
+  const { level, base } = extractBindingsConfig(bindings);
+  const opts: BrowserLoggerOptions = {
+    level,
+    base
+  };
+  return new BrowserLogger(opts);
+};
+
+// Synchronous logger factory function (for backward compatibility)
+// Uses require() through sync loaders, will be deprecated in future versions
 const createLogger = (bindings: Record<string, unknown> | boolean = false): Logger => {
   // Check for test environment flag to force BrowserLogger
   const forceType = typeof bindings === 'object' && bindings !== null 
@@ -690,8 +866,8 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
   // Node.js environment: use Pino
   if (isNode) {
     try {
-      // Dynamically import Pino only in Node.js
-      const Pino = require('pino');
+      // Load Pino module (uses cached version if available)
+      const Pino = loadPinoSync();
       const opts: PinoOptions = { ...options } as PinoOptions;
       
       if (bindings && typeof bindings === 'object') {
@@ -768,17 +944,17 @@ if (currentEnv.isBrowser) {
 } else if (currentEnv.isNode) {
   // Node.js environment: use Pino with all the bells and whistles
   try {
-    const Pino = require('pino');
+    const Pino = loadPinoSync();
     
     // Create the destination with in-memory logging
     let stream = null;
     
     if (!raw) {
       // Try to load pino-pretty synchronously
-      try {
-        const pretty = require('pino-pretty');
+      const pretty = loadPinoPrettySync();
+      if (pretty) {
         stream = pretty(createPrettyConfig());
-      } catch (e) {
+      } else {
         // pino-pretty not available, will use raw output
         const consoleObj = getConsole();
         if (consoleObj && consoleObj.warn) {
@@ -841,7 +1017,7 @@ export interface ElizaLogger extends Logger {
 // Cast logger to include custom methods
 const typedLogger = logger as ElizaLogger;
 
-export { createLogger, typedLogger as logger };
+export { createLogger, createLoggerAsync, typedLogger as logger };
 
 // for backward compatibility
 export const elizaLogger = typedLogger;
