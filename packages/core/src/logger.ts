@@ -207,6 +207,12 @@ function loadPinoPrettySync(): PinoPrettyModule | null {
 // Type definitions for cross-platform compatibility
 type LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => void;
 
+// Type for logger bindings with optional test override
+interface LoggerBindings extends Record<string, unknown> {
+  __forceType?: 'browser' | 'node';
+  level?: string;
+}
+
 interface DestinationStream {
   write(data: string | LogEntry): void;
 }
@@ -624,7 +630,7 @@ const showTimestamps = envDetector.hasProcess() && envDetector.getProcessEnv('LO
   : true;
 
 // Utility function to extract level and base from bindings
-function extractBindingsConfig(bindings: Record<string, unknown> | boolean): {
+function extractBindingsConfig(bindings: LoggerBindings | boolean): {
   level: string;
   base: Record<string, unknown>;
 } {
@@ -762,15 +768,15 @@ const options = {
 };
 
 // Async logger factory function using dynamic imports (recommended for new code)
-const createLoggerAsync = async (bindings: Record<string, unknown> | boolean = false): Promise<Logger> => {
+const createLoggerAsync = async (bindings: LoggerBindings | boolean = false): Promise<Logger> => {
   // Check for test environment flag to force BrowserLogger
   const forceType = typeof bindings === 'object' && bindings !== null 
-    ? (bindings as any).__forceType 
+    ? bindings.__forceType 
     : undefined;
     
   if (forceType === 'browser') {
     // Remove __forceType from bindings before passing to BrowserLogger
-    const { __forceType, ...cleanBindings } = bindings as any;
+    const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
     const { level, base } = extractBindingsConfig(cleanBindings);
     const opts: BrowserLoggerOptions = {
       level,
@@ -854,15 +860,15 @@ const createLoggerAsync = async (bindings: Record<string, unknown> | boolean = f
 
 // Synchronous logger factory function (for backward compatibility)
 // Uses require() through sync loaders, will be deprecated in future versions
-const createLogger = (bindings: Record<string, unknown> | boolean = false): Logger => {
+const createLogger = (bindings: LoggerBindings | boolean = false): Logger => {
   // Check for test environment flag to force BrowserLogger
   const forceType = typeof bindings === 'object' && bindings !== null 
-    ? (bindings as any).__forceType 
+    ? bindings.__forceType 
     : undefined;
     
   if (forceType === 'browser') {
     // Remove __forceType from bindings before passing to BrowserLogger
-    const { __forceType, ...cleanBindings } = bindings as any;
+    const { __forceType, ...cleanBindings } = bindings as LoggerBindings;
     const { level, base } = extractBindingsConfig(cleanBindings);
     const opts: BrowserLoggerOptions = {
       level,
