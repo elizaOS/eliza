@@ -496,5 +496,54 @@ describe('Logger - Cross-Environment Tests', () => {
       const nodeLogger = createLogger();
       expect(() => nodeLogger.clear()).not.toThrow();
     });
+
+    it('should not leak __forceType into Node.js logger output', () => {
+      // Setup Node.js environment
+      globalThis.process = originalProcess || { versions: { node: '20.0.0' }, env: {} } as unknown as typeof process;
+      delete globalThis.window;
+      delete globalThis.document;
+      
+      // Mock pino to capture the configuration passed to it
+      interface CapturedOptions {
+        base?: Record<string, unknown>;
+        [key: string]: unknown;
+      }
+      let capturedOptions: CapturedOptions | null = null;
+      mock.module('pino', () => {
+        return {
+          default: (opts: CapturedOptions) => {
+            capturedOptions = opts;
+            return {
+              trace: mock(),
+              debug: mock(),
+              info: mock(),
+              warn: mock(),
+              error: mock(),
+              fatal: mock(),
+              success: mock(),
+              progress: mock(),
+              log: mock(),
+              clear: mock()
+            };
+          }
+        };
+      });
+      
+      // Create logger with __forceType in bindings
+      createLogger({ 
+        __forceType: 'node',
+        appName: 'test-app',
+        userId: '123' 
+      });
+      
+      // Verify __forceType is not in the base configuration
+      expect(capturedOptions).toBeDefined();
+      if (capturedOptions && capturedOptions.base) {
+        expect(capturedOptions.base.__forceType).toBeUndefined();
+        // But other properties should still be there
+        expect(capturedOptions.base.appName).toBe('test-app');
+        expect(capturedOptions.base.userId).toBe('123');
+      }
+    });
   });
 });
