@@ -72,7 +72,7 @@
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-node-polyfills": "0.17.0"
+    "vite-plugin-node-polyfills": "0.24.0"
   },
   "devDependencies": {
     "@cypress/react": "^9.0.1",
