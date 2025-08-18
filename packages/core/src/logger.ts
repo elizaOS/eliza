@@ -41,6 +41,34 @@ interface Logger {
   level?: string;
 }
 
+// Symbol for storing the destination reference
+const PINO_DESTINATION_SYMBOL = Symbol.for('pino-destination');
+
+// Extended Logger interface for Pino with custom properties
+interface ExtendedPinoLogger extends Logger {
+  [key: symbol]: InMemoryDestination | undefined;
+}
+
+// Pino configuration types
+interface PinoTransportOptions {
+  target: string;
+  options: {
+    colorize: boolean;
+    translateTime: string | false;
+    ignore: string;
+  };
+}
+
+interface PinoOptions {
+  level: string;
+  customLevels: Record<string, number>;
+  base?: Record<string, unknown>;
+  transport?: PinoTransportOptions;
+  hooks?: {
+    logMethod: (inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn) => void;
+  };
+}
+
 /**
  * Interface representing a log entry.
  * @property time - The timestamp of the log entry
@@ -558,10 +586,10 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
     try {
       // Dynamically import Pino only in Node.js
       const Pino = require('pino');
-      const opts: Record<string, any> = { ...options }; // shallow copy, using any for Pino's dynamic options
+      const opts: PinoOptions = { ...options } as PinoOptions;
       
-      if (bindings) {
-        opts.base = bindings; // shallow change
+      if (bindings && typeof bindings === 'object') {
+        opts.base = bindings;
         opts.transport = {
           target: 'pino-pretty',
           options: {
@@ -572,10 +600,10 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
         };
       }
       
-      const pinoLogger = Pino(opts);
+      const pinoLogger = Pino(opts) as ExtendedPinoLogger;
       
       // Add clear method for compatibility
-      (pinoLogger as any).clear = () => {
+      pinoLogger.clear = () => {
         // For Pino, clear doesn't really apply, but we provide it for API compatibility
         if (typeof console !== 'undefined' && console.clear) {
           console.clear();
@@ -583,14 +611,14 @@ const createLogger = (bindings: Record<string, unknown> | boolean = false): Logg
       };
       
       // Add custom ElizaOS methods if not present
-      if (!(pinoLogger as any).success) {
-        (pinoLogger as any).success = pinoLogger.info.bind(pinoLogger);
+      if (!pinoLogger.success) {
+        pinoLogger.success = pinoLogger.info.bind(pinoLogger);
       }
-      if (!(pinoLogger as any).progress) {
-        (pinoLogger as any).progress = pinoLogger.info.bind(pinoLogger);
+      if (!pinoLogger.progress) {
+        pinoLogger.progress = pinoLogger.info.bind(pinoLogger);
       }
-      if (!(pinoLogger as any).log) {
-        (pinoLogger as any).log = pinoLogger.info.bind(pinoLogger);
+      if (!pinoLogger.log) {
+        pinoLogger.log = pinoLogger.info.bind(pinoLogger);
       }
       
       return pinoLogger;
@@ -679,29 +707,31 @@ if (currentEnv.isBrowser) {
     
     // Create logger with or without pretty printing
     const destination = new InMemoryDestination(stream);
-    logger = Pino(options, destination);
+    const pinoLogger = Pino(options, destination) as ExtendedPinoLogger;
     
     // Store destination reference for clear method
-    (logger as any)[Symbol.for('pino-destination')] = destination;
+    pinoLogger[PINO_DESTINATION_SYMBOL] = destination;
     
     // Add clear method to logger
-    (logger as any).clear = () => {
-      const dest = (logger as any)[Symbol.for('pino-destination')];
+    pinoLogger.clear = () => {
+      const dest = pinoLogger[PINO_DESTINATION_SYMBOL];
       if (dest instanceof InMemoryDestination) {
         dest.clear();
       }
     };
     
     // Add custom ElizaOS log methods for compatibility
-    if (!(logger as any).success) {
-      (logger as any).success = (logger as any).info.bind(logger);
+    if (!pinoLogger.success) {
+      pinoLogger.success = pinoLogger.info.bind(pinoLogger);
     }
-    if (!(logger as any).progress) {
-      (logger as any).progress = (logger as any).info.bind(logger);
+    if (!pinoLogger.progress) {
+      pinoLogger.progress = pinoLogger.info.bind(pinoLogger);
     }
-    if (!(logger as any).log) {
-      (logger as any).log = (logger as any).info.bind(logger);
+    if (!pinoLogger.log) {
+      pinoLogger.log = pinoLogger.info.bind(pinoLogger);
     }
+    
+    logger = pinoLogger;
   } catch (e) {
     // Pino not available, fall back to BrowserLogger
     if (typeof globalThis !== 'undefined' && globalThis.console && globalThis.console.warn) {
