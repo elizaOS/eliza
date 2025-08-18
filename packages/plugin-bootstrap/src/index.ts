@@ -214,7 +214,9 @@ export async function processAttachments(
                   `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
                 );
               } else {
-                runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+                runtime.logger.warn(
+                  `[Bootstrap] Failed to parse XML response for image description`
+                );
               }
             }
           } else if (response && typeof response === 'object' && 'description' in response) {
@@ -1324,14 +1326,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-          ownership: {
-            ownerId: entityId,
-          },
-          roles: {
-            [entityId]: Role.OWNER,
-          },
-          settings: {}, // Initialize empty settings for onboarding
-        }
+            ownership: {
+              ownerId: entityId,
+            },
+            roles: {
+              [entityId]: Role.OWNER,
+            },
+            settings: {}, // Initialize empty settings for onboarding
+          }
         : undefined;
 
     runtime.logger.info(

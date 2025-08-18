@@ -67,7 +67,7 @@ describe('Publisher JSON Manipulation', () => {
     (logger.info as any).mockReset();
     (logger.warn as any).mockReset();
     (logger.debug as any).mockReset();
-    
+
     consoleLogSpy = mock(() => {});
     consoleErrorSpy = mock(() => {});
     console.log = consoleLogSpy;
@@ -79,7 +79,7 @@ describe('Publisher JSON Manipulation', () => {
       // Setup: Empty registry with just braces
       const emptyRegistry = '{}';
       (getFileContent as any).mockImplementation(() => emptyRegistry);
-      
+
       // Mock package.json file read
       const packageJson = {
         name: 'test-plugin',
@@ -101,7 +101,7 @@ describe('Publisher JSON Manipulation', () => {
       // Verify the updateFile was called with correct JSON (no comma after opening brace)
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
@@ -137,20 +137,20 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
-        
+
         // Both entries should exist
         expect(Object.keys(parsed)).toContain('@existing/plugin');
         expect(Object.keys(parsed)).toContain('@new/first-plugin');
-        
+
         // Verify proper comma placement
         const lines = updatedContent.split('\n');
         const existingLine = lines.find((l: string) => l.includes('@existing/plugin'));
         const newLine = lines.find((l: string) => l.includes('@new/first-plugin'));
-        
+
         // First entry should have comma, last should not
         if (lines.indexOf(newLine!) < lines.indexOf(existingLine!)) {
           expect(newLine).toMatch(/,\s*$/);
@@ -185,21 +185,21 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
-        
+
         // Verify all entries exist
         expect(Object.keys(parsed)).toContain('@first/plugin');
         expect(Object.keys(parsed)).toContain('@second/plugin');
         expect(Object.keys(parsed)).toContain('zzz-last-plugin');
-        
+
         // Verify no trailing comma on last entry
         const lines = updatedContent.split('\n');
         const lastPluginLine = lines.find((l: string) => l.includes('zzz-last-plugin'));
         expect(lastPluginLine).not.toMatch(/,\s*$/);
-        
+
         // Verify second-to-last has comma
         const secondLine = lines.find((l: string) => l.includes('@second/plugin'));
         expect(secondLine).toMatch(/,\s*$/);
@@ -232,21 +232,21 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
-        
+
         // All three entries should exist
         expect(Object.keys(parsed)).toContain('@aaa/plugin');
         expect(Object.keys(parsed)).toContain('@middle/plugin');
         expect(Object.keys(parsed)).toContain('@zzz/plugin');
-        
+
         // Middle entry should have comma
         const lines = updatedContent.split('\n');
         const middleLine = lines.find((l: string) => l.includes('@middle/plugin'));
         expect(middleLine).toMatch(/,\s*$/);
-        
+
         // Last entry should not have comma
         const lastLine = lines.find((l: string) => l.includes('@zzz/plugin'));
         expect(lastLine).not.toMatch(/,\s*$/);
@@ -282,7 +282,7 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         // Should still produce valid JSON despite messy input
@@ -316,11 +316,11 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const lines = updatedContent.split('\n');
-        
+
         // Comment line should not have comma added
         const commentLine = lines.find((l: string) => l.includes('//'));
         if (commentLine) {
@@ -335,7 +335,7 @@ describe('Publisher JSON Manipulation', () => {
   "@existing/plugin": "github:existing/plugin"
 }`;
       (getFileContent as any).mockImplementation(() => registry);
-      
+
       // Mock package.json to return a name that would sort last
       const packageJson = {
         name: 'zzz-plugin',
@@ -356,15 +356,15 @@ describe('Publisher JSON Manipulation', () => {
 
       const updateCalls = (updateFile as any).mock.calls;
       const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
-      
+
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
         const parsed = JSON.parse(updatedContent); // Should not throw
-        
+
         // Verify both entries exist
         expect(Object.keys(parsed)).toContain('@existing/plugin');
         expect(Object.keys(parsed)).toContain('zzz-plugin');
-        
+
         // Verify no trailing comma issues
         expect(updatedContent).not.toContain(',,');
         expect(updatedContent).not.toContain(',}');
@@ -379,7 +379,7 @@ describe('Publisher JSON Manipulation', () => {
         version: '1.0.0',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
-      
+
       // Mock file read to throw error
       (fs.readFile as any).mockImplementation(() => {
         throw new Error('package.json not found');
@@ -392,7 +392,7 @@ describe('Publisher JSON Manipulation', () => {
         false,
         true // isTest
       );
-      
+
       expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalled();
     });
@@ -403,7 +403,7 @@ describe('Publisher JSON Manipulation', () => {
         version: '1.0.0',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
-      
+
       (getFileContent as any).mockImplementation(() => {
         throw new Error('GitHub API error');
       });
@@ -417,7 +417,7 @@ describe('Publisher JSON Manipulation', () => {
         false,
         true // isTest
       );
-      
+
       expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalled();
     });
@@ -428,7 +428,7 @@ describe('Publisher JSON Manipulation', () => {
         version: '1.0.0',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
-      
+
       const invalidJson = '{ "broken": ';
       (getFileContent as any).mockImplementation(() => invalidJson);
       (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
@@ -441,7 +441,7 @@ describe('Publisher JSON Manipulation', () => {
         false,
         true // isTest
       );
-      
+
       expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalled();
     });

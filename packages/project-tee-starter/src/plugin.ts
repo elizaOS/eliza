@@ -214,20 +214,23 @@ const teeStarterPlugin: Plugin = {
   name: 'mr-tee-starter-plugin',
   description: "Mr. TEE's starter plugin - using plugin-tee for attestation",
   // Use dynamic getters so tests/CI always see current env values
-  config: Object.defineProperties({}, {
-    TEE_MODE: {
-      get: () => process.env.TEE_MODE,
-      enumerable: true,
-    },
-    TEE_VENDOR: {
-      get: () => process.env.TEE_VENDOR,
-      enumerable: true,
-    },
-    WALLET_SECRET_SALT: {
-      get: () => process.env.WALLET_SECRET_SALT,
-      enumerable: true,
-    },
-  }) as Record<string, string>,
+  config: Object.defineProperties(
+    {},
+    {
+      TEE_MODE: {
+        get: () => process.env.TEE_MODE,
+        enumerable: true,
+      },
+      TEE_VENDOR: {
+        get: () => process.env.TEE_VENDOR,
+        enumerable: true,
+      },
+      WALLET_SECRET_SALT: {
+        get: () => process.env.WALLET_SECRET_SALT,
+        enumerable: true,
+      },
+    }
+  ) as Record<string, string>,
   async init(config: Record<string, string>, runtime: IAgentRuntime) {
     logger.info('*** Initializing Mr. TEE plugin ***');
     try {

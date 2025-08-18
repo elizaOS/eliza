@@ -443,14 +443,14 @@ export async function publishToGitHub(
 
         // Check if we're inserting before the closing brace (last entry)
         const isLastEntry = lines[insertIndex].trim() === '}';
-        
+
         if (isLastEntry) {
           // Find the previous non-empty line
           let prevLineIndex = insertIndex - 1;
           while (prevLineIndex >= 0 && lines[prevLineIndex].trim() === '') {
             prevLineIndex--;
           }
-          
+
           if (prevLineIndex >= 0) {
             const prevLine = lines[prevLineIndex];
             const prevTrim = prevLine.trim();
@@ -460,7 +460,7 @@ export async function publishToGitHub(
               lines[prevLineIndex] = prevLine.trimEnd() + ',';
             }
           }
-          
+
           // Remove comma from new entry since it's the last one
           const newEntryWithoutComma = newEntry.replace(/,\s*$/, '');
           lines.splice(insertIndex, 0, newEntryWithoutComma);
@@ -468,7 +468,7 @@ export async function publishToGitHub(
           // Not the last entry, keep the comma
           lines.splice(insertIndex, 0, newEntry);
         }
-        
+
         const updatedContent = lines.join('\n');
 
         // Update index.json with minimal change - preserve original structure
