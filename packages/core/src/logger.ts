@@ -81,6 +81,25 @@ function getConsole(): Console | null {
   return null;
 }
 
+// Utility function to safely stringify objects with circular references
+function safeStringify(obj: unknown): string {
+  const seen = new WeakSet();
+  try {
+    return JSON.stringify(obj, (_key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch (error) {
+    // Fallback for any other stringify errors
+    return String(obj);
+  }
+}
+
 // Type definitions for cross-platform compatibility
 type LogFn = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => void;
 
@@ -194,7 +213,7 @@ class InMemoryDestination implements DestinationStream {
       }
     } else {
       logEntry = data;
-      stringData = JSON.stringify(data);
+      stringData = safeStringify(data);
     }
 
     // Add timestamp if not present
@@ -342,7 +361,7 @@ class BrowserLogger implements Logger {
         messageStr += ' ' + msg;
       }
       if (args.length > 0) {
-        messageStr += ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        messageStr += ' ' + args.map(a => typeof a === 'object' ? safeStringify(a) : String(a)).join(' ');
       }
     } else if (obj instanceof Error) {
       contextObj = { error: { message: obj.message, stack: obj.stack } };
@@ -351,7 +370,7 @@ class BrowserLogger implements Logger {
       contextObj = obj as Record<string, unknown>;
       messageStr = msg || '';
       if (args.length > 0) {
-        messageStr += ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+        messageStr += ' ' + args.map(a => typeof a === 'object' ? safeStringify(a) : String(a)).join(' ');
       }
     }
 
@@ -614,7 +633,7 @@ const options = {
           ]);
         } else {
           const messageParts = rest.map((arg) =>
-            typeof arg === 'string' ? arg : JSON.stringify(arg)
+            typeof arg === 'string' ? arg : safeStringify(arg)
           );
           const message = messageParts.join(' ');
           method.apply(this, [arg1, message]);
@@ -640,6 +659,22 @@ const options = {
 
 // Create logger factory function that works in both environments
 const createLogger = (bindings: Record<string, unknown> | boolean = false): Logger => {
+  // Check for test environment flag to force BrowserLogger
+  const forceType = typeof bindings === 'object' && bindings !== null 
+    ? (bindings as any).__forceType 
+    : undefined;
+    
+  if (forceType === 'browser') {
+    // Remove __forceType from bindings before passing to BrowserLogger
+    const { __forceType, ...cleanBindings } = bindings as any;
+    const { level, base } = extractBindingsConfig(cleanBindings);
+    const opts: BrowserLoggerOptions = {
+      level,
+      base
+    };
+    return new BrowserLogger(opts);
+  }
+  
   const { isBrowser, isNode } = getEnvironment();
   
   // Browser environment: use BrowserLogger
@@ -810,5 +845,8 @@ export { createLogger, typedLogger as logger };
 
 // for backward compatibility
 export const elizaLogger = typedLogger;
+
+// Export envDetector for testing purposes
+export { envDetector };
 
 export default typedLogger;
