@@ -81,7 +81,7 @@ export class Semaphore {
 }
 
 export class AgentRuntime implements IAgentRuntime {
-  readonly #conversationLength = 32 as number;
+  private conversationLength = 32 as number;
   readonly agentId: UUID;
   readonly character: Character;
   public adapter!: IDatabaseAdapter;
@@ -153,7 +153,7 @@ export class AgentRuntime implements IAgentRuntime {
       logLevel: logLevel as any,
     });
 
-    this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
+    this.conversationLength = opts.conversationLength ?? this.conversationLength;
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
@@ -495,7 +495,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getConversationLength() {
-    return this.#conversationLength;
+    return this.conversationLength;
   }
 
   registerDatabaseAdapter(adapter: IDatabaseAdapter) {

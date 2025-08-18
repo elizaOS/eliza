@@ -27,3 +27,4 @@ export * from './web-search';
 export * from './email';
 export * from './message';
 export * from './post';
+export * from './elizaos';
