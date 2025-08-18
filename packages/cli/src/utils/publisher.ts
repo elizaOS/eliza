@@ -179,7 +179,7 @@ export async function testPublishToGitHub(
 
     return true;
   } catch (error) {
-    logger.error('Test failed:', error);
+    logger.error({ error }, 'Test failed:');
     return false;
   }
 }
