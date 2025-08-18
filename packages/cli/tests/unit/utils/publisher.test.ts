@@ -6,22 +6,27 @@ mock.module('../../../src/utils/github', () => ({
   getFileContent: mock(),
   updateFile: mock(),
   createPullRequest: mock(),
-  getGitHubCredentials: mock(() => ({ token: 'fake-token', username: 'test-user' })),
-  branchExists: mock(() => false),
-  createBranch: mock(() => true),
-  forkExists: mock(() => false),
-  forkRepository: mock(() => true),
-  ensureDirectory: mock(() => true),
-  createGitHubRepository: mock(),
-  pushToGitHub: mock(),
+  getGitHubCredentials: mock(() => Promise.resolve({ token: 'fake-token', username: 'test-user' })),
+  branchExists: mock(() => Promise.resolve(false)),
+  createBranch: mock(() => Promise.resolve(true)),
+  forkExists: mock(() => Promise.resolve(false)),
+  forkRepository: mock(() => Promise.resolve('test-user/registry')),
+  ensureDirectory: mock(() => Promise.resolve(true)),
+  createGitHubRepository: mock(() =>
+    Promise.resolve({ success: true, repoUrl: 'https://github.com/test-user/test-repo' })
+  ),
+  pushToGitHub: mock(() => Promise.resolve(true)),
 }));
 
 mock.module('../../../src/utils/registry', () => ({
-  getRegistrySettings: mock(() => ({
-    registryOwner: 'elizaos',
-    registryRepo: 'registry',
-    registryBranch: 'main',
-  })),
+  getRegistrySettings: mock(() =>
+    Promise.resolve({
+      defaultRegistry: 'elizaos/registry',
+      registryOwner: 'elizaos',
+      registryRepo: 'registry',
+      registryBranch: 'main',
+    })
+  ),
 }));
 
 mock.module('@/src/utils/bun-exec', () => ({
@@ -43,6 +48,7 @@ mock.module('@elizaos/core', () => ({
     error: mock(),
     warn: mock(),
     debug: mock(),
+    success: mock(),
   },
 }));
 
@@ -53,20 +59,28 @@ import { publishToGitHub } from '../../../src/utils/publisher';
 import { getFileContent, updateFile, createPullRequest } from '../../../src/utils/github';
 import { logger } from '@elizaos/core';
 
+interface PackageJson {
+  name: string;
+  version: string;
+  repository?: { url: string };
+  packageType?: 'plugin' | 'project';
+  description?: string;
+}
+
 describe('Publisher JSON Manipulation', () => {
-  let consoleLogSpy: any;
-  let consoleErrorSpy: any;
+  let consoleLogSpy: ReturnType<typeof mock>;
+  let consoleErrorSpy: ReturnType<typeof mock>;
 
   beforeEach(() => {
     // Reset all mocks
-    (getFileContent as any).mockReset();
-    (updateFile as any).mockReset();
-    (createPullRequest as any).mockReset();
-    (fs.readFile as any).mockReset();
-    (logger.error as any).mockReset();
-    (logger.info as any).mockReset();
-    (logger.warn as any).mockReset();
-    (logger.debug as any).mockReset();
+    (getFileContent as ReturnType<typeof mock>).mockReset();
+    (updateFile as ReturnType<typeof mock>).mockReset();
+    (createPullRequest as ReturnType<typeof mock>).mockReset();
+    (fs.readFile as ReturnType<typeof mock>).mockReset();
+    (logger.error as ReturnType<typeof mock>).mockReset();
+    (logger.info as ReturnType<typeof mock>).mockReset();
+    (logger.warn as ReturnType<typeof mock>).mockReset();
+    (logger.debug as ReturnType<typeof mock>).mockReset();
 
     consoleLogSpy = mock(() => {});
     consoleErrorSpy = mock(() => {});
@@ -78,17 +92,22 @@ describe('Publisher JSON Manipulation', () => {
     it('should handle empty registry correctly', async () => {
       // Setup: Empty registry with just braces
       const emptyRegistry = '{}';
-      (getFileContent as any).mockImplementation(() => emptyRegistry);
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(emptyRegistry)
+      );
 
       // Mock package.json file read
-      const packageJson = {
+      const packageJson: PackageJson = {
         name: 'test-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/test-plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -99,8 +118,8 @@ describe('Publisher JSON Manipulation', () => {
       );
 
       // Verify the updateFile was called with correct JSON (no comma after opening brace)
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -117,15 +136,20 @@ describe('Publisher JSON Manipulation', () => {
       const singleEntryRegistry = `{
   "@existing/plugin": "github:existing/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => singleEntryRegistry);
-      const packageJson = {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(singleEntryRegistry)
+      );
+      const packageJson: PackageJson = {
         name: '@new/first-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/new/first-plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -135,8 +159,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -152,7 +176,7 @@ describe('Publisher JSON Manipulation', () => {
         const newLine = lines.find((l: string) => l.includes('@new/first-plugin'));
 
         // First entry should have comma, last should not
-        if (lines.indexOf(newLine!) < lines.indexOf(existingLine!)) {
+        if (existingLine && newLine && lines.indexOf(newLine) < lines.indexOf(existingLine)) {
           expect(newLine).toMatch(/,\s*$/);
           expect(existingLine).not.toMatch(/,\s*$/);
         }
@@ -165,15 +189,20 @@ describe('Publisher JSON Manipulation', () => {
   "@first/plugin": "github:first/plugin",
   "@second/plugin": "github:second/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => multiEntryRegistry);
-      const packageJson = {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(multiEntryRegistry)
+      );
+      const packageJson: PackageJson = {
         name: 'zzz-last-plugin', // Alphabetically last
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/zzz-last-plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -183,8 +212,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -212,15 +241,20 @@ describe('Publisher JSON Manipulation', () => {
   "@aaa/plugin": "github:aaa/plugin",
   "@zzz/plugin": "github:zzz/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => registry);
-      const packageJson = {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(registry)
+      );
+      const packageJson: PackageJson = {
         name: '@middle/plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/middle/plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -230,8 +264,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -262,15 +296,20 @@ describe('Publisher JSON Manipulation', () => {
 
   "@third/plugin": "github:third/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => messyRegistry);
-      const packageJson = {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(messyRegistry)
+      );
+      const packageJson: PackageJson = {
         name: '@new/plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/new/plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -280,8 +319,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -296,15 +335,20 @@ describe('Publisher JSON Manipulation', () => {
   // This is a comment
   "@first/plugin": "github:first/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => registryWithComments);
-      const packageJson = {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(registryWithComments)
+      );
+      const packageJson: PackageJson = {
         name: '@last/plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/last/plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -314,8 +358,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -334,17 +378,22 @@ describe('Publisher JSON Manipulation', () => {
       const registry = `{
   "@existing/plugin": "github:existing/plugin"
 }`;
-      (getFileContent as any).mockImplementation(() => registry);
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(registry)
+      );
 
       // Mock package.json to return a name that would sort last
-      const packageJson = {
+      const packageJson: PackageJson = {
         name: 'zzz-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/zzz-plugin.git' },
       };
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
-      (updateFile as any).mockImplementation(() => true);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
+      (updateFile as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve(true));
 
       await publishToGitHub(
         '/test/dir',
@@ -354,8 +403,8 @@ describe('Publisher JSON Manipulation', () => {
         true // isTest
       );
 
-      const updateCalls = (updateFile as any).mock.calls;
-      const indexUpdateCall = updateCalls.find((call: any[]) => call[3] === 'index.json');
+      const updateCalls = (updateFile as ReturnType<typeof mock>).mock.calls as Array<string[]>;
+      const indexUpdateCall = updateCalls.find((call) => call[3] === 'index.json');
 
       if (indexUpdateCall) {
         const updatedContent = indexUpdateCall[4]; // Content is already a plain string
@@ -374,14 +423,15 @@ describe('Publisher JSON Manipulation', () => {
 
   describe('error handling', () => {
     it('should handle missing package.json gracefully', async () => {
-      const packageJson = {
+      const packageJson: PackageJson = {
         name: 'test-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
 
       // Mock file read to throw error
-      (fs.readFile as any).mockImplementation(() => {
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() => {
         throw new Error('package.json not found');
       });
 
@@ -398,17 +448,20 @@ describe('Publisher JSON Manipulation', () => {
     });
 
     it('should handle GitHub API failures gracefully', async () => {
-      const packageJson = {
+      const packageJson: PackageJson = {
         name: 'test-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
 
-      (getFileContent as any).mockImplementation(() => {
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() => {
         throw new Error('GitHub API error');
       });
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
 
       const result = await publishToGitHub(
         '/test/dir',
@@ -423,16 +476,21 @@ describe('Publisher JSON Manipulation', () => {
     });
 
     it('should handle invalid JSON in registry', async () => {
-      const packageJson = {
+      const packageJson: PackageJson = {
         name: 'test-plugin',
         version: '1.0.0',
+        packageType: 'plugin',
         repository: { url: 'https://github.com/test/plugin.git' },
       };
 
       const invalidJson = '{ "broken": ';
-      (getFileContent as any).mockImplementation(() => invalidJson);
-      (fs.readFile as any).mockImplementation(() => JSON.stringify(packageJson));
-      (fs.access as any).mockImplementation(() => undefined);
+      (getFileContent as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(invalidJson)
+      );
+      (fs.readFile as ReturnType<typeof mock>).mockImplementation(() =>
+        Promise.resolve(JSON.stringify(packageJson))
+      );
+      (fs.access as ReturnType<typeof mock>).mockImplementation(() => Promise.resolve());
 
       const result = await publishToGitHub(
         '/test/dir',
