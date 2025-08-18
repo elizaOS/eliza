@@ -1,6 +1,6 @@
 name: "Simple Test Matrix"
 description: "A simple test to verify matrix command works completely"
-base_scenario: "src/commands/scenario/examples/test-github-issues.scenario.yaml"
+base_scenario: "test-github-issues.scenario.yaml"
 runs_per_combination: 1
 matrix:
   - parameter: "name"

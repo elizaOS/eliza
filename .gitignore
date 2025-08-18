@@ -178,3 +178,5 @@ tasks/
 .roomodes
 bun.lock
 /.kiro
+
+test-data/

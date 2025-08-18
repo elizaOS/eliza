@@ -562,10 +562,14 @@ export const scenario = new Command()
                         });
 
                         // Step 5: Verify base scenario exists and load it
-                        const baseScenarioPath = path.resolve(matrixConfig.base_scenario);
+                        // Resolve base scenario path relative to the matrix file's directory
+                        const matrixFileDir = path.dirname(fullPath);
+                        const baseScenarioPath = path.resolve(matrixFileDir, matrixConfig.base_scenario);
                         if (!fs.existsSync(baseScenarioPath)) {
                             logger.error(`\n❌ Error: Base scenario file not found at '${baseScenarioPath}'`);
                             logger.info('💡 Make sure the base_scenario path in your matrix config is correct.');
+                            logger.info(`   Matrix file directory: ${matrixFileDir}`);
+                            logger.info(`   Attempted to resolve: ${matrixConfig.base_scenario}`);
                             process.exit(1);
                         }
                         logger.info(`✅ Base scenario file found: ${baseScenarioPath}`);

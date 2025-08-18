@@ -181,7 +181,7 @@ export async function askAgentViaApi(
   server: AgentServer,
   agentId: UUID,
   input: string,
-  timeoutMs: number = 15000
+  timeoutMs: number = 30000
 ): Promise<{ response: string; roomId: UUID }> {
   const port = (server as any)?.port ?? 3000;
   const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
