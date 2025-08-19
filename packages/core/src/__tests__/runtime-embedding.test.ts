@@ -45,7 +45,6 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
         username: 'test_character',
         system: 'Test system prompt',
         bio: 'Test bio',
-        modelType: 'text',
       },
       adapter: mockAdapter,
       conversationLength: 10,
@@ -237,10 +236,12 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
 
   describe('Integration with addEmbeddingToMemory', () => {
     it('should work alongside synchronous embedding generation', async () => {
-      // Mock the useModel for synchronous embedding
-      runtime.useModel = mock().mockImplementation((modelType: string) => {
+      // Mock the useModel for synchronous embedding with a simulated delay
+      runtime.useModel = mock().mockImplementation(async (modelType: string) => {
         if (modelType === 'TEXT_EMBEDDING') {
-          return Promise.resolve([0.1, 0.2, 0.3, 0.4, 0.5]);
+          // Simulate a realistic embedding generation delay
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return [0.1, 0.2, 0.3, 0.4, 0.5];
         }
         return Promise.resolve('mock response');
       });
@@ -263,12 +264,12 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
         createdAt: Date.now(),
       };
 
-      // Synchronous embedding (blocking)
+      // Synchronous embedding (blocking - will wait for the delay)
       const startSync = Date.now();
       const resultSync = await runtime.addEmbeddingToMemory(syncMemory);
       const elapsedSync = Date.now() - startSync;
 
-      // Asynchronous embedding (non-blocking)
+      // Asynchronous embedding (non-blocking - just queues)
       const startAsync = Date.now();
       await runtime.queueEmbeddingGeneration(asyncMemory, 'normal');
       const elapsedAsync = Date.now() - startAsync;
@@ -277,8 +278,11 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
       expect(resultSync.embedding).toBeDefined();
       expect(resultSync.embedding).toEqual([0.1, 0.2, 0.3, 0.4, 0.5]);
 
-      // Async should be much faster (just queuing)
+      // Async should be much faster (just queuing, no waiting)
       expect(elapsedAsync).toBeLessThan(elapsedSync);
+
+      // Verify that sync took at least the simulated delay
+      expect(elapsedSync).toBeGreaterThanOrEqual(5);
 
       // Event should be emitted for async
       const event = emittedEvents.find((e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED);

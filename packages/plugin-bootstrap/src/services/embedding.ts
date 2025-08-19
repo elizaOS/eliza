@@ -61,13 +61,12 @@ export class EmbeddingGenerationService extends Service {
       return;
     }
 
-    // Check queue size
+    // Check queue size and make room if needed
     if (this.queue.length >= this.maxQueueSize) {
-      logger.warn('[EmbeddingService] Queue is full, dropping oldest normal priority items');
-      // Remove oldest normal priority items to make room
-      this.queue = this.queue.filter((item, index) => {
-        return item.priority !== 'normal' || index > this.queue.length - this.maxQueueSize + 10;
-      });
+      logger.warn(
+        `[EmbeddingService] Queue is full (${this.queue.length}/${this.maxQueueSize}), making room`
+      );
+      this.makeRoomInQueue();
     }
 
     // Add to queue
@@ -80,19 +79,93 @@ export class EmbeddingGenerationService extends Service {
     };
 
     // Insert based on priority
-    if (priority === 'high') {
-      // Add to front of queue
-      this.queue.unshift(queueItem);
-    } else if (priority === 'low') {
+    this.insertItemByPriority(queueItem);
+
+    logger.debug(`[EmbeddingService] Added memory to queue. Queue size: ${this.queue.length}`);
+  }
+
+  /**
+   * Make room in the queue by removing items based on priority and age
+   * Removes 10% of the queue (minimum 1, maximum 10 items)
+   */
+  private makeRoomInQueue(): void {
+    // Remove 10% of queue, but at least 1 and at most 10 items
+    const tenPercent = Math.floor(this.maxQueueSize * 0.1);
+    const itemsToRemove = Math.min(10, Math.max(1, tenPercent));
+
+    // Create array with items and their original indices
+    const itemsWithIndex = this.queue.map((item, index) => ({ item, originalIndex: index }));
+
+    // Sort by priority (low first for removal) and age (oldest first)
+    itemsWithIndex.sort((a, b) => {
+      // Priority order for removal: low > normal > high
+      const priorityOrder = { low: 0, normal: 1, high: 2 };
+      const priorityDiff = priorityOrder[a.item.priority] - priorityOrder[b.item.priority];
+
+      if (priorityDiff !== 0) return priorityDiff;
+
+      // Within same priority, remove older items first
+      return a.item.addedAt - b.item.addedAt;
+    });
+
+    // Get the original indices of items to remove (first N items after sorting)
+    const indicesToRemove = new Set(
+      itemsWithIndex
+        .slice(0, Math.min(itemsToRemove, itemsWithIndex.length))
+        .map(({ originalIndex }) => originalIndex)
+    );
+
+    // Keep items that are not in the removal set
+    const newQueue = this.queue.filter((_, index) => !indicesToRemove.has(index));
+    const removedCount = this.queue.length - newQueue.length;
+
+    this.queue = newQueue;
+
+    logger.info(
+      `[EmbeddingService] Removed ${removedCount} items from queue. New size: ${this.queue.length}`
+    );
+  }
+
+  /**
+   * Insert an item into the queue based on its priority
+   * High priority items go to the front, normal in the middle, low at the end
+   */
+  private insertItemByPriority(queueItem: EmbeddingQueueItem): void {
+    if (queueItem.priority === 'high') {
+      // Find the position after the last high priority item
+      let insertIndex = 0;
+      for (let i = 0; i < this.queue.length; i++) {
+        if (this.queue[i].priority !== 'high') break;
+        insertIndex = i + 1;
+      }
+      this.queue.splice(insertIndex, 0, queueItem);
+    } else if (queueItem.priority === 'low') {
       // Add to end of queue
       this.queue.push(queueItem);
     } else {
-      // Normal priority - add after high priority items
-      const highPriorityCount = this.queue.filter((item) => item.priority === 'high').length;
-      this.queue.splice(highPriorityCount, 0, queueItem);
-    }
+      // Normal priority - add after high priority items but before low priority items
+      let insertIndex = 0;
 
-    logger.debug(`[EmbeddingService] Added memory to queue. Queue size: ${this.queue.length}`);
+      // First, skip all high priority items
+      for (let i = 0; i < this.queue.length; i++) {
+        if (this.queue[i].priority !== 'high') {
+          insertIndex = i;
+          break;
+        }
+        insertIndex = i + 1;
+      }
+
+      // Then find where low priority items start
+      for (let i = insertIndex; i < this.queue.length; i++) {
+        if (this.queue[i].priority === 'low') {
+          insertIndex = i;
+          break;
+        }
+        insertIndex = i + 1;
+      }
+
+      this.queue.splice(insertIndex, 0, queueItem);
+    }
   }
 
   private startProcessing(): void {
@@ -137,8 +210,8 @@ export class EmbeddingGenerationService extends Service {
           // Retry if under max retries
           if (item.retryCount < item.maxRetries) {
             item.retryCount++;
-            // Re-add to queue with lower priority
-            this.queue.push(item);
+            // Re-add to queue with same priority using proper insertion
+            this.insertItemByPriority(item);
             logger.debug(
               `[EmbeddingService] Re-queued item for retry (${item.retryCount}/${item.maxRetries})`
             );
