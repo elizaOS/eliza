@@ -844,44 +844,49 @@ export function createSessionsRouter(
         }
       }
 
-      // Improved pagination logic with proper data integrity
+      // Retrieve messages based on pagination parameters
       let messages: CentralRootMessage[];
 
       if (afterDate && beforeDate) {
-        // When both are specified, get messages in the range
-        // First get all messages before the beforeDate
+        // Range query: messages between two timestamps
+        // The database layer currently only supports 'before', so we fetch and filter
+        const fetchLimit = Math.min(500, messageLimit * 10);
+
         const allMessages = await serverInstance.getMessagesForChannel(
           session.channelId,
-          messageLimit + 100, // Get extra to handle the range
+          fetchLimit,
           beforeDate
         );
 
-        // Filter to only include messages after the afterDate
-        messages = allMessages.filter((msg) => msg.createdAt > afterDate).slice(0, messageLimit);
+        messages = allMessages
+          .filter((msg) => msg.createdAt > afterDate && msg.createdAt < beforeDate)
+          .slice(0, messageLimit);
+
+        if (allMessages.length === fetchLimit) {
+          logger.debug(`[Sessions API] Range query hit limit of ${fetchLimit} messages`);
+        }
       } else if (afterDate) {
-        // For "after" pagination, we need to get ALL messages first to properly filter
-        // This is a temporary workaround until getMessagesForChannel supports afterTimestamp
-        const maxFetch = 1000; // Reasonable upper limit to prevent memory issues
-        const allMessages = await serverInstance.getMessagesForChannel(
+        // Forward pagination: messages newer than a timestamp
+        // TODO: When database layer supports 'after', replace this with direct query
+        const fetchLimit = Math.min(1000, messageLimit * 20);
+        const recentMessages = await serverInstance.getMessagesForChannel(
           session.channelId,
-          maxFetch,
-          undefined
+          fetchLimit
         );
 
-        // Filter messages after the specified date and reverse to get oldest first
-        const filteredMessages = allMessages.filter((msg) => msg.createdAt > afterDate).reverse(); // Reverse to get oldest first when paginating forward
+        const newerMessages = recentMessages.filter((msg) => msg.createdAt > afterDate);
 
-        // Take the first 'limit' messages and reverse back to newest first
-        messages = filteredMessages.slice(0, messageLimit).reverse();
-
-        // Log warning if we hit the max fetch limit
-        if (allMessages.length === maxFetch) {
-          logger.warn(
-            `[Sessions API] Pagination may be incomplete - hit max fetch limit of ${maxFetch} messages`
-          );
+        if (newerMessages.length > messageLimit) {
+          // Get the oldest N messages from the newer set for continuous pagination
+          messages = newerMessages
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            .slice(0, messageLimit)
+            .reverse(); // Return in newest-first order
+        } else {
+          messages = newerMessages;
         }
       } else {
-        // Use beforeDate if specified, otherwise get latest messages
+        // Standard backward pagination
         messages = await serverInstance.getMessagesForChannel(
           session.channelId,
           messageLimit,
