@@ -612,6 +612,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     let actionIndex = 0;
 
+    let finalActionResults: ActionResult[] = [];
+
     for (const response of responses) {
       if (!response.content?.actions || response.content.actions.length === 0) {
         this.logger.warn('No action found in the response content.');
@@ -930,8 +932,6 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Clear action context
           this.currentActionContext = undefined;
-
-          return actionResults
         } catch (error: any) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
@@ -999,6 +999,8 @@ export class AgentRuntime implements IAgentRuntime {
         actionIndex++;
       }
 
+      finalActionResults = [...finalActionResults, ...actionResults];
+
       // Store accumulated results for evaluators and providers
       if (message.id) {
         this.stateCache.set(`${message.id}_action_results`, {
@@ -1008,6 +1010,8 @@ export class AgentRuntime implements IAgentRuntime {
         });
       }
     }
+
+    return finalActionResults;
   }
 
   async evaluate(
