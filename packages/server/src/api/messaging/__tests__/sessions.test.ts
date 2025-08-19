@@ -45,10 +45,10 @@ function createMockAgent(agentId: string, settings?: Record<string, any>): IAgen
       }
       return undefined;
     }),
-    character: { 
+    character: {
       name: 'Test Agent',
       id: agentId as UUID,
-      settings: settings || {}
+      settings: settings || {},
     },
   } as unknown as IAgentRuntime;
 }
@@ -79,16 +79,16 @@ async function simulateRequest(
       headers: {
         'content-type': 'application/json',
       },
-      get: function(header: string) {
+      get: function (header: string) {
         return this.headers[header.toLowerCase()];
       },
-      header: function(header: string) {
+      header: function (header: string) {
         return this.headers[header.toLowerCase()];
       },
-      accepts: function() {
+      accepts: function () {
         return 'application/json';
       },
-      is: function(type: string) {
+      is: function (type: string) {
         return type === 'application/json';
       },
     };
@@ -121,15 +121,15 @@ async function simulateRequest(
         }
         return this;
       },
-      setHeader: function(name: string, value: string) {
+      setHeader: function (name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      set: function(name: string, value: string) {
+      set: function (name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      end: function() {
+      end: function () {
         if (!responseSent) {
           responseSent = true;
           resolve({ status: responseStatus, body: responseBody });
@@ -142,7 +142,7 @@ async function simulateRequest(
       if (!responseSent) {
         if (err) {
           responseStatus = err.statusCode || err.status || 500;
-          responseBody = { 
+          responseBody = {
             error: err.message || 'Internal Server Error',
             code: err.code,
           };
@@ -292,7 +292,7 @@ describe('Sessions API', () => {
       expect(res.body.timeoutConfig.timeoutMinutes).toBe(45);
       expect(res.body.timeoutConfig.autoRenew).toBe(false);
       expect(res.body.timeoutConfig.maxDurationMinutes).toBe(1440);
-      
+
       // The agent should be available but getSetting might not be called
       // by the current implementation
       expect(mockAgents.has(agentId as UUID)).toBe(true);
@@ -844,7 +844,7 @@ describe('Sessions API', () => {
       // The API enforces a minimum timeout of 5 minutes, so we cannot
       // create a session that expires in less than a second for testing.
       // This test would need to wait at least 5 minutes to properly test expiration.
-      
+
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
