@@ -512,6 +512,7 @@ export const scenario = new Command()
                     try {
                         // Step 1: Load and validate configuration file
                         const fullPath = path.resolve(configPath);
+                        const configDir = path.dirname(fullPath);
                         logger.info(`📂 Loading matrix configuration from: ${fullPath}`);
 
                         if (!fs.existsSync(fullPath)) {
@@ -532,7 +533,12 @@ export const scenario = new Command()
                             process.exit(1);
                         }
 
-                        // Step 2: Validate matrix configuration
+                        // Step 2: Resolve base scenario path relative to matrix config directory
+                        if (rawMatrixConfig.base_scenario && !path.isAbsolute(rawMatrixConfig.base_scenario)) {
+                            rawMatrixConfig.base_scenario = path.resolve(configDir, rawMatrixConfig.base_scenario);
+                        }
+
+                        // Step 3: Validate matrix configuration
                         logger.info('🔍 Validating matrix configuration...');
                         const validationResult = validateMatrixConfig(rawMatrixConfig);
 
@@ -590,14 +596,11 @@ export const scenario = new Command()
                         });
 
                         // Step 5: Verify base scenario exists and load it
-                        // Resolve base scenario path relative to the matrix file's directory
-                        const matrixFileDir = path.dirname(fullPath);
-                        const baseScenarioPath = path.resolve(matrixFileDir, matrixConfig.base_scenario);
+                        // Base scenario path was already resolved in Step 2
+                        const baseScenarioPath = matrixConfig.base_scenario;
                         if (!fs.existsSync(baseScenarioPath)) {
                             logger.error(`\n❌ Error: Base scenario file not found at '${baseScenarioPath}'`);
                             logger.info('💡 Make sure the base_scenario path in your matrix config is correct.');
-                            logger.info(`   Matrix file directory: ${matrixFileDir}`);
-                            logger.info(`   Attempted to resolve: ${matrixConfig.base_scenario}`);
                             process.exit(1);
                         }
                         logger.info(`✅ Base scenario file found: ${baseScenarioPath}`);
