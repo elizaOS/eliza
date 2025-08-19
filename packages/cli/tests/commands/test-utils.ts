@@ -246,15 +246,16 @@ export async function waitForServerReady(
   const startTime = Date.now();
   const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
   const isMacOS = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
 
-  // More conservative timeouts for macOS CI
-  const pollInterval = isMacOS && isCI ? 3000 : isMacOS ? 2000 : 1000;
-  const requestTimeout = isMacOS && isCI ? 6000 : isMacOS ? 4000 : 2000;
+  // More conservative timeouts for macOS and Windows CI
+  const pollInterval = (isMacOS || isWindows) && isCI ? 3000 : (isMacOS || isWindows) ? 2000 : 1000;
+  const requestTimeout = (isMacOS || isWindows) && isCI ? 6000 : (isMacOS || isWindows) ? 4000 : 2000;
 
   console.log(
     `[DEBUG] Waiting for server on port ${port}, max wait: ${maxWaitTime}ms, poll interval: ${pollInterval}ms`
   );
-  console.log(`[DEBUG] Environment: CI=${isCI}, macOS=${isMacOS}`);
+  console.log(`[DEBUG] Environment: CI=${isCI}, macOS=${isMacOS}, Windows=${isWindows}`);
 
   // First, check if anything is listening on the port using a simple connection test
   let connectionAttempts = 0;
@@ -325,8 +326,28 @@ export async function waitForServerReady(
       clearTimeout(timeoutId);
       if (response.ok) {
         console.log(`[DEBUG] Server responded with status ${response.status}`);
-        // Server is ready, give it more time to stabilize especially on macOS CI
-        const stabilizationTime = isMacOS && isCI ? 3000 : isMacOS ? 2000 : 1000;
+
+        // For agent endpoints, verify agents are actually loaded
+        if (endpoint === '/api/agents') {
+          try {
+            const data = await response.json();
+            const agents = Array.isArray(data) ? data : data.agents || [];
+            console.log(`[DEBUG] Found ${agents.length} agents loaded`);
+
+            // If we're expecting agents to be loaded (e.g., server started with character file)
+            // wait until at least one agent is present
+            if (agents.length === 0 && process.env.ELIZA_TEST_MODE === 'true') {
+              console.log(`[DEBUG] No agents loaded yet, continuing to wait...`);
+              await new Promise((resolve) => setTimeout(resolve, pollInterval));
+              continue;
+            }
+          } catch (e) {
+            console.log(`[DEBUG] Could not parse agent response, continuing...`);
+          }
+        }
+
+        // Server is ready, give it more time to stabilize especially on macOS/Windows CI
+        const stabilizationTime = (isMacOS || isWindows) && isCI ? 3000 : (isMacOS || isWindows) ? 2000 : 1000;
         console.log(`[DEBUG] Stabilizing for ${stabilizationTime}ms...`);
         await new Promise((resolve) => setTimeout(resolve, stabilizationTime));
         return;

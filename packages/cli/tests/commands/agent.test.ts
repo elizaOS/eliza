@@ -63,6 +63,7 @@ describe('ElizaOS Agent Commands', () => {
             PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
             NODE_OPTIONS: '--max-old-space-size=4096',
             SERVER_HOST: '127.0.0.1',
+            ELIZA_TEST_MODE: 'true',
           },
           stdin: 'ignore',
           stdout: 'pipe',
@@ -165,7 +166,9 @@ describe('ElizaOS Agent Commands', () => {
         throw serverError;
       }
 
-      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
+      // Extended timeout for Windows CI to ensure agents are fully loaded
+      const serverTimeout = process.platform === 'win32' && process.env.CI === 'true' ? 45000 : 30000;
+      await waitForServerReady(parseInt(testServerPort, 10), serverTimeout);
       console.log('[DEBUG] Server is ready!');
     } catch (error) {
       console.error('[ERROR] Server failed to start:', error);
@@ -185,7 +188,7 @@ describe('ElizaOS Agent Commands', () => {
     if (serverProcess && serverProcess.exitCode === null) {
       try {
         // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => {});
+        const exitPromise = serverProcess.exited.catch(() => { });
 
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
