@@ -713,6 +713,88 @@ describe('Sessions API', () => {
     });
   });
 
+  describe('POST /sessions/:sessionId/heartbeat - Session Heartbeat', () => {
+    it('should keep session alive with heartbeat', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      // Add mock agent
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create session
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+      const originalExpiry = new Date(createRes.body.expiresAt);
+
+      // Wait a moment
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Send heartbeat
+      const heartbeatRes = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/heartbeat`
+      );
+
+      expect(heartbeatRes.status).toBe(200);
+      expect(heartbeatRes.body).toHaveProperty('sessionId', sessionId);
+      expect(heartbeatRes.body).toHaveProperty('expiresAt');
+
+      // Verify session was renewed (expiry should be later)
+      const newExpiry = new Date(heartbeatRes.body.expiresAt);
+      expect(newExpiry.getTime()).toBeGreaterThanOrEqual(originalExpiry.getTime());
+    });
+
+    it('should return 404 for non-existent session heartbeat', async () => {
+      const res = await simulateRequest(
+        app,
+        'POST',
+        '/api/messaging/sessions/non-existent-session/heartbeat'
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.body).toHaveProperty('error', 'Session not found');
+    });
+
+    it('should not renew expired session on heartbeat', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      // Add mock agent with very short timeout
+      const agent = createMockAgent(agentId, {
+        SESSION_TIMEOUT_MINUTES: 0.001, // Very short timeout (few seconds)
+      });
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create session
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Wait for session to expire
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Try to send heartbeat
+      const heartbeatRes = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/heartbeat`
+      );
+
+      expect(heartbeatRes.status).toBe(410);
+      expect(heartbeatRes.body).toHaveProperty('error');
+      expect(heartbeatRes.body.error).toHaveProperty('code', 'SESSION_EXPIRED');
+    });
+  });
+
   describe('GET /sessions/health - Health Check', () => {
     it('should return health status', async () => {
       const res = await simulateRequest(app, 'GET', '/api/messaging/sessions/health');

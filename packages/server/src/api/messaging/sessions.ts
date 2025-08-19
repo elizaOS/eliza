@@ -70,9 +70,9 @@ function isValidSession(obj: unknown): obj is Session {
   if (!obj || typeof obj !== 'object') {
     return false;
   }
-  
+
   const session = obj as Record<string, unknown>;
-  
+
   return (
     typeof session.id === 'string' &&
     typeof session.agentId === 'string' &&
@@ -94,7 +94,7 @@ function isCreateSessionRequest(obj: unknown): obj is CreateSessionRequest {
   if (!obj || typeof obj !== 'object') {
     return false;
   }
-  
+
   const req = obj as Record<string, unknown>;
   return typeof req.agentId === 'string' && typeof req.userId === 'string';
 }
@@ -106,7 +106,7 @@ function isSendMessageRequest(obj: unknown): obj is SendMessageRequest {
   if (!obj || typeof obj !== 'object') {
     return false;
   }
-  
+
   const req = obj as Record<string, unknown>;
   return typeof req.content === 'string';
 }
@@ -118,13 +118,14 @@ function isValidTimeoutConfig(obj: unknown): obj is SessionTimeoutConfig {
   if (!obj || typeof obj !== 'object') {
     return false;
   }
-  
+
   const config = obj as Record<string, unknown>;
   return (
     (config.timeoutMinutes === undefined || typeof config.timeoutMinutes === 'number') &&
     (config.autoRenew === undefined || typeof config.autoRenew === 'boolean') &&
     (config.maxDurationMinutes === undefined || typeof config.maxDurationMinutes === 'number') &&
-    (config.warningThresholdMinutes === undefined || typeof config.warningThresholdMinutes === 'number')
+    (config.warningThresholdMinutes === undefined ||
+      typeof config.warningThresholdMinutes === 'number')
   );
 }
 
@@ -368,7 +369,7 @@ function validateContent(content: unknown): content is string {
       content
     );
   }
-  
+
   return true;
 }
 
@@ -416,7 +417,7 @@ export function createSessionsRouter(
         invalidSessions++;
         continue;
       }
-      
+
       if (session.expiresAt.getTime() > now) {
         activeSessions++;
         if (shouldWarnAboutExpiration(session)) {
@@ -425,7 +426,11 @@ export function createSessionsRouter(
       }
     }
 
-    const response: HealthCheckResponse & { expiringSoon?: number; invalidSessions?: number; uptime?: number } = {
+    const response: HealthCheckResponse & {
+      expiringSoon?: number;
+      invalidSessions?: number;
+      uptime?: number;
+    } = {
       status: 'healthy',
       activeSessions,
       timestamp: new Date().toISOString(),
@@ -776,10 +781,9 @@ export function createSessionsRouter(
       const simplifiedMessages: SimplifiedMessage[] = messages.map((msg) => {
         let rawMessage: ParsedRawMessage = {};
         try {
-          const parsedData = typeof msg.rawMessage === 'string' 
-            ? JSON.parse(msg.rawMessage) 
-            : msg.rawMessage;
-          
+          const parsedData =
+            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+
           // Validate parsed data is an object
           if (parsedData && typeof parsedData === 'object') {
             rawMessage = parsedData as ParsedRawMessage;
@@ -896,12 +900,9 @@ export function createSessionsRouter(
 
       // Validate the new config
       if (!isValidTimeoutConfig(newConfig)) {
-        throw new InvalidTimeoutConfigError(
-          'Invalid timeout configuration format',
-          newConfig
-        );
+        throw new InvalidTimeoutConfigError('Invalid timeout configuration format', newConfig);
       }
-      
+
       if (newConfig.timeoutMinutes !== undefined) {
         if (
           newConfig.timeoutMinutes < MIN_TIMEOUT_MINUTES ||
@@ -932,6 +933,45 @@ export function createSessionsRouter(
       );
 
       const response = createSessionInfoResponse(session);
+      res.json(response);
+    })
+  );
+
+  /**
+   * Keep session alive with heartbeat
+   * POST /api/messaging/sessions/:sessionId/heartbeat
+   */
+  router.post(
+    '/sessions/:sessionId/heartbeat',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
+      const { sessionId } = req.params;
+      const session = sessions.get(sessionId);
+
+      if (!session || !isValidSession(session)) {
+        throw new SessionNotFoundError(sessionId);
+      }
+
+      // Check if session is expired
+      if (session.expiresAt.getTime() <= Date.now()) {
+        sessions.delete(sessionId);
+        throw new SessionExpiredError(sessionId, session.expiresAt);
+      }
+
+      // Update last activity
+      session.lastActivity = new Date();
+
+      // Renew session if auto-renew is enabled
+      if (session.timeoutConfig.autoRenew) {
+        const renewed = renewSession(session);
+        if (renewed) {
+          logger.info(`[Sessions API] Session renewed via heartbeat: ${sessionId}`);
+        }
+      }
+
+      // Return updated session info
+      const response = createSessionInfoResponse(session);
+      logger.debug(`[Sessions API] Heartbeat received for session: ${sessionId}`);
+
       res.json(response);
     })
   );
@@ -1009,7 +1049,7 @@ export function createSessionsRouter(
         cleanedCount++;
         continue;
       }
-      
+
       // Check if session has expired
       if (session.expiresAt.getTime() <= now.getTime()) {
         sessions.delete(sessionId);
