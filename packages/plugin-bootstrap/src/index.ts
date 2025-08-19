@@ -422,12 +422,12 @@ const messageReceivedHandler = async ({
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
             runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
-            // Queue embedding generation asynchronously (non-blocking)
-            await runtime.queueEmbeddingGeneration(message, 'high');
+            // Queue embedding generation asynchronously (non-blocking) using existing memory
+            await runtime.queueEmbeddingGeneration(existingMemory, 'high');
           } else {
-            // Create memory and queue embedding generation
-            const memoryId = await runtime.createMemory(message, 'messages');
-            message.id = memoryId;
+            // Create memory with the existing ID (preserving external IDs)
+            await runtime.createMemory(message, 'messages');
+            // Queue embedding generation with the original message
             await runtime.queueEmbeddingGeneration(message, 'high');
           }
         } else {
