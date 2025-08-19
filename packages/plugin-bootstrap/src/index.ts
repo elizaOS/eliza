@@ -418,23 +418,29 @@ const messageReceivedHandler = async ({
         runtime.logger.debug('[Bootstrap] Saving message to memory and queueing embeddings');
 
         // Check if memory already exists (it might have been created by MessageBusService)
+        let memoryToQueue: Memory;
+
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
             runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
-            // Queue embedding generation asynchronously (non-blocking) using existing memory
-            await runtime.queueEmbeddingGeneration(existingMemory, 'high');
+            memoryToQueue = existingMemory;
           } else {
             // Create memory with the existing ID (preserving external IDs)
-            await runtime.createMemory(message, 'messages');
-            // Queue embedding generation with the original message
-            await runtime.queueEmbeddingGeneration(message, 'high');
+            const createdMemoryId = await runtime.createMemory(message, 'messages');
+            // Use the created memory with the actual ID returned by the database
+            memoryToQueue = { ...message, id: createdMemoryId };
           }
+          // Queue with high priority for messages with pre-existing IDs
+          await runtime.queueEmbeddingGeneration(memoryToQueue, 'high');
         } else {
           // No ID, create new memory and queue embedding
           const memoryId = await runtime.createMemory(message, 'messages');
+          // Set the ID on the message for downstream processing
           message.id = memoryId;
-          await runtime.queueEmbeddingGeneration(message, 'normal');
+          // Create a memory object with the new ID for queuing
+          memoryToQueue = { ...message, id: memoryId };
+          await runtime.queueEmbeddingGeneration(memoryToQueue, 'normal');
         }
 
         const agentUserState = await runtime.getParticipantUserState(
