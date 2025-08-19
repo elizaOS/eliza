@@ -84,13 +84,22 @@ describe('ElizaOS Dev Commands', () => {
   afterEach(async () => {
     // Kill any running processes with proper async cleanup
     const killPromises = runningProcesses.map(async (proc) => {
-      if (!proc || proc.killed || proc.exitCode !== null) {
+      if (!proc) {
         return;
       }
 
       try {
+        // Check if process is already exited
+        if (proc.exitCode !== null || proc.killed) {
+          // Process already exited, just wait for its promise to resolve
+          if (proc.exited) {
+            await proc.exited.catch(() => { });
+          }
+          return;
+        }
+
         // For Bun.spawn processes, use the exited promise
-        const exitPromise = proc.exited ? proc.exited.catch(() => {}) : Promise.resolve();
+        const exitPromise = proc.exited ? proc.exited.catch(() => { }) : Promise.resolve();
 
         // First attempt graceful shutdown
         proc.kill('SIGTERM');
@@ -102,14 +111,14 @@ describe('ElizaOS Dev Commands', () => {
         ]);
 
         // Force kill if still running
-        if (!proc.killed && proc.exitCode === null) {
+        if (proc.exitCode === null && !proc.killed) {
           proc.kill('SIGKILL');
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } catch (e) {
         // Ignore cleanup errors but try force kill
         try {
-          if (!proc.killed) {
+          if (proc.exitCode === null && !proc.killed) {
             proc.kill('SIGKILL');
           }
         } catch (e2) {
@@ -440,6 +449,12 @@ describe('ElizaOS Dev Commands', () => {
 
     runningProcesses.push(devProcess);
 
+    // Handle process exit to prevent it from affecting test runner
+    const exitPromise = devProcess.exited.catch(() => {
+      // Ignore exit errors for this test - we expect the process to fail
+      console.log('[NON-ELIZA DIR TEST] Process exited (expected for non-elizaos directory)');
+    });
+
     const outputPromise = new Promise<void>((resolve) => {
       // Handle Bun.spawn's ReadableStream
       const handleStream = async (
@@ -506,7 +521,16 @@ describe('ElizaOS Dev Commands', () => {
 
     // Proper cleanup
     devProcess.kill('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Wait for the process to exit cleanly
+    try {
+      await Promise.race([
+        exitPromise,
+        new Promise((resolve) => setTimeout(resolve, 2000))
+      ]);
+    } catch {
+      // Ignore any exit errors
+    }
   }, 15000); // Reduced timeout for CI stability
 
   it('dev command validates port parameter', () => {
