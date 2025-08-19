@@ -84,19 +84,17 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   let args: string[];
   let cmd: string;
 
-  if (shell) {
+  // On Windows, if the command contains quotes, bypass shell to avoid quoting issues
+  const shouldBypassShell = process.platform === 'win32' && command.includes('"') && shell;
+
+  if (shell && !shouldBypassShell) {
     // Use shell to execute command
     const shellCmd =
       typeof shell === 'string' ? shell : process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
 
-    // On Windows, cmd.exe has special quoting rules
-    // If the command already contains quotes, we need to handle them carefully
     let shellArgs: string[];
     if (process.platform === 'win32') {
-      // Windows cmd.exe: Handle commands with quoted paths properly
-      // The /s flag tells cmd.exe to treat the entire command as is, without extra quote processing
-      // This is crucial for commands that already have properly quoted paths
-      shellArgs = ['/s', '/c', command];
+      shellArgs = ['/c', command];
     } else {
       shellArgs = ['-c', command];
     }
@@ -104,7 +102,7 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     cmd = shellCmd;
     args = shellArgs;
   } else {
-    // Parse command manually
+    // Parse command manually (used when shell is false or when bypassing shell on Windows)
     const parsed = parseCommand(command);
     cmd = parsed.command;
     args = parsed.args;
