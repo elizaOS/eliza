@@ -333,12 +333,24 @@ Determine the next step the assistant should take in this conversation to help t
 {{recentMessages}}
 
 # Global Decision Rules (MUST follow before choosing any next step)
-1. Analyze what information is still missing or what needs to be done to fulfill the user’s request.
-2. Use the available actions or providers below to gather that information or complete the next step.
-3. Do NOT proceed to a final response ('finish') unless you are absolutely sure that:
-    - The user request has been fully resolved.
-    - No further actions or data are required.
-4. Think step by step and ensure your reasoning is clear and justifiable.
+1. You are a customer service representative for an online retail company. You are chatting with a customer, and you can call tools or respond to the user.  
+2. Always first confirm the user id by **email** or **name + zip code** before proceeding with any task. Check the recentMessages to see if the user has already been authenticated. If not, request authentication first.  
+3. If the user id is not found, do not proceed with any task.  
+4. For any change to the backend database (e.g., address update, refund, or order cancellation), you must confirm the transaction details with the user and ask for explicit authorization ("yes") before proceeding.  
+5. You must solve the user’s task given the available tools, without transferring to a human agent.  
+6. Do not make up any information or knowledge not provided by the user or the tools.  
+7. You may make at most **one tool call at a time**. If you call a tool, do not also respond to the user in the same step.  
+8. Analyze what information is still missing or what needs to be done to fulfill the user’s request.  
+9. Use the available actions or providers below to gather that information or complete the next step.  
+10. Do NOT proceed to a final response ('finish') unless you are absolutely sure that:  
+    - The user request has been fully resolved.  
+    - No further actions or data are required.  
+11. Think step by step and ensure your reasoning is clear and justifiable.  
+12. You may ONLY use actions/providers listed in **availableActions** and **availableProviders** below.  
+13. You may NOT repeat any action or provider that has already been used in this session (see "Previous Action Results" below).  
+14. Never invent new action names.  
+15. Always explain *why* you are choosing the next step.  
+16. When calling an action or provider, you must include the **parameters** inside your thought. Do not output them as a separate field.  
 
 # Two-Step Workflow
 - **Step 1: Gather or Execute**  
@@ -347,17 +359,9 @@ Determine the next step the assistant should take in this conversation to help t
 - **Step 2: Finish**  
   If nothing more is required and the task is truly complete, return \`FINISH\`.
 
-# Hard Constraints
-- You may ONLY use actions/providers listed in **availableActions** and **availableProviders** below.
-- You may NOT repeat any action or provider that has already been used in this session (see "Previous Action Results" below).
-- Never invent new action names.
-- Always explain *why* you are choosing the next step.
-- When calling an action or provider, you must include the **parameters** inside your thought. Do not output them as a separate field.
-
 {{actionsWithDescriptions}}
 
 {{providersWithDescriptions}}
-
 
 These are the actions or data provider calls that have already been used in this run. You MUST NOT call the same step again. Use this to avoid redundancy and guide your next move.
 
@@ -375,7 +379,8 @@ These are the actions or data provider calls that have already been used in this
 </response>
 </output>`;
 
-const finalSummaryTemplate =`
+
+const finalSummaryTemplate = (lastThought?: string) => `
 <task>
 Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
 </task>
@@ -401,18 +406,25 @@ Below is the user’s original request and conversation so far:
 Here are the steps (actions/providers) taken by the assistant to fulfill the request:
 {{actionResults}}
 
+# Assistant’s Last Reasoning Step
+${lastThought || 'No final reasoning step was recorded.'}
+
+# Authentication & Compliance Rules
+1. The assistant must always confirm the user ID by **email** or **name + zip code** before proceeding with any task.  
+2. Check the conversation, execution trace, and last reasoning step to see if authentication has already been done.  
+3. If authentication is missing, the final response must **ask the user for authentication** before confirming any backend action or providing results.  
+4. If the user ID was not found, the assistant must not proceed with any task.  
+5. For backend changes (address update, refund, cancellation, etc.), the assistant must confirm the transaction details and request explicit authorization ("yes").  
+6. Only base your output on the actual steps in the execution trace and the last reasoning step. Do not invent anything.  
+
 # Instructions
-1. Analyze the user’s intent and what information or result they were expecting.
-2. Carefully review the execution trace and explain what actions/providers were used and what results were obtained.
+1. Analyze the user’s intent and what result they expected.  
+2. Carefully review the execution trace **and the last reasoning step**, along with the authentication rules.  
 3. Compose a clear and helpful final message to the user:
-    - Summarize what was done for them.
-    - Provide the results.
-    - If something is missing, ask any necessary follow-up questions.
-    - If everything is complete, wrap up clearly.
-
-4. ONLY base your output on the actual actions/providers invoked in the trace. Do NOT invent or assume anything not in the trace.
-
-5. Your final output MUST be in the following XML format:
+   - If authentication was missing, explicitly ask for it (do not continue with task completion).  
+   - If authentication is present, summarize what was done, provide results, and confirm any pending authorization if required.  
+   - If everything is complete, wrap up clearly.  
+4. Your final output MUST be in this XML format:
 <output>
 <response>
   <thought>Your thought here</thought>
@@ -420,6 +432,7 @@ Here are the steps (actions/providers) taken by the assistant to fulfill the req
 </response>
 </output>
 `;
+
 
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
@@ -544,6 +557,7 @@ async function runMultiStepCore({
   const traceActionResult: any[] = [];
   let continueLoop = true;
   let accumulatedState: any = state;
+  let finalThought;
 
   while (continueLoop) {
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
@@ -561,6 +575,7 @@ async function runMultiStepCore({
 
     if (!parsedStep || parsedStep.nextStepType === 'finish') {
       continueLoop = false;
+      finalThought = parsedStep?.thought;
       break;
     }
 
@@ -620,9 +635,10 @@ async function runMultiStepCore({
     }
   }
 
+  const summaryTemplate = finalSummaryTemplate(finalThought);
   const summaryPrompt = composePromptFromState({
     state: accumulatedState,
-    template: finalSummaryTemplate,
+    template: summaryTemplate,
   });
 
   const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
