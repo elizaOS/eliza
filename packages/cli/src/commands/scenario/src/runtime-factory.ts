@@ -7,6 +7,7 @@ import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createServer } from 'node:net';
+import { processManager } from './process-manager';
 
 // --- Start of Pre-emptive Environment Loading ---
 loadEnvironmentVariables();
@@ -122,6 +123,12 @@ export async function createScenarioServerAndAgent(
         server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
         await server.start(port);
         createdServer = true;
+
+        // Register the server process for cleanup
+        const serverPid = (server as any)?.server?.pid || process.pid;
+        const runId = `agent-server-${port}`;
+        processManager.registerProcess(runId, serverPid, 'agent-server', port);
+        console.log(`🔧 [DEBUG] [ProcessManager] Registered AgentServer process ${serverPid} for port ${port}`);
       }
       break; // Success, exit retry loop
     } catch (error) {
@@ -171,6 +178,36 @@ export async function createScenarioServerAndAgent(
   const agentId = runtime.character.id as UUID;
 
   return { server, runtime, agentId, port, createdServer };
+}
+
+/**
+ * Properly shutdown an AgentServer instance
+ */
+export async function shutdownScenarioServer(server: AgentServer, port: number): Promise<void> {
+  try {
+    console.log(`🔧 [DEBUG] Shutting down AgentServer on port ${port}...`);
+
+    // Stop the server
+    if (server && typeof server.stop === 'function') {
+      await server.stop();
+      console.log(`🔧 [DEBUG] AgentServer on port ${port} stopped successfully`);
+    }
+
+    // Unregister from process manager
+    const serverPid = (server as any)?.server?.pid || process.pid;
+    processManager.unregisterProcess(serverPid);
+    console.log(`🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`);
+
+  } catch (error) {
+    console.log(`🔧 [DEBUG] Error shutting down AgentServer on port ${port}:`, error);
+
+    // Force terminate the process if graceful shutdown failed
+    const serverPid = (server as any)?.server?.pid || process.pid;
+    if (processManager.isProcessRunning(serverPid)) {
+      console.log(`🔧 [DEBUG] Force terminating AgentServer process ${serverPid}...`);
+      processManager.terminateProcess(serverPid);
+    }
+  }
 }
 
 /**

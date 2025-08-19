@@ -18,6 +18,8 @@ import {
 } from './run-isolation';
 import { createProgressTracker, ProgressTracker, ProgressEventType } from './progress-tracker';
 import { createResourceMonitor, ResourceMonitor, ResourceAlert } from './resource-monitor';
+import { generateRunFilename } from './file-naming-utils';
+import { processManager } from './process-manager';
 import { MatrixCombination } from './matrix-types';
 import { applyParameterOverrides } from './parameter-override';
 import { MatrixConfig } from './matrix-schema';
@@ -174,6 +176,10 @@ export async function executeMatrixRuns(
   const results: MatrixRunResult[] = [];
   const activeRuns = new Map<string, ActiveRun>();
 
+  // Log initial process state
+  const initialSummary = processManager.getSummary();
+  console.log(`🔧 [DEBUG] [ProcessManager] Initial state: ${initialSummary.total} processes tracked`);
+
   console.log('🔧 [DEBUG] About to setup execution environment');
 
   // Setup execution environment
@@ -268,7 +274,7 @@ export async function executeMatrixRuns(
         }
 
         runCounter++;
-        const runId = `run-${String(runCounter).padStart(3, '0')}-${combination.id.split('-')[2]}`;
+        const runId = generateRunFilename(runCounter);
         console.log(`🔧 [DEBUG] Generated runId: ${runId}`);
         console.log(`🔧 [DEBUG] Combination parameters:`, JSON.stringify(combination.parameters, null, 2));
 
@@ -418,6 +424,13 @@ export async function executeMatrixRuns(
   } finally {
     // Cleanup
     resourceMonitor.stop();
+
+    // Log final process state before cleanup
+    const finalSummary = processManager.getSummary();
+    console.log(`🔧 [DEBUG] [ProcessManager] Final state: ${finalSummary.total} processes tracked`);
+    if (finalSummary.total > 0) {
+      console.log(`🔧 [DEBUG] [ProcessManager] Process types:`, finalSummary.byType);
+    }
 
     // Ensure all isolated environments are cleaned up
     for (const activeRun of activeRuns.values()) {
@@ -595,7 +608,7 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const { createScenarioServerAndAgent } = await import('./runtime-factory');
+      const { createScenarioServerAndAgent, shutdownScenarioServer } = await import('./runtime-factory');
 
       // Create server and runtime for this isolated run
       // Use the context directly for isolation
@@ -613,7 +626,7 @@ async function executeScenarioWithTimeout(
       try {
         onProgress(0.4, 'Initializing agent runtime...');
 
-        const { server, runtime, agentId } = await createScenarioServerAndAgent(
+        const { server, runtime, agentId, port } = await createScenarioServerAndAgent(
           null,
           0, // Let it pick a random port
           ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'] // Minimal plugins for matrix testing
@@ -656,8 +669,8 @@ async function executeScenarioWithTimeout(
           success = evaluationResults.length > 0 && evaluationResults.every((r) => r.success);
         }
 
-        // Cleanup server
-        await server.stop();
+        // Cleanup server using proper shutdown function
+        await shutdownScenarioServer(server, port);
 
         onProgress(1.0, 'Complete');
 

@@ -7,11 +7,12 @@ import { ScenarioSchema, Scenario } from '../scenario/src/schema';
 import { LocalEnvironmentProvider } from '../scenario/src/LocalEnvironmentProvider';
 import { E2BEnvironmentProvider } from '../scenario/src/E2BEnvironmentProvider';
 import { EnvironmentProvider } from '../scenario/src/providers';
-import { createScenarioServerAndAgent } from '../scenario/src/runtime-factory';
+import { createScenarioServerAndAgent, shutdownScenarioServer } from '../scenario/src/runtime-factory';
 
 import { MockEngine } from './src/MockEngine';
 import { EvaluationEngine } from './src/EvaluationEngine';
 import { Reporter } from './src/Reporter';
+import { generateRunFilename, generateStepFilename } from './src/file-naming-utils';
 import { PluginParser } from './src/plugin-parser';
 import { RunDataAggregator } from './src/data-aggregator';
 import { TrajectoryReconstructor } from './src/TrajectoryReconstructor';
@@ -82,6 +83,7 @@ export const scenario = new Command()
                 let server: any = null;
                 let agentId: any = null;
                 let createdServer = false;
+                let serverPort = 3000; // Default port
                 let mockEngine: MockEngine | null = null;
                 let finalStatus = false; // Default to fail
                 let reporter: Reporter | null = null;
@@ -173,6 +175,7 @@ export const scenario = new Command()
                         runtime = created.runtime;
                         agentId = created.agentId;
                         createdServer = created.createdServer;
+                        serverPort = created.port;
                         // Prefer E2B provider when the service is present; otherwise gracefully fall back to local
                         const hasE2B = !!runtime.getService?.('e2b');
                         provider = hasE2B
@@ -186,6 +189,7 @@ export const scenario = new Command()
                             runtime = created.runtime;
                             agentId = created.agentId;
                             createdServer = created.createdServer;
+                            serverPort = created.port;
                         }
                         provider = new LocalEnvironmentProvider(server, agentId, runtime);
                         logger.info('Using local environment');
@@ -211,10 +215,8 @@ export const scenario = new Command()
                         const evaluationEngine = new EvaluationEngine(runtime);
                         dataAggregator = new RunDataAggregator(runtime, trajectoryReconstructor, evaluationEngine);
 
-                        // Start the run tracking
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                        const scenarioName = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '_');
-                        const runId = `run-${scenarioName}-${timestamp}`;
+                        // Start the run tracking with consistent naming format
+                        const runId = generateRunFilename(1); // Single scenario run, so index 1
                         const combinationId = `single-${scenarioRunId}`; // For single runs, not matrix
                         const parameters = { 'scenario.file': filePath }; // Basic parameter tracking
 
@@ -235,15 +237,13 @@ export const scenario = new Command()
                     // Ensure _logs_ directory exists (already created at beginning)
                     logger.info(`📂 Using logs directory: ${logsDir}`);
 
-                    // Generate scenario run identifier
-                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    const scenarioName = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '_');
-                    const runId = `${scenarioName}_${timestamp}`;
+                    // Generate scenario run identifier with consistent naming
+                    const runId = generateRunFilename(1); // Single scenario run, so index 1
 
                     // Write execution results with trajectory data to JSON files (Ticket #5785)
                     logger.info(`🔍 DEBUG: About to write ${results.length} execution results to ${logsDir}`);
                     results.forEach((result, i) => {
-                        const executionFilename = `execution-results_${runId}_step-${i}.json`;
+                        const executionFilename = generateStepFilename(runId, i, 'execution');
                         const executionPath = path.join(logsDir, executionFilename);
                         fs.writeFileSync(executionPath, JSON.stringify(result, null, 2));
                         logger.info(`📄 Execution results written to: ${executionPath}`);
@@ -267,7 +267,7 @@ export const scenario = new Command()
                                     step.evaluations,
                                     result
                                 );
-                                const evaluationFilename = `evaluation-results_${runId}_step-${i}.json`;
+                                const evaluationFilename = generateStepFilename(runId, i, 'evaluation');
                                 const evaluationPath = path.join(logsDir, evaluationFilename);
                                 fs.writeFileSync(evaluationPath, JSON.stringify(evaluationResults, null, 2));
                                 logger.info(`📊 Evaluation results written to: ${evaluationPath}`);
@@ -314,7 +314,7 @@ export const scenario = new Command()
                                 }
 
                                 // Save basic evaluation results to file (same as runtime evaluations)
-                                const evaluationFilename = `evaluation-results_${runId}_step-${i}.json`;
+                                const evaluationFilename = generateStepFilename(runId, i, 'evaluation');
                                 const evaluationPath = path.join(logsDir, evaluationFilename);
                                 fs.writeFileSync(evaluationPath, JSON.stringify(stepEvaluationResults, null, 2));
                                 logger.info(`📊 Basic evaluation results written to: ${evaluationPath}`);
@@ -369,7 +369,7 @@ export const scenario = new Command()
                             );
 
                             // Write centralized result to file with new naming pattern
-                            const centralizedFilename = `run-${scenarioRunResult.run_id}.json`;
+                            const centralizedFilename = `${runId}.json`;
                             const centralizedPath = path.join(logsDir, centralizedFilename);
                             fs.writeFileSync(centralizedPath, JSON.stringify(scenarioRunResult, null, 2));
                             logger.info(`📋 [DataAggregator] Centralized result written to: ${centralizedPath}`);
@@ -433,7 +433,7 @@ export const scenario = new Command()
                     }
                     if (server && createdServer) {
                         try {
-                            await server.stop();
+                            await shutdownScenarioServer(server, serverPort);
                         } catch { }
                     }
 
@@ -480,6 +480,34 @@ export const scenario = new Command()
                     if (options.verbose) {
                         logger.info(`Options: ${JSON.stringify(options, null, 2)}`);
                     }
+
+                    // Import process manager for cleanup
+                    const { processManager } = await import('./src/process-manager');
+
+                    // Set up signal handlers for graceful cleanup
+                    let isShuttingDown = false;
+                    const handleShutdown = async (signal: string) => {
+                        if (isShuttingDown) {
+                            logger.info(`🔧 [Matrix] Already shutting down, ignoring ${signal}`);
+                            return;
+                        }
+                        isShuttingDown = true;
+                        logger.info(`🔧 [Matrix] Received ${signal}, initiating graceful shutdown...`);
+
+                        const summary = processManager.getSummary();
+                        if (summary.total > 0) {
+                            logger.info(`🔧 [Matrix] Cleaning up ${summary.total} tracked processes...`);
+                            await processManager.terminateAllProcesses();
+                            logger.info(`🔧 [Matrix] Process cleanup completed`);
+                        }
+
+                        logger.info(`🔧 [Matrix] Shutdown complete`);
+                        process.exit(0);
+                    };
+
+                    // Register signal handlers
+                    process.on('SIGINT', () => handleShutdown('SIGINT'));
+                    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
                     try {
                         // Step 1: Load and validate configuration file
@@ -673,6 +701,16 @@ export const scenario = new Command()
                             logger.info('\n🔍 Dry Run Complete - Matrix Analysis Only');
                             logger.info('✨ Matrix configuration is valid and ready for execution.');
                             logger.info('📝 To execute the matrix, run the same command without --dry-run');
+
+                            // Cleanup any processes from dry-run analysis
+                            if (!isShuttingDown) {
+                                const summary = processManager.getSummary();
+                                if (summary.total > 0) {
+                                    logger.info(`🔧 [Matrix] Cleaning up ${summary.total} processes after dry-run...`);
+                                    await processManager.terminateAllProcesses();
+                                }
+                            }
+
                             process.exit(0);
                         } else {
                             // Calculate execution statistics
@@ -715,8 +753,8 @@ export const scenario = new Command()
 
                             // Create output directory with timestamp in scenario logs
                             const logsDir = path.join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'scenario', '_logs_');
-                            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                            const outputDir = path.join(logsDir, `matrix-${timestamp}`);
+                            const matrixRunId = generateRunFilename(1);
+                            const outputDir = path.join(logsDir, matrixRunId.replace('run-', 'matrix-'));
 
                             // Execute the matrix with full orchestration
                             logger.info('🔧 [DEBUG] About to call executeMatrixRuns...');
@@ -765,6 +803,16 @@ export const scenario = new Command()
                             logger.info(`   Success rate: ${successRate.toFixed(1)}%`);
                             logger.info(`📁 Results saved to: ${outputDir}`);
 
+                            // Cleanup processes before exit
+                            if (!isShuttingDown) {
+                                const summary = processManager.getSummary();
+                                if (summary.total > 0) {
+                                    logger.info(`🔧 [Matrix] Cleaning up ${summary.total} processes after completion...`);
+                                    await processManager.terminateAllProcesses();
+                                    logger.info(`🔧 [Matrix] Process cleanup completed`);
+                                }
+                            }
+
                             // Exit with appropriate code
                             process.exit(failedRuns === 0 ? 0 : 1);
                         }
@@ -774,6 +822,16 @@ export const scenario = new Command()
                         if (options.verbose && error instanceof Error && error.stack) {
                             logger.error(`Stack trace: ${error.stack}`);
                         }
+
+                        // Cleanup processes on error
+                        if (!isShuttingDown) {
+                            const summary = processManager.getSummary();
+                            if (summary.total > 0) {
+                                logger.info(`🔧 [Matrix] Cleaning up ${summary.total} processes after error...`);
+                                await processManager.terminateAllProcesses();
+                            }
+                        }
+
                         logger.info('💡 Use --verbose for more detailed error information.');
                         process.exit(1);
                     }
