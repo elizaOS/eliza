@@ -35,7 +35,7 @@ import {
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
-import * as actions from './actions/index.ts';
+// import * as actions from './actions/index.ts';
 import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
@@ -1796,19 +1796,19 @@ export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
   actions: [
-    actions.replyAction,
-    actions.followRoomAction,
-    actions.unfollowRoomAction,
-    actions.ignoreAction,
-    actions.noneAction,
-    actions.muteRoomAction,
-    actions.unmuteRoomAction,
-    actions.sendMessageAction,
-    actions.updateEntityAction,
-    actions.choiceAction,
-    actions.updateRoleAction,
-    actions.updateSettingsAction,
-    actions.generateImageAction,
+    // actions.replyAction,
+    // actions.followRoomAction,
+    // actions.unfollowRoomAction,
+    // actions.ignoreAction,
+    // actions.noneAction,
+    // actions.muteRoomAction,
+    // actions.unmuteRoomAction,
+    // actions.sendMessageAction,
+    // actions.updateEntityAction,
+    // actions.choiceAction,
+    // actions.updateRoleAction,
+    // actions.updateSettingsAction,
+    // actions.generateImageAction,
   ],
   // this is jank, these events are not valid
   events: events as any as PluginEvents,
