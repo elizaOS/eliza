@@ -84,10 +84,10 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   let args: string[];
   let cmd: string;
 
-  // On Windows, if the command contains quotes, bypass shell to avoid quoting issues
-  const shouldBypassShell = process.platform === 'win32' && command.includes('"') && shell;
+  // On Windows, if the command contains quotes, parse it directly to avoid shell quoting issues
+  const shouldUseShell = shell && !(process.platform === 'win32' && command.includes('"'));
 
-  if (shell && !shouldBypassShell) {
+  if (shouldUseShell) {
     // Use shell to execute command
     const shellCmd =
       typeof shell === 'string' ? shell : process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
@@ -218,7 +218,16 @@ export function bunSpawn(
  */
 export function runCliCommandSync(args: string[], options: BunExecSyncOptions = {}): string {
   // Use global elizaos command
-  const command = `elizaos ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`;
+  const quotedArgs = args.map((arg) => {
+    // If arg already has quotes, don't add more
+    if (arg.startsWith('"') && arg.endsWith('"')) {
+      return arg;
+    }
+    // Only quote if arg contains spaces
+    return arg.includes(' ') ? `"${arg}"` : arg;
+  });
+
+  const command = `elizaos ${quotedArgs.join(' ')}`;
 
   return bunExecSync(command, options) as string;
 }
@@ -280,9 +289,10 @@ export function parseCommand(commandString: string): { command: string; args: st
  */
 export function commandExists(command: string): boolean {
   try {
+    // Use shell: false to avoid quoting issues with command names
     const result = bunExecSync(
       process.platform === 'win32' ? `where ${command}` : `which ${command}`,
-      { stdio: 'pipe' }
+      { stdio: 'pipe', shell: process.platform !== 'win32' }
     );
     return !!result && result.toString().trim().length > 0;
   } catch {
