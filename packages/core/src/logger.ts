@@ -218,7 +218,7 @@ type LogFn = (
 ) => void;
 
 // Type for logger bindings with optional test override
-interface LoggerBindings extends Record<string, unknown> {
+export interface LoggerBindings extends Record<string, unknown> {
   __forceType?: 'browser' | 'node';
   level?: string;
   maxMemoryLogs?: number; // Maximum number of logs to keep in memory
@@ -230,7 +230,7 @@ interface DestinationStream {
   clear?(): void;
 }
 
-interface Logger {
+export interface Logger {
   trace: LogFn;
   debug: LogFn;
   info: LogFn;
@@ -288,7 +288,7 @@ interface ExtendedPrettyOptions extends Partial<BasePrettyOptions> {
  * @property agentId - ID of the agent that created the log
  * @property [key: string] - Additional properties that can be added to the log entry
  */
-interface LogEntry {
+export interface LogEntry {
   time?: number;
   level?: number | string;
   msg?: string;
