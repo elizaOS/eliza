@@ -322,6 +322,109 @@ export function shouldBypassShouldRespond(
   return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
 }
 
+// Hardcoded setup to simplify testing
+
+enum ResponseStrategy {
+  SINGLE_SHOT = 'singleShot',
+  MULTI_STEP = 'multiStep',
+}
+const responseStrategy = ResponseStrategy.MULTI_STEP;
+
+const loopingTemplate = `<task>
+Determine the next step the assistant should take in this conversation to help the user reach their goal.
+</task>
+
+{{recentMessages}}
+
+# Global Decision Rules (MUST follow before choosing any next step)
+1. Analyze what information is still missing or what needs to be done to fulfill the user’s request.
+2. Use the available actions or providers below to gather that information or complete the next step.
+3. Do NOT proceed to a final response ('finish') unless you are absolutely sure that:
+    - The user request has been fully resolved.
+    - No further actions or data are required.
+4. Think step by step and ensure your reasoning is clear and justifiable.
+
+# Two-Step Workflow
+- **Step 1: Gather or Execute**  
+  If any data is missing or a backend step needs to be executed (e.g. calling an action to exchange items or retrieve info), call the appropriate action/provider.
+
+- **Step 2: Finish**  
+  If nothing more is required and the task is truly complete, return \`FINISH\`.
+
+# Hard Constraints
+- You may ONLY use actions/providers listed in **availableActions** and **availableProviders** below.
+- You may NOT repeat any action or provider that has already been used in this session (see "Previous Action Results" below).
+- Never invent new action names.
+- Always explain *why* you are choosing the next step.
+- When calling an action or provider, you must include the **parameters** inside your thought. Do not output them as a separate field.
+
+{{actionsWithDescriptions}}
+
+{{providersWithDescriptions}}
+
+
+These are the actions or data provider calls that have already been used in this run. You MUST NOT call the same step again. Use this to avoid redundancy and guide your next move.
+
+{{actionResults}}
+
+<output>
+<response>
+  <thought>
+    Clearly explain your reasoning for the next step and how it helps resolve the user's request. 
+    If calling an action or provider, mention the relevant parameters you are passing.  
+    Example: "To proceed, I need to call ACTION_NAME with parameters { 'key': 'value' } to gather the necessary data."
+  </thought>
+  <nextStepType>action | provider | finish</nextStepType>
+  <stepName>(Required only if nextStepType is action or provider)</stepName>
+</response>
+</output>`;
+
+const finalSummaryTemplate =`
+<task>
+Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
+</task>
+
+<providers>
+{{bio}}
+
+---
+
+{{system}}
+
+---
+
+{{messageDirections}}
+
+</providers>
+
+# Conversation Summary
+Below is the user’s original request and conversation so far:
+{{recentMessages}}
+
+# Execution Trace
+Here are the steps (actions/providers) taken by the assistant to fulfill the request:
+{{actionResults}}
+
+# Instructions
+1. Analyze the user’s intent and what information or result they were expecting.
+2. Carefully review the execution trace and explain what actions/providers were used and what results were obtained.
+3. Compose a clear and helpful final message to the user:
+    - Summarize what was done for them.
+    - Provide the results.
+    - If something is missing, ask any necessary follow-up questions.
+    - If everything is complete, wrap up clearly.
+
+4. ONLY base your output on the actual actions/providers invoked in the trace. Do NOT invent or assume anything not in the trace.
+
+5. Your final output MUST be in the following XML format:
+<output>
+<response>
+  <thought>Your thought here</thought>
+  <text>Your final message to the user</text>
+</response>
+</output>
+`;
+
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
@@ -334,6 +437,599 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
+  const useMultiStep = responseStrategy === ResponseStrategy.MULTI_STEP;
+  if (useMultiStep) {
+    return await handleMultiStepResponse({runtime, message, callback, onComplete})
+  } else {
+    return await handleSingleShotResponse({runtime, message, callback, onComplete})
+  }
+}
+
+const handleMultiStepResponse = async ({
+  runtime,
+  message,
+  callback,
+  onComplete,
+}: MessageReceivedHandlerParams): Promise<void> => {
+  // Set up timeout monitoring
+  const timeoutDuration = 60 * 60 * 1000; // 1 hour
+  let timeoutId: NodeJS.Timeout | undefined = undefined;
+
+  try {
+    runtime.logger.info(
+      `[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`
+    );
+    // Generate a new response ID
+    const responseId = v4();
+    // Get or create the agent-specific map
+    if (!latestResponseIds.has(runtime.agentId)) {
+      latestResponseIds.set(runtime.agentId, new Map<string, string>());
+    }
+    const agentResponses = latestResponseIds.get(runtime.agentId);
+    if (!agentResponses) {
+      throw new Error('Agent responses map not found');
+    }
+
+    // Log when we're updating the response ID
+    const previousResponseId = agentResponses.get(message.roomId);
+    if (previousResponseId) {
+      logger.warn(
+        `[Bootstrap] Updating response ID for room ${message.roomId} from ${previousResponseId} to ${responseId} - this may discard in-progress responses`
+      );
+    }
+
+    // Set this as the latest response ID for this agent+room
+    agentResponses.set(message.roomId, responseId);
+
+    // Use runtime's run tracking for this message processing
+    const runId = runtime.startRun();
+    const startTime = Date.now();
+
+    // Emit run started event
+    await runtime.emitEvent(EventType.RUN_STARTED, {
+      runtime,
+      runId,
+      messageId: message.id,
+      roomId: message.roomId,
+      entityId: message.entityId,
+      startTime,
+      status: 'started',
+      source: 'messageHandler',
+      // this shouldn't be a standard
+      // but we need to expose content somewhere
+      metadata: message.content,
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(async () => {
+        await runtime.emitEvent(EventType.RUN_TIMEOUT, {
+          runtime,
+          runId,
+          messageId: message.id,
+          roomId: message.roomId,
+          entityId: message.entityId,
+          startTime,
+          status: 'timeout',
+          endTime: Date.now(),
+          duration: Date.now() - startTime,
+          error: 'Run exceeded 60 minute timeout',
+          source: 'messageHandler',
+        });
+        reject(new Error('Run exceeded 60 minute timeout'));
+      }, timeoutDuration);
+    });
+
+    const processingPromise = (async () => {
+      try {
+        if (message.entityId === runtime.agentId) {
+          runtime.logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
+          throw new Error('Message is from the agent itself');
+        }
+
+        runtime.logger.debug(
+          `[Bootstrap] Processing message: ${truncateToCompleteSentence(message.content.text || '', 50)}...`
+        );
+
+        // First, save the incoming message
+        runtime.logger.debug('[Bootstrap] Saving message to memory and embeddings');
+
+        // Check if memory already exists (it might have been created by MessageBusService)
+        if (message.id) {
+          const existingMemory = await runtime.getMemoryById(message.id);
+          if (existingMemory) {
+            runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
+            // Still add embedding if needed
+            await runtime.addEmbeddingToMemory(message);
+          } else {
+            // Create memory if it doesn't exist
+            await Promise.all([
+              runtime.addEmbeddingToMemory(message),
+              runtime.createMemory(message, 'messages'),
+            ]);
+          }
+        } else {
+          // No ID, create new memory
+          await Promise.all([
+            runtime.addEmbeddingToMemory(message),
+            runtime.createMemory(message, 'messages'),
+          ]);
+        }
+
+        const agentUserState = await runtime.getParticipantUserState(
+          message.roomId,
+          runtime.agentId
+        );
+
+        // default LLM to off
+        const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'));
+        if (defLllmOff && agentUserState === null) {
+          runtime.logger.debug('bootstrap - LLM is off by default');
+          // allow some other subsystem to handle this event
+          // maybe emit an event
+
+          // Emit run ended event on successful completion
+          await runtime.emitEvent(EventType.RUN_ENDED, {
+            runtime,
+            runId,
+            messageId: message.id,
+            roomId: message.roomId,
+            entityId: message.entityId,
+            startTime,
+            status: 'off',
+            endTime: Date.now(),
+            duration: Date.now() - startTime,
+            source: 'messageHandler',
+          });
+          return;
+        }
+
+        if (
+          agentUserState === 'MUTED' &&
+          !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
+        ) {
+          runtime.logger.debug(`[Bootstrap] Ignoring muted room ${message.roomId}`);
+          // Emit run ended event on successful completion
+          await runtime.emitEvent(EventType.RUN_ENDED, {
+            runtime,
+            runId,
+            messageId: message.id,
+            roomId: message.roomId,
+            entityId: message.entityId,
+            startTime,
+            status: 'muted',
+            endTime: Date.now(),
+            duration: Date.now() - startTime,
+            source: 'messageHandler',
+          });
+          return;
+        }
+
+        let state = await runtime.composeState(
+          message,
+          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
+          true
+        );
+
+        // Skip shouldRespond check for DM and VOICE_DM channels
+        const room = await runtime.getRoom(message.roomId);
+
+        const shouldSkipShouldRespond = shouldBypassShouldRespond(
+          runtime,
+          room ?? undefined,
+          message.content.source
+        );
+
+        if (message.content.attachments && message.content.attachments.length > 0) {
+          message.content.attachments = await processAttachments(
+            message.content.attachments,
+            runtime
+          );
+          if (message.id) {
+            await runtime.updateMemory({
+              id: message.id,
+              content: message.content,
+            });
+          }
+        }
+
+        let shouldRespond = true;
+
+        // Handle shouldRespond
+        if (!shouldSkipShouldRespond) {
+          const shouldRespondPrompt = composePromptFromState({
+            state,
+            template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+          });
+
+          runtime.logger.debug(
+            `[Bootstrap] Evaluating response for ${runtime.character.name}\nPrompt: ${shouldRespondPrompt}`
+          );
+
+          const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt: shouldRespondPrompt,
+          });
+
+          runtime.logger.debug(
+            `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`
+          );
+          runtime.logger.debug(`[Bootstrap] Response type: ${typeof response}`);
+
+          // Try to preprocess response by removing code blocks markers if present
+          // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
+
+          const responseObject = parseKeyValueXml(response);
+          runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
+
+          // If an action is provided, the agent intends to respond in some way
+          // Only exclude explicit non-response actions
+          const nonResponseActions = ['IGNORE', 'NONE'];
+          shouldRespond =
+            responseObject?.action &&
+            !nonResponseActions.includes(responseObject.action.toUpperCase());
+        } else {
+          runtime.logger.debug(
+            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
+          );
+          shouldRespond = true;
+        }
+
+        let responseMessages: Memory[] = [];
+
+        // I don't think we need these right now
+        //runtime.logger.debug('shouldRespond is', shouldRespond);
+        //runtime.logger.debug('shouldSkipShouldRespond', shouldSkipShouldRespond);
+
+        let responseContent: Content | null = null;
+
+        if (shouldRespond) {
+          const traceActionResult: any[] = [];
+
+          let continueLoop = true;
+          let accumulatedState;
+          while (continueLoop) {
+            accumulatedState = await runtime.composeState(message, [
+              'RECENT_MESSAGES',
+              'ACTION_STATE', // This will include the action plan
+            ]);
+    
+            accumulatedState.data.actionResults = traceActionResult;
+            
+            const prompt = composePromptFromState({
+              state: accumulatedState,
+              template: loopingTemplate,
+            });
+            console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", prompt);
+            const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt,
+            });
+
+            const parsedStep = parseKeyValueXml(stepResultRaw);
+            console.log('############################## [Bootstrap] Iterative Step Decision', { parsedStep });
+
+            if (!parsedStep || parsedStep.nextStepType === 'finish') {
+              continueLoop = false;
+              break;
+            }
+
+            let executionResult: any;
+            let success = true;
+
+            try {
+              if (parsedStep.nextStepType === 'action') {
+                const actionContent = {
+                  actions: [parsedStep.stepName],
+                  text: '',
+                  thought: parsedStep.thought,
+                };
+
+                const result = await runtime.processActions(
+                  message,
+                  [{
+                    id: v4() as UUID,
+                    entityId: runtime.agentId,
+                    roomId: message.roomId,
+                    createdAt: Date.now(),
+                    content: actionContent,
+                  }],
+                  state,
+                  async () => {
+                    return [];
+                  }
+                );
+                success = result[0].success;
+                executionResult = result[0].text;
+
+              } else if (parsedStep.nextStepType === 'provider') {
+                const provider = runtime.providers.find(p => p.name === parsedStep.stepName);
+                executionResult = await provider?.get(runtime, message, state);
+              }
+
+              traceActionResult.push({
+                data: {
+                  actionName: parsedStep.stepName,
+                },
+                success: success,
+                text: success ? executionResult : undefined,
+                error: success ? undefined : executionResult,
+                stepType: parsedStep.nextStepType,
+                stepName: parsedStep.stepName,
+                result: executionResult,
+              });
+
+            } catch (err) {
+              runtime.logger.error({ err }, 'Error executing step');
+              traceActionResult.push({
+                stepType: parsedStep.nextStepType,
+                stepName: parsedStep.stepName,
+                error: err,
+              });
+            }
+          }
+
+          const prompt = composePromptFromState({
+            state: accumulatedState,
+            template: finalSummaryTemplate,
+          });
+          const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+          const summary = parseKeyValueXml(finalOutput);
+
+          if (summary?.text) {
+            responseContent = {
+              actions: ['REPLY'],
+              text: summary.text,
+              thought: summary.thought || 'Final user-facing message after task completion.',
+              simple: true,
+            };
+            
+          }
+
+          // Check if this is still the latest response ID for this agent+room
+          const currentResponseId = agentResponses.get(message.roomId);
+          if (currentResponseId !== responseId) {
+            runtime.logger.info(
+              `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+            );
+            return;
+          }
+
+          if (responseContent && message.id) {
+            responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+
+            const responseMessage = {
+              id: asUUID(v4()),
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              content: responseContent,
+              roomId: message.roomId,
+              createdAt: Date.now(),
+            };
+
+            responseMessages = [responseMessage];
+          }
+
+          // Clean up the response ID
+          agentResponses.delete(message.roomId);
+          if (agentResponses.size === 0) {
+            latestResponseIds.delete(runtime.agentId);
+          }
+
+          if (responseContent?.providers?.length && responseContent?.providers?.length > 0) {
+            state = await runtime.composeState(message, responseContent?.providers || []);
+          }
+
+          if (responseContent) {
+            // Log provider usage for simple responses
+            if (responseContent.providers && responseContent.providers.length > 0) {
+              runtime.logger.debug(
+                { providers: responseContent.providers },
+                '[Bootstrap] Simple response used providers'
+              );
+            }
+
+            // without actions there can't be more than one message
+            await callback(responseContent);
+          }
+          await runtime.evaluate(
+            message,
+            state,
+            shouldRespond,
+            async (content) => {
+              runtime.logger.debug({ content }, 'evaluate callback');
+              if (responseContent) {
+                responseContent.evalCallbacks = content;
+              }
+              return callback(content);
+            },
+            responseMessages
+          );
+        } else {
+          // Handle the case where the agent decided not to respond
+          runtime.logger.debug(
+            '[Bootstrap] Agent decided not to respond (shouldRespond is false).'
+          );
+
+          // Check if we still have the latest response ID
+          const currentResponseId = agentResponses.get(message.roomId);
+          // helpful for swarms
+          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+          if (currentResponseId !== responseId && !keepResp) {
+            runtime.logger.info(
+              `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+            );
+            // Emit run ended event on successful completion
+            await runtime.emitEvent(EventType.RUN_ENDED, {
+              runtime,
+              runId,
+              messageId: message.id,
+              roomId: message.roomId,
+              entityId: message.entityId,
+              startTime,
+              status: 'replaced',
+              endTime: Date.now(),
+              duration: Date.now() - startTime,
+              source: 'messageHandler',
+            });
+            return; // Stop processing if a newer message took over
+          }
+
+          if (!message.id) {
+            runtime.logger.error(
+              '[Bootstrap] Message ID is missing, cannot create ignore response.'
+            );
+            // Emit run ended event on successful completion
+            await runtime.emitEvent(EventType.RUN_ENDED, {
+              runtime,
+              runId,
+              messageId: message.id,
+              roomId: message.roomId,
+              entityId: message.entityId,
+              startTime,
+              status: 'noMessageId',
+              endTime: Date.now(),
+              duration: Date.now() - startTime,
+              source: 'messageHandler',
+            });
+            return;
+          }
+
+          // Construct a minimal content object indicating ignore, include a generic thought
+          const ignoreContent: Content = {
+            thought: 'Agent decided not to respond to this message.',
+            actions: ['IGNORE'],
+            simple: true, // Treat it as simple for callback purposes
+            inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
+          };
+
+          // Call the callback directly with the ignore content
+          await callback(ignoreContent);
+
+          // Also save this ignore action/thought to memory
+          const ignoreMemory = {
+            id: asUUID(v4()),
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: ignoreContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          };
+          await runtime.createMemory(ignoreMemory, 'messages');
+          runtime.logger.debug('[Bootstrap] Saved ignore response to memory', {
+            memoryId: ignoreMemory.id,
+          });
+
+          // Clean up the response ID since we handled it
+          agentResponses.delete(message.roomId);
+          if (agentResponses.size === 0) {
+            latestResponseIds.delete(runtime.agentId);
+          }
+
+          // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
+          // await runtime.evaluate(message, state, shouldRespond, callback, []);
+        }
+
+        // ok who are they
+        let entityName = 'noname';
+        if (message.metadata && 'entityName' in message.metadata) {
+          entityName = (message.metadata as any).entityName;
+        }
+
+        const isDM = message.content?.channelType?.toUpperCase() === 'DM';
+        let roomName = entityName;
+        if (!isDM) {
+          const roomDatas = await runtime.getRoomsByIds([message.roomId]);
+          if (roomDatas?.length) {
+            const roomData = roomDatas[0];
+            if (roomData.name) {
+              // server/guild name?
+              roomName = roomData.name;
+            }
+            // how do I get worldName
+            if (roomData.worldId) {
+              const worldData = await runtime.getWorld(roomData.worldId);
+              if (worldData) {
+                roomName = worldData.name + '-' + roomName;
+              }
+            }
+          }
+        }
+
+        const date = new Date();
+
+        // get available actions
+        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
+          (a) => a.name
+        ) || [-1];
+
+        // generate data of interest
+        const logData = {
+          at: date.toString(),
+          timestamp: parseInt('' + date.getTime() / 1000),
+          messageId: message.id, // can extract roomId or whatever
+          userEntityId: message.entityId,
+          input: message.content.text,
+          thought: responseContent?.thought,
+          simple: responseContent?.simple,
+          availableActions,
+          actions: responseContent?.actions,
+          providers: responseContent?.providers,
+          irt: responseContent?.inReplyTo,
+          output: responseContent?.text,
+          // to strip out
+          entityName,
+          source: message.content.source,
+          channelType: message.content.channelType,
+          roomName,
+        };
+
+        // Emit run ended event on successful completion
+        await runtime.emitEvent(EventType.RUN_ENDED, {
+          runtime,
+          runId,
+          messageId: message.id,
+          roomId: message.roomId,
+          entityId: message.entityId,
+          startTime,
+          status: 'completed',
+          endTime: Date.now(),
+          duration: Date.now() - startTime,
+          source: 'messageHandler',
+          entityName,
+          responseContent,
+          metadata: logData,
+        });
+      } catch (error: any) {
+        console.error('error is', error);
+        // Emit run ended event with error
+        await runtime.emitEvent(EventType.RUN_ENDED, {
+          runtime,
+          runId,
+          messageId: message.id,
+          roomId: message.roomId,
+          entityId: message.entityId,
+          startTime,
+          status: 'error',
+          endTime: Date.now(),
+          duration: Date.now() - startTime,
+          error: error.message,
+          source: 'messageHandler',
+        });
+      }
+    })();
+
+    await Promise.race([processingPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+    onComplete?.();
+  }
+}
+
+const handleSingleShotResponse = async ({
+  runtime,
+  message,
+  callback,
+  onComplete,
+}: MessageReceivedHandlerParams): Promise<void> => {
+
   // Set up timeout monitoring
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timeout | undefined = undefined;

@@ -200,6 +200,7 @@ export const actionStateProvider: Provider = {
         hasActionPlan: !!actionPlan,
         currentActionStep: actionPlan?.currentStep || 0,
         totalActionSteps: actionPlan?.totalSteps || 0,
+        actionResults: resultsText,
         completedActions: actionResults.filter((r: any) => r.success).length,
         failedActions: actionResults.filter((r: any) => !r.success).length,
       },
