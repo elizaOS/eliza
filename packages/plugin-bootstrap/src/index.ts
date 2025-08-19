@@ -426,12 +426,14 @@ const messageReceivedHandler = async ({
             await runtime.queueEmbeddingGeneration(message, 'high');
           } else {
             // Create memory and queue embedding generation
-            await runtime.createMemory(message, 'messages');
+            const memoryId = await runtime.createMemory(message, 'messages');
+            message.id = memoryId;
             await runtime.queueEmbeddingGeneration(message, 'high');
           }
         } else {
           // No ID, create new memory and queue embedding
-          await runtime.createMemory(message, 'messages');
+          const memoryId = await runtime.createMemory(message, 'messages');
+          message.id = memoryId;
           await runtime.queueEmbeddingGeneration(message, 'normal');
         }
 
