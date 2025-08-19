@@ -1,5 +1,5 @@
 import type { Character } from './agent';
-import type { Action, Evaluator, Provider } from './components';
+import type { Action, ActionResult, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
@@ -65,7 +65,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback
-  ): Promise<void>;
+  ): Promise<ActionResult[]>;
 
   evaluate(
     message: Memory,

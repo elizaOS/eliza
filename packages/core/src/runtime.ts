@@ -564,7 +564,7 @@ export class AgentRuntime implements IAgentRuntime {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback
-  ): Promise<void> {
+  ): Promise<ActionResult[]> {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
     for (const response of responses) {
@@ -930,6 +930,8 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Clear action context
           this.currentActionContext = undefined;
+
+          return actionResults
         } catch (error: any) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
