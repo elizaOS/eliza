@@ -63,6 +63,82 @@ const agentTimeoutConfigs = new Map<UUID, SessionTimeoutConfig>();
 const activeCleanupIntervals = new Set<NodeJS.Timeout>();
 let processHandlersRegistered = false;
 
+/**
+ * Type guard to check if an object is a valid Session
+ */
+function isValidSession(obj: unknown): obj is Session {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const session = obj as Record<string, unknown>;
+  
+  return (
+    typeof session.id === 'string' &&
+    typeof session.agentId === 'string' &&
+    typeof session.channelId === 'string' &&
+    typeof session.userId === 'string' &&
+    session.createdAt instanceof Date &&
+    session.lastActivity instanceof Date &&
+    session.expiresAt instanceof Date &&
+    typeof session.renewalCount === 'number' &&
+    session.timeoutConfig !== undefined &&
+    typeof session.timeoutConfig === 'object'
+  );
+}
+
+/**
+ * Type guard for CreateSessionRequest
+ */
+function isCreateSessionRequest(obj: unknown): obj is CreateSessionRequest {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const req = obj as Record<string, unknown>;
+  return typeof req.agentId === 'string' && typeof req.userId === 'string';
+}
+
+/**
+ * Type guard for SendMessageRequest
+ */
+function isSendMessageRequest(obj: unknown): obj is SendMessageRequest {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const req = obj as Record<string, unknown>;
+  return typeof req.content === 'string';
+}
+
+/**
+ * Type guard for timeout configuration
+ */
+function isValidTimeoutConfig(obj: unknown): obj is SessionTimeoutConfig {
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
+  
+  const config = obj as Record<string, unknown>;
+  return (
+    (config.timeoutMinutes === undefined || typeof config.timeoutMinutes === 'number') &&
+    (config.autoRenew === undefined || typeof config.autoRenew === 'boolean') &&
+    (config.maxDurationMinutes === undefined || typeof config.maxDurationMinutes === 'number') &&
+    (config.warningThresholdMinutes === undefined || typeof config.warningThresholdMinutes === 'number')
+  );
+}
+
+/**
+ * Type for parsed raw message
+ */
+interface ParsedRawMessage {
+  thought?: string;
+  actions?: string[];
+  content?: string;
+  attachments?: unknown[];
+  [key: string]: unknown;
+}
+
 // Input validation constants
 const MAX_CONTENT_LENGTH = 4000;
 const MAX_METADATA_SIZE = 1024 * 10; // 10KB
@@ -259,7 +335,7 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
 /**
  * Validates session metadata
  */
-function validateMetadata(metadata: any): void {
+function validateMetadata(metadata: unknown): void {
   if (!metadata || typeof metadata !== 'object') {
     return; // Empty metadata is valid
   }
@@ -277,7 +353,7 @@ function validateMetadata(metadata: any): void {
 /**
  * Validates message content
  */
-function validateContent(content: any): void {
+function validateContent(content: unknown): content is string {
   if (typeof content !== 'string') {
     throw new InvalidContentError('Content must be a string', content);
   }
@@ -292,12 +368,20 @@ function validateContent(content: any): void {
       content
     );
   }
+  
+  return true;
 }
 
 /**
  * Express async handler wrapper to catch errors
  */
-function asyncHandler(fn: Function) {
+type AsyncRequestHandler = (
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) => Promise<void> | void;
+
+function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
@@ -321,12 +405,18 @@ export function createSessionsRouter(
    * Health check - placed before parameterized routes to avoid conflicts
    * GET /api/messaging/sessions/health
    */
-  router.get('/sessions/health', (_req, res) => {
+  router.get('/sessions/health', (_req: express.Request, res: express.Response) => {
     const now = Date.now();
     let activeSessions = 0;
     let expiringSoon = 0;
+    let invalidSessions = 0;
 
     for (const session of sessions.values()) {
+      if (!isValidSession(session)) {
+        invalidSessions++;
+        continue;
+      }
+      
       if (session.expiresAt.getTime() > now) {
         activeSessions++;
         if (shouldWarnAboutExpiration(session)) {
@@ -335,11 +425,13 @@ export function createSessionsRouter(
       }
     }
 
-    const response: HealthCheckResponse & { expiringSoon?: number } = {
+    const response: HealthCheckResponse & { expiringSoon?: number; invalidSessions?: number; uptime?: number } = {
       status: 'healthy',
       activeSessions,
       timestamp: new Date().toISOString(),
       expiringSoon,
+      ...(invalidSessions > 0 && { invalidSessions }),
+      uptime: process.uptime(),
     };
     res.json(response);
   });
@@ -351,10 +443,10 @@ export function createSessionsRouter(
   router.post(
     '/sessions',
     asyncHandler(async (req: express.Request, res: express.Response) => {
-      const body = req.body as CreateSessionRequest;
+      const body: CreateSessionRequest = req.body;
 
-      // Validate required fields
-      if (!body.agentId || !body.userId) {
+      // Validate request structure
+      if (!isCreateSessionRequest(body)) {
         throw new MissingFieldsError(['agentId', 'userId']);
       }
 
@@ -455,7 +547,7 @@ export function createSessionsRouter(
       const { sessionId } = req.params;
       const session = sessions.get(sessionId);
 
-      if (!session) {
+      if (!session || !isValidSession(session)) {
         throw new SessionNotFoundError(sessionId);
       }
 
@@ -478,7 +570,12 @@ export function createSessionsRouter(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const body = req.body as SendMessageRequest;
+      const body: SendMessageRequest = req.body;
+
+      // Validate request structure
+      if (!isSendMessageRequest(body)) {
+        throw new InvalidContentError('Invalid message request format', body);
+      }
 
       const session = sessions.get(sessionId);
       if (!session) {
@@ -577,7 +674,12 @@ export function createSessionsRouter(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const query = req.query as GetMessagesQuery;
+      // Parse query parameters with proper type handling
+      const query: GetMessagesQuery = {
+        limit: req.query.limit as string | undefined,
+        before: req.query.before as string | undefined,
+        after: req.query.after as string | undefined,
+      };
 
       const session = sessions.get(sessionId);
       if (!session) {
@@ -672,10 +774,16 @@ export function createSessionsRouter(
 
       // Transform to simplified format
       const simplifiedMessages: SimplifiedMessage[] = messages.map((msg) => {
-        let rawMessage: any = {};
+        let rawMessage: ParsedRawMessage = {};
         try {
-          rawMessage =
-            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage || {};
+          const parsedData = typeof msg.rawMessage === 'string' 
+            ? JSON.parse(msg.rawMessage) 
+            : msg.rawMessage;
+          
+          // Validate parsed data is an object
+          if (parsedData && typeof parsedData === 'object') {
+            rawMessage = parsedData as ParsedRawMessage;
+          }
         } catch (error) {
           logger.warn(
             `[Sessions API] Failed to parse rawMessage for message ${msg.id}`,
@@ -773,7 +881,7 @@ export function createSessionsRouter(
     '/sessions/:sessionId/timeout',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const newConfig = req.body as SessionTimeoutConfig;
+      const newConfig: SessionTimeoutConfig = req.body;
 
       const session = sessions.get(sessionId);
       if (!session) {
@@ -787,9 +895,15 @@ export function createSessionsRouter(
       }
 
       // Validate the new config
+      if (!isValidTimeoutConfig(newConfig)) {
+        throw new InvalidTimeoutConfigError(
+          'Invalid timeout configuration format',
+          newConfig
+        );
+      }
+      
       if (newConfig.timeoutMinutes !== undefined) {
         if (
-          typeof newConfig.timeoutMinutes !== 'number' ||
           newConfig.timeoutMinutes < MIN_TIMEOUT_MINUTES ||
           newConfig.timeoutMinutes > MAX_TIMEOUT_MINUTES
         ) {
@@ -865,7 +979,7 @@ export function createSessionsRouter(
     asyncHandler(async (_req: express.Request, res: express.Response) => {
       const now = Date.now();
       const activeSessions = Array.from(sessions.values())
-        .filter((session) => session.expiresAt.getTime() > now)
+        .filter((session) => isValidSession(session) && session.expiresAt.getTime() > now)
         .map((session) => createSessionInfoResponse(session));
 
       res.json({
@@ -888,6 +1002,14 @@ export function createSessionsRouter(
     let warningCount = 0;
 
     for (const [sessionId, session] of sessions.entries()) {
+      // Validate session structure before processing
+      if (!isValidSession(session)) {
+        logger.warn(`[Sessions API] Invalid session structure for ${sessionId}, removing`);
+        sessions.delete(sessionId);
+        cleanedCount++;
+        continue;
+      }
+      
       // Check if session has expired
       if (session.expiresAt.getTime() <= now.getTime()) {
         sessions.delete(sessionId);
