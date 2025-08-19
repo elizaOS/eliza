@@ -12,14 +12,83 @@ import { promises as fs, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { glob } from 'glob';
 import { AnalysisEngine } from './src/analysis-engine';
-import { ScenarioRunResult, ScenarioRunResultSchema } from '../scenario/src/schema';
+import { ScenarioRunResult, ScenarioRunResultSchema, TrajectoryStep } from '../scenario/src/schema';
 import { MatrixConfig } from '../scenario/src/matrix-schema';
+import { MatrixRunResult } from '../scenario/src/matrix-orchestrator';
 import { ReportData, ReportDataSchema } from './src/report-schema';
 import { generatePerformanceReportPdf } from './src/pdf-generator';
 
 export interface GenerateCommandOptions {
   outputPath?: string;
   format?: string;
+}
+
+/**
+ * Transform MatrixRunResult to ScenarioRunResult format for report processing
+ */
+function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResult): ScenarioRunResult {
+  // Extract trajectory from scenarioResult.executionResults if available
+  let trajectory: TrajectoryStep[] = [];
+  let evaluations: any[] = [];
+  let finalResponse = '';
+
+  // Handle successful runs with scenarioResult
+  if (matrixResult.scenarioResult && matrixResult.scenarioResult.executionResults) {
+    const firstExecutionResult = matrixResult.scenarioResult.executionResults[0];
+    if (firstExecutionResult) {
+      // Extract trajectory
+      if (firstExecutionResult.trajectory) {
+        trajectory = firstExecutionResult.trajectory.map((step: any): TrajectoryStep => ({
+          type: step.type,
+          timestamp: step.timestamp,
+          content: step.content || '' // Provide default empty string if content is missing
+        }));
+      }
+
+      // Extract final response
+      finalResponse = firstExecutionResult.stdout || '';
+    }
+  }
+
+  // Extract evaluations from scenarioResult
+  if (matrixResult.scenarioResult && matrixResult.scenarioResult.evaluations) {
+    // Keep enhanced evaluation results in their original format - ScenarioRunResult expects EnhancedEvaluationResult[]
+    evaluations = matrixResult.scenarioResult.evaluations.filter((evaluation: any) => {
+      // Only include evaluations that have the expected enhanced format
+      return evaluation &&
+        typeof evaluation.evaluator_type === 'string' &&
+        typeof evaluation.success === 'boolean' &&
+        typeof evaluation.summary === 'string' &&
+        evaluation.details !== undefined;
+    });
+  }
+
+  // Transform metrics to expected format - handle both successful and failed runs
+  const baseMetrics = matrixResult.metrics || { memoryUsage: 0, diskUsage: 0, tokenCount: 0 };
+  const transformedMetrics = {
+    execution_time_seconds: matrixResult.duration / 1000, // Convert ms to seconds
+    llm_calls: 0, // Default value, will be overridden if available in metrics
+    total_tokens: baseMetrics.tokenCount || 0,
+    // Copy any additional numeric metrics, excluding specific fields
+    ...Object.fromEntries(
+      Object.entries(baseMetrics)
+        .filter(([key, value]) =>
+          !['tokenCount', 'memoryUsage', 'diskUsage', 'cpuUsage'].includes(key) &&
+          typeof value === 'number'
+        )
+    )
+  };
+
+  return {
+    run_id: matrixResult.runId,
+    matrix_combination_id: matrixResult.combinationId,
+    parameters: matrixResult.parameters,
+    metrics: transformedMetrics,
+    final_agent_response: finalResponse,
+    evaluations: evaluations,
+    trajectory: trajectory,
+    error: matrixResult.error || null
+  };
 }
 
 export interface DataIngestionResult {
@@ -119,7 +188,7 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
 /**
  * Generate all report formats in an organized timestamped folder structure
  */
-async function generateOrganizedReports(reportData: ReportData, inputDir: string, customOutputPath?: string): Promise<void> {
+async function generateOrganizedReports(reportData: ReportData, _inputDir: string, customOutputPath?: string): Promise<void> {
   // Create timestamped run folder
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
   const runId = `run-${timestamp}`;
@@ -321,7 +390,7 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
   let matrixConfig: MatrixConfig | null = null;
 
   try {
-    // Find all run-*.json files
+    // Find all run-*.json files, prioritizing files in runs/ subdirectory
     const runFiles = await glob('**/run-*.json', { cwd: inputDir, absolute: true });
 
     if (runFiles.length === 0) {
@@ -334,7 +403,8 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
     const configFiles = await glob('**/*.matrix.yaml', { cwd: inputDir, absolute: true });
     if (configFiles.length > 0) {
       try {
-        const configContent = await fs.readFile(configFiles[0], 'utf8');
+        // Read config file (content not used yet, but we validate it exists)
+        await fs.readFile(configFiles[0], 'utf8');
         // For now, we'll create a basic config since we need yaml parsing
         // In a real implementation, we'd use a yaml parser here
         matrixConfig = {
@@ -366,9 +436,42 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
         const fileContent = await fs.readFile(filePath, 'utf8');
         const runData = JSON.parse(fileContent);
 
-        // Validate against schema
-        const validatedRun = ScenarioRunResultSchema.parse(runData);
-        validRuns.push(validatedRun);
+        let transformedRun: ScenarioRunResult;
+
+        // Check if this looks like a MatrixRunResult first (more common case)
+        const isMatrixResult = runData.runId && runData.combinationId &&
+          typeof runData.startTime === 'string' &&
+          typeof runData.endTime === 'string';
+
+        if (isMatrixResult) {
+          // This is a MatrixRunResult - transform it
+          console.log(`🔧 [DEBUG] Detected MatrixRunResult format for ${filePath.split('/').pop()}`);
+          const matrixResult = runData as MatrixRunResult;
+          transformedRun = transformMatrixRunResultToScenarioRunResult(matrixResult);
+
+          // Validate the transformed result
+          const validationResult = ScenarioRunResultSchema.safeParse(transformedRun);
+          if (!validationResult.success) {
+            console.log(`🔧 [DEBUG] Transformation validation failed:`, validationResult.error.issues);
+            throw new Error(`Transformed MatrixRunResult failed validation: ${JSON.stringify(validationResult.error.issues)}`);
+          }
+
+          transformedRun = validationResult.data as ScenarioRunResult;
+          console.log(`🔧 [DEBUG] Successfully transformed MatrixRunResult to ScenarioRunResult`);
+        } else {
+          // Try to validate as ScenarioRunResult directly
+          const scenarioValidation = ScenarioRunResultSchema.safeParse(runData);
+          if (scenarioValidation.success) {
+            transformedRun = scenarioValidation.data as ScenarioRunResult;
+            console.log(`🔧 [DEBUG] Direct ScenarioRunResult validation successful for ${filePath.split('/').pop()}`);
+          } else {
+            console.log(`🔧 [DEBUG] File ${filePath.split('/').pop()} does not match any known format`);
+            console.log(`🔧 [DEBUG] Available fields:`, Object.keys(runData));
+            throw new Error(`File does not match ScenarioRunResult or MatrixRunResult format`);
+          }
+        }
+
+        validRuns.push(transformedRun);
         fileStats.processed++;
 
       } catch (error) {

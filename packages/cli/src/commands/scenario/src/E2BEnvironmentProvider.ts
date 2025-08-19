@@ -101,7 +101,13 @@ print(json.dumps(files))
 
       if (step.input) {
         // Use the existing server + agent to get an NL response
-        const { response, roomId } = await askAgentViaApi(this.server, this.agentId, step.input);
+        const { response, roomId } = await askAgentViaApi(
+          this.server, 
+          this.agentId, 
+          step.input, 
+          30000, // timeout
+          this.serverPort // Pass the actual server port
+        );
 
         // Reconstruct trajectory from database logs (Ticket #5785 - Non-invasive approach)
         const trajectory = await this.trajectoryReconstructor.getLatestTrajectory(roomId);
