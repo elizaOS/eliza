@@ -380,6 +380,30 @@ export async function executeMatrixRuns(
           })
           .catch(async (error) => {
             console.log(`🔧 [DEBUG] Run ${runId} failed with error: ${error.message}`);
+
+            // Capture actual resource usage even for failed runs
+            let resourceMetrics = {
+              memoryUsage: 0,
+              diskUsage: 0,
+              tokenCount: 0,
+              cpuUsage: 0,
+            };
+
+            try {
+              const resourcesAfter = await getResourceSnapshot();
+              const activeRun = activeRuns.get(runId);
+              if (activeRun) {
+                resourceMetrics = {
+                  memoryUsage: resourcesAfter.memoryUsage,
+                  diskUsage: await calculateRunDiskUsage(activeRun.context.tempDir),
+                  tokenCount: 0, // No scenario result to estimate from
+                  cpuUsage: resourcesAfter.cpuUsage,
+                };
+              }
+            } catch (metricsError) {
+              console.log(`🔧 [DEBUG] Failed to capture metrics for failed run ${runId}: ${metricsError}`);
+            }
+
             // Handle run failure
             const failedResult: MatrixRunResult = {
               runId,
@@ -390,10 +414,7 @@ export async function executeMatrixRuns(
               duration: 0,
               success: false,
               error: error.message,
-              metrics: {
-                memoryUsage: 0,
-                diskUsage: 0,
-              },
+              metrics: resourceMetrics,
             };
 
             results.push(failedResult);
@@ -611,6 +632,26 @@ async function executeIndividualRun(
       error instanceof Error ? error.message : String(error)
     );
 
+    // Try to capture actual resource usage even for failed runs
+    let resourceMetrics = {
+      memoryUsage: 0,
+      diskUsage: 0,
+      tokenCount: 0,
+      cpuUsage: 0,
+    };
+
+    try {
+      const resourcesAfter = await getResourceSnapshot();
+      resourceMetrics = {
+        memoryUsage: resourcesAfter.memoryUsage,
+        diskUsage: 0, // Can't measure temp dir if context cleanup failed
+        tokenCount: 0,
+        cpuUsage: resourcesAfter.cpuUsage,
+      };
+    } catch (metricsError) {
+      console.log(`🔧 [DEBUG] Failed to capture metrics for failed run ${runId}: ${metricsError}`);
+    }
+
     return {
       runId,
       combinationId: combination.id,
@@ -620,10 +661,7 @@ async function executeIndividualRun(
       duration,
       success: false,
       error: error instanceof Error ? error.message : String(error),
-      metrics: {
-        memoryUsage: 0,
-        diskUsage: 0,
-      },
+      metrics: resourceMetrics,
     };
   }
 }
@@ -641,6 +679,7 @@ async function executeScenarioWithTimeout(
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
 ): Promise<any> {
   return new Promise(async (resolve, reject) => {
+    const scenarioStartTime = Date.now();
     const timeoutHandle = setTimeout(() => {
       reject(new Error(`Scenario execution timed out after ${timeout}ms`));
     }, timeout);
@@ -805,7 +844,7 @@ async function executeScenarioWithTimeout(
           evaluations: evaluationResults,
           executionResults,
           tokenCount: estimateTokenCount(executionResults),
-          duration: Date.now() - Date.now(), // Will be calculated by caller
+          duration: Date.now() - scenarioStartTime, // Actual execution duration in ms
         };
 
         clearTimeout(timeoutHandle);
@@ -822,19 +861,37 @@ async function executeScenarioWithTimeout(
 }
 
 /**
- * Estimates token count from execution results.
+ * Estimates token count from execution results using actual trajectory data.
  */
 function estimateTokenCount(executionResults: any[]): number {
   let tokenCount = 0;
+
   for (const result of executionResults) {
-    if (result.response) {
-      // Rough estimation: 1 token per 4 characters
-      tokenCount += Math.ceil(result.response.length / 4);
+    // Count tokens from stdout (agent's response)
+    if (result.stdout) {
+      tokenCount += Math.ceil(result.stdout.length / 4);
     }
-    if (result.input) {
-      tokenCount += Math.ceil(result.input.length / 4);
+
+    // Count tokens from stderr if present
+    if (result.stderr) {
+      tokenCount += Math.ceil(result.stderr.length / 4);
+    }
+
+    // Count tokens from trajectory steps (thoughts, actions, observations)
+    if (result.trajectory && Array.isArray(result.trajectory)) {
+      for (const step of result.trajectory) {
+        if (step.content) {
+          if (typeof step.content === 'string') {
+            tokenCount += Math.ceil(step.content.length / 4);
+          } else if (typeof step.content === 'object') {
+            // For action content, count the stringified version
+            tokenCount += Math.ceil(JSON.stringify(step.content).length / 4);
+          }
+        }
+      }
     }
   }
+
   return tokenCount;
 }
 

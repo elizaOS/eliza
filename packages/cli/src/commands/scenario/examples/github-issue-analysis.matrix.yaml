@@ -9,7 +9,3 @@ matrix:
       - 'List open issues for elizaOS/eliza'
       - 'Find current issues for the elizaos/eliza repo'
       - "Show me what's open in the elizaOS/eliza GitHub."
-  - parameter: 'run[0].evaluations[0].value'
-    values:
-      - 'issues'
-      - 'GitHub'

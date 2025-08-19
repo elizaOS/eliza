@@ -63,11 +63,27 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
     });
   }
 
+  // Calculate LLM calls from trajectory data
+  let llmCallCount = 0;
+  if (trajectory.length > 0) {
+    // Count LLM-generated thoughts and replies
+    llmCallCount = trajectory.filter(step =>
+      step.type === 'thought' ||
+      (step.type === 'action' && typeof step.content === 'object' && step.content.name === 'REPLY') ||
+      (step.type === 'observation' && typeof step.content === 'string' && step.content.includes('Generated reply:'))
+    ).length;
+
+    // At minimum, we know there was at least 1 LLM call if we have trajectory steps
+    if (llmCallCount === 0 && trajectory.length > 0) {
+      llmCallCount = 1;
+    }
+  }
+
   // Transform metrics to expected format - handle both successful and failed runs
   const baseMetrics = matrixResult.metrics || { memoryUsage: 0, diskUsage: 0, tokenCount: 0 };
   const transformedMetrics = {
     execution_time_seconds: matrixResult.duration / 1000, // Convert ms to seconds
-    llm_calls: 0, // Default value, will be overridden if available in metrics
+    llm_calls: llmCallCount, // Use calculated LLM call count from trajectory
     total_tokens: baseMetrics.tokenCount || 0,
     // Copy any additional numeric metrics, excluding specific fields
     ...Object.fromEntries(
