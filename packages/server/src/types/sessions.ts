@@ -119,6 +119,13 @@ export interface SimplifiedMessage {
 export interface GetMessagesResponse {
   messages: SimplifiedMessage[];
   hasMore: boolean;
+  /** Pagination cursors for navigating through messages */
+  cursors?: {
+    /** Timestamp to use for getting older messages (pagination backward) */
+    before?: number;
+    /** Timestamp to use for getting newer messages (pagination forward) */
+    after?: number;
+  };
 }
 
 /**

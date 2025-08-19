@@ -1,7 +1,7 @@
 import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import type { AgentServer } from '../../index';
+import type { AgentServer, CentralRootMessage } from '../../index';
 import type {
   Session,
   SessionMetadata,
@@ -330,12 +330,7 @@ export function createSessionsRouter(
       const finalTimeoutConfig = mergeTimeoutConfigs(body.timeoutConfig, agentTimeoutConfig);
 
       // Log timeout configuration
-      logger.info(`[Sessions API] Creating session with timeout config:`, {
-        agentId: body.agentId,
-        timeout: finalTimeoutConfig.timeoutMinutes,
-        autoRenew: finalTimeoutConfig.autoRenew,
-        maxDuration: finalTimeoutConfig.maxDurationMinutes,
-      });
+      logger.info(`[Sessions API] Creating session with timeout config: agentId=${body.agentId}, timeout=${finalTimeoutConfig.timeoutMinutes}, autoRenew=${finalTimeoutConfig.autoRenew}, maxDuration=${finalTimeoutConfig.maxDurationMinutes}`);
 
       // Create a unique session ID
       const sessionId = uuidv4();
@@ -569,19 +564,46 @@ export function createSessionsRouter(
         afterDate = new Date(afterTimestamp);
       }
 
-      // Fix: Handle both before and after correctly
-      let messages;
-      if (afterDate) {
-        // When after is specified, we want messages newer than afterDate
-        // Get more messages than limit to filter properly
-        messages = await serverInstance.getMessagesForChannel(
+      // Improved pagination logic with proper data integrity
+      let messages: CentralRootMessage[];
+      
+      if (afterDate && beforeDate) {
+        // When both are specified, get messages in the range
+        // First get all messages before the beforeDate
+        const allMessages = await serverInstance.getMessagesForChannel(
           session.channelId,
-          messageLimit * 2, // Get extra to ensure we have enough after filtering
-          undefined // Don't use beforeDate for initial query
+          messageLimit + 100, // Get extra to handle the range
+          beforeDate
         );
-
-        // Filter messages after the specified date
-        messages = messages.filter((msg) => msg.createdAt > afterDate).slice(0, messageLimit);
+        
+        // Filter to only include messages after the afterDate
+        messages = allMessages
+          .filter((msg) => msg.createdAt > afterDate)
+          .slice(0, messageLimit);
+      } else if (afterDate) {
+        // For "after" pagination, we need to get ALL messages first to properly filter
+        // This is a temporary workaround until getMessagesForChannel supports afterTimestamp
+        const maxFetch = 1000; // Reasonable upper limit to prevent memory issues
+        const allMessages = await serverInstance.getMessagesForChannel(
+          session.channelId,
+          maxFetch,
+          undefined
+        );
+        
+        // Filter messages after the specified date and reverse to get oldest first
+        const filteredMessages = allMessages
+          .filter((msg) => msg.createdAt > afterDate)
+          .reverse(); // Reverse to get oldest first when paginating forward
+        
+        // Take the first 'limit' messages and reverse back to newest first
+        messages = filteredMessages
+          .slice(0, messageLimit)
+          .reverse();
+          
+        // Log warning if we hit the max fetch limit
+        if (allMessages.length === maxFetch) {
+          logger.warn(`[Sessions API] Pagination may be incomplete - hit max fetch limit of ${maxFetch} messages`);
+        }
       } else {
         // Use beforeDate if specified, otherwise get latest messages
         messages = await serverInstance.getMessagesForChannel(
@@ -618,10 +640,27 @@ export function createSessionsRouter(
         };
       });
 
-      const response: GetMessagesResponse = {
+      // Calculate pagination cursors for the response
+      const oldestMessage = simplifiedMessages[simplifiedMessages.length - 1];
+      const newestMessage = simplifiedMessages[0];
+      
+      const response: GetMessagesResponse & {
+        cursors?: {
+          before?: number; // Timestamp to use for getting older messages
+          after?: number;  // Timestamp to use for getting newer messages
+        };
+      } = {
         messages: simplifiedMessages,
         hasMore: messages.length === messageLimit,
       };
+      
+      // Add cursor information if we have messages
+      if (simplifiedMessages.length > 0) {
+        response.cursors = {
+          before: oldestMessage?.createdAt.getTime(),
+          after: newestMessage?.createdAt.getTime(),
+        };
+      }
 
       res.json(response);
     } catch (error) {
@@ -711,7 +750,7 @@ export function createSessionsRouter(
         session.renewalCount
       );
 
-      logger.info(`[Sessions API] Updated timeout config for session ${sessionId}:`, session.timeoutConfig);
+      logger.info(`[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`);
 
       const response = createSessionInfoResponse(session);
       res.json(response);
