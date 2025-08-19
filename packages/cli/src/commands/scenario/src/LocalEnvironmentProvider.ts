@@ -17,13 +17,21 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
   private runtime: AgentRuntime | null = null;
+  private serverPort: number | null = null;
   private trajectoryReconstructor: TrajectoryReconstructor | null = null;
 
-  constructor(server?: AgentServer, agentId?: UUID, runtime?: AgentRuntime) {
+  constructor(server?: AgentServer, agentId?: UUID, runtime?: AgentRuntime, serverPort?: number) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
     this.runtime = runtime ?? null;
+    this.serverPort = serverPort ?? null;
     this.trajectoryReconstructor = runtime ? new TrajectoryReconstructor(runtime) : null;
+
+    console.log(`🔧 [DEBUG] LocalEnvironmentProvider CONSTRUCTOR:`)
+    console.log(`🔧 [DEBUG]   - Server: ${server ? 'present' : 'null'}`)
+    console.log(`🔧 [DEBUG]   - Agent ID: ${agentId}`)
+    console.log(`🔧 [DEBUG]   - Runtime: ${runtime ? 'present' : 'null'}`)
+    console.log(`🔧 [DEBUG]   - Server Port: ${serverPort}`)
   }
 
   async setup(scenario: Scenario): Promise<void> {
@@ -92,7 +100,13 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             'LocalEnvironmentProvider requires a pre-created server and agent for NL input'
           );
         }
-        const { response, roomId } = await askAgentViaApi(this.server, this.agentId, step.input);
+        const { response, roomId } = await askAgentViaApi(
+          this.server,
+          this.agentId,
+          step.input,
+          30000, // timeout
+          this.serverPort // Pass the actual server port
+        );
 
         // Give database time to write logs before reconstructing trajectory 
         await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay to allow async DB writes

@@ -176,6 +176,9 @@ export async function executeMatrixRuns(
   const results: MatrixRunResult[] = [];
   const activeRuns = new Map<string, ActiveRun>();
 
+  // Declare shared server at function scope for cleanup
+  let sharedServer: { server: any; port: number } | null = null;
+
   // Log initial process state
   const initialSummary = processManager.getSummary();
   console.log(`🔧 [DEBUG] [ProcessManager] Initial state: ${initialSummary.total} processes tracked`);
@@ -244,6 +247,39 @@ export async function executeMatrixRuns(
     console.log('🔧 [DEBUG] Matrix configuration saved successfully');
 
     console.log('🔧 [DEBUG] About to execute all combinations');
+
+    // Extract plugins from base scenario configuration (restore dynamic plugin loading)
+    console.log('🔧 [DEBUG] Extracting dynamic plugins from scenario configuration...');
+    const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap']; // Always include core plugins
+    const scenarioPlugins = Array.isArray(baseScenario.plugins)
+      ? baseScenario.plugins
+        .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+        .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+      : [];
+    const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins, '@elizaos/plugin-openai'])); // Always include OpenAI for responses
+    console.log(`🔧 [DEBUG] Dynamic plugins loaded: ${JSON.stringify(finalPlugins)}`);
+
+    console.log(`🔧 [DEBUG] Shared server condition check: combinations.length=${combinations.length}, runs_per_combination=${config.runs_per_combination}`);
+
+    if (combinations.length > 1 || config.runs_per_combination > 1) {
+      console.log('🔧 [DEBUG] Matrix testing detected - creating shared server for better isolation...');
+      const { createScenarioServer } = await import('./runtime-factory');
+
+      try {
+        console.log(`🔧 [DEBUG] Calling createScenarioServer(null, 3000)... (using fixed port 3000 for MessageBusService compatibility)`);
+        const serverResult = await createScenarioServer(null, 3000);
+        sharedServer = {
+          server: serverResult.server,
+          port: serverResult.port
+        };
+        console.log(`🔧 [DEBUG] ✅ Shared server created successfully on port ${sharedServer.port}`);
+        console.log(`🔧 [DEBUG] ✅ Server result details: port=${serverResult.port}, createdServer=${serverResult.createdServer}`);
+      } catch (error) {
+        console.log(`🔧 [DEBUG] ❌ Failed to create shared server, falling back to individual servers: ${error}`);
+        sharedServer = null;
+      }
+    }
+
     // Execute all combinations
     let runCounter = 0;
     console.log(`🔧 [DEBUG] Total combinations to execute: ${combinations.length}`);
@@ -284,7 +320,7 @@ export async function executeMatrixRuns(
         console.log(`🔧 [DEBUG] Slot available, about to start the run ${runId}`);
         console.log(`🔧 [DEBUG] About to call executeIndividualRun with timeout: ${runTimeout}ms`);
 
-        // Start the run
+        // Start the run (with optional shared server)
         const runPromise = executeIndividualRun(
           runId,
           combination,
@@ -292,7 +328,9 @@ export async function executeMatrixRuns(
           outputDir,
           progressTracker,
           resourceMonitor,
-          runTimeout
+          runTimeout,
+          sharedServer ?? undefined, // Pass shared server if available
+          finalPlugins // Pass dynamic plugins from scenario configuration
         );
 
         // Track active run
@@ -422,6 +460,18 @@ export async function executeMatrixRuns(
 
     return results;
   } finally {
+    // Cleanup shared server if it was created
+    if (sharedServer) {
+      console.log(`🔧 [DEBUG] Shutting down shared server on port ${sharedServer.port}...`);
+      try {
+        const { shutdownScenarioServer } = await import('./runtime-factory');
+        await shutdownScenarioServer(sharedServer.server, sharedServer.port);
+        console.log(`🔧 [DEBUG] ✅ Shared server shutdown completed`);
+      } catch (error) {
+        console.log(`🔧 [DEBUG] ❌ Failed to shutdown shared server: ${error}`);
+      }
+    }
+
     // Cleanup
     resourceMonitor.stop();
 
@@ -453,7 +503,9 @@ async function executeIndividualRun(
   outputDir: string,
   progressTracker: ProgressTracker,
   resourceMonitor: ResourceMonitor,
-  timeout: number
+  timeout: number,
+  sharedServer?: { server: any; port: number }, // Optional shared server for matrix testing
+  dynamicPlugins?: string[] // Plugins extracted from scenario configuration
 ): Promise<MatrixRunResult> {
   console.log(`🔧 [DEBUG] executeIndividualRun started for runId: ${runId} with timeout: ${timeout}ms`);
   const startTime = new Date();
@@ -495,7 +547,10 @@ async function executeIndividualRun(
           timeout,
           (progress, status) => {
             progressTracker.updateRunProgress(runId, progress, status);
-          }
+          },
+          sharedServer, // Pass shared server if available
+          runId, // Pass runId for unique agent naming
+          dynamicPlugins // Pass dynamic plugins from scenario configuration
         ),
         timeoutPromise
       ]);
@@ -580,7 +635,10 @@ async function executeScenarioWithTimeout(
   scenarioPath: string,
   context: IsolationContext,
   timeout: number,
-  onProgress: (progress: number, status: string) => void
+  onProgress: (progress: number, status: string) => void,
+  sharedServer?: { server: any; port: number }, // Optional shared server for matrix testing
+  runId?: string, // Optional run ID for unique agent naming
+  dynamicPlugins?: string[] // Plugins extracted from scenario configuration
 ): Promise<any> {
   return new Promise(async (resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
@@ -608,10 +666,7 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const { createScenarioServerAndAgent, shutdownScenarioServer } = await import('./runtime-factory');
-
-      // Create server and runtime for this isolated run
-      // Use the context directly for isolation
+      const { createScenarioServerAndAgent, createScenarioServer, createScenarioAgent, shutdownScenarioServer } = await import('./runtime-factory');
 
       // Override environment variables for isolation
       const originalEnv = process.env;
@@ -626,13 +681,51 @@ async function executeScenarioWithTimeout(
       try {
         onProgress(0.4, 'Initializing agent runtime...');
 
-        const { server, runtime, agentId, port } = await createScenarioServerAndAgent(
-          null,
-          0, // Let it pick a random port
-          ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'] // Minimal plugins for matrix testing
-        );
+        let server: any;
+        let runtime: any;
+        let agentId: any;
+        let port: number;
+        let serverCreated = false;
 
-        const provider = new LocalEnvironmentProvider(server, agentId, runtime as any);
+        if (sharedServer) {
+          // Use shared server pattern for matrix testing
+          console.log(`🔧 [DEBUG] Using shared server on port ${sharedServer.port} for agent creation`);
+          console.log(`🔧 [DEBUG] Dynamic plugins for agent: ${JSON.stringify(dynamicPlugins)}`);
+          server = sharedServer.server;
+          port = sharedServer.port;
+
+          // Create new agent on shared server (with unique ID for isolation)
+          const uniqueAgentName = `scenario-agent-${runId}`;
+          console.log(`🔧 [DEBUG] Creating unique agent: ${uniqueAgentName} for run: ${runId}`);
+          const agentResult = await createScenarioAgent(
+            server,
+            uniqueAgentName, // Unique agent name per run
+            dynamicPlugins || ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'] // Use dynamic or fallback plugins
+          );
+          runtime = agentResult.runtime;
+          agentId = agentResult.agentId;
+          serverCreated = false; // We didn't create the server, so don't shut it down
+          console.log(`🔧 [DEBUG] Agent ${agentId} created successfully on shared server port ${port}`);
+        } else {
+          // Single scenario pattern (backward compatibility) - use unique agent name
+          const uniqueAgentName = `scenario-agent-${runId}`;
+          console.log(`🔧 [DEBUG] Creating single scenario with unique agent: ${uniqueAgentName} for run: ${runId}`);
+          console.log(`🔧 [DEBUG] Dynamic plugins for single scenario: ${JSON.stringify(dynamicPlugins)}`);
+          const result = await createScenarioServerAndAgent(
+            null,
+            3000, // Use fixed port 3000 for MessageBusService compatibility
+            dynamicPlugins || ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'], // Use dynamic or fallback plugins
+            uniqueAgentName // Pass unique agent name
+          );
+          server = result.server;
+          runtime = result.runtime;
+          agentId = result.agentId;
+          port = result.port;
+          serverCreated = result.createdServer;
+        }
+
+        console.log(`🔧 [DEBUG] Creating LocalEnvironmentProvider with port: ${port}`)
+        const provider = new LocalEnvironmentProvider(server, agentId, runtime as any, port);
 
         onProgress(0.5, 'Setting up scenario environment...');
 
@@ -669,8 +762,22 @@ async function executeScenarioWithTimeout(
           success = evaluationResults.length > 0 && evaluationResults.every((r) => r.success);
         }
 
-        // Cleanup server using proper shutdown function
-        await shutdownScenarioServer(server, port);
+        // Cleanup: Only shut down server if we created it (single scenario mode)
+        // For shared server mode, we only clean up the agent
+        if (serverCreated) {
+          console.log(`🔧 [DEBUG] Shutting down individual scenario server on port ${port}`);
+          await shutdownScenarioServer(server, port);
+        } else {
+          console.log(`🔧 [DEBUG] Stopping agent ${agentId} on shared server (keeping server running)`);
+          // Stop the agent but keep the server running
+          if (server && typeof server.unregisterAgent === 'function') {
+            console.log(`🔧 [DEBUG] Calling server.unregisterAgent(${agentId})`);
+            server.unregisterAgent(agentId);
+            console.log(`🔧 [DEBUG] ✅ Agent ${agentId} unregistered successfully`);
+          } else {
+            console.log(`🔧 [DEBUG] ⚠️  Server missing unregisterAgent method`);
+          }
+        }
 
         onProgress(1.0, 'Complete');
 
@@ -720,27 +827,29 @@ async function waitForAvailableSlot(
   maxParallel: number
 ): Promise<void> {
   while (activeRuns.size >= maxParallel) {
+    console.log(`🔧 [DEBUG] Waiting for slot... activeRuns.size=${activeRuns.size}, maxParallel=${maxParallel}`);
+
     // Wait for at least one run to complete
     const promises = Array.from(activeRuns.values()).map((run) => run.promise);
-    await Promise.race(promises);
+    if (promises.length === 0) {
+      console.log(`🔧 [DEBUG] No active promises found, breaking out of wait loop`);
+      break;
+    }
 
-    // Clean up completed runs
-    for (const [runId, activeRun] of activeRuns.entries()) {
-      try {
-        const isSettled = await Promise.race([
-          activeRun.promise.then(() => true),
-          Promise.resolve(false),
-        ]);
+    console.log(`🔧 [DEBUG] Waiting for one of ${promises.length} promises to complete...`);
+    try {
+      await Promise.race(promises);
+      console.log(`🔧 [DEBUG] A promise completed, checking for cleanup...`);
 
-        if (isSettled) {
-          activeRuns.delete(runId);
-        }
-      } catch {
-        // Run failed, will be cleaned up elsewhere
-        activeRuns.delete(runId);
-      }
+      // Give the promise handlers time to clean up
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log(`🔧 [DEBUG] After cleanup wait, activeRuns.size=${activeRuns.size}`);
+    } catch (error) {
+      console.log(`🔧 [DEBUG] Promise race failed: ${error}`);
+      break;
     }
   }
+  console.log(`🔧 [DEBUG] Available slot found! activeRuns.size=${activeRuns.size}`);
 }
 
 /**

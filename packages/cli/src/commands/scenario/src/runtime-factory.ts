@@ -60,23 +60,18 @@ async function findAvailablePort(startPort: number, endPort: number): Promise<nu
   throw new Error(`No available ports found in range ${startPort}-${endPort}`);
 }
 
+
 /**
- * Create (or reuse) an AgentServer and start a minimal test agent for scenarios.
- * Returns the server, runtime, agentId and port. The caller is responsible for cleanup.
+ * Creates and initializes a properly configured AgentServer for scenario testing
+ * @param existingServer - Optional existing server to reuse
+ * @param desiredPort - Port to run on (0 for auto-find)
+ * @returns Configured and started AgentServer with port info
  */
-export async function createScenarioServerAndAgent(
+export async function createScenarioServer(
   existingServer: AgentServer | null = null,
-  desiredPort: number = 3000,
-  pluginNames: string[] = [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-openai',
-    '@elizaos/plugin-bootstrap',
-    '@elizaos/plugin-e2b',
-  ]
+  desiredPort: number = 3000
 ): Promise<{
   server: AgentServer;
-  runtime: IAgentRuntime;
-  agentId: UUID;
   port: number;
   createdServer: boolean;
 }> {
@@ -150,9 +145,33 @@ export async function createScenarioServerAndAgent(
     throw new Error('Failed to create or initialize server after retries');
   }
 
+  return { server, port, createdServer };
+}
+
+/**
+ * Creates and starts an agent on an existing AgentServer
+ * @param server - The AgentServer to create agent on
+ * @param agentName - Unique name for the agent (defaults to 'scenario-agent')
+ * @param pluginNames - Plugins to load for the agent
+ * @returns Started agent runtime and ID
+ */
+export async function createScenarioAgent(
+  server: AgentServer,
+  agentName: string = 'scenario-agent',
+  pluginNames: string[] = [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-e2b',
+  ]
+): Promise<{
+  runtime: IAgentRuntime;
+  agentId: UUID;
+}> {
+  console.log(`🔧 [DEBUG] createScenarioAgent called for agent: ${agentName}, plugins: ${pluginNames.join(', ')}`);
   const character: Character = {
-    name: 'scenario-agent',
-    id: stringToUuid('scenario-agent'),
+    name: agentName,
+    id: stringToUuid(agentName),
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
@@ -176,6 +195,36 @@ export async function createScenarioServerAndAgent(
   // Pass raw character; encryption is handled inside startAgent
   const runtime = await server.startAgent(character);
   const agentId = runtime.character.id as UUID;
+
+  return { runtime, agentId };
+}
+
+/**
+ * Creates a configured AgentServer and starts an agent (backward compatible wrapper)
+ * @deprecated Consider using createScenarioServer() + createScenarioAgent() for better flexibility
+ */
+export async function createScenarioServerAndAgent(
+  existingServer: AgentServer | null = null,
+  desiredPort: number = 3000,
+  pluginNames: string[] = [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-bootstrap',
+    '@elizaos/plugin-e2b',
+  ],
+  agentName: string = 'scenario-agent'
+): Promise<{
+  server: AgentServer;
+  runtime: IAgentRuntime;
+  agentId: UUID;
+  port: number;
+  createdServer: boolean;
+}> {
+  // Step 1: Create/configure the server
+  const { server, port, createdServer } = await createScenarioServer(existingServer, desiredPort);
+
+  // Step 2: Create the agent on the server
+  const { runtime, agentId } = await createScenarioAgent(server, agentName, pluginNames);
 
   return { server, runtime, agentId, port, createdServer };
 }
@@ -218,62 +267,117 @@ export async function askAgentViaApi(
   server: AgentServer,
   agentId: UUID,
   input: string,
-  timeoutMs: number = 30000
+  timeoutMs: number = 30000,
+  serverPort?: number | null
 ): Promise<{ response: string; roomId: UUID }> {
-  const port = (server as any)?.port ?? 3000;
-  const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
-  const { servers } = await client.messaging.listServers();
-  if (servers.length === 0) throw new Error('No servers found');
-  const defaultServer = servers[0];
-  const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
-  const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: 'scenario-test-channel',
-      server_id: defaultServer.id,
-      participantCentralUserIds: [testUserId],
-      type: ChannelType.GROUP,
-      metadata: { scenario: true },
-    }),
-  });
-  if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
-  const channelResult = await channelResponse.json();
-  const channel = channelResult.data;
-  await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
-  // Post a message using the server's expected payload (requires author_id and server_id)
-  const postResp = await fetch(
-    `http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`,
-    {
+  console.log(`🔧 [askAgentViaApi] === FUNCTION START ===`);
+  console.log(`🔧 [askAgentViaApi] Parameters: agentId=${agentId}, input="${input}", serverPort=${serverPort}`);
+
+  try {
+    // Use provided port or try to extract from server, fallback to 3000
+    const port = serverPort ?? (server as any)?.port ?? 3000;
+    console.log(`🔧 [askAgentViaApi] Port calculation: provided=${serverPort}, server.port=${(server as any)?.port}, final=${port}`);
+
+    console.log(`🔧 [askAgentViaApi] Creating ElizaClient with baseUrl: http://localhost:${port}`);
+    console.log(`🔧 [askAgentViaApi] Environment check for comparison:`);
+    console.log(`🔧 [askAgentViaApi]   - SERVER_PORT env: ${process.env.SERVER_PORT || 'NOT SET'}`);
+    console.log(`🔧 [askAgentViaApi]   - CENTRAL_MESSAGE_SERVER_URL env: ${process.env.CENTRAL_MESSAGE_SERVER_URL || 'NOT SET'}`);
+    const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
+    console.log(`🔧 [askAgentViaApi] ✅ ElizaClient created`);
+
+    console.log(`🔧 [askAgentViaApi] About to call client.messaging.listServers()...`);
+    const { servers } = await client.messaging.listServers();
+    console.log(`🔧 [askAgentViaApi] ✅ listServers() returned ${servers.length} servers`);
+
+    if (servers.length === 0) throw new Error('No servers found');
+    const defaultServer = servers[0];
+    console.log(`🔧 [askAgentViaApi] Using server: ${defaultServer.id} (${defaultServer.name || 'unnamed'})`);
+
+    const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
+    console.log(`🔧 [askAgentViaApi] Test user ID: ${testUserId}`);
+
+    console.log(`🔧 [askAgentViaApi] About to create channel via POST /api/messaging/central-channels...`);
+    const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        author_id: testUserId,
-        content: input,
+        name: 'scenario-test-channel',
         server_id: defaultServer.id,
-        metadata: { scenario: true, user_display_name: 'Scenario User' },
-        source_type: 'scenario_message',
+        participantCentralUserIds: [testUserId],
+        type: ChannelType.GROUP,
+        metadata: { scenario: true },
       }),
-    }
-  );
-  if (!postResp.ok) {
-    const errText = await postResp.text();
-    throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
-  }
-  await postResp.json();
-  const startTime = Date.now();
+    });
+    console.log(`🔧 [askAgentViaApi] Channel creation response status: ${channelResponse.status}`);
+    if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
 
-  // Preemptively wait for action response
-  await new Promise((resolve) => setTimeout(resolve, timeoutMs));
-  const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
-  const agentMessages = messages.messages.filter(
-    (msg: any) => msg.authorId === agentId && msg.created_at > startTime
-  );
-  if (agentMessages.length > 0) {
-    const latestMessage = agentMessages.sort(
-      (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    )[0];
-    return { response: latestMessage.content, roomId: channel.id as UUID };
+    console.log(`🔧 [askAgentViaApi] About to parse channel response JSON...`);
+    const channelResult = await channelResponse.json();
+    console.log(`🔧 [askAgentViaApi] ✅ Channel response parsed`);
+
+    const channel = channelResult.data;
+    console.log(`🔧 [askAgentViaApi] Channel created: ${channel.id} (${channel.name || 'unnamed'})`);
+
+    console.log(`🔧 [askAgentViaApi] About to add agent ${agentId} to channel ${channel.id}...`);
+    await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
+    console.log(`🔧 [askAgentViaApi] ✅ Agent added to channel`);
+
+    console.log(`🔧 [askAgentViaApi] About to post message via POST /api/messaging/central-channels/${channel.id}/messages...`);
+    // Post a message using the server's expected payload (requires author_id and server_id)
+    const postResp = await fetch(
+      `http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          author_id: testUserId,
+          content: input,
+          server_id: defaultServer.id,
+          metadata: { scenario: true, user_display_name: 'Scenario User' },
+          source_type: 'scenario_message',
+        }),
+      }
+    );
+    console.log(`🔧 [askAgentViaApi] Message post response status: ${postResp.status}`);
+    if (!postResp.ok) {
+      const errText = await postResp.text();
+      console.log(`🔧 [askAgentViaApi] ❌ Post failed: ${postResp.status} - ${errText}`);
+      throw new Error(`Post message failed: ${postResp.status} - ${errText}`);
+    }
+
+    console.log(`🔧 [askAgentViaApi] About to parse post response JSON...`);
+    await postResp.json();
+    console.log(`🔧 [askAgentViaApi] ✅ Message posted successfully`);
+
+    const startTime = Date.now();
+    console.log(`🔧 [askAgentViaApi] Starting time: ${startTime}, waiting ${timeoutMs}ms for response...`);
+
+    // Preemptively wait for action response
+    await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+    console.log(`🔧 [askAgentViaApi] Wait period finished, checking for messages...`);
+
+    console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
+    const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
+    console.log(`🔧 [askAgentViaApi] ✅ Got ${messages.messages?.length || 0} messages from channel`);
+
+    const agentMessages = messages.messages.filter(
+      (msg: any) => msg.authorId === agentId && msg.created_at > startTime
+    );
+    console.log(`🔧 [askAgentViaApi] Found ${agentMessages.length} agent messages after startTime`);
+
+    if (agentMessages.length > 0) {
+      const latestMessage = agentMessages.sort(
+        (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )[0];
+      console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
+      return { response: latestMessage.content, roomId: channel.id as UUID };
+    }
+
+    console.log(`🔧 [askAgentViaApi] ❌ No agent messages found - timeout`);
+    throw new Error('Timeout waiting for agent response');
+
+  } catch (error) {
+    console.log(`🔧 [askAgentViaApi] ❌ EXCEPTION CAUGHT:`, error);
+    throw error; // Re-throw the error
   }
-  throw new Error('Timeout waiting for agent response');
 }
