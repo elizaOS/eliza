@@ -7,8 +7,7 @@
  * @module bun-test-helpers
  */
 
-import type { SpawnOptions } from 'bun';
-import { join } from 'path';
+import { join, normalize } from 'path';
 
 /**
  * Options for bunExecSync function
@@ -28,6 +27,26 @@ export interface BunExecSyncOptions {
   maxBuffer?: number;
   /** Shell to use for command execution */
   shell?: boolean | string;
+}
+
+/**
+ * Normalizes a file path for use in shell commands.
+ * Ensures proper formatting and escaping for the target platform.
+ *
+ * @param filepath - Path to normalize
+ * @returns Normalized path suitable for shell commands
+ */
+export function normalizePathForShell(filepath: string): string {
+  // Normalize the path to handle . and .. segments, duplicate slashes, etc.
+  const normalized = normalize(filepath);
+
+  // On Windows, ensure backslashes are used consistently
+  // path.normalize already does this, but being explicit for clarity
+  if (process.platform === 'win32') {
+    return normalized.replace(/\//g, '\\');
+  }
+
+  return normalized;
 }
 
 /**
@@ -58,7 +77,6 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     stdio = 'pipe',
     encoding = 'utf8',
     timeout,
-    maxBuffer = 1024 * 1024, // 1MB default
     shell = true,
   } = options;
 
@@ -75,13 +93,10 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
     // If the command already contains quotes, we need to handle them carefully
     let shellArgs: string[];
     if (process.platform === 'win32') {
-      // Windows cmd.exe: If command contains quotes, wrap entire command in quotes and escape internal quotes
-      if (command.includes('"')) {
-        // Don't add extra quotes if the command is already properly quoted
-        shellArgs = ['/c', command];
-      } else {
-        shellArgs = ['/c', command];
-      }
+      // Windows cmd.exe: Handle commands with quoted paths properly
+      // The /s flag tells cmd.exe to treat the entire command as is, without extra quote processing
+      // This is crucial for commands that already have properly quoted paths
+      shellArgs = ['/s', '/c', command];
     } else {
       shellArgs = ['-c', command];
     }
@@ -96,12 +111,12 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
   }
 
   // Configure spawn options
-  const spawnOptions: SpawnOptions.Sync = {
+  const spawnOptions = {
     cwd,
     env: env as Record<string, string | undefined>,
-    stdout: stdio === 'inherit' ? 'inherit' : 'pipe',
-    stderr: stdio === 'inherit' ? 'inherit' : 'pipe',
-    stdin: stdio === 'inherit' ? 'inherit' : 'ignore',
+    stdout: (stdio === 'inherit' ? 'inherit' : 'pipe') as 'inherit' | 'pipe',
+    stderr: (stdio === 'inherit' ? 'inherit' : 'pipe') as 'inherit' | 'pipe',
+    stdin: 'ignore' as const,
   };
 
   // Execute command
@@ -114,24 +129,35 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
 
   // Handle errors
   if (proc.exitCode !== 0) {
-    const error = new Error(`Command failed: ${command}\n${proc.stderr}`);
+    const stderr = proc.stderr ? proc.stderr.toString().trim() : '';
+    const stdout = proc.stdout ? proc.stdout.toString().trim() : '';
+    const error = new Error(
+      `Command failed with exit code ${proc.exitCode}: ${command}\n` +
+      `Working directory: ${cwd}\n` +
+      (stderr ? `Stderr: ${stderr}\n` : '') +
+      (stdout ? `Stdout: ${stdout}\n` : '')
+    );
     const enhancedError = error as Error & {
       status: number | null;
       stderr: string;
       stdout: string;
+      command: string;
+      cwd: string;
     };
     enhancedError.status = proc.exitCode;
-    enhancedError.stderr = proc.stderr;
-    enhancedError.stdout = proc.stdout;
-    throw error;
+    enhancedError.stderr = stderr;
+    enhancedError.stdout = stdout;
+    enhancedError.command = command;
+    enhancedError.cwd = cwd;
+    throw enhancedError;
   }
 
   // Return output
   if (encoding === 'buffer') {
-    return Buffer.from(proc.stdout);
+    return proc.stdout ? Buffer.from(proc.stdout) : Buffer.alloc(0);
   }
 
-  return proc.stdout.toString();
+  return proc.stdout ? proc.stdout.toString() : '';
 }
 
 /**
@@ -157,14 +183,14 @@ export function bunExecSync(command: string, options: BunExecSyncOptions = {}): 
 export function bunSpawn(
   command: string,
   args: string[] = [],
-  options: Partial<SpawnOptions.OptionsObject> = {}
+  options: Parameters<typeof Bun.spawn>[1] = {}
 ): ReturnType<typeof Bun.spawn> {
-  const defaultOptions: SpawnOptions.OptionsObject = {
+  const defaultOptions = {
     cwd: process.cwd(),
     env: process.env as Record<string, string | undefined>,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    stdin: 'pipe',
+    stdout: 'pipe' as const,
+    stderr: 'pipe' as const,
+    stdin: 'pipe' as const,
   };
 
   return Bun.spawn([command, ...args], {
@@ -312,7 +338,8 @@ export function createMockProcess(stdout: string = '', stderr: string = '', exit
  * ```
  */
 export async function execWithTimeout(command: string, timeoutMs: number = 30000): Promise<string> {
-  const proc = bunSpawn(...parseCommand(command).command.split(' '), {
+  const parsed = parseCommand(command);
+  const proc = bunSpawn(parsed.command, parsed.args, {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -326,10 +353,14 @@ export async function execWithTimeout(command: string, timeoutMs: number = 30000
     clearTimeout(timeout);
 
     if (proc.exitCode !== 0) {
-      throw new Error(`Command failed: ${command}\n${proc.stderr}`);
+      const stderr = proc.stderr && typeof proc.stderr !== 'number' ? await new Response(proc.stderr).text() : '';
+      throw new Error(`Command failed: ${command}\n${stderr}`);
     }
 
-    return await new Response(proc.stdout).text();
+    if (proc.stdout && typeof proc.stdout !== 'number') {
+      return await new Response(proc.stdout).text();
+    }
+    return '';
   } catch (error) {
     clearTimeout(timeout);
     throw error;
