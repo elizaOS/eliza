@@ -41,16 +41,75 @@ export interface SessionRouter extends express.Router {
   cleanup: () => void;
 }
 
-// Session configuration constants
-const DEFAULT_TIMEOUT_MINUTES = parseInt(process.env.SESSION_DEFAULT_TIMEOUT_MINUTES || '30');
-const MIN_TIMEOUT_MINUTES = parseInt(process.env.SESSION_MIN_TIMEOUT_MINUTES || '5');
-const MAX_TIMEOUT_MINUTES = parseInt(process.env.SESSION_MAX_TIMEOUT_MINUTES || '1440'); // 24 hours
-const DEFAULT_MAX_DURATION_MINUTES = parseInt(process.env.SESSION_MAX_DURATION_MINUTES || '720'); // 12 hours
-const DEFAULT_WARNING_THRESHOLD_MINUTES = parseInt(
-  process.env.SESSION_WARNING_THRESHOLD_MINUTES || '5'
+/**
+ * Safely parses an integer from a string with fallback
+ * Handles NaN, undefined, and invalid inputs gracefully
+ * @param value - The value to parse
+ * @param fallback - Default value if parsing fails
+ * @param min - Optional minimum value (inclusive)
+ * @param max - Optional maximum value (inclusive)
+ * @returns Parsed integer or fallback value
+ */
+function safeParseInt(
+  value: string | undefined,
+  fallback: number,
+  min?: number,
+  max?: number
+): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = parseInt(value, 10);
+
+  // Check for NaN or invalid number
+  if (isNaN(parsed) || !isFinite(parsed)) {
+    logger.warn(`[Sessions API] Invalid integer value: "${value}", using fallback: ${fallback}`);
+    return fallback;
+  }
+
+  // Apply bounds if specified
+  let result = parsed;
+  if (min !== undefined && result < min) {
+    logger.warn(`[Sessions API] Value ${result} is below minimum ${min}, clamping to minimum`);
+    result = min;
+  }
+  if (max !== undefined && result > max) {
+    logger.warn(`[Sessions API] Value ${result} is above maximum ${max}, clamping to maximum`);
+    result = max;
+  }
+
+  return result;
+}
+
+// Session configuration constants with safe parsing
+const DEFAULT_TIMEOUT_MINUTES = safeParseInt(
+  process.env.SESSION_DEFAULT_TIMEOUT_MINUTES,
+  30,
+  1,
+  10080 // 7 days max
+);
+const MIN_TIMEOUT_MINUTES = safeParseInt(process.env.SESSION_MIN_TIMEOUT_MINUTES, 5, 1, 60);
+const MAX_TIMEOUT_MINUTES = safeParseInt(
+  process.env.SESSION_MAX_TIMEOUT_MINUTES,
+  1440, // 24 hours
+  60,
+  10080 // 7 days max
+);
+const DEFAULT_MAX_DURATION_MINUTES = safeParseInt(
+  process.env.SESSION_MAX_DURATION_MINUTES,
+  720, // 12 hours
+  60,
+  20160 // 14 days max
+);
+const DEFAULT_WARNING_THRESHOLD_MINUTES = safeParseInt(
+  process.env.SESSION_WARNING_THRESHOLD_MINUTES,
+  5,
+  1,
+  60
 );
 const CLEANUP_INTERVAL_MS =
-  parseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES || '5') * 60 * 1000;
+  safeParseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES, 5, 1, 60) * 60 * 1000;
 
 // Session storage
 const sessions = new Map<string, Session>();
@@ -113,6 +172,7 @@ function isSendMessageRequest(obj: unknown): obj is SendMessageRequest {
 
 /**
  * Type guard for timeout configuration
+ * Accepts numbers or strings (which will be parsed later)
  */
 function isValidTimeoutConfig(obj: unknown): obj is SessionTimeoutConfig {
   if (!obj || typeof obj !== 'object') {
@@ -121,11 +181,16 @@ function isValidTimeoutConfig(obj: unknown): obj is SessionTimeoutConfig {
 
   const config = obj as Record<string, unknown>;
   return (
-    (config.timeoutMinutes === undefined || typeof config.timeoutMinutes === 'number') &&
+    (config.timeoutMinutes === undefined ||
+      typeof config.timeoutMinutes === 'number' ||
+      typeof config.timeoutMinutes === 'string') &&
     (config.autoRenew === undefined || typeof config.autoRenew === 'boolean') &&
-    (config.maxDurationMinutes === undefined || typeof config.maxDurationMinutes === 'number') &&
+    (config.maxDurationMinutes === undefined ||
+      typeof config.maxDurationMinutes === 'number' ||
+      typeof config.maxDurationMinutes === 'string') &&
     (config.warningThresholdMinutes === undefined ||
-      typeof config.warningThresholdMinutes === 'number')
+      typeof config.warningThresholdMinutes === 'number' ||
+      typeof config.warningThresholdMinutes === 'string')
   );
 }
 
@@ -156,19 +221,38 @@ function getAgentTimeoutConfig(agent: IAgentRuntime): SessionTimeoutConfig {
     return agentTimeoutConfigs.get(agent.agentId)!;
   }
 
-  // Try to get from agent settings
+  // Try to get from agent settings with safe parsing
+  const timeoutSetting = agent.getSetting('SESSION_TIMEOUT_MINUTES');
+  const maxDurationSetting = agent.getSetting('SESSION_MAX_DURATION_MINUTES');
+  const warningThresholdSetting = agent.getSetting('SESSION_WARNING_THRESHOLD_MINUTES');
+
   const agentConfig: SessionTimeoutConfig = {
-    timeoutMinutes: agent.getSetting('SESSION_TIMEOUT_MINUTES')
-      ? parseInt(agent.getSetting('SESSION_TIMEOUT_MINUTES') as string)
+    timeoutMinutes: timeoutSetting
+      ? safeParseInt(
+          String(timeoutSetting),
+          DEFAULT_TIMEOUT_MINUTES,
+          MIN_TIMEOUT_MINUTES,
+          MAX_TIMEOUT_MINUTES
+        )
       : DEFAULT_TIMEOUT_MINUTES,
     autoRenew: agent.getSetting('SESSION_AUTO_RENEW')
       ? agent.getSetting('SESSION_AUTO_RENEW') === 'true'
       : true,
-    maxDurationMinutes: agent.getSetting('SESSION_MAX_DURATION_MINUTES')
-      ? parseInt(agent.getSetting('SESSION_MAX_DURATION_MINUTES') as string)
+    maxDurationMinutes: maxDurationSetting
+      ? safeParseInt(
+          String(maxDurationSetting),
+          DEFAULT_MAX_DURATION_MINUTES,
+          MIN_TIMEOUT_MINUTES,
+          MAX_TIMEOUT_MINUTES * 2
+        )
       : DEFAULT_MAX_DURATION_MINUTES,
-    warningThresholdMinutes: agent.getSetting('SESSION_WARNING_THRESHOLD_MINUTES')
-      ? parseInt(agent.getSetting('SESSION_WARNING_THRESHOLD_MINUTES') as string)
+    warningThresholdMinutes: warningThresholdSetting
+      ? safeParseInt(
+          String(warningThresholdSetting),
+          DEFAULT_WARNING_THRESHOLD_MINUTES,
+          1,
+          MAX_TIMEOUT_MINUTES
+        )
       : DEFAULT_WARNING_THRESHOLD_MINUTES,
   };
 
@@ -201,13 +285,21 @@ function mergeTimeoutConfigs(
 
   // Apply session config (overrides agent config)
   if (sessionConfig) {
-    // Validate and apply timeout minutes
+    // Validate and apply timeout minutes with NaN protection
     if (sessionConfig.timeoutMinutes !== undefined) {
-      const timeout = Math.max(
-        MIN_TIMEOUT_MINUTES,
-        Math.min(MAX_TIMEOUT_MINUTES, sessionConfig.timeoutMinutes)
-      );
-      merged.timeoutMinutes = timeout;
+      const timeoutValue = Number(sessionConfig.timeoutMinutes);
+
+      // Check for NaN or invalid number
+      if (isNaN(timeoutValue) || !isFinite(timeoutValue)) {
+        logger.warn(
+          `[Sessions API] Invalid timeout minutes in session config: ${sessionConfig.timeoutMinutes}, using default`
+        );
+        merged.timeoutMinutes = DEFAULT_TIMEOUT_MINUTES;
+      } else {
+        // Clamp to valid range
+        const timeout = Math.max(MIN_TIMEOUT_MINUTES, Math.min(MAX_TIMEOUT_MINUTES, timeoutValue));
+        merged.timeoutMinutes = timeout;
+      }
     }
 
     if (sessionConfig.autoRenew !== undefined) {
@@ -215,14 +307,36 @@ function mergeTimeoutConfigs(
     }
 
     if (sessionConfig.maxDurationMinutes !== undefined) {
-      merged.maxDurationMinutes = Math.max(
-        merged.timeoutMinutes!,
-        Math.min(MAX_TIMEOUT_MINUTES * 2, sessionConfig.maxDurationMinutes)
-      );
+      const maxDurationValue = Number(sessionConfig.maxDurationMinutes);
+
+      // Check for NaN or invalid number
+      if (isNaN(maxDurationValue) || !isFinite(maxDurationValue)) {
+        logger.warn(
+          `[Sessions API] Invalid max duration minutes in session config: ${sessionConfig.maxDurationMinutes}, using default`
+        );
+        merged.maxDurationMinutes = DEFAULT_MAX_DURATION_MINUTES;
+      } else {
+        // Ensure max duration is at least as long as timeout
+        merged.maxDurationMinutes = Math.max(
+          merged.timeoutMinutes!,
+          Math.min(MAX_TIMEOUT_MINUTES * 2, maxDurationValue)
+        );
+      }
     }
 
     if (sessionConfig.warningThresholdMinutes !== undefined) {
-      merged.warningThresholdMinutes = Math.max(1, sessionConfig.warningThresholdMinutes);
+      const warningValue = Number(sessionConfig.warningThresholdMinutes);
+
+      // Check for NaN or invalid number
+      if (isNaN(warningValue) || !isFinite(warningValue)) {
+        logger.warn(
+          `[Sessions API] Invalid warning threshold minutes in session config: ${sessionConfig.warningThresholdMinutes}, using default`
+        );
+        merged.warningThresholdMinutes = DEFAULT_WARNING_THRESHOLD_MINUTES;
+      } else {
+        // Ensure warning threshold is at least 1 minute
+        merged.warningThresholdMinutes = Math.max(1, warningValue);
+      }
     }
   }
 
@@ -700,11 +814,9 @@ export function createSessionsRouter(
       // Parse and validate query parameters
       let messageLimit = DEFAULT_LIMIT;
       if (query.limit) {
-        const parsedLimit = parseInt(query.limit, 10);
-        if (isNaN(parsedLimit) || parsedLimit < 1) {
-          throw new InvalidPaginationError('limit', query.limit, 'Must be a positive integer');
-        }
-        messageLimit = Math.min(parsedLimit, MAX_LIMIT);
+        const parsedLimit = safeParseInt(query.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
+        // Since safeParseInt handles NaN, we can directly use the result
+        messageLimit = parsedLimit;
       }
 
       let beforeDate: Date | undefined;
@@ -712,7 +824,7 @@ export function createSessionsRouter(
 
       if (query.before) {
         const beforeTimestamp = parseInt(query.before, 10);
-        if (isNaN(beforeTimestamp)) {
+        if (isNaN(beforeTimestamp) || !isFinite(beforeTimestamp)) {
           throw new InvalidPaginationError('before', query.before, 'Must be a valid timestamp');
         }
         beforeDate = new Date(beforeTimestamp);
@@ -723,7 +835,7 @@ export function createSessionsRouter(
 
       if (query.after) {
         const afterTimestamp = parseInt(query.after, 10);
-        if (isNaN(afterTimestamp)) {
+        if (isNaN(afterTimestamp) || !isFinite(afterTimestamp)) {
           throw new InvalidPaginationError('after', query.after, 'Must be a valid timestamp');
         }
         afterDate = new Date(afterTimestamp);
@@ -898,20 +1010,22 @@ export function createSessionsRouter(
         throw new SessionExpiredError(sessionId, session.expiresAt);
       }
 
-      // Validate the new config
+      // Validate the new config structure
       if (!isValidTimeoutConfig(newConfig)) {
         throw new InvalidTimeoutConfigError('Invalid timeout configuration format', newConfig);
       }
 
+      // Validate numeric bounds only for valid numbers
       if (newConfig.timeoutMinutes !== undefined) {
-        if (
-          newConfig.timeoutMinutes < MIN_TIMEOUT_MINUTES ||
-          newConfig.timeoutMinutes > MAX_TIMEOUT_MINUTES
-        ) {
-          throw new InvalidTimeoutConfigError(
-            `Timeout must be between ${MIN_TIMEOUT_MINUTES} and ${MAX_TIMEOUT_MINUTES} minutes`,
-            newConfig
-          );
+        const timeoutValue = Number(newConfig.timeoutMinutes);
+        // Only validate range if it's a valid number (NaN will be handled by mergeTimeoutConfigs)
+        if (!isNaN(timeoutValue) && isFinite(timeoutValue)) {
+          if (timeoutValue < MIN_TIMEOUT_MINUTES || timeoutValue > MAX_TIMEOUT_MINUTES) {
+            throw new InvalidTimeoutConfigError(
+              `Timeout must be between ${MIN_TIMEOUT_MINUTES} and ${MAX_TIMEOUT_MINUTES} minutes`,
+              newConfig
+            );
+          }
         }
       }
 

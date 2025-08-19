@@ -896,4 +896,270 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('timestamp');
     });
   });
+
+  describe('NaN and Invalid Number Handling', () => {
+    it('should handle NaN in agent timeout settings gracefully', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      // Add mock agent with invalid settings that would produce NaN
+      const agent = createMockAgent(agentId, {
+        SESSION_TIMEOUT_MINUTES: 'not-a-number',
+        SESSION_MAX_DURATION_MINUTES: 'invalid',
+        SESSION_WARNING_THRESHOLD_MINUTES: 'abc',
+      });
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create session - should use defaults instead of NaN
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('sessionId');
+      expect(res.body).toHaveProperty('timeoutConfig');
+
+      // Should have valid default values, not NaN
+      expect(res.body.timeoutConfig.timeoutMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.timeoutMinutes).not.toBeNaN();
+      expect(res.body.timeoutConfig.timeoutMinutes).toBeGreaterThan(0);
+
+      expect(res.body.timeoutConfig.maxDurationMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.maxDurationMinutes).not.toBeNaN();
+
+      expect(res.body.timeoutConfig.warningThresholdMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.warningThresholdMinutes).not.toBeNaN();
+
+      // Expiration date should be valid
+      const expiresAt = new Date(res.body.expiresAt);
+      expect(expiresAt).toBeValidDate();
+      expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('should handle invalid numeric strings in session config', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create session with invalid numeric values that parseInt would return NaN for
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        timeoutConfig: {
+          timeoutMinutes: 'NaN' as any,
+          maxDurationMinutes: 'Infinity' as any,
+          warningThresholdMinutes: '-Infinity' as any,
+        },
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('sessionId');
+      expect(res.body).toHaveProperty('timeoutConfig');
+
+      // Should have valid default values instead of NaN/Infinity
+      expect(res.body.timeoutConfig.timeoutMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.timeoutMinutes).toBeFinite();
+      expect(res.body.timeoutConfig.timeoutMinutes).toBeGreaterThan(0);
+
+      expect(res.body.timeoutConfig.maxDurationMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.maxDurationMinutes).toBeFinite();
+
+      expect(res.body.timeoutConfig.warningThresholdMinutes).toBeNumber();
+      expect(res.body.timeoutConfig.warningThresholdMinutes).toBeFinite();
+    });
+
+    it('should handle edge case numeric values in timeout config', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Test various edge cases
+      const testCases = [
+        { value: null, description: 'null' },
+        { value: undefined, description: 'undefined' },
+        { value: '', description: 'empty string' },
+        { value: '  ', description: 'whitespace' },
+        { value: '12.34.56', description: 'multiple decimals' },
+        { value: '10e308', description: 'very large number' },
+        { value: '-10e308', description: 'very large negative' },
+        { value: '0x10', description: 'hex notation' },
+        { value: '010', description: 'octal notation' },
+        { value: '1,000', description: 'comma-separated' },
+      ];
+
+      for (const testCase of testCases) {
+        const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+          agentId,
+          userId,
+          timeoutConfig: {
+            timeoutMinutes: testCase.value as any,
+          },
+        });
+
+        expect(res.status).toBe(201);
+        expect(res.body.timeoutConfig.timeoutMinutes).toBeNumber();
+        expect(res.body.timeoutConfig.timeoutMinutes).toBeFinite();
+        expect(res.body.timeoutConfig.timeoutMinutes).toBeGreaterThan(0);
+        expect(res.body.timeoutConfig.timeoutMinutes).toBeLessThanOrEqual(1440);
+      }
+    });
+
+    it('should handle NaN in pagination parameters', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create a session first
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Test with invalid limit parameter that would produce NaN
+      const res = await simulateRequest(
+        app,
+        'GET',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        null,
+        { limit: 'not-a-number' }
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body).toHaveProperty('hasMore');
+      // Should use default limit instead of NaN
+      expect(Array.isArray(res.body.messages)).toBe(true);
+    });
+
+    it('should handle invalid timestamps in pagination', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create a session first
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Test with invalid before timestamp
+      const beforeRes = await simulateRequest(
+        app,
+        'GET',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        null,
+        { before: 'invalid-timestamp' }
+      );
+
+      expect(beforeRes.status).toBe(400);
+      expect(beforeRes.body).toHaveProperty('error');
+      // The error handler returns VALIDATION_ERROR for general validation errors
+      expect(beforeRes.body.error.code).toMatch(/INVALID_PAGINATION|VALIDATION_ERROR/);
+
+      // Test with invalid after timestamp
+      const afterRes = await simulateRequest(
+        app,
+        'GET',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        null,
+        { after: 'NaN' }
+      );
+
+      expect(afterRes.status).toBe(400);
+      expect(afterRes.body).toHaveProperty('error');
+      // The error handler returns VALIDATION_ERROR for general validation errors
+      expect(afterRes.body.error.code).toMatch(/INVALID_PAGINATION|VALIDATION_ERROR/);
+    });
+
+    it('should handle extreme timeout values with proper clamping', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Test with extremely large timeout
+      const largeRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        timeoutConfig: {
+          timeoutMinutes: 999999,
+          maxDurationMinutes: 999999,
+        },
+      });
+
+      expect(largeRes.status).toBe(201);
+      // Should be clamped to maximum allowed values
+      expect(largeRes.body.timeoutConfig.timeoutMinutes).toBeLessThanOrEqual(1440);
+      expect(largeRes.body.timeoutConfig.maxDurationMinutes).toBeLessThanOrEqual(2880);
+
+      // Test with negative timeout
+      const negativeRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        timeoutConfig: {
+          timeoutMinutes: -10,
+          warningThresholdMinutes: -5,
+        },
+      });
+
+      expect(negativeRes.status).toBe(201);
+      // Should be clamped to minimum allowed values
+      expect(negativeRes.body.timeoutConfig.timeoutMinutes).toBeGreaterThanOrEqual(5);
+      expect(negativeRes.body.timeoutConfig.warningThresholdMinutes).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should handle PATCH timeout with invalid values', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create a session first
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Update timeout with invalid string values that would produce NaN when parsed
+      // Note: NaN and Infinity cannot be represented directly in JSON, so we use strings
+      const patchRes = await simulateRequest(
+        app,
+        'PATCH',
+        `/api/messaging/sessions/${sessionId}/timeout`,
+        {
+          timeoutMinutes: 'not-a-number',
+          maxDurationMinutes: 'invalid',
+          warningThresholdMinutes: 'abc123',
+        }
+      );
+
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body).toHaveProperty('timeoutConfig');
+
+      // Should use defaults for invalid values
+      expect(patchRes.body.timeoutConfig.timeoutMinutes).toBeNumber();
+      expect(patchRes.body.timeoutConfig.timeoutMinutes).toBeFinite();
+      expect(patchRes.body.timeoutConfig.maxDurationMinutes).toBeNumber();
+      expect(patchRes.body.timeoutConfig.maxDurationMinutes).toBeFinite();
+      expect(patchRes.body.timeoutConfig.warningThresholdMinutes).toBeNumber();
+      expect(patchRes.body.timeoutConfig.warningThresholdMinutes).toBeFinite();
+    });
+  });
 });
