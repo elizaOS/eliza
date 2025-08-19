@@ -538,6 +538,7 @@ async function runMultiStepCore({
   runtime,
   message,
   state,
+  callback
 }): Promise<StrategyResult> {
   // Multi-step unique logic (was inside handleMultiStepResponse -> shouldRespond branch)
   const traceActionResult: any[] = [];
@@ -587,6 +588,11 @@ async function runMultiStepCore({
           ],
           state,
           async () => {
+            await callback({
+              text: `🔎 Executing action: ${parsedStep.stepName}`,
+              thought: parsedStep.thought,
+              stepType: parsedStep.nextStepType,
+            });
             return [];
           }
         );
@@ -859,7 +865,7 @@ const messageReceivedHandler = async ({
 
         if (shouldRespond) {
           const result = useMultiStep
-            ? await runMultiStepCore({ runtime, message, state })
+            ? await runMultiStepCore({ runtime, message, state, callback })
             : await runSingleShotCore({ runtime, message, state });
 
           responseContent = result.responseContent;
