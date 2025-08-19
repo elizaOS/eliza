@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
-import { createSessionsRouter } from '../sessions';
+import { createSessionsRouter, type SessionRouter } from '../sessions';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 import type { 
@@ -117,7 +117,7 @@ async function simulateRequest(
 
 describe('Sessions API', () => {
   let app: express.Application;
-  let router: express.Router;
+  let router: SessionRouter;
 
   beforeEach(() => {
     // Clear all mocks
@@ -148,6 +148,10 @@ describe('Sessions API', () => {
   });
 
   afterEach(() => {
+    // Properly cleanup router to prevent memory leaks
+    if (router && router.cleanup) {
+      router.cleanup();
+    }
     jest.clearAllMocks();
   });
 

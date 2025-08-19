@@ -16,6 +16,17 @@ import type {
   HealthCheckResponse,
 } from '../../types/sessions';
 
+/**
+ * Extended Router interface with cleanup method
+ */
+export interface SessionRouter extends express.Router {
+  /**
+   * Cleanup function to properly dispose of resources
+   * Should be called when the router is being destroyed or replaced
+   */
+  cleanup: () => void;
+}
+
 // Session configuration constants
 const DEFAULT_TIMEOUT_MINUTES = parseInt(process.env.SESSION_DEFAULT_TIMEOUT_MINUTES || '30');
 const MIN_TIMEOUT_MINUTES = parseInt(process.env.SESSION_MIN_TIMEOUT_MINUTES || '5');
@@ -30,6 +41,10 @@ const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Agent-specific timeout configurations (cached from agent settings)
 const agentTimeoutConfigs = new Map<UUID, SessionTimeoutConfig>();
+
+// Track active cleanup intervals and handlers to prevent memory leaks
+const activeCleanupIntervals = new Set<NodeJS.Timeout>();
+let processHandlersRegistered = false;
 
 // Input validation constants
 const MAX_CONTENT_LENGTH = 4000;
@@ -265,11 +280,15 @@ function errorResponse(res: express.Response, status: number, message: string, d
 /**
  * Creates a unified sessions router for simplified messaging
  * This abstracts away the complexity of servers/channels for simple use cases
+ * 
+ * @param agents - Map of agent IDs to runtime instances
+ * @param serverInstance - The server instance for message handling
+ * @returns Router with cleanup method to prevent memory leaks
  */
 export function createSessionsRouter(
   agents: Map<UUID, IAgentRuntime>,
   serverInstance: AgentServer
-): express.Router {
+): SessionRouter {
   const router = express.Router();
 
   /**
@@ -851,17 +870,49 @@ export function createSessionsRouter(
     CLEANUP_INTERVAL_MS
   );
 
-  // Clean up interval on server shutdown
+  // Track this cleanup interval
+  activeCleanupIntervals.add(cleanupInterval);
+
+  // Create cleanup function that properly removes resources
   const cleanup = () => {
-    clearInterval(cleanupInterval);
-    logger.info('[Sessions API] Cleanup interval cleared');
+    // Clear this specific interval
+    if (activeCleanupIntervals.has(cleanupInterval)) {
+      clearInterval(cleanupInterval);
+      activeCleanupIntervals.delete(cleanupInterval);
+      logger.info('[Sessions API] Cleanup interval cleared');
+    }
   };
 
-  process.on('SIGTERM', cleanup);
-  process.on('SIGINT', cleanup);
+  // Register process handlers only once globally
+  if (!processHandlersRegistered) {
+    processHandlersRegistered = true;
+    
+    const globalCleanup = () => {
+      logger.info('[Sessions API] Global cleanup initiated');
+      // Clear all active intervals
+      for (const interval of activeCleanupIntervals) {
+        clearInterval(interval);
+      }
+      activeCleanupIntervals.clear();
+      
+      // Optional: Clear session data
+      if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === 'true') {
+        sessions.clear();
+        agentTimeoutConfigs.clear();
+      }
+    };
 
-  // Store cleanup function for external use
-  (router as any).cleanup = cleanup;
+    process.once('SIGTERM', globalCleanup);
+    process.once('SIGINT', globalCleanup);
+    
+    // Also handle uncaught exceptions and unhandled rejections
+    process.once('beforeExit', globalCleanup);
+  }
 
-  return router;
+  // Return router with cleanup method attached
+  // This allows proper cleanup when router is destroyed/recreated
+  const routerWithCleanup = router as SessionRouter;
+  routerWithCleanup.cleanup = cleanup;
+
+  return routerWithCleanup;
 }
