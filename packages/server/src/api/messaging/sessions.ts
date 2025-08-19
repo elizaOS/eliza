@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
 import type {
   Session,
-  SessionMetadata,
   SessionTimeoutConfig,
   CreateSessionRequest,
   CreateSessionResponse,
@@ -15,6 +14,21 @@ import type {
   SessionInfoResponse,
   HealthCheckResponse,
 } from '../../types/sessions';
+import {
+  SessionNotFoundError,
+  SessionExpiredError,
+  SessionCreationError,
+  AgentNotFoundError,
+  InvalidUuidError,
+  MissingFieldsError,
+  InvalidContentError,
+  InvalidMetadataError,
+  InvalidPaginationError,
+  InvalidTimeoutConfigError,
+  SessionRenewalError,
+  MessageSendError,
+  createErrorHandler,
+} from './errors/SessionErrors';
 
 /**
  * Extended Router interface with cleanup method
@@ -32,8 +46,11 @@ const DEFAULT_TIMEOUT_MINUTES = parseInt(process.env.SESSION_DEFAULT_TIMEOUT_MIN
 const MIN_TIMEOUT_MINUTES = parseInt(process.env.SESSION_MIN_TIMEOUT_MINUTES || '5');
 const MAX_TIMEOUT_MINUTES = parseInt(process.env.SESSION_MAX_TIMEOUT_MINUTES || '1440'); // 24 hours
 const DEFAULT_MAX_DURATION_MINUTES = parseInt(process.env.SESSION_MAX_DURATION_MINUTES || '720'); // 12 hours
-const DEFAULT_WARNING_THRESHOLD_MINUTES = parseInt(process.env.SESSION_WARNING_THRESHOLD_MINUTES || '5');
-const CLEANUP_INTERVAL_MS = parseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES || '5') * 60 * 1000;
+const DEFAULT_WARNING_THRESHOLD_MINUTES = parseInt(
+  process.env.SESSION_WARNING_THRESHOLD_MINUTES || '5'
+);
+const CLEANUP_INTERVAL_MS =
+  parseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES || '5') * 60 * 1000;
 
 // Session storage
 const sessions = new Map<string, Session>();
@@ -64,11 +81,11 @@ function getAgentTimeoutConfig(agent: IAgentRuntime): SessionTimeoutConfig {
 
   // Try to get from agent settings
   const agentConfig: SessionTimeoutConfig = {
-    timeoutMinutes: agent.getSetting('SESSION_TIMEOUT_MINUTES') 
-      ? parseInt(agent.getSetting('SESSION_TIMEOUT_MINUTES') as string) 
+    timeoutMinutes: agent.getSetting('SESSION_TIMEOUT_MINUTES')
+      ? parseInt(agent.getSetting('SESSION_TIMEOUT_MINUTES') as string)
       : DEFAULT_TIMEOUT_MINUTES,
-    autoRenew: agent.getSetting('SESSION_AUTO_RENEW') 
-      ? agent.getSetting('SESSION_AUTO_RENEW') === 'true' 
+    autoRenew: agent.getSetting('SESSION_AUTO_RENEW')
+      ? agent.getSetting('SESSION_AUTO_RENEW') === 'true'
       : true,
     maxDurationMinutes: agent.getSetting('SESSION_MAX_DURATION_MINUTES')
       ? parseInt(agent.getSetting('SESSION_MAX_DURATION_MINUTES') as string)
@@ -142,22 +159,22 @@ function calculateExpirationDate(
   createdAt: Date,
   lastActivity: Date,
   config: SessionTimeoutConfig,
-  renewalCount: number
+  _renewalCount: number // Prefix with underscore to indicate intentionally unused
 ): Date {
   const baseTime = config.autoRenew ? lastActivity : createdAt;
   const timeoutMs = (config.timeoutMinutes || DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
-  
+
   // Check if we've exceeded max duration
   if (config.maxDurationMinutes) {
     const maxDurationMs = config.maxDurationMinutes * 60 * 1000;
     const timeSinceCreation = Date.now() - createdAt.getTime();
-    
+
     if (timeSinceCreation + timeoutMs > maxDurationMs) {
       // Session has reached max duration, set expiration to max duration from creation
       return new Date(createdAt.getTime() + maxDurationMs);
     }
   }
-  
+
   return new Date(baseTime.getTime() + timeoutMs);
 }
 
@@ -169,9 +186,12 @@ function shouldWarnAboutExpiration(session: Session): boolean {
     return false; // Already warned
   }
 
-  const warningThresholdMs = (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) * 60 * 1000;
+  const warningThresholdMs =
+    (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) *
+    60 *
+    1000;
   const timeRemaining = session.expiresAt.getTime() - Date.now();
-  
+
   return timeRemaining <= warningThresholdMs && timeRemaining > 0;
 }
 
@@ -184,7 +204,8 @@ function renewSession(session: Session): boolean {
   }
 
   const now = new Date();
-  const maxDurationMs = (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
+  const maxDurationMs =
+    (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
   const timeSinceCreation = now.getTime() - session.createdAt.getTime();
 
   if (timeSinceCreation >= maxDurationMs) {
@@ -199,11 +220,13 @@ function renewSession(session: Session): boolean {
     session.timeoutConfig,
     session.renewalCount
   );
-  
+
   // Reset warning state on renewal
   session.warningState = undefined;
 
-  logger.info(`[Sessions API] Renewed session ${session.id}, renewal count: ${session.renewalCount}`);
+  logger.info(
+    `[Sessions API] Renewed session ${session.id}, renewal count: ${session.renewalCount}`
+  );
   return true;
 }
 
@@ -213,7 +236,10 @@ function renewSession(session: Session): boolean {
 function createSessionInfoResponse(session: Session): SessionInfoResponse {
   const now = Date.now();
   const timeRemaining = Math.max(0, session.expiresAt.getTime() - now);
-  const warningThresholdMs = (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) * 60 * 1000;
+  const warningThresholdMs =
+    (session.timeoutConfig.warningThresholdMinutes || DEFAULT_WARNING_THRESHOLD_MINUTES) *
+    60 *
+    1000;
 
   return {
     sessionId: session.id,
@@ -233,54 +259,54 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
 /**
  * Validates session metadata
  */
-function validateMetadata(metadata: any): metadata is SessionMetadata {
+function validateMetadata(metadata: any): void {
   if (!metadata || typeof metadata !== 'object') {
-    return true; // Empty metadata is valid
+    return; // Empty metadata is valid
   }
 
   // Check metadata size
   const metadataStr = JSON.stringify(metadata);
   if (metadataStr.length > MAX_METADATA_SIZE) {
-    throw new Error(`Metadata exceeds maximum size of ${MAX_METADATA_SIZE} bytes`);
+    throw new InvalidMetadataError(
+      `Metadata exceeds maximum size of ${MAX_METADATA_SIZE} bytes`,
+      metadata
+    );
   }
-
-  return true;
 }
 
 /**
  * Validates message content
  */
-function validateContent(content: any): content is string {
+function validateContent(content: any): void {
   if (typeof content !== 'string') {
-    throw new Error('Content must be a string');
+    throw new InvalidContentError('Content must be a string', content);
   }
 
   if (content.length === 0) {
-    throw new Error('Content cannot be empty');
+    throw new InvalidContentError('Content cannot be empty', content);
   }
 
   if (content.length > MAX_CONTENT_LENGTH) {
-    throw new Error(`Content exceeds maximum length of ${MAX_CONTENT_LENGTH} characters`);
+    throw new InvalidContentError(
+      `Content exceeds maximum length of ${MAX_CONTENT_LENGTH} characters`,
+      content
+    );
   }
-
-  return true;
 }
 
 /**
- * Standardized error response
+ * Express async handler wrapper to catch errors
  */
-function errorResponse(res: express.Response, status: number, message: string, details?: any) {
-  logger.error(`[Sessions API] Error: ${message}`, details);
-  return res.status(status).json({
-    error: message,
-    details: process.env.NODE_ENV === 'development' ? details : undefined,
-  });
+function asyncHandler(fn: Function) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 }
 
 /**
  * Creates a unified sessions router for simplified messaging
  * This abstracts away the complexity of servers/channels for simple use cases
- * 
+ *
  * @param agents - Map of agent IDs to runtime instances
  * @param serverInstance - The server instance for message handling
  * @returns Router with cleanup method to prevent memory leaks
@@ -299,7 +325,7 @@ export function createSessionsRouter(
     const now = Date.now();
     let activeSessions = 0;
     let expiringSoon = 0;
-    
+
     for (const session of sessions.values()) {
       if (session.expiresAt.getTime() > now) {
         activeSessions++;
@@ -322,26 +348,33 @@ export function createSessionsRouter(
    * Create a new messaging session
    * POST /api/messaging/sessions
    */
-  router.post('/sessions', async (req, res) => {
-    try {
+  router.post(
+    '/sessions',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const body = req.body as CreateSessionRequest;
 
+      // Validate required fields
       if (!body.agentId || !body.userId) {
-        return errorResponse(res, 400, 'Missing required fields: agentId and userId');
+        throw new MissingFieldsError(['agentId', 'userId']);
       }
 
-      if (!validateUuid(body.agentId) || !validateUuid(body.userId)) {
-        return errorResponse(res, 400, 'Invalid UUID format for agentId or userId');
+      // Validate UUID formats
+      if (!validateUuid(body.agentId)) {
+        throw new InvalidUuidError('agentId', body.agentId);
+      }
+      if (!validateUuid(body.userId)) {
+        throw new InvalidUuidError('userId', body.userId);
       }
 
+      // Check if agent exists
       const agent = agents.get(body.agentId as UUID);
       if (!agent) {
-        return errorResponse(res, 404, 'Agent not found');
+        throw new AgentNotFoundError(body.agentId);
       }
 
-      // Validate metadata
-      if (body.metadata && !validateMetadata(body.metadata)) {
-        return errorResponse(res, 400, 'Invalid metadata');
+      // Validate metadata if provided
+      if (body.metadata) {
+        validateMetadata(body.metadata);
       }
 
       // Get agent timeout config and merge with session config
@@ -349,29 +382,37 @@ export function createSessionsRouter(
       const finalTimeoutConfig = mergeTimeoutConfigs(body.timeoutConfig, agentTimeoutConfig);
 
       // Log timeout configuration
-      logger.info(`[Sessions API] Creating session with timeout config: agentId=${body.agentId}, timeout=${finalTimeoutConfig.timeoutMinutes}, autoRenew=${finalTimeoutConfig.autoRenew}, maxDuration=${finalTimeoutConfig.maxDurationMinutes}`);
+      logger.info(
+        `[Sessions API] Creating session with timeout config: agentId=${body.agentId}, timeout=${finalTimeoutConfig.timeoutMinutes}, autoRenew=${finalTimeoutConfig.autoRenew}, maxDuration=${finalTimeoutConfig.maxDurationMinutes}`
+      );
 
       // Create a unique session ID
       const sessionId = uuidv4();
       const channelId = uuidv4() as UUID;
 
-      // Create channel in the database
-      await serverInstance.createChannel({
-        id: channelId,
-        name: `session-${sessionId}`,
-        type: ChannelType.DM,
-        messageServerId: DEFAULT_SERVER_ID,
-        metadata: {
-          sessionId,
-          agentId: body.agentId,
-          userId: body.userId,
-          timeoutConfig: finalTimeoutConfig,
-          ...(body.metadata || {}),
-        },
-      });
+      try {
+        // Create channel in the database
+        await serverInstance.createChannel({
+          id: channelId,
+          name: `session-${sessionId}`,
+          type: ChannelType.DM,
+          messageServerId: DEFAULT_SERVER_ID,
+          metadata: {
+            sessionId,
+            agentId: body.agentId,
+            userId: body.userId,
+            timeoutConfig: finalTimeoutConfig,
+            ...(body.metadata || {}),
+          },
+        });
 
-      // Add agent as participant
-      await serverInstance.addParticipantsToChannel(channelId, [body.agentId as UUID]);
+        // Add agent as participant
+        await serverInstance.addParticipantsToChannel(channelId, [body.agentId as UUID]);
+      } catch (error) {
+        throw new SessionCreationError('Failed to create channel or add participants', {
+          originalError: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // Create session with calculated expiration
       const now = new Date();
@@ -401,77 +442,71 @@ export function createSessionsRouter(
       };
 
       res.status(201).json(response);
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to create session',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+    })
+  );
 
   /**
    * Get session details
    * GET /api/messaging/sessions/:sessionId
    */
-  router.get('/sessions/:sessionId', async (req, res) => {
-    const { sessionId } = req.params;
-    const session = sessions.get(sessionId);
-
-    if (!session) {
-      return errorResponse(res, 404, 'Session not found');
-    }
-
-    // Check if session is expired
-    if (session.expiresAt.getTime() <= Date.now()) {
-      sessions.delete(sessionId);
-      return errorResponse(res, 410, 'Session has expired');
-    }
-
-    const response = createSessionInfoResponse(session);
-    res.json(response);
-  });
-
-  /**
-   * Send a message in a session
-   * POST /api/messaging/sessions/:sessionId/messages
-   */
-  router.post('/sessions/:sessionId/messages', async (req, res) => {
-    try {
+  router.get(
+    '/sessions/:sessionId',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const body = req.body as SendMessageRequest;
-
       const session = sessions.get(sessionId);
+
       if (!session) {
-        return errorResponse(res, 404, 'Session not found');
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Check if session is expired
       if (session.expiresAt.getTime() <= Date.now()) {
         sessions.delete(sessionId);
-        return errorResponse(res, 410, 'Session has expired');
+        throw new SessionExpiredError(sessionId, session.expiresAt);
+      }
+
+      const response = createSessionInfoResponse(session);
+      res.json(response);
+    })
+  );
+
+  /**
+   * Send a message in a session
+   * POST /api/messaging/sessions/:sessionId/messages
+   */
+  router.post(
+    '/sessions/:sessionId/messages',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
+      const { sessionId } = req.params;
+      const body = req.body as SendMessageRequest;
+
+      const session = sessions.get(sessionId);
+      if (!session) {
+        throw new SessionNotFoundError(sessionId);
+      }
+
+      // Check if session is expired
+      if (session.expiresAt.getTime() <= Date.now()) {
+        sessions.delete(sessionId);
+        throw new SessionExpiredError(sessionId, session.expiresAt);
       }
 
       // Validate content
-      try {
-        validateContent(body.content);
-      } catch (error) {
-        return errorResponse(res, 400, error instanceof Error ? error.message : String(error));
-      }
+      validateContent(body.content);
 
       // Validate metadata if provided
-      if (body.metadata && !validateMetadata(body.metadata)) {
-        return errorResponse(res, 400, 'Invalid metadata');
+      if (body.metadata) {
+        validateMetadata(body.metadata);
       }
 
       // Try to renew session on activity
       const wasRenewed = renewSession(session);
       if (!wasRenewed && session.timeoutConfig.autoRenew) {
         // Auto-renew is enabled but renewal failed (max duration reached)
-        const maxDurationMs = (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
+        const maxDurationMs =
+          (session.timeoutConfig.maxDurationMinutes || DEFAULT_MAX_DURATION_MINUTES) * 60 * 1000;
         const timeSinceCreation = Date.now() - session.createdAt.getTime();
-        
+
         if (timeSinceCreation >= maxDurationMs) {
           logger.warn(`[Sessions API] Session ${sessionId} has reached maximum duration`);
         }
@@ -486,27 +521,34 @@ export function createSessionsRouter(
           sent: true,
           sentAt: new Date(),
         };
-        
+
         logger.info(`[Sessions API] Session ${sessionId} is near expiration, warning state set`);
         // In a real implementation, you might want to send a notification to the client here
       }
 
-      // Create message in database
-      // Note: createMessage automatically broadcasts to the internal message bus
-      const message = await serverInstance.createMessage({
-        channelId: session.channelId,
-        authorId: session.userId,
-        content: body.content,
-        rawMessage: {
+      let message;
+      try {
+        // Create message in database
+        // Note: createMessage automatically broadcasts to the internal message bus
+        message = await serverInstance.createMessage({
+          channelId: session.channelId,
+          authorId: session.userId,
           content: body.content,
-          attachments: body.attachments,
-        },
-        sourceType: 'user',
-        metadata: {
-          sessionId,
-          ...(body.metadata || {}),
-        },
-      });
+          rawMessage: {
+            content: body.content,
+            attachments: body.attachments,
+          },
+          sourceType: 'user',
+          metadata: {
+            sessionId,
+            ...(body.metadata || {}),
+          },
+        });
+      } catch (error) {
+        throw new MessageSendError(sessionId, 'Failed to create message in database', {
+          originalError: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       // Include session status in response
       const response = {
@@ -524,34 +566,28 @@ export function createSessionsRouter(
       };
 
       res.status(201).json(response);
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to send message',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+    })
+  );
 
   /**
    * Get messages from a session
    * GET /api/messaging/sessions/:sessionId/messages
    */
-  router.get('/sessions/:sessionId/messages', async (req, res) => {
-    try {
+  router.get(
+    '/sessions/:sessionId/messages',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const query = req.query as GetMessagesQuery;
 
       const session = sessions.get(sessionId);
       if (!session) {
-        return errorResponse(res, 404, 'Session not found');
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Check if session is expired
       if (session.expiresAt.getTime() <= Date.now()) {
         sessions.delete(sessionId);
-        return errorResponse(res, 410, 'Session has expired');
+        throw new SessionExpiredError(sessionId, session.expiresAt);
       }
 
       // Parse and validate query parameters
@@ -559,7 +595,7 @@ export function createSessionsRouter(
       if (query.limit) {
         const parsedLimit = parseInt(query.limit, 10);
         if (isNaN(parsedLimit) || parsedLimit < 1) {
-          return errorResponse(res, 400, 'Invalid limit parameter');
+          throw new InvalidPaginationError('limit', query.limit, 'Must be a positive integer');
         }
         messageLimit = Math.min(parsedLimit, MAX_LIMIT);
       }
@@ -570,22 +606,28 @@ export function createSessionsRouter(
       if (query.before) {
         const beforeTimestamp = parseInt(query.before, 10);
         if (isNaN(beforeTimestamp)) {
-          return errorResponse(res, 400, 'Invalid before parameter');
+          throw new InvalidPaginationError('before', query.before, 'Must be a valid timestamp');
         }
         beforeDate = new Date(beforeTimestamp);
+        if (isNaN(beforeDate.getTime())) {
+          throw new InvalidPaginationError('before', query.before, 'Invalid date from timestamp');
+        }
       }
 
       if (query.after) {
         const afterTimestamp = parseInt(query.after, 10);
         if (isNaN(afterTimestamp)) {
-          return errorResponse(res, 400, 'Invalid after parameter');
+          throw new InvalidPaginationError('after', query.after, 'Must be a valid timestamp');
         }
         afterDate = new Date(afterTimestamp);
+        if (isNaN(afterDate.getTime())) {
+          throw new InvalidPaginationError('after', query.after, 'Invalid date from timestamp');
+        }
       }
 
       // Improved pagination logic with proper data integrity
       let messages: CentralRootMessage[];
-      
+
       if (afterDate && beforeDate) {
         // When both are specified, get messages in the range
         // First get all messages before the beforeDate
@@ -594,11 +636,9 @@ export function createSessionsRouter(
           messageLimit + 100, // Get extra to handle the range
           beforeDate
         );
-        
+
         // Filter to only include messages after the afterDate
-        messages = allMessages
-          .filter((msg) => msg.createdAt > afterDate)
-          .slice(0, messageLimit);
+        messages = allMessages.filter((msg) => msg.createdAt > afterDate).slice(0, messageLimit);
       } else if (afterDate) {
         // For "after" pagination, we need to get ALL messages first to properly filter
         // This is a temporary workaround until getMessagesForChannel supports afterTimestamp
@@ -608,20 +648,18 @@ export function createSessionsRouter(
           maxFetch,
           undefined
         );
-        
+
         // Filter messages after the specified date and reverse to get oldest first
-        const filteredMessages = allMessages
-          .filter((msg) => msg.createdAt > afterDate)
-          .reverse(); // Reverse to get oldest first when paginating forward
-        
+        const filteredMessages = allMessages.filter((msg) => msg.createdAt > afterDate).reverse(); // Reverse to get oldest first when paginating forward
+
         // Take the first 'limit' messages and reverse back to newest first
-        messages = filteredMessages
-          .slice(0, messageLimit)
-          .reverse();
-          
+        messages = filteredMessages.slice(0, messageLimit).reverse();
+
         // Log warning if we hit the max fetch limit
         if (allMessages.length === maxFetch) {
-          logger.warn(`[Sessions API] Pagination may be incomplete - hit max fetch limit of ${maxFetch} messages`);
+          logger.warn(
+            `[Sessions API] Pagination may be incomplete - hit max fetch limit of ${maxFetch} messages`
+          );
         }
       } else {
         // Use beforeDate if specified, otherwise get latest messages
@@ -662,17 +700,17 @@ export function createSessionsRouter(
       // Calculate pagination cursors for the response
       const oldestMessage = simplifiedMessages[simplifiedMessages.length - 1];
       const newestMessage = simplifiedMessages[0];
-      
+
       const response: GetMessagesResponse & {
         cursors?: {
           before?: number; // Timestamp to use for getting older messages
-          after?: number;  // Timestamp to use for getting newer messages
+          after?: number; // Timestamp to use for getting newer messages
         };
       } = {
         messages: simplifiedMessages,
         hasMore: messages.length === messageLimit,
       };
-      
+
       // Add cursor information if we have messages
       if (simplifiedMessages.length > 0) {
         response.cursors = {
@@ -682,78 +720,84 @@ export function createSessionsRouter(
       }
 
       res.json(response);
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to fetch messages',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+    })
+  );
 
   /**
    * Renew a session manually
    * POST /api/messaging/sessions/:sessionId/renew
    */
-  router.post('/sessions/:sessionId/renew', async (req, res) => {
-    try {
+  router.post(
+    '/sessions/:sessionId/renew',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const session = sessions.get(sessionId);
 
       if (!session) {
-        return errorResponse(res, 404, 'Session not found');
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Check if session is expired
       if (session.expiresAt.getTime() <= Date.now()) {
         sessions.delete(sessionId);
-        return errorResponse(res, 410, 'Session has expired and cannot be renewed');
+        throw new SessionExpiredError(sessionId, session.expiresAt);
       }
 
       // Check if auto-renew is disabled (manual renewal is always allowed)
       const previousAutoRenew = session.timeoutConfig.autoRenew;
       session.timeoutConfig.autoRenew = true; // Temporarily enable for manual renewal
-      
+
       const renewed = renewSession(session);
-      
+
       // Restore original auto-renew setting
       session.timeoutConfig.autoRenew = previousAutoRenew;
 
       if (!renewed) {
-        return errorResponse(res, 400, 'Session cannot be renewed (maximum duration reached)');
+        throw new SessionRenewalError(sessionId, 'Maximum duration reached', {
+          maxDuration: session.timeoutConfig.maxDurationMinutes,
+          createdAt: session.createdAt,
+          timeSinceCreation: Date.now() - session.createdAt.getTime(),
+        });
       }
 
       const response = createSessionInfoResponse(session);
       res.json(response);
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to renew session',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+    })
+  );
 
   /**
    * Update session timeout configuration
    * PATCH /api/messaging/sessions/:sessionId/timeout
    */
-  router.patch('/sessions/:sessionId/timeout', async (req, res) => {
-    try {
+  router.patch(
+    '/sessions/:sessionId/timeout',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const newConfig = req.body as SessionTimeoutConfig;
-      
+
       const session = sessions.get(sessionId);
       if (!session) {
-        return errorResponse(res, 404, 'Session not found');
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Check if session is expired
       if (session.expiresAt.getTime() <= Date.now()) {
         sessions.delete(sessionId);
-        return errorResponse(res, 410, 'Session has expired');
+        throw new SessionExpiredError(sessionId, session.expiresAt);
+      }
+
+      // Validate the new config
+      if (newConfig.timeoutMinutes !== undefined) {
+        if (
+          typeof newConfig.timeoutMinutes !== 'number' ||
+          newConfig.timeoutMinutes < MIN_TIMEOUT_MINUTES ||
+          newConfig.timeoutMinutes > MAX_TIMEOUT_MINUTES
+        ) {
+          throw new InvalidTimeoutConfigError(
+            `Timeout must be between ${MIN_TIMEOUT_MINUTES} and ${MAX_TIMEOUT_MINUTES} minutes`,
+            newConfig
+          );
+        }
       }
 
       // Merge the new config with existing
@@ -769,106 +813,105 @@ export function createSessionsRouter(
         session.renewalCount
       );
 
-      logger.info(`[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`);
+      logger.info(
+        `[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`
+      );
 
       const response = createSessionInfoResponse(session);
       res.json(response);
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to update session timeout',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+    })
+  );
 
   /**
    * Delete a session
    * DELETE /api/messaging/sessions/:sessionId
    */
-  router.delete('/sessions/:sessionId', async (req, res) => {
-    try {
+  router.delete(
+    '/sessions/:sessionId',
+    asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const session = sessions.get(sessionId);
 
       if (!session) {
-        return errorResponse(res, 404, 'Session not found');
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Remove session from memory
       sessions.delete(sessionId);
 
       // Optionally, you could also delete the channel and messages
-      // await serverInstance.deleteChannel(session.channelId);
+      // Note: This is commented out to avoid data loss, but could be enabled
+      // try {
+      //   await serverInstance.deleteChannel(session.channelId);
+      // } catch (error) {
+      //   logger.warn(`Failed to delete channel for session ${sessionId}:`, error);
+      // }
 
       logger.info(`[Sessions API] Deleted session ${sessionId}`);
 
-      res.json({ success: true });
-    } catch (error) {
-      errorResponse(
-        res,
-        500,
-        'Failed to delete session',
-        error instanceof Error ? error.message : String(error)
-      );
-    }
-  });
+      res.json({
+        success: true,
+        message: `Session ${sessionId} deleted successfully`,
+      });
+    })
+  );
 
   /**
    * List active sessions (admin endpoint)
    * GET /api/messaging/sessions
    */
-  router.get('/sessions', async (_req, res) => {
-    const now = Date.now();
-    const activeSessions = Array.from(sessions.values())
-      .filter(session => session.expiresAt.getTime() > now)
-      .map(session => createSessionInfoResponse(session));
+  router.get(
+    '/sessions',
+    asyncHandler(async (_req: express.Request, res: express.Response) => {
+      const now = Date.now();
+      const activeSessions = Array.from(sessions.values())
+        .filter((session) => session.expiresAt.getTime() > now)
+        .map((session) => createSessionInfoResponse(session));
 
-    res.json({
-      sessions: activeSessions,
-      total: activeSessions.length,
-      stats: {
-        totalSessions: sessions.size,
-        activeSessions: activeSessions.length,
-        expiredSessions: sessions.size - activeSessions.length,
-      },
-    });
-  });
+      res.json({
+        sessions: activeSessions,
+        total: activeSessions.length,
+        stats: {
+          totalSessions: sessions.size,
+          activeSessions: activeSessions.length,
+          expiredSessions: sessions.size - activeSessions.length,
+        },
+      });
+    })
+  );
 
   // Cleanup old sessions periodically
-  const cleanupInterval = setInterval(
-    () => {
-      const now = new Date();
-      let cleanedCount = 0;
-      let expiredCount = 0;
-      let warningCount = 0;
+  const cleanupInterval = setInterval(() => {
+    const now = new Date();
+    let cleanedCount = 0;
+    let expiredCount = 0;
+    let warningCount = 0;
 
-      for (const [sessionId, session] of sessions.entries()) {
-        // Check if session has expired
-        if (session.expiresAt.getTime() <= now.getTime()) {
-          sessions.delete(sessionId);
-          cleanedCount++;
-          expiredCount++;
-          logger.info(`[Sessions API] Cleaned up expired session: ${sessionId}`);
-        } 
-        // Check if we should warn about upcoming expiration
-        else if (shouldWarnAboutExpiration(session) && !session.warningState?.sent) {
-          session.warningState = {
-            sent: true,
-            sentAt: now,
-          };
-          warningCount++;
-          logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
-        }
+    for (const [sessionId, session] of sessions.entries()) {
+      // Check if session has expired
+      if (session.expiresAt.getTime() <= now.getTime()) {
+        sessions.delete(sessionId);
+        cleanedCount++;
+        expiredCount++;
+        logger.info(`[Sessions API] Cleaned up expired session: ${sessionId}`);
       }
+      // Check if we should warn about upcoming expiration
+      else if (shouldWarnAboutExpiration(session) && !session.warningState?.sent) {
+        session.warningState = {
+          sent: true,
+          sentAt: now,
+        };
+        warningCount++;
+        logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
+      }
+    }
 
-      if (cleanedCount > 0 || warningCount > 0) {
-        logger.info(`[Sessions API] Cleanup cycle completed: ${cleanedCount} expired sessions removed, ${warningCount} warnings issued`);
-      }
-    },
-    CLEANUP_INTERVAL_MS
-  );
+    if (cleanedCount > 0 || warningCount > 0) {
+      logger.info(
+        `[Sessions API] Cleanup cycle completed: ${cleanedCount} expired sessions removed, ${warningCount} warnings issued`
+      );
+    }
+  }, CLEANUP_INTERVAL_MS);
 
   // Track this cleanup interval
   activeCleanupIntervals.add(cleanupInterval);
@@ -886,7 +929,7 @@ export function createSessionsRouter(
   // Register process handlers only once globally
   if (!processHandlersRegistered) {
     processHandlersRegistered = true;
-    
+
     const globalCleanup = () => {
       logger.info('[Sessions API] Global cleanup initiated');
       // Clear all active intervals
@@ -894,7 +937,7 @@ export function createSessionsRouter(
         clearInterval(interval);
       }
       activeCleanupIntervals.clear();
-      
+
       // Optional: Clear session data
       if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === 'true') {
         sessions.clear();
@@ -904,10 +947,13 @@ export function createSessionsRouter(
 
     process.once('SIGTERM', globalCleanup);
     process.once('SIGINT', globalCleanup);
-    
+
     // Also handle uncaught exceptions and unhandled rejections
     process.once('beforeExit', globalCleanup);
   }
+
+  // Add error handling middleware
+  router.use(createErrorHandler());
 
   // Return router with cleanup method attached
   // This allows proper cleanup when router is destroyed/recreated

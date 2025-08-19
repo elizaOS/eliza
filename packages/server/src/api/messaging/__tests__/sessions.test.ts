@@ -7,9 +7,7 @@ import express from 'express';
 import { createSessionsRouter, type SessionRouter } from '../sessions';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
-import type { 
-  SimplifiedMessage
-} from '../../../types/sessions';
+import type { SimplifiedMessage } from '../../../types/sessions';
 
 // Mock dependencies
 const mockAgents = new Map<UUID, IAgentRuntime>();
@@ -37,10 +35,7 @@ function isValidUuid(id: string): boolean {
 }
 
 // Helper function to create a mock agent
-function createMockAgent(
-  agentId: string,
-  settings?: Record<string, any>
-): IAgentRuntime {
+function createMockAgent(agentId: string, settings?: Record<string, any>): IAgentRuntime {
   return {
     agentId: agentId as UUID,
     getSetting: jest.fn((key: string) => settings?.[key]),
@@ -79,11 +74,11 @@ async function simulateRequest(
     const res: any = {
       statusCode: 200,
       jsonData: null,
-      status: function(code: number) {
+      status: function (code: number) {
         this.statusCode = code;
         return this;
       },
-      json: function(data: any) {
+      json: function (data: any) {
         this.jsonData = data;
         resolve({ status: this.statusCode, body: data });
         return this;
@@ -123,7 +118,7 @@ describe('Sessions API', () => {
     // Clear all mocks
     jest.clearAllMocks();
     mockAgents.clear();
-    
+
     // Reset the mock implementations
     mockServerInstance.createChannel = jest.fn().mockResolvedValue({
       id: '123e4567-e89b-12d3-a456-426614174000',
@@ -159,21 +154,16 @@ describe('Sessions API', () => {
     it('should create a new session successfully', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
-      const res = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        {
-          agentId,
-          userId,
-          metadata: { platform: 'test' }
-        }
-      );
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        metadata: { platform: 'test' },
+      });
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('sessionId');
@@ -181,10 +171,10 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('userId', userId);
       expect(res.body).toHaveProperty('expiresAt');
       expect(res.body).toHaveProperty('timeoutConfig');
-      
+
       // Verify the session ID is a valid UUID
       expect(isValidUuid(res.body.sessionId)).toBe(true);
-      
+
       // Verify timeout config has expected structure
       const { timeoutConfig } = res.body;
       expect(timeoutConfig).toHaveProperty('timeoutMinutes');
@@ -195,25 +185,20 @@ describe('Sessions API', () => {
     it('should create session with custom timeout configuration', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
-      const res = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        {
-          agentId,
-          userId,
-          timeoutConfig: {
-            timeoutMinutes: 60,
-            autoRenew: false,
-            maxDurationMinutes: 120
-          }
-        }
-      );
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        timeoutConfig: {
+          timeoutMinutes: 60,
+          autoRenew: false,
+          maxDurationMinutes: 120,
+        },
+      });
 
       expect(res.status).toBe(201);
       expect(res.body.timeoutConfig.timeoutMinutes).toBe(60);
@@ -224,23 +209,18 @@ describe('Sessions API', () => {
     it('should use agent-specific timeout settings', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent with custom settings
       const agent = createMockAgent(agentId, {
         SESSION_TIMEOUT_MINUTES: 45,
-        SESSION_AUTO_RENEW: true
+        SESSION_AUTO_RENEW: true,
       });
       mockAgents.set(agentId as UUID, agent);
 
-      const res = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        {
-          agentId,
-          userId
-        }
-      );
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
 
       expect(res.status).toBe(201);
       expect(res.body.timeoutConfig.timeoutMinutes).toBe(45);
@@ -248,30 +228,20 @@ describe('Sessions API', () => {
     });
 
     it('should return 400 for invalid agent ID', async () => {
-      const res = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        {
-          agentId: 'invalid-uuid',
-          userId: '456e7890-e89b-12d3-a456-426614174000'
-        }
-      );
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId: 'invalid-uuid',
+        userId: '456e7890-e89b-12d3-a456-426614174000',
+      });
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
     });
 
     it('should return 404 when agent not found', async () => {
-      const res = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        {
-          agentId: '123e4567-e89b-12d3-a456-426614174000',
-          userId: '456e7890-e89b-12d3-a456-426614174000'
-        }
-      );
+      const res = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId: '123e4567-e89b-12d3-a456-426614174000',
+        userId: '456e7890-e89b-12d3-a456-426614174000',
+      });
 
       expect(res.status).toBe(404);
       expect(res.body).toHaveProperty('error', 'Agent not found');
@@ -282,19 +252,17 @@ describe('Sessions API', () => {
     it('should send a message to an existing session', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session first
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Send message
@@ -304,7 +272,7 @@ describe('Sessions API', () => {
         `/api/messaging/sessions/${sessionId}/messages`,
         {
           content: 'Hello, world!',
-          attachments: []
+          attachments: [],
         }
       );
 
@@ -320,7 +288,7 @@ describe('Sessions API', () => {
         'POST',
         '/api/messaging/sessions/non-existent-session/messages',
         {
-          content: 'Hello, world!'
+          content: 'Hello, world!',
         }
       );
 
@@ -331,38 +299,29 @@ describe('Sessions API', () => {
     it('should renew session on activity when autoRenew is enabled', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent with autoRenew enabled
       const agent = createMockAgent(agentId, {
-        SESSION_AUTO_RENEW: true
+        SESSION_AUTO_RENEW: true,
       });
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
       const originalExpiry = new Date(createRes.body.expiresAt);
 
       // Send message (which should renew the session)
-      await simulateRequest(
-        app,
-        'POST',
-        `/api/messaging/sessions/${sessionId}/messages`,
-        { content: 'Test message' }
-      );
+      await simulateRequest(app, 'POST', `/api/messaging/sessions/${sessionId}/messages`, {
+        content: 'Test message',
+      });
 
       // Get session info to check if it was renewed
-      const infoRes = await simulateRequest(
-        app,
-        'GET',
-        `/api/messaging/sessions/${sessionId}`
-      );
+      const infoRes = await simulateRequest(app, 'GET', `/api/messaging/sessions/${sessionId}`);
 
       const newExpiry = new Date(infoRes.body.expiresAt);
       expect(newExpiry.getTime()).toBeGreaterThanOrEqual(originalExpiry.getTime());
@@ -373,19 +332,17 @@ describe('Sessions API', () => {
     it('should retrieve messages with pagination', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Mock messages
@@ -420,7 +377,7 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('messages');
       expect(res.body).toHaveProperty('hasMore');
       expect(res.body.messages).toHaveLength(10);
-      
+
       // Verify message structure
       const firstMessage = res.body.messages[0];
       expect(firstMessage).toHaveProperty('id');
@@ -432,19 +389,17 @@ describe('Sessions API', () => {
     it('should support cursor-based pagination with before parameter', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Mock messages with different timestamps
@@ -466,7 +421,7 @@ describe('Sessions API', () => {
         (_channelId, limit, before) => {
           let filtered = [...mockMessages];
           if (before) {
-            filtered = filtered.filter(msg => msg.createdAt < before);
+            filtered = filtered.filter((msg) => msg.createdAt < before);
           }
           return Promise.resolve(filtered.slice(0, limit));
         }
@@ -479,15 +434,15 @@ describe('Sessions API', () => {
         'GET',
         `/api/messaging/sessions/${sessionId}/messages`,
         undefined,
-        { 
+        {
           limit: '5',
-          before: beforeTimestamp.toString()
+          before: beforeTimestamp.toString(),
         }
       );
 
       expect(res.status).toBe(200);
       expect(res.body.messages).toHaveLength(5);
-      
+
       // Verify all messages are before the cursor
       res.body.messages.forEach((msg: SimplifiedMessage) => {
         expect(new Date(msg.createdAt).getTime()).toBeLessThan(beforeTimestamp);
@@ -497,19 +452,17 @@ describe('Sessions API', () => {
     it('should support after parameter for newer messages', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Mock messages
@@ -540,9 +493,9 @@ describe('Sessions API', () => {
         'GET',
         `/api/messaging/sessions/${sessionId}/messages`,
         undefined,
-        { 
+        {
           limit: '5',
-          after: afterTimestamp.toString()
+          after: afterTimestamp.toString(),
         }
       );
 
@@ -554,19 +507,17 @@ describe('Sessions API', () => {
     it('should support range queries with both before and after', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Mock messages
@@ -588,7 +539,7 @@ describe('Sessions API', () => {
         (_channelId, limit, before) => {
           let filtered = [...mockMessages];
           if (before) {
-            filtered = filtered.filter(msg => msg.createdAt < before);
+            filtered = filtered.filter((msg) => msg.createdAt < before);
           }
           return Promise.resolve(filtered.slice(0, limit));
         }
@@ -602,10 +553,10 @@ describe('Sessions API', () => {
         'GET',
         `/api/messaging/sessions/${sessionId}/messages`,
         undefined,
-        { 
+        {
           limit: '10',
           before: beforeTimestamp.toString(),
-          after: afterTimestamp.toString()
+          after: afterTimestamp.toString(),
         }
       );
 
@@ -618,31 +569,22 @@ describe('Sessions API', () => {
     it('should retrieve session information', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { 
-          agentId, 
-          userId,
-          metadata: { platform: 'test' }
-        }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        metadata: { platform: 'test' },
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Get session info
-      const res = await simulateRequest(
-        app,
-        'GET',
-        `/api/messaging/sessions/${sessionId}`
-      );
+      const res = await simulateRequest(app, 'GET', `/api/messaging/sessions/${sessionId}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('sessionId', sessionId);
@@ -656,11 +598,7 @@ describe('Sessions API', () => {
     });
 
     it('should return 404 for non-existent session', async () => {
-      const res = await simulateRequest(
-        app,
-        'GET',
-        '/api/messaging/sessions/non-existent-session'
-      );
+      const res = await simulateRequest(app, 'GET', '/api/messaging/sessions/non-existent-session');
 
       expect(res.status).toBe(404);
       expect(res.body).toHaveProperty('error', 'Session not found');
@@ -671,19 +609,17 @@ describe('Sessions API', () => {
     it('should update session timeout configuration', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Update timeout
@@ -693,7 +629,7 @@ describe('Sessions API', () => {
         `/api/messaging/sessions/${sessionId}/timeout`,
         {
           timeoutMinutes: 90,
-          autoRenew: false
+          autoRenew: false,
         }
       );
 
@@ -708,19 +644,17 @@ describe('Sessions API', () => {
     it('should reject invalid timeout values', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Try to update with invalid timeout (too small)
@@ -729,7 +663,7 @@ describe('Sessions API', () => {
         'PATCH',
         `/api/messaging/sessions/${sessionId}/timeout`,
         {
-          timeoutMinutes: 1 // Less than minimum (5)
+          timeoutMinutes: 1, // Less than minimum (5)
         }
       );
 
@@ -742,38 +676,28 @@ describe('Sessions API', () => {
     it('should delete an existing session', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
-      
+
       // Add mock agent
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
       // Create session
-      const createRes = await simulateRequest(
-        app,
-        'POST',
-        '/api/messaging/sessions',
-        { agentId, userId }
-      );
-      
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
       const sessionId = createRes.body.sessionId;
 
       // Delete session
-      const res = await simulateRequest(
-        app,
-        'DELETE',
-        `/api/messaging/sessions/${sessionId}`
-      );
+      const res = await simulateRequest(app, 'DELETE', `/api/messaging/sessions/${sessionId}`);
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('message', 'Session deleted successfully');
 
       // Verify session is deleted by trying to get it
-      const getRes = await simulateRequest(
-        app,
-        'GET',
-        `/api/messaging/sessions/${sessionId}`
-      );
-      
+      const getRes = await simulateRequest(app, 'GET', `/api/messaging/sessions/${sessionId}`);
+
       expect(getRes.status).toBe(404);
     });
 
@@ -791,11 +715,7 @@ describe('Sessions API', () => {
 
   describe('GET /sessions/health - Health Check', () => {
     it('should return health status', async () => {
-      const res = await simulateRequest(
-        app,
-        'GET',
-        '/api/messaging/sessions/health'
-      );
+      const res = await simulateRequest(app, 'GET', '/api/messaging/sessions/health');
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('status', 'healthy');
