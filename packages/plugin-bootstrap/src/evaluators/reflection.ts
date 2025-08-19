@@ -255,11 +255,13 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
           roomId,
           createdAt: Date.now(),
         };
-        // Create memory first
-        await runtime.createMemory(factMemory, 'facts', true);
-        // Queue embedding generation asynchronously for the memory
-        await runtime.queueEmbeddingGeneration(factMemory, 'low');
-        return factMemory;
+        // Create memory first and capture the returned ID
+        const createdMemoryId = await runtime.createMemory(factMemory, 'facts', true);
+        // Update the memory object with the actual ID from the database
+        const createdMemory = { ...factMemory, id: createdMemoryId };
+        // Queue embedding generation asynchronously for the memory with correct ID
+        await runtime.queueEmbeddingGeneration(createdMemory, 'low');
+        return createdMemory;
       })
     );
 
