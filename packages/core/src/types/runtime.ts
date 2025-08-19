@@ -3,7 +3,7 @@ import type { Action, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
-import { Memory } from './memory';
+import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
 import type { Plugin, Route } from './plugin';
@@ -164,6 +164,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getAllMemories(): Promise<Memory[]>;
 
   clearAllAgentMemories(): Promise<void>;
+
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
 
   // Run tracking methods
   createRunId(): UUID;
