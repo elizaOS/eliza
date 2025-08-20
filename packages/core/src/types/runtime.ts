@@ -47,6 +47,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   registerService(service: typeof Service): Promise<void>;
 
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
+
   getRegisteredServiceTypes(): ServiceTypeName[];
 
   hasService(serviceType: ServiceTypeName | string): boolean;
