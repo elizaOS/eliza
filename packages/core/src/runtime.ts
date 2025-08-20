@@ -1650,10 +1650,32 @@ export class AgentRuntime implements IAgentRuntime {
     return models[0].handler;
   }
 
-  private async *wrapReadableStream<T>(stream: unknown): AsyncIterable<T> {
+  private async *wrapReadableStream<T>(stream: unknown, abortSignal?: AbortSignal): AsyncIterable<T> {
+    // Check if already aborted
+    if (abortSignal?.aborted) {
+      throw new Error('Operation was aborted');
+    }
+    
     // Already an AsyncIterable
     if (stream && typeof (stream as any)[Symbol.asyncIterator] === 'function') {
-      yield* stream as AsyncIterable<T>;
+      const iterator = (stream as AsyncIterable<T>)[Symbol.asyncIterator]();
+      try {
+        while (true) {
+          // Check abort signal before each iteration
+          if (abortSignal?.aborted) {
+            throw new Error('Operation was aborted');
+          }
+          
+          const result = await iterator.next();
+          if (result.done) break;
+          yield result.value;
+        }
+      } finally {
+        // Clean up iterator if it has a return method
+        if (typeof iterator.return === 'function') {
+          await iterator.return?.();
+        }
+      }
       return;
     }
     
@@ -1662,11 +1684,21 @@ export class AgentRuntime implements IAgentRuntime {
       const reader = (stream as ReadableStream).getReader();
       try {
         while (true) {
+          // Check abort signal before each read
+          if (abortSignal?.aborted) {
+            throw new Error('Operation was aborted');
+          }
+          
           const { done, value } = await reader.read();
           if (done) break;
           yield value as T;
         }
       } finally {
+        try {
+          await reader.cancel?.('Stream cancelled');
+        } catch {
+          // Ignore cancellation errors
+        }
         reader.releaseLock?.();
       }
       return;
@@ -1674,9 +1706,31 @@ export class AgentRuntime implements IAgentRuntime {
     
     // Node.js Readable stream
     if (stream && typeof (stream as any).on === 'function' && typeof (stream as any).read === 'function') {
-      // Convert Node.js stream to AsyncIterable
-      for await (const chunk of stream as AsyncIterable<T>) {
-        yield chunk as T;
+      const nodeStream = stream as any;
+      
+      // Set up abort handler to destroy the stream
+      const abortHandler = () => {
+        if (typeof nodeStream.destroy === 'function') {
+          nodeStream.destroy(new Error('Operation was aborted'));
+        }
+      };
+      
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', abortHandler);
+      }
+      
+      try {
+        // Convert Node.js stream to AsyncIterable with abort checking
+        for await (const chunk of nodeStream as AsyncIterable<T>) {
+          if (abortSignal?.aborted) {
+            throw new Error('Operation was aborted');
+          }
+          yield chunk as T;
+        }
+      } finally {
+        if (abortSignal) {
+          abortSignal.removeEventListener('abort', abortHandler);
+        }
       }
       return;
     }
@@ -1692,6 +1746,14 @@ export class AgentRuntime implements IAgentRuntime {
   ): Promise<ModelStream<ModelStreamChunkMap[T]>> {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const streamHandler = this.getModelStream(modelKey, provider);
+    
+    // Extract abortSignal from params before building paramsWithRuntime
+    const abortSignal = params?.abortSignal as AbortSignal | undefined;
+    
+    // Check if already aborted
+    if (abortSignal?.aborted) {
+      throw new Error('Operation was aborted before starting');
+    }
     
     // Build params with runtime and settings (same logic as non-streaming)
     let paramsWithRuntime: ModelParamsMap[T];
@@ -1717,10 +1779,21 @@ export class AgentRuntime implements IAgentRuntime {
       const self = this;
       return (async function* () {
         try {
+          // Check abort signal before starting
+          if (abortSignal?.aborted) {
+            throw new Error('Operation was aborted');
+          }
+          
           const startTime = performance.now();
           // Use the non-streaming handler directly to avoid recursion
           const result = await self.useModelNonStreaming(modelType, params, provider);
           const elapsedTime = performance.now() - startTime;
+          
+          // Check abort signal before yielding result
+          if (abortSignal?.aborted) {
+            throw new Error('Operation was aborted');
+          }
+          
           yield { event: 'finish', output: result, latencyMs: Number(elapsedTime.toFixed(2)) } as ModelStreamFinishChunk<ModelResultMap[T]>;
         } catch (error) {
           yield { event: 'error', error } as ModelStreamErrorChunk;
@@ -1730,13 +1803,29 @@ export class AgentRuntime implements IAgentRuntime {
 
     const startTime = performance.now();
     const raw = await streamHandler(this, paramsWithRuntime);
-    const iterable = this.wrapReadableStream<ModelStreamChunkMap[T]>(raw);
+    const iterable = this.wrapReadableStream<ModelStreamChunkMap[T]>(raw, abortSignal);
 
     const self = this;
     return (async function* () {
       let hasError = false;
+      let abortError: Error | null = null;
+      
+      // Set up abort handler to track abort errors
+      const abortHandler = () => {
+        abortError = new Error('Operation was aborted');
+      };
+      
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', abortHandler);
+      }
+      
       try {
         for await (const chunk of iterable) {
+          // Check if aborted and throw the abort error
+          if (abortError) {
+            throw abortError;
+          }
+          
           // Emit events for observability
           await self.emitEvent?.('model:stream:chunk', { 
             modelType: modelKey, 
@@ -1748,7 +1837,10 @@ export class AgentRuntime implements IAgentRuntime {
         }
       } catch (error) {
         hasError = true;
-        await self.emitEvent?.('model:stream:error', { 
+        
+        // Emit different event for abort vs other errors
+        const eventType = abortSignal?.aborted ? 'model:stream:aborted' : 'model:stream:error';
+        await self.emitEvent?.(eventType, { 
           modelType: modelKey, 
           error, 
           runId,
@@ -1756,6 +1848,10 @@ export class AgentRuntime implements IAgentRuntime {
         });
         throw error;
       } finally {
+        if (abortSignal) {
+          abortSignal.removeEventListener('abort', abortHandler);
+        }
+        
         if (!hasError) {
           const elapsedTime = performance.now() - startTime;
           await self.emitEvent?.('model:stream:finish', { 
@@ -1803,6 +1899,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Preserve legacy error message for backward compatibility
       throw new Error(`No handler found for delegate type: ${modelKey}`);
     }
+    
+    // Extract and check abortSignal
+    const abortSignal = params?.abortSignal as AbortSignal | undefined;
+    if (abortSignal?.aborted) {
+      throw new Error('Operation was aborted before starting');
+    }
+    
     let paramsWithRuntime: ModelParamsMap[T];
     if (
       params === null ||
@@ -1822,8 +1925,24 @@ export class AgentRuntime implements IAgentRuntime {
       params?.prompt || params?.input || (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
     
     const startTime = performance.now();
+    
+    // Create a promise that rejects when abort signal fires
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (abortSignal) {
+        const abortHandler = () => reject(new Error('Operation was aborted'));
+        if (abortSignal.aborted) {
+          abortHandler();
+        } else {
+          abortSignal.addEventListener('abort', abortHandler, { once: true });
+        }
+      }
+    });
+    
     try {
-      const result = (await handler(this, paramsWithRuntime)) as R;
+      // Race between the actual handler and the abort signal
+      const result = abortSignal 
+        ? await Promise.race([handler(this, paramsWithRuntime), abortPromise]) as R
+        : (await handler(this, paramsWithRuntime)) as R;
       const elapsedTime = performance.now() - startTime;
       
       // Log input parameters (debug level)
