@@ -137,10 +137,21 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'>
   ): Promise<R>;
+  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    provider: string
+  ): Promise<R>;
   useModel<T extends ModelTypeName>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'>,
     event: 'STREAMING_TEXT'
+  ): Promise<ModelStream<TextStreamChunk>>;
+  useModel<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TEXT',
+    provider: string
   ): Promise<ModelStream<TextStreamChunk>>;
   useModel<T extends ModelTypeName>(
     modelType: T,
@@ -150,7 +161,19 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   useModel<T extends ModelTypeName>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TRANSCRIPTION',
+    provider: string
+  ): Promise<ModelStream<TranscriptionStreamChunk>>;
+  useModel<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
     event: 'STREAMING_TTS'
+  ): Promise<ModelStream<TextToSpeechStreamChunk>>;
+  useModel<T extends ModelTypeName>(
+    modelType: T,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
+    event: 'STREAMING_TTS',
+    provider: string
   ): Promise<ModelStream<TextToSpeechStreamChunk>>;
 
   registerModel<T extends ModelTypeName>(
