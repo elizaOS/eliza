@@ -22,8 +22,8 @@ export interface Entity {
   /** Names of the entity */
   names: string[];
 
-  /** Optional additional metadata */
-  metadata?: Metadata;
+  /** Additional metadata */
+  metadata: Metadata;
 
   /** Agent ID this account is related to, for agents should be themselves */
   agentId: UUID;

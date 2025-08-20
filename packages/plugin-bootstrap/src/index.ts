@@ -190,16 +190,34 @@ export async function processAttachments(
             // Parse XML response
             const parsedXml = parseKeyValueXml(response);
 
-            if (parsedXml?.description && parsedXml?.text) {
-              processedAttachment.description = parsedXml.description;
+            if (parsedXml && (parsedXml.description || parsedXml.text)) {
+              processedAttachment.description = parsedXml.description || '';
               processedAttachment.title = parsedXml.title || 'Image';
-              processedAttachment.text = parsedXml.text;
+              processedAttachment.text = parsedXml.text || parsedXml.description || '';
 
               runtime.logger.debug(
                 `[Bootstrap] Generated description: ${processedAttachment.description?.substring(0, 100)}...`
               );
             } else {
-              runtime.logger.warn(`[Bootstrap] Failed to parse XML response for image description`);
+              // Fallback: Try simple regex parsing if parseKeyValueXml fails
+              const responseStr = response as string;
+              const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
+              const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+              const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
+
+              if (titleMatch || descMatch || textMatch) {
+                processedAttachment.title = titleMatch?.[1] || 'Image';
+                processedAttachment.description = descMatch?.[1] || '';
+                processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
+
+                runtime.logger.debug(
+                  `[Bootstrap] Used fallback XML parsing - description: ${processedAttachment.description?.substring(0, 100)}...`
+                );
+              } else {
+                runtime.logger.warn(
+                  `[Bootstrap] Failed to parse XML response for image description`
+                );
+              }
             }
           } else if (response && typeof response === 'object' && 'description' in response) {
             // Handle object responses for backwards compatibility

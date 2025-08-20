@@ -274,6 +274,7 @@ export function createChannelsRouter(
       const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
       const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
       const beforeDate = before ? new Date(before) : undefined;
+      // TODO: Add 'after' parameter support when database layer is updated
 
       if (!channelId) {
         return res.status(400).json({ success: false, error: 'Invalid channelId' });

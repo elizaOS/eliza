@@ -1,24 +1,14 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
-import { processAttachments } from '../index';
-import { IAgentRuntime, Media, ModelType, ContentType, logger } from '@elizaos/core';
+import { IAgentRuntime, Media, ModelType, ContentType } from '@elizaos/core';
 import { createMockRuntime, MockRuntime } from './test-utils';
-
-// Mock the logger
-mock.module('@elizaos/core', () => ({
-  logger: {
-    debug: mock(),
-    warn: mock(),
-    error: mock(),
-    info: mock(),
-  },
-}));
+import { processAttachments } from '../index';
 
 describe('processAttachments', () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
     mockRuntime = createMockRuntime();
-    mock.restore();
+    mockRuntime.useModel.mockReset();
   });
 
   afterEach(() => {
@@ -44,7 +34,7 @@ describe('processAttachments', () => {
     };
 
     // Mock the image description model response
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <title>Beautiful Sunset</title>
   <description>A stunning sunset over the ocean with vibrant colors</description>
   <text>This image captures a breathtaking sunset scene over a calm ocean. The sky is painted with brilliant hues of orange, pink, and purple as the sun dips below the horizon. Gentle waves lap at the shore, creating a peaceful and serene atmosphere.</text>
@@ -54,6 +44,7 @@ describe('processAttachments', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('image-1');
+
     expect(result[0].title).toBe('Beautiful Sunset');
     expect(result[0].description).toBe('A stunning sunset over the ocean with vibrant colors');
     expect(result[0].text).toBe(
@@ -121,10 +112,10 @@ describe('processAttachments', () => {
       },
     ];
 
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <title>Test Image</title>
   <description>A test image description</description>
-  <text>Detailed description of the test image</text>
+  <text>This is a test image description.</text>
 </response>`);
 
     const result = await processAttachments(attachments, mockRuntime as IAgentRuntime);
@@ -146,7 +137,7 @@ describe('processAttachments', () => {
     };
 
     // Mock object response instead of XML
-    mockRuntime.useModel = mock().mockResolvedValue({
+    mockRuntime.useModel.mockResolvedValue({
       title: 'Object Response Title',
       description: 'Object response description',
       text: 'Object response text',
@@ -169,13 +160,13 @@ describe('processAttachments', () => {
     };
 
     // Mock malformed XML response
-    mockRuntime.useModel = mock().mockResolvedValue('This is not valid XML');
+    mockRuntime.useModel.mockResolvedValue('This is not valid XML');
 
     const result = await processAttachments([imageAttachment], mockRuntime as IAgentRuntime);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(imageAttachment); // Should return original
-    expect(logger.warn).toHaveBeenCalledWith(
+    expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
       '[Bootstrap] Failed to parse XML response for image description'
     );
   });
@@ -197,7 +188,7 @@ describe('processAttachments', () => {
     ];
 
     // Mock error for first image, success for second
-    mockRuntime.useModel = mock().mockRejectedValueOnce(new Error('Model API error'))
+    mockRuntime.useModel.mockRejectedValueOnce(new Error('Model API error'))
       .mockResolvedValueOnce(`<response>
   <title>Second Image</title>
   <description>Description of second image</description>
@@ -209,9 +200,9 @@ describe('processAttachments', () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual(attachments[0]); // First image unchanged due to error
     expect(result[1].description).toBe('Description of second image');
-    expect(logger.error).toHaveBeenCalledWith(
-      '[Bootstrap] Error generating image description:',
-      expect.any(Error)
+    expect(mockRuntime.logger.error).toHaveBeenCalledWith(
+      { error: expect.any(Error) },
+      '[Bootstrap] Error generating image description:'
     );
   });
 
@@ -238,7 +229,7 @@ describe('processAttachments', () => {
     ];
 
     let callCount = 0;
-    mockRuntime.useModel = mock().mockImplementation(() => {
+    mockRuntime.useModel.mockImplementation(() => {
       callCount++;
       return Promise.resolve(`<response>
   <title>Image ${callCount}</title>
@@ -267,9 +258,9 @@ describe('processAttachments', () => {
     };
 
     // Mock response without title
-    mockRuntime.useModel = mock().mockResolvedValue(`<response>
+    mockRuntime.useModel.mockResolvedValue(`<response>
   <description>A description without title</description>
-  <text>Detailed text without title</text>
+  <text>This is the text content without a title.</text>
 </response>`);
 
     const result = await processAttachments([imageAttachment], mockRuntime as IAgentRuntime);

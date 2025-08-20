@@ -1,6 +1,20 @@
 import type { UUID } from '@elizaos/core';
 
 /**
+ * Session timeout configuration
+ */
+export interface SessionTimeoutConfig {
+  /** Timeout in minutes. If not specified, uses agent or global default */
+  timeoutMinutes?: number;
+  /** Whether to auto-renew the session on activity */
+  autoRenew?: boolean;
+  /** Maximum session duration in minutes (even with renewals) */
+  maxDurationMinutes?: number;
+  /** Warning threshold in minutes before timeout */
+  warningThresholdMinutes?: number;
+}
+
+/**
  * Metadata associated with a session
  */
 export interface SessionMetadata {
@@ -22,6 +36,17 @@ export interface Session {
   metadata: SessionMetadata;
   createdAt: Date;
   lastActivity: Date;
+  /** Session expiration time */
+  expiresAt: Date;
+  /** Session timeout configuration */
+  timeoutConfig: SessionTimeoutConfig;
+  /** Number of times the session has been renewed */
+  renewalCount: number;
+  /** Whether a warning has been sent about upcoming expiration */
+  warningState?: {
+    sent: boolean;
+    sentAt?: Date;
+  };
 }
 
 /**
@@ -31,6 +56,8 @@ export interface CreateSessionRequest {
   agentId: string;
   userId: string;
   metadata?: SessionMetadata;
+  /** Optional timeout configuration for this session */
+  timeoutConfig?: SessionTimeoutConfig;
 }
 
 /**
@@ -42,6 +69,10 @@ export interface CreateSessionResponse {
   userId: UUID;
   createdAt: Date;
   metadata: SessionMetadata;
+  /** When the session will expire */
+  expiresAt: Date;
+  /** Session timeout configuration */
+  timeoutConfig: SessionTimeoutConfig;
 }
 
 /**
@@ -88,6 +119,13 @@ export interface SimplifiedMessage {
 export interface GetMessagesResponse {
   messages: SimplifiedMessage[];
   hasMore: boolean;
+  /** Pagination cursors for navigating through messages */
+  cursors?: {
+    /** Timestamp to use for getting older messages (pagination backward) */
+    before?: number;
+    /** Timestamp to use for getting newer messages (pagination forward) */
+    after?: number;
+  };
 }
 
 /**
@@ -100,6 +138,16 @@ export interface SessionInfoResponse {
   createdAt: Date;
   lastActivity: Date;
   metadata: SessionMetadata;
+  /** When the session will expire */
+  expiresAt: Date;
+  /** Session timeout configuration */
+  timeoutConfig: SessionTimeoutConfig;
+  /** Number of times the session has been renewed */
+  renewalCount: number;
+  /** Time remaining in milliseconds */
+  timeRemaining: number;
+  /** Whether the session is near expiration */
+  isNearExpiration: boolean;
 }
 
 /**
