@@ -1,7 +1,6 @@
 import { logger, type IAgentRuntime, type Project, type ProjectAgent } from '@elizaos/core';
 import teeStarterPlugin, { StarterService } from './plugin.ts';
 import { mrTeeCharacter as character } from './character.ts';
-import ProjectTeeStarterTestSuite from './__tests__/e2e/project-tee-starter.e2e';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info(`Initializing character: ${character.name}`);
@@ -11,7 +10,7 @@ const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
 export const projectAgent: ProjectAgent = {
   character,
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
-  tests: [ProjectTeeStarterTestSuite], // Export tests from ProjectAgent
+  plugins: [teeStarterPlugin], // Add any additional plugins here
 };
 
 const project: Project = {
