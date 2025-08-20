@@ -13,7 +13,7 @@ import { composePromptFromState } from '@elizaos/core';
 
 export const getProductDetails: Action = {
   name: 'GET_PRODUCT_DETAILS',
-  description: 'Get detailed information about a product including all variants and options',
+  description: 'Get detailed information about a product including all variants and options. Select this action only when the correct product ID has been obtained from the order.',
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },

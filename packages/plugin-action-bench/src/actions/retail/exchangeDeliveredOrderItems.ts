@@ -15,7 +15,7 @@ import { composePromptFromState } from '@elizaos/core';
 export const exchangeDeliveredOrderItems: Action = {
   name: 'EXCHANGE_DELIVERED_ORDER_ITEMS',
   description:
-    'Exchange delivered items for different variants. User must specify the order ID and items to exchange (old item_id -> new item_id mappings).',
+    'Exchange delivered items for different variants. User must specify the order ID and items to exchange (old item_id -> new item_id mappings). Exchange items in a delivered order to new items of the same product type. For a delivered order, return or exchange can only be done once by the agent. The agent must explain the exchange details and explicitly ask the user for confirmation (yes/no) before proceeding. This action should only be selected if product information (availability, item IDs, etc.) has already been verified.',
   validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
     return true;
   },
@@ -150,21 +150,21 @@ If a value is not found, return an empty string for that element. Do not add any
       }
 
       // Verify order belongs to current user
-      // if (order.user_id !== currentUserId) {
-      //   const errorMsg =
-      //     'Cannot process exchange: You can only exchange items from your own orders.';
-      //   if (callback) {
-      //     await callback({
-      //       text: errorMsg,
-      //       source: message.content.source,
-      //     });
-      //   }
-      //   return {
-      //     success: false,
-      //     text: errorMsg,
-      //     error: errorMsg,
-      //   };
-      // }
+      if (order.user_id !== currentUserId) {
+        const errorMsg =
+          'Cannot process exchange: You can only exchange items from your own orders.';
+        if (callback) {
+          await callback({
+            text: errorMsg,
+            source: message.content.source,
+          });
+        }
+        return {
+          success: false,
+          text: errorMsg,
+          error: errorMsg,
+        };
+      }
 
       // Check order status
       if (order.status !== 'delivered') {
@@ -268,7 +268,9 @@ If a value is not found, return an empty string for that element. Do not add any
 
       // Get user profile and payment method
       const userProfile = retailData.users[currentUserId];
-      const paymentMethodId = order.payment_method_id;
+      const payment = order?.payment_history?.find((p) => p.transaction_type === 'payment');
+      
+      const paymentMethodId = payment?.payment_method_id;
 
       if (!paymentMethodId) {
         const errorMsg =
