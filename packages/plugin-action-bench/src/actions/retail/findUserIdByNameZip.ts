@@ -40,8 +40,42 @@ If any parameter cannot be found, use empty string for that parameter.`;
 
 export const findUserIdByNameZip: Action = {
   name: 'FIND_USER_ID_BY_NAME_ZIP',
-  description:
-    'Find user id by name and zip code. If the user is not found, the function will return an error message.',
+  similes: ['find_user_id_by_name_zip', 'authenticate_by_name', 'verify_customer_name'],
+  description: `Find and authenticate a customer using their first name, last name, and zip code.
+
+  **Required Parameters:**
+  - first_name (string): The customer's first name (e.g., "John")
+  - last_name (string): The customer's last name (e.g., "Doe")  
+  - zip (string): The customer's 5-digit zip code (e.g., "12345")
+
+  **Returns:**
+  - Success: Returns the user_id string and sets authentication status
+  - Failure: Returns "Error: user not found" if no matching user exists
+
+  **Authentication Priority:**
+  - By default, authenticate users by EMAIL (use FIND_USER_ID_BY_EMAIL action)
+  - Only use this action if:
+    1. User cannot remember their email
+    2. User prefers not to share email
+    3. Email authentication failed
+    4. User explicitly provides name and zip code for authentication
+
+  **Action Result:**
+  When successful, this action:
+  - Returns the authenticated user_id
+  - Sets 'authenticated: true' in state
+  - Enables subsequent actions that require authentication
+  - After successful authentication, you should FINISH the action loop and ask the user how they want to proceed
+
+  **When to use:**
+  - Customer needs authentication but cannot/won't provide email
+  - Customer explicitly offers name and zip for verification
+  - As fallback authentication method
+
+  **Do NOT use when:**
+  - Customer has already been authenticated
+  - Customer can provide email (use FIND_USER_ID_BY_EMAIL instead)
+  - Authentication is not required for the requested action`,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },

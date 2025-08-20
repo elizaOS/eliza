@@ -36,7 +36,7 @@ import {
 import { v4 } from 'uuid';
 
 // import * as actions from './actions/index.ts';
-import * as evaluators from './evaluators/index.ts';
+// import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
@@ -327,65 +327,90 @@ export function shouldBypassShouldRespond(
 const useMultiStep = true;
 
 const loopingTemplate = `<task>
-Determine the next step the assistant should take in this conversation to help the user reach their goal.
+Determine the next action the assistant should take to help the customer achieve their goal.
 </task>
 
 {{recentMessages}}
 
-# Global Decision Rules (MUST follow before choosing any next step)
-1. You are a customer service representative for an online retail company. You are chatting with a customer, and you can call tools or respond to the user.  
-2. Always first confirm the user id by **email** or **name + zip code** before proceeding with any task. Check the recentMessages to see if the user has already been authenticated. If not, request authentication first.  
-3. If the user id is not found, do not proceed with any task.  
-4. For any change to the backend database (e.g., address update, refund, or order cancellation), you must confirm the transaction details with the user and ask for explicit authorization ("yes") before proceeding.  
-5. You must solve the user’s task given the available tools, without transferring to a human agent.  
-6. Do not make up any information or knowledge not provided by the user or the tools.  
-7. You may make at most **one tool call at a time**. If you call a tool, do not also respond to the user in the same step.  
-8. Analyze what information is still missing or what needs to be done to fulfill the user’s request.  
-9. Use the available actions or providers below to gather that information or complete the next step.  
-10. Do NOT proceed to a final response ('finish') unless you are absolutely sure that:  
-    - The user request has been fully resolved.  
-    - No further actions or data are required.  
-11. Think step by step and ensure your reasoning is clear and justifiable.  
-12. You may ONLY use actions/providers listed in **availableActions** and **availableProviders** below.  
-13. You may NOT repeat any action or provider that has already been used in this session (see "Previous Action Results" below).  
-14. Never invent new action names.  
-15. Always explain *why* you are choosing the next step.  
-16. When calling an action or provider, you must include the **parameters** inside your thought. Do not output them as a separate field.  
+# Role & Context
+You are a customer service representative for an online retail company. You can execute actions (tools) to help customers with their requests.
 
-# Two-Step Workflow
-- **Step 1: Gather or Execute**  
-  If any data is missing or a backend step needs to be executed (e.g. calling an action to exchange items or retrieve info), call the appropriate action/provider.
+# Critical Authentication & Authorization Rules
+1. **Authentication Required**: ALWAYS verify customer identity BEFORE any action:
+   - Check recentMessages AND Previous Action Results for existing authentication
+   - Look for successful FIND_USER_ID_BY_EMAIL or FIND_USER_ID_BY_NAME_ZIP actions
+   - If not authenticated, request **email** OR **name + zip code**
+   - If customer ID not found, STOP and inform the customer
 
-- **Step 2: Finish**  
-  If nothing more is required and the task is truly complete, return \`FINISH\`.
+2. **Post-Authentication**: When authentication is JUST completed:
+   - Return 'finish' immediately after successful authentication
+   - Let the final summary ask the customer how they want to proceed
+   - Do NOT continue with other actions until customer responds
+
+3. **Authorization Required**: For any backend changes (address update, refund, cancellation):
+   - Clearly explain what will be changed
+   - Request explicit confirmation ("yes") from customer
+   - Only proceed after receiving authorization
+
+# Action Execution Guidelines
+1. **One Action at a Time**: Execute exactly one action per step. Never combine multiple actions.
+
+2. **Action Selection**:
+   - Only use actions from the **Available Actions** list below
+   - Never repeat an action already executed (see **Previous Action Results**)
+   - Never invent or hallucinate action names
+   - Include action parameters in your thought process
+
+3. **Decision Making**:
+   - Analyze what information is missing or what needs to be done
+   - Think step-by-step and justify your reasoning
+   - Do not make up information not provided by the customer or actions
+
+4. **Completion Criteria**:
+   - Return 'finish' when:
+     * Authentication was JUST successfully completed (needs customer's next request)
+     * The customer's request is FULLY resolved
+     * No further actions are required
+     * All necessary confirmations have been received
 
 {{actionsWithDescriptions}}
 
-{{providersWithDescriptions}}
-
-These are the actions or data provider calls that have already been used in this run. You MUST NOT call the same step again. Use this to avoid redundancy and guide your next move.
-
+# Previous Action Results
+These actions have already been executed. Do NOT repeat them:
 {{actionResults}}
+
+# Authentication Status Check
+Look for these indicators in Previous Action Results:
+- FIND_USER_ID_BY_EMAIL with success: true → User is authenticated
+- FIND_USER_ID_BY_NAME_ZIP with success: true → User is authenticated
+- Any action returning "authenticated: true" → User is authenticated
+
+# Decision Process
+Analyze the conversation and previous results, then choose ONE of:
+1. **Execute Action**: If data is needed or an operation must be performed
+2. **Finish**: If authentication just completed OR task is complete
 
 <output>
 <response>
   <thought>
-    Clearly explain your reasoning for the next step and how it helps resolve the user's request. 
-    If calling an action or provider, mention the relevant parameters you are passing.  
-    Example: "To proceed, I need to call ACTION_NAME with parameters { 'key': 'value' } to gather the necessary data."
+    Explain your reasoning for the next step. Include:
+    - Current authentication status
+    - What the customer needs
+    - Why this specific action helps (or why finishing)
+    - What parameters you're using (if executing an action)
+    Example: "Authentication just completed successfully. I should finish here and ask the customer how they want to proceed with their request."
   </thought>
-  <nextStepType>action | provider | finish</nextStepType>
-  <stepName>(Required only if nextStepType is action or provider)</stepName>
+  <nextStepType>action | finish</nextStepType>
+  <actionName>(Required only if nextStepType is 'action')</actionName>
 </response>
 </output>`;
-
 
 const finalSummaryTemplate = (lastThought?: string) => `
 <task>
 Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
 </task>
 
-<providers>
+# Context Information
 {{bio}}
 
 ---
@@ -396,34 +421,52 @@ Summarize what the assistant has done so far and provide a final response to the
 
 {{messageDirections}}
 
-</providers>
-
 # Conversation Summary
 Below is the user’s original request and conversation so far:
 {{recentMessages}}
 
 # Execution Trace
-Here are the steps (actions/providers) taken by the assistant to fulfill the request:
+Here are the actions taken by the assistant to fulfill the request:
 {{actionResults}}
 
 # Assistant’s Last Reasoning Step
 ${lastThought || 'No final reasoning step was recorded.'}
 
-# Authentication & Compliance Rules
-1. The assistant must always confirm the user ID by **email** or **name + zip code** before proceeding with any task.  
-2. Check the conversation, execution trace, and last reasoning step to see if authentication has already been done.  
-3. If authentication is missing, the final response must **ask the user for authentication** before confirming any backend action or providing results.  
-4. If the user ID was not found, the assistant must not proceed with any task.  
-5. For backend changes (address update, refund, cancellation, etc.), the assistant must confirm the transaction details and request explicit authorization ("yes").  
-6. Only base your output on the actual steps in the execution trace and the last reasoning step. Do not invent anything.  
+# Authentication & Response Rules
+1. **Authentication Check**: Review the execution trace for authentication status:
+   - FIND_USER_ID_BY_EMAIL or FIND_USER_ID_BY_NAME_ZIP with success: true = Authenticated
+   - If authentication JUST completed, acknowledge it and ask how to help
+   - If authentication failed, explain the issue and ask for correct information
+   - If not authenticated yet, request authentication credentials
+
+2. **Post-Authentication Response**: When authentication was the ONLY action taken:
+   - Thank the customer for verifying their identity
+   - Reference their original request/concern from the conversation
+   - Ask specifically how you can help them proceed
+   - DO NOT assume next steps - wait for customer direction
+
+3. **Task Completion**: When actions beyond authentication were completed:
+   - Summarize what was done
+   - Provide relevant results or information
+   - Confirm any pending authorizations if needed
+
+4. **Backend Changes**: For updates requiring authorization:
+   - Clearly state what will be changed
+   - Request explicit confirmation ("yes") before proceeding
 
 # Instructions
-1. Analyze the user’s intent and what result they expected.  
-2. Carefully review the execution trace **and the last reasoning step**, along with the authentication rules.  
-3. Compose a clear and helpful final message to the user:
-   - If authentication was missing, explicitly ask for it (do not continue with task completion).  
-   - If authentication is present, summarize what was done, provide results, and confirm any pending authorization if required.  
-   - If everything is complete, wrap up clearly.  
+1. Identify what phase we're in:
+   - Just authenticated → Welcome and ask how to proceed
+   - Mid-task → Provide results and next steps
+   - Task complete → Wrap up with summary
+
+2. Review the execution trace and last reasoning step carefully
+
+3. Compose an appropriate response based on the phase:
+   - Post-authentication: "Thank you for verifying your identity, [Name]. I see you mentioned [original concern]. How would you like me to help you with that?"
+   - Task progress: Provide results and guide next steps
+   - Completion: Summarize what was accomplished
+
 4. Your final output MUST be in this XML format:
 <output>
 <response>
@@ -432,7 +475,6 @@ ${lastThought || 'No final reasoning step was recorded.'}
 </response>
 </output>
 `;
-
 
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
@@ -448,11 +490,7 @@ type StrategyResult = {
   mode: StrategyMode;
 };
 
-async function runSingleShotCore({
-  runtime,
-  message,
-  state,
-}): Promise<StrategyResult> {
+async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
   // Single-shot unique logic (was inside handleSingleShotResponse -> shouldRespond branch)
   state = await runtime.composeState(message, ['ACTIONS']);
 
@@ -514,7 +552,7 @@ async function runSingleShotCore({
       if (!responseContent.text || responseContent.text.trim() === '') {
         responseContent.actions = ['IGNORE'];
       } else {
-        const filtered = responseContent.actions.filter(a => !isIgnore(a));
+        const filtered = responseContent.actions.filter((a) => !isIgnore(a));
         responseContent.actions = filtered.length ? filtered : ['REPLY'];
       }
     }
@@ -547,12 +585,7 @@ async function runSingleShotCore({
   };
 }
 
-async function runMultiStepCore({
-  runtime,
-  message,
-  state,
-  callback
-}): Promise<StrategyResult> {
+async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
   // Multi-step unique logic (was inside handleMultiStepResponse -> shouldRespond branch)
   const traceActionResult: any[] = [];
   let continueLoop = true;
@@ -585,7 +618,7 @@ async function runMultiStepCore({
 
       if (parsedStep.nextStepType === 'action') {
         const actionContent = {
-          actions: [parsedStep.stepName],
+          actions: [parsedStep.actionName],
           text: '',
           thought: parsedStep.thought,
         };
@@ -604,7 +637,7 @@ async function runMultiStepCore({
           state,
           async () => {
             await callback({
-              text: `🔎 Executing action: ${parsedStep.stepName}`,
+              text: `🔎 Executing action: ${parsedStep.actionName}`,
               thought: parsedStep.thought,
               stepType: parsedStep.nextStepType,
             });
@@ -614,23 +647,28 @@ async function runMultiStepCore({
 
         success = result[0].success;
         executionResult = result[0].text;
-      } else if (parsedStep.nextStepType === 'provider') {
-        const provider = runtime.providers.find((p) => p.name === parsedStep.stepName);
-        executionResult = await provider?.get(runtime, message, state);
       }
 
+      // Check if this was an authentication action
+      const isAuthAction =
+        parsedStep.actionName === 'FIND_USER_ID_BY_EMAIL' ||
+        parsedStep.actionName === 'FIND_USER_ID_BY_NAME_ZIP';
+
       traceActionResult.push({
-        data: { actionName: parsedStep.stepName },
+        data: {
+          actionName: parsedStep.actionName,
+          isAuthentication: isAuthAction && success,
+        },
         success,
         text: success ? executionResult : undefined,
-        error: success ? undefined : executionResult
+        error: success ? undefined : executionResult,
       });
     } catch (err) {
       runtime.logger.error({ err }, '[MultiStep] Error executing step');
       traceActionResult.push({
-        data: { actionName: parsedStep.stepName },
+        data: { actionName: parsedStep.actionName },
         success: 'failed',
-        error: err
+        error: err,
       });
     }
   }
@@ -683,7 +721,6 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
-
   // Timeout setup (shared)
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timeout | undefined = undefined;
@@ -836,7 +873,10 @@ const messageReceivedHandler = async ({
 
         // attachments
         if (message.content.attachments && message.content.attachments.length > 0) {
-          message.content.attachments = await processAttachments(message.content.attachments, runtime);
+          message.content.attachments = await processAttachments(
+            message.content.attachments,
+            runtime
+          );
           if (message.id) {
             await runtime.updateMemory({ id: message.id, content: message.content });
           }
@@ -846,8 +886,7 @@ const messageReceivedHandler = async ({
         if (!shouldSkipShouldRespond) {
           const shouldRespondPrompt = composePromptFromState({
             state,
-            template:
-              runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+            template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
           });
 
           runtime.logger.debug(
@@ -908,10 +947,7 @@ const messageReceivedHandler = async ({
 
           // Send response based on mode (shared)
           if (responseContent) {
-            const mode =
-              useMultiStep
-                ? 'simple'
-                : (result.mode ?? ('actions' as StrategyMode));
+            const mode = useMultiStep ? 'simple' : (result.mode ?? ('actions' as StrategyMode));
 
             if (mode === 'simple') {
               if (responseContent.providers && responseContent.providers.length > 0) {
@@ -953,7 +989,9 @@ const messageReceivedHandler = async ({
           }
 
           if (!message.id) {
-            runtime.logger.error('[Bootstrap] Message ID is missing, cannot create ignore response.');
+            runtime.logger.error(
+              '[Bootstrap] Message ID is missing, cannot create ignore response.'
+            );
             await runtime.emitEvent(EventType.RUN_ENDED, {
               runtime,
               runId,
@@ -1034,8 +1072,9 @@ const messageReceivedHandler = async ({
         }
 
         const date = new Date();
-        const availableActions =
-          state.data?.providers?.ACTIONS?.data?.actionsData?.map((a: any) => a.name) || [-1];
+        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
+          (a: any) => a.name
+        ) || [-1];
 
         const logData = {
           at: date.toString(),
@@ -1834,9 +1873,9 @@ export const bootstrapPlugin: Plugin = {
   ],
   // this is jank, these events are not valid
   events: events as any as PluginEvents,
-  evaluators: [evaluators.reflectionEvaluator],
+  // evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    providers.evaluatorsProvider,
+    // providers.evaluatorsProvider,
     providers.anxietyProvider,
     // providers.timeProvider,
     // providers.entitiesProvider,

@@ -13,7 +13,47 @@ import { composePromptFromState } from '@elizaos/core';
 
 export const getProductDetails: Action = {
   name: 'GET_PRODUCT_DETAILS',
-  description: 'Get detailed information about a product including all variants and options. Select this action only when the correct product ID has been obtained from the order.',
+  description: `Get the inventory details and all variants of a specific product.
+  
+  **Required Parameter:**
+  - product_id (string): The 10-digit product identifier (e.g., '9523456873', '6086499569')
+    IMPORTANT: Product ID is different from item ID. Product ID represents the product type, while item ID is a specific variant.
+  
+  **Returns:**
+  A JSON object containing:
+  - product_id: The product identifier
+  - name: Product name/description
+  - variants: Object of available variants, each keyed by item_id containing:
+    - item_id: Unique identifier for this specific variant (10-digit)
+    - price: Current price for this variant
+    - available: Boolean indicating if in stock
+    - options: Object with variant-specific attributes like:
+      - size: S, M, L, XL, etc.
+      - color: blue, black, red, etc.
+      - material: aluminum, plastic, etc.
+      - Other product-specific options
+  
+  **Action Prerequisites:**
+  - Product ID must be obtained first, typically from:
+    1. GET_ORDER_DETAILS action (returns product_id for each item in an order)
+    2. Customer explicitly providing a product ID
+    3. Previous conversation context
+  
+  **Action Chaining:**
+  Typically follows GET_ORDER_DETAILS when customer wants to:
+  - Exchange an item for a different size/color
+  - Get details about a product in their order
+  - Check available variants for replacement
+  
+  **When to use:**
+  - Customer wants to exchange a product (after getting product_id from order)
+  - Customer asks about product variants/options
+  - Customer needs product specifications
+  - Checking inventory for a specific product
+  
+  **Do NOT use when:**
+  - You don't have a valid 10-digit product_id
+  - Customer is only asking about their order (use GET_ORDER_DETAILS instead)`,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },
@@ -25,28 +65,45 @@ export const getProductDetails: Action = {
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
+    let enhancedState: State | undefined;
+
     try {
+      // First, compose state with ACTION_STATE provider to get previous action results
+      enhancedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+
       const thoughtSnippets =
-      responses
-        ?.map((res) => res.content?.thought)
-        .filter(Boolean)
-        .join('\n') ?? '';
+        responses
+          ?.map((res) => res.content?.thought)
+          .filter(Boolean)
+          .join('\n') ?? '';
+
       // Get retail data from state or load from mock data
-      const retailData = state?.values?.retailData || getRetailData();
+      const retailData =
+        enhancedState?.values?.retailData || state?.values?.retailData || getRetailData();
 
       // Use LLM to extract parameters with XML format
-      const extractionPrompt = `You are extracting a product ID from a customer conversation based on both the dialogue and internal reasoning.
+      const extractionPrompt = `You are extracting a product ID from a customer conversation and previous action results.
 
 **Conversation:**
 {{recentMessages}}
+
+**Previous Action Results:**
+{{actionResults}}
 
 **Agent Thoughts (why this action was selected):**
 ${thoughtSnippets}
 
 Your task:
-- Identify if the user is referring to a specific product for which they want details (e.g., to exchange, modify, ask questions about, etc.).
-- Use both the conversation and the agent's internal thoughts to make this judgment.
-- Extract only the most relevant 10-digit product ID, if clearly mentioned with actionable intent.
+1. Check if a product_id was returned from a previous GET_ORDER_DETAILS action
+2. If not, check if the user directly mentioned a 10-digit product ID
+3. Extract the most relevant product_id for the customer's current request
+
+Common scenario: Customer asks to exchange an item → GET_ORDER_DETAILS returns order with product_ids → Use that product_id here
+
+Look for product_id in these places (in order of priority):
+- Previous GET_ORDER_DETAILS result (in the "items" array, each item has a "product_id" field)
+- Direct mention by the customer in the conversation
+- Agent's reasoning/thoughts about which product to look up
 
 Respond strictly using this XML format:
 
@@ -54,27 +111,27 @@ Respond strictly using this XML format:
   <product_id>10-digit product ID or empty string</product_id>
 </response>
 
-If no actionable product reference exists, leave the value empty. Do not include any commentary or explanation.`;
+If no product_id can be found, leave the value empty. Do not include any commentary or explanation.`;
 
       const prompt = composePromptFromState({
-        state,
+        state: enhancedState,
         template: extractionPrompt,
       });
 
       const extractionResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt
+        prompt,
       });
 
       // Parse XML response using parseKeyValueXml
       const parsedParams = parseKeyValueXml(extractionResult);
 
-      console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", parsedParams);
+      console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!', parsedParams);
 
       const productId = parsedParams?.product_id?.trim();
 
       if (!productId) {
         const errorMsg =
-          "The product ID is missing or invalid. Please provide a valid 10-digit product ID to proceed.";
+          'The product ID is missing or invalid. Please provide a valid 10-digit product ID to proceed.';
         if (callback) {
           await callback({
             text: errorMsg,
@@ -120,8 +177,10 @@ If no actionable product reference exists, leave the value empty. Do not include
         success: true,
         text: responseText,
         values: {
+          ...enhancedState?.values,
           ...state?.values,
           retailData,
+          lastProductId: productId,
         },
         data: product,
       };
@@ -140,7 +199,7 @@ If no actionable product reference exists, leave the value empty. Do not include
         success: false,
         text: errorText,
         error: errorMessage,
-        values: state?.values,
+        values: enhancedState?.values || state?.values,
       };
     }
   },

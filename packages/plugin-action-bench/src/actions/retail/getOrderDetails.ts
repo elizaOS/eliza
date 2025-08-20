@@ -40,8 +40,34 @@ If the order ID cannot be found, use empty string for that parameter.`;
 export const getOrderDetails: Action = {
   name: 'GET_ORDER_DETAILS',
   similes: ['get_order_details', 'check_order_status', 'order_status', 'track_order'],
-  description:
-    "Get the status and details of an order. Order ID must include the '#' prefix (e.g., #W0000000).",
+  description: `Get the status and detailed information of a customer's order.
+  
+  **Required Parameter:**
+  - order_id (string): The order ID with '#' prefix (e.g., #W0000000, #W5744371)
+    IMPORTANT: The '#' symbol is required at the beginning of the order ID.
+  
+  **Returns:**
+  A JSON object containing:
+  - order_id: The order identifier
+  - user_id: Customer's user ID
+  - address: Delivery address
+  - items: Array of items in the order, each containing:
+    - item_id: Unique item identifier (10-digit)
+    - product_id: Product identifier (10-digit) - use this with GET_PRODUCT_DETAILS action
+    - quantity: Number of items
+    - price: Item price
+  - fulfillments: Shipping and fulfillment details
+  - status: Current order status (e.g., "delivered", "processed", "shipped")
+  - payment_history: Payment transaction details
+  
+  **Action Chaining:**
+  This action returns product_id values that can be used with GET_PRODUCT_DETAILS to get full product information for exchanges or detailed inquiries.
+  
+  **When to use:**
+  - Customer asks about order status
+  - Customer wants to track their order
+  - Customer wants to exchange/return items (first step to get product_ids)
+  - Customer has issues with their order`,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },
@@ -97,7 +123,7 @@ export const getOrderDetails: Action = {
       const orders = retailData.orders;
       if (orderId in orders) {
         const order = orders[orderId];
-      
+
         const responsePayload = {
           order_id: orderId,
           user_id: order.user_id,
@@ -107,16 +133,16 @@ export const getOrderDetails: Action = {
           status: order.status,
           payment_history: order.payment_history,
         };
-      
+
         const responseText = JSON.stringify(responsePayload, null, 2); // formatted JSON string
-      
+
         if (callback) {
           await callback({
             text: responseText,
             source: message.content.source,
           });
         }
-      
+
         return {
           success: true,
           text: responseText,
@@ -127,7 +153,6 @@ export const getOrderDetails: Action = {
           data: responsePayload, // parsed object
         };
       }
-      
 
       const errorMsg = `I couldn't find order ${orderId}. Please check the order number and try again.`;
       if (callback) {
