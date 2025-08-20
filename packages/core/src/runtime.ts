@@ -1859,19 +1859,39 @@ export class AgentRuntime implements IAgentRuntime {
       });
       
       // Log to adapter for backward compatibility
-      await this.adapter?.log?.({
-        entityId: this.agentId,
-        roomId: this.agentId,
-        body: {
-          modelType,
-          modelKey,
-          params: {
-            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+      // Use explicit check to avoid silently skipping logs
+      if (this.adapter && this.adapter.log) {
+        await this.adapter.log({
+          entityId: this.agentId,
+          roomId: this.agentId,
+          body: {
+            modelType,
+            modelKey,
+            params: {
+              ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+              prompt: promptContent,
+            },
             prompt: promptContent,
+            runId: this.getCurrentRunId(),
+            timestamp: Date.now(),
+            executionTime: elapsedTime,
+            provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+            actionContext: this.currentActionContext
+              ? {
+                  actionName: this.currentActionContext.actionName,
+                  actionId: this.currentActionContext.actionId,
+                }
+              : undefined,
+            response:
+              Array.isArray(result) && result.every((x) => typeof x === 'number')
+                ? '[array]'
+                : result,
           },
-        },
-        type: `useModel:${modelKey}`,
-      });
+          type: `useModel:${modelKey}`,
+        });
+      } else if (!this.adapter) {
+        this.logger.warn('[useModel] Adapter not available for logging model usage');
+      }
       
       return result;
     } catch (error) {
