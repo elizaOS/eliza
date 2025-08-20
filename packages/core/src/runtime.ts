@@ -309,7 +309,7 @@ export class AgentRuntime implements IAgentRuntime {
 
         // ensure we have a promise, so when it's actually loaded via registerService,
         // we can trigger the loading of service dependencies
-        if (!this.servicePromises.get(service.serviceType)) {
+        if (!this.servicePromises.has(service.serviceType)) {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
@@ -1591,10 +1591,13 @@ export class AgentRuntime implements IAgentRuntime {
   private _createServiceResolver(serviceType: ServiceTypeName) {
     // consider this in the future iterations
     // const { promise, resolve, reject } = Promise.withResolvers<T>();
-    let resolver: ServiceResolver;
+    let resolver: ServiceResolver | undefined;
     this.servicePromises.set(serviceType, new Promise<Service>(resolve => {
       resolver = resolve
     }));
+    if (!resolver) {
+      throw new Error(`Failed to create resolver for service ${serviceType}`)
+    }
     this.servicePromiseHandles.set(serviceType, resolver);
     return this.servicePromises.get(serviceType);
   }
