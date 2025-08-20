@@ -100,6 +100,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getServicesByType: mock().mockReturnValue([]),
     getAllServices: mock().mockReturnValue(new Map()),
     registerService: mock().mockResolvedValue(undefined),
+    getServiceLoadPromise: mock().mockResolvedValue(null),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
     registerDatabaseAdapter: mock(),
