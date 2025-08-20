@@ -1219,6 +1219,7 @@ export class AgentServer {
     limit: number = 50,
     beforeTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
+    // TODO: Add afterTimestamp support when database layer is updated
     return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
   }
 

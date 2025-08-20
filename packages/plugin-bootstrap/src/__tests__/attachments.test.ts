@@ -45,8 +45,6 @@ describe('processAttachments', () => {
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('image-1');
 
-
-
     expect(result[0].title).toBe('Beautiful Sunset');
     expect(result[0].description).toBe('A stunning sunset over the ocean with vibrant colors');
     expect(result[0].text).toBe(
