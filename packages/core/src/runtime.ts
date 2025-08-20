@@ -307,7 +307,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.services) {
       for (const service of plugin.services) {
-
         // ensure we have a promise, so when it's actually loaded via registerService,
         // we can trigger the loading of service dependencies
         if (!this.servicePromises.has(service.serviceType)) {
@@ -538,7 +537,7 @@ export class AgentRuntime implements IAgentRuntime {
           `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
         );
       } catch (e) {
-        console.error('Error registering action', e)
+        console.error('Error registering action', e);
       }
     }
   }
@@ -1566,11 +1565,13 @@ export class AgentRuntime implements IAgentRuntime {
 
       // inform everyone that's waiting for this service, that it's now available
       // removes the need for polling and timers
-      const resolve = this.servicePromiseHandles.get(serviceType)
+      const resolve = this.servicePromiseHandles.get(serviceType);
       if (resolve) {
-        resolve(serviceInstance)
+        resolve(serviceInstance);
       } else {
-        this.logger.debug(`${this.character.name} - Service ${serviceType} has no servicePromiseHandle`)
+        this.logger.debug(
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+        );
       }
 
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
@@ -1593,11 +1594,14 @@ export class AgentRuntime implements IAgentRuntime {
     // consider this in the future iterations
     // const { promise, resolve, reject } = Promise.withResolvers<T>();
     let resolver: ServiceResolver | undefined;
-    this.servicePromises.set(serviceType, new Promise<Service>(resolve => {
-      resolver = resolve
-    }));
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve) => {
+        resolver = resolve;
+      })
+    );
     if (!resolver) {
-      throw new Error(`Failed to create resolver for service ${serviceType}`)
+      throw new Error(`Failed to create resolver for service ${serviceType}`);
     }
     this.servicePromiseHandles.set(serviceType, resolver);
     return this.servicePromises.get(serviceType);
