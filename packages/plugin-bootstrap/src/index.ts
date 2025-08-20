@@ -1663,7 +1663,8 @@ export const bootstrapPlugin: Plugin = {
     providers.factsProvider,
     providers.roleProvider,
     providers.settingsProvider,
-    providers.capabilitiesProvider,
+    // there is given no reason for this - odi
+    //providers.capabilitiesProvider,
     providers.attachmentsProvider,
     providers.providersProvider,
     providers.actionsProvider,
