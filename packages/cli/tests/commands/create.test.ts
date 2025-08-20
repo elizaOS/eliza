@@ -378,38 +378,116 @@ describe('ElizaOS Create Commands', () => {
       TEST_TIMEOUTS.INDIVIDUAL_TEST
     );
 
+      it(
+    'creates plugin with proper CLAUDE.md file',
+    async () => {
+      await crossPlatform.removeDir('plugin-claude-md-test');
+
+      const result = bunExecSync(
+        'elizaos create claude-md-test --yes --type plugin',
+        getPlatformOptions({
+          encoding: 'utf8',
+          timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+        })
+      ) as string;
+
+      const pluginDir = 'plugin-claude-md-test';
+      expect(existsSync(pluginDir)).toBe(true);
+      expect(existsSync(join(pluginDir, 'CLAUDE.md'))).toBe(true);
+
+      // Verify CLAUDE.md content contains expected plugin-specific sections
+      const claudeMdContent = await readFile(join(pluginDir, 'CLAUDE.md'), 'utf8');
+      expect(claudeMdContent).toContain('ElizaOS Plugin Development Guide for Claude');
+      expect(claudeMdContent).toContain('| **Project Type**    | ElizaOS Plugin        |'); // Match actual template format
+      expect(claudeMdContent).toContain('Plugin Architecture');
+      expect(claudeMdContent).toContain('Services** (Required for External APIs)');
+      expect(claudeMdContent).toContain('Actions** (Required for User Interactions)');
+      expect(claudeMdContent).toContain('Providers** (Optional - Context Supply)');
+      expect(claudeMdContent).toContain('Evaluators** (Optional - Post-Processing)');
+      expect(claudeMdContent).toContain('Plugin Export Pattern');
+      expect(claudeMdContent).toContain('elizaos dev');
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+  });
+
+  describe('TEE Project Creation', () => {
     it(
-      'creates plugin with proper CLAUDE.md file',
+      'create TEE project succeeds',
       async () => {
-        await crossPlatform.removeDir('plugin-claude-md-test');
+        // Use cross-platform directory removal
+        await crossPlatform.removeDir('my-tee-project');
 
         const result = bunExecSync(
-          'elizaos create claude-md-test --yes --type plugin',
+          'elizaos create my-tee-project --yes --type tee',
           getPlatformOptions({
             encoding: 'utf8',
             timeout: TEST_TIMEOUTS.PROJECT_CREATION,
           })
         ) as string;
 
-        const pluginDir = 'plugin-claude-md-test';
-        expect(existsSync(pluginDir)).toBe(true);
-        expect(existsSync(join(pluginDir, 'CLAUDE.md'))).toBe(true);
+        // Check for various success patterns
+        const successPatterns = [
+          'TEE project "my-tee-project" created successfully!',
+          'TEE project initialized successfully!',
+          'successfully initialized',
+          'TEE project created',
+          'created successfully',
+        ];
 
-        // Verify CLAUDE.md content contains expected plugin-specific sections
-        const claudeMdContent = await readFile(join(pluginDir, 'CLAUDE.md'), 'utf8');
-        expect(claudeMdContent).toContain('ElizaOS Plugin Development Guide for Claude');
-        expect(claudeMdContent).toContain('| **Project Type**    | ElizaOS Plugin        |'); // Match actual template format
-        expect(claudeMdContent).toContain('Plugin Architecture');
-        expect(claudeMdContent).toContain('Services** (Required for External APIs)');
-        expect(claudeMdContent).toContain('Actions** (Required for User Interactions)');
-        expect(claudeMdContent).toContain('Providers** (Optional - Context Supply)');
-        expect(claudeMdContent).toContain('Evaluators** (Optional - Post-Processing)');
-        expect(claudeMdContent).toContain('Plugin Export Pattern');
-        expect(claudeMdContent).toContain('elizaos dev');
+        const hasSuccess = successPatterns.some((pattern) => result.includes(pattern));
+        if (!hasSuccess) {
+          // Fallback: check if files were actually created
+          expect(existsSync('my-tee-project')).toBe(true);
+          expect(existsSync('my-tee-project/package.json')).toBe(true);
+        } else {
+          expect(hasSuccess).toBe(true);
+        }
+
+        expect(existsSync('my-tee-project')).toBe(true);
+        expect(existsSync('my-tee-project/package.json')).toBe(true);
+        expect(existsSync('my-tee-project/src')).toBe(true);
+        expect(existsSync('my-tee-project/.gitignore')).toBe(true);
+        expect(existsSync('my-tee-project/.npmignore')).toBe(true);
+        // Verify GUIDE.md is copied from project-tee-starter template
+        expect(existsSync('my-tee-project/GUIDE.md')).toBe(true);
+        // TEE projects also include Docker configuration
+        expect(existsSync('my-tee-project/Dockerfile')).toBe(true);
+        expect(existsSync('my-tee-project/docker-compose.yaml')).toBe(true);
+      },
+      TEST_TIMEOUTS.INDIVIDUAL_TEST
+    );
+
+    it(
+      'creates TEE project with proper GUIDE.md file',
+      async () => {
+        await crossPlatform.removeDir('tee-guide-test');
+
+        const result = bunExecSync(
+          'elizaos create tee-guide-test --yes --type tee',
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+          })
+        ) as string;
+
+        expect(existsSync('tee-guide-test')).toBe(true);
+        expect(existsSync('tee-guide-test/GUIDE.md')).toBe(true);
+
+        // Verify GUIDE.md content contains expected TEE-specific sections
+        const guideMdContent = await readFile('tee-guide-test/GUIDE.md', 'utf8');
+        expect(guideMdContent).toContain('TEE');
+        expect(guideMdContent).toContain('Phala');
+        // Check for TEE-specific deployment instructions
+        expect(guideMdContent).toContain('Docker');
+        expect(guideMdContent).toContain('deployment');
       },
       TEST_TIMEOUTS.INDIVIDUAL_TEST
     );
   });
+
+  // Note: Quick and Full plugin types are selected interactively, not via CLI flags
+  // The --yes flag uses the default plugin type (full)
 
   describe('Cleanup on Interruption', () => {
     it(
