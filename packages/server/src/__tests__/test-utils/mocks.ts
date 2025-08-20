@@ -78,6 +78,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     getTaskWorker: jest.fn(() => undefined),
     stop: jest.fn(() => Promise.resolve()),
     addEmbeddingToMemory: jest.fn((memory: Memory) => Promise.resolve(memory)),
+    queueEmbeddingGeneration: jest.fn(() => Promise.resolve()),
     createRunId: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000' as UUID),
     startRun: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000' as UUID),
     endRun: jest.fn(),
