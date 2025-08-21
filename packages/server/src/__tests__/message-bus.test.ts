@@ -484,7 +484,7 @@ describe('MessageBusService', () => {
         server_id: '789e1234-e89b-12d3-a456-426614174000',
         author_id: '012e3456-e89b-12d3-a456-426614174000',
         content: 'Test message with session metadata',
-        created_at: new Date(),
+        created_at: Date.now(),
         source_type: 'user',
         raw_message: {
           content: 'Test message with session metadata',
@@ -526,7 +526,7 @@ describe('MessageBusService', () => {
         server_id: '789e1234-e89b-12d3-a456-426614174000',
         author_id: '012e3456-e89b-12d3-a456-426614174000',
         content: 'Test message with malicious metadata',
-        created_at: new Date(),
+        created_at: Date.now(),
         source_type: 'user',
         raw_message: {
           content: 'Test message with malicious metadata',
@@ -571,7 +571,7 @@ describe('MessageBusService', () => {
         server_id: '789e1234-e89b-12d3-a456-426614174000',
         author_id: '012e3456-e89b-12d3-a456-426614174000',
         content: 'Test message without metadata',
-        created_at: new Date(),
+        created_at: Date.now(),
         source_type: 'user',
         raw_message: {
           content: 'Test message without metadata',
