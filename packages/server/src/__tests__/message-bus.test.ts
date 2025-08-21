@@ -468,7 +468,7 @@ describe('MessageBusService', () => {
     it('should preserve session metadata when creating memories', async () => {
       // Get the message handler
       const handler = (internalMessageBus.on as any).mock.calls.find(
-        (call) => call[0] === 'message'
+        (call) => call[0] === 'new_message'
       )[1];
 
       const sessionMetadata = {
@@ -517,7 +517,7 @@ describe('MessageBusService', () => {
 
     it('should not allow user metadata to override system fields', async () => {
       const handler = (internalMessageBus.on as any).mock.calls.find(
-        (call) => call[0] === 'message'
+        (call) => call[0] === 'new_message'
       )[1];
 
       const messageData = {
@@ -562,7 +562,7 @@ describe('MessageBusService', () => {
 
     it('should handle messages without metadata gracefully', async () => {
       const handler = (internalMessageBus.on as any).mock.calls.find(
-        (call) => call[0] === 'message'
+        (call) => call[0] === 'new_message'
       )[1];
 
       const messageData = {
