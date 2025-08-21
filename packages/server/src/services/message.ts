@@ -394,11 +394,12 @@ export class MessageBusService extends Service {
       content: messageContent,
       createdAt: message.created_at,
       metadata: {
+        // Include message metadata first (which includes session metadata)
+        ...(message.metadata || {}),
+        // System fields should override any user-provided values
         type: 'message',
         source: message.source_type || 'central-bus',
         sourceId: message.id,
-        // Include all message metadata (which now includes session metadata)
-        ...(message.metadata || {}),
         raw: {
           ...message.raw_message,
           senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,

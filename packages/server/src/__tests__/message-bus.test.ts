@@ -515,6 +515,51 @@ describe('MessageBusService', () => {
       expect(createMemoryCall.metadata.raw.senderId).toBe('012e3456-e89b-12d3-a456-426614174000');
     });
 
+    it('should not allow user metadata to override system fields', async () => {
+      const handler = (internalMessageBus.on as any).mock.calls.find(
+        (call) => call[0] === 'message'
+      )[1];
+
+      const messageData = {
+        id: 'msg-system-override',
+        channel_id: '456e7890-e89b-12d3-a456-426614174000',
+        server_id: '789e1234-e89b-12d3-a456-426614174000',
+        author_id: '012e3456-e89b-12d3-a456-426614174000',
+        content: 'Test message with malicious metadata',
+        created_at: new Date(),
+        source_type: 'user',
+        raw_message: {
+          content: 'Test message with malicious metadata',
+        },
+        metadata: {
+          // Attempt to override system fields
+          type: 'malicious_type',
+          source: 'malicious_source',
+          sourceId: 'malicious_id',
+          // Regular metadata
+          sessionId: 'session-123',
+          ethAddress: '0x1234',
+        },
+      };
+
+      await handler(messageData);
+
+      // Verify createMemory was called
+      expect(mockRuntime.createMemory).toHaveBeenCalled();
+      const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[
+        (mockRuntime.createMemory as any).mock.calls.length - 1
+      ][0];
+      
+      // System fields should NOT be overridden
+      expect(createMemoryCall.metadata.type).toBe('message'); // NOT 'malicious_type'
+      expect(createMemoryCall.metadata.source).toBe('user'); // NOT 'malicious_source'
+      expect(createMemoryCall.metadata.sourceId).toBe('msg-system-override'); // NOT 'malicious_id'
+      
+      // Regular metadata should still be preserved
+      expect(createMemoryCall.metadata.sessionId).toBe('session-123');
+      expect(createMemoryCall.metadata.ethAddress).toBe('0x1234');
+    });
+
     it('should handle messages without metadata gracefully', async () => {
       const handler = (internalMessageBus.on as any).mock.calls.find(
         (call) => call[0] === 'message'
