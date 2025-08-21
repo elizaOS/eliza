@@ -744,6 +744,26 @@ export function createSessionsRouter(
 
       let message;
       try {
+        // Fetch the channel to get its metadata (which includes session metadata)
+        let channelMetadata = {};
+        try {
+          const channel = await serverInstance.getChannelDetails(session.channelId);
+          if (channel && channel.metadata) {
+            channelMetadata = channel.metadata;
+          }
+        } catch (error) {
+          logger.debug(
+            `[Sessions API] Could not fetch channel metadata for ${session.channelId}: ${error}`
+          );
+        }
+
+        // Merge metadata: channel metadata (includes session metadata) + message-specific metadata
+        const mergedMetadata = {
+          ...channelMetadata, // This includes all session metadata that was stored in the channel
+          sessionId,
+          ...(body.metadata || {}), // Message-specific metadata overrides
+        };
+
         // Create message in database
         // Note: createMessage automatically broadcasts to the internal message bus
         message = await serverInstance.createMessage({
@@ -755,10 +775,7 @@ export function createSessionsRouter(
             attachments: body.attachments,
           },
           sourceType: 'user',
-          metadata: {
-            sessionId,
-            ...(body.metadata || {}),
-          },
+          metadata: mergedMetadata,
         });
       } catch (error) {
         throw new MessageSendError(sessionId, 'Failed to create message in database', {

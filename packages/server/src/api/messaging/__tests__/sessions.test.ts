@@ -354,6 +354,87 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('authorId', 'user-123');
     });
 
+    it('should propagate session metadata to messages', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+      const ethAddress = '0x1234567890123456789012345678901234567890';
+      const customSessionMetadata = {
+        ethAddress,
+        platform: 'web3',
+        userPlan: 'premium',
+      };
+
+      // Add mock agent
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Mock getChannelDetails to return channel with metadata
+      const mockGetChannel = jest.fn().mockResolvedValue({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        name: 'Test Channel',
+        type: 'dm',
+        metadata: customSessionMetadata,
+      });
+      (mockServerInstance as any).getChannelDetails = mockGetChannel;
+
+      // Create session with metadata
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+        metadata: customSessionMetadata,
+      });
+
+      expect(createRes.status).toBe(201);
+      const sessionId = createRes.body.sessionId;
+
+      // Mock createMessage to capture the metadata being passed
+      let capturedMessageData: any = null;
+      (mockServerInstance.createMessage as jest.Mock).mockImplementation((data) => {
+        capturedMessageData = data;
+        return Promise.resolve({
+          id: 'msg-123',
+          content: data.content,
+          authorId: data.authorId,
+          createdAt: new Date(),
+          metadata: data.metadata,
+        });
+      });
+
+      // Send message with additional message-specific metadata
+      const messageMetadata = {
+        messageType: 'transaction_request',
+        priority: 'high',
+      };
+
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Please sign this transaction',
+          metadata: messageMetadata,
+        }
+      );
+
+      expect(res.status).toBe(201);
+
+      // Verify that createMessage was called with merged metadata
+      expect(capturedMessageData).toBeDefined();
+      expect(capturedMessageData.metadata).toBeDefined();
+      
+      // Session metadata should be included
+      expect(capturedMessageData.metadata.ethAddress).toBe(ethAddress);
+      expect(capturedMessageData.metadata.platform).toBe('web3');
+      expect(capturedMessageData.metadata.userPlan).toBe('premium');
+      
+      // Message-specific metadata should also be included
+      expect(capturedMessageData.metadata.messageType).toBe('transaction_request');
+      expect(capturedMessageData.metadata.priority).toBe('high');
+      
+      // sessionId should always be included
+      expect(capturedMessageData.metadata.sessionId).toBe(sessionId);
+    });
+
     it('should return 404 for non-existent session', async () => {
       const res = await simulateRequest(
         app,
