@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 import { ProcessManager } from '../process-manager';
 
 describe('ProcessManager', () => {
@@ -6,7 +6,7 @@ describe('ProcessManager', () => {
 
   beforeEach(() => {
     processManager = new ProcessManager();
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   afterEach(async () => {
@@ -18,12 +18,12 @@ describe('ProcessManager', () => {
     it('should register a process successfully', () => {
       const runId = 'test-run-1';
       const pid = 12345;
-      
+
       processManager.registerProcess(runId, pid, 'agent-server', 3001);
-      
+
       const processes = processManager.getProcesses();
       expect(processes.has(runId)).toBe(true);
-      
+
       const processInfo = processes.get(runId);
       expect(processInfo).toEqual({
         pid: 12345,
@@ -37,7 +37,7 @@ describe('ProcessManager', () => {
     it('should handle multiple process registrations', () => {
       processManager.registerProcess('run-1', 111, 'agent-server');
       processManager.registerProcess('run-2', 222, 'scenario-runner');
-      
+
       const processes = processManager.getProcesses();
       expect(processes.size).toBe(2);
       expect(processes.has('run-1')).toBe(true);
@@ -49,7 +49,7 @@ describe('ProcessManager', () => {
     it('should unregister a process successfully', () => {
       processManager.registerProcess('test-run', 12345, 'agent-server');
       expect(processManager.getProcesses().size).toBe(1);
-      
+
       processManager.unregisterProcess('test-run');
       expect(processManager.getProcesses().size).toBe(0);
     });
@@ -88,7 +88,7 @@ describe('ProcessManager', () => {
       processManager.registerProcess('run-1', 111, 'agent-server');
       processManager.registerProcess('run-2', 222, 'agent-server');
       processManager.registerProcess('run-3', 333, 'scenario-runner');
-      
+
       const summary = processManager.getSummary();
       expect(summary.total).toBe(3);
       expect(summary.byType).toEqual({
@@ -108,7 +108,7 @@ describe('ProcessManager', () => {
     it('should handle already terminated process', async () => {
       // Register a fake process that doesn't actually exist
       processManager.registerProcess('fake-run', 999999, 'agent-server');
-      
+
       const result = await processManager.terminateProcess('fake-run', 100);
       expect(result).toBe(true);
       expect(processManager.getProcesses().size).toBe(0);
@@ -124,11 +124,11 @@ describe('ProcessManager', () => {
       // Register fake processes
       processManager.registerProcess('run-1', 999997, 'agent-server');
       processManager.registerProcess('run-2', 999998, 'scenario-runner');
-      
+
       expect(processManager.getProcesses().size).toBe(2);
-      
+
       await processManager.terminateAllProcesses(1000);
-      
+
       expect(processManager.getProcesses().size).toBe(0);
     });
   });
