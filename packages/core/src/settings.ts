@@ -54,7 +54,7 @@ export function getSalt(): string {
 
   const salt = secretSalt;
 
-  logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
+  //logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
   return salt;
 }
 
