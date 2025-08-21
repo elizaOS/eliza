@@ -106,13 +106,17 @@ describe('TEE Command', () => {
 
     it('should parse complex argument patterns', () => {
       const testArgs = [
-        'node', 'test', 
+        'node',
+        'test',
         'deploy',
-        '--project', 'my-app',
-        '--memory', '512',
-        '--cpus', '1',
+        '--project',
+        'my-app',
+        '--memory',
+        '512',
+        '--cpus',
+        '1',
         '--json',
-        '-v'
+        '-v',
       ];
 
       // This should not throw an error
@@ -122,14 +126,7 @@ describe('TEE Command', () => {
     });
 
     it('should handle mixed positional and flag arguments', () => {
-      const testArgs = [
-        'node', 'test',
-        'auth',
-        'login',
-        'test-key',
-        '--force',
-        '--output', 'json'
-      ];
+      const testArgs = ['node', 'test', 'auth', 'login', 'test-key', '--force', '--output', 'json'];
 
       // This should not throw an error
       expect(() => {
@@ -140,12 +137,15 @@ describe('TEE Command', () => {
     it('should handle arguments containing "phala" without confusion', () => {
       // Test that arguments containing 'phala' don't confuse the command extraction
       const testArgs = [
-        'node', 'script',
+        'node',
+        'script',
         'tee',
-        'phala',  // The actual command
+        'phala', // The actual command
         'deploy',
-        '--project', 'my-phala-app',  // Argument value containing 'phala'
-        '--name', 'phala-test'  // Another argument containing 'phala'
+        '--project',
+        'my-phala-app', // Argument value containing 'phala'
+        '--name',
+        'phala-test', // Another argument containing 'phala'
       ];
 
       // This should not throw an error

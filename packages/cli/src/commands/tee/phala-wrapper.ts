@@ -19,10 +19,11 @@ export const phalaCliCommand = new Command('phala')
   .action(async (...commandArgs) => {
     // Use rawArgs to preserve exact user-supplied flags; fallback to variadic args if unavailable.
     const cmd = commandArgs[commandArgs.length - 1] as Command;
-    const raw = ((cmd as any)?.parent?.rawArgs ?? (cmd as any)?.rawArgs ?? process.argv);
+    const raw = (cmd as any)?.parent?.rawArgs ?? (cmd as any)?.rawArgs ?? process.argv;
     // Find 'phala' as a complete argument, not as a substring
     const idx = raw.findIndex((arg: string) => arg === 'phala');
-    const args = idx >= 0 ? raw.slice(idx + 1) : (Array.isArray(commandArgs[0]) ? commandArgs[0] : []);
+    const args =
+      idx >= 0 ? raw.slice(idx + 1) : Array.isArray(commandArgs[0]) ? commandArgs[0] : [];
 
     try {
       logger.info({ args }, 'Running Phala CLI command');
@@ -38,9 +39,7 @@ export const phalaCliCommand = new Command('phala')
         logger.error({ error, args }, 'Failed to execute Phala CLI');
 
         if (error.code === 'ENOENT') {
-          logger.error(
-            `\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`
-          );
+          logger.error(`\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`);
           logger.error('   Visit https://nodejs.org or use a version manager like nvm');
           logger.error(
             '   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'

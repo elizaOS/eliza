@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getEntityDetails, logger, parseKeyValueXml } from '@elizaos/core';
+import { asUUID, getEntityDetails, logger, parseKeyValueXml } from '@elizaos/core';
 import { composePrompt } from '@elizaos/core';
 import {
   type Entity,
@@ -10,6 +10,7 @@ import {
   type State,
   type UUID,
 } from '@elizaos/core';
+import { v4 } from 'uuid';
 
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({
@@ -246,14 +247,21 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     await Promise.all(
       newFacts.map(async (fact: any) => {
-        const factMemory = await runtime.addEmbeddingToMemory({
+        const factMemory = {
+          id: asUUID(v4()),
           entityId: agentId,
           agentId,
           content: { text: fact.claim },
           roomId,
           createdAt: Date.now(),
-        });
-        return runtime.createMemory(factMemory, 'facts', true);
+        };
+        // Create memory first and capture the returned ID
+        const createdMemoryId = await runtime.createMemory(factMemory, 'facts', true);
+        // Update the memory object with the actual ID from the database
+        const createdMemory = { ...factMemory, id: createdMemoryId };
+        // Queue embedding generation asynchronously for the memory with correct ID
+        await runtime.queueEmbeddingGeneration(createdMemory, 'low');
+        return createdMemory;
       })
     );
 

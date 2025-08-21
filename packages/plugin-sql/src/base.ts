@@ -873,7 +873,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       await this.db.insert(componentTable).values({
         ...component,
-        createdAt: new Date(component.createdAt),
+        createdAt: new Date(),
       });
       return true;
     });
@@ -890,7 +890,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .update(componentTable)
         .set({
           ...component,
-          createdAt: new Date(component.createdAt),
+          updatedAt: new Date(),
         })
         .where(eq(componentTable.id, component.id));
     });
