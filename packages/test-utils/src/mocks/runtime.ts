@@ -145,6 +145,10 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getCurrentRunId: mock().mockReturnValue('test-run-id' as UUID),
     registerSendHandler: mock(),
     sendMessageToTarget: mock().mockResolvedValue(undefined),
+    
+    // Streaming model methods
+    registerModelStream: mock(),
+    getModelStream: mock().mockReturnValue(undefined),
 
     // Database Adapter Methods - Agent Management
     init: mock().mockResolvedValue(undefined),

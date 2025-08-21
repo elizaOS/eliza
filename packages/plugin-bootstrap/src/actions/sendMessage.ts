@@ -15,6 +15,7 @@ import {
   type State,
   type ActionResult,
 } from '@elizaos/core';
+import { handleModelResponse } from '../utils';
 
 /**
  * Task: Extract Target and Source Information
@@ -214,7 +215,8 @@ export const sendMessageAction: Action = {
         stopSequences: [],
       });
 
-      const targetData = parseKeyValueXml(targetResult);
+      const targetResultText = await handleModelResponse(targetResult);
+      const targetData = parseKeyValueXml(targetResultText);
       if (!targetData?.targetType || !targetData?.source) {
         await callback({
           text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",

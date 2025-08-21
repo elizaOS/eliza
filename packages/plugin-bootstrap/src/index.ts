@@ -41,6 +41,7 @@ import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
 import { EmbeddingGenerationService } from './services/embedding.ts';
+import { handleModelResponse } from './utils';
 
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
@@ -537,15 +538,16 @@ const messageReceivedHandler = async ({
             prompt: shouldRespondPrompt,
           });
 
+          const responseText = await handleModelResponse(response);
           runtime.logger.debug(
-            `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`
+            `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${responseText}`
           );
           runtime.logger.debug(`[Bootstrap] Response type: ${typeof response}`);
 
           // Try to preprocess response by removing code blocks markers if present
           // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
-          const responseObject = parseKeyValueXml(response);
+          const responseObject = parseKeyValueXml(responseText);
           runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
 
           // If an action is provided, the agent intends to respond in some way
@@ -591,10 +593,11 @@ const messageReceivedHandler = async ({
               prompt,
             });
 
-            runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
+            const responseText = await handleModelResponse(response);
+            runtime.logger.debug({ responseText }, '[Bootstrap] *** Raw LLM Response ***');
 
             // Attempt to parse the XML response
-            const parsedXml = parseKeyValueXml(response);
+            const parsedXml = parseKeyValueXml(responseText);
             runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
 
             // Map parsed XML to Content type, handling potential missing fields
@@ -1119,11 +1122,12 @@ const postGeneratedHandler = async ({
       prompt,
     });
 
+    const responseText = await handleModelResponse(response);
     console.log('prompt is', prompt);
-    console.log('response is', response);
+    console.log('response is', responseText);
 
     // Parse XML
-    const parsedXml = parseKeyValueXml(response);
+    const parsedXml = parseKeyValueXml(responseText);
     if (parsedXml) {
       responseContent = {
         thought: parsedXml.thought || '',
@@ -1157,9 +1161,11 @@ const postGeneratedHandler = async ({
   });
 
   // Use TEXT_LARGE model as we expect structured XML text, not a JSON object
-  const xmlResponseText = await runtime.useModel(ModelType.TEXT_LARGE, {
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
     prompt: postPrompt,
   });
+
+  const xmlResponseText = await handleModelResponse(response);
 
   // Parse the XML response
   const parsedXmlResponse = parseKeyValueXml(xmlResponseText);

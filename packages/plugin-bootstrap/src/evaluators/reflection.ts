@@ -11,6 +11,7 @@ import {
   type UUID,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
+import { handleModelResponse } from '../utils';
 
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({
@@ -198,16 +199,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       prompt,
     });
 
-    if (!response) {
+    const responseText = await handleModelResponse(response);
+
+    if (!responseText) {
       logger.warn({ prompt }, 'Getting reflection failed - empty response');
       return;
     }
 
     // Parse XML response
-    const reflection = parseKeyValueXml(response);
+    const reflection = parseKeyValueXml(responseText);
 
     if (!reflection) {
-      logger.warn({ response }, 'Getting reflection failed - failed to parse XML');
+      logger.warn({ responseText }, 'Getting reflection failed - failed to parse XML');
       return;
     }
 

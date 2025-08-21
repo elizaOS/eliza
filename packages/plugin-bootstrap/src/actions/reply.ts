@@ -11,6 +11,7 @@ import {
   logger,
   parseKeyValueXml,
 } from '@elizaos/core';
+import { handleModelResponse } from '../utils';
 
 /**
  * Template for generating dialog and actions for a character.
@@ -104,8 +105,10 @@ export const replyAction = {
         prompt,
       });
 
+      const responseText = await handleModelResponse(response);
+
       // Parse XML response
-      const parsedXml = parseKeyValueXml(response);
+      const parsedXml = parseKeyValueXml(responseText);
 
       const responseContent = {
         thought: parsedXml?.thought || '',

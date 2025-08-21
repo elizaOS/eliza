@@ -11,6 +11,7 @@ import {
   type State,
   type ActionResult,
 } from '@elizaos/core';
+import { handleModelResponse } from '../utils';
 
 /**
  * Template for deciding if an agent should stop closely following a previously followed room
@@ -75,7 +76,8 @@ export const unfollowRoomAction: Action = {
         prompt: shouldUnfollowPrompt,
       });
 
-      const parsedResponse = parseBooleanFromText(response.trim());
+      const responseText = await handleModelResponse(response);
+      const parsedResponse = parseBooleanFromText(responseText.trim());
 
       return parsedResponse as boolean;
     }

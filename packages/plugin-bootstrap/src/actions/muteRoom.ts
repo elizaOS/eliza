@@ -11,6 +11,7 @@ import {
   type State,
   type ActionResult,
 } from '@elizaos/core';
+import { handleModelResponse } from '../utils';
 
 /**
  * Template string for deciding if the agent should mute a room and stop responding unless explicitly mentioned.
@@ -92,12 +93,12 @@ export const muteRoomAction: Action = {
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        runtime,
         prompt: shouldMutePrompt,
         stopSequences: [],
       });
 
-      const cleanedResponse = response.trim().toLowerCase();
+      const responseText = await handleModelResponse(response);
+      const cleanedResponse = responseText.trim().toLowerCase();
 
       // Handle various affirmative responses
       if (

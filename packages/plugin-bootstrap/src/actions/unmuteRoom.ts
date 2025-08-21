@@ -11,6 +11,7 @@ import {
   type State,
   type ActionResult,
 } from '@elizaos/core';
+import { handleModelResponse } from '../utils';
 
 /**
  * Template for determining if an agent should unmute a previously muted room.
@@ -69,12 +70,12 @@ export const unmuteRoomAction: Action = {
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        runtime,
         prompt: shouldUnmutePrompt,
         stopSequences: [],
       });
 
-      const cleanedResponse = response.trim().toLowerCase();
+      const responseText = await handleModelResponse(response);
+      const cleanedResponse = responseText.trim().toLowerCase();
 
       // Handle various affirmative responses
       if (
