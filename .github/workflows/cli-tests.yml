@@ -60,7 +60,13 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --force
+
+      - name: Install missing langchain dependencies (Windows fix)
+        if: matrix.os == 'windows-latest'
+        run: |
+          bun add @langchain/core@0.3.30 @langchain/textsplitters@0.1.0
+          echo "Installed additional langchain dependencies for Windows"
 
       - name: Build all packages
         run: bun run build
