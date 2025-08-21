@@ -747,7 +747,7 @@ export function createSessionsRouter(
         // Fetch the channel to get its metadata (which includes session metadata)
         let channelMetadata = {};
         try {
-          const channel = await serverInstance.getChannel(session.channelId);
+          const channel = await serverInstance.getChannelDetails(session.channelId);
           if (channel && channel.metadata) {
             channelMetadata = channel.metadata;
           }
