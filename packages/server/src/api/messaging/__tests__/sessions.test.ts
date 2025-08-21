@@ -368,14 +368,14 @@ describe('Sessions API', () => {
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
-      // Mock getChannel to return channel with metadata
+      // Mock getChannelDetails to return channel with metadata
       const mockGetChannel = jest.fn().mockResolvedValue({
         id: '123e4567-e89b-12d3-a456-426614174000',
         name: 'Test Channel',
         type: 'dm',
         metadata: customSessionMetadata,
       });
-      (mockServerInstance as any).getChannel = mockGetChannel;
+      (mockServerInstance as any).getChannelDetails = mockGetChannel;
 
       // Create session with metadata
       const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
