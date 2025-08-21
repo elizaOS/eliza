@@ -464,6 +464,92 @@ describe('MessageBusService', () => {
     });
   });
 
+  describe('metadata propagation', () => {
+    it('should preserve session metadata when creating memories', async () => {
+      // Get the message handler
+      const handler = (internalMessageBus.on as any).mock.calls.find(
+        (call) => call[0] === 'message'
+      )[1];
+
+      const sessionMetadata = {
+        sessionId: 'session-123',
+        ethAddress: '0x1234567890123456789012345678901234567890',
+        platform: 'web3',
+        userPlan: 'premium',
+      };
+
+      const messageData = {
+        id: 'msg-456',
+        channel_id: '456e7890-e89b-12d3-a456-426614174000',
+        server_id: '789e1234-e89b-12d3-a456-426614174000',
+        author_id: '012e3456-e89b-12d3-a456-426614174000',
+        content: 'Test message with session metadata',
+        created_at: new Date(),
+        source_type: 'user',
+        raw_message: {
+          content: 'Test message with session metadata',
+        },
+        metadata: {
+          ...sessionMetadata,
+          messageType: 'transaction_request',
+        },
+      };
+
+      await handler(messageData);
+
+      // Verify createMemory was called with the metadata preserved
+      expect(mockRuntime.createMemory).toHaveBeenCalled();
+      const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[0][0];
+      
+      // Check that session metadata is preserved in the memory metadata
+      expect(createMemoryCall.metadata).toBeDefined();
+      expect(createMemoryCall.metadata.sessionId).toBe('session-123');
+      expect(createMemoryCall.metadata.ethAddress).toBe('0x1234567890123456789012345678901234567890');
+      expect(createMemoryCall.metadata.platform).toBe('web3');
+      expect(createMemoryCall.metadata.userPlan).toBe('premium');
+      expect(createMemoryCall.metadata.messageType).toBe('transaction_request');
+      
+      // Verify the raw message data is also preserved
+      expect(createMemoryCall.metadata.raw).toBeDefined();
+      expect(createMemoryCall.metadata.raw.senderName).toBeDefined();
+      expect(createMemoryCall.metadata.raw.senderId).toBe('012e3456-e89b-12d3-a456-426614174000');
+    });
+
+    it('should handle messages without metadata gracefully', async () => {
+      const handler = (internalMessageBus.on as any).mock.calls.find(
+        (call) => call[0] === 'message'
+      )[1];
+
+      const messageData = {
+        id: 'msg-789',
+        channel_id: '456e7890-e89b-12d3-a456-426614174000',
+        server_id: '789e1234-e89b-12d3-a456-426614174000',
+        author_id: '012e3456-e89b-12d3-a456-426614174000',
+        content: 'Test message without metadata',
+        created_at: new Date(),
+        source_type: 'user',
+        raw_message: {
+          content: 'Test message without metadata',
+        },
+        // No metadata field
+      };
+
+      await handler(messageData);
+
+      // Should still create memory successfully
+      expect(mockRuntime.createMemory).toHaveBeenCalled();
+      const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[
+        (mockRuntime.createMemory as any).mock.calls.length - 1
+      ][0];
+      
+      // Metadata should exist but only have basic fields
+      expect(createMemoryCall.metadata).toBeDefined();
+      expect(createMemoryCall.metadata.type).toBe('message');
+      expect(createMemoryCall.metadata.source).toBe('user');
+      expect(createMemoryCall.metadata.raw).toBeDefined();
+    });
+  });
+
   describe('cleanup', () => {
     it('should cleanup resources on stop', async () => {
       await MessageBusService.stop(mockRuntime);

@@ -397,6 +397,8 @@ export class MessageBusService extends Service {
         type: 'message',
         source: message.source_type || 'central-bus',
         sourceId: message.id,
+        // Include all message metadata (which now includes session metadata)
+        ...(message.metadata || {}),
         raw: {
           ...message.raw_message,
           senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
