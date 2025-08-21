@@ -65,13 +65,13 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 
   // cwd might be plugin-sql if we're running tests from monorepo
   // are we in monorepo config?
-  let monoPath
-  if (existsSync(path.join(process.cwd(), "packages", "core"))) {
-    monoPath = process.cwd()
+  let monoPath;
+  if (existsSync(path.join(process.cwd(), 'packages', 'core'))) {
+    monoPath = process.cwd();
   } else {
-    const twoUp = path.resolve(process.cwd(), "../..") // assuming running from package
-    if (existsSync(path.join(twoUp, "packages", "core"))) {
-      monoPath = twoUp
+    const twoUp = path.resolve(process.cwd(), '../..'); // assuming running from package
+    if (existsSync(path.join(twoUp, 'packages', 'core'))) {
+      monoPath = twoUp;
     }
   }
 
@@ -79,7 +79,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dir ??
     process.env.PGLITE_DATA_DIR ??
     fallbackDir ??
-    (monoPath ? path.join(monoPath , '.eliza', '.elizadb') : undefined) ??
+    (monoPath ? path.join(monoPath, '.eliza', '.elizadb') : undefined) ??
     path.join(process.cwd(), '.eliza', '.elizadb');
 
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)

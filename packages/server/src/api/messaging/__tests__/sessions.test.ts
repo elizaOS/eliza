@@ -421,16 +421,16 @@ describe('Sessions API', () => {
       // Verify that createMessage was called with merged metadata
       expect(capturedMessageData).toBeDefined();
       expect(capturedMessageData.metadata).toBeDefined();
-      
+
       // Session metadata should be included
       expect(capturedMessageData.metadata.ethAddress).toBe(ethAddress);
       expect(capturedMessageData.metadata.platform).toBe('web3');
       expect(capturedMessageData.metadata.userPlan).toBe('premium');
-      
+
       // Message-specific metadata should also be included
       expect(capturedMessageData.metadata.messageType).toBe('transaction_request');
       expect(capturedMessageData.metadata.priority).toBe('high');
-      
+
       // sessionId should always be included
       expect(capturedMessageData.metadata.sessionId).toBe(sessionId);
     });

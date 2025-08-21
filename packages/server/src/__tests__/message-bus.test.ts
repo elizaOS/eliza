@@ -500,15 +500,17 @@ describe('MessageBusService', () => {
       // Verify createMemory was called with the metadata preserved
       expect(mockRuntime.createMemory).toHaveBeenCalled();
       const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[0][0];
-      
+
       // Check that session metadata is preserved in the memory metadata
       expect(createMemoryCall.metadata).toBeDefined();
       expect(createMemoryCall.metadata.sessionId).toBe('session-123');
-      expect(createMemoryCall.metadata.ethAddress).toBe('0x1234567890123456789012345678901234567890');
+      expect(createMemoryCall.metadata.ethAddress).toBe(
+        '0x1234567890123456789012345678901234567890'
+      );
       expect(createMemoryCall.metadata.platform).toBe('web3');
       expect(createMemoryCall.metadata.userPlan).toBe('premium');
       expect(createMemoryCall.metadata.messageType).toBe('transaction_request');
-      
+
       // Verify the raw message data is also preserved
       expect(createMemoryCall.metadata.raw).toBeDefined();
       expect(createMemoryCall.metadata.raw.senderName).toBeDefined();
@@ -549,12 +551,12 @@ describe('MessageBusService', () => {
       const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[
         (mockRuntime.createMemory as any).mock.calls.length - 1
       ][0];
-      
+
       // System fields should NOT be overridden
       expect(createMemoryCall.metadata.type).toBe('message'); // NOT 'malicious_type'
       expect(createMemoryCall.metadata.source).toBe('user'); // NOT 'malicious_source'
       expect(createMemoryCall.metadata.sourceId).toBe('msg-system-override'); // NOT 'malicious_id'
-      
+
       // Regular metadata should still be preserved
       expect(createMemoryCall.metadata.sessionId).toBe('session-123');
       expect(createMemoryCall.metadata.ethAddress).toBe('0x1234');
@@ -586,7 +588,7 @@ describe('MessageBusService', () => {
       const createMemoryCall = (mockRuntime.createMemory as any).mock.calls[
         (mockRuntime.createMemory as any).mock.calls.length - 1
       ][0];
-      
+
       // Metadata should exist but only have basic fields
       expect(createMemoryCall.metadata).toBeDefined();
       expect(createMemoryCall.metadata.type).toBe('message');
