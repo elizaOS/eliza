@@ -11,6 +11,7 @@ import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
   ChannelType,
+  EventType,
   ModelType,
   MODEL_SETTINGS,
   type Content,
@@ -306,7 +307,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.services) {
       for (const service of plugin.services) {
-
         // ensure we have a promise, so when it's actually loaded via registerService,
         // we can trigger the loading of service dependencies
         if (!this.servicePromises.has(service.serviceType)) {
@@ -537,7 +537,7 @@ export class AgentRuntime implements IAgentRuntime {
           `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
         );
       } catch (e) {
-        console.error('Error registering action', e)
+        console.error('Error registering action', e);
       }
     }
   }
@@ -1565,11 +1565,13 @@ export class AgentRuntime implements IAgentRuntime {
 
       // inform everyone that's waiting for this service, that it's now available
       // removes the need for polling and timers
-      const resolve = this.servicePromiseHandles.get(serviceType)
+      const resolve = this.servicePromiseHandles.get(serviceType);
       if (resolve) {
-        resolve(serviceInstance)
+        resolve(serviceInstance);
       } else {
-        this.logger.debug(`${this.character.name} - Service ${serviceType} has no servicePromiseHandle`)
+        this.logger.debug(
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+        );
       }
 
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
@@ -1592,11 +1594,14 @@ export class AgentRuntime implements IAgentRuntime {
     // consider this in the future iterations
     // const { promise, resolve, reject } = Promise.withResolvers<T>();
     let resolver: ServiceResolver | undefined;
-    this.servicePromises.set(serviceType, new Promise<Service>(resolve => {
-      resolver = resolve
-    }));
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve) => {
+        resolver = resolve;
+      })
+    );
     if (!resolver) {
-      throw new Error(`Failed to create resolver for service ${serviceType}`)
+      throw new Error(`Failed to create resolver for service ${serviceType}`);
     }
     this.servicePromiseHandles.set(serviceType, resolver);
     return this.servicePromises.get(serviceType);
@@ -2068,6 +2073,37 @@ export class AgentRuntime implements IAgentRuntime {
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
     return memory;
+  }
+
+  async queueEmbeddingGeneration(
+    memory: Memory,
+    priority: 'high' | 'normal' | 'low' = 'normal'
+  ): Promise<void> {
+    // Skip if memory is null or undefined
+    if (!memory) {
+      return;
+    }
+
+    // Skip if memory already has embeddings
+    if (memory.embedding) {
+      return;
+    }
+
+    // Skip if no text content
+    if (!memory.content?.text) {
+      this.logger.debug('Skipping embedding generation for memory without text content');
+      return;
+    }
+
+    // Emit event for async embedding generation
+    await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+      runtime: this,
+      memory,
+      priority,
+      source: 'runtime',
+      retryCount: 0,
+      maxRetries: 3,
+    });
   }
   async getMemories(params: {
     entityId?: UUID;
