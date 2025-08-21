@@ -10,7 +10,6 @@ import {
   waitForServerReady,
 } from './test-utils';
 import { bunExecSimple } from '../../src/utils/bun-exec';
-import { findNextAvailablePort } from '../../src/utils/port-handling';
 
 describe('ElizaOS Start Commands', () => {
   let testTmpDir: string;
@@ -30,10 +29,8 @@ describe('ElizaOS Start Commands', () => {
     // Initialize process manager
     processManager = new TestProcessManager();
 
-    // ---- Use dynamic port allocation to avoid conflicts with other tests.
-    const basePort = 3100; // Different base port from agent.test.ts (3000)
-    testServerPort = await findNextAvailablePort(basePort);
-    console.log(`[DEBUG] Using dynamic port ${testServerPort} for start test (base: ${basePort})`);
+    // ---- Ensure port is free.
+    testServerPort = 3000;
     await killProcessOnPort(testServerPort);
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 

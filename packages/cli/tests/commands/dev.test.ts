@@ -90,7 +90,7 @@ describe('ElizaOS Dev Commands', () => {
 
       try {
         // For Bun.spawn processes, use the exited promise
-        const exitPromise = proc.exited ? proc.exited.catch(() => { }) : Promise.resolve();
+        const exitPromise = proc.exited ? proc.exited.catch(() => {}) : Promise.resolve();
 
         // First attempt graceful shutdown
         proc.kill('SIGTERM');
@@ -182,14 +182,8 @@ describe('ElizaOS Dev Commands', () => {
 
       runningProcesses.push(devProcess);
 
-      // Wait for process to start and check if it's still alive
+      // Wait for process to start
       await new Promise((resolve) => setTimeout(resolve, waitTime));
-
-      // On Windows, check if process exited during startup
-      if (process.platform === 'win32' && devProcess.exitCode !== null) {
-        console.log(`[DEBUG] Windows: Process exited during startup with code ${devProcess.exitCode}`);
-        // Don't throw error, just return the process - some tests expect this behavior
-      }
 
       return devProcess;
     } catch (spawnError) {
@@ -383,37 +377,14 @@ describe('ElizaOS Dev Commands', () => {
       2000
     );
 
-    // Check that process started (has PID)
+    // Check that process started
     expect(devProcess.pid).toBeDefined();
+    expect(devProcess.killed).toBe(false);
 
-    // On Windows, process might exit quickly due to dependency issues
-    // This is expected behavior in CI environments
-    if (process.platform === 'win32') {
-      console.log(`[DEBUG] Windows: Process PID ${devProcess.pid}, exitCode: ${devProcess.exitCode}, killed: ${devProcess.killed}`);
-
-      // On Windows, accept either:
-      // 1. Process is still running (not killed, no exit code)
-      // 2. Process exited with code 1 (dependency issues in CI)
-      if (devProcess.exitCode !== null) {
-        console.log(`[DEBUG] Windows: Process exited with code ${devProcess.exitCode} (expected in CI)`);
-        // Test passes if process at least started (had a PID)
-      } else {
-        // Process is still running
-        expect(devProcess.killed).toBe(false);
-      }
-    } else {
-      // On other platforms, expect process to still be running
-      expect(devProcess.killed).toBe(false);
-    }
-
-    // Cleanup if process is still running
-    if (!devProcess.killed && devProcess.exitCode === null) {
-      devProcess.kill('SIGTERM');
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } else {
-      console.log('[DEBUG] Process already exited, no cleanup needed');
-    }
-  }, 15000); // Increased timeout for Windows CI stability
+    // Immediate cleanup
+    devProcess.kill('SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }, 10000); // Reduced timeout for CI stability
 
   it('dev command handles non-elizaos directory gracefully', async () => {
     // Create a non-ElizaOS project directory
@@ -524,33 +495,18 @@ describe('ElizaOS Dev Commands', () => {
     // In CI, we primarily care that the process starts successfully
     expect(devProcess.pid).toBeDefined();
 
-    // Check if this is a Windows dependency failure
-    const isWindowsDependencyFailure = process.platform === 'win32' &&
-      devProcess.exitCode === 1 &&
-      (output.includes('Cannot find module') || output.includes('Failed to load'));
-
-    if (isWindowsDependencyFailure) {
-      console.log('[DEBUG] Windows: Dependency failure detected - this is acceptable in CI');
-      console.log('[DEBUG] Windows: Test verified dev command attempted to handle non-ElizaOS directory');
-      // Test passes - we verified the dev command attempted to run in non-ElizaOS directory
+    // Optional output validation only if we received output
+    if (output && output.length > 0) {
+      expect(output).toMatch(
+        /(not.*recognized|standalone mode|not.*ElizaOS|non.*eliza|external|independent|error|info|Starting)/i
+      );
     } else {
-      // Optional output validation only if we received output and not a dependency failure
-      if (output && output.length > 0) {
-        expect(output).toMatch(
-          /(not.*recognized|standalone mode|not.*ElizaOS|non.*eliza|external|independent|error|info|Starting)/i
-        );
-      } else {
-        console.log('[NON-ELIZA DIR TEST] No output but process started successfully');
-      }
+      console.log('[NON-ELIZA DIR TEST] No output but process started successfully');
     }
 
-    // Proper cleanup - handle already dead processes on Windows
-    if (!devProcess.killed && devProcess.exitCode === null) {
-      devProcess.kill('SIGTERM');
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } else {
-      console.log('[DEBUG] Process already exited, no cleanup needed');
-    }
+    // Proper cleanup
+    devProcess.kill('SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }, 15000); // Reduced timeout for CI stability
 
   it('dev command validates port parameter', () => {
