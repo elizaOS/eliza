@@ -75,7 +75,7 @@ describe('Component Integration Tests', () => {
         data: { value: 'test' },
         worldId: testWorldId,
         sourceEntityId: testSourceEntityId,
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
 
       await adapter.createComponent(component);
@@ -95,7 +95,7 @@ describe('Component Integration Tests', () => {
         data: { value: 'original' },
         worldId: testWorldId,
         sourceEntityId: testSourceEntityId,
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
       await adapter.createComponent(originalComponent);
 
@@ -120,7 +120,7 @@ describe('Component Integration Tests', () => {
         data: { value: 'original' },
         worldId: testWorldId,
         sourceEntityId: testSourceEntityId,
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
       await adapter.createComponent(component);
       let retrieved = await adapter.getComponent(testEntityId, 'deletable_component');

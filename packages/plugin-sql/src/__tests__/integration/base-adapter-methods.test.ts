@@ -292,7 +292,7 @@ describe('Base Adapter Methods Integration Tests', () => {
           relationship: 'friend',
           trust: 0.5,
         },
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
 
       // Create component
@@ -361,7 +361,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         agentId: testAgentId,
         roomId,
         data: {},
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
 
       // Create component
@@ -420,7 +420,7 @@ describe('Base Adapter Methods Integration Tests', () => {
         entityId: testEntityId,
         roomId: roomId,
         content: { text: 'Test memory' } as Content,
-        createdAt: Date.now(),
+        createdAt: new Date(),
         metadata: { type: 'test' },
       };
 
@@ -534,7 +534,7 @@ describe('Base Adapter Methods Integration Tests', () => {
           maxCapacity: 10,
           currentWeight: 25.5,
         },
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
 
       await adapter.createComponent(component);
@@ -650,7 +650,7 @@ describe('Base Adapter Methods Integration Tests', () => {
           entityId: entityId,
           roomId,
           content: { text: 'Meeting scheduled for tomorrow' } as Content,
-          createdAt: Date.now() - 3600000, // 1 hour ago
+          createdAt: new Date(Date.now() - 3600_000), // 1 hour ago
           metadata: { type: 'calendar', priority: 'high' },
         },
         {
@@ -659,7 +659,7 @@ describe('Base Adapter Methods Integration Tests', () => {
           entityId: entityId,
           roomId,
           content: { text: 'Remember to buy groceries' } as Content,
-          createdAt: Date.now() - 1800000, // 30 min ago
+          createdAt: new Date(Date.now() - 1800_000), // 30 min ago
           metadata: { type: 'todo', priority: 'low' },
         },
         {
@@ -668,7 +668,7 @@ describe('Base Adapter Methods Integration Tests', () => {
           entityId: entityId,
           roomId,
           content: { text: 'Important meeting notes' } as Content,
-          createdAt: Date.now() - 900000, // 15 min ago
+          createdAt: new Date(Date.now() - 900_000), // 15 min ago
           metadata: { type: 'notes', priority: 'high' },
         },
       ];
