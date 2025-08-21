@@ -11,6 +11,7 @@ import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
   ChannelType,
+  EventType,
   ModelType,
   MODEL_SETTINGS,
   type Content,
@@ -85,6 +86,8 @@ export class Semaphore {
   }
 }
 
+type ServiceResolver = (service: Service) => void;
+
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
   readonly agentId: UUID;
@@ -122,6 +125,8 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
+  private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
+  private servicePromises = new Map<string, Promise<Service>>(); // read
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -308,6 +313,12 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.services) {
       for (const service of plugin.services) {
+        // ensure we have a promise, so when it's actually loaded via registerService,
+        // we can trigger the loading of service dependencies
+        if (!this.servicePromises.has(service.serviceType)) {
+          this._createServiceResolver(service.serviceType as ServiceTypeName);
+        }
+
         if (this.isInitialized) {
           await this.registerService(service);
         } else {
@@ -521,18 +532,19 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerAction(action: Action) {
-    this.logger.debug(
-      `${this.character.name}(${this.agentId}) - Registering action: ${action.name}`
-    );
     if (this.actions.find((a) => a.name === action.name)) {
       this.logger.warn(
         `${this.character.name}(${this.agentId}) - Action ${action.name} already exists. Skipping registration.`
       );
     } else {
-      this.actions.push(action);
-      this.logger.debug(
-        `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
-      );
+      try {
+        this.actions.push(action);
+        this.logger.success(
+          `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
+        );
+      } catch (e) {
+        console.error('Error registering action', e);
+      }
     }
   }
 
@@ -1165,7 +1177,10 @@ export class AgentRuntime implements IAgentRuntime {
         firstRoom.id
       );
       // pglite handle this at over 10k records fine though
-      await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
+      const batches = chunkArray(missingIdsInRoom, 5000);
+      for (const batch of batches) {
+        await this.addParticipantsRoom(batch, firstRoom.id);
+      }
     }
 
     this.logger.success(`Success: Successfully connected world`);
@@ -1554,6 +1569,17 @@ export class AgentRuntime implements IAgentRuntime {
       this.services.get(serviceType)!.push(serviceInstance);
       this.serviceTypes.get(serviceType)!.push(serviceDef);
 
+      // inform everyone that's waiting for this service, that it's now available
+      // removes the need for polling and timers
+      const resolve = this.servicePromiseHandles.get(serviceType);
+      if (resolve) {
+        resolve(serviceInstance);
+      } else {
+        this.logger.debug(
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+        );
+      }
+
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }
@@ -1567,6 +1593,35 @@ export class AgentRuntime implements IAgentRuntime {
       );
       throw error;
     }
+  }
+
+  /// ensures servicePromises & servicePromiseHandles for a serviceType
+  private _createServiceResolver(serviceType: ServiceTypeName) {
+    // consider this in the future iterations
+    // const { promise, resolve, reject } = Promise.withResolvers<T>();
+    let resolver: ServiceResolver | undefined;
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve) => {
+        resolver = resolve;
+      })
+    );
+    if (!resolver) {
+      throw new Error(`Failed to create resolver for service ${serviceType}`);
+    }
+    this.servicePromiseHandles.set(serviceType, resolver);
+    return this.servicePromises.get(serviceType);
+  }
+
+  /// returns a promise that's resolved once this service is loaded
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service> {
+    // if this.isInitialized then the this p will exist and already be resolved
+    let p = this.servicePromises.get(serviceType);
+    if (!p) {
+      // not initalized or registered yet, registerPlugin is already smart enough to check to see if we make it here
+      p = this._createServiceResolver(serviceType);
+    }
+    return p;
   }
 
   registerModel(
@@ -2338,6 +2393,37 @@ export class AgentRuntime implements IAgentRuntime {
     }
     return memory;
   }
+
+  async queueEmbeddingGeneration(
+    memory: Memory,
+    priority: 'high' | 'normal' | 'low' = 'normal'
+  ): Promise<void> {
+    // Skip if memory is null or undefined
+    if (!memory) {
+      return;
+    }
+
+    // Skip if memory already has embeddings
+    if (memory.embedding) {
+      return;
+    }
+
+    // Skip if no text content
+    if (!memory.content?.text) {
+      this.logger.debug('Skipping embedding generation for memory without text content');
+      return;
+    }
+
+    // Emit event for async embedding generation
+    await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+      runtime: this,
+      memory,
+      priority,
+      source: 'runtime',
+      retryCount: 0,
+      maxRetries: 3,
+    });
+  }
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -2430,6 +2516,7 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(

@@ -423,11 +423,9 @@ describe('PostgreSQL E2E Tests', () => {
         sourceEntityId,
         type: 'update-test',
         data: { original: true },
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
-
       await adapter.createComponent(component);
-
       await adapter.updateComponent({
         ...component,
         data: { updated: true },
