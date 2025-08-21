@@ -2197,6 +2197,7 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(
