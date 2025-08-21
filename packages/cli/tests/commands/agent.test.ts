@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getPlatformOptions, killProcessOnPort, waitForServerReady } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
+import { findNextAvailablePort } from '../../src/utils/port-handling';
 
 describe('ElizaOS Agent Commands', () => {
   let serverProcess: any;
@@ -14,16 +15,20 @@ describe('ElizaOS Agent Commands', () => {
   let testServerUrl: string;
 
   beforeAll(async () => {
-    // Setup test environment
-    testServerPort = '3000';
+    // Setup test environment with dynamic port allocation to avoid conflicts
+    const basePort = 3000;
+    const dynamicPort = await findNextAvailablePort(basePort);
+    testServerPort = dynamicPort.toString();
     testServerUrl = `http://localhost:${testServerPort}`;
     testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-agent-'));
 
-    // Kill any existing processes on port 3000 with extended cleanup for macOS CI
-    console.log('[DEBUG] Cleaning up any existing processes on port 3000...');
-    await killProcessOnPort(3000);
+    console.log(`[DEBUG] Using dynamic port ${testServerPort} for agent test (base: ${basePort})`);
 
-    // Give macOS CI more time for complete port cleanup
+    // Clean up any existing processes on the selected port
+    console.log(`[DEBUG] Cleaning up any existing processes on port ${testServerPort}...`);
+    await killProcessOnPort(dynamicPort);
+
+    // Give system time for complete port cleanup
     const cleanupTime =
       process.platform === 'darwin' && process.env.CI === 'true'
         ? TEST_TIMEOUTS.MEDIUM_WAIT

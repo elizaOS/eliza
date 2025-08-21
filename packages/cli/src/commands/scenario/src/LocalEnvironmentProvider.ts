@@ -137,7 +137,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
       } else if (step.code) {
         // Construct appropriate command based on language
         let command: string;
-        const escapedCode = step.code.replace(/"/g, '\\"');
+        const escapedCode = step.code.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
         switch (step.lang) {
           case 'bash':
