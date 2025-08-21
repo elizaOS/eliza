@@ -388,9 +388,19 @@ describe('ElizaOS Dev Commands', () => {
 
     // On Windows, process might exit quickly due to dependency issues
     // This is expected behavior in CI environments
-    if (process.platform === 'win32' && devProcess.exitCode !== null) {
-      console.log(`[DEBUG] Windows: Process exited during startup (expected in CI)`);
-      // Test passes if process at least started (had a PID)
+    if (process.platform === 'win32') {
+      console.log(`[DEBUG] Windows: Process PID ${devProcess.pid}, exitCode: ${devProcess.exitCode}, killed: ${devProcess.killed}`);
+
+      // On Windows, accept either:
+      // 1. Process is still running (not killed, no exit code)
+      // 2. Process exited with code 1 (dependency issues in CI)
+      if (devProcess.exitCode !== null) {
+        console.log(`[DEBUG] Windows: Process exited with code ${devProcess.exitCode} (expected in CI)`);
+        // Test passes if process at least started (had a PID)
+      } else {
+        // Process is still running
+        expect(devProcess.killed).toBe(false);
+      }
     } else {
       // On other platforms, expect process to still be running
       expect(devProcess.killed).toBe(false);
