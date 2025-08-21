@@ -40,7 +40,7 @@ export function loadEnvironmentVariables(): void {
   }
 
   // Verify critical environment variables are loaded
-  const criticalVars = ['E2B_API_KEY', 'OPENAI_API_KEY'];
+  const criticalVars = ['OPENAI_API_KEY'];
   for (const varName of criticalVars) {
     if (process.env[varName]) {
       const valuePreview = (process.env[varName] || '').toString();
@@ -55,7 +55,7 @@ export function loadEnvironmentVariables(): void {
   }
 
   // Debug dump of a safe subset of env
-  const safeKeys = ['NODE_ENV', 'E2B_API_KEY', 'OPENAI_API_KEY'];
+  const safeKeys = ['NODE_ENV', 'OPENAI_API_KEY'];
   const safeEnv: Record<string, string> = {};
   for (const key of safeKeys) {
     if (process.env[key]) {
