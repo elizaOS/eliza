@@ -894,8 +894,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             updatedAt: new Date(),
           })
           .where(eq(componentTable.id, component.id));
-      } catch(e) {
-        console.error('updateComponent error', e)
+      } catch (e) {
+        console.error('updateComponent error', e);
       }
     });
   }
