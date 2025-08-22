@@ -168,10 +168,12 @@ elizaos test --skip-build    # Skip building before tests
 ```
 
 **Test Types:**
+
 - **Component Tests:** Unit tests via `bun test` - test individual modules/components in isolation
 - **E2E Tests:** Full integration tests via ElizaOS TestRunner - test complete agent runtime with server, database, and plugins
 
 **Context Support:**
+
 - Works in both monorepo packages and standalone projects created with `elizaos create`
 - Automatically detects project type and adjusts paths accordingly
 - For plugins: Creates default Eliza character as test agent

@@ -5,7 +5,9 @@
 **Tool used:** `DevGruGold/xmrt-AutoGPT`
 
 ## Results/Actions
+
 Ran code analysis/autogen (simulated).
 
 ---
-*Cycle executed and logged by Eliza Autonomous Agent*
+
+_Cycle executed and logged by Eliza Autonomous Agent_

@@ -15,7 +15,7 @@ Plugin ordering in ElizaOS isn't just a technical detail—it's a sophisticated 
 
 ## Why Plugin Order Matters
 
-Here's the thing: different AI providers support different capabilities. Anthropic's Claude is excellent for conversation but doesn't provide embeddings. OpenRouter gives you access to dozens of models but no embedding endpoint. OpenAI handles both chat and embeddings beautifully. 
+Here's the thing: different AI providers support different capabilities. Anthropic's Claude is excellent for conversation but doesn't provide embeddings. OpenRouter gives you access to dozens of models but no embedding endpoint. OpenAI handles both chat and embeddings beautifully.
 
 ElizaOS needs to know which provider should handle which type of request, and plugin ordering is how we solve this puzzle.
 
@@ -66,7 +66,7 @@ export const character: Character = {
     // Core plugins first
     '@elizaos/plugin-sql',
 
-    // Text-only plugins (no embedding support) 
+    // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
 
@@ -74,13 +74,13 @@ export const character: Character = {
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
     ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
     ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    
+
     // Local-AI fallback (only when no embedding providers exist)
     ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-        !process.env.OLLAMA_API_ENDPOINT &&
-        !process.env.OPENAI_API_KEY
-          ? ['@elizaos/plugin-local-ai']
-          : []),
+    !process.env.OLLAMA_API_ENDPOINT &&
+    !process.env.OPENAI_API_KEY
+      ? ['@elizaos/plugin-local-ai']
+      : []),
 
     // Platform and bootstrap plugins
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
@@ -93,32 +93,39 @@ export const character: Character = {
 ## Plugin Categories & Loading Order
 
 ### 1. Core Infrastructure
+
 - `@elizaos/plugin-sql` - Always loads first, provides database functionality
 
 ### 2. Text-Only AI Providers
+
 - `@elizaos/plugin-anthropic` - Claude models (conversation only)
 - `@elizaos/plugin-openrouter` - Multiple AI models via OpenRouter
 
 ### 3. Platform Integrations
+
 - `@elizaos/plugin-discord` - Discord bot capabilities
 - `@elizaos/plugin-twitter` - Twitter integration
 - `@elizaos/plugin-telegram` - Telegram bot
 
 ### 4. Bootstrap Plugin
+
 - `@elizaos/plugin-bootstrap` - Default actions, providers, and evaluators
 
 ### 5. Embedding-Capable AI Providers (Always Last)
+
 - `@elizaos/plugin-openai` - GPT models + embeddings
-- `@elizaos/plugin-ollama` - Local models + embeddings  
+- `@elizaos/plugin-ollama` - Local models + embeddings
 - `@elizaos/plugin-google-genai` - Gemini models + embeddings
 - `@elizaos/plugin-local-ai` - Final fallback when no other AI providers exist
 
 ## Real-World Examples
 
 ### Scenario 1: Cost-Optimized Setup
+
 **Goal**: Use Claude for chat (better quality), OpenAI for embeddings (only option)
 
 **Environment**:
+
 ```bash
 ANTHROPIC_API_KEY=your_claude_key
 OPENAI_API_KEY=your_openai_key
@@ -127,9 +134,11 @@ OPENAI_API_KEY=your_openai_key
 **Result**: Anthropic handles text generation, OpenAI handles embeddings. No Local-AI needed.
 
 ### Scenario 2: Privacy-First Local Setup
+
 **Goal**: Everything runs locally, no cloud API calls
 
 **Environment**:
+
 ```bash
 OLLAMA_API_ENDPOINT=http://localhost:11434
 # No other API keys
@@ -138,12 +147,14 @@ OLLAMA_API_ENDPOINT=http://localhost:11434
 **Result**: Ollama handles both text generation and embeddings locally.
 
 ### Scenario 3: High-Availability Production
+
 **Goal**: Multiple fallbacks for reliability
 
 **Environment**:
+
 ```bash
 OPENAI_API_KEY=primary_key
-ANTHROPIC_API_KEY=backup_key  
+ANTHROPIC_API_KEY=backup_key
 OLLAMA_API_ENDPOINT=http://localhost:11434
 ```
 
@@ -154,6 +165,7 @@ OLLAMA_API_ENDPOINT=http://localhost:11434
 Here's a neat feature: Local-AI automatically loads as a fallback when you don't have any embedding-capable cloud providers. This ensures your agent always has access to embeddings (needed for memory and context) even with a text-only provider like Anthropic.
 
 The logic is simple:
+
 ```typescript
 // Only load Local-AI if no embedding providers are configured
 ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
@@ -166,6 +178,7 @@ The logic is simple:
 ## Environment Variables That Matter
 
 ### AI Provider Keys
+
 - `ANTHROPIC_API_KEY` - Enables Claude (text-only)
 - `OPENROUTER_API_KEY` - Enables OpenRouter (text-only)
 - `OPENAI_API_KEY` - Enables OpenAI (text + embeddings)
@@ -173,11 +186,13 @@ The logic is simple:
 - `GOOGLE_GENERATIVE_AI_API_KEY` - Enables Google GenAI (text + embeddings)
 
 ### Platform Integration
+
 - `DISCORD_API_TOKEN` - Discord bot
 - `TELEGRAM_BOT_TOKEN` - Telegram bot
 - `TWITTER_API_KEY` + `TWITTER_API_SECRET_KEY` + `TWITTER_ACCESS_TOKEN` + `TWITTER_ACCESS_TOKEN_SECRET` - Twitter (requires all 4)
 
 ### Control Flags
+
 - `IGNORE_BOOTSTRAP=true` - Disables bootstrap plugin
 
 ## Testing Your Configuration
@@ -207,15 +222,19 @@ bun test src/__tests__/character-plugin-ordering.test.ts
 ## Troubleshooting Common Issues
 
 ### "Wrong provider handling my requests"
+
 **Check**: Plugin order in your character file. Text-only providers should load before embedding providers.
 
 ### "Embedding operations failing"
+
 **Verify**: At least one embedding-capable provider (OpenAI, Ollama, Google GenAI, or Local-AI) is configured and loading.
 
 ### "Local-AI loading unexpectedly"
+
 **Solution**: Check that your embedding-capable provider environment variables are set correctly.
 
 ### "Plugin not loading"
+
 **Debug**: Verify environment variable names match expected patterns exactly.
 
 ## Customizing Plugin Order
@@ -227,14 +246,14 @@ export const character: Character = {
   name: 'CustomAgent',
   plugins: [
     '@elizaos/plugin-sql',
-    
+
     // Add your custom plugin early for high priority
     '@my-org/my-custom-plugin',
-    
+
     // Standard ordering for AI providers
     ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    
+
     // Rest of plugins...
   ],
   // ... rest of config
@@ -247,9 +266,9 @@ You can also set custom priorities in your plugin:
 const myPlugin: Plugin = {
   name: 'my-custom-plugin',
   models: {
-    [ModelType.TEXT_LARGE]: myCustomHandler
+    [ModelType.TEXT_LARGE]: myCustomHandler,
   },
-  priority: 15  // Higher than default plugins
+  priority: 15, // Higher than default plugins
 };
 ```
 
@@ -267,7 +286,7 @@ Ready to build your own agent with optimal plugin ordering?
 # Create a new project (includes optimized plugin ordering)
 elizaos create my-agent
 
-# Navigate to your project  
+# Navigate to your project
 cd my-agent
 
 # Configure your environment

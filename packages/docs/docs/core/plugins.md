@@ -458,6 +458,7 @@ const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean f
 The Bootstrap Plugin is a foundational component of ElizaOS that **provides essential communication capabilities and is mandatory for basic agent functionality**. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
 
 **Without the Bootstrap Plugin, your agent will be unable to:**
+
 - Process incoming messages from Discord, Telegram, or other platforms
 - Respond to user interactions
 - Handle communication events

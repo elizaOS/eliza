@@ -8,9 +8,5 @@ interface ResponseSamplesProps {
 }
 
 export default function ResponseSamples({ responseExample, language }: ResponseSamplesProps) {
-  return (
-    <CodeBlock language={language}>
-      {responseExample}
-    </CodeBlock>
-  );
-} 
+  return <CodeBlock language={language}>{responseExample}</CodeBlock>;
+}
