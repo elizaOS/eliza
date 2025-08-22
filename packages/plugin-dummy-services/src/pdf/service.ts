@@ -71,7 +71,7 @@ export class DummyPdfService extends Service {
     content: string | { html: string },
     options?: PdfGenerationOptions
   ): Promise<Buffer> {
-    logger.debug('Generating PDF', options);
+    logger.debug('Generating PDF', JSON.stringify(options));
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from('dummy-pdf-content');
@@ -86,7 +86,7 @@ export class DummyPdfService extends Service {
     inputFormat: 'html' | 'markdown' | 'docx',
     options?: PdfConversionOptions
   ): Promise<Buffer> {
-    logger.debug(`Converting ${inputFormat} to PDF`, options);
+    logger.debug(`Converting ${inputFormat} to PDF`, JSON.stringify(options));
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from(`dummy-pdf-from-${inputFormat}`);

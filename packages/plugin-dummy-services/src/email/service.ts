@@ -104,8 +104,8 @@ export class DummyEmailService extends Service {
       sendOptions?: EmailSendOptions;
     }
   ): Promise<string> {
-    logger.debug('Sending email', { to, subject });
-    logger.debug('Email options:', options);
+    logger.debug('Sending email', JSON.stringify({ to, subject }));
+    logger.debug('Email options:', JSON.stringify(options));
 
     const messageId = `dummy-${Date.now()}@example.com`;
     
@@ -131,7 +131,7 @@ export class DummyEmailService extends Service {
   }
 
   async searchEmails(options?: EmailSearchOptions): Promise<EmailMessage[]> {
-    logger.debug('Searching emails', options);
+    logger.debug('Searching emails', JSON.stringify(options));
 
     // Return filtered dummy emails based on search options
     let results = this.emails;
@@ -199,7 +199,7 @@ export class DummyEmailService extends Service {
   }
 
   async createFolder(name: string, parentPath?: string): Promise<EmailFolder> {
-    logger.debug(`Creating folder: ${name}`, { parentPath });
+    logger.debug(`Creating folder: ${name}`, JSON.stringify({ parentPath }));
 
     const path = parentPath ? `${parentPath}/${name}` : name;
     const folder: EmailFolder = {
@@ -233,7 +233,7 @@ export class DummyEmailService extends Service {
       replyAll?: boolean;
     }
   ): Promise<string> {
-    logger.debug(`Replying to email: ${messageId}`, options);
+    logger.debug(`Replying to email: ${messageId}`, JSON.stringify(options));
 
     const replyMessageId = `dummy-reply-${Date.now()}@example.com`;
     
@@ -251,7 +251,7 @@ export class DummyEmailService extends Service {
       attachments?: EmailAttachment[];
     }
   ): Promise<string> {
-    logger.debug(`Forwarding email: ${messageId}`, { to, options });
+    logger.debug(`Forwarding email: ${messageId}`, JSON.stringify({ to, options }));
 
     const forwardMessageId = `dummy-forward-${Date.now()}@example.com`;
     

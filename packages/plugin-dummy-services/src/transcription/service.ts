@@ -75,7 +75,7 @@ export class DummyTranscriptionService extends Service {
     audioBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    logger.debug(`Transcribing audio (${audioBuffer.length} bytes)`, options);
+    logger.debug(`Transcribing audio (${audioBuffer.length} bytes)`, JSON.stringify(options));
 
     // Generate dummy transcription with segments
     const segments: TranscriptionSegment[] = [
@@ -127,7 +127,7 @@ export class DummyTranscriptionService extends Service {
     videoBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    logger.debug(`Transcribing video (${videoBuffer.length} bytes)`, options);
+    logger.debug(`Transcribing video (${videoBuffer.length} bytes)`, JSON.stringify(options));
 
     // Reuse audio transcription logic for video
     return this.transcribeAudio(videoBuffer, options);
@@ -137,7 +137,7 @@ export class DummyTranscriptionService extends Service {
     audioBuffer: Buffer,
     options?: SpeechToTextOptions
   ): Promise<string | TranscriptionResult> {
-    logger.debug('Converting speech to text', options);
+    logger.debug('Converting speech to text', JSON.stringify(options));
 
     const result = await this.transcribeAudio(audioBuffer, options);
     
@@ -155,7 +155,7 @@ export class DummyTranscriptionService extends Service {
     text: string,
     options?: TextToSpeechOptions
   ): Promise<Buffer> {
-    logger.debug(`Converting text to speech: "${text.substring(0, 50)}..."`, options);
+    logger.debug(`Converting text to speech: "${text.substring(0, 50)}..."`, JSON.stringify(options));
 
     // Return dummy audio buffer
     const format = options?.format || 'mp3';
@@ -178,7 +178,7 @@ export class DummyTranscriptionService extends Service {
     targetLanguage: string,
     sourceLanguage?: string
   ): Promise<TranscriptionResult> {
-    logger.debug(`Translating audio to ${targetLanguage}`, { sourceLanguage });
+    logger.debug(`Translating audio to ${targetLanguage}`, JSON.stringify({ sourceLanguage }));
 
     return {
       text: `This is dummy translated text in ${targetLanguage}.`,

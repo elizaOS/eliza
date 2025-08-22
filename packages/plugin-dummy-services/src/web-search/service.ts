@@ -74,7 +74,7 @@ export class DummyWebSearchService extends Service {
   }
 
   async search(options: SearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing web search', options);
+    logger.debug('Performing web search', JSON.stringify(options));
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
@@ -101,7 +101,7 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchNews(options: NewsSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing news search', options);
+    logger.debug('Performing news search', JSON.stringify(options));
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
@@ -129,7 +129,7 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchImages(options: ImageSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing image search', options);
+    logger.debug('Performing image search', JSON.stringify(options));
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
@@ -157,7 +157,7 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchVideos(options: VideoSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing video search', options);
+    logger.debug('Performing video search', JSON.stringify(options));
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];

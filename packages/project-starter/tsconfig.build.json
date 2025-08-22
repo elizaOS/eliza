@@ -11,6 +11,7 @@
   "include": [
     "src/index.ts",
     "src/plugin.ts",
+    "src/character.ts",
     "src/frontend/**/*.ts",
     "src/frontend/**/*.tsx"
   ],

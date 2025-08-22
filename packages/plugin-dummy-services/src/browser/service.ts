@@ -69,7 +69,7 @@ export class DummyBrowserService extends Service {
     logger.debug(`Navigating to ${url}`);
 
     if (options) {
-      logger.debug('Navigation options:', options);
+      logger.debug('Navigation options:', JSON.stringify(options));
     }
 
     // Update navigation history
@@ -82,7 +82,7 @@ export class DummyBrowserService extends Service {
   }
 
   async screenshot(options?: ScreenshotOptions): Promise<Buffer> {
-    logger.debug('Taking screenshot', options);
+    logger.debug('Taking screenshot', JSON.stringify(options));
 
     // Return dummy image buffer
     const dummyImage = Buffer.from('dummy-screenshot-data');
@@ -93,7 +93,7 @@ export class DummyBrowserService extends Service {
   }
 
   async extractContent(selectors?: ElementSelector[]): Promise<ExtractedContent[]> {
-    logger.debug('Extracting content', selectors);
+    logger.debug('Extracting content', JSON.stringify(selectors));
 
     // Return dummy content
     const dummyContent: ExtractedContent[] = [
@@ -131,7 +131,7 @@ export class DummyBrowserService extends Service {
   }
 
   async click(selector: ElementSelector, options?: ClickOptions): Promise<void> {
-    logger.debug(`Clicking on: ${selector.selector}`, options);
+    logger.debug(`Clicking on: ${selector.selector}`, JSON.stringify(options));
 
     // Simulate click delay
     const delay = options?.delay || 50;
@@ -141,7 +141,7 @@ export class DummyBrowserService extends Service {
   }
 
   async type(selector: ElementSelector, text: string, options?: TypeOptions): Promise<void> {
-    logger.debug(`Typing into: ${selector.selector}`, options);
+    logger.debug(`Typing into: ${selector.selector}`, JSON.stringify(options));
 
     // Simulate typing delay
     const delay = options?.delay || 50;

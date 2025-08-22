@@ -289,7 +289,7 @@ export class MessagingService extends BaseApiClient {
     const currentParticipants = channel.metadata?.participantCentralUserIds || [];
 
     // Remove user from participants
-    const updatedParticipants = currentParticipants.filter((id) => id !== userId);
+    const updatedParticipants = currentParticipants.filter((id: string) => id !== userId);
 
     return this.updateChannel(channelId, {
       participantCentralUserIds: updatedParticipants,

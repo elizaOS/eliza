@@ -83,7 +83,7 @@ export class DummyVideoService extends Service {
     url: string,
     options?: VideoDownloadOptions
   ): Promise<Buffer> {
-    logger.debug(`Downloading video from: ${url}`, options);
+    logger.debug(`Downloading video from: ${url}`, JSON.stringify(options));
 
     // Return dummy video buffer
     const dummyVideo = Buffer.from(`dummy-video-${options?.format || 'mp4'}`);
@@ -116,7 +116,7 @@ export class DummyVideoService extends Service {
     videoBuffer: Buffer,
     options: VideoProcessingOptions
   ): Promise<Buffer> {
-    logger.debug('Processing video', options);
+    logger.debug('Processing video', JSON.stringify(options));
 
     // Return dummy processed video buffer
     const processedVideo = Buffer.from(
