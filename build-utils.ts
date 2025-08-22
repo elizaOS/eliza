@@ -145,11 +145,6 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
     },
   };
 
-  // Add shebang for CLI tools
-  if (isCli) {
-    config.banner = '#!/usr/bin/env node\n';
-  }
-
   return config;
 }
 

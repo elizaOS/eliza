@@ -8,7 +8,7 @@
   },
   "scripts": {
     "postinstall": "bash ./scripts/init-submodules.sh",
-    "start": "turbo run start --filter=./packages/cli --log-prefix=none",
+    "start": "turbo run start --filter=./packages/cli --log-prefix=none --no-cache",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "bun run scripts/dev-watch.js",
