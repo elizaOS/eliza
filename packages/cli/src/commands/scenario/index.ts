@@ -177,8 +177,8 @@ export const scenario = new Command()
           // Extract plugin names from scenario configuration, filtering by enabled status
           const scenarioPlugins = Array.isArray((scenario as any).plugins)
             ? (scenario as any).plugins
-                .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-                .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+              .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+              .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
           logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
@@ -195,7 +195,7 @@ export const scenario = new Command()
             const hasE2B = !!runtime.getService?.('e2b');
             provider = hasE2B
               ? new E2BEnvironmentProvider(runtime, server, agentId, serverPort)
-              : new LocalEnvironmentProvider(server, agentId, runtime);
+              : new LocalEnvironmentProvider(server, agentId, runtime, serverPort);
           } else if (scenario.environment.type === 'local') {
             // Local also may need NL interaction; pass server/agent if already created
             if (!server || !runtime || !agentId) {
@@ -206,7 +206,7 @@ export const scenario = new Command()
               createdServer = created.createdServer;
               serverPort = created.port;
             }
-            provider = new LocalEnvironmentProvider(server, agentId, runtime);
+            provider = new LocalEnvironmentProvider(server, agentId, runtime, serverPort);
             logger.info('Using local environment');
           } else {
             logger.error(`Unsupported environment type: '${scenario.environment.type}'`);
@@ -448,12 +448,12 @@ export const scenario = new Command()
               }
               await runtime.close();
               logger.info('Runtime shutdown complete');
-            } catch {}
+            } catch { }
           }
           if (server && createdServer) {
             try {
               await shutdownScenarioServer(server, serverPort);
-            } catch {}
+            } catch { }
           }
 
           // Report final result and exit with appropriate code
