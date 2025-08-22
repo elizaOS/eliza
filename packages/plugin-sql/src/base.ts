@@ -607,7 +607,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return await this.db.transaction(async (tx) => {
           await tx.insert(entityTable).values(entities);
 
-          logger.debug(entities.length, 'Entities created successfully');
+          logger.debug(`${entities.length} Entities created successfully`);
 
           return true;
         });
@@ -616,7 +616,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           `Error creating entities: ${error instanceof Error ? error.message : String(error)}, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`
         );
         // trace the error
-        logger.trace(error);
+        logger.trace(error instanceof Error ? error.message : String(error));
         return false;
       }
     });
@@ -2034,7 +2034,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId: this.agentId,
         }));
         await this.db.insert(participantTable).values(values).onConflictDoNothing().execute();
-        logger.debug(entityIds.length, 'Entities linked successfully');
+        logger.debug(`${entityIds.length} Entities linked successfully`);
         return true;
       } catch (error) {
         logger.error(
