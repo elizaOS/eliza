@@ -60,7 +60,6 @@ async function findAvailablePort(startPort: number, endPort: number): Promise<nu
   throw new Error(`No available ports found in range ${startPort}-${endPort}`);
 }
 
-
 /**
  * Creates and initializes a properly configured AgentServer for scenario testing
  * @param existingServer - Optional existing server to reuse
@@ -123,12 +122,16 @@ export async function createScenarioServer(
         const serverPid = (server as any)?.server?.pid || process.pid;
         const runId = `agent-server-${port}`;
         processManager.registerProcess(runId, serverPid, 'agent-server', port);
-        console.log(`🔧 [DEBUG] [ProcessManager] Registered AgentServer process ${serverPid} for port ${port}`);
+        console.log(
+          `🔧 [DEBUG] [ProcessManager] Registered AgentServer process ${serverPid} for port ${port}`
+        );
       }
       break; // Success, exit retry loop
     } catch (error) {
       retryCount++;
-      console.log(`🔧 [DEBUG] Failed to start server on port ${port}, attempt ${retryCount}/${maxRetries}: ${error}`);
+      console.log(
+        `🔧 [DEBUG] Failed to start server on port ${port}, attempt ${retryCount}/${maxRetries}: ${error}`
+      );
 
       if (retryCount >= maxRetries) {
         throw error;
@@ -168,7 +171,9 @@ export async function createScenarioAgent(
   runtime: IAgentRuntime;
   agentId: UUID;
 }> {
-  console.log(`🔧 [DEBUG] createScenarioAgent called for agent: ${agentName}, plugins: ${pluginNames.join(', ')}`);
+  console.log(
+    `🔧 [DEBUG] createScenarioAgent called for agent: ${agentName}, plugins: ${pluginNames.join(', ')}`
+  );
   const character: Character = {
     name: agentName,
     id: stringToUuid(agentName),
@@ -245,8 +250,9 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     // Unregister from process manager
     const serverPid = (server as any)?.server?.pid || process.pid;
     processManager.unregisterProcess(serverPid);
-    console.log(`🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`);
-
+    console.log(
+      `🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`
+    );
   } catch (error) {
     console.log(`🔧 [DEBUG] Error shutting down AgentServer on port ${port}:`, error);
 
@@ -271,17 +277,23 @@ export async function askAgentViaApi(
   serverPort?: number | null
 ): Promise<{ response: string; roomId: UUID }> {
   console.log(`🔧 [askAgentViaApi] === FUNCTION START ===`);
-  console.log(`🔧 [askAgentViaApi] Parameters: agentId=${agentId}, input="${input}", serverPort=${serverPort}`);
+  console.log(
+    `🔧 [askAgentViaApi] Parameters: agentId=${agentId}, input="${input}", serverPort=${serverPort}`
+  );
 
   try {
     // Use provided port or try to extract from server, fallback to 3000
     const port = serverPort ?? (server as any)?.port ?? 3000;
-    console.log(`🔧 [askAgentViaApi] Port calculation: provided=${serverPort}, server.port=${(server as any)?.port}, final=${port}`);
+    console.log(
+      `🔧 [askAgentViaApi] Port calculation: provided=${serverPort}, server.port=${(server as any)?.port}, final=${port}`
+    );
 
     console.log(`🔧 [askAgentViaApi] Creating ElizaClient with baseUrl: http://localhost:${port}`);
     console.log(`🔧 [askAgentViaApi] Environment check for comparison:`);
     console.log(`🔧 [askAgentViaApi]   - SERVER_PORT env: ${process.env.SERVER_PORT || 'NOT SET'}`);
-    console.log(`🔧 [askAgentViaApi]   - CENTRAL_MESSAGE_SERVER_URL env: ${process.env.CENTRAL_MESSAGE_SERVER_URL || 'NOT SET'}`);
+    console.log(
+      `🔧 [askAgentViaApi]   - CENTRAL_MESSAGE_SERVER_URL env: ${process.env.CENTRAL_MESSAGE_SERVER_URL || 'NOT SET'}`
+    );
     const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
     console.log(`🔧 [askAgentViaApi] ✅ ElizaClient created`);
 
@@ -291,12 +303,16 @@ export async function askAgentViaApi(
 
     if (servers.length === 0) throw new Error('No servers found');
     const defaultServer = servers[0];
-    console.log(`🔧 [askAgentViaApi] Using server: ${defaultServer.id} (${defaultServer.name || 'unnamed'})`);
+    console.log(
+      `🔧 [askAgentViaApi] Using server: ${defaultServer.id} (${defaultServer.name || 'unnamed'})`
+    );
 
     const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
     console.log(`🔧 [askAgentViaApi] Test user ID: ${testUserId}`);
 
-    console.log(`🔧 [askAgentViaApi] About to create channel via POST /api/messaging/central-channels...`);
+    console.log(
+      `🔧 [askAgentViaApi] About to create channel via POST /api/messaging/central-channels...`
+    );
     const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -316,13 +332,17 @@ export async function askAgentViaApi(
     console.log(`🔧 [askAgentViaApi] ✅ Channel response parsed`);
 
     const channel = channelResult.data;
-    console.log(`🔧 [askAgentViaApi] Channel created: ${channel.id} (${channel.name || 'unnamed'})`);
+    console.log(
+      `🔧 [askAgentViaApi] Channel created: ${channel.id} (${channel.name || 'unnamed'})`
+    );
 
     console.log(`🔧 [askAgentViaApi] About to add agent ${agentId} to channel ${channel.id}...`);
     await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
     console.log(`🔧 [askAgentViaApi] ✅ Agent added to channel`);
 
-    console.log(`🔧 [askAgentViaApi] About to post message via POST /api/messaging/central-channels/${channel.id}/messages...`);
+    console.log(
+      `🔧 [askAgentViaApi] About to post message via POST /api/messaging/central-channels/${channel.id}/messages...`
+    );
     // Post a message using the server's expected payload (requires author_id and server_id)
     const postResp = await fetch(
       `http://localhost:${port}/api/messaging/central-channels/${channel.id}/messages`,
@@ -350,32 +370,67 @@ export async function askAgentViaApi(
     console.log(`🔧 [askAgentViaApi] ✅ Message posted successfully`);
 
     const startTime = Date.now();
-    console.log(`🔧 [askAgentViaApi] Starting time: ${startTime}, waiting ${timeoutMs}ms for response...`);
-
-    // Preemptively wait for action response
-    await new Promise((resolve) => setTimeout(resolve, timeoutMs));
-    console.log(`🔧 [askAgentViaApi] Wait period finished, checking for messages...`);
-
-    console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
-    const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
-    console.log(`🔧 [askAgentViaApi] ✅ Got ${messages.messages?.length || 0} messages from channel`);
-
-    const agentMessages = messages.messages.filter(
-      (msg: any) => msg.authorId === agentId && msg.created_at > startTime
+    console.log(
+      `🔧 [askAgentViaApi] Starting time: ${startTime}, waiting up to ${timeoutMs}ms for response...`
     );
-    console.log(`🔧 [askAgentViaApi] Found ${agentMessages.length} agent messages after startTime`);
 
-    if (agentMessages.length > 0) {
-      const latestMessage = agentMessages.sort(
-        (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )[0];
-      console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
-      return { response: latestMessage.content, roomId: channel.id as UUID };
-    }
+    // Poll for response at regular intervals instead of waiting full timeout
+    const pollInterval = 100; // Check every 100ms
 
-    console.log(`🔧 [askAgentViaApi] ❌ No agent messages found - timeout`);
-    throw new Error('Timeout waiting for agent response');
+    const checkForResponse = async (): Promise<{ response: string; roomId: UUID }> => {
+      console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
+      const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
+      console.log(
+        `🔧 [askAgentViaApi] ✅ Got ${messages.messages?.length || 0} messages from channel`
+      );
 
+      const agentMessages = messages.messages.filter(
+        (msg: any) => msg.authorId === agentId && msg.created_at > startTime
+      );
+      console.log(
+        `🔧 [askAgentViaApi] Found ${agentMessages.length} agent messages after startTime`
+      );
+
+      if (agentMessages.length > 0) {
+        const latestMessage = agentMessages.sort(
+          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )[0];
+        console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
+        return { response: latestMessage.content, roomId: channel.id as UUID };
+      }
+
+      return null; // No response yet
+    };
+
+    // Implement proper polling with timeout
+    return await new Promise<{ response: string; roomId: UUID }>((resolve, reject) => {
+      const poll = async () => {
+        try {
+          // Check if we've exceeded timeout
+          if (Date.now() - startTime >= timeoutMs) {
+            console.log(`🔧 [askAgentViaApi] ❌ Timeout after ${timeoutMs}ms - no agent response`);
+            reject(new Error('Timeout waiting for agent response'));
+            return;
+          }
+
+          // Check for response
+          const result = await checkForResponse();
+          if (result) {
+            resolve(result);
+            return;
+          }
+
+          // No response yet, schedule next check
+          setTimeout(poll, pollInterval);
+        } catch (error) {
+          console.log(`🔧 [askAgentViaApi] ❌ Error during polling:`, error);
+          reject(error);
+        }
+      };
+
+      // Start polling
+      poll();
+    });
   } catch (error) {
     console.log(`🔧 [askAgentViaApi] ❌ EXCEPTION CAUGHT:`, error);
     throw error; // Re-throw the error
