@@ -1,0 +1,103 @@
+{
+  "name": "@elizaos-plugins/plugin-aigateway",
+  "displayName": "AI Gateway Plugin",
+  "version": "1.0.0",
+  "description": "Universal AI Gateway integration - Access 100+ AI models through Vercel, OpenRouter, and other gateways",
+  "author": "elizaOS Community",
+  "license": "MIT",
+  "repository": "https://github.com/elizaos-plugins/plugin-aigateway",
+  "homepage": "https://github.com/elizaos-plugins/plugin-aigateway#readme",
+  "bugs": "https://github.com/elizaos-plugins/plugin-aigateway/issues",
+  "category": "ai-models",
+  "tags": [
+    "ai",
+    "llm",
+    "gateway",
+    "vercel",
+    "openrouter",
+    "openai",
+    "anthropic",
+    "google",
+    "meta",
+    "mistral",
+    "model-provider"
+  ],
+  "compatibility": {
+    "elizaOS": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "features": [
+    "100+ AI models support",
+    "Multiple gateway providers",
+    "Response caching",
+    "Automatic retries",
+    "Model fallback",
+    "Usage telemetry"
+  ],
+  "models": {
+    "providers": [
+      "openai",
+      "anthropic",
+      "google",
+      "meta",
+      "mistral",
+      "cohere",
+      "ai21"
+    ],
+    "capabilities": [
+      "text-generation",
+      "image-generation",
+      "embeddings",
+      "audio-transcription"
+    ]
+  },
+  "configuration": {
+    "required": [],
+    "optional": [
+      {
+        "key": "AIGATEWAY_API_KEY",
+        "type": "string",
+        "description": "API key for the gateway",
+        "sensitive": true
+      },
+      {
+        "key": "AIGATEWAY_BASE_URL",
+        "type": "string",
+        "description": "Gateway base URL",
+        "default": "https://ai-gateway.vercel.sh/v1"
+      },
+      {
+        "key": "AIGATEWAY_DEFAULT_MODEL",
+        "type": "string",
+        "description": "Default model for text generation",
+        "default": "openai:gpt-4o-mini"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "name": "GENERATE_TEXT",
+      "description": "Generate text using AI models"
+    },
+    {
+      "name": "GENERATE_IMAGE",
+      "description": "Generate images using AI models"
+    },
+    {
+      "name": "GENERATE_EMBEDDING",
+      "description": "Generate text embeddings"
+    },
+    {
+      "name": "LIST_MODELS",
+      "description": "List available AI models"
+    }
+  ],
+  "modelTypes": [
+    "TEXT_SMALL",
+    "TEXT_LARGE",
+    "TEXT_EMBEDDING",
+    "IMAGE",
+    "OBJECT_SMALL",
+    "OBJECT_LARGE"
+  ]
+}
