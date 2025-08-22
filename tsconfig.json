@@ -10,6 +10,11 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["packages/core/src"],

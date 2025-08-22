@@ -34,7 +34,7 @@
     "dev": "tsup --watch",
     "test": "bun test",
     "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "watch": "bun run --watch build.ts"

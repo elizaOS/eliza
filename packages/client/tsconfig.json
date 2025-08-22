@@ -13,6 +13,12 @@
     "baseUrl": "./",
     "paths": {
       "@/*": ["./src/*"]
-    }
+    },
+    "skipLibCheck": true,
+    "strict": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true
   }
 }

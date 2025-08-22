@@ -181,3 +181,6 @@ tasks/
 .roomodes
 bun.lock
 /.kiro
+# TypeScript incremental compilation cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo

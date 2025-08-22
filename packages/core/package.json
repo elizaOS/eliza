@@ -23,7 +23,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "watch": "tsc --watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "dev": "tsup --watch",
     "build:docs": "cd docs && bun run build",
     "test": "bun test --coverage",
