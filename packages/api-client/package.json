@@ -7,12 +7,13 @@
   "description": "Type-safe API client for ElizaOS server",
   "type": "module",
   "scripts": {
-    "build": "tsup",
+    "build": "bun run build.ts",
     "dev": "tsup --watch",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "lint": "prettier --write ./src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "watch": "bun run --watch build.ts"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
@@ -21,7 +22,6 @@
     "@types/bun": "latest",
     "@types/node": "latest",
     "eslint": "^8.57.0",
-    "tsup": "^8.5.0",
     "typescript": "^5.7.2"
   },
   "files": [
