@@ -76,7 +76,7 @@ export class EvaluationEngine {
 
 class StringContainsEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    if (params.type !== 'string_contains') throw new Error('Mismatched evaluator');
+    if (params.type !== 'string_contains') throw new Error(`Mismatched evaluator: expected 'string_contains', received '${params.type}'`);
 
     const success = runResult.stdout.includes(params.value);
     return {
@@ -88,7 +88,7 @@ class StringContainsEvaluator implements Evaluator {
 
 class RegexMatchEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    if (params.type !== 'regex_match') throw new Error('Mismatched evaluator');
+    if (params.type !== 'regex_match') throw new Error(`Mismatched evaluator: expected 'regex_match', received '${params.type}'`);
 
     const success = new RegExp(params.pattern, 'i').test(runResult.stdout);
     return {
@@ -100,7 +100,7 @@ class RegexMatchEvaluator implements Evaluator {
 
 class FileExistsEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    if (params.type !== 'file_exists') throw new Error('Mismatched evaluator');
+    if (params.type !== 'file_exists') throw new Error(`Mismatched evaluator: expected 'file_exists', received '${params.type}'`);
 
     // Check for both exact path and relative path (with ./ prefix)
     const filePaths = Object.keys(runResult.files);
@@ -118,7 +118,7 @@ class FileExistsEvaluator implements Evaluator {
 
 class ExecutionTimeEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    if (params.type !== 'execution_time') throw new Error('Mismatched evaluator');
+    if (params.type !== 'execution_time') throw new Error(`Mismatched evaluator: expected 'execution_time', received '${params.type}'`);
 
     const duration =
       runResult.durationMs ?? (runResult.endedAtMs ?? 0) - (runResult.startedAtMs ?? 0);
@@ -146,7 +146,7 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
     runResult: ExecutionResult,
     runtime: AgentRuntime
   ): Promise<EvaluationResult> {
-    if (params.type !== 'trajectory_contains_action') throw new Error('Mismatched evaluator');
+    if (params.type !== 'trajectory_contains_action') throw new Error(`Mismatched evaluator: expected 'trajectory_contains_action', received '${params.type}'`);
 
     const actionName = params.action;
 
@@ -208,7 +208,7 @@ class LLMJudgeEvaluator implements Evaluator {
     runResult: ExecutionResult,
     runtime: AgentRuntime
   ): Promise<EvaluationResult> {
-    if (params.type !== 'llm_judge') throw new Error('Mismatched evaluator');
+    if (params.type !== 'llm_judge') throw new Error(`Mismatched evaluator: expected 'llm_judge', received '${params.type}'`);
 
     const prompt = params.prompt;
     const expected = params.expected;

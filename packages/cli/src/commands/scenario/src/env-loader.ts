@@ -24,7 +24,7 @@ export function loadEnvironmentVariables(): void {
 
       // Manually inject parsed env vars into process.env
       for (const key in parsedEnv) {
-        if (!process.env.hasOwnProperty(key)) {
+        if (process.env[key] === undefined) {
           process.env[key] = parsedEnv[key];
         }
       }

@@ -41,13 +41,6 @@ export const LLMJudgeResultSchema = z.object({
   qualitative_summary: z.string(),
   capability_checklist: z.array(CapabilityCheckSchema),
 });
-export type EvaluationType =
-  | 'string_contains'
-  | 'regex_match'
-  | 'file_exists'
-  | 'trajectory_contains_action'
-  | 'llm_judge'
-  | 'execution_time';
 
 const BaseEvaluationSchema = z.object({
   type: z.string(),
