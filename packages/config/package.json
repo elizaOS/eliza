@@ -42,10 +42,11 @@
     "typescript": "^5.8.2"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "bun run build.ts",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "watch": "bun run --watch build.ts"
   },
   "publishConfig": {
     "access": "public"
