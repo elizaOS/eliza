@@ -7,10 +7,7 @@ import { TrajectoryReconstructor } from './TrajectoryReconstructor';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { bunExec } from '../../../utils/bun-exec';
 
 export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
@@ -27,11 +24,11 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
     this.serverPort = serverPort ?? null;
     this.trajectoryReconstructor = runtime ? new TrajectoryReconstructor(runtime) : null;
 
-    console.log(`🔧 [DEBUG] LocalEnvironmentProvider CONSTRUCTOR:`)
-    console.log(`🔧 [DEBUG]   - Server: ${server ? 'present' : 'null'}`)
-    console.log(`🔧 [DEBUG]   - Agent ID: ${agentId}`)
-    console.log(`🔧 [DEBUG]   - Runtime: ${runtime ? 'present' : 'null'}`)
-    console.log(`🔧 [DEBUG]   - Server Port: ${serverPort}`)
+    console.log(`🔧 [DEBUG] LocalEnvironmentProvider CONSTRUCTOR:`);
+    console.log(`🔧 [DEBUG]   - Server: ${server ? 'present' : 'null'}`);
+    console.log(`🔧 [DEBUG]   - Agent ID: ${agentId}`);
+    console.log(`🔧 [DEBUG]   - Runtime: ${runtime ? 'present' : 'null'}`);
+    console.log(`🔧 [DEBUG]   - Server Port: ${serverPort}`);
   }
 
   async setup(scenario: Scenario): Promise<void> {
@@ -108,12 +105,14 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           this.serverPort // Pass the actual server port
         );
 
-        // Give database time to write logs before reconstructing trajectory 
-        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay to allow async DB writes
+        // Give database time to write logs before reconstructing trajectory
+        await new Promise((resolve) => setTimeout(resolve, 3000)); // 3 second delay to allow async DB writes
 
         // Reconstruct trajectory from database logs (Ticket #5785 - Non-invasive approach)
-        const trajectory = this.trajectoryReconstructor && roomId ?
-          await this.trajectoryReconstructor.getLatestTrajectory(roomId) : [];
+        const trajectory =
+          this.trajectoryReconstructor && roomId
+            ? await this.trajectoryReconstructor.getLatestTrajectory(roomId)
+            : [];
 
         // Debug trajectory reconstruction
         console.log(`🔍 [Trajectory Debug] Room ID: ${roomId}, Steps found: ${trajectory.length}`);
@@ -135,31 +134,37 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           trajectory, // Add trajectory to execution result
         });
       } else if (step.code) {
-        // Construct appropriate command based on language
-        let command: string;
-        const escapedCode = step.code.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        // Construct appropriate command and arguments based on language
+        // Use proper argument arrays to prevent command injection
+        let execCommand: string;
+        let execArgs: string[];
 
         switch (step.lang) {
           case 'bash':
           case 'sh':
-            command = step.code;
+            execCommand = 'sh';
+            execArgs = ['-c', step.code];
             break;
           case 'node':
           case 'javascript':
-            command = `node -e "${escapedCode}"`;
+            execCommand = 'node';
+            execArgs = ['-e', step.code];
             break;
           case 'python':
           case 'python3':
-            command = `python3 -c "${escapedCode}"`;
+            execCommand = 'python3';
+            execArgs = ['-c', step.code];
             break;
           default:
             // For other languages, try the -c flag pattern
-            command = `${step.lang} -c "${escapedCode}"`;
+            execCommand = step.lang;
+            execArgs = ['-c', step.code];
             break;
         }
 
         try {
-          const { stdout, stderr } = await execAsync(command, { cwd: this.tempDir });
+          const result = await bunExec(execCommand, execArgs, { cwd: this.tempDir });
+          const { stdout, stderr } = result;
 
           // Capture file system state after this step
           const files = await this.captureFileSystem();
@@ -168,7 +173,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           const durationMs = endedAtMs - startedAtMs;
 
           results.push({
-            exitCode: 0,
+            exitCode: result.exitCode || 0,
             stdout,
             stderr,
             files,
@@ -183,10 +188,28 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           const endedAtMs = Date.now();
           const durationMs = endedAtMs - startedAtMs;
 
+          // Handle different error types from bunExec
+          let exitCode = 1;
+          let stderr = '';
+          let stdout = '';
+
+          if (error.exitCode !== undefined) {
+            exitCode = error.exitCode;
+          }
+          if (error.stderr) {
+            stderr = error.stderr;
+          }
+          if (error.stdout) {
+            stdout = error.stdout;
+          }
+          if (!stderr && error.message) {
+            stderr = error.message;
+          }
+
           results.push({
-            exitCode: error.code || 1,
-            stdout: error.stdout || '',
-            stderr: error.stderr || error.message || '',
+            exitCode,
+            stdout,
+            stderr,
             files: files,
             startedAtMs,
             endedAtMs,
