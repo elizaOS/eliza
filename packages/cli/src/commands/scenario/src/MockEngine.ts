@@ -126,15 +126,14 @@ export class MockEngine {
       throw error;
     }
 
-    // Handle dynamic response function
+    // Handle dynamic response template (SECURITY FIX: No more arbitrary code execution)
     if (mock.responseFn) {
       try {
-        const responseFn = new Function('args', 'input', 'context', mock.responseFn);
         const input = this.extractInputFromArgs(args);
         const context = this.buildRequestContext(args);
-        return responseFn(args, input, context);
+        return this.parseResponseTemplate(mock.responseFn, { args, input, context });
       } catch (error) {
-        this.logger.error(`Response function error: ${error}`);
+        this.logger.error(`Response template error: ${error}`);
         throw error;
       }
     }
@@ -173,15 +172,15 @@ export class MockEngine {
       }
     }
 
-    // 4. Custom matcher function
+    // 4. Custom matcher template (SECURITY FIX: No more arbitrary code execution)
     if (mock.when.matcher) {
       try {
-        const matcherFn = new Function('args', 'input', 'context', mock.when.matcher);
-        if (!matcherFn(args, input, context)) {
+        const result = this.evaluateTemplate(mock.when.matcher, { args, input, context });
+        if (!result) {
           return false;
         }
       } catch (error) {
-        this.logger.error(`Matcher function error: ${error}`);
+        this.logger.error(`Matcher template error: ${error}`);
         return false;
       }
     }
@@ -350,5 +349,171 @@ export class MockEngine {
     const averageExecutionTime = totalTime / totalExecutions;
 
     return { totalExecutions, averageExecutionTime };
+  }
+
+  /**
+   * Parse response template with safe variable interpolation
+   * SECURITY: Only allows predefined variables, no arbitrary code execution
+   */
+  private parseResponseTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): any {
+    // Handle JSON response templates
+    if (template.trim().startsWith('{') || template.trim().startsWith('[')) {
+      try {
+        return JSON.parse(this.interpolateTemplate(template, variables));
+      } catch (error) {
+        this.logger.error(`Failed to parse JSON template: ${error}`);
+        throw new Error('Invalid JSON template');
+      }
+    }
+
+    // Handle string templates
+    return this.interpolateTemplate(template, variables);
+  }
+
+  /**
+   * Evaluate template for boolean conditions
+   * SECURITY: Only allows safe comparison operations, no arbitrary code execution
+   */
+  private evaluateTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): boolean {
+    // Simple boolean template evaluation with safe operations
+    // Supports patterns like: "${input.type} === 'test'" or "${args[0]} > 10"
+    const interpolated = this.interpolateTemplate(template, variables);
+    
+    // Parse simple boolean expressions safely
+    try {
+      // Only allow safe comparison operations
+      const safeExpression = interpolated.replace(/[^\w\s===!<>()\[\]\.'"]/g, '');
+      
+      // Basic pattern matching for simple comparisons
+      const comparisonRegex = /^\s*(.+?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+?)\s*$/;
+      const match = safeExpression.match(comparisonRegex);
+      
+      if (match) {
+        const [, left, operator, right] = match;
+        return this.performSafeComparison(left.trim(), operator, right.trim());
+      }
+      
+      // For non-comparison expressions, check if it's truthy
+      return Boolean(interpolated && interpolated !== 'false' && interpolated !== '0');
+    } catch (error) {
+      this.logger.error(`Template evaluation error: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Perform safe string interpolation
+   * SECURITY: Only allows access to whitelisted variables
+   */
+  private interpolateTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): string {
+    return template.replace(/\$\{([^}]+)\}/g, (match, expression) => {
+      try {
+        const value = this.resolveTemplateVariable(expression.trim(), variables);
+        return String(value);
+      } catch (error) {
+        this.logger.warn(`Failed to resolve template variable: ${expression}`);
+        return match; // Return original if resolution fails
+      }
+    });
+  }
+
+  /**
+   * Resolve template variables safely
+   * SECURITY: Only allows access to predefined variable paths
+   */
+  private resolveTemplateVariable(expression: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): any {
+    // Handle array access like args[0], args[1], etc.
+    if (expression.startsWith('args[') && expression.endsWith(']')) {
+      const indexStr = expression.slice(5, -1);
+      const index = parseInt(indexStr, 10);
+      if (!isNaN(index) && index >= 0 && index < variables.args.length) {
+        return variables.args[index];
+      }
+      return undefined;
+    }
+
+    // Handle object property access like input.prop, context.prop
+    const parts = expression.split('.');
+    if (parts.length >= 2) {
+      const rootVar = parts[0];
+      const propertyPath = parts.slice(1);
+      
+      let current: any;
+      switch (rootVar) {
+        case 'input':
+          current = variables.input;
+          break;
+        case 'context':
+          current = variables.context;
+          break;
+        case 'args':
+          current = variables.args;
+          break;
+        default:
+          throw new Error(`Unauthorized variable access: ${rootVar}`);
+      }
+
+      // Navigate the property path safely
+      for (const prop of propertyPath) {
+        if (current && typeof current === 'object' && prop in current) {
+          current = current[prop];
+        } else {
+          return undefined;
+        }
+      }
+      
+      return current;
+    }
+
+    // Handle direct variable access
+    switch (expression) {
+      case 'args':
+        return variables.args;
+      case 'input':
+        return variables.input;
+      case 'context':
+        return variables.context;
+      default:
+        throw new Error(`Unauthorized variable access: ${expression}`);
+    }
+  }
+
+  /**
+   * Perform safe comparison operations
+   * SECURITY: Only allows whitelisted comparison operators
+   */
+  private performSafeComparison(left: string, operator: string, right: string): boolean {
+    // Remove quotes if present
+    const cleanLeft = left.replace(/^['"]|['"]$/g, '');
+    const cleanRight = right.replace(/^['"]|['"]$/g, '');
+    
+    // Try to parse as numbers if possible
+    const leftNum = parseFloat(cleanLeft);
+    const rightNum = parseFloat(cleanRight);
+    const leftIsNum = !isNaN(leftNum);
+    const rightIsNum = !isNaN(rightNum);
+    
+    // Use numeric comparison if both are numbers
+    const leftVal = leftIsNum ? leftNum : cleanLeft;
+    const rightVal = rightIsNum ? rightNum : cleanRight;
+    
+    switch (operator) {
+      case '===':
+      case '==':
+        return leftVal === rightVal;
+      case '!==':
+      case '!=':
+        return leftVal !== rightVal;
+      case '>=':
+        return leftIsNum && rightIsNum ? leftNum >= rightNum : String(leftVal) >= String(rightVal);
+      case '<=':
+        return leftIsNum && rightIsNum ? leftNum <= rightNum : String(leftVal) <= String(rightVal);
+      case '>':
+        return leftIsNum && rightIsNum ? leftNum > rightNum : String(leftVal) > String(rightVal);
+      case '<':
+        return leftIsNum && rightIsNum ? leftNum < rightNum : String(leftVal) < String(rightVal);
+      default:
+        throw new Error(`Unsupported comparison operator: ${operator}`);
+    }
   }
 }
