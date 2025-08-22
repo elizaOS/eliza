@@ -1,30 +1,31 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 // @ts-ignore
 import tailwindcss from '@tailwindcss/vite'
+// Inject Buffer/process automatically into modules that reference them during build
+import inject from '@rollup/plugin-inject'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    tailwindcss(),
-    react(),
+    // Keep node polyfills first so globals are injected early in the graph
     nodePolyfills({
-      // Include specific Node.js polyfills
-      include: ['crypto', 'stream', 'buffer', 'process', 'util', 'path', 'fs'],
-      // Whether to polyfill specific globals
+      include: ['buffer', 'process', 'util', 'crypto', 'stream', 'events'],
       globals: {
         Buffer: true,
         global: true,
         process: true,
       },
-      // Override specific module polyfills
       overrides: {
-        // Override the module polyfill to provide createRequire
+        crypto: 'crypto-browserify',
         module: path.resolve(__dirname, './src/mocks/node-module.ts'),
       },
-    }),
+      protocolImports: false,
+    }) as unknown as PluginOption,
+    tailwindcss() as unknown as PluginOption,
+    react() as unknown as PluginOption,
   ],
   server: {
     port: 5173,
@@ -39,10 +40,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Direct alias for node:module to our mock
+      // Node shims used by some dependencies
+      buffer: 'buffer',
+      crypto: 'crypto-browserify',
+      stream: 'stream-browserify',
+      process: 'process/browser',
+      util: 'util',
+      events: 'events',
+      // Fallback mock for rare usages
       'node:module': path.resolve(__dirname, './src/mocks/node-module.ts'),
-      // Also alias the plain module import
-      'module': path.resolve(__dirname, './src/mocks/node-module.ts'),
+      module: path.resolve(__dirname, './src/mocks/node-module.ts'),
     },
   },
   optimizeDeps: {
@@ -50,26 +57,35 @@ export default defineConfig({
       // Node.js global compatibility
       define: {
         global: 'globalThis',
+        Buffer: 'globalThis.Buffer',
       },
-      // Inject polyfills
-      inject: [path.resolve(__dirname, './src/mocks/node-module.ts')],
+      // Inject polyfills early
+      inject: [path.resolve(__dirname, './src/polyfills.ts')],
     },
     include: [
-      '@elizaos/core',
+      'buffer',
+      'process',
       'crypto-browserify',
       'stream-browserify',
-      'buffer',
+      'util',
     ],
     // Force optimization even for linked packages
     force: true,
+    // Ensure elizaos/core is pre-bundled with polyfills
+    entries: ['./src/entry.tsx'],
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: true, // Use external source maps for production (better performance)
     rollupOptions: {
       // Ensure modules are bundled correctly
       external: [],
       plugins: [
+        // Ensure Buffer and process are available in any module that references them
+        inject({
+          Buffer: ['buffer', 'Buffer'],
+          process: 'process',
+        }) as unknown as PluginOption,
         {
           name: 'node-module-polyfill',
           resolveId(source) {
@@ -90,5 +106,7 @@ export default defineConfig({
     // Define globals for browser compatibility
     'process.env': {},
     'global': 'globalThis',
+    // Ensure Buffer is available globally
+    'Buffer': 'globalThis.Buffer',
   },
 })
