@@ -45,15 +45,15 @@
   "devDependencies": {
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "scripts": {
-    "build": "tsc --noEmit && tsup",
+    "build": "bun run build.ts",
     "lint": "prettier --write ./src",
     "test": "bun test",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "watch": "bun run --watch build.ts"
   },
   "publishConfig": {
     "access": "public"
