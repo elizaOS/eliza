@@ -44,21 +44,55 @@ export class MessagingService extends BaseApiClient {
    * Create a new channel
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/central-channels', params);
+    // Server expects: { name, type, server_id, metadata }
+    const payload: any = {
+      name: params.name,
+      type: params.type,
+      server_id: params.serverId,
+      metadata: params.metadata,
+    };
+    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
   }
 
   /**
    * Create a group channel
    */
   async createGroupChannel(params: GroupChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/central-channels', params);
+    // Server expects: { name, server_id, participantCentralUserIds, type?, metadata? }
+    // The client currently provides participantIds and may include server_id/type in metadata.
+    const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+    const meta = { ...(params.metadata || {}) } as Record<string, any>;
+    const serverIdFromMeta = meta.server_id as UUID | undefined;
+    const typeFromMeta = meta.type as any | undefined;
+    // Remove hoisted fields from metadata to avoid duplication
+    if ('server_id' in meta) delete meta.server_id;
+    if ('type' in meta) delete meta.type;
+
+    const payload: any = {
+      name: params.name,
+      server_id: serverIdFromMeta || DEFAULT_SERVER_ID,
+      participantCentralUserIds: params.participantIds,
+      // If caller intended DM, allow type override
+      ...(typeFromMeta ? { type: typeFromMeta } : {}),
+      ...(Object.keys(meta).length ? { metadata: meta } : {}),
+    };
+
+    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
   }
 
   /**
    * Find or create a DM channel
    */
   async getOrCreateDmChannel(params: DmChannelParams): Promise<MessageChannel> {
-    return this.get<MessageChannel>('/api/messaging/dm-channel', { params });
+    // Map participantIds -> { currentUserId, targetUserId }
+    const [userA, userB] = params.participantIds;
+    // Arbitrarily treat the first as current and second as target; callers pass [current, target]
+    const query: any = {
+      currentUserId: userA,
+      targetUserId: userB,
+      dmServerId: '00000000-0000-0000-0000-000000000000' as UUID,
+    };
+    return this.get<MessageChannel>('/api/messaging/dm-channel', { params: query });
   }
 
   /**
