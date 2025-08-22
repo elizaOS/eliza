@@ -43,7 +43,7 @@ export class MessageBusService extends Service {
     super(runtime);
     this.boundHandleIncomingMessage = (data: unknown) => {
       this.handleIncomingMessage(data).catch((error) => {
-        logger.error(`[${this.runtime.character.name}] Error handling incoming message:`, error);
+        logger.error(`[${this.runtime.character.name}] Error handling incoming message:`, error instanceof Error ? error.message : String(error));
       });
     };
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
@@ -124,7 +124,7 @@ export class MessageBusService extends Service {
         } catch (serverError) {
           logger.error(
             `[${this.runtime.character.name}] MessageBusService: Error fetching channels for server ${serverId}:`,
-            serverError
+            serverError instanceof Error ? serverError.message : String(serverError)
           );
         }
       }
@@ -134,9 +134,7 @@ export class MessageBusService extends Service {
       );
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error in fetchValidChannelIds:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error in fetchValidChannelIds:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -196,9 +194,7 @@ export class MessageBusService extends Service {
       return [];
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error fetching participants for channel ${channelId}:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error fetching participants for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
       return [];
     }
   }
@@ -236,9 +232,7 @@ export class MessageBusService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error fetching agent servers:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error fetching agent servers:`, error instanceof Error ? error.message : String(error));
       // Even on error, ensure we're subscribed to the default server
       const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
       this.subscribedServers.add(DEFAULT_SERVER_ID);
@@ -428,22 +422,18 @@ export class MessageBusService extends Service {
       !messageData.content
     ) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Message missing required fields`,
-        {
+        `[${this.runtime.character.name}] MessageBusService: Message missing required fields`, JSON.stringify({
           hasId: !!messageData.id,
           hasChannelId: !!messageData.channel_id,
           hasAuthorId: !!messageData.author_id,
           hasContent: !!messageData.content,
-        }
-      );
+        }));
       return;
     }
 
     const message = messageData as MessageServiceMessage;
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Received message from central bus`,
-      { messageId: message.id }
-    );
+      `[${this.runtime.character.name}] MessageBusService: Received message from central bus`, JSON.stringify({ messageId: message.id }));
 
     const participants = await this.getChannelParticipants(message.channel_id);
 
@@ -529,9 +519,7 @@ export class MessageBusService extends Service {
       });
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error processing incoming message:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error processing incoming message:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -549,11 +537,11 @@ export class MessageBusService extends Service {
 
       if (existingMemory) {
         // Emit MESSAGE_DELETED event with the existing memory
-        await this.runtime.emitEvent(EventType.MESSAGE_DELETED, {
+        await this.runtime.emitEvent(EventType.MESSAGE_DELETED, JSON.stringify({
           runtime: this.runtime,
           message: existingMemory,
           source: 'message-bus-service',
-        });
+        }));
 
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
@@ -565,9 +553,7 @@ export class MessageBusService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error handling message deletion:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error handling message deletion:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -591,22 +577,20 @@ export class MessageBusService extends Service {
       );
 
       // Emit CHANNEL_CLEARED event to bootstrap which will handle bulk deletion
-      await this.runtime.emitEvent(EventType.CHANNEL_CLEARED, {
+      await this.runtime.emitEvent(EventType.CHANNEL_CLEARED, JSON.stringify({
         runtime: this.runtime,
         source: 'message-bus-service',
         roomId: agentRoomId,
         channelId: data.channelId,
         memoryCount: memories.length,
-      });
+      }));
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`
       );
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error handling channel clear:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error handling channel clear:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -676,7 +660,7 @@ export class MessageBusService extends Service {
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Sending payload to central server API endpoint (/api/messaging/submit):`,
-        payloadToServer
+        JSON.stringify(payloadToServer)
       );
 
       // Actual fetch to the central server API
@@ -697,9 +681,7 @@ export class MessageBusService extends Service {
       }
     } catch (error) {
       logger.error(
-        `[${this.runtime.character.name}] MessageBusService: Error sending agent response to bus:`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Error sending agent response to bus:`, error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -708,16 +690,14 @@ export class MessageBusService extends Service {
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());
-      await fetch(completeUrl.toString(), {
-        method: 'POST',
-        headers: this.getAuthHeaders(),
-        body: JSON.stringify({ channel_id: channelId, server_id: serverId }),
-      });
+           await fetch(completeUrl.toString(), {
+       method: 'POST',
+       headers: this.getAuthHeaders(),
+       body: JSON.stringify({ channel_id: channelId, server_id: serverId }),
+     });
     } catch (error) {
       logger.warn(
-        `[${this.runtime.character.name}] MessageBusService: Failed to notify completion`,
-        error
-      );
+        `[${this.runtime.character.name}] MessageBusService: Failed to notify completion`, error instanceof Error ? error.message : String(error));
     }
   }
 

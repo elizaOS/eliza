@@ -83,7 +83,7 @@ export function createRoomManagementRouter(agents: Map<UUID, IAgentRuntime>): ex
         201
       );
     } catch (error) {
-      logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+      logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error instanceof Error ? error.message : String(error));
       sendError(
         res,
         500,
@@ -124,7 +124,7 @@ export function createRoomManagementRouter(agents: Map<UUID, IAgentRuntime>): ex
 
       sendSuccess(res, { rooms: agentRooms });
     } catch (error) {
-      logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error);
+      logger.error(`[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`, error instanceof Error ? error.message : String(error));
       sendError(
         res,
         500,
@@ -168,7 +168,7 @@ export function createRoomManagementRouter(agents: Map<UUID, IAgentRuntime>): ex
         ...(worldName && { worldName }),
       });
     } catch (error) {
-      logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error);
+      logger.error(`[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`, error instanceof Error ? error.message : String(error));
       sendError(
         res,
         500,

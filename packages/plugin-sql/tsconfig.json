@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ESNext", "dom"],
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
     "moduleResolution": "Bundler",
     "outDir": "dist",
     "strict": true,
@@ -11,7 +14,6 @@
     "forceConsistentCasingInFileNames": false,
     "allowImportingTsExtensions": true,
     "declaration": true,
-    "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "noImplicitAny": false,
     "allowJs": true,
@@ -24,5 +26,7 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

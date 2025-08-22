@@ -43,11 +43,11 @@ export const agentAudioUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (_req, file, cb) => {
       if (ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype as any)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid audio file type'), false);
+        cb(new Error('Invalid audio file type'));
       }
     },
   });
@@ -59,11 +59,11 @@ export const agentMediaUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (_req, file, cb) => {
       if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid media file type'), false);
+        cb(new Error('Invalid media file type'));
       }
     },
   });
@@ -76,11 +76,11 @@ export const channelUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
+    fileFilter: (_req, file, cb) => {
       if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid file type'), false);
+        cb(new Error('Invalid file type'));
       }
     },
   });
@@ -131,7 +131,7 @@ export async function processUploadedFile(
 
     return { filename, path: finalPath, url };
   } catch (error) {
-    logger.error('[UPLOAD] Error processing uploaded file:', error);
+    logger.error('[UPLOAD] Error processing uploaded file:', error instanceof Error ? error.message : String(error));
     throw error;
   }
 }

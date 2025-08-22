@@ -72,7 +72,7 @@ export class SocketIORouter {
     socket.on('update_log_filters', (filters) => this.handleLogFilterUpdate(socket, filters));
     socket.on('disconnect', () => this.handleDisconnect(socket));
     socket.on('error', (error) => {
-      logger.error(`[SocketIO] Socket error for ${socket.id}: ${error.message}`, error);
+      logger.error(`[SocketIO] Socket error for ${socket.id}: ${error.message}`, error instanceof Error ? error.message : String(error));
     });
 
     if (process.env.NODE_ENV === 'development') {
@@ -81,10 +81,10 @@ export class SocketIORouter {
       });
     }
 
-    socket.emit('connection_established', {
+    socket.emit('connection_established', JSON.stringify({
       message: 'Connected to Eliza Socket.IO server',
       socketId: socket.id,
-    });
+    }));
   }
 
   private handleGenericMessage(socket: Socket, data: any) {
@@ -378,10 +378,10 @@ export class SocketIORouter {
       socket.to(channelId).emit('messageBroadcast', messageBroadcast);
 
       // Also send back to the sender with the server-assigned ID
-      socket.emit('messageBroadcast', {
+      socket.emit('messageBroadcast', JSON.stringify({
         ...messageBroadcast,
         clientMessageId: payload.messageId,
-      });
+      }));
 
       socket.emit('messageAck', {
         clientMessageId: payload.messageId,
@@ -401,44 +401,44 @@ export class SocketIORouter {
 
   private sendErrorResponse(socket: Socket, errorMessage: string) {
     logger.error(`[SocketIO ${socket.id}] Sending error to client: ${errorMessage}`);
-    socket.emit('messageError', {
+    socket.emit('messageError', JSON.stringify({
       error: errorMessage,
-    });
+    }));
   }
 
   private handleLogSubscription(socket: Socket) {
     this.logStreamConnections.set(socket.id, {});
     logger.info(`[SocketIO ${socket.id}] Client subscribed to log stream`);
-    socket.emit('log_subscription_confirmed', {
+    socket.emit('log_subscription_confirmed', JSON.stringify({
       subscribed: true,
       message: 'Successfully subscribed to log stream',
-    });
+    }));
   }
 
   private handleLogUnsubscription(socket: Socket) {
     this.logStreamConnections.delete(socket.id);
     logger.info(`[SocketIO ${socket.id}] Client unsubscribed from log stream`);
-    socket.emit('log_subscription_confirmed', {
+    socket.emit('log_subscription_confirmed', JSON.stringify({
       subscribed: false,
       message: 'Successfully unsubscribed from log stream',
-    });
+    }));
   }
 
   private handleLogFilterUpdate(socket: Socket, filters: { agentName?: string; level?: string }) {
     const existingFilters = this.logStreamConnections.get(socket.id);
     if (existingFilters !== undefined) {
       this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
-      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, filters);
-      socket.emit('log_filters_updated', {
+      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, JSON.stringify(filters));
+      socket.emit('log_filters_updated', JSON.stringify({
         success: true,
         filters: this.logStreamConnections.get(socket.id),
-      });
+      }));
     } else {
       logger.warn(`[SocketIO ${socket.id}] Cannot update filters: not subscribed to log stream`);
-      socket.emit('log_filters_updated', {
+      socket.emit('log_filters_updated', JSON.stringify({
         success: false,
         error: 'Not subscribed to log stream',
-      });
+      }));
     }
   }
 
@@ -453,9 +453,17 @@ export class SocketIORouter {
           shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
         }
         if (filters.level && filters.level !== 'all') {
+          // Map log levels to numeric values
+          const levelMap: Record<string, number> = {
+            'error': 50,
+            'warn': 40,
+            'info': 30,
+            'debug': 20,
+            'trace': 10
+          };
           const numericLevel =
             typeof filters.level === 'string'
-              ? logger.levels.values[filters.level.toLowerCase()] || 70
+              ? levelMap[filters.level.toLowerCase()] || 70
               : filters.level;
           shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
         }

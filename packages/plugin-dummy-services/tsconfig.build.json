@@ -5,9 +5,15 @@
     "outDir": "./dist",
     "sourceMap": true,
     "inlineSources": true,
-    "declaration": true,
-    "emitDeclarationOnly": true
+    "declaration": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

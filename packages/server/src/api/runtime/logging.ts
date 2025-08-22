@@ -113,7 +113,7 @@ export function createLoggingRouter(): express.Router {
         .slice(-limit);
 
       // Add debug log to help troubleshoot
-      logger.debug('Logs request processed', {
+      logger.debug('Logs request processed', JSON.stringify({
         requestedLevel,
         requestedLevelValue,
         requestedAgentName,
@@ -132,7 +132,7 @@ export function createLoggingRouter(): express.Router {
         ),
         exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
           .length,
-      });
+      }));
 
       res.json({
         logs: filtered,

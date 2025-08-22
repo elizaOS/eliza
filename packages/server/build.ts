@@ -1,18 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Build script for @elizaos/api-client using Bun.build
+ * Build script for @elizaos/server using Bun.build
  */
 
-import { createElizaBuildConfig, generateDts, cleanBuild, getTimer } from '../../build-utils';
+import { createElizaBuildConfig, generateDts, cleanBuild, copyAssets, getTimer } from '../../build-utils';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 async function build() {
   const totalTimer = getTimer();
-  console.log('🚀 Building @elizaos/api-client...\n');
+  console.log('🚀 Building @elizaos/server...\n');
   
   // Clean previous build
   await cleanBuild('dist');
   
-  // Create build configuration
+  // Build server code
   const configTimer = getTimer();
   const config = await createElizaBuildConfig({
     entrypoints: ['src/index.ts'],
@@ -21,10 +23,18 @@ async function build() {
     format: 'esm',
     external: [
       '@elizaos/core',
-      'fs',
-      'path'
+      '@elizaos/client',
+      'express',
+      'cors',
+      'multer',
+      'swagger-ui-express',
+      '@elizaos/plugin-sql',
+      'lancedb',
+      'vectordb',
+      'socket.io',
+      'discord.js',
     ],
-    sourcemap: true,
+    sourcemap: false,
     minify: false,
     generateDts: true,
   });
@@ -44,15 +54,27 @@ async function build() {
   const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
   console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`);
   
+  // Check if client assets exist and copy them
+  const clientDistPath = join(process.cwd(), '../client/dist');
+  if (existsSync(clientDistPath)) {
+    console.log('\nCopying client assets...');
+    await copyAssets([
+      { from: clientDistPath, to: './dist/client' }
+    ]);
+  }
+  
+  // Copy any static assets
+  if (existsSync('./public')) {
+    console.log('\nCopying static assets...');
+    await copyAssets([
+      { from: './public', to: './dist/public' }
+    ]);
+  }
+  
   // Generate TypeScript declarations
   await generateDts('./tsconfig.build.json');
   
-  // Create root index.d.ts that re-exports from the nested structure
-  const rootDtsContent = `export * from './api-client/src/index';`;
-  await Bun.write('./dist/index.d.ts', rootDtsContent);
-  console.log('✓ Created root index.d.ts');
-  
-  console.log('\n✅ @elizaos/api-client build complete!');
+  console.log('\n✅ @elizaos/server build complete!');
   console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
 }
 
