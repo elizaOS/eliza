@@ -27,17 +27,17 @@
   },
   "devDependencies": {
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "bun run build.ts",
     "dev": "tsup --watch",
     "test": "bun test",
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "watch": "bun run --watch build.ts"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"

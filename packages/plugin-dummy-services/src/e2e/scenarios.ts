@@ -108,7 +108,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           'LP token should have correct address'
         );
 
-        logger.info('Successfully added liquidity:', result);
+        logger.info('Successfully added liquidity:', JSON.stringify(result, null, 2));
       },
     },
     {
@@ -142,7 +142,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(solToken.uiAmount, 0.5, 'Should receive 0.5 SOL');
         assert.equal(usdcToken.uiAmount, 500, 'Should receive 500 USDC');
 
-        logger.info('Successfully removed liquidity:', result);
+        logger.info('Successfully removed liquidity:', JSON.stringify(result, null, 2));
       },
     },
     {
@@ -182,7 +182,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(sol.uiAmount, 0.5, 'Should have 0.5 SOL');
         assert.equal(usdc.uiAmount, 500, 'Should have 500 USDC');
 
-        logger.info('Successfully retrieved LP position details:', position);
+        logger.info('Successfully retrieved LP position details:', JSON.stringify(position, null, 2));
       },
     },
     {
@@ -212,7 +212,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           assert(data.apr >= 0 && data.apr <= 1, 'APR should be between 0 and 1');
         });
 
-        logger.info('Successfully retrieved market data:', marketData);
+        logger.info('Successfully retrieved market data:', JSON.stringify(marketData, null, 2));
       },
     },
     {
@@ -233,7 +233,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(tokenData.decimals, 18, 'Should have decimals');
         assert(typeof tokenData.price === 'number', 'Should have price');
 
-        logger.info('Successfully fetched token data:', tokenData);
+        logger.info('Successfully fetched token data:', JSON.stringify(tokenData, null, 2));
       },
     },
     {
