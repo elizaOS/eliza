@@ -293,6 +293,7 @@
         "@types/bun": "^1.2.16",
         "@types/node": "^22.15.3",
         "prettier": "3.5.3",
+        "typescript": "5.8.2",
         "zod": "^3.22.4",
       },
       "peerDependencies": {
