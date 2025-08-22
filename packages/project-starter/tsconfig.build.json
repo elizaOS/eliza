@@ -6,14 +6,17 @@
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "jsx": "react-jsx"
   },
   "include": ["src/index.ts", "src/plugin.ts", "src/frontend/**/*.ts", "src/frontend/**/*.tsx"],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.test.ts",
+    "**/*.test.tsx",
     "**/*.spec.ts",
+    "**/*.spec.tsx",
     "src/__tests__/**/*",
     "src/**/cypress/**/*"
   ]

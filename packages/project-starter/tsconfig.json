@@ -2,10 +2,11 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": ".",
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -27,7 +28,7 @@
       "@elizaos/core/*": ["../../core/src/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": [
     "dist",
     "node_modules",
