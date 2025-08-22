@@ -1,5 +1,5 @@
 import { defineConfig, type PluginOption } from 'vite'
-import react from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react-swc'
 import path from 'node:path'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 // @ts-ignore
@@ -75,8 +75,10 @@ export default defineConfig({
     entries: ['./src/entry.tsx'],
   },
   build: {
-    target: 'es2022',
-    sourcemap: true, // Use external source maps for production (better performance)
+    target: 'esnext',
+    sourcemap: false,
+    reportCompressedSize: false,
+    minify: 'esbuild',
     rollupOptions: {
       // Ensure modules are bundled correctly
       external: [],
