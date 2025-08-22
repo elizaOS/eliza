@@ -83,6 +83,6 @@
     "@elizaos/plugin-openai": "^1.0.9",
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.0",
-    "zod": "^4.0.14"
+    "zod": "3.24.2"
   }
 }
