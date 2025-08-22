@@ -45,11 +45,26 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
     const virtualFs = scenario.setup?.virtual_fs;
     if (virtualFs && this.sandboxId) {
       for (const [filePath, content] of Object.entries(virtualFs)) {
-        // Use Python code to write files since the service manages sandboxes internally
+        // Validate file path to prevent injection
+        if (typeof filePath !== 'string' || filePath.includes('..') || filePath.includes('`') || filePath.includes('$')) {
+          throw new Error(`Invalid file path: ${filePath}`);
+        }
+        
+        // Validate content to prevent injection
+        if (typeof content !== 'string') {
+          throw new Error(`Invalid file content for ${filePath}`);
+        }
+        
+        // Use safe Python code with escaped strings
+        const safeFilePath = JSON.stringify(filePath);
+        const safeContent = JSON.stringify(content);
         const writeFileCode = `
-with open("${filePath}", "w") as f:
-    f.write("""${content}""")
-print(f"Created file: ${filePath}")
+import json
+file_path = json.loads(${safeFilePath})
+content = json.loads(${safeContent})
+with open(file_path, "w") as f:
+    f.write(content)
+print(f"Created file: {file_path}")
 `;
         await e2bService.executeCode(writeFileCode, 'python');
       }

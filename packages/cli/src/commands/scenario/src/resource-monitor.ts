@@ -9,7 +9,6 @@
  */
 
 import { promises as fs } from 'fs';
-import { execSync } from 'child_process';
 import { join } from 'path';
 
 /**
@@ -558,9 +557,18 @@ export async function getSystemResources(): Promise<SystemResources> {
 export async function calculateDiskUsage(dirPath: string): Promise<DiskUsage> {
   try {
     if (process.platform === 'win32') {
-      // Windows implementation
+      // Windows implementation - validate drive path to prevent injection
       const drive = dirPath.substring(0, 2);
-      const output = execSync(`fsutil volume diskfree ${drive}`, { encoding: 'utf8' });
+      if (!/^[A-Za-z]:$/.test(drive)) {
+        throw new Error(`Invalid drive path: ${drive}`);
+      }
+      
+      const proc = Bun.spawn(['fsutil', 'volume', 'diskfree', drive], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      
+      const output = await new Response(proc.stdout).text();
       const lines = output.split('\n');
 
       // Parse Windows fsutil output
@@ -575,8 +583,18 @@ export async function calculateDiskUsage(dirPath: string): Promise<DiskUsage> {
         usage: (usedBytes / totalBytes) * 100,
       };
     } else {
-      // Unix-like systems
-      const output = execSync(`df -k "${dirPath}"`, { encoding: 'utf8' });
+      // Unix-like systems - validate path to prevent injection
+      const resolvedPath = join(dirPath);
+      if (resolvedPath.includes('..') || resolvedPath.includes('`') || resolvedPath.includes('$')) {
+        throw new Error(`Invalid directory path: ${dirPath}`);
+      }
+      
+      const proc = Bun.spawn(['df', '-k', resolvedPath], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      
+      const output = await new Response(proc.stdout).text();
       const lines = output.split('\n');
       const data = lines[1].split(/\s+/);
 
@@ -625,4 +643,3 @@ export function formatBytes(bytes: number): string {
 export function createResourceMonitor(config: ResourceMonitorConfig): ResourceMonitor {
   return new ResourceMonitor(config);
 }
-
