@@ -10,12 +10,14 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
   private sandboxId: string | null = null;
   private server: AgentServer;
   private agentId: UUID;
+  private serverPort: number;
   private trajectoryReconstructor: TrajectoryReconstructor;
 
-  constructor(runtime: AgentRuntime, server: AgentServer, agentId: UUID) {
+  constructor(runtime: AgentRuntime, server: AgentServer, agentId: UUID, serverPort: number) {
     this.runtime = runtime;
     this.server = server;
     this.agentId = agentId;
+    this.serverPort = serverPort;
     this.trajectoryReconstructor = new TrajectoryReconstructor(runtime);
 
     // Verify the service exists
@@ -102,9 +104,9 @@ print(json.dumps(files))
       if (step.input) {
         // Use the existing server + agent to get an NL response
         const { response, roomId } = await askAgentViaApi(
-          this.server, 
-          this.agentId, 
-          step.input, 
+          this.server,
+          this.agentId,
+          step.input,
           30000, // timeout
           this.serverPort // Pass the actual server port
         );
