@@ -275,7 +275,7 @@ export class ProgressTracker {
 
     // Emit completion message
     const completedRuns = this.getOverallProgress().completedRuns;
-    const totalRuns = this.config.totalCombinations * this.config.runsPerCombination;
+    // const totalRuns = this.config.totalCombinations * this.config.runsPerCombination; // unused
 
     if (success) {
       const message = `Run ${completedRuns} completed successfully in ${this.formatDuration(duration)}`;
