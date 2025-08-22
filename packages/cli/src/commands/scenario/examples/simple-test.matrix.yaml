@@ -1,9 +1,9 @@
-name: "Simple Test Matrix"
-description: "A simple test to verify matrix command works completely"
-base_scenario: "test-github-issues.scenario.yaml"
+name: 'Simple Test Matrix'
+description: 'A simple test to verify matrix command works completely'
+base_scenario: 'test-github-issues.scenario.yaml'
 runs_per_combination: 1
 matrix:
-  - parameter: "name"
+  - parameter: 'name'
     values:
-      - "Test A"
-      - "Test B"
+      - 'Test A'
+      - 'Test B'

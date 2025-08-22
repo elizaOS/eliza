@@ -41,7 +41,7 @@ export interface TransactionResult {
 export class DummyLpService extends Service {
   // Use a custom service type since LP isn't in ServiceType enum
   static readonly serviceType = 'lp';
-  
+
   capabilityDescription = 'Dummy LP service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -74,7 +74,7 @@ export class DummyLpService extends Service {
       fee: 3000,
       liquidity: BigInt(1000000),
       sqrtPriceX96: BigInt(1000000),
-      tick: 0
+      tick: 0,
     };
   }
 
@@ -83,7 +83,7 @@ export class DummyLpService extends Service {
       poolAddress: '0xPool',
       tokenA: '0xTokenA',
       tokenB: '0xTokenB',
-      liquidity: BigInt(1000)
+      liquidity: BigInt(1000),
     };
   }
 
@@ -95,7 +95,7 @@ export class DummyLpService extends Service {
   ): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',
-      success: true
+      success: true,
     };
   }
 
@@ -106,14 +106,14 @@ export class DummyLpService extends Service {
   ): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',
-      success: true
+      success: true,
     };
   }
 
   async collectFees(positionId: string): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',
-      success: true
+      success: true,
     };
   }
 
@@ -122,13 +122,13 @@ export class DummyLpService extends Service {
       {
         token: '0xTokenA',
         balance: BigInt(1000),
-        decimals: 18
+        decimals: 18,
       },
       {
         token: '0xTokenB',
         balance: BigInt(2000),
-        decimals: 18
-      }
+        decimals: 18,
+      },
     ];
   }
 
@@ -141,7 +141,7 @@ export class DummyLpService extends Service {
   ): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',
-      success: true
+      success: true,
     };
   }
 }

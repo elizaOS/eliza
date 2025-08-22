@@ -1,23 +1,17 @@
-import { 
+import {
   Agent as ApiAgent,
   AgentLog as ApiAgentLog,
   Message as ApiMessage,
   MessageChannel as ApiMessageChannel,
   MessageServer as ApiMessageServer,
-  Memory as ApiMemory
+  Memory as ApiMemory,
 } from '@elizaos/api-client';
-import { 
-  Agent, 
-  AgentStatus, 
-  UUID,
-  ChannelType,
-  Memory
-} from '@elizaos/core';
-import type { 
+import { Agent, AgentStatus, UUID, ChannelType, Memory } from '@elizaos/core';
+import type {
   AgentWithStatus,
   MessageChannel as ClientMessageChannel,
   MessageServer as ClientMessageServer,
-  ServerMessage
+  ServerMessage,
 } from '../types';
 import type { UiMessage } from '../hooks/use-query-hooks';
 
@@ -52,8 +46,14 @@ export function mapApiAgentToClient(apiAgent: ApiAgent): AgentWithStatus {
     ...apiAgent,
     id: apiAgent.id as UUID,
     status: mapApiStatusToEnum(apiAgent.status),
-    createdAt: apiAgent.createdAt instanceof Date ? apiAgent.createdAt.getTime() : new Date(apiAgent.createdAt).getTime(),
-    updatedAt: apiAgent.updatedAt instanceof Date ? apiAgent.updatedAt.getTime() : new Date(apiAgent.updatedAt).getTime(),
+    createdAt:
+      apiAgent.createdAt instanceof Date
+        ? apiAgent.createdAt.getTime()
+        : new Date(apiAgent.createdAt).getTime(),
+    updatedAt:
+      apiAgent.updatedAt instanceof Date
+        ? apiAgent.updatedAt.getTime()
+        : new Date(apiAgent.updatedAt).getTime(),
   } as AgentWithStatus;
 }
 
@@ -129,7 +129,7 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     isAgent: apiMessage.metadata?.isAgent || false,
     createdAt: apiDateToTimestamp(apiMessage.createdAt),
     channelId: apiMessage.channelId as UUID,
-    serverId: serverId || apiMessage.metadata?.serverId as UUID,
+    serverId: serverId || (apiMessage.metadata?.serverId as UUID),
     prompt: apiMessage.metadata?.prompt,
     attachments: apiMessage.metadata?.attachments,
     thought: apiMessage.metadata?.thought,
@@ -167,7 +167,9 @@ export interface AgentLog {
 export function mapApiMemoryToClient(apiMemory: ApiMemory): Memory {
   return {
     id: apiMemory.id as UUID,
-    entityId: (apiMemory.metadata?.entityId || apiMemory.metadata?.userId || apiMemory.agentId) as UUID,
+    entityId: (apiMemory.metadata?.entityId ||
+      apiMemory.metadata?.userId ||
+      apiMemory.agentId) as UUID,
     agentId: apiMemory.agentId as UUID,
     content: apiMemory.content,
     embedding: apiMemory.embedding,

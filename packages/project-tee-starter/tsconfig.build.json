@@ -7,17 +7,6 @@
     "inlineSources": true,
     "declaration": true
   },
-  "include": [
-    "src/index.ts",
-    "src/plugin.ts",
-    "src/frontend/**/*.ts",
-    "src/frontend/**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "src/__tests__/**/*"
-  ]
+  "include": ["src/index.ts", "src/plugin.ts", "src/frontend/**/*.ts", "src/frontend/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "src/__tests__/**/*"]
 }

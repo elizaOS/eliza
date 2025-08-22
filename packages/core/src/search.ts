@@ -1285,7 +1285,9 @@ export class BM25 {
         candidateDocs = currentTermDocs;
       } else {
         // Intersect: Keep only documents present in both sets
-        candidateDocs = new Set([...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx)));
+        candidateDocs = new Set(
+          [...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx))
+        );
       }
 
       // If intersection becomes empty, the phrase cannot exist

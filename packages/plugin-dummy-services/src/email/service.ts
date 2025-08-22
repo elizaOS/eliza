@@ -65,13 +65,13 @@ export interface EmailAccount {
  */
 export class DummyEmailService extends Service {
   static readonly serviceType = ServiceType.EMAIL;
-  
+
   capabilityDescription = 'Dummy email service for testing';
-  
+
   private emails: EmailMessage[] = [];
   private folders: EmailFolder[] = [
     { name: 'Inbox', path: 'INBOX', messageCount: 0, unreadCount: 0 },
-    { name: 'Sent', path: 'SENT', messageCount: 0, unreadCount: 0 }
+    { name: 'Sent', path: 'SENT', messageCount: 0, unreadCount: 0 },
   ];
 
   constructor(runtime: IAgentRuntime) {
@@ -108,7 +108,7 @@ export class DummyEmailService extends Service {
     logger.debug('Email options:', JSON.stringify(options));
 
     const messageId = `dummy-${Date.now()}@example.com`;
-    
+
     logger.info(`Email sent successfully. Message ID: ${messageId}`);
 
     // Create and store the sent email
@@ -123,7 +123,7 @@ export class DummyEmailService extends Service {
       html: options?.html,
       attachments: options?.attachments,
       date: new Date(),
-      messageId
+      messageId,
     };
 
     this.emails.push(sentEmail);
@@ -138,12 +138,10 @@ export class DummyEmailService extends Service {
 
     if (options) {
       if (options.from) {
-        results = results.filter(e => 
-          e.from.address.includes(options.from!)
-        );
+        results = results.filter((e) => e.from.address.includes(options.from!));
       }
       if (options.subject) {
-        results = results.filter(e => 
+        results = results.filter((e) =>
           e.subject.toLowerCase().includes(options.subject!.toLowerCase())
         );
       }
@@ -160,14 +158,14 @@ export class DummyEmailService extends Service {
   async getEmail(messageId: string): Promise<EmailMessage | null> {
     logger.debug(`Getting email: ${messageId}`);
 
-    const email = this.emails.find(e => e.id === messageId);
+    const email = this.emails.find((e) => e.id === messageId);
     return email || null;
   }
 
   async deleteEmail(messageId: string): Promise<boolean> {
     logger.debug(`Deleting email: ${messageId}`);
 
-    const index = this.emails.findIndex(e => e.id === messageId);
+    const index = this.emails.findIndex((e) => e.id === messageId);
     if (index !== -1) {
       this.emails.splice(index, 1);
       return true;
@@ -206,7 +204,7 @@ export class DummyEmailService extends Service {
       name,
       path,
       messageCount: 0,
-      unreadCount: 0
+      unreadCount: 0,
     };
 
     this.folders.push(folder);
@@ -216,7 +214,7 @@ export class DummyEmailService extends Service {
   async deleteFolder(folderPath: string): Promise<boolean> {
     logger.debug(`Deleting folder: ${folderPath}`);
 
-    const index = this.folders.findIndex(f => f.path === folderPath);
+    const index = this.folders.findIndex((f) => f.path === folderPath);
     if (index !== -1) {
       this.folders.splice(index, 1);
       return true;
@@ -236,9 +234,9 @@ export class DummyEmailService extends Service {
     logger.debug(`Replying to email: ${messageId}`, JSON.stringify(options));
 
     const replyMessageId = `dummy-reply-${Date.now()}@example.com`;
-    
+
     logger.info(`Reply sent successfully. Message ID: ${replyMessageId}`);
-    
+
     return replyMessageId;
   }
 
@@ -254,9 +252,9 @@ export class DummyEmailService extends Service {
     logger.debug(`Forwarding email: ${messageId}`, JSON.stringify({ to, options }));
 
     const forwardMessageId = `dummy-forward-${Date.now()}@example.com`;
-    
+
     logger.info(`Email forwarded successfully. Message ID: ${forwardMessageId}`);
-    
+
     return forwardMessageId;
   }
 

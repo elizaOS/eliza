@@ -12,9 +12,8 @@ interface AgentDetailsPanelProps {
 export default function AgentDetailsPanel({ agent }: AgentDetailsPanelProps) {
   const isActive = agent.status === AgentStatus.ACTIVE;
   // Extract avatar as string, handling various types
-  const avatarUrl = typeof agent.settings?.avatar === 'string' 
-    ? agent.settings.avatar 
-    : '/elizaos-icon.png';
+  const avatarUrl =
+    typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '/elizaos-icon.png';
 
   return (
     <div className="h-full flex flex-col bg-background" data-testid="agent-details">

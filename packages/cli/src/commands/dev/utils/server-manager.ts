@@ -44,7 +44,7 @@ async function getLocalCliPath(): Promise<string | null> {
  */
 function setupEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
-  
+
   // Filter out undefined values from process.env
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) {
@@ -185,9 +185,9 @@ async function stopServerProcess(): Promise<boolean> {
   try {
     // Send SIGTERM to the process
     serverState.process.kill('SIGTERM');
-    
+
     // Give the process a moment to clean up
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Reset state
     serverState.process = null;

@@ -93,7 +93,10 @@ export function createEnvironmentRouter(): express.Router {
         data: localEnvs,
       });
     } catch (error) {
-      logger.error(`[ENVS GET] Error retrieving local envs`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `[ENVS GET] Error retrieving local envs`,
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({
         success: false,
         error: {
@@ -131,7 +134,10 @@ export function createEnvironmentRouter(): express.Router {
         message: 'Local env updated',
       });
     } catch (error) {
-      logger.error(`[ENVS POST] Error updating local envs`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `[ENVS POST] Error updating local envs`,
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({
         success: false,
         error: {

@@ -79,7 +79,8 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
   const migrated = expandTildePath(base);
   const legacyPath = path.join(process.cwd(), '.elizadb');
-  const resolved = migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
+  const resolved =
+    migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
 
   // Persist chosen root for the process so child modules see it
   process.env.PGLITE_DATA_DIR = resolved;
@@ -138,8 +139,8 @@ export function isWebUIEnabled(): boolean {
 /**
  * Class representing an agent server.
  */ /**
-* Represents an agent server which handles agents, database, and server functionalities.
-*/
+ * Represents an agent server which handles agents, database, and server functionalities.
+ */
 export class AgentServer {
   public app!: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
@@ -350,41 +351,41 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-              // Production CSP - includes upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // upgrade-insecure-requests is added by helmet automatically
-              },
-              useDefaults: true,
-            }
+                // Production CSP - includes upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // upgrade-insecure-requests is added by helmet automatically
+                },
+                useDefaults: true,
+              }
             : {
-              // Development CSP - minimal policy without upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: ["'self'", 'data:'],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                // Development CSP - minimal policy without upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'self'", 'data:'],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                },
+                useDefaults: false,
               },
-              useDefaults: false,
-            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -396,10 +397,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-              maxAge: 31536000, // 1 year
-              includeSubDomains: true,
-              preload: true,
-            }
+                maxAge: 31536000, // 1 year
+                includeSubDomains: true,
+                preload: true,
+              }
             : false,
           // No Sniff
           noSniff: true,
@@ -1043,10 +1044,10 @@ export class AgentServer {
 
               console.log(
                 `\x1b[32mStartup successful!\x1b[0m\n` +
-                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
               );
             }
 

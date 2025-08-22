@@ -43,10 +43,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: {
-    serverId: UUID;
-    count?: number;
-  }): Promise<Memory[]> {
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
     logger.warn('getMemoriesByServerId called but not implemented - returning empty array');
@@ -59,7 +56,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     if (existingAgent) {
       return existingAgent;
     }
-    
+
     // Create the agent with required fields
     const newAgent: Agent = {
       id: this.agentId,
@@ -67,9 +64,9 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
       username: agent.username,
       bio: agent.bio || 'An AI agent',
       createdAt: agent.createdAt || Date.now(),
-      updatedAt: agent.updatedAt || Date.now()
+      updatedAt: agent.updatedAt || Date.now(),
     };
-    
+
     await this.createAgent(newAgent);
     const createdAgent = await this.getAgent(this.agentId);
     if (!createdAgent) {

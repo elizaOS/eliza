@@ -562,12 +562,12 @@ export async function calculateDiskUsage(dirPath: string): Promise<DiskUsage> {
       if (!/^[A-Za-z]:$/.test(drive)) {
         throw new Error(`Invalid drive path: ${drive}`);
       }
-      
+
       const proc = Bun.spawn(['fsutil', 'volume', 'diskfree', drive], {
         stdout: 'pipe',
         stderr: 'pipe',
       });
-      
+
       const output = await new Response(proc.stdout).text();
       const lines = output.split('\n');
 
@@ -588,12 +588,12 @@ export async function calculateDiskUsage(dirPath: string): Promise<DiskUsage> {
       if (resolvedPath.includes('..') || resolvedPath.includes('`') || resolvedPath.includes('$')) {
         throw new Error(`Invalid directory path: ${dirPath}`);
       }
-      
+
       const proc = Bun.spawn(['df', '-k', resolvedPath], {
         stdout: 'pipe',
         stderr: 'pipe',
       });
-      
+
       const output = await new Response(proc.stdout).text();
       const lines = output.split('\n');
       const data = lines[1].split(/\s+/);

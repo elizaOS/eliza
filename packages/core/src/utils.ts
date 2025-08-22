@@ -206,7 +206,8 @@ export const formatPosts = ({
   // Sort rooms by the newest message's createdAt
   const sortedRooms = Object.entries(groupedMessages).sort(
     ([, messagesA], [, messagesB]) =>
-      (messagesB[messagesB.length - 1]?.createdAt || 0) - (messagesA[messagesA.length - 1]?.createdAt || 0)
+      (messagesB[messagesB.length - 1]?.createdAt || 0) -
+      (messagesA[messagesA.length - 1]?.createdAt || 0)
   );
 
   const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {

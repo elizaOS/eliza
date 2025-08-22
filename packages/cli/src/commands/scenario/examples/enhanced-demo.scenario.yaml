@@ -9,12 +9,11 @@ run:
   - input: "Please respond with 'Hello World' and tell me the current time"
     evaluations:
       - type: string_contains
-        value: "Hello"
-        description: "Response should contain greeting"
-      - type: string_contains  
-        value: "World"
+        value: 'Hello'
+        description: 'Response should contain greeting'
+      - type: string_contains
+        value: 'World'
         description: "Response should contain 'World'"
       - type: execution_time
         max_duration_ms: 10000
-        description: "Should respond within 10 seconds"
-
+        description: 'Should respond within 10 seconds'

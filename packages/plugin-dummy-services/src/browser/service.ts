@@ -40,7 +40,7 @@ export interface TypeOptions {
  */
 export class DummyBrowserService extends Service {
   static readonly serviceType = ServiceType.BROWSER;
-  
+
   capabilityDescription = 'Dummy browser service for testing';
 
   private currentUrl: string = 'about:blank';
@@ -78,7 +78,7 @@ export class DummyBrowserService extends Service {
     this.currentUrl = url;
 
     // Simulate navigation delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async screenshot(options?: ScreenshotOptions): Promise<Buffer> {
@@ -86,9 +86,9 @@ export class DummyBrowserService extends Service {
 
     // Return dummy image buffer
     const dummyImage = Buffer.from('dummy-screenshot-data');
-    
+
     logger.debug(`Screenshot taken: ${dummyImage.length} bytes`);
-    
+
     return dummyImage;
   }
 
@@ -102,16 +102,16 @@ export class DummyBrowserService extends Service {
         html: '<div>Dummy HTML content</div>',
         attributes: {
           class: 'dummy-class',
-          id: 'dummy-id'
-        }
-      }
+          id: 'dummy-id',
+        },
+      },
     ];
 
     if (selectors && selectors.length > 0) {
-      return selectors.map(selector => ({
+      return selectors.map((selector) => ({
         text: `Dummy text for ${selector.selector}`,
         html: `<div>${selector.selector}</div>`,
-        attributes: { selector: selector.selector }
+        attributes: { selector: selector.selector },
       }));
     }
 
@@ -123,7 +123,7 @@ export class DummyBrowserService extends Service {
 
     // Simulate wait delay
     const waitTime = Math.min(timeout || 1000, 100);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
 
     // Always return true for dummy implementation
     logger.debug(`Selector found: ${selector.selector}`);
@@ -135,7 +135,7 @@ export class DummyBrowserService extends Service {
 
     // Simulate click delay
     const delay = options?.delay || 50;
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     logger.debug(`Clicked on: ${selector.selector}`);
   }
@@ -145,7 +145,7 @@ export class DummyBrowserService extends Service {
 
     // Simulate typing delay
     const delay = options?.delay || 50;
-    await new Promise(resolve => setTimeout(resolve, text.length * delay));
+    await new Promise((resolve) => setTimeout(resolve, text.length * delay));
 
     logger.debug(`Typed "${text}" into: ${selector.selector}`);
   }
@@ -176,7 +176,7 @@ export class DummyBrowserService extends Service {
   async refresh(): Promise<void> {
     logger.debug(`Refreshing page: ${this.currentUrl}`);
     // Simulate refresh delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async getUrl(): Promise<string> {

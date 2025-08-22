@@ -71,9 +71,8 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                 {groupAgents && groupAgents.length > 0 ? (
                   <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full p-1">
                     {groupAgents.slice(0, 3).map((agent) => {
-                      const avatarUrl = typeof agent.settings?.avatar === 'string' 
-                        ? agent.settings.avatar 
-                        : null;
+                      const avatarUrl =
+                        typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : null;
                       return avatarUrl ? (
                         <img
                           key={agent.id}

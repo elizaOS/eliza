@@ -304,7 +304,9 @@ export function createChannelsRouter(
         res.json({ success: true, data: { messages: messagesForGui } });
       } catch (error) {
         logger.error(
-          `[Messages Router /central-channels/:channelId/messages] Error fetching messages for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router /central-channels/:channelId/messages] Error fetching messages for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch messages' });
       }
     }
@@ -326,7 +328,9 @@ export function createChannelsRouter(
         res.json({ success: true, data: { channels } });
       } catch (error) {
         logger.error(
-          `[Messages Router /central-servers/:serverId/channels] Error fetching channels for server ${serverId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router /central-servers/:serverId/channels] Error fetching channels for server ${serverId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channels' });
       }
     }
@@ -378,7 +382,10 @@ export function createChannelsRouter(
       });
       res.status(201).json({ success: true, data: { channel } });
     } catch (error) {
-      logger.error('[Messages Router /channels] Error creating channel:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[Messages Router /channels] Error creating channel:',
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({ success: false, error: 'Failed to create channel' });
     }
   });
@@ -509,7 +516,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: channelDetails });
       } catch (error) {
-        logger.error(`[Messages Router] Error fetching details for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+          `[Messages Router] Error fetching details for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channel details' });
       }
     }
@@ -528,7 +538,9 @@ export function createChannelsRouter(
         res.json({ success: true, data: participants });
       } catch (error) {
         logger.error(
-          `[Messages Router] Error fetching participants for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router] Error fetching participants for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channel participants' });
       }
     }
@@ -576,7 +588,9 @@ export function createChannelsRouter(
         });
       } catch (error) {
         logger.error(
-          `[Messages Router] Error adding agent ${agentId} to channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router] Error adding agent ${agentId} to channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to add agent to channel',
@@ -638,7 +652,9 @@ export function createChannelsRouter(
         });
       } catch (error) {
         logger.error(
-          `[Messages Router] Error removing agent ${agentId} from channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router] Error removing agent ${agentId} from channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to remove agent from channel',
@@ -679,7 +695,10 @@ export function createChannelsRouter(
           },
         });
       } catch (error) {
-        logger.error(`[Messages Router] Error fetching agents for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+          `[Messages Router] Error fetching agents for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to fetch channel agents',
@@ -723,7 +742,9 @@ export function createChannelsRouter(
         res.status(204).send();
       } catch (error) {
         logger.error(
-          `[Messages Router] Error deleting message ${messageId} from channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+          `[Messages Router] Error deleting message ${messageId} from channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to delete message' });
       }
     }
@@ -758,7 +779,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error(`[Messages Router] Error clearing messages for channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+          `[Messages Router] Error clearing messages for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to clear messages' });
       }
     }
@@ -788,7 +812,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: updatedChannel });
       } catch (error) {
-        logger.error(`[Messages Router] Error updating channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+          `[Messages Router] Error updating channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to update channel' });
       }
     }
@@ -830,7 +857,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error instanceof Error ? error.message : String(error));
+        logger.error(
+          `[Messages Router] Error deleting channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to delete channel' });
       }
     }
@@ -885,7 +915,9 @@ export function createChannelsRouter(
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(
-          `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`, error instanceof Error ? error.message : String(error));
+          `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
@@ -1004,7 +1036,10 @@ Respond with just the title, nothing else.
           data: result,
         });
       } catch (error) {
-        logger.error('[CHANNEL SUMMARIZE] Error summarizing channel:', error instanceof Error ? error.message : String(error));
+        logger.error(
+          '[CHANNEL SUMMARIZE] Error summarizing channel:',
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to summarize channel',

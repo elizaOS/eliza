@@ -76,7 +76,10 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       cleanupUploadedFile(audioFile);
       sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });
     } catch (error) {
-      logger.error('[AUDIO MESSAGE] Error processing audio:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[AUDIO MESSAGE] Error processing audio:',
+        error instanceof Error ? error.message : String(error)
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,
@@ -142,7 +145,10 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       logger.success('[TRANSCRIPTION] Successfully transcribed audio');
       sendSuccess(res, { text: transcription });
     } catch (error) {
-      logger.error('[TRANSCRIPTION] Error transcribing audio:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[TRANSCRIPTION] Error transcribing audio:',
+        error instanceof Error ? error.message : String(error)
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,

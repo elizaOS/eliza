@@ -256,7 +256,10 @@ export class SocketIOManager extends EventAdapter {
               try {
                 return JSON.parse(raw);
               } catch (e) {
-                clientLogger.warn('[SocketIO] Failed to parse string messageBroadcast payload:', raw);
+                clientLogger.warn(
+                  '[SocketIO] Failed to parse string messageBroadcast payload:',
+                  raw
+                );
                 return {} as any;
               }
             })()

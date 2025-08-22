@@ -19,6 +19,11 @@ export default function GroupRoute() {
   }
 
   return (
-    <ChatComponent key={channelId} chatType={ChannelType.GROUP} contextId={channelId as UUID} serverId={serverId as UUID} />
+    <ChatComponent
+      key={channelId}
+      chatType={ChannelType.GROUP}
+      contextId={channelId as UUID}
+      serverId={serverId as UUID}
+    />
   );
 }

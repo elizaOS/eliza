@@ -97,11 +97,14 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
 // Extracted function to handle plugin routes
 export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): express.RequestHandler {
   return (req, res, next) => {
-    logger.debug('Handling plugin request in the plugin route handler', JSON.stringify({
-      path: req.path,
-      method: req.method,
-      query: req.query,
-    }));
+    logger.debug(
+      'Handling plugin request in the plugin route handler',
+      JSON.stringify({
+        path: req.path,
+        method: req.method,
+        query: req.query,
+      })
+    );
 
     // Skip standard agent API routes - these should be handled by agentRouter
     // Pattern: /agents/{uuid}/...
@@ -312,7 +315,10 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
               } catch (error) {
                 logger.error(
                   `Error handling global plugin wildcard route ${routePath} (Agent: ${runtime.agentId})`,
-                  JSON.stringify({ error: error instanceof Error ? error.message : String(error), path: reqPath })
+                  JSON.stringify({
+                    error: error instanceof Error ? error.message : String(error),
+                    path: reqPath,
+                  })
                 );
                 if (!res.headersSent) {
                   const status =
@@ -339,7 +345,10 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
             } catch (error) {
               logger.error(
                 `Error handling global plugin route ${routePath} (Agent: ${runtime.agentId})`,
-                JSON.stringify({ error: error instanceof Error ? error.message : String(error), path: reqPath })
+                JSON.stringify({
+                  error: error instanceof Error ? error.message : String(error),
+                  path: reqPath,
+                })
               );
               if (!res.headersSent) {
                 const status =

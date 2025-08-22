@@ -47,7 +47,7 @@ export function getTimer() {
     elapsedMs: () => {
       const end = performance.now();
       return Math.round(end - start);
-    }
+    },
   };
 }
 
@@ -56,7 +56,7 @@ export function getTimer() {
  */
 export async function createElizaBuildConfig(options: ElizaBuildOptions): Promise<BuildConfig> {
   const timer = getTimer();
-  
+
   const {
     root = process.cwd(),
     entrypoints = ['src/index.ts'],
@@ -73,43 +73,46 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
 
   // Resolve paths relative to root
   const resolvedEntrypoints = entrypoints
-    .filter(entry => entry && entry.trim() !== '') // Filter out empty strings
-    .map(entry => entry.startsWith('./') ? entry : `./${entry}`);
+    .filter((entry) => entry && entry.trim() !== '') // Filter out empty strings
+    .map((entry) => (entry.startsWith('./') ? entry : `./${entry}`));
 
   // Common external packages for Node.js targets
-  const nodeExternals = target === 'node' || target === 'bun' ? [
-    'node:*',
-    'fs',
-    'path',
-    'crypto',
-    'stream',
-    'buffer',
-    'util',
-    'events',
-    'url',
-    'http',
-    'https',
-    'os',
-    'child_process',
-    'worker_threads',
-    'cluster',
-    'zlib',
-    'querystring',
-    'string_decoder',
-    'tls',
-    'net',
-    'dns',
-    'dgram',
-    'readline',
-    'repl',
-    'vm',
-    'assert',
-    'console',
-    'process',
-    'timers',
-    'perf_hooks',
-    'async_hooks',
-  ] : [];
+  const nodeExternals =
+    target === 'node' || target === 'bun'
+      ? [
+          'node:*',
+          'fs',
+          'path',
+          'crypto',
+          'stream',
+          'buffer',
+          'util',
+          'events',
+          'url',
+          'http',
+          'https',
+          'os',
+          'child_process',
+          'worker_threads',
+          'cluster',
+          'zlib',
+          'querystring',
+          'string_decoder',
+          'tls',
+          'net',
+          'dns',
+          'dgram',
+          'readline',
+          'repl',
+          'vm',
+          'assert',
+          'console',
+          'process',
+          'timers',
+          'perf_hooks',
+          'async_hooks',
+        ]
+      : [];
 
   // ElizaOS workspace packages that should typically be external
   const elizaExternals = [
@@ -121,8 +124,9 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
   ];
 
   // Filter out empty strings and clean up the external array
-  const cleanExternals = [...external]
-    .filter(ext => ext && !ext.startsWith('//') && ext.trim() !== '');
+  const cleanExternals = [...external].filter(
+    (ext) => ext && !ext.startsWith('//') && ext.trim() !== ''
+  );
 
   const config: BuildConfig = {
     entrypoints: resolvedEntrypoints,
@@ -132,11 +136,7 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
     splitting: format === 'esm' && entrypoints.length > 1,
     sourcemap,
     minify,
-    external: [
-      ...nodeExternals,
-      ...elizaExternals,
-      ...cleanExternals,
-    ],
+    external: [...nodeExternals, ...elizaExternals, ...cleanExternals],
     plugins,
     naming: {
       entry: '[dir]/[name].[ext]',
@@ -153,10 +153,10 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
  */
 export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   if (!assets.length) return;
-  
+
   const timer = getTimer();
   const { cp } = await import('node:fs/promises');
-  
+
   console.log(`Copying ${assets.length} asset(s)...`);
   for (const asset of assets) {
     if (existsSync(asset.from)) {
@@ -174,12 +174,12 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = false) {
   const timer = getTimer();
   const { $ } = await import('bun');
-  
+
   if (!existsSync(tsconfigPath)) {
     console.warn(`TypeScript config not found at ${tsconfigPath}, skipping d.ts generation`);
     return;
   }
-  
+
   console.log('Generating TypeScript declarations...');
   try {
     // Use incremental compilation for faster subsequent builds
@@ -187,9 +187,9 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
     console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
   } catch (error: any) {
     console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);
-    console.error('This is usually due to test files or type errors that don\'t affect the build.');
+    console.error("This is usually due to test files or type errors that don't affect the build.");
     console.error('Error details:', error.message || error);
-    
+
     if (throwOnError) {
       throw error;
     } else {
@@ -204,7 +204,7 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
 export async function cleanBuild(outdir = 'dist') {
   const timer = getTimer();
   const { rm } = await import('node:fs/promises');
-  
+
   if (existsSync(outdir)) {
     await rm(outdir, { recursive: true, force: true });
     console.log(`✓ Cleaned ${outdir} directory (${timer.elapsed()}ms)`);

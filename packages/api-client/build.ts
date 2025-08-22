@@ -8,10 +8,10 @@ import { createElizaBuildConfig, generateDts, cleanBuild, getTimer } from '../..
 async function build() {
   const totalTimer = getTimer();
   console.log('🚀 Building @elizaos/api-client...\n');
-  
+
   // Clean previous build
   await cleanBuild('dist');
-  
+
   // Create build configuration
   const configTimer = getTimer();
   const config = await createElizaBuildConfig({
@@ -19,11 +19,7 @@ async function build() {
     outdir: 'dist',
     target: 'node',
     format: 'esm',
-    external: [
-      '@elizaos/core',
-      'fs',
-      'path'
-    ],
+    external: ['@elizaos/core', 'fs', 'path'],
     sourcemap: true,
     minify: false,
     generateDts: true,
@@ -34,30 +30,30 @@ async function build() {
   console.log('\nBundling with Bun...');
   const buildTimer = getTimer();
   const result = await Bun.build(config);
-  
+
   if (!result.success) {
     console.error('✗ Build failed:', result.logs);
     process.exit(1);
   }
-  
+
   const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
   const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
   console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`);
-  
+
   // Generate TypeScript declarations
   await generateDts('./tsconfig.build.json');
-  
+
   // Create root index.d.ts that re-exports from the nested structure
   const rootDtsContent = `export * from './api-client/src/index';`;
   await Bun.write('./dist/index.d.ts', rootDtsContent);
   console.log('✓ Created root index.d.ts');
-  
+
   console.log('\n✅ @elizaos/api-client build complete!');
   console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
 }
 
 // Run build
-build().catch(error => {
+build().catch((error) => {
   console.error('Build error:', error);
   process.exit(1);
 });

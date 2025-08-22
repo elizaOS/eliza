@@ -78,7 +78,7 @@ export function useDmChannelsForAgent(
       const elizaClient = createElizaClient();
       const result = await elizaClient.messaging.getServerChannels(serverId);
       const apiChannels = result.channels || [];
-      
+
       // Map API channels to client type
       const allChannels = apiChannels.map(mapApiChannelToClient);
 

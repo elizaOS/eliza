@@ -1,7 +1,14 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 // Direct error handling without bridge layer
 import { createElizaClient } from '@/lib/api-client-config';
-import type { Agent, Content, Memory, UUID, Memory as CoreMemory, AgentStatus } from '@elizaos/core';
+import type {
+  Agent,
+  Content,
+  Memory,
+  UUID,
+  Memory as CoreMemory,
+  AgentStatus,
+} from '@elizaos/core';
 import {
   useQuery,
   useMutation,
@@ -34,7 +41,7 @@ import {
   mapApiMemoryToClient,
   mapEnumToApiStatus,
   apiDateToTimestamp,
-  type AgentLog
+  type AgentLog,
 } from '@/lib/api-type-mappers';
 
 // Create ElizaClient instance for direct API calls
@@ -124,7 +131,7 @@ export function useAgents(options = {}) {
     queryFn: async () => {
       const result = await elizaClient.agents.listAgents();
       // Map the API agents to client format
-      const mappedAgents = result.agents.map(agent => mapApiAgentToClient(agent));
+      const mappedAgents = result.agents.map((agent) => mapApiAgentToClient(agent));
       return { data: { agents: mappedAgents } };
     },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
@@ -644,7 +651,7 @@ export function useAgentMemories(
         tableName,
         includeEmbedding,
       };
-      const result = channelId 
+      const result = channelId
         ? await elizaClient.memory.getRoomMemories(agentId, channelId, params)
         : await elizaClient.memory.getAgentMemories(agentId, params);
       console.log('Agent memories result:', {

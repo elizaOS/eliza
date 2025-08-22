@@ -34,12 +34,12 @@ export function useDeleteAgent(targetAgentData: Agent) {
       }, 8000);
 
       const elizaClient = createElizaClient();
-      
+
       // Ensure we have a valid ID
       if (!targetAgentData.id) {
         throw new Error('Agent ID is required for deletion');
       }
-      
+
       const response = await elizaClient.agents.deleteAgent(targetAgentData.id);
       responseReceived = true;
 
@@ -49,7 +49,7 @@ export function useDeleteAgent(targetAgentData: Agent) {
 
       // Check if response indicates partial completion (need to verify actual API response type)
       const isPartial = (response as any)?.partial;
-      
+
       if (isPartial) {
         toast({
           title: 'Processing',
@@ -66,7 +66,7 @@ export function useDeleteAgent(targetAgentData: Agent) {
       navigate('/');
     } catch (deleteError: any) {
       responseReceived = true;
-      
+
       if (navigationTimer) {
         clearTimeout(navigationTimer);
       }

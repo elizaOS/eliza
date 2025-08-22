@@ -771,12 +771,12 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-        const {
-    createScenarioServerAndAgent,
-    // createScenarioServer, // unused
-    createScenarioAgent,
-    shutdownScenarioServer,
-  } = await import('./runtime-factory');
+      const {
+        createScenarioServerAndAgent,
+        // createScenarioServer, // unused
+        createScenarioAgent,
+        shutdownScenarioServer,
+      } = await import('./runtime-factory');
 
       // Override environment variables for isolation
       const originalEnv = process.env;
@@ -1078,7 +1078,14 @@ async function getResourceSnapshot(): Promise<{ memoryUsage: number; cpuUsage: n
 async function calculateRunDiskUsage(tempDir: string): Promise<number> {
   try {
     const { monitorIsolatedResources } = await import('./run-isolation');
-    const context: IsolationContext = { tempDir, runId: '', scenarioPath: '', dbPath: '', logPath: '', cleanup: async () => {} };
+    const context: IsolationContext = {
+      tempDir,
+      runId: '',
+      scenarioPath: '',
+      dbPath: '',
+      logPath: '',
+      cleanup: async () => {},
+    };
     const resources = await monitorIsolatedResources(context);
     return resources.diskUsage;
   } catch {

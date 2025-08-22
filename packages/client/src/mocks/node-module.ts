@@ -16,7 +16,7 @@ export const createRequire = (_url?: string) => {
       warnedModules.add(id);
       console.debug(`Browser polyfill: Redirecting require('${id}') to browser-compatible version`);
     }
-    
+
     // Return appropriate polyfills for known modules
     if (id === 'crypto' || id === 'node:crypto') {
       // Return the crypto-browserify polyfill if available
@@ -25,7 +25,7 @@ export const createRequire = (_url?: string) => {
       }
       return {};
     }
-    
+
     if (id === 'buffer' || id === 'node:buffer') {
       // Return the buffer polyfill if available
       if (typeof window !== 'undefined' && (window as any).Buffer) {
@@ -33,7 +33,7 @@ export const createRequire = (_url?: string) => {
       }
       return {};
     }
-    
+
     return {};
   };
 };

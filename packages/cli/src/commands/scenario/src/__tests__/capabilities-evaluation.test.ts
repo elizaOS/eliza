@@ -20,33 +20,35 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       useModel: async () => ({
         overall_success: true,
         confidence: 0.9,
-        qualitative_summary: 'Agent successfully completed the task with custom capabilities assessment',
+        qualitative_summary:
+          'Agent successfully completed the task with custom capabilities assessment',
         capability_checklist: [
           {
             capability: 'Custom Capability 1',
             achieved: true,
-            reasoning: 'Successfully demonstrated this custom capability'
+            reasoning: 'Successfully demonstrated this custom capability',
           },
           {
             capability: 'Custom Capability 2',
             achieved: false,
-            reasoning: 'Did not fully achieve this custom capability'
-          }
-        ]
+            reasoning: 'Did not fully achieve this custom capability',
+          },
+        ],
       }),
-      models: new Map()
+      models: new Map(),
     };
 
     engine = new EnhancedEvaluationEngine(mockRuntime);
 
     sampleExecutionResult = {
       exitCode: 0,
-      stdout: 'Task completed with GitHub issues: Issue #1: Bug fix needed, Issue #2: Feature request',
+      stdout:
+        'Task completed with GitHub issues: Issue #1: Bug fix needed, Issue #2: Feature request',
       stderr: '',
       files: {},
       startedAtMs: 1000,
       endedAtMs: 1500,
-      durationMs: 500
+      durationMs: 500,
     };
   });
 
@@ -60,8 +62,8 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
           'Understands the multi-step nature of the request (list AND summarize)',
           'Successfully retrieves the list of GitHub issues',
           'Provides an accurate and concise summary of the issues',
-          'Formats the final response in a clean, readable manner'
-        ]
+          'Formats the final response in a clean, readable manner',
+        ],
       };
 
       // Should not throw validation error
@@ -76,7 +78,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
-        expected: 'yes'
+        expected: 'yes',
         // No capabilities array - should use defaults
       };
 
@@ -92,7 +94,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
         expected: 'yes',
-        capabilities: [] // Empty array should be invalid
+        capabilities: [], // Empty array should be invalid
       };
 
       // Should return failed result for empty capabilities
@@ -112,8 +114,8 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         capabilities: [
           'Valid capability',
           42, // Invalid: number instead of string
-          'Another valid capability'
-        ] as any // Cast to any to bypass TypeScript but still test runtime validation
+          'Another valid capability',
+        ] as any, // Cast to any to bypass TypeScript but still test runtime validation
       };
 
       // Should return failed result for non-string capability
@@ -132,14 +134,14 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         'Understands the multi-step nature of the request',
         'Successfully retrieves GitHub issues',
         'Provides accurate summary',
-        'Formats response cleanly'
+        'Formats response cleanly',
       ];
 
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
         expected: 'yes',
-        capabilities: customCapabilities
+        capabilities: customCapabilities,
       };
 
       // Mock the LLM call to capture the prompt
@@ -150,11 +152,11 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
           overall_success: true,
           confidence: 0.9,
           qualitative_summary: 'Test response',
-          capability_checklist: customCapabilities.map(cap => ({
+          capability_checklist: customCapabilities.map((cap) => ({
             capability: cap,
             achieved: true,
-            reasoning: 'Test reasoning'
-          }))
+            reasoning: 'Test reasoning',
+          })),
         };
       };
 
@@ -177,7 +179,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
-        expected: 'yes'
+        expected: 'yes',
         // No capabilities - should use defaults
       };
 
@@ -188,11 +190,13 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
           overall_success: true,
           confidence: 0.9,
           qualitative_summary: 'Test response',
-          capability_checklist: [{
-            capability: 'Default Task Completion',
-            achieved: true,
-            reasoning: 'Default assessment'
-          }]
+          capability_checklist: [
+            {
+              capability: 'Default Task Completion',
+              achieved: true,
+              reasoning: 'Default assessment',
+            },
+          ],
         };
       };
 
@@ -210,14 +214,14 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
       const customCapabilities = [
         'Multi-step task understanding',
         'Data retrieval accuracy',
-        'Summary quality'
+        'Summary quality',
       ];
 
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Evaluate the agent response',
         expected: 'yes',
-        capabilities: customCapabilities
+        capabilities: customCapabilities,
       };
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
@@ -236,16 +240,13 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
     });
 
     it('should include custom capabilities in capability checklist result', async () => {
-      const customCapabilities = [
-        'Custom Capability A',
-        'Custom Capability B'
-      ];
+      const customCapabilities = ['Custom Capability A', 'Custom Capability B'];
 
       const evaluation = {
         type: 'llm_judge' as const,
         prompt: 'Test prompt',
         expected: 'yes',
-        capabilities: customCapabilities
+        capabilities: customCapabilities,
       };
 
       mockRuntime.useModel = async () => ({
@@ -256,14 +257,14 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
           {
             capability: 'Custom Capability A',
             achieved: true,
-            reasoning: 'Successfully demonstrated capability A'
+            reasoning: 'Successfully demonstrated capability A',
           },
           {
             capability: 'Custom Capability B',
             achieved: false,
-            reasoning: 'Partially demonstrated capability B'
-          }
-        ]
+            reasoning: 'Partially demonstrated capability B',
+          },
+        ],
       });
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);
@@ -284,12 +285,8 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
           type: 'llm_judge' as const,
           prompt: 'Evaluate response quality',
           expected: 'yes',
-          capabilities: [
-            'Request understanding',
-            'Data accuracy',
-            'Response formatting'
-          ]
-        }
+          capabilities: ['Request understanding', 'Data accuracy', 'Response formatting'],
+        },
       ];
 
       const results = await engine.runEnhancedEvaluations(evaluations, sampleExecutionResult);
@@ -311,7 +308,7 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         type: 'llm_judge' as const,
         prompt: 'Test prompt',
         expected: 'yes',
-        capabilities: ['Test capability']
+        capabilities: ['Test capability'],
       };
 
       mockRuntime.useModel = async () => {
@@ -330,12 +327,12 @@ describe('LLM Judge Capabilities Feature (Ticket #5784)', () => {
         type: 'llm_judge' as const,
         prompt: 'Test prompt',
         expected: 'yes',
-        capabilities: ['Test capability']
+        capabilities: ['Test capability'],
       };
 
       mockRuntime.useModel = async () => ({
         // Missing required fields
-        incomplete: 'response'
+        incomplete: 'response',
       });
 
       const results = await engine.runEnhancedEvaluations([evaluation], sampleExecutionResult);

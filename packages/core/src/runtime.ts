@@ -500,10 +500,10 @@ export class AgentRuntime implements IAgentRuntime {
     const value =
       this.character.secrets?.[key] ||
       this.character.settings?.[key] ||
-      (typeof this.character.settings === 'object' && 
-       this.character.settings !== null &&
-       'secrets' in this.character.settings &&
-       (this.character.settings as Record<string, any>).secrets?.[key]) ||
+      (typeof this.character.settings === 'object' &&
+        this.character.settings !== null &&
+        'secrets' in this.character.settings &&
+        (this.character.settings as Record<string, any>).secrets?.[key]) ||
       this.settings[key];
     const decryptedValue = decryptSecret(value, getSalt());
     if (decryptedValue === 'true') return true;
@@ -914,13 +914,16 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
-          this.logger.debug(`Action ${action.name} completed`, JSON.stringify({
-            isLegacyReturn,
-            result: isLegacyReturn ? result : undefined,
-            hasValues: actionResult ? !!actionResult.values : false,
-            hasData: actionResult ? !!actionResult.data : false,
-            hasText: actionResult ? !!actionResult.text : false,
-          }));
+          this.logger.debug(
+            `Action ${action.name} completed`,
+            JSON.stringify({
+              isLegacyReturn,
+              result: isLegacyReturn ? result : undefined,
+              hasValues: actionResult ? !!actionResult.values : false,
+              hasData: actionResult ? !!actionResult.data : false,
+              hasText: actionResult ? !!actionResult.text : false,
+            })
+          );
 
           // log to database with collected prompts
           await this.adapter.log({
@@ -1073,7 +1076,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   // highly SQL optimized queries
-  async ensureConnections(entities: any[], rooms: any[], source: string, world: any): Promise<void> {
+  async ensureConnections(
+    entities: any[],
+    rooms: any[],
+    source: string,
+    world: any
+  ): Promise<void> {
     // guards
     if (!entities) {
       console.trace();
@@ -1167,7 +1175,9 @@ export class AgentRuntime implements IAgentRuntime {
     // Add all entities to the first room
     const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
     const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
-    const missingIdsInRoom = entityIds.filter((id: any) => !entityIdsInFirstRoomFiltered.includes(id));
+    const missingIdsInRoom = entityIds.filter(
+      (id: any) => !entityIdsInFirstRoomFiltered.includes(id)
+    );
 
     if (missingIdsInRoom.length) {
       this.logger.debug(
@@ -1365,12 +1375,15 @@ export class AgentRuntime implements IAgentRuntime {
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     const world = await this.getWorld(id);
     if (!world) {
-      this.logger.debug('Creating world:', JSON.stringify({
-        id,
-        name,
-        serverId,
-        agentId: this.agentId,
-      }));
+      this.logger.debug(
+        'Creating world:',
+        JSON.stringify({
+          id,
+          name,
+          serverId,
+          agentId: this.agentId,
+        })
+      );
       await this.adapter.createWorld({
         id,
         name,
@@ -1413,7 +1426,8 @@ export class AgentRuntime implements IAgentRuntime {
       data: {},
       text: '',
     } as State;
-    const cachedState = skipCache || !message.id ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
+    const cachedState =
+      skipCache || !message.id ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
     const providerNames = new Set<string>();
     if (filterList && filterList.length > 0) {
       filterList.forEach((name) => providerNames.add(name));
@@ -2222,7 +2236,9 @@ export class AgentRuntime implements IAgentRuntime {
     this.logger.info(`Clearing all memories for agent ${this.character.name} (${this.agentId})`);
 
     const allMemories = await this.getAllMemories();
-    const memoryIds = allMemories.map((memory) => memory.id).filter((id): id is UUID => id !== undefined);
+    const memoryIds = allMemories
+      .map((memory) => memory.id)
+      .filter((id): id is UUID => id !== undefined);
 
     if (memoryIds.length === 0) {
       this.logger.info('No memories found to delete');

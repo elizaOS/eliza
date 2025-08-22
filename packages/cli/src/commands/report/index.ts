@@ -16,14 +16,17 @@ import { createGenerateCommand } from './generate';
  */
 export const report = new Command('report')
   .description('Generate and analyze reports from scenario matrix runs')
-  .addHelpText('after', `
+  .addHelpText(
+    'after',
+    `
 Examples:
   $ elizaos report generate ./output/matrix-20231027-1000/
   $ elizaos report generate ./output/matrix-20231027-1000/ --output-path ./reports/latest.json
 
 The report command analyzes raw JSON outputs from scenario matrix runs and generates
 comprehensive performance reports with statistics, parameter comparisons, and trajectory analysis.
-  `)
+  `
+  )
   .addCommand(createGenerateCommand());
 
 // Export the main command for registration with the CLI

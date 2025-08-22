@@ -177,8 +177,8 @@ export const scenario = new Command()
           // Extract plugin names from scenario configuration, filtering by enabled status
           const scenarioPlugins = Array.isArray((scenario as any).plugins)
             ? (scenario as any).plugins
-              .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-              .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+                .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+                .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
           logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
@@ -378,7 +378,7 @@ export const scenario = new Command()
                 stdout: results.map((r) => r.stdout).join('\n'),
                 stderr: results.map((r) => r.stderr).join('\n'),
                 durationMs: endTime - startTime,
-                files: {} // Add required files property
+                files: {}, // Add required files property
               };
 
               const scenarioRunResult = await dataAggregator.buildResult(
@@ -415,7 +415,7 @@ export const scenario = new Command()
                 stdout: '',
                 stderr: error instanceof Error ? error.message : String(error),
                 durationMs: 0,
-                files: {} // Add required files property
+                files: {}, // Add required files property
               });
 
               const errorFilename = `run-${failedResult.run_id}.json`;
@@ -449,12 +449,12 @@ export const scenario = new Command()
               }
               await runtime.close();
               logger.info('Runtime shutdown complete');
-            } catch { }
+            } catch {}
           }
           if (server && createdServer) {
             try {
               await shutdownScenarioServer(server, serverPort);
-            } catch { }
+            } catch {}
           }
 
           // Report final result and exit with appropriate code
@@ -491,8 +491,8 @@ export const scenario = new Command()
             calculateExecutionStats,
             formatDuration,
           } = await import('./src/matrix-runner');
-          const { 
-            validateMatrixParameterPaths, 
+          const {
+            validateMatrixParameterPaths,
             combinationToOverrides,
             // applyParameterOverrides // unused
           } = await import('./src/parameter-override');

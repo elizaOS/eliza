@@ -32,7 +32,7 @@ export interface PdfConversionOptions {
  */
 export class DummyPdfService extends Service {
   static readonly serviceType = ServiceType.PDF;
-  
+
   capabilityDescription = 'Dummy PDF service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -62,8 +62,8 @@ export class DummyPdfService extends Service {
         title: 'Dummy PDF Document',
         author: 'Dummy Author',
         pages: 10,
-        creationDate: new Date()
-      }
+        creationDate: new Date(),
+      },
     };
   }
 
@@ -75,9 +75,9 @@ export class DummyPdfService extends Service {
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from('dummy-pdf-content');
-    
+
     logger.debug(`Generated PDF: ${dummyPdf.length} bytes`);
-    
+
     return dummyPdf;
   }
 
@@ -90,9 +90,9 @@ export class DummyPdfService extends Service {
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from(`dummy-pdf-from-${inputFormat}`);
-    
+
     logger.debug(`Converted to PDF: ${dummyPdf.length} bytes`);
-    
+
     return dummyPdf;
   }
 
@@ -102,7 +102,7 @@ export class DummyPdfService extends Service {
     // Return dummy merged PDF buffer
     const totalSize = pdfBuffers.reduce((sum, buf) => sum + buf.length, 0);
     const mergedPdf = Buffer.from(`dummy-merged-pdf-${totalSize}`);
-    
+
     return mergedPdf;
   }
 
@@ -110,7 +110,7 @@ export class DummyPdfService extends Service {
     logger.debug(`Splitting PDF into ${ranges.length} parts`);
 
     // Return dummy split PDF buffers
-    return ranges.map((range, index) => 
+    return ranges.map((range, index) =>
       Buffer.from(`dummy-split-pdf-part-${index}-pages-${range[0]}-${range[1]}`)
     );
   }

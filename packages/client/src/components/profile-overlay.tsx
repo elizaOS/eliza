@@ -176,9 +176,9 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
               <div className="flex items-center gap-2">
                 <Brain className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm">
-                  {typeof agent?.settings?.model === 'string' 
-                    ? agent.settings.model 
-                    : agent?.settings?.model !== undefined 
+                  {typeof agent?.settings?.model === 'string'
+                    ? agent.settings.model
+                    : agent?.settings?.model !== undefined
                       ? String(agent.settings.model)
                       : 'Default'}
                 </span>

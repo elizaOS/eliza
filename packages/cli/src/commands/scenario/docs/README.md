@@ -19,6 +19,7 @@ The ElizaOS Scenario System provides powerful testing capabilities for agents in
 The scenario system has been significantly enhanced with the following completed features:
 
 ### 🎯 **Matrix Runner & Reporting System**
+
 - **Parameter Matrix Testing**: Run scenarios across multiple parameter combinations
 - **Comprehensive Reporting**: Generate JSON, HTML, and PDF reports automatically
 - **Organized Output**: All results saved to `@scenario/_logs_/` with timestamped folders
@@ -26,12 +27,14 @@ The scenario system has been significantly enhanced with the following completed
 - **Success Rate Analytics**: Detailed metrics and performance analysis
 
 ### 📊 **Enhanced Evaluation System**
+
 - **Structured Evaluations**: Enhanced evaluation results with success/failure details
 - **Trajectory Tracking**: Monitor agent cognitive processes step-by-step
 - **LLM Judge Integration**: AI-powered evaluation of agent responses
 - **Multi-format Output**: Support for various evaluation result formats
 
 ### 🔧 **Improved Infrastructure**
+
 - **Run Isolation**: Complete isolation between test runs
 - **Resource Monitoring**: Track memory, CPU, and disk usage
 - **Progress Tracking**: Real-time progress updates during matrix execution
@@ -72,7 +75,7 @@ For local development and testing:
 # Run a single scenario
 bun packages/cli/dist/index.js scenario run <scenario-file>
 
-# Run matrix testing with parameter combinations  
+# Run matrix testing with parameter combinations
 bun packages/cli/dist/index.js scenario matrix <matrix-config>
 
 # Generate comprehensive reports
@@ -88,6 +91,7 @@ bun packages/cli/dist/index.js report generate <input-directory>
 #### 1. Single Scenario Tests
 
 **Production Commands:**
+
 ```bash
 # Run a simple local test
 elizaos scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
@@ -100,6 +104,7 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/evaluation-test
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run a simple local test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
@@ -114,6 +119,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 #### 2. E2B Sandboxed Tests
 
 **Production Commands:**
+
 ```bash
 # Run E2B environment test
 elizaos scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
@@ -126,6 +132,7 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/mock-e2b-test.s
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run E2B environment test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
@@ -140,6 +147,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 #### 3. Mock Service Tests
 
 **Production Commands:**
+
 ```bash
 # Run simple mock test
 elizaos scenario run packages/cli/src/commands/scenario/examples/simple-mock-test.scenario.yaml
@@ -149,6 +157,7 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/mock-test.scena
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run simple mock test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-mock-test.scenario.yaml
@@ -160,6 +169,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 #### 4. LLM Judge Tests
 
 **Production Commands:**
+
 ```bash
 # Run LLM judgment test
 elizaos scenario run packages/cli/src/commands/scenario/examples/llm-judge-test.scenario.yaml
@@ -169,6 +179,7 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/llm-judge-failu
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run LLM judgment test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/llm-judge-test.scenario.yaml
@@ -180,6 +191,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 #### 5. Matrix Testing (NEW!)
 
 **Production Commands:**
+
 ```bash
 # Run matrix testing with parameter combinations
 elizaos scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml
@@ -189,6 +201,7 @@ elizaos scenario matrix packages/cli/src/commands/scenario/examples/simple-test.
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run matrix testing with parameter combinations
 bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml
@@ -200,6 +213,7 @@ bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenari
 #### 6. Other Test Types
 
 **Production Commands:**
+
 ```bash
 # Run multi-step scenario
 elizaos scenario run packages/cli/src/commands/scenario/examples/multi-step.scenario.yaml
@@ -212,6 +226,7 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/trajectory-test
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run multi-step scenario
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/multi-step.scenario.yaml
@@ -230,6 +245,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 The scenario system now automatically generates comprehensive reports in multiple formats:
 
 **Production Commands:**
+
 ```bash
 # Generate all report formats (JSON, HTML, PDF) in organized folders
 elizaos report generate packages/cli/src/commands/scenario/_logs_
@@ -241,6 +257,7 @@ elizaos report generate packages/cli/src/commands/scenario/_logs_ --format pdf
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Generate all report formats (JSON, HTML, PDF) in organized folders
 bun packages/cli/dist/index.js report generate packages/cli/src/commands/scenario/_logs_
@@ -280,12 +297,14 @@ packages/cli/src/commands/scenario/_logs_/
 ### **Sequential Execution**
 
 **Production Commands:**
+
 ```bash
 # Run all scenarios in sequence
 elizaos scenario run packages/cli/src/commands/scenario/examples/*.scenario.yaml
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run all scenarios in sequence
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/*.scenario.yaml
@@ -294,12 +313,14 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 ### **Matrix Execution**
 
 **Production Commands:**
+
 ```bash
 # Run matrix testing with parameter combinations
 elizaos scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Run matrix testing with parameter combinations
 bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenario/examples/github-issue-analysis.matrix.yaml
@@ -314,13 +335,15 @@ If you encounter issues with plugins not being loaded during scenario testing:
 1. **Ensure you're running from the project root directory**
 
    **Production Commands:**
+
    ```bash
    # Always run scenario commands from the project root
    cd /path/to/eliza
    elizaos scenario run <scenario-file>
    ```
-   
+
    **Local Development Commands:**
+
    ```bash
    # Always run scenario commands from the project root
    cd /path/to/eliza
@@ -368,11 +391,12 @@ bun run build
 ### **Testing Changes**
 
 **Production Commands:**
+
 ```bash
 # Test scenario functionality
 elizaos scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
 
-# Test matrix functionality  
+# Test matrix functionality
 elizaos scenario matrix packages/cli/src/commands/scenario/examples/simple-test.matrix.yaml
 
 # Test report generation
@@ -380,11 +404,12 @@ elizaos report generate packages/cli/src/commands/scenario/_logs_
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Test scenario functionality
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/simple-test.scenario.yaml
 
-# Test matrix functionality  
+# Test matrix functionality
 bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenario/examples/simple-test.matrix.yaml
 
 # Test report generation
@@ -414,6 +439,7 @@ bun run build
 ### **Verify Setup**
 
 **Production Commands (if CLI is globally installed):**
+
 ```bash
 # Test that the CLI works correctly
 elizaos --help
@@ -429,6 +455,7 @@ elizaos report generate packages/cli/src/commands/scenario/_logs_
 ```
 
 **Local Development Commands:**
+
 ```bash
 # Test that the CLI builds correctly
 bun packages/cli/dist/index.js --help

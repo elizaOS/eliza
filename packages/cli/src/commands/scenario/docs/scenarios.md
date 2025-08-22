@@ -68,13 +68,13 @@ Scenarios are executed via a dedicated top-level `elizaos scenario` command, whi
 
 The runner supports two primary modes of operation on the same scenario file:
 
-- **Test Mode**: 
+- **Test Mode**:
   - Production: `elizaos scenario run <scenario_file.yaml>`
   - Local Development: `bun packages/cli/dist/index.js scenario run <scenario_file.yaml>`
   - This is the default mode.
   - It provisions sandboxed environments, uses mocks, and seeds databases as defined in the file.
   - Its primary purpose is to output a pass/fail result for CI/CD and local development.
-- **Live Mode**: 
+- **Live Mode**:
   - Production: `elizaos scenario run <scenario_file.yaml> --live`
   - Local Development: `bun packages/cli/dist/index.js scenario run <scenario_file.yaml> --live`
   - In this mode, the runner ignores mocks and database seeding instructions.

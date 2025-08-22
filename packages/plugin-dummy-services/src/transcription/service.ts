@@ -50,7 +50,7 @@ export interface TextToSpeechOptions {
  */
 export class DummyTranscriptionService extends Service {
   static readonly serviceType = ServiceType.TRANSCRIPTION;
-  
+
   capabilityDescription = 'Dummy transcription service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -84,22 +84,22 @@ export class DummyTranscriptionService extends Service {
         start: 0,
         end: 5,
         text: 'This is the first segment of dummy transcription.',
-        confidence: 0.95
+        confidence: 0.95,
       },
       {
         id: 1,
         start: 5,
         end: 10,
         text: 'This is the second segment with more text.',
-        confidence: 0.92
+        confidence: 0.92,
       },
       {
         id: 2,
         start: 10,
         end: 15,
         text: 'And this is the final segment of the transcription.',
-        confidence: 0.94
-      }
+        confidence: 0.94,
+      },
     ];
 
     const words: TranscriptionWord[] = [
@@ -107,15 +107,15 @@ export class DummyTranscriptionService extends Service {
       { word: 'is', start: 0.5, end: 0.8, confidence: 0.98 },
       { word: 'the', start: 0.8, end: 1.0, confidence: 0.99 },
       { word: 'first', start: 1.0, end: 1.5, confidence: 0.94 },
-      { word: 'segment', start: 1.5, end: 2.0, confidence: 0.93 }
+      { word: 'segment', start: 1.5, end: 2.0, confidence: 0.93 },
     ];
 
     const result: TranscriptionResult = {
-      text: segments.map(s => s.text).join(' '),
+      text: segments.map((s) => s.text).join(' '),
       language: options?.language || 'en',
       duration: 15,
       segments: options?.timestamps ? segments : undefined,
-      words: options?.timestamps ? words : undefined
+      words: options?.timestamps ? words : undefined,
     };
 
     logger.debug(`Transcription complete: ${result.text.substring(0, 50)}...`);
@@ -140,29 +140,29 @@ export class DummyTranscriptionService extends Service {
     logger.debug('Converting speech to text', JSON.stringify(options));
 
     const result = await this.transcribeAudio(audioBuffer, options);
-    
+
     logger.debug(`Speech to text complete: ${result.text.substring(0, 50)}...`);
 
     // Return based on format option
     if (options?.format === 'text' || !options?.format) {
       return result.text;
     }
-    
+
     return result;
   }
 
-  async textToSpeech(
-    text: string,
-    options?: TextToSpeechOptions
-  ): Promise<Buffer> {
-    logger.debug(`Converting text to speech: "${text.substring(0, 50)}..."`, JSON.stringify(options));
+  async textToSpeech(text: string, options?: TextToSpeechOptions): Promise<Buffer> {
+    logger.debug(
+      `Converting text to speech: "${text.substring(0, 50)}..."`,
+      JSON.stringify(options)
+    );
 
     // Return dummy audio buffer
     const format = options?.format || 'mp3';
     const dummyAudio = Buffer.from(`dummy-audio-${format}-${text.length}-chars`);
-    
+
     logger.debug(`Generated ${format} audio: ${dummyAudio.length} bytes`);
-    
+
     return dummyAudio;
   }
 
@@ -183,7 +183,7 @@ export class DummyTranscriptionService extends Service {
     return {
       text: `This is dummy translated text in ${targetLanguage}.`,
       language: targetLanguage,
-      duration: 10
+      duration: 10,
     };
   }
 

@@ -62,7 +62,7 @@ function getLocalCliPath(): string | null {
  */
 function setupLocalEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
-  
+
   // Filter out undefined values from process.env
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) {
@@ -245,7 +245,10 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
     await delegateToLocalCli(localCliPath);
     return true;
   } catch (error) {
-    logger.error('Error during local CLI delegation:', error instanceof Error ? error.message : String(error));
+    logger.error(
+      'Error during local CLI delegation:',
+      error instanceof Error ? error.message : String(error)
+    );
     logger.info('Falling back to global CLI installation');
     return false;
   }

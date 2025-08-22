@@ -52,7 +52,7 @@ export interface VideoSearchOptions extends SearchOptions {
  */
 export class DummyWebSearchService extends Service {
   static readonly serviceType = ServiceType.WEB_SEARCH;
-  
+
   capabilityDescription = 'Dummy web search service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -78,7 +78,7 @@ export class DummyWebSearchService extends Service {
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
-    
+
     logger.debug(`Generating ${limit} dummy search results for: ${options.query}`);
 
     for (let i = 0; i < limit; i++) {
@@ -88,15 +88,15 @@ export class DummyWebSearchService extends Service {
         description: `This is dummy search result ${i + 1} for query: ${options.query}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
         displayUrl: `example.com/result-${i}`,
         source: 'DummySearch',
-        relevanceScore: 0.9 - (i * 0.05),
-        snippet: `Dummy snippet for search result ${i + 1}`
+        relevanceScore: 0.9 - i * 0.05,
+        snippet: `Dummy snippet for search result ${i + 1}`,
       });
     }
 
     return {
       results,
       totalResults: 1000,
-      nextOffset: (options.offset || 0) + limit
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
@@ -105,7 +105,7 @@ export class DummyWebSearchService extends Service {
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
-    
+
     logger.debug(`Generating ${limit} dummy news results for: ${options.query}`);
 
     for (let i = 0; i < limit; i++) {
@@ -116,15 +116,15 @@ export class DummyWebSearchService extends Service {
         displayUrl: `news.example.com/article-${i}`,
         source: 'DummyNews',
         publishedDate: new Date(Date.now() - i * 86400000),
-        relevanceScore: 0.95 - (i * 0.05),
-        snippet: `Latest news about ${options.query}`
+        relevanceScore: 0.95 - i * 0.05,
+        snippet: `Latest news about ${options.query}`,
       });
     }
 
     return {
       results,
       totalResults: 500,
-      nextOffset: (options.offset || 0) + limit
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
@@ -133,7 +133,7 @@ export class DummyWebSearchService extends Service {
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
-    
+
     logger.debug(`Generating ${limit} dummy image results for: ${options.query}`);
 
     for (let i = 0; i < limit; i++) {
@@ -144,15 +144,15 @@ export class DummyWebSearchService extends Service {
         displayUrl: `images.example.com/img-${i}.jpg`,
         source: 'DummyImages',
         thumbnail: `https://images.example.com/thumb-${i}.jpg`,
-        relevanceScore: 0.85 - (i * 0.05),
-        snippet: `Image ${i + 1} related to: ${options.query}`
+        relevanceScore: 0.85 - i * 0.05,
+        snippet: `Image ${i + 1} related to: ${options.query}`,
       });
     }
 
     return {
       results,
       totalResults: 10000,
-      nextOffset: (options.offset || 0) + limit
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
@@ -161,7 +161,7 @@ export class DummyWebSearchService extends Service {
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
-    
+
     logger.debug(`Generating ${limit} dummy video results for: ${options.query}`);
 
     for (let i = 0; i < limit; i++) {
@@ -173,15 +173,15 @@ export class DummyWebSearchService extends Service {
         source: 'DummyVideos',
         thumbnail: `https://videos.example.com/thumb-${i}.jpg`,
         publishedDate: new Date(Date.now() - i * 86400000),
-        relevanceScore: 0.88 - (i * 0.05),
-        snippet: `Video ${i + 1}: ${options.query}`
+        relevanceScore: 0.88 - i * 0.05,
+        snippet: `Video ${i + 1}: ${options.query}`,
       });
     }
 
     return {
       results,
       totalResults: 5000,
-      nextOffset: (options.offset || 0) + limit
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
@@ -196,7 +196,7 @@ export class DummyWebSearchService extends Service {
       `${query} guide`,
       `${query} tips`,
       `${query} tricks`,
-      `${query} how to`
+      `${query} how to`,
     ];
   }
 
@@ -211,7 +211,7 @@ export class DummyWebSearchService extends Service {
       'renewable energy',
       'space exploration',
       'quantum computing',
-      'cybersecurity'
+      'cybersecurity',
     ];
   }
 
@@ -226,7 +226,7 @@ export class DummyWebSearchService extends Service {
       `best ${query}`,
       `${query} comparison`,
       `${query} features`,
-      `${query} benefits`
+      `${query} benefits`,
     ];
   }
 

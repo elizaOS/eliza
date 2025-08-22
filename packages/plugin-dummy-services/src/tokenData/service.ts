@@ -20,7 +20,7 @@ export interface TokenData {
 export class DummyTokenDataService extends Service {
   // Use a custom service type since TOKEN_DATA isn't in ServiceType enum
   static readonly serviceType = 'token_data';
-  
+
   private serviceName = 'DummyTokenDataService';
   capabilityDescription = 'Dummy token data service for testing';
 
@@ -52,7 +52,7 @@ export class DummyTokenDataService extends Service {
       priceUsd: 1.23,
       marketCapUsd: 1230000000,
       volume24hUsd: 45600000,
-      priceChange24h: 5.67
+      priceChange24h: 5.67,
     };
   }
 
@@ -66,7 +66,7 @@ export class DummyTokenDataService extends Service {
       priceUsd: 1.23,
       marketCapUsd: 1230000000,
       volume24hUsd: 45600000,
-      priceChange24h: 5.67
+      priceChange24h: 5.67,
     };
   }
 
@@ -80,7 +80,7 @@ export class DummyTokenDataService extends Service {
       priceUsd: 1.23 * (index + 1),
       marketCapUsd: 1230000000 * (index + 1),
       volume24hUsd: 45600000 * (index + 1),
-      priceChange24h: 5.67 * (index % 2 === 0 ? 1 : -1)
+      priceChange24h: 5.67 * (index % 2 === 0 ? 1 : -1),
     }));
   }
 
@@ -95,7 +95,7 @@ export class DummyTokenDataService extends Service {
         priceUsd: 1.23,
         marketCapUsd: 1230000000,
         volume24hUsd: 45600000,
-        priceChange24h: 5.67
+        priceChange24h: 5.67,
       },
       {
         symbol: `${query.toUpperCase()}2`,
@@ -106,8 +106,8 @@ export class DummyTokenDataService extends Service {
         priceUsd: 2.46,
         marketCapUsd: 4920000000,
         volume24hUsd: 91200000,
-        priceChange24h: -3.21
-      }
+        priceChange24h: -3.21,
+      },
     ];
   }
 

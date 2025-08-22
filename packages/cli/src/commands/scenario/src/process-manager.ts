@@ -18,14 +18,16 @@ export class ProcessManager {
    * Register a process for tracking
    */
   registerProcess(runId: string, pid: number, type: ProcessInfo['type'], port?: number): void {
-    console.log(`🔧 [ProcessManager] Registering process ${pid} for runId: ${runId} (type: ${type})`);
-    
+    console.log(
+      `🔧 [ProcessManager] Registering process ${pid} for runId: ${runId} (type: ${type})`
+    );
+
     this.processes.set(runId, {
       pid,
       runId,
       type,
       startTime: new Date(),
-      port
+      port,
     });
 
     // Register signal handlers on first process
@@ -41,7 +43,9 @@ export class ProcessManager {
   unregisterProcess(runId: string): void {
     const processInfo = this.processes.get(runId);
     if (processInfo) {
-      console.log(`🔧 [ProcessManager] Unregistering process ${processInfo.pid} for runId: ${runId}`);
+      console.log(
+        `🔧 [ProcessManager] Unregistering process ${processInfo.pid} for runId: ${runId}`
+      );
       this.processes.delete(runId);
     }
   }
@@ -88,7 +92,7 @@ export class ProcessManager {
     try {
       // First try graceful termination
       process.kill(pid, 'SIGTERM');
-      
+
       // Wait for graceful termination
       const startTime = Date.now();
       while (Date.now() - startTime < timeout) {
@@ -97,7 +101,7 @@ export class ProcessManager {
           this.unregisterProcess(runId);
           return true;
         }
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
       // Force kill if graceful termination failed
@@ -105,7 +109,6 @@ export class ProcessManager {
       process.kill(pid, 'SIGKILL');
       this.unregisterProcess(runId);
       return true;
-
     } catch (error) {
       console.log(`🔧 [ProcessManager] Failed to terminate process ${pid}:`, error);
       return false;
@@ -124,12 +127,12 @@ export class ProcessManager {
     }
 
     // Terminate all processes in parallel
-    const terminationPromises = processes.map(runId => 
+    const terminationPromises = processes.map((runId) =>
       this.terminateProcess(runId, timeout / processes.length)
     );
 
     await Promise.allSettled(terminationPromises);
-    
+
     // Final cleanup - force kill any remaining processes
     for (const [_, processInfo] of this.processes.entries()) {
       if (this.isProcessRunning(processInfo.pid)) {
@@ -188,7 +191,7 @@ export class ProcessManager {
 
     for (const proc of processes) {
       byType[proc.type] = (byType[proc.type] || 0) + 1;
-      
+
       if (!oldestProcess || proc.startTime < oldestProcess.startTime) {
         oldestProcess = proc;
       }
@@ -197,7 +200,7 @@ export class ProcessManager {
     return {
       total: processes.length,
       byType,
-      oldestProcess
+      oldestProcess,
     };
   }
 }

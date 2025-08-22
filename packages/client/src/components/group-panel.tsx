@@ -93,10 +93,10 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       return await elizaClient.messaging.createGroupChannel({
         name,
         participantIds: participantIds,
-        metadata: { 
+        metadata: {
           type: ChannelType.GROUP,
           server_id: serverId,
-          source: GROUP_CHAT_SOURCE 
+          source: GROUP_CHAT_SOURCE,
         },
       });
     },

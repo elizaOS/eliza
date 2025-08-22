@@ -20,14 +20,14 @@ run:
       - type: trajectory_contains_action
         action: LIST_GITHUB_ISSUES
         description: Verify that the LIST_GITHUB_ISSUES action was executed
-      - type: "llm_judge"
-        prompt: "Evaluate how well the agent performed the GitHub issue analysis task"
-        expected: "yes"
+      - type: 'llm_judge'
+        prompt: 'Evaluate how well the agent performed the GitHub issue analysis task'
+        expected: 'yes'
         capabilities:
-          - "Understands the multi-step nature of the request (list AND summarize)"
-          - "Successfully retrieves the list of GitHub issues"
-          - "Provides an accurate and concise summary of the issues"
-          - "Formats the final response in a clean, readable manner"
-          - "Demonstrates understanding of GitHub repository context"
+          - 'Understands the multi-step nature of the request (list AND summarize)'
+          - 'Successfully retrieves the list of GitHub issues'
+          - 'Provides an accurate and concise summary of the issues'
+          - 'Formats the final response in a clean, readable manner'
+          - 'Demonstrates understanding of GitHub repository context'
 judgment:
   strategy: 'all_pass'

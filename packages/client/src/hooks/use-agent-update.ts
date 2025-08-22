@@ -108,11 +108,14 @@ export function useAgentUpdate(initialAgent: Agent) {
       // Handle nested secrets object properly
       const currentSettings = agent.settings || {};
       const currentSecretsRaw = currentSettings.secrets || {};
-      
+
       // Ensure currentSecrets is an object
-      const currentSecrets = typeof currentSecretsRaw === 'object' && currentSecretsRaw !== null && !Array.isArray(currentSecretsRaw)
-        ? currentSecretsRaw as Record<string, any>
-        : {};
+      const currentSecrets =
+        typeof currentSecretsRaw === 'object' &&
+        currentSecretsRaw !== null &&
+        !Array.isArray(currentSecretsRaw)
+          ? (currentSecretsRaw as Record<string, any>)
+          : {};
 
       const newSecrets = {
         ...currentSecrets,
@@ -138,11 +141,14 @@ export function useAgentUpdate(initialAgent: Agent) {
       // Get the current secrets object
       const currentSettings = agent.settings || {};
       const currentSecretsRaw = currentSettings.secrets || {};
-      
+
       // Ensure currentSecrets is an object
-      const currentSecrets = typeof currentSecretsRaw === 'object' && currentSecretsRaw !== null && !Array.isArray(currentSecretsRaw)
-        ? currentSecretsRaw as Record<string, any>
-        : {};
+      const currentSecrets =
+        typeof currentSecretsRaw === 'object' &&
+        currentSecretsRaw !== null &&
+        !Array.isArray(currentSecretsRaw)
+          ? (currentSecretsRaw as Record<string, any>)
+          : {};
 
       // Create a new secrets object without the removed key
       const newSecrets = { ...currentSecrets };
@@ -371,14 +377,20 @@ export function useAgentUpdate(initialAgent: Agent) {
       if (JSON.stringify(currentSettings.secrets) !== JSON.stringify(initialSettings.secrets)) {
         const initialSecretsRaw = initialSettings.secrets || {};
         const currentSecretsRaw = currentSettings.secrets || {};
-        
+
         // Ensure secrets are objects
-        const initialSecrets = typeof initialSecretsRaw === 'object' && initialSecretsRaw !== null && !Array.isArray(initialSecretsRaw)
-          ? initialSecretsRaw as Record<string, any>
-          : {};
-        const currentSecrets = typeof currentSecretsRaw === 'object' && currentSecretsRaw !== null && !Array.isArray(currentSecretsRaw)
-          ? currentSecretsRaw as Record<string, any>
-          : {};
+        const initialSecrets =
+          typeof initialSecretsRaw === 'object' &&
+          initialSecretsRaw !== null &&
+          !Array.isArray(initialSecretsRaw)
+            ? (initialSecretsRaw as Record<string, any>)
+            : {};
+        const currentSecrets =
+          typeof currentSecretsRaw === 'object' &&
+          currentSecretsRaw !== null &&
+          !Array.isArray(currentSecretsRaw)
+            ? (currentSecretsRaw as Record<string, any>)
+            : {};
 
         // Only include secrets that were added or modified
         const changedSecrets: Record<string, any> = {};

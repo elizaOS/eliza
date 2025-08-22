@@ -17,7 +17,7 @@ export interface WalletPortfolio {
 export class DummyWalletService extends Service {
   // Use a custom service type since WALLET isn't in ServiceType enum
   static readonly serviceType = 'wallet';
-  
+
   capabilityDescription = 'Dummy wallet service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -48,14 +48,14 @@ export class DummyWalletService extends Service {
         {
           symbol: 'ETH',
           balance: 1.5,
-          valueUsd: 5000
+          valueUsd: 5000,
         },
         {
           symbol: 'USDC',
           balance: 5000,
-          valueUsd: 5000
-        }
-      ]
+          valueUsd: 5000,
+        },
+      ],
     };
   }
 

@@ -313,8 +313,9 @@ export default function Chat({
       } as Agent)
     : undefined;
 
-  const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } =
-    useDeleteAgent(targetAgentData!);
+  const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
+    targetAgentData!
+  );
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(

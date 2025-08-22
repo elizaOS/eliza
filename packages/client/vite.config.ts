@@ -1,11 +1,11 @@
-import { defineConfig, type PluginOption } from 'vite'
-import react from '@vitejs/plugin-react-swc'
-import path from 'node:path'
-import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import { defineConfig, type PluginOption } from 'vite';
+import react from '@vitejs/plugin-react-swc';
+import path from 'node:path';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 // @ts-ignore
-import tailwindcss from '@tailwindcss/vite'
+import tailwindcss from '@tailwindcss/vite';
 // Inject Buffer/process automatically into modules that reference them during build
-import inject from '@rollup/plugin-inject'
+import inject from '@rollup/plugin-inject';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -62,13 +62,7 @@ export default defineConfig({
       // Inject polyfills early
       inject: [path.resolve(__dirname, './src/polyfills.ts')],
     },
-    include: [
-      'buffer',
-      'process',
-      'crypto-browserify',
-      'stream-browserify',
-      'util',
-    ],
+    include: ['buffer', 'process', 'crypto-browserify', 'stream-browserify', 'util'],
     // Force optimization even for linked packages
     force: true,
     // Ensure elizaos/core is pre-bundled with polyfills
@@ -107,8 +101,8 @@ export default defineConfig({
   define: {
     // Define globals for browser compatibility
     'process.env': {},
-    'global': 'globalThis',
+    global: 'globalThis',
     // Ensure Buffer is available globally
-    'Buffer': 'globalThis.Buffer',
+    Buffer: 'globalThis.Buffer',
   },
-})
+});

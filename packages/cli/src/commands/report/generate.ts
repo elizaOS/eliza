@@ -26,7 +26,9 @@ export interface GenerateCommandOptions {
 /**
  * Transform MatrixRunResult to ScenarioRunResult format for report processing
  */
-function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResult): ScenarioRunResult {
+function transformMatrixRunResultToScenarioRunResult(
+  matrixResult: MatrixRunResult
+): ScenarioRunResult {
   // Extract trajectory from scenarioResult.executionResults if available
   let trajectory: TrajectoryStep[] = [];
   let evaluations: any[] = [];
@@ -39,11 +41,13 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
     if (firstExecutionResult) {
       // Extract trajectory
       if (firstExecutionResult.trajectory) {
-        trajectory = firstExecutionResult.trajectory.map((step: any): TrajectoryStep => ({
-          type: step.type,
-          timestamp: step.timestamp,
-          content: step.content || '' // Provide default empty string if content is missing
-        }));
+        trajectory = firstExecutionResult.trajectory.map(
+          (step: any): TrajectoryStep => ({
+            type: step.type,
+            timestamp: step.timestamp,
+            content: step.content || '', // Provide default empty string if content is missing
+          })
+        );
       }
 
       // Extract final response
@@ -56,11 +60,13 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
     // Keep enhanced evaluation results in their original format - ScenarioRunResult expects EnhancedEvaluationResult[]
     evaluations = scenarioResult.evaluations.filter((evaluation: any) => {
       // Only include evaluations that have the expected enhanced format
-      return evaluation &&
+      return (
+        evaluation &&
         typeof evaluation.evaluator_type === 'string' &&
         typeof evaluation.success === 'boolean' &&
         typeof evaluation.summary === 'string' &&
-        evaluation.details !== undefined;
+        evaluation.details !== undefined
+      );
     });
   }
 
@@ -68,10 +74,15 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
   let llmCallCount = 0;
   if (trajectory.length > 0) {
     // Count LLM-generated thoughts and replies
-    llmCallCount = trajectory.filter(step =>
-      step.type === 'thought' ||
-      (step.type === 'action' && typeof step.content === 'object' && step.content.name === 'REPLY') ||
-      (step.type === 'observation' && typeof step.content === 'string' && step.content.includes('Generated reply:'))
+    llmCallCount = trajectory.filter(
+      (step) =>
+        step.type === 'thought' ||
+        (step.type === 'action' &&
+          typeof step.content === 'object' &&
+          step.content.name === 'REPLY') ||
+        (step.type === 'observation' &&
+          typeof step.content === 'string' &&
+          step.content.includes('Generated reply:'))
     ).length;
 
     // At minimum, we know there was at least 1 LLM call if we have trajectory steps
@@ -88,12 +99,12 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
     total_tokens: baseMetrics.tokenCount || 0,
     // Copy any additional numeric metrics, excluding specific fields
     ...Object.fromEntries(
-      Object.entries(baseMetrics)
-        .filter(([key, value]) =>
+      Object.entries(baseMetrics).filter(
+        ([key, value]) =>
           !['tokenCount', 'memoryUsage', 'diskUsage', 'cpuUsage'].includes(key) &&
           typeof value === 'number'
-        )
-    )
+      )
+    ),
   };
 
   return {
@@ -104,7 +115,7 @@ function transformMatrixRunResultToScenarioRunResult(matrixResult: MatrixRunResu
     final_agent_response: finalResponse,
     evaluations: evaluations,
     trajectory: trajectory,
-    error: matrixResult.error || null
+    error: matrixResult.error || null,
   };
 }
 
@@ -137,7 +148,10 @@ export function createGenerateCommand(): Command {
       try {
         await executeGenerateCommand(inputDir, options);
       } catch (error) {
-        console.error('❌ Report generation failed:', error instanceof Error ? error.message : error);
+        console.error(
+          '❌ Report generation failed:',
+          error instanceof Error ? error.message : error
+        );
         process.exit(1);
       }
     });
@@ -148,7 +162,10 @@ export function createGenerateCommand(): Command {
 /**
  * Main execution logic for the generate command
  */
-export async function executeGenerateCommand(inputDir: string, options: GenerateCommandOptions): Promise<void> {
+export async function executeGenerateCommand(
+  inputDir: string,
+  options: GenerateCommandOptions
+): Promise<void> {
   // Resolve input directory path
   const resolvedInputDir = resolve(inputDir);
 
@@ -166,7 +183,7 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
   console.log(`   • Files skipped: ${fileStats.skipped}`);
   if (fileStats.errors.length > 0) {
     console.log(`   • Errors encountered: ${fileStats.errors.length}`);
-    fileStats.errors.forEach(error => console.log(`     - ${error}`));
+    fileStats.errors.forEach((error) => console.log(`     - ${error}`));
   }
 
   if (validRuns.length === 0) {
@@ -176,12 +193,10 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
   // Generate report using the AnalysisEngine
   console.log(`⚙️  Analyzing ${validRuns.length} runs...`);
   const analysisEngine = new AnalysisEngine();
-  const reportData = analysisEngine.processRunResults(
-    validRuns,
-    matrixConfig,
-    resolvedInputDir,
-    { processed: fileStats.processed, skipped: fileStats.skipped }
-  );
+  const reportData = analysisEngine.processRunResults(validRuns, matrixConfig, resolvedInputDir, {
+    processed: fileStats.processed,
+    skipped: fileStats.skipped,
+  });
 
   // Validate the generated report data
   try {
@@ -205,13 +220,18 @@ export async function executeGenerateCommand(inputDir: string, options: Generate
 /**
  * Generate all report formats in an organized timestamped folder structure
  */
-async function generateOrganizedReports(reportData: ReportData, _inputDir: string, customOutputPath?: string): Promise<void> {
+async function generateOrganizedReports(
+  reportData: ReportData,
+  _inputDir: string,
+  customOutputPath?: string
+): Promise<void> {
   // Create timestamped run folder
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
   const runId = `run-${timestamp}`;
 
   // Use custom output path or default to scenario logs subfolder
-  const baseOutputDir = customOutputPath || join(process.cwd(), 'packages/cli/src/commands/scenario/_logs_');
+  const baseOutputDir =
+    customOutputPath || join(process.cwd(), 'packages/cli/src/commands/scenario/_logs_');
   const runDir = join(baseOutputDir, runId);
 
   // Ensure run directory exists
@@ -250,22 +270,32 @@ async function generateOrganizedReports(reportData: ReportData, _inputDir: strin
     console.log(`   • PDF Report: report.pdf`);
     console.log(`   • Run Summary: README.md`);
     console.log(`   • Total runs analyzed: ${reportData.summary_stats.total_runs}`);
-    console.log(`   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`);
-    console.log(`   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`);
+    console.log(
+      `   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`
+    );
+    console.log(
+      `   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`
+    );
     console.log(`   • Common trajectory patterns: ${reportData.common_trajectories.length}`);
-
   } catch (error) {
-    throw new Error(`Failed to generate organized reports: ${error instanceof Error ? error.message : error}`);
+    throw new Error(
+      `Failed to generate organized reports: ${error instanceof Error ? error.message : error}`
+    );
   }
 }
 
 /**
  * Generate a single format report (legacy behavior for specific format requests)
  */
-async function generateSingleFormatReport(reportData: ReportData, format: string, inputDir: string, customOutputPath?: string): Promise<void> {
+async function generateSingleFormatReport(
+  reportData: ReportData,
+  format: string,
+  inputDir: string,
+  customOutputPath?: string
+): Promise<void> {
   // Determine output path and format
-  const defaultFileName = format === 'html' ? 'report.html' :
-    format === 'pdf' ? 'report.pdf' : 'report.json';
+  const defaultFileName =
+    format === 'html' ? 'report.html' : format === 'pdf' ? 'report.pdf' : 'report.json';
   const outputPath = customOutputPath || join(inputDir, defaultFileName);
   const resolvedOutputPath = resolve(outputPath);
 
@@ -286,8 +316,12 @@ async function generateSingleFormatReport(reportData: ReportData, format: string
   console.log(`✅ Report generated successfully:`);
   console.log(`   • Output file: ${resolvedOutputPath}`);
   console.log(`   • Total runs analyzed: ${reportData.summary_stats.total_runs}`);
-  console.log(`   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`);
-  console.log(`   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`);
+  console.log(
+    `   • Overall success rate: ${(reportData.summary_stats.overall_success_rate * 100).toFixed(1)}%`
+  );
+  console.log(
+    `   • Average execution time: ${reportData.summary_stats.average_execution_time.toFixed(2)}s`
+  );
   console.log(`   • Common trajectory patterns: ${reportData.common_trajectories.length}`);
 }
 
@@ -310,12 +344,16 @@ function createRunSummary(runId: string, reportData: ReportData): string {
 - **Common Trajectory Patterns**: ${reportData.common_trajectories.length}
 
 ## Analysis Summary
-${reportData.summary_stats.total_runs > 0 ? `
+${
+  reportData.summary_stats.total_runs > 0
+    ? `
 - **Total Test Cases**: ${reportData.summary_stats.total_runs}
 - **Successful Runs**: ${Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
 - **Failed Runs**: ${reportData.summary_stats.total_runs - Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
 - **Average Duration**: ${reportData.summary_stats.average_execution_time.toFixed(2)} seconds
-` : 'No run data available.'}
+`
+    : 'No run data available.'
+}
 
 ## Usage
 - Open \`report.html\` in a web browser for interactive viewing
@@ -323,12 +361,16 @@ ${reportData.summary_stats.total_runs > 0 ? `
 - Print or share \`report.pdf\` for formal reports
 
 ## Matrix Parameters
-${Object.keys(reportData.results_by_parameter).length > 0 ?
-      Object.keys(reportData.results_by_parameter).map(param =>
-        `- **${param}**: ${Object.keys(reportData.results_by_parameter[param]).length} variations`
-      ).join('\n') :
-      'No parameter variations detected.'
-    }
+${
+  Object.keys(reportData.results_by_parameter).length > 0
+    ? Object.keys(reportData.results_by_parameter)
+        .map(
+          (param) =>
+            `- **${param}**: ${Object.keys(reportData.results_by_parameter[param]).length} variations`
+        )
+        .join('\n')
+    : 'No parameter variations detected.'
+}
 `;
 }
 
@@ -364,7 +406,7 @@ const fs = require('fs');
 
     const nodeProcess = spawn('node', ['-e', nodeScript], {
       stdio: 'inherit',
-      cwd: process.cwd()
+      cwd: process.cwd(),
     });
 
     nodeProcess.on('close', (code) => {
@@ -429,7 +471,7 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
           description: 'Loaded from matrix run',
           base_scenario: 'scenario.yaml',
           runs_per_combination: 1,
-          matrix: []
+          matrix: [],
         };
       } catch (error) {
         fileStats.errors.push(`Failed to load matrix config: ${(error as Error).message}`);
@@ -443,7 +485,7 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
         description: 'No matrix configuration file found',
         base_scenario: 'unknown.scenario.yaml',
         runs_per_combination: 1,
-        matrix: []
+        matrix: [],
       };
     }
 
@@ -456,21 +498,30 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
         let transformedRun: ScenarioRunResult;
 
         // Check if this looks like a MatrixRunResult first (more common case)
-        const isMatrixResult = runData.runId && runData.combinationId &&
+        const isMatrixResult =
+          runData.runId &&
+          runData.combinationId &&
           typeof runData.startTime === 'string' &&
           typeof runData.endTime === 'string';
 
         if (isMatrixResult) {
           // This is a MatrixRunResult - transform it
-          console.log(`🔧 [DEBUG] Detected MatrixRunResult format for ${filePath.split('/').pop()}`);
+          console.log(
+            `🔧 [DEBUG] Detected MatrixRunResult format for ${filePath.split('/').pop()}`
+          );
           const matrixResult = runData as MatrixRunResult;
           transformedRun = transformMatrixRunResultToScenarioRunResult(matrixResult);
 
           // Validate the transformed result
           const validationResult = ScenarioRunResultSchema.safeParse(transformedRun);
           if (!validationResult.success) {
-            console.log(`🔧 [DEBUG] Transformation validation failed:`, validationResult.error.issues);
-            throw new Error(`Transformed MatrixRunResult failed validation: ${JSON.stringify(validationResult.error.issues)}`);
+            console.log(
+              `🔧 [DEBUG] Transformation validation failed:`,
+              validationResult.error.issues
+            );
+            throw new Error(
+              `Transformed MatrixRunResult failed validation: ${JSON.stringify(validationResult.error.issues)}`
+            );
           }
 
           transformedRun = validationResult.data as ScenarioRunResult;
@@ -480,9 +531,13 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
           const scenarioValidation = ScenarioRunResultSchema.safeParse(runData);
           if (scenarioValidation.success) {
             transformedRun = scenarioValidation.data as ScenarioRunResult;
-            console.log(`🔧 [DEBUG] Direct ScenarioRunResult validation successful for ${filePath.split('/').pop()}`);
+            console.log(
+              `🔧 [DEBUG] Direct ScenarioRunResult validation successful for ${filePath.split('/').pop()}`
+            );
           } else {
-            console.log(`🔧 [DEBUG] File ${filePath.split('/').pop()} does not match any known format`);
+            console.log(
+              `🔧 [DEBUG] File ${filePath.split('/').pop()} does not match any known format`
+            );
             console.log(`🔧 [DEBUG] Available fields:`, Object.keys(runData));
             throw new Error(`File does not match ScenarioRunResult or MatrixRunResult format`);
           }
@@ -490,7 +545,6 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
 
         validRuns.push(transformedRun);
         fileStats.processed++;
-
       } catch (error) {
         fileStats.skipped++;
         const fileName = filePath.split('/').pop() || filePath;
@@ -507,7 +561,6 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
     if (matrixConfig.matrix.length === 0 && validRuns.length > 0) {
       matrixConfig = inferMatrixConfigFromRuns(matrixConfig, validRuns);
     }
-
   } catch (error) {
     throw new Error(`Failed to process input directory: ${(error as Error).message}`);
   }
@@ -515,18 +568,21 @@ async function ingestRunData(inputDir: string): Promise<DataIngestionResult> {
   return {
     validRuns,
     matrixConfig,
-    fileStats
+    fileStats,
   };
 }
 
 /**
  * Infer matrix configuration from the parameter variations found in run data
  */
-function inferMatrixConfigFromRuns(baseConfig: MatrixConfig, runs: ScenarioRunResult[]): MatrixConfig {
+function inferMatrixConfigFromRuns(
+  baseConfig: MatrixConfig,
+  runs: ScenarioRunResult[]
+): MatrixConfig {
   const parameterVariations: Map<string, Set<any>> = new Map();
 
   // Collect all parameter variations
-  runs.forEach(run => {
+  runs.forEach((run) => {
     collectParameterPaths(run.parameters, '', parameterVariations);
   });
 
@@ -535,12 +591,12 @@ function inferMatrixConfigFromRuns(baseConfig: MatrixConfig, runs: ScenarioRunRe
     .filter(([_, values]) => values.size > 1) // Only include parameters that vary
     .map(([parameter, values]) => ({
       parameter,
-      values: Array.from(values)
+      values: Array.from(values),
     }));
 
   return {
     ...baseConfig,
-    matrix: matrixAxes
+    matrix: matrixAxes,
   };
 }
 
@@ -578,11 +634,7 @@ function collectParameterPaths(
  * Generate JSON report file
  */
 async function generateJsonReport(reportData: ReportData, outputPath: string): Promise<void> {
-  await fs.writeFile(
-    outputPath,
-    JSON.stringify(reportData, null, 2),
-    'utf8'
-  );
+  await fs.writeFile(outputPath, JSON.stringify(reportData, null, 2), 'utf8');
 }
 
 /**
@@ -590,8 +642,29 @@ async function generateJsonReport(reportData: ReportData, outputPath: string): P
  */
 async function generateHtmlReport(reportData: ReportData, outputPath: string): Promise<void> {
   // Load the HTML template - try built path first, then source path for development
-  const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
-  const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+  const builtTemplatePath = join(
+    process.cwd(),
+    'packages',
+    'cli',
+    'dist',
+    'src',
+    'commands',
+    'report',
+    'src',
+    'assets',
+    'report_template.html'
+  );
+  const sourceTemplatePath = join(
+    process.cwd(),
+    'packages',
+    'cli',
+    'src',
+    'commands',
+    'report',
+    'src',
+    'assets',
+    'report_template.html'
+  );
 
   let templatePath: string;
   if (existsSync(builtTemplatePath)) {
@@ -599,7 +672,9 @@ async function generateHtmlReport(reportData: ReportData, outputPath: string): P
   } else if (existsSync(sourceTemplatePath)) {
     templatePath = sourceTemplatePath;
   } else {
-    throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+    throw new Error(
+      `HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`
+    );
   }
 
   try {
@@ -613,9 +688,10 @@ async function generateHtmlReport(reportData: ReportData, outputPath: string): P
 
     // Write the complete HTML report
     await fs.writeFile(outputPath, htmlReport, 'utf-8');
-
   } catch (error) {
-    throw new Error(`Failed to generate HTML report: ${(error as Error).message}. Make sure the HTML template exists at ${templatePath}`);
+    throw new Error(
+      `Failed to generate HTML report: ${(error as Error).message}. Make sure the HTML template exists at ${templatePath}`
+    );
   }
 }
 
@@ -628,8 +704,29 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
   try {
     // First generate the HTML content (same as HTML report)
     // Try built path first, then source path for development
-    const builtTemplatePath = join(process.cwd(), 'packages', 'cli', 'dist', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
-    const sourceTemplatePath = join(process.cwd(), 'packages', 'cli', 'src', 'commands', 'report', 'src', 'assets', 'report_template.html');
+    const builtTemplatePath = join(
+      process.cwd(),
+      'packages',
+      'cli',
+      'dist',
+      'src',
+      'commands',
+      'report',
+      'src',
+      'assets',
+      'report_template.html'
+    );
+    const sourceTemplatePath = join(
+      process.cwd(),
+      'packages',
+      'cli',
+      'src',
+      'commands',
+      'report',
+      'src',
+      'assets',
+      'report_template.html'
+    );
 
     let templatePath: string;
     if (existsSync(builtTemplatePath)) {
@@ -637,7 +734,9 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
     } else if (existsSync(sourceTemplatePath)) {
       templatePath = sourceTemplatePath;
     } else {
-      throw new Error(`HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`);
+      throw new Error(
+        `HTML template not found. Searched:\n- ${builtTemplatePath}\n- ${sourceTemplatePath}`
+      );
     }
     const templateContent = await fs.readFile(templatePath, 'utf-8');
 
@@ -653,15 +752,18 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
     await generatePerformanceReportPdf(htmlContent, outputPath);
 
     console.log('✅ PDF report generated successfully');
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Provide helpful error messages for common issues
     if (errorMessage.includes('Could not find Chromium')) {
-      throw new Error('PDF generation failed: Chromium browser not found. Please install Puppeteer dependencies or use --format html instead.');
+      throw new Error(
+        'PDF generation failed: Chromium browser not found. Please install Puppeteer dependencies or use --format html instead.'
+      );
     } else if (errorMessage.includes('Navigation timeout')) {
-      throw new Error('PDF generation failed: Timeout while loading report. The report may be too large or complex.');
+      throw new Error(
+        'PDF generation failed: Timeout while loading report. The report may be too large or complex.'
+      );
     } else {
       throw new Error(`Failed to generate PDF report: ${errorMessage}`);
     }

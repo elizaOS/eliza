@@ -18,8 +18,8 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
         return [
           {
             success: true,
-            message: 'Legacy evaluation passed'
-          }
+            message: 'Legacy evaluation passed',
+          },
         ];
       },
       runEnhancedEvaluations: async (evaluations: any[], result: any) => {
@@ -28,10 +28,10 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
             evaluator_type: 'string_contains',
             success: true,
             summary: 'Enhanced evaluation passed',
-            details: { expected: 'test', actual: 'test data' }
-          }
+            details: { expected: 'test', actual: 'test data' },
+          },
         ];
-      }
+      },
     };
   });
 
@@ -54,7 +54,7 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
     result: any
   ) {
     const useEnhanced = process.env.ELIZA_ENHANCED_EVALUATIONS === 'true';
-    
+
     if (!useEnhanced) {
       // Feature flag disabled - use original evaluations directly
       return await evaluationEngine.runEvaluations(evaluations, result);
@@ -63,28 +63,28 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
     try {
       // Attempt enhanced evaluations
       const enhancedResults = await evaluationEngine.runEnhancedEvaluations(evaluations, result);
-      
+
       // Validate that we got proper structured results
       if (Array.isArray(enhancedResults) && enhancedResults.length > 0) {
         const firstResult = enhancedResults[0];
-        if (firstResult && 
-            typeof firstResult.evaluator_type === 'string' &&
-            typeof firstResult.success === 'boolean' &&
-            typeof firstResult.summary === 'string' &&
-            typeof firstResult.details === 'object') {
-          
+        if (
+          firstResult &&
+          typeof firstResult.evaluator_type === 'string' &&
+          typeof firstResult.success === 'boolean' &&
+          typeof firstResult.summary === 'string' &&
+          typeof firstResult.details === 'object'
+        ) {
           // Convert enhanced results back to legacy format for compatibility
-          return enhancedResults.map(enhanced => ({
+          return enhancedResults.map((enhanced) => ({
             success: enhanced.success,
             message: enhanced.summary,
             // Store enhanced data for future use
-            _enhanced: enhanced
+            _enhanced: enhanced,
           }));
         }
       }
-      
+
       // Enhanced results invalid - fall through to legacy
-      
     } catch (error) {
       // Enhanced evaluations failed - fall back to legacy
     }
@@ -156,7 +156,7 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
       expect(output[0]).toHaveProperty('message');
       expect(typeof output[0].success).toBe('boolean');
       expect(typeof output[0].message).toBe('string');
-      
+
       // Enhanced data preserved
       expect(output[0]._enhanced).toBeDefined();
       expect(output[0]._enhanced.evaluator_type).toBe('string_contains');
@@ -246,7 +246,7 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
             evaluator_type: 'string_contains',
             success: true,
             // missing 'summary' and 'details'
-          }
+          },
         ];
       };
 
@@ -275,32 +275,32 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
             evaluator_type: 'string_contains',
             success: true,
             summary: 'String check passed',
-            details: { expected: 'test', actual: 'test data' }
+            details: { expected: 'test', actual: 'test data' },
           },
           {
             evaluator_type: 'execution_time',
             success: false,
             summary: 'Execution too slow',
-            details: { duration_ms: 1500, max_duration_ms: 1000 }
-          }
+            details: { duration_ms: 1500, max_duration_ms: 1000 },
+          },
         ];
       };
 
       const evaluations = [
         { type: 'string_contains', value: 'test' },
-        { type: 'execution_time', max_duration_ms: 1000 }
+        { type: 'execution_time', max_duration_ms: 1000 },
       ];
       const result = { stdout: 'test data', durationMs: 1500 };
 
       const output = await runEvaluationsWithFallback(mockEvaluationEngine, evaluations, result);
 
       expect(output).toHaveLength(2);
-      
+
       // First evaluation (success)
       expect(output[0].success).toBe(true);
       expect(output[0].message).toBe('String check passed');
       expect(output[0]._enhanced.evaluator_type).toBe('string_contains');
-      
+
       // Second evaluation (failure)
       expect(output[1].success).toBe(false);
       expect(output[1].message).toBe('Execution too slow');
@@ -337,13 +337,13 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
       mockEvaluationEngine.runEvaluations = async () => {
         return [
           { success: true, message: 'First passed' },
-          { success: false, message: 'Second failed' }
+          { success: false, message: 'Second failed' },
         ];
       };
 
       const evaluations = [
         { type: 'string_contains', value: 'test1' },
-        { type: 'string_contains', value: 'test2' }
+        { type: 'string_contains', value: 'test2' },
       ];
       const result = { stdout: 'test1 data' };
 
@@ -354,11 +354,10 @@ describe('Safe Integration with Fallback (Ticket #5783)', () => {
       expect(output[0].message).toBe('First passed');
       expect(output[1].success).toBe(false);
       expect(output[1].message).toBe('Second failed');
-      
+
       // No enhanced data should be present
       expect(output[0]._enhanced).toBeUndefined();
       expect(output[1]._enhanced).toBeUndefined();
     });
   });
 });
-

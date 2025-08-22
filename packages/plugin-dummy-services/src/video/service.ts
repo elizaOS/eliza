@@ -41,7 +41,7 @@ export interface VideoProcessingOptions {
  */
 export class DummyVideoService extends Service {
   static readonly serviceType = ServiceType.VIDEO;
-  
+
   capabilityDescription = 'Dummy video service for testing';
 
   constructor(runtime: IAgentRuntime) {
@@ -70,26 +70,23 @@ export class DummyVideoService extends Service {
       duration: 300, // 5 minutes
       resolution: {
         width: 1920,
-        height: 1080
+        height: 1080,
       },
       format: 'mp4',
       size: 50000000, // 50MB
       fps: 30,
-      codec: 'h264'
+      codec: 'h264',
     };
   }
 
-  async downloadVideo(
-    url: string,
-    options?: VideoDownloadOptions
-  ): Promise<Buffer> {
+  async downloadVideo(url: string, options?: VideoDownloadOptions): Promise<Buffer> {
     logger.debug(`Downloading video from: ${url}`, JSON.stringify(options));
 
     // Return dummy video buffer
     const dummyVideo = Buffer.from(`dummy-video-${options?.format || 'mp4'}`);
-    
+
     logger.debug(`Downloaded video: ${dummyVideo.length} bytes`);
-    
+
     return dummyVideo;
   }
 
@@ -100,31 +97,21 @@ export class DummyVideoService extends Service {
     return Buffer.from('dummy-audio-from-video');
   }
 
-  async extractFrames(
-    videoBuffer: Buffer,
-    timestamps: number[]
-  ): Promise<Buffer[]> {
+  async extractFrames(videoBuffer: Buffer, timestamps: number[]): Promise<Buffer[]> {
     logger.debug(`Extracting ${timestamps.length} frames from video`);
 
     // Return dummy frame buffers
-    return timestamps.map((ts, index) => 
-      Buffer.from(`dummy-frame-${index}-at-${ts}s`)
-    );
+    return timestamps.map((ts, index) => Buffer.from(`dummy-frame-${index}-at-${ts}s`));
   }
 
-  async processVideo(
-    videoBuffer: Buffer,
-    options: VideoProcessingOptions
-  ): Promise<Buffer> {
+  async processVideo(videoBuffer: Buffer, options: VideoProcessingOptions): Promise<Buffer> {
     logger.debug('Processing video', JSON.stringify(options));
 
     // Return dummy processed video buffer
-    const processedVideo = Buffer.from(
-      `dummy-processed-video-${options.outputFormat || 'mp4'}`
-    );
-    
+    const processedVideo = Buffer.from(`dummy-processed-video-${options.outputFormat || 'mp4'}`);
+
     logger.debug(`Processed video: ${processedVideo.length} bytes`);
-    
+
     return processedVideo;
   }
 
@@ -136,20 +123,20 @@ export class DummyVideoService extends Service {
         format: 'mp4',
         resolution: '1920x1080',
         size: 50000000,
-        url: `${url}?format=1080p`
+        url: `${url}?format=1080p`,
       },
       {
         format: 'mp4',
         resolution: '1280x720',
         size: 25000000,
-        url: `${url}?format=720p`
+        url: `${url}?format=720p`,
       },
       {
         format: 'mp4',
         resolution: '640x480',
         size: 10000000,
-        url: `${url}?format=480p`
-      }
+        url: `${url}?format=480p`,
+      },
     ];
   }
 

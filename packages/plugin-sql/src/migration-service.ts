@@ -26,7 +26,7 @@ export class DatabaseMigrationService {
       `Discovered ${this.registeredSchemas.size} plugin schemas out of ${plugins.length} plugins`
     );
   }
-  
+
   registerSchema(pluginName: string, schema: any): void {
     this.registeredSchemas.set(pluginName, schema);
     logger.info(`Registered schema for plugin: ${pluginName}`);

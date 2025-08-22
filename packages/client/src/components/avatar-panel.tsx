@@ -21,7 +21,7 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
     const avatarSetting = characterValue?.settings?.avatar;
     return typeof avatarSetting === 'string' ? avatarSetting : null;
   };
-  
+
   const [avatar, setAvatar] = useState<string | null>(getAvatarUrl());
   const [hasChanged, setHasChanged] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

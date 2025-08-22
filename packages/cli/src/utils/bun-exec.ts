@@ -9,14 +9,14 @@ const COMMAND_EXISTS_TIMEOUT_MS = 5000; // 5 seconds timeout for command existen
  */
 function ensureBunInPath(env: Record<string, string> = {}): Record<string, string> {
   const enhancedEnv: Record<string, string> = {};
-  
+
   // Filter out undefined values from process.env
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) {
       enhancedEnv[key] = value;
     }
   }
-  
+
   // Override with provided env
   Object.assign(enhancedEnv, env);
 
@@ -123,7 +123,10 @@ async function readStreamSafe(
     const text = await new Response(stream).text();
     return text;
   } catch (error) {
-    logger.debug(`[bunExec] Error reading ${streamName}:`, error instanceof Error ? error.message : String(error));
+    logger.debug(
+      `[bunExec] Error reading ${streamName}:`,
+      error instanceof Error ? error.message : String(error)
+    );
     return '';
   }
 }
