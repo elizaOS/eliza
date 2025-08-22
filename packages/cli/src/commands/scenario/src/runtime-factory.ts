@@ -3,6 +3,7 @@ import { loadEnvironmentVariables } from './env-loader';
 import { setDefaultSecretsFromEnv } from '../../start';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
+import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -119,7 +120,7 @@ export async function createScenarioServer(
         createdServer = true;
 
         // Register the server process for cleanup
-        const serverPid = (server as any)?.server?.pid || process.pid;
+        const serverPid = server.server?.pid || process.pid;
         const runId = `agent-server-${port}`;
         processManager.registerProcess(runId, serverPid, 'agent-server', port);
         console.log(
@@ -181,7 +182,7 @@ export async function createScenarioAgent(
     plugins: pluginNames,
     settings: {
       secrets: {
-        ...(envSettings as Record<string, any>),
+        ...envSettings,
       },
     },
     // Always respond: set system prompt and template to ensure reply
@@ -248,7 +249,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     }
 
     // Unregister from process manager
-    const serverPid = (server as any)?.server?.pid || process.pid;
+    const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
     processManager.unregisterProcess(serverPid);
     console.log(
       `🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`
@@ -257,7 +258,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     console.log(`🔧 [DEBUG] Error shutting down AgentServer on port ${port}:`, error);
 
     // Force terminate the process if graceful shutdown failed
-    const serverPid = (server as any)?.server?.pid || process.pid;
+    const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
     if (processManager.isProcessRunning(serverPid)) {
       console.log(`🔧 [DEBUG] Force terminating AgentServer process ${serverPid}...`);
       processManager.terminateProcess(serverPid);
@@ -283,9 +284,9 @@ export async function askAgentViaApi(
 
   try {
     // Use provided port or try to extract from server, fallback to 3000
-    const port = serverPort ?? (server as any)?.port ?? 3000;
+    const port = serverPort ?? (server as AgentServer & { port?: number })?.port ?? 3000;
     console.log(
-      `🔧 [askAgentViaApi] Port calculation: provided=${serverPort}, server.port=${(server as any)?.port}, final=${port}`
+      `🔧 [askAgentViaApi] Port calculation: provided=${serverPort}, server.port=${(server as AgentServer & { port?: number })?.port}, final=${port}`
     );
 
     console.log(`🔧 [askAgentViaApi] Creating ElizaClient with baseUrl: http://localhost:${port}`);
@@ -385,7 +386,7 @@ export async function askAgentViaApi(
       );
 
       const agentMessages = messages.messages.filter(
-        (msg: any) => msg.authorId === agentId && msg.created_at > startTime
+        (msg: Message) => msg.authorId === agentId && new Date(msg.createdAt).getTime() > startTime
       );
       console.log(
         `🔧 [askAgentViaApi] Found ${agentMessages.length} agent messages after startTime`
@@ -393,7 +394,7 @@ export async function askAgentViaApi(
 
       if (agentMessages.length > 0) {
         const latestMessage = agentMessages.sort(
-          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          (a: Message, b: Message) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )[0];
         console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
         return { response: latestMessage.content, roomId: channel.id as UUID };

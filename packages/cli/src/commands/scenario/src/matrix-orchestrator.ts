@@ -23,6 +23,9 @@ import { processManager } from './process-manager';
 import { MatrixCombination } from './matrix-types';
 import { applyParameterOverrides } from './parameter-override';
 import { MatrixConfig } from './matrix-schema';
+import { IAgentRuntime, UUID } from '@elizaos/core';
+import { AgentServer } from '@elizaos/server';
+import { Scenario } from './schema';
 
 /**
  * Results from executing a single matrix run.
@@ -33,7 +36,7 @@ export interface MatrixRunResult {
   /** ID of the combination this run belongs to */
   combinationId: string;
   /** Parameters that were applied for this run */
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   /** When the run started */
   startTime: Date;
   /** When the run ended */
@@ -43,7 +46,7 @@ export interface MatrixRunResult {
   /** Whether the run completed successfully */
   success: boolean;
   /** Results from the scenario execution */
-  scenarioResult?: any;
+  scenarioResult?: unknown;
   /** Error message if the run failed */
   error?: string;
   /** Performance and resource metrics */
@@ -99,7 +102,7 @@ export interface CombinationSummary {
   /** Combination identifier */
   combinationId: string;
   /** Parameters for this combination */
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   /** Number of runs for this combination */
   totalRuns: number;
   /** Successful runs */
@@ -127,13 +130,13 @@ export interface MatrixExecutionOptions {
   /** Timeout for individual runs in milliseconds */
   runTimeout?: number;
   /** Callback for progress updates */
-  onProgress?: (message: string, eventType: ProgressEventType, data?: any) => void;
+  onProgress?: (message: string, eventType: ProgressEventType, data?: unknown) => void;
   /** Callback when a combination completes */
   onCombinationComplete?: (summary: CombinationSummary) => void;
   /** Callback for resource warnings */
   onResourceWarning?: (alert: ResourceAlert) => void;
   /** Callback for resource updates */
-  onResourceUpdate?: (resources: any) => void;
+  onResourceUpdate?: (resources: unknown) => void;
   /** Whether to show detailed progress information */
   verbose?: boolean;
 }
@@ -144,7 +147,7 @@ export interface MatrixExecutionOptions {
 interface ActiveRun {
   runId: string;
   combinationId: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   context: IsolationContext;
   startTime: Date;
   promise: Promise<MatrixRunResult>;
@@ -177,11 +180,13 @@ export async function executeMatrixRuns(
   const activeRuns = new Map<string, ActiveRun>();
 
   // Declare shared server at function scope for cleanup
-  let sharedServer: { server: any; port: number } | null = null;
+  let sharedServer: { server: AgentServer; port: number } | null = null;
 
   // Log initial process state
   const initialSummary = processManager.getSummary();
-  console.log(`🔧 [DEBUG] [ProcessManager] Initial state: ${initialSummary.total} processes tracked`);
+  console.log(
+    `🔧 [DEBUG] [ProcessManager] Initial state: ${initialSummary.total} processes tracked`
+  );
 
   console.log('🔧 [DEBUG] About to setup execution environment');
 
@@ -225,7 +230,7 @@ export async function executeMatrixRuns(
     console.log('🔧 [DEBUG] About to read base scenario file');
     const baseScenarioContent = await fs.readFile(config.base_scenario, 'utf8');
     console.log('🔧 [DEBUG] Base scenario file read successfully');
-    let baseScenario: any;
+    let baseScenario: Scenario;
 
     try {
       // Try parsing as JSON first
@@ -253,29 +258,43 @@ export async function executeMatrixRuns(
     const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap']; // Always include core plugins
     const scenarioPlugins = Array.isArray(baseScenario.plugins)
       ? baseScenario.plugins
-        .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-        .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+          .filter((p: { enabled?: boolean }) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+          .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
       : [];
-    const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins, '@elizaos/plugin-openai'])); // Always include OpenAI for responses
+    const finalPlugins = Array.from(
+      new Set([...scenarioPlugins, ...defaultPlugins, '@elizaos/plugin-openai'])
+    ); // Always include OpenAI for responses
     console.log(`🔧 [DEBUG] Dynamic plugins loaded: ${JSON.stringify(finalPlugins)}`);
 
-    console.log(`🔧 [DEBUG] Shared server condition check: combinations.length=${combinations.length}, runs_per_combination=${config.runs_per_combination}`);
+    console.log(
+      `🔧 [DEBUG] Shared server condition check: combinations.length=${combinations.length}, runs_per_combination=${config.runs_per_combination}`
+    );
 
     if (combinations.length > 1 || config.runs_per_combination > 1) {
-      console.log('🔧 [DEBUG] Matrix testing detected - creating shared server for better isolation...');
+      console.log(
+        '🔧 [DEBUG] Matrix testing detected - creating shared server for better isolation...'
+      );
       const { createScenarioServer } = await import('./runtime-factory');
 
       try {
-        console.log(`🔧 [DEBUG] Calling createScenarioServer(null, 3000)... (using fixed port 3000 for MessageBusService compatibility)`);
+        console.log(
+          `🔧 [DEBUG] Calling createScenarioServer(null, 3000)... (using fixed port 3000 for MessageBusService compatibility)`
+        );
         const serverResult = await createScenarioServer(null, 3000);
         sharedServer = {
           server: serverResult.server,
-          port: serverResult.port
+          port: serverResult.port,
         };
-        console.log(`🔧 [DEBUG] ✅ Shared server created successfully on port ${sharedServer.port}`);
-        console.log(`🔧 [DEBUG] ✅ Server result details: port=${serverResult.port}, createdServer=${serverResult.createdServer}`);
+        console.log(
+          `🔧 [DEBUG] ✅ Shared server created successfully on port ${sharedServer.port}`
+        );
+        console.log(
+          `🔧 [DEBUG] ✅ Server result details: port=${serverResult.port}, createdServer=${serverResult.createdServer}`
+        );
       } catch (error) {
-        console.log(`🔧 [DEBUG] ❌ Failed to create shared server, falling back to individual servers: ${error}`);
+        console.log(
+          `🔧 [DEBUG] ❌ Failed to create shared server, falling back to individual servers: ${error}`
+        );
         sharedServer = null;
       }
     }
@@ -288,12 +307,16 @@ export async function executeMatrixRuns(
     for (const combination of combinations) {
       console.log(`🔧 [DEBUG] Processing combination: ${combination.id}`);
       const combinationResults: MatrixRunResult[] = [];
-      console.log(`🔧 [DEBUG] About to process ${config.runs_per_combination} runs for this combination`);
+      console.log(
+        `🔧 [DEBUG] About to process ${config.runs_per_combination} runs for this combination`
+      );
 
       // Execute all runs for this combination
       console.log('🔧 [DEBUG] About to start processing runs for this combination');
       for (let runIndex = 0; runIndex < config.runs_per_combination; runIndex++) {
-        console.log(`🔧 [DEBUG] About to process run ${runIndex + 1} of ${config.runs_per_combination}`);
+        console.log(
+          `🔧 [DEBUG] About to process run ${runIndex + 1} of ${config.runs_per_combination}`
+        );
         console.log(`🔧 [DEBUG] Current active runs count: ${activeRuns.size}`);
         console.log(`🔧 [DEBUG] Max parallel execution: ${maxParallel}`);
         const memoryUsage = process.memoryUsage();
@@ -301,7 +324,8 @@ export async function executeMatrixRuns(
         console.log(`🔧 [DEBUG] Total memory usage: ${memoryUsage.heapTotal / 1024 / 1024} MB`);
 
         // Check if memory usage is too high and force cleanup
-        if (memoryUsage.heapUsed > 500 * 1024 * 1024) { // 500MB threshold
+        if (memoryUsage.heapUsed > 500 * 1024 * 1024) {
+          // 500MB threshold
           console.log(`🔧 [DEBUG] High memory usage detected, forcing cleanup...`);
           if (global.gc) {
             global.gc();
@@ -312,10 +336,15 @@ export async function executeMatrixRuns(
         runCounter++;
         const runId = generateRunFilename(runCounter);
         console.log(`🔧 [DEBUG] Generated runId: ${runId}`);
-        console.log(`🔧 [DEBUG] Combination parameters:`, JSON.stringify(combination.parameters, null, 2));
+        console.log(
+          `🔧 [DEBUG] Combination parameters:`,
+          JSON.stringify(combination.parameters, null, 2)
+        );
 
         // Wait for available slot if we're at max parallelism
-        console.log(`🔧 [DEBUG] Waiting for available slot... (active runs: ${activeRuns.size}/${maxParallel})`);
+        console.log(
+          `🔧 [DEBUG] Waiting for available slot... (active runs: ${activeRuns.size}/${maxParallel})`
+        );
         await waitForAvailableSlot(activeRuns, maxParallel);
         console.log(`🔧 [DEBUG] Slot available, about to start the run ${runId}`);
         console.log(`🔧 [DEBUG] About to call executeIndividualRun with timeout: ${runTimeout}ms`);
@@ -366,7 +395,9 @@ export async function executeMatrixRuns(
                 await activeRun.context.cleanup();
                 console.log(`🔧 [DEBUG] Context cleanup completed for runId: ${runId}`);
               } catch (cleanupError) {
-                console.log(`🔧 [DEBUG] Context cleanup failed for runId: ${runId}: ${cleanupError}`);
+                console.log(
+                  `🔧 [DEBUG] Context cleanup failed for runId: ${runId}: ${cleanupError}`
+                );
               }
               activeRuns.delete(runId);
               console.log(`🔧 [DEBUG] Active runs after cleanup: ${activeRuns.size}`);
@@ -401,7 +432,9 @@ export async function executeMatrixRuns(
                 };
               }
             } catch (metricsError) {
-              console.log(`🔧 [DEBUG] Failed to capture metrics for failed run ${runId}: ${metricsError}`);
+              console.log(
+                `🔧 [DEBUG] Failed to capture metrics for failed run ${runId}: ${metricsError}`
+              );
             }
 
             // Handle run failure
@@ -428,7 +461,9 @@ export async function executeMatrixRuns(
                 await activeRun.context.cleanup();
                 console.log(`🔧 [DEBUG] Failed run context cleanup completed for runId: ${runId}`);
               } catch (cleanupError) {
-                console.log(`🔧 [DEBUG] Failed run context cleanup failed for runId: ${runId}: ${cleanupError}`);
+                console.log(
+                  `🔧 [DEBUG] Failed run context cleanup failed for runId: ${runId}: ${cleanupError}`
+                );
               }
               activeRuns.delete(runId);
               console.log(`🔧 [DEBUG] Active runs after failed run cleanup: ${activeRuns.size}`);
@@ -520,15 +555,17 @@ export async function executeMatrixRuns(
 async function executeIndividualRun(
   runId: string,
   combination: MatrixCombination,
-  baseScenario: any,
+  baseScenario: Scenario,
   outputDir: string,
   progressTracker: ProgressTracker,
   resourceMonitor: ResourceMonitor,
   timeout: number,
-  sharedServer?: { server: any; port: number }, // Optional shared server for matrix testing
+  sharedServer?: { server: AgentServer; port: number }, // Optional shared server for matrix testing
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
 ): Promise<MatrixRunResult> {
-  console.log(`🔧 [DEBUG] executeIndividualRun started for runId: ${runId} with timeout: ${timeout}ms`);
+  console.log(
+    `🔧 [DEBUG] executeIndividualRun started for runId: ${runId} with timeout: ${timeout}ms`
+  );
   const startTime = new Date();
 
   // Add timeout wrapper to prevent hanging
@@ -543,23 +580,37 @@ async function executeIndividualRun(
     // Start progress tracking
     progressTracker.startRun(runId, combination.id, combination.parameters);
 
-    console.log(`🔧 [DEBUG] executeIndividualRun: About to create isolated environment for runId: ${runId}`);
+    console.log(
+      `🔧 [DEBUG] executeIndividualRun: About to create isolated environment for runId: ${runId}`
+    );
     // Create isolated environment
     const context = await createIsolatedEnvironment(runId, outputDir);
-    console.log(`🔧 [DEBUG] executeIndividualRun: Isolated environment created successfully for runId: ${runId}`);
+    console.log(
+      `🔧 [DEBUG] executeIndividualRun: Isolated environment created successfully for runId: ${runId}`
+    );
 
     try {
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to write temporary scenario for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to write temporary scenario for runId: ${runId}`
+      );
       // Apply parameter overrides and write temporary scenario
       await writeTemporaryScenario(context.scenarioPath, baseScenario, combination.parameters);
-      console.log(`🔧 [DEBUG] executeIndividualRun: Temporary scenario written successfully for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: Temporary scenario written successfully for runId: ${runId}`
+      );
 
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to get resource snapshot before run for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to get resource snapshot before run for runId: ${runId}`
+      );
       // Monitor resources before run
       const resourcesBefore = await getResourceSnapshot();
-      console.log(`🔧 [DEBUG] executeIndividualRun: Resource snapshot before run completed for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: Resource snapshot before run completed for runId: ${runId}`
+      );
 
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to execute scenario with timeout for runId: ${runId}, timeout: ${timeout}ms`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to execute scenario with timeout for runId: ${runId}, timeout: ${timeout}ms`
+      );
       // Execute scenario with timeout and race against timeout wrapper
       const scenarioResult = await Promise.race([
         executeScenarioWithTimeout(
@@ -573,16 +624,24 @@ async function executeIndividualRun(
           runId, // Pass runId for unique agent naming
           dynamicPlugins // Pass dynamic plugins from scenario configuration
         ),
-        timeoutPromise
+        timeoutPromise,
       ]);
-      console.log(`🔧 [DEBUG] executeIndividualRun: Scenario execution completed successfully for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: Scenario execution completed successfully for runId: ${runId}`
+      );
 
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to get resource snapshot after run for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to get resource snapshot after run for runId: ${runId}`
+      );
       // Monitor resources after run
       const resourcesAfter = await getResourceSnapshot();
-      console.log(`🔧 [DEBUG] executeIndividualRun: Resource snapshot after run completed for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: Resource snapshot after run completed for runId: ${runId}`
+      );
 
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to calculate metrics for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to calculate metrics for runId: ${runId}`
+      );
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
@@ -594,7 +653,9 @@ async function executeIndividualRun(
         cpuUsage: resourcesAfter.cpuUsage,
       };
 
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to mark run as completed for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to mark run as completed for runId: ${runId}`
+      );
       // Mark run as completed
       progressTracker.completeRun(runId, true, duration);
       console.log(`🔧 [DEBUG] executeIndividualRun: Run marked as completed for runId: ${runId}`);
@@ -614,13 +675,19 @@ async function executeIndividualRun(
       console.log(`🔧 [DEBUG] executeIndividualRun: About to return result for runId: ${runId}`);
       return result;
     } finally {
-      console.log(`🔧 [DEBUG] executeIndividualRun: About to cleanup isolated environment for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: About to cleanup isolated environment for runId: ${runId}`
+      );
       // Always cleanup isolated environment
       await context.cleanup();
-      console.log(`🔧 [DEBUG] executeIndividualRun: Isolated environment cleanup completed for runId: ${runId}`);
+      console.log(
+        `🔧 [DEBUG] executeIndividualRun: Isolated environment cleanup completed for runId: ${runId}`
+      );
     }
   } catch (error) {
-    console.log(`🔧 [DEBUG] executeIndividualRun: Error occurred for runId: ${runId}, error: ${error}`);
+    console.log(
+      `🔧 [DEBUG] executeIndividualRun: Error occurred for runId: ${runId}, error: ${error}`
+    );
     const endTime = new Date();
     const duration = endTime.getTime() - startTime.getTime();
 
@@ -674,10 +741,10 @@ async function executeScenarioWithTimeout(
   context: IsolationContext,
   timeout: number,
   onProgress: (progress: number, status: string) => void,
-  sharedServer?: { server: any; port: number }, // Optional shared server for matrix testing
+  sharedServer?: { server: AgentServer; port: number }, // Optional shared server for matrix testing
   runId?: string, // Optional run ID for unique agent naming
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
-): Promise<any> {
+): Promise<ExecutionResult> {
   return new Promise(async (resolve, reject) => {
     const scenarioStartTime = Date.now();
     const timeoutHandle = setTimeout(() => {
@@ -690,7 +757,7 @@ async function executeScenarioWithTimeout(
       // Load and parse the scenario file
       const yaml = await import('js-yaml');
       const scenarioContent = await fs.readFile(scenarioPath, 'utf8');
-      const scenario = yaml.load(scenarioContent) as any;
+      const scenario = yaml.load(scenarioContent) as Scenario;
 
       onProgress(0.2, 'Validating scenario...');
 
@@ -705,7 +772,12 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const { createScenarioServerAndAgent, createScenarioServer, createScenarioAgent, shutdownScenarioServer } = await import('./runtime-factory');
+      const {
+        createScenarioServerAndAgent,
+        createScenarioServer,
+        createScenarioAgent,
+        shutdownScenarioServer,
+      } = await import('./runtime-factory');
 
       // Override environment variables for isolation
       const originalEnv = process.env;
@@ -714,21 +786,23 @@ async function executeScenarioWithTimeout(
         ...originalEnv,
         ELIZAOS_DB_PATH: context.dbPath,
         ELIZAOS_LOG_PATH: context.logPath,
-        ELIZAOS_TEMP_DIR: context.tempDir
+        ELIZAOS_TEMP_DIR: context.tempDir,
       };
 
       try {
         onProgress(0.4, 'Initializing agent runtime...');
 
-        let server: any;
-        let runtime: any;
-        let agentId: any;
+        let server: AgentServer;
+        let runtime: IAgentRuntime;
+        let agentId: UUID;
         let port: number;
         let serverCreated = false;
 
         if (sharedServer) {
           // Use shared server pattern for matrix testing
-          console.log(`🔧 [DEBUG] Using shared server on port ${sharedServer.port} for agent creation`);
+          console.log(
+            `🔧 [DEBUG] Using shared server on port ${sharedServer.port} for agent creation`
+          );
           console.log(`🔧 [DEBUG] Dynamic plugins for agent: ${JSON.stringify(dynamicPlugins)}`);
           server = sharedServer.server;
           port = sharedServer.port;
@@ -739,21 +813,35 @@ async function executeScenarioWithTimeout(
           const agentResult = await createScenarioAgent(
             server,
             uniqueAgentName, // Unique agent name per run
-            dynamicPlugins || ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'] // Use dynamic or fallback plugins
+            dynamicPlugins || [
+              '@elizaos/plugin-sql',
+              '@elizaos/plugin-openai',
+              '@elizaos/plugin-bootstrap',
+            ] // Use dynamic or fallback plugins
           );
           runtime = agentResult.runtime;
           agentId = agentResult.agentId;
           serverCreated = false; // We didn't create the server, so don't shut it down
-          console.log(`🔧 [DEBUG] Agent ${agentId} created successfully on shared server port ${port}`);
+          console.log(
+            `🔧 [DEBUG] Agent ${agentId} created successfully on shared server port ${port}`
+          );
         } else {
           // Single scenario pattern (backward compatibility) - use unique agent name
           const uniqueAgentName = `scenario-agent-${runId}`;
-          console.log(`🔧 [DEBUG] Creating single scenario with unique agent: ${uniqueAgentName} for run: ${runId}`);
-          console.log(`🔧 [DEBUG] Dynamic plugins for single scenario: ${JSON.stringify(dynamicPlugins)}`);
+          console.log(
+            `🔧 [DEBUG] Creating single scenario with unique agent: ${uniqueAgentName} for run: ${runId}`
+          );
+          console.log(
+            `🔧 [DEBUG] Dynamic plugins for single scenario: ${JSON.stringify(dynamicPlugins)}`
+          );
           const result = await createScenarioServerAndAgent(
             null,
             3000, // Use fixed port 3000 for MessageBusService compatibility
-            dynamicPlugins || ['@elizaos/plugin-sql', '@elizaos/plugin-openai', '@elizaos/plugin-bootstrap'], // Use dynamic or fallback plugins
+            dynamicPlugins || [
+              '@elizaos/plugin-sql',
+              '@elizaos/plugin-openai',
+              '@elizaos/plugin-bootstrap',
+            ], // Use dynamic or fallback plugins
             uniqueAgentName // Pass unique agent name
           );
           server = result.server;
@@ -763,8 +851,8 @@ async function executeScenarioWithTimeout(
           serverCreated = result.createdServer;
         }
 
-        console.log(`🔧 [DEBUG] Creating LocalEnvironmentProvider with port: ${port}`)
-        const provider = new LocalEnvironmentProvider(server, agentId, runtime as any, port);
+        console.log(`🔧 [DEBUG] Creating LocalEnvironmentProvider with port: ${port}`);
+        const provider = new LocalEnvironmentProvider(server, agentId, runtime, port);
 
         onProgress(0.5, 'Setting up scenario environment...');
 
@@ -780,7 +868,7 @@ async function executeScenarioWithTimeout(
 
         // Run evaluations for each run step (similar to regular scenario runner)
         const { EvaluationEngine } = await import('./EvaluationEngine');
-        const evaluationEngine = new EvaluationEngine(runtime as any);
+        const evaluationEngine = new EvaluationEngine(runtime);
 
         const evaluationResults = [];
         if (scenario.run && Array.isArray(scenario.run)) {
@@ -789,11 +877,18 @@ async function executeScenarioWithTimeout(
             const executionResult = executionResults[i];
 
             if (step.evaluations && step.evaluations.length > 0) {
-              console.log(`🔧 [DEBUG] Running ${step.evaluations.length} evaluations for step ${i}`);
+              console.log(
+                `🔧 [DEBUG] Running ${step.evaluations.length} evaluations for step ${i}`
+              );
               try {
-                const stepEvaluations = await evaluationEngine.runEnhancedEvaluations(step.evaluations, executionResult);
+                const stepEvaluations = await evaluationEngine.runEnhancedEvaluations(
+                  step.evaluations,
+                  executionResult
+                );
                 evaluationResults.push(...stepEvaluations);
-                console.log(`🔧 [DEBUG] Step ${i} evaluations completed: ${stepEvaluations.length} results`);
+                console.log(
+                  `🔧 [DEBUG] Step ${i} evaluations completed: ${stepEvaluations.length} results`
+                );
               } catch (evaluationError) {
                 console.log(`🔧 [DEBUG] Step ${i} evaluations failed: ${evaluationError}`);
                 // Still add a failed evaluation result
@@ -801,7 +896,7 @@ async function executeScenarioWithTimeout(
                   evaluator_type: 'step_evaluation_failed',
                   success: false,
                   summary: `Step ${i} evaluations failed: ${evaluationError instanceof Error ? evaluationError.message : String(evaluationError)}`,
-                  details: { step: i, error: String(evaluationError) }
+                  details: { step: i, error: String(evaluationError) },
                 });
               }
             }
@@ -826,7 +921,9 @@ async function executeScenarioWithTimeout(
           console.log(`🔧 [DEBUG] Shutting down individual scenario server on port ${port}`);
           await shutdownScenarioServer(server, port);
         } else {
-          console.log(`🔧 [DEBUG] Stopping agent ${agentId} on shared server (keeping server running)`);
+          console.log(
+            `🔧 [DEBUG] Stopping agent ${agentId} on shared server (keeping server running)`
+          );
           // Stop the agent but keep the server running
           if (server && typeof server.unregisterAgent === 'function') {
             console.log(`🔧 [DEBUG] Calling server.unregisterAgent(${agentId})`);
@@ -863,7 +960,15 @@ async function executeScenarioWithTimeout(
 /**
  * Estimates token count from execution results using actual trajectory data.
  */
-function estimateTokenCount(executionResults: any[]): number {
+interface ExecutionResult {
+  stdout?: string;
+  stderr?: string;
+  trajectory?: Array<{
+    content: string | Record<string, unknown>;
+  }>;
+}
+
+function estimateTokenCount(executionResults: ExecutionResult[]): number {
   let tokenCount = 0;
 
   for (const result of executionResults) {
@@ -903,7 +1008,9 @@ async function waitForAvailableSlot(
   maxParallel: number
 ): Promise<void> {
   while (activeRuns.size >= maxParallel) {
-    console.log(`🔧 [DEBUG] Waiting for slot... activeRuns.size=${activeRuns.size}, maxParallel=${maxParallel}`);
+    console.log(
+      `🔧 [DEBUG] Waiting for slot... activeRuns.size=${activeRuns.size}, maxParallel=${maxParallel}`
+    );
 
     // Wait for at least one run to complete
     const promises = Array.from(activeRuns.values()).map((run) => run.promise);
@@ -918,7 +1025,7 @@ async function waitForAvailableSlot(
       console.log(`🔧 [DEBUG] A promise completed, checking for cleanup...`);
 
       // Give the promise handlers time to clean up
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       console.log(`🔧 [DEBUG] After cleanup wait, activeRuns.size=${activeRuns.size}`);
     } catch (error) {
       console.log(`🔧 [DEBUG] Promise race failed: ${error}`);
@@ -972,7 +1079,7 @@ async function getResourceSnapshot(): Promise<{ memoryUsage: number; cpuUsage: n
 async function calculateRunDiskUsage(tempDir: string): Promise<number> {
   try {
     const { monitorIsolatedResources } = await import('./run-isolation');
-    const context = { tempDir } as any;
+    const context: IsolationContext = { tempDir, runId: '', scenarioPath: '', dbPath: '', logPath: '' };
     const resources = await monitorIsolatedResources(context);
     return resources.diskUsage;
   } catch {

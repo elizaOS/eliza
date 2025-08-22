@@ -7,7 +7,7 @@ type MockDefinition = NonNullable<NonNullable<Scenario['setup']>['mocks']>[0];
 interface MockExecutionHistory {
   service: string;
   method: string;
-  args: any[];
+  args: unknown[];
   matchedMock: MockDefinition;
   timestamp: Date;
   executionTime: number;
@@ -17,7 +17,7 @@ export class MockEngine {
   private originalGetService: AgentRuntime['getService'];
   private mockRegistry: Map<string, MockDefinition[]> = new Map();
   private mockHistory: MockExecutionHistory[] = [];
-  private logger: any;
+  private logger: { info: (msg: string) => void; debug: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void; };
 
   constructor(private runtime: AgentRuntime) {
     this.originalGetService = this.runtime.getService.bind(this.runtime);
@@ -42,7 +42,7 @@ export class MockEngine {
       const originalService = this.originalGetService<T>(name);
 
       // Return a proxy for the service that intercepts all method calls
-      return new Proxy(originalService as any, {
+      return new Proxy(originalService as object, {
         get: (target, prop: string, receiver) => {
           const key = `${name}.${prop}`;
 
@@ -52,7 +52,7 @@ export class MockEngine {
           }
 
           // Return a new function that will perform the mock logic
-          return async (...args: any[]) => {
+          return async (...args: unknown[]) => {
             const potentialMocks = this.mockRegistry.get(key)!;
 
             // Find the best matching mock using enhanced matching strategies
@@ -92,7 +92,7 @@ export class MockEngine {
    */
   private async findBestMatchingMock(
     mocks: MockDefinition[],
-    args: any[]
+    args: unknown[]
   ): Promise<MockDefinition | null> {
     // Sort mocks by specificity (more specific conditions first)
     const sortedMocks = this.sortMocksBySpecificity(mocks);
@@ -109,7 +109,7 @@ export class MockEngine {
   /**
    * Execute a mock with enhanced features
    */
-  private async executeMock(mock: MockDefinition, args: any[]): Promise<any> {
+  private async executeMock(mock: MockDefinition, args: unknown[]): Promise<unknown> {
     // Handle metadata (delay, probability)
     if (mock.metadata?.delay) {
       await new Promise((resolve) => setTimeout(resolve, mock.metadata.delay));
@@ -122,7 +122,7 @@ export class MockEngine {
     // Handle error simulation
     if (mock.error) {
       const error = new Error(`${mock.error.code}: ${mock.error.message}`);
-      (error as any).status = mock.error.status;
+      (error as Error & { status?: number }).status = mock.error.status;
       throw error;
     }
 
@@ -145,7 +145,7 @@ export class MockEngine {
   /**
    * Enhanced condition matching with multiple strategies
    */
-  private async matchesCondition(mock: MockDefinition, args: any[]): Promise<boolean> {
+  private async matchesCondition(mock: MockDefinition, args: unknown[]): Promise<boolean> {
     if (!mock.when) return true; // Generic mock
 
     const input = this.extractInputFromArgs(args);
@@ -198,8 +198,8 @@ export class MockEngine {
   /**
    * Extract input parameters from method arguments
    */
-  private extractInputFromArgs(args: any[]): Record<string, any> {
-    const input: Record<string, any> = {};
+  private extractInputFromArgs(args: unknown[]): Record<string, unknown> {
+    const input: Record<string, unknown> = {};
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
@@ -216,7 +216,7 @@ export class MockEngine {
   /**
    * Build request context for matching
    */
-  private buildRequestContext(args: any[]): Record<string, any> {
+  private buildRequestContext(args: unknown[]): Record<string, unknown> {
     return {
       timestamp: new Date().toISOString(),
       argsCount: args.length,
@@ -277,7 +277,7 @@ export class MockEngine {
   /**
    * Match partial arguments
    */
-  private matchesPartialArgs(args: any[], partialArgs: any[]): boolean {
+  private matchesPartialArgs(args: unknown[], partialArgs: unknown[]): boolean {
     if (args.length < partialArgs.length) return false;
 
     for (let i = 0; i < partialArgs.length; i++) {
@@ -293,7 +293,7 @@ export class MockEngine {
    */
   private recordMockExecution(
     serviceMethod: string,
-    args: any[],
+    args: unknown[],
     mock: MockDefinition,
     executionTime: number
   ): void {
@@ -355,7 +355,10 @@ export class MockEngine {
    * Parse response template with safe variable interpolation
    * SECURITY: Only allows predefined variables, no arbitrary code execution
    */
-  private parseResponseTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): any {
+  private parseResponseTemplate(
+    template: string,
+    variables: { args: unknown[]; input: Record<string, unknown>; context: Record<string, unknown> }
+  ): unknown {
     // Handle JSON response templates
     if (template.trim().startsWith('{') || template.trim().startsWith('[')) {
       try {
@@ -374,25 +377,28 @@ export class MockEngine {
    * Evaluate template for boolean conditions
    * SECURITY: Only allows safe comparison operations, no arbitrary code execution
    */
-  private evaluateTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): boolean {
+  private evaluateTemplate(
+    template: string,
+    variables: { args: unknown[]; input: Record<string, unknown>; context: Record<string, unknown> }
+  ): boolean {
     // Simple boolean template evaluation with safe operations
     // Supports patterns like: "${input.type} === 'test'" or "${args[0]} > 10"
     const interpolated = this.interpolateTemplate(template, variables);
-    
+
     // Parse simple boolean expressions safely
     try {
       // Only allow safe comparison operations
       const safeExpression = interpolated.replace(/[^\w\s===!<>()\[\]\.'"]/g, '');
-      
+
       // Basic pattern matching for simple comparisons
       const comparisonRegex = /^\s*(.+?)\s*(===|!==|==|!=|>=|<=|>|<)\s*(.+?)\s*$/;
       const match = safeExpression.match(comparisonRegex);
-      
+
       if (match) {
         const [, left, operator, right] = match;
         return this.performSafeComparison(left.trim(), operator, right.trim());
       }
-      
+
       // For non-comparison expressions, check if it's truthy
       return Boolean(interpolated && interpolated !== 'false' && interpolated !== '0');
     } catch (error) {
@@ -405,7 +411,10 @@ export class MockEngine {
    * Perform safe string interpolation
    * SECURITY: Only allows access to whitelisted variables
    */
-  private interpolateTemplate(template: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): string {
+  private interpolateTemplate(
+    template: string,
+    variables: { args: unknown[]; input: Record<string, unknown>; context: Record<string, unknown> }
+  ): string {
     return template.replace(/\$\{([^}]+)\}/g, (match, expression) => {
       try {
         const value = this.resolveTemplateVariable(expression.trim(), variables);
@@ -421,7 +430,10 @@ export class MockEngine {
    * Resolve template variables safely
    * SECURITY: Only allows access to predefined variable paths
    */
-  private resolveTemplateVariable(expression: string, variables: { args: any[]; input: Record<string, any>; context: Record<string, any> }): any {
+  private resolveTemplateVariable(
+    expression: string,
+    variables: { args: unknown[]; input: Record<string, unknown>; context: Record<string, unknown> }
+  ): unknown {
     // Handle array access like args[0], args[1], etc.
     if (expression.startsWith('args[') && expression.endsWith(']')) {
       const indexStr = expression.slice(5, -1);
@@ -437,8 +449,8 @@ export class MockEngine {
     if (parts.length >= 2) {
       const rootVar = parts[0];
       const propertyPath = parts.slice(1);
-      
-      let current: any;
+
+      let current: unknown;
       switch (rootVar) {
         case 'input':
           current = variables.input;
@@ -461,7 +473,7 @@ export class MockEngine {
           return undefined;
         }
       }
-      
+
       return current;
     }
 
@@ -486,17 +498,17 @@ export class MockEngine {
     // Remove quotes if present
     const cleanLeft = left.replace(/^['"]|['"]$/g, '');
     const cleanRight = right.replace(/^['"]|['"]$/g, '');
-    
+
     // Try to parse as numbers if possible
     const leftNum = parseFloat(cleanLeft);
     const rightNum = parseFloat(cleanRight);
     const leftIsNum = !isNaN(leftNum);
     const rightIsNum = !isNaN(rightNum);
-    
+
     // Use numeric comparison if both are numbers
     const leftVal = leftIsNum ? leftNum : cleanLeft;
     const rightVal = rightIsNum ? rightNum : cleanRight;
-    
+
     switch (operator) {
       case '===':
       case '==':
