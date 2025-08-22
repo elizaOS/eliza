@@ -43,6 +43,7 @@
   ],
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.3",
     "@types/uuid": "^10.0.0",
     "bun": "^1.2.15",
@@ -73,6 +74,11 @@
     "utf-8-validate"
   ],
   "dependencies": {
-    "helmet": "^8.1.0"
+    "@elizaos/plugin-coinbase": "^1.0.2",
+    "@elizaos/plugin-e2b": "1.2.0",
+    "@elizaos/plugin-openai": "^1.0.9",
+    "helmet": "^8.1.0",
+    "js-yaml": "^4.1.0",
+    "zod": "3.24.2"
   }
 }

@@ -20,9 +20,6 @@ dist/
 *.mp3
 
 logs/
-
-test-report.json
-test_data/
 tokencache/
 
 # Character configurations
@@ -184,3 +181,5 @@ bun.lock
 # TypeScript incremental compilation cache
 *.tsbuildinfo
 tsconfig.tsbuildinfo
+
+test-data/
