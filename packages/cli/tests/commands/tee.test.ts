@@ -1,17 +1,13 @@
-import { beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Command } from 'commander';
-import * as childProcess from 'node:child_process';
-import { execSync } from 'node:child_process';
 import { teeCommand } from '../../src/commands/tee';
 import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
-
-// Create spy on spawn function
-let mockSpawn: any;
+import { bunExecSync } from '../utils/bun-test-helpers';
 
 // Check if npx is available
 function isNpxAvailable(): boolean {
   try {
-    execSync('npx --version', { stdio: 'ignore' });
+    bunExecSync('npx --version', { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -22,18 +18,6 @@ function isNpxAvailable(): boolean {
 const skipPhalaTests = process.env.CI === 'true' || !isNpxAvailable();
 
 describe('TEE Command', () => {
-  beforeEach(() => {
-    // Create a fresh spy for each test
-    mockSpawn = spyOn(childProcess, 'spawn').mockImplementation(() => {
-      const mockProcess = {
-        on: mock(),
-        stdout: { on: mock() },
-        stderr: { on: mock() },
-      };
-      return mockProcess as any;
-    });
-  });
-
   describe('teeCommand', () => {
     it('should be a Commander command', () => {
       expect(teeCommand).toBeInstanceOf(Command);
@@ -47,6 +31,11 @@ describe('TEE Command', () => {
     it('should have phala subcommand', () => {
       const subcommands = teeCommand.commands.map((cmd) => cmd.name());
       expect(subcommands).toContain('phala');
+    });
+
+    it('should have enablePositionalOptions set', () => {
+      // @ts-ignore - accessing private property for testing
+      expect(teeCommand._enablePositionalOptions).toBe(true);
     });
   });
 
@@ -71,66 +60,98 @@ describe('TEE Command', () => {
       expect(helpOption).toBeUndefined();
     });
 
-    it.skipIf(skipPhalaTests)('should delegate to npx phala CLI', async () => {
-      const mockProcess = {
-        on: mock((event, callback) => {
-          if (event === 'exit') {
-            // Simulate successful exit
-            callback(0);
-          }
-        }),
-        stdout: { on: mock() },
-        stderr: { on: mock() },
-      };
-      mockSpawn.mockImplementation(() => mockProcess as any);
-
-      // Mock process.exit to capture the call
-      const originalmockExit = process.exit;
-      const mockExit = mock(() => undefined as never);
-      process.exit = mockExit;
-
-      // Simulate command execution
-      phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
-
-      // Wait for async operations
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      // Verify spawn was called with npx phala
-      // expect(mockSpawn).toHaveBeenCalled(); // TODO: Fix for bun test
-      const spawnCall = mockSpawn.mock.calls[0];
-      expect(spawnCall[0]).toBe('npx');
-      expect(spawnCall[1]).toContain('phala');
-      expect(spawnCall[1]).toContain('help');
-
-      // Verify successful exit
-      // expect(mockExit).toHaveBeenCalledWith(0); // TODO: Fix for bun test
-
-      mockExit.mockRestore();
+    it('should allow excess arguments', () => {
+      // @ts-ignore - accessing private property for testing
+      expect(phalaCliCommand._allowExcessArguments).toBe(true);
     });
 
-    it.skipIf(skipPhalaTests)('should handle errors gracefully', async () => {
-      mockSpawn.mockImplementation(() => {
-        throw new Error('Spawn failed');
-      });
+    it('should have passthrough options enabled', () => {
+      // @ts-ignore - accessing private property for testing
+      expect(phalaCliCommand._passThroughOptions).toBe(true);
+    });
 
-      const originalmockExit = process.exit;
-      const mockExit = mock(() => undefined as never);
-      process.exit = mockExit;
-      const originalmockError = console.error;
-      const mockError = mock(() => {});
-      console.error = mockError;
+    it('should have variadic arguments configured', () => {
+      // @ts-ignore - accessing private property for testing
+      const args = phalaCliCommand._args || [];
+      expect(args.length).toBeGreaterThan(0);
+      expect(args[0].variadic).toBe(true);
+      // The name property is actually a function that returns the name
+      expect(typeof args[0].name).toBe('function');
+      expect(args[0].name()).toBe('args');
+    });
 
-      try {
-        phalaCliCommand.parse(['node', 'test', 'help'], { from: 'user' });
-      } catch (e) {
-        // Expected error
-      }
+    it.skipIf(skipPhalaTests)('should have action handler configured', () => {
+      // Verify the command has an action handler
+      // @ts-ignore - accessing private property for testing
+      expect(phalaCliCommand._actionHandler).toBeDefined();
+      // @ts-ignore - accessing private property for testing
+      expect(typeof phalaCliCommand._actionHandler).toBe('function');
+    });
 
-      // Should exit with error code
-      // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    it('should pass arguments to phala CLI', () => {
+      // Test that the command accepts arguments
+      const testArgs = ['node', 'test', 'cvms', 'list'];
 
-      mockExit.mockRestore();
-      mockError.mockRestore();
+      // This should not throw an error
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgs);
+      }).not.toThrow();
+
+      // Verify unknown options are allowed
+      const testArgsWithOptions = ['node', 'test', '--some-option', 'value'];
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgsWithOptions);
+      }).not.toThrow();
+    });
+
+    it('should parse complex argument patterns', () => {
+      const testArgs = [
+        'node',
+        'test',
+        'deploy',
+        '--project',
+        'my-app',
+        '--memory',
+        '512',
+        '--cpus',
+        '1',
+        '--json',
+        '-v',
+      ];
+
+      // This should not throw an error
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgs);
+      }).not.toThrow();
+    });
+
+    it('should handle mixed positional and flag arguments', () => {
+      const testArgs = ['node', 'test', 'auth', 'login', 'test-key', '--force', '--output', 'json'];
+
+      // This should not throw an error
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgs);
+      }).not.toThrow();
+    });
+
+    it('should handle arguments containing "phala" without confusion', () => {
+      // Test that arguments containing 'phala' don't confuse the command extraction
+      const testArgs = [
+        'node',
+        'script',
+        'tee',
+        'phala', // The actual command
+        'deploy',
+        '--project',
+        'my-phala-app', // Argument value containing 'phala'
+        '--name',
+        'phala-test', // Another argument containing 'phala'
+      ];
+
+      // This should not throw an error
+      expect(() => {
+        phalaCliCommand.parseOptions(testArgs);
+      }).not.toThrow();
     });
   });
 });

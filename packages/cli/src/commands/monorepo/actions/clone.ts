@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { bunExecInherit } from '@/src/utils/bun-exec';
 import { existsSync, readdirSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { CloneInfo } from '../types';
@@ -21,10 +21,8 @@ export async function cloneRepository(
   try {
     const repoUrl = `https://github.com/${repo}`;
 
-    // Clone specific branch using execa
-    await execa('git', ['clone', '-b', branch, repoUrl, destination], {
-      stdio: 'inherit',
-    });
+    // Clone specific branch using bun-exec
+    await bunExecInherit('git', ['clone', '-b', branch, repoUrl, destination]);
   } catch (error) {
     // Special handling for likely branch errors
     if (error instanceof Error && error.message.includes('exit code 128')) {

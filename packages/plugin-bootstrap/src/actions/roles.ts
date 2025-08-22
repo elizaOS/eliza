@@ -12,8 +12,9 @@ import {
   type State,
   type UUID,
   World,
+  type ActionResult,
+  parseKeyValueXml,
 } from '@elizaos/core';
-import dedent from 'dedent';
 
 /**
  * Determines if the user with the current role can modify the role to the new role.
@@ -89,10 +90,22 @@ export const updateRoleAction: Action = {
     state?: State,
     _options?: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     if (!state) {
       logger.error('State is required for role assignment');
-      throw new Error('State is required for role assignment');
+      return {
+        text: 'State is required for role assignment',
+        values: {
+          success: false,
+          error: 'STATE_REQUIRED',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'State is required',
+        },
+        success: false,
+        error: new Error('State is required for role assignment'),
+      };
     }
 
     // Extract needed values from message and state
@@ -112,7 +125,18 @@ export const updateRoleAction: Action = {
       await callback?.({
         text: "I couldn't find the world. This action only works in a world.",
       });
-      return;
+      return {
+        text: 'World not found',
+        values: {
+          success: false,
+          error: 'WORLD_NOT_FOUND',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'World not found',
+        },
+        success: false,
+      };
     }
 
     if (!world.metadata?.roles) {
@@ -132,78 +156,93 @@ export const updateRoleAction: Action = {
         ...state.values,
         content: state.text,
       },
-      template: dedent`
-				# Task: Parse Role Assignment
+      template: `# Task: Parse Role Assignment
 
-				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
+I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
 
-				The available role types are:
-				- OWNER: Full control over the server and all settings
-				- ADMIN: Ability to manage channels and moderate content
-				- NONE: Regular user with no special permissions
+The available role types are:
+- OWNER: Full control over the server and all settings
+- ADMIN: Ability to manage channels and moderate content
+- NONE: Regular user with no special permissions
 
-				# Current context:
-				{{content}}
+# Current context:
+{{content}}
 
-				Format your response as a JSON array of objects, each with:
-				- entityId: The name or ID of the user
-				- newRole: The role to assign (OWNER, ADMIN, or NONE)
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-				Example:
-				\`\`\`json
-				[
-					{
-						"entityId": "John",
-						"newRole": "ADMIN"
-					},
-					{
-						"entityId": "Sarah",
-						"newRole": "OWNER"
-					}
-				]
-				\`\`\`
-			`,
+Format your response as XML with multiple assignments:
+<response>
+  <assignments>
+    <assignment>
+      <entityId>John</entityId>
+      <newRole>ADMIN</newRole>
+    </assignment>
+    <assignment>
+      <entityId>Sarah</entityId>
+      <newRole>OWNER</newRole>
+    </assignment>
+  </assignments>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`,
     });
 
-    // Extract role assignments using type-safe model call
-    const result = await runtime.useModel<typeof ModelType.OBJECT_LARGE, RoleAssignment[]>(
-      ModelType.OBJECT_LARGE,
-      {
-        prompt: extractionPrompt,
-        schema: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              entityId: { type: 'string' },
-              newRole: {
-                type: 'string',
-                enum: Object.values(Role),
-              },
-            },
-            required: ['entityId', 'newRole'],
-          },
-        },
-        output: 'array',
-      }
-    );
+    // Extract role assignments using text model with XML parsing
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: extractionPrompt,
+    });
 
-    if (!result?.length) {
+    const parsedXml = parseKeyValueXml(response);
+
+    // Handle the parsed XML structure
+    let assignments: RoleAssignment[] = [];
+    if (parsedXml?.assignments?.assignment) {
+      // Normalize to array
+      const assignmentArray = Array.isArray(parsedXml.assignments.assignment)
+        ? parsedXml.assignments.assignment
+        : [parsedXml.assignments.assignment];
+
+      assignments = assignmentArray.map((a: any) => ({
+        entityId: a.entityId,
+        newRole: a.newRole as Role,
+      }));
+    }
+
+    if (!assignments.length) {
       await callback?.({
         text: 'No valid role assignments found in the request.',
         actions: ['UPDATE_ROLE'],
         source: 'discord',
       });
-      return;
+      return {
+        text: 'No valid role assignments found',
+        values: {
+          success: false,
+          error: 'NO_ASSIGNMENTS',
+        },
+        data: {
+          actionName: 'UPDATE_ROLE',
+          error: 'No valid role assignments found in the request',
+        },
+        success: false,
+      };
     }
 
     // Process each role assignment
     let worldUpdated = false;
+    const successfulUpdates: Array<{ entityId: string; entityName: string; newRole: Role }> = [];
+    const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
-    for (const assignment of result) {
+    for (const assignment of assignments) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        logger.error('Could not find an ID ot assign to');
+        logger.error('Could not find an ID to assign to');
+        failedUpdates.push({
+          entityId: assignment.entityId,
+          reason: 'Entity not found',
+        });
+        continue;
       }
 
       const currentRole = world.metadata.roles[assignment.entityId];
@@ -215,6 +254,10 @@ export const updateRoleAction: Action = {
           actions: ['UPDATE_ROLE'],
           source: 'discord',
         });
+        failedUpdates.push({
+          entityId: assignment.entityId,
+          reason: 'Insufficient permissions',
+        });
         continue;
       }
 
@@ -222,6 +265,11 @@ export const updateRoleAction: Action = {
       world.metadata.roles[assignment.entityId] = assignment.newRole;
 
       worldUpdated = true;
+      successfulUpdates.push({
+        entityId: assignment.entityId,
+        entityName: targetEntity?.names[0] || 'Unknown',
+        newRole: assignment.newRole,
+      });
 
       await callback?.({
         text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
@@ -232,9 +280,46 @@ export const updateRoleAction: Action = {
 
     // Save updated world metadata if any changes were made
     if (worldUpdated) {
-      await runtime.updateWorld(world);
-      logger.info(`Updated roles in world metadata for server ${serverId}`);
+      try {
+        await runtime.updateWorld(world);
+        logger.info(`Updated roles in world metadata for server ${serverId}`);
+      } catch (error) {
+        logger.error({ error }, 'Failed to save world updates');
+        return {
+          text: 'Failed to save role updates',
+          values: {
+            success: false,
+            error: 'SAVE_FAILED',
+          },
+          data: {
+            actionName: 'UPDATE_ROLE',
+            error: error instanceof Error ? error.message : String(error),
+            attemptedUpdates: successfulUpdates,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
     }
+
+    return {
+      text: `Role updates completed: ${successfulUpdates.length} successful, ${failedUpdates.length} failed`,
+      values: {
+        success: true,
+        successfulUpdates: successfulUpdates.length,
+        failedUpdates: failedUpdates.length,
+        updates: successfulUpdates,
+        failures: failedUpdates,
+      },
+      data: {
+        actionName: 'UPDATE_ROLE',
+        successfulUpdates,
+        failedUpdates,
+        worldId: world.id,
+        serverId,
+      },
+      success: true,
+    };
   },
 
   examples: [

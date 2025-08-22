@@ -1,162 +1,395 @@
 import { mock, spyOn } from 'bun:test';
 import {
-  Content,
-  IAgentRuntime,
-  Memory,
+  type IAgentRuntime,
+  type Memory,
+  type Entity,
+  type Room,
+  type World,
+  type State,
+  type Content,
+  type UUID,
+  type Character,
+  type Provider,
+  type Action,
+  type Evaluator,
+  type Plugin,
+  type Service,
+  type ServiceTypeName,
+  type Route,
+  type HandlerCallback,
+  type SendHandlerFunction,
+  type TargetInfo,
+  type ModelTypeName,
+  type TaskWorker,
+  type Component,
+  type Relationship,
   ModelType,
-  Service,
-  State,
-  UUID,
+  asUUID,
   logger,
 } from '@elizaos/core';
 
 /**
- * Creates a mock runtime for testing
- *
- * @param overrides - Optional overrides for the default mock methods and properties
- * @returns A mock runtime for testing
+ * Creates a UUID for testing
  */
-export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRuntime {
-  // Create base mock runtime with defaults
-  const mockRuntime: MockRuntime = {
-    // Core properties
-    agentId: 'test-agent-id' as UUID,
-    character: {
-      name: 'Test Character',
-      bio: 'This is a test character for testing',
-    },
-    services: new Map(),
+export function createUUID(): UUID {
+  return asUUID(crypto.randomUUID());
+}
 
-    // Core methods
+/**
+ * Creates a test character
+ */
+export function createTestCharacter(overrides: Partial<Character> = {}): Character {
+  return {
+    id: createUUID(),
+    name: 'Test Character',
+    username: 'test-character',
+    bio: 'A test character for unit testing',
+    system: 'You are a helpful assistant for testing.',
+    plugins: [],
+    settings: {},
+    messageExamples: [],
+    topics: [],
+    adjectives: [],
+    style: { all: [], chat: [], post: [] },
+    secrets: {},
+    ...overrides,
+  };
+}
+
+/**
+ * Creates a test memory
+ */
+export function createTestMemory(overrides: Partial<Memory> = {}): Memory {
+  const now = Date.now();
+  return {
+    id: createUUID(),
+    agentId: createUUID(),
+    entityId: createUUID(),
+    roomId: createUUID(),
+    content: {
+      text: 'Test message',
+      source: 'test',
+    },
+    createdAt: now,
+    ...overrides,
+  };
+}
+
+/**
+ * Creates a test state
+ */
+export function createTestState(overrides: Partial<State> = {}): State {
+  return {
+    agentId: createUUID(),
+    roomId: createUUID(),
+    userId: createUUID(),
+    bio: 'Test bio',
+    lore: 'Test lore',
+    userName: 'Test User',
+    userBio: 'Test user bio',
+    actors: '',
+    recentMessages: '',
+    recentInteractions: '',
+    goals: 'Test goals',
+    image: '',
+    messageDirections: '',
+    values: {},
+    data: {},
+    text: '',
+    ...overrides,
+  };
+}
+
+/**
+ * Helper to create a mock function
+ */
+function createMockFn<T extends (...args: any[]) => any>(
+  implementation?: T
+): ReturnType<typeof mock> {
+  return mock(implementation || (() => {}));
+}
+
+/**
+ * Creates a properly typed mock runtime
+ */
+export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+  const agentId = overrides.agentId || createUUID();
+  const character = overrides.character || createTestCharacter();
+
+  // Create base runtime object with all required properties
+  const mockRuntime: IAgentRuntime = {
+    // Properties
+    agentId,
+    character,
+    providers: [],
+    actions: [],
+    evaluators: [],
+    plugins: [],
+    services: new Map<ServiceTypeName, Service[]>(),
+    events: new Map(),
+    fetch: null,
+    routes: [],
+    logger: {
+      info: mock(() => {}),
+      warn: mock(() => {}),
+      error: mock(() => {}),
+      debug: mock(() => {}),
+    },
+    db: {},
+
+    // Database methods
+    initialize: mock().mockResolvedValue(undefined),
+    init: mock().mockResolvedValue(undefined),
+    runMigrations: mock().mockResolvedValue(undefined),
+    isReady: mock().mockResolvedValue(true),
+    close: mock().mockResolvedValue(undefined),
+    getConnection: mock().mockResolvedValue({}),
+
+    // Agent methods
+    getAgent: mock().mockResolvedValue(null),
+    getAgents: mock().mockResolvedValue([]),
+    createAgent: mock().mockResolvedValue(true),
+    updateAgent: mock().mockResolvedValue(true),
+    deleteAgent: mock().mockResolvedValue(true),
+
+    // Memory methods
+    createMemory: mock().mockImplementation(async (memory: Memory) => ({
+      ...memory,
+      id: memory.id || createUUID(),
+    })),
+    getMemories: mock().mockResolvedValue([]),
+    getMemoryById: mock().mockResolvedValue(null),
+    getMemoriesByIds: mock().mockResolvedValue([]),
+    getMemoriesByRoomIds: mock().mockResolvedValue([]),
+    searchMemories: mock().mockResolvedValue([]),
+
+    addEmbeddingToMemory: mock().mockImplementation(async (memory: Memory) => memory),
+    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
+    getAllMemories: mock().mockResolvedValue([]),
+    clearAllAgentMemories: mock().mockResolvedValue(undefined),
+    updateMemory: mock().mockResolvedValue(true),
+    deleteMemory: mock().mockResolvedValue(undefined),
+    deleteManyMemories: mock().mockResolvedValue(undefined),
+    deleteAllMemories: mock().mockResolvedValue(undefined),
+    countMemories: mock().mockResolvedValue(0),
+
+    // Entity methods
+    getEntitiesByIds: mock().mockResolvedValue([]),
+    getEntitiesForRoom: mock().mockResolvedValue([]),
+    createEntities: mock().mockResolvedValue(true),
+    updateEntity: mock().mockResolvedValue(undefined),
+    createEntity: mock().mockResolvedValue(true),
+    getEntityById: mock().mockResolvedValue(null),
+
+    // Room methods
+    createRoom: mock().mockImplementation(async () => createUUID()),
+    createRooms: mock().mockImplementation(async () => [createUUID()]),
+    getRoom: mock().mockResolvedValue(null),
+    getRooms: mock().mockResolvedValue([]),
+    getRoomsByIds: mock().mockResolvedValue([]),
+    getRoomsByWorld: mock().mockResolvedValue([]),
+    updateRoom: mock().mockResolvedValue(undefined),
+    deleteRoom: mock().mockResolvedValue(undefined),
+    deleteRoomsByWorldId: mock().mockResolvedValue(undefined),
+    addParticipant: mock().mockResolvedValue(true),
+    addParticipantsRoom: mock().mockResolvedValue(true),
+    removeParticipant: mock().mockResolvedValue(true),
+    getRoomsForParticipant: mock().mockResolvedValue([]),
+    getRoomsForParticipants: mock().mockResolvedValue([]),
+    getParticipantsForEntity: mock().mockResolvedValue([]),
+    getParticipantsForRoom: mock().mockResolvedValue([]),
+    getParticipantUserState: mock().mockResolvedValue(null),
+    setParticipantUserState: mock().mockResolvedValue(undefined),
+
+    // Service methods
     getService: mock().mockReturnValue(null),
-    registerService: mock(),
-    getSetting: mock().mockReturnValue(null),
+    getServicesByType: mock().mockReturnValue([]),
+    getAllServices: mock().mockReturnValue(new Map()),
+    registerService: mock().mockResolvedValue(undefined),
+    getRegisteredServiceTypes: mock().mockReturnValue([]),
+    hasService: mock().mockReturnValue(false),
+
+    // Plugin/Action/Provider methods
+    registerPlugin: mock().mockResolvedValue(undefined),
+    registerProvider: mock().mockReturnValue(undefined),
+    registerAction: mock().mockReturnValue(undefined),
+    registerEvaluator: mock().mockReturnValue(undefined),
 
     // Model methods
-    useModel: mock().mockImplementation((modelType, params) => {
+    registerModel: mock().mockReturnValue(undefined),
+    getModel: mock().mockReturnValue(undefined),
+    useModel: mock().mockImplementation(async (modelType: ModelTypeName) => {
       if (modelType === ModelType.TEXT_SMALL) {
-        return Promise.resolve('Never gonna give you up, never gonna let you down');
+        return 'Never gonna give you up, never gonna let you down';
       } else if (modelType === ModelType.TEXT_LARGE) {
-        return Promise.resolve('Never gonna make you cry, never gonna say goodbye');
-      } else if (modelType === ModelType.OBJECT_LARGE) {
-        return Promise.resolve({
-          thought: 'I should respond in a friendly way',
-          message: 'Hello there! How can I help you today?',
-        });
+        return 'Never gonna make you cry, never gonna say goodbye';
       }
-      return Promise.resolve('Default response');
+      return 'Default model response';
     }),
 
-    // Additional methods used in tests
-    init: mock().mockResolvedValue(undefined),
+    // Event methods
+    registerEvent: mock().mockReturnValue(undefined),
+    getEvent: mock().mockReturnValue(undefined),
+    emitEvent: mock().mockResolvedValue(undefined),
+
+    // Settings methods
+    setSetting: mock().mockReturnValue(undefined),
+    getSetting: mock().mockImplementation((key: string) => {
+      if (key === 'EXAMPLE_PLUGIN_VARIABLE') return 'test-value';
+      return null;
+    }),
+
+    // Other methods
+    processActions: mock().mockResolvedValue(undefined),
+    evaluate: mock().mockResolvedValue(null),
+    ensureConnections: mock().mockResolvedValue(undefined),
+    ensureConnection: mock().mockResolvedValue(undefined),
+    getConversationLength: mock().mockReturnValue(10),
+    composeState: mock().mockImplementation(async () => createTestState()),
+    // Task methods
+    getTasks: mock().mockResolvedValue([]),
+    getTask: mock().mockResolvedValue(null),
+    getTasksByName: mock().mockResolvedValue([]),
+    createTask: mock().mockImplementation(async () => createUUID()),
+    updateTask: mock().mockResolvedValue(undefined),
+    deleteTask: mock().mockResolvedValue(undefined),
+    registerTaskWorker: mock().mockReturnValue(undefined),
+    getTaskWorker: mock().mockReturnValue(undefined),
+    stop: mock().mockResolvedValue(undefined),
+    createRunId: mock().mockImplementation(() => createUUID()),
+    startRun: mock().mockImplementation(() => createUUID()),
+    endRun: mock().mockReturnValue(undefined),
+    getCurrentRunId: mock().mockImplementation(() => createUUID()),
+    registerSendHandler: mock().mockReturnValue(undefined),
+    sendMessageToTarget: mock().mockResolvedValue(undefined),
+    registerDatabaseAdapter: mock().mockReturnValue(undefined),
+    log: mock().mockResolvedValue(undefined),
+    getLogs: mock().mockResolvedValue([]),
+    deleteLog: mock().mockResolvedValue(undefined),
+
+    // Component methods (from IDatabaseAdapter)
+    getComponent: mock().mockResolvedValue(null),
+    getComponents: mock().mockResolvedValue([]),
+    createComponent: mock().mockResolvedValue(true),
+    updateComponent: mock().mockResolvedValue(undefined),
+    deleteComponent: mock().mockResolvedValue(undefined),
+
+    // Relationship methods
+    createRelationship: mock().mockResolvedValue(true),
+    getRelationships: mock().mockResolvedValue([]),
+
+    getRelationship: mock().mockResolvedValue(null),
+    updateRelationship: mock().mockResolvedValue(undefined),
+
+    // Embedding methods
+    ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
+    getCachedEmbeddings: mock().mockResolvedValue([]),
+
+    // World methods
+    getWorld: mock().mockResolvedValue(null),
+    createWorld: mock().mockImplementation(async () => createUUID()),
+    updateWorld: mock().mockResolvedValue(undefined),
+    removeWorld: mock().mockResolvedValue(undefined),
+    getAllWorlds: mock().mockResolvedValue([]),
+
+    // Required method that was missing
+    ensureParticipantInRoom: mock().mockResolvedValue(undefined),
+    ensureWorldExists: mock().mockResolvedValue(undefined),
+    ensureRoomExists: mock().mockResolvedValue(undefined),
+
+    // Cache methods
+    getCache: mock().mockResolvedValue(undefined),
+    setCache: mock().mockResolvedValue(true),
+    deleteCache: mock().mockResolvedValue(true),
+
+    // Other missing database methods
+    getMemoriesByWorldId: mock().mockResolvedValue([]),
+
+    // Apply any overrides
     ...overrides,
   };
 
-  // Merge with overrides
+  // Setup logger spies if not already overridden
+  if (!overrides.logger) {
+    spyOn(logger, 'info').mockImplementation(() => {});
+    spyOn(logger, 'warn').mockImplementation(() => {});
+    spyOn(logger, 'error').mockImplementation(() => {});
+    spyOn(logger, 'debug').mockImplementation(() => {});
+  }
+
   return mockRuntime;
 }
 
 /**
- * Creates a mock Memory object for testing
- *
- * @param overrides - Optional overrides for the default memory properties
- * @returns A mock memory object
+ * Creates test fixtures for event payloads
  */
-export function createMockMemory(overrides: Partial<Memory> = {}): Partial<Memory> {
-  return {
-    id: 'test-message-id' as UUID,
-    roomId: 'test-room-id' as UUID,
-    entityId: 'test-entity-id' as UUID,
-    agentId: 'test-agent-id' as UUID,
+export const testFixtures = {
+  messagePayload: (overrides: any = {}) => ({
     content: {
       text: 'Test message',
       source: 'test',
-    } as Content,
-    createdAt: Date.now(),
-    ...overrides,
-  };
-}
-
-/**
- * Creates a mock State object for testing
- *
- * @param overrides - Optional overrides for the default state properties
- * @returns A mock state object
- */
-export function createMockState(overrides: Partial<State> = {}): Partial<State> {
-  return {
-    ...overrides,
-    values: {
-      recentMessages: 'User: Test message',
-      ...overrides.values,
     },
-    data: {
-      ...overrides.data,
+    userId: createUUID(),
+    roomId: createUUID(),
+    runtime: createMockRuntime(),
+    source: 'test',
+    ...overrides,
+  }),
+
+  worldPayload: (overrides: any = {}) => ({
+    content: {
+      text: 'World event',
+      world: 'test-world',
     },
-  };
+    userId: createUUID(),
+    roomId: createUUID(),
+    runtime: createMockRuntime(),
+    source: 'test',
+    ...overrides,
+  }),
+};
+
+/**
+ * Type guard to check if a value is a mock function
+ */
+export function isMockFunction(value: any): value is ReturnType<typeof mock> {
+  return value && typeof value.mock === 'object';
 }
 
 /**
- * Creates a standardized setup for testing with consistent mock objects
- *
- * @param overrides - Optional overrides for default mock implementations
- * @returns An object containing mockRuntime, mockMessage, mockState, and callbackFn
+ * Helper to assert spy was called with specific arguments
  */
-export function setupTest(
-  overrides: {
-    runtimeOverrides?: Partial<MockRuntime>;
-    messageOverrides?: Partial<Memory>;
-    stateOverrides?: Partial<State>;
-  } = {}
-) {
-  // Create mock callback function
-  const callbackFn = mock();
+export function assertSpyCalledWith(spy: any, ...args: any[]) {
+  if (!isMockFunction(spy)) {
+    throw new Error('Not a mock function');
+  }
 
-  // Create a message
-  const mockMessage = createMockMemory(overrides.messageOverrides);
+  const calls = spy.mock.calls;
+  const found = calls.some((call: any[]) =>
+    args.every((arg, index) => {
+      if (typeof arg === 'object' && arg !== null) {
+        return JSON.stringify(arg) === JSON.stringify(call[index]);
+      }
+      return arg === call[index];
+    })
+  );
 
-  // Create a state object
-  const mockState = createMockState(overrides.stateOverrides);
-
-  // Create a mock runtime
-  const mockRuntime = createMockRuntime({
-    ...overrides.runtimeOverrides,
-  });
-
-  return {
-    mockRuntime,
-    mockMessage,
-    mockState,
-    callbackFn,
-  };
+  if (!found) {
+    throw new Error(`Spy was not called with expected arguments: ${JSON.stringify(args)}`);
+  }
 }
 
 /**
- * Type definition for the mock runtime
+ * Setup logger spies for testing
  */
-export interface MockRuntime {
-  agentId: UUID;
-  character: {
-    name: string;
-    bio: string;
-    [key: string]: any;
-  };
-  services: Map<string, Service>;
-  getService: ReturnType<typeof mock>;
-  registerService: ReturnType<typeof mock>;
-  getSetting: ReturnType<typeof mock>;
-  useModel: ReturnType<typeof mock>;
-  init: ReturnType<typeof mock>;
-  [key: string]: any;
-}
-
-// Add spy on logger for common usage in tests
 export function setupLoggerSpies() {
   spyOn(logger, 'info').mockImplementation(() => {});
-  spyOn(logger, 'error').mockImplementation(() => {});
   spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'error').mockImplementation(() => {});
   spyOn(logger, 'debug').mockImplementation(() => {});
-
-  // allow tests to restore originals
-  return () => mock.restore();
 }
+
+/**
+ * Type definition for the mock runtime (for backward compatibility)
+ */
+export type MockRuntime = IAgentRuntime;

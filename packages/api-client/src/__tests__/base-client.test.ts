@@ -271,6 +271,38 @@ describe('BaseApiClient', () => {
     expect(complexResult).toEqual({ success: true });
   });
 
+  it('should handle wrapped error responses correctly', async () => {
+    const errorResponse = {
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid input data',
+        details: 'The name field is required',
+      },
+    };
+
+    global.fetch = async () =>
+      ({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => errorResponse,
+      }) as Response;
+
+    try {
+      await client.testGet('/api/test');
+      expect(true).toBe(false); // Should not reach here
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).code).toBe('VALIDATION_ERROR');
+      expect((error as ApiError).message).toBe('Invalid input data');
+      expect((error as ApiError).details).toBe('The name field is required');
+      expect((error as ApiError).status).toBe(200);
+    }
+  });
+
   // Restore fetch after each test
   afterEach(() => {
     global.fetch = fetchMock;

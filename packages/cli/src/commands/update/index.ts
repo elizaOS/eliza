@@ -18,16 +18,21 @@ export const update = new Command()
   .option('--packages', 'Update only packages')
   .hook('preAction', async () => {
     try {
-      await displayBanner();
+      await displayBanner(true); // Skip update check during update command
     } catch {
       logger.debug('Banner display failed, continuing with update');
     }
   })
   .action(async (options) => {
     try {
-      // Determine what to update
+      // Early directory detection for better flow control
+      const cwd = process.cwd();
+      const directoryInfo = detectDirectoryType(cwd);
+      const isInProject = directoryInfo && isValidForUpdates(directoryInfo);
+
+      // Determine what to update based on flags and context
       const updateCli = options.cli || (!options.cli && !options.packages);
-      const updatePackages = options.packages || (!options.cli && !options.packages);
+      const updatePackages = options.packages || (!options.cli && !options.packages && isInProject);
 
       // Handle CLI update
       if (updateCli) {
@@ -37,9 +42,7 @@ export const update = new Command()
         if (isNpx || isBunx) {
           console.warn('CLI update is not available when running via npx or bunx.');
           console.info('Please install the CLI globally:');
-          console.info('  bun install -g @elizaos/cli');
-          console.info('  # or');
-          console.info('  npm install -g @elizaos/cli');
+          console.info(' bun install -g @elizaos/cli');
 
           if (!updatePackages) return;
         } else {
@@ -53,9 +56,7 @@ export const update = new Command()
 
       // Handle package updates
       if (updatePackages) {
-        const cwd = process.cwd();
-        const directoryInfo = detectDirectoryType(cwd);
-
+        // If explicitly requested to update packages but not in a valid directory
         if (!directoryInfo) {
           console.error('Cannot update packages in this directory.');
           console.info('This directory is not accessible or does not exist.');
@@ -65,7 +66,7 @@ export const update = new Command()
 
         logger.debug(`Detected ${directoryInfo.type}`);
 
-        if (!isValidForUpdates(directoryInfo)) {
+        if (!isInProject) {
           handleInvalidDirectory(directoryInfo);
           return;
         }

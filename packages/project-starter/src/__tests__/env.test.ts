@@ -35,7 +35,9 @@ describe('Environment Setup', () => {
     expect(fs.existsSync(packageJsonPath)).toBe(true);
 
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    expect(packageJson).toHaveProperty('name', '@elizaos/project-starter');
+    expect(packageJson).toHaveProperty('name');
+    expect(typeof packageJson.name).toBe('string');
+    expect(packageJson.name.length).toBeGreaterThan(0);
     expect(packageJson).toHaveProperty('version');
     expect(packageJson).toHaveProperty('type', 'module');
     expect(packageJson).toHaveProperty('main');

@@ -11,6 +11,7 @@ import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
@@ -115,6 +116,7 @@ export interface ServerOptions {
   middlewares?: ServerMiddleware[];
   dataDir?: string;
   postgresUrl?: string;
+  clientPath?: string;
 }
 
 /**
@@ -147,6 +149,7 @@ export class AgentServer {
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
+  private clientPath?: string; // Optional path to client dist files
 
   public database!: DatabaseAdapter;
 
@@ -168,8 +171,11 @@ export class AgentServer {
       // Initialize character loading functions
       this.loadCharacterTryPath = loadCharacterTryPath;
       this.jsonToCharacter = jsonToCharacter;
+
+      // Register signal handlers once in constructor to prevent accumulation
+      this.registerSignalHandlers();
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (constructor):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (constructor):');
       throw error;
     }
   }
@@ -189,7 +195,7 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      const agentDataDir = await resolvePgliteDir(options?.dataDir);
+      const agentDataDir = resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
       this.database = createDatabaseAdapter(
         {
@@ -218,7 +224,7 @@ export class AgentServer {
 
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
-        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        logger.error({ error: migrationError }, '[INIT] Failed to run database migrations:');
         throw new Error(
           `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
         );
@@ -236,7 +242,7 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (async operations):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (async operations):');
       console.trace(error);
       throw error;
     }
@@ -313,7 +319,7 @@ export class AgentServer {
         logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
-      logger.error('[AgentServer] Error ensuring default server:', error);
+      logger.error({ error }, '[AgentServer] Error ensuring default server:');
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
@@ -326,6 +332,11 @@ export class AgentServer {
    */
   private async initializeServer(options?: ServerOptions) {
     try {
+      // Store the client path if provided
+      if (options?.clientPath) {
+        this.clientPath = options.clientPath;
+      }
+
       // Initialize middleware and database
       this.app = express();
 
@@ -351,7 +362,7 @@ export class AgentServer {
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // upgrade-insecure-requests is added by helmet automatically
@@ -465,23 +476,25 @@ export class AgentServer {
       // Agent-specific media serving - only serve files from agent-specific directories
       this.app.get(
         '/media/uploads/agents/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
-        (req: express.Request, res: express.Response) => {
+        (req: express.Request, res: express.Response): void => {
           const agentId = req.params.agentId as string;
           const filename = req.params.filename as string;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
-            return res.status(400).json({ error: 'Invalid agent ID format' });
+            res.status(400).json({ error: 'Invalid agent ID format' });
+            return;
           }
           const sanitizedFilename = basename(filename);
           const agentUploadsPath = join(uploadsBasePath, agentId);
           const filePath = join(agentUploadsPath, sanitizedFilename);
           if (!filePath.startsWith(agentUploadsPath)) {
-            return res.status(403).json({ error: 'Access denied' });
+            res.status(403).json({ error: 'Access denied' });
+            return;
           }
 
           if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File does not exist!!!!!!!' });
+            res.status(404).json({ error: 'File does not exist!!!!!!!' });
+            return;
           }
 
           res.sendFile(sanitizedFilename, { root: agentUploadsPath }, (err) => {
@@ -501,19 +514,23 @@ export class AgentServer {
 
       this.app.get(
         '/media/generated/:agentId/:filename',
-        // @ts-expect-error - this is a valid express route
-        (req: express.Request<{ agentId: string; filename: string }>, res: express.Response) => {
+        (
+          req: express.Request<{ agentId: string; filename: string }>,
+          res: express.Response
+        ): void => {
           const agentId = req.params.agentId;
           const filename = req.params.filename;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!uuidRegex.test(agentId)) {
-            return res.status(400).json({ error: 'Invalid agent ID format' });
+            res.status(400).json({ error: 'Invalid agent ID format' });
+            return;
           }
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
           if (!filePath.startsWith(agentGeneratedPath)) {
-            return res.status(403).json({ error: 'Access denied' });
+            res.status(403).json({ error: 'Access denied' });
+            return;
           }
           res.sendFile(filePath, (err) => {
             if (err) {
@@ -547,7 +564,7 @@ export class AgentServer {
 
           res.sendFile(filePath, (err) => {
             if (err) {
-              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              logger.warn({ err, filePath }, `[STATIC] Channel media file not found: ${filePath}`);
               if (!res.headersSent) {
                 res.status(404).json({ error: 'File not found' });
               }
@@ -584,6 +601,7 @@ export class AgentServer {
       const staticOptions = {
         etag: true,
         lastModified: true,
+        fallthrough: true, // Allow non-existent files to pass through to the catch-all route
         setHeaders: (res: express.Response, filePath: string) => {
           // Set the correct content type for different file extensions
           const ext = extname(filePath).toLowerCase();
@@ -603,11 +621,143 @@ export class AgentServer {
         },
       };
 
+      // Resolve client path for both static serving and SPA fallback
+      let clientPath: string | null = null;
+
       // Conditionally serve static assets from the client dist path
-      // Client files are built into the CLI package's dist directory
+      // Client files are built into the server package's dist/client directory
       if (this.isWebUIEnabled) {
-        const clientPath = path.resolve(__dirname, '../../cli/dist');
-        this.app.use(express.static(clientPath, staticOptions));
+        // Try multiple locations to find the client dist files
+        const possiblePaths = [
+          // First priority: explicitly provided client path
+          this.clientPath,
+          // Primary location: server's own dist/client directory
+          path.resolve(__dirname, 'client'),
+          // Development: relative to server package (monorepo) - direct client build
+          path.resolve(__dirname, '../../client/dist'),
+          // Fallback: using require.resolve to find client package (if installed as dependency)
+          (() => {
+            try {
+              return path.resolve(
+                path.dirname(require.resolve('@elizaos/client/package.json')),
+                'dist'
+              );
+            } catch {
+              return null;
+            }
+          })(),
+          // Check if running from global CLI - look for client files in the same directory as the running process
+          (() => {
+            try {
+              // When running from server, check for client files relative to the server dist
+              if (process.argv[1]) {
+                const serverPath = path.dirname(process.argv[1]);
+                const possibleClientPath = path.join(serverPath, 'client');
+                if (existsSync(path.join(possibleClientPath, 'index.html'))) {
+                  return possibleClientPath;
+                }
+                // Also check in the same directory (for backwards compatibility)
+                if (existsSync(path.join(serverPath, 'index.html'))) {
+                  return serverPath;
+                }
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
+          })(),
+          // Global bun install: check global node_modules locations
+          (() => {
+            try {
+              // Try to find the global server installation via bun
+              // Bun stores global packages in ~/.bun/install/global/node_modules
+              const bunGlobalPath = path.join(
+                os.homedir(),
+                '.bun/install/global/node_modules/@elizaos/server/dist/client'
+              );
+              if (existsSync(path.join(bunGlobalPath, 'index.html'))) {
+                return bunGlobalPath;
+              }
+              // Also try npm root as fallback (some users might use npm)
+              try {
+                const proc = Bun.spawnSync(['npm', 'root', '-g'], {
+                  stdout: 'pipe',
+                  stderr: 'pipe',
+                });
+                if (proc.exitCode === 0 && proc.stdout) {
+                  const npmRoot = new TextDecoder().decode(proc.stdout).trim();
+                  const globalServerPath = path.join(npmRoot, '@elizaos/server/dist/client');
+                  if (existsSync(path.join(globalServerPath, 'index.html'))) {
+                    return globalServerPath;
+                  }
+                }
+              } catch {
+                // npm might not be installed
+              }
+            } catch {
+              // Ignore errors
+            }
+            return null;
+          })(),
+          // Alternative global locations (common paths)
+          ...[
+            '/usr/local/lib/node_modules/@elizaos/server/dist/client',
+            '/usr/lib/node_modules/@elizaos/server/dist/client',
+            path.join(os.homedir(), '.npm-global/lib/node_modules/@elizaos/server/dist/client'),
+            // Check nvm installations
+            (() => {
+              try {
+                const nvmPath = path.join(os.homedir(), '.nvm/versions/node');
+                if (existsSync(nvmPath)) {
+                  const versions = fs.readdirSync(nvmPath);
+                  for (const version of versions) {
+                    const cliPath = path.join(
+                      nvmPath,
+                      version,
+                      'lib/node_modules/@elizaos/server/dist/client'
+                    );
+                    if (existsSync(path.join(cliPath, 'index.html'))) {
+                      return cliPath;
+                    }
+                  }
+                }
+              } catch {
+                // Ignore errors
+              }
+              return null;
+            })(),
+          ].filter(Boolean),
+        ].filter(Boolean);
+
+        // Log process information for debugging
+        logger.debug(`[STATIC] process.argv[0]: ${process.argv[0]}`);
+        logger.debug(`[STATIC] process.argv[1]: ${process.argv[1]}`);
+        logger.debug(`[STATIC] __dirname: ${__dirname}`);
+
+        for (const possiblePath of possiblePaths) {
+          if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {
+            clientPath = possiblePath;
+            logger.info(`[STATIC] Found client files at: ${clientPath}`);
+            break;
+          }
+        }
+
+        if (clientPath) {
+          // Store the resolved client path on the instance for use in the SPA fallback
+          this.clientPath = clientPath;
+          this.app.use(express.static(clientPath, staticOptions));
+          logger.info(`[STATIC] Serving static files from: ${clientPath}`);
+        } else {
+          logger.warn('[STATIC] Client dist path not found. Searched locations:');
+          possiblePaths.forEach((p) => {
+            if (p) logger.warn(`[STATIC]   - ${p}`);
+          });
+          logger.warn('[STATIC] The web UI will not be available.');
+          logger.warn(
+            '[STATIC] To fix this, ensure the client is built: cd packages/client && bun run build'
+          );
+          logger.warn('[STATIC] Then rebuild the server: cd packages/server && bun run build');
+        }
       }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
@@ -635,7 +785,7 @@ export class AgentServer {
         },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
-          logger.error(`API error: ${req.method} ${req.path}`, err);
+          logger.error({ err }, `API error: ${req.method} ${req.path}`);
           res.status(500).json({
             success: false,
             error: {
@@ -681,9 +831,40 @@ export class AgentServer {
           }
 
           // For all other routes, serve the SPA's index.html
-          // Client files are built into the CLI package's dist directory
-          const cliDistPath = path.resolve(__dirname, '../../cli/dist');
-          res.sendFile(path.join(cliDistPath, 'index.html'));
+          // Use the resolved clientPath (prefer local variable, fallback to instance variable)
+          const resolvedClientPath = clientPath || this.clientPath;
+
+          if (resolvedClientPath) {
+            const indexFilePath = path.join(resolvedClientPath, 'index.html');
+
+            // Verify the file exists before attempting to serve it
+            if (!existsSync(indexFilePath)) {
+              logger.error(`[STATIC] index.html not found at expected path: ${indexFilePath}`);
+              logger.error(`[STATIC] Client path was: ${resolvedClientPath}`);
+              res.status(404).send('Client application not found');
+              return;
+            }
+
+            // Use sendFile with the directory as root and filename separately
+            // This approach is more reliable for Express
+            res.sendFile('index.html', { root: resolvedClientPath }, (err) => {
+              if (err) {
+                logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
+                logger.warn(`[STATIC] Attempted root: ${resolvedClientPath}`);
+                logger.warn(`[STATIC] Full path was: ${indexFilePath}`);
+                logger.warn(`[STATIC] Error code: ${(err as any).code || 'unknown'}`);
+                if (!res.headersSent) {
+                  res.status(404).send('Client application not found');
+                }
+              } else {
+                logger.debug(`[STATIC] Successfully served index.html for route: ${req.path}`);
+              }
+            });
+          } else {
+            logger.warn('[STATIC] Client dist path not found in SPA fallback');
+            logger.warn('[STATIC] Neither local nor instance clientPath variables are set');
+            res.status(404).send('Client application not found');
+          }
         });
       } else {
         // Return 403 Forbidden for non-API routes when UI is disabled
@@ -700,7 +881,7 @@ export class AgentServer {
 
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
-      logger.error('Failed to complete server initialization:', error);
+      logger.error({ error }, 'Failed to complete server initialization:');
       throw error;
     }
   }
@@ -739,8 +920,8 @@ export class AgentServer {
         }
       } catch (e) {
         logger.error(
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
-          e
+          { error: e },
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
         // Decide if this is a fatal error for the agent.
       }
@@ -772,7 +953,7 @@ export class AgentServer {
         `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
-      logger.error('Failed to register agent:', error);
+      logger.error({ error }, 'Failed to register agent:');
       throw error;
     }
   }
@@ -798,13 +979,16 @@ export class AgentServer {
         try {
           agent.stop().catch((stopError) => {
             logger.error(
-              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
-              stopError
+              { error: stopError, agentId },
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
             );
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 
@@ -812,7 +996,7 @@ export class AgentServer {
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
-      logger.error(`Error removing agent ${agentId}:`, error);
+      logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
     }
   }
 
@@ -828,122 +1012,88 @@ export class AgentServer {
    * Starts the server on the specified port.
    *
    * @param {number} port - The port number on which the server should listen.
+   * @returns {Promise<void>} A promise that resolves when the server is listening.
    * @throws {Error} If the port is invalid or if there is an error while starting the server.
    */
-  public start(port: number) {
-    try {
-      if (!port || typeof port !== 'number') {
-        throw new Error(`Invalid port number: ${port}`);
-      }
+  public start(port: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!port || typeof port !== 'number') {
+          throw new Error(`Invalid port number: ${port}`);
+        }
 
-      logger.debug(`Starting server on port ${port}...`);
-      logger.debug(`Current agents count: ${this.agents.size}`);
-      logger.debug(`Environment: ${process.env.NODE_ENV}`);
+        logger.debug(`Starting server on port ${port}...`);
+        logger.debug(`Current agents count: ${this.agents.size}`);
+        logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      // Use http server instead of app.listen with explicit host binding and error handling
-      // For tests and macOS compatibility, prefer 127.0.0.1 when specified
-      const host = process.env.SERVER_HOST || '0.0.0.0';
+        // Use http server instead of app.listen with explicit host binding and error handling
+        // For tests and macOS compatibility, prefer 127.0.0.1 when specified
+        const host = process.env.SERVER_HOST || '0.0.0.0';
 
-      this.server
-        .listen(port, host, () => {
-          // Only show the dashboard URL if UI is enabled
-          if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
-            // Display the dashboard URL with the correct port after the server is actually listening
-            console.log(
-              `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+        this.server
+          .listen(port, host, () => {
+            // Only show the dashboard URL if UI is enabled
+            if (this.isWebUIEnabled && process.env.NODE_ENV !== 'development') {
+              // Display the dashboard URL with the correct port after the server is actually listening
+              console.log(
+                `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+              );
+            } else if (!this.isWebUIEnabled) {
+              // Use actual host or localhost
+              const actualHost = host === '0.0.0.0' ? 'localhost' : host;
+              const baseUrl = `http://${actualHost}:${port}`;
+
+              console.log(
+                `\x1b[32mStartup successful!\x1b[0m\n` +
+                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+              );
+            }
+
+            // Add log for test readiness
+            console.log(`AgentServer is listening on port ${port}`);
+
+            logger.success(
+              `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
             );
-          } else if (!this.isWebUIEnabled) {
-            // Use actual host or localhost
-            const actualHost = host === '0.0.0.0' ? 'localhost' : host;
-            const baseUrl = `http://${actualHost}:${port}`;
+            logger.debug(`Active agents: ${this.agents.size}`);
+            this.agents.forEach((agent, id) => {
+              logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            });
 
-            console.log(
-              `\x1b[32mStartup successful!\x1b[0m\n` +
-                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
-            );
-          }
+            // Resolve the promise now that the server is actually listening
+            resolve();
+          })
+          .on('error', (error: any) => {
+            logger.error({ error, host, port }, `Failed to bind server to ${host}:${port}:`);
 
-          // Add log for test readiness
-          console.log(`AgentServer is listening on port ${port}`);
+            // Provide helpful error messages for common issues
+            if (error.code === 'EADDRINUSE') {
+              logger.error(
+                `Port ${port} is already in use. Please try a different port or stop the process using that port.`
+              );
+            } else if (error.code === 'EACCES') {
+              logger.error(
+                `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
+              );
+            } else if (error.code === 'EADDRNOTAVAIL') {
+              logger.error(
+                `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
+              );
+            }
 
-          logger.success(
-            `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
-          );
-          logger.debug(`Active agents: ${this.agents.size}`);
-          this.agents.forEach((agent, id) => {
-            logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            // Reject the promise on error
+            reject(error);
           });
-        })
-        .on('error', (error: any) => {
-          logger.error(`Failed to bind server to ${host}:${port}:`, error);
 
-          // Provide helpful error messages for common issues
-          if (error.code === 'EADDRINUSE') {
-            logger.error(
-              `Port ${port} is already in use. Please try a different port or stop the process using that port.`
-            );
-          } else if (error.code === 'EACCES') {
-            logger.error(
-              `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
-            );
-          } else if (error.code === 'EADDRNOTAVAIL') {
-            logger.error(
-              `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
-            );
-          }
-
-          throw error;
-        });
-
-      // Enhanced graceful shutdown
-      const gracefulShutdown = async () => {
-        logger.info('Received shutdown signal, initiating graceful shutdown...');
-
-        // Stop all agents first
-        logger.debug('Stopping all agents...');
-        for (const [id, agent] of this.agents.entries()) {
-          try {
-            await agent.stop();
-            logger.debug(`Stopped agent ${id}`);
-          } catch (error) {
-            logger.error(`Error stopping agent ${id}:`, error);
-          }
-        }
-
-        // Close database
-        if (this.database) {
-          try {
-            await this.database.close();
-            logger.info('Database closed.');
-          } catch (error) {
-            logger.error('Error closing database:', error);
-          }
-        }
-
-        // Close server
-        this.server.close(() => {
-          logger.success('Server closed successfully');
-          process.exit(0);
-        });
-
-        // Force close after timeout
-        setTimeout(() => {
-          logger.error('Could not close connections in time, forcing shutdown');
-          process.exit(1);
-        }, 5000);
-      };
-
-      process.on('SIGTERM', gracefulShutdown);
-      process.on('SIGINT', gracefulShutdown);
-
-      logger.debug('Shutdown handlers registered');
-    } catch (error) {
-      logger.error('Failed to start server:', error);
-      throw error;
-    }
+        // Server is now listening successfully
+      } catch (error) {
+        logger.error({ error }, 'Failed to start server:');
+        reject(error);
+      }
+    });
   }
 
   /**
@@ -1069,6 +1219,7 @@ export class AgentServer {
     limit: number = 50,
     beforeTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
+    // TODO: Add afterTimestamp support when database layer is updated
     return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
   }
 
@@ -1133,6 +1284,57 @@ export class AgentServer {
       }
     }
     return serverIds;
+  }
+
+  /**
+   * Registers signal handlers for graceful shutdown.
+   * This is called once in the constructor to prevent handler accumulation.
+   */
+  private registerSignalHandlers(): void {
+    const gracefulShutdown = async () => {
+      logger.info('Received shutdown signal, initiating graceful shutdown...');
+
+      // Stop all agents first
+      logger.debug('Stopping all agents...');
+      for (const [id, agent] of this.agents.entries()) {
+        try {
+          await agent.stop();
+          logger.debug(`Stopped agent ${id}`);
+        } catch (error) {
+          logger.error({ error, agentId: id }, `Error stopping agent ${id}:`);
+        }
+      }
+
+      // Close database
+      if (this.database) {
+        try {
+          await this.database.close();
+          logger.info('Database closed.');
+        } catch (error) {
+          logger.error({ error }, 'Error closing database:');
+        }
+      }
+
+      // Close server
+      if (this.server) {
+        this.server.close(() => {
+          logger.success('Server closed successfully');
+          process.exit(0);
+        });
+
+        // Force close after timeout
+        setTimeout(() => {
+          logger.error('Could not close connections in time, forcing shutdown');
+          process.exit(1);
+        }, 5000);
+      } else {
+        process.exit(0);
+      }
+    };
+
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+    logger.debug('Shutdown handlers registered');
   }
 }
 

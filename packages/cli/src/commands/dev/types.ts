@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import type { Subprocess } from 'bun';
 
 /**
  * Dev command types and interfaces
@@ -18,10 +18,11 @@ export interface DevOptions {
  * Server process management interface
  */
 export interface ServerProcess {
-  process: ChildProcess | null;
-  stop(): Promise<void>;
+  process: Subprocess | null;
+  stop(): Promise<boolean>;
   start(args?: string[]): Promise<void>;
   restart(args?: string[]): Promise<void>;
+  isRunning(): boolean;
 }
 
 /**

@@ -104,7 +104,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
             >
               {!isUser && chatType === ChannelType.GROUP && (
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <Avatar className="size-8 border rounded-full select-none">
+                  <Avatar className="size-5 border rounded-full select-none">
                     <AvatarImage
                       src={getAgentAvatar(
                         senderAgent ||

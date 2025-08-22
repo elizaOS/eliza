@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.0.15",
+  "version": "1.4.2",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -36,21 +36,21 @@
     "dist",
     "README.md",
     ".npmignore",
+    ".gitignore",
     "package.json",
     "tsup.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0",
+    "@elizaos/core": "workspace:*",
     "@tanstack/react-query": "^5.80.7",
     "clsx": "^2.1.1",
-    "tailwindcss": "^4.1.10",
     "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^4.1.10",
     "vite": "^6.3.5",
     "zod": "3.24.2"
   },
-  "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.0.0",
+    "@elizaos/cli": "workspace:*",
     "@tailwindcss/vite": "^4.1.10",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "dotenv": "16.4.5",
@@ -64,13 +64,13 @@
     "dev": "elizaos dev",
     "build": "tsc --noEmit && vite build && tsup",
     "lint": "prettier --write ./src",
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test:component": "bun run test:install && bun test",
     "test:e2e": "bun run test:install && bun test",
     "test:e2e:manual": "bun run test:install && node scripts/test-e2e-manual.js",
     "test:cypress": "bun run test:install && cypress run --component",
     "test": "bun run test:install && bun run test:component && bun run test:e2e",
     "test:install": "node scripts/install-test-deps.js",
-    "publish": "elizaos publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },
@@ -78,7 +78,13 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "3.24.2"
+    "// Note": "langchain 0.3.30 fixes @langchain/core zod/v3 import issues",
+    "zod": "3.24.2",
+    "langchain": "0.3.30",
+    "@langchain/core": "0.3.30"
+  },
+  "overrides": {
+    "@langchain/core": "0.3.30"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

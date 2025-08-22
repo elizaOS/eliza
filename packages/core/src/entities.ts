@@ -1,6 +1,6 @@
 import { stringToUuid } from './index';
 import { logger } from './logger';
-import { composePrompt, parseJSONObjectFromText } from './utils';
+import { composePrompt, parseKeyValueXml } from './utils';
 import {
   type Entity,
   type IAgentRuntime,
@@ -43,20 +43,22 @@ Agent: {{agentName}} (ID: {{agentId}})
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
 
-Return a JSON object with:
-\`\`\`json
-{
-  "entityId": "exact-id-if-known-otherwise-null",
-  "type": "EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN",
-  "matches": [{
-    "name": "matched-name",
-    "reason": "why this entity matches"
-  }]
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.
-`;
+Return an XML response with:
+<response>
+  <entityId>exact-id-if-known-otherwise-null</entityId>
+  <type>EXACT_MATCH | USERNAME_MATCH | NAME_MATCH | RELATIONSHIP_MATCH | AMBIGUOUS | UNKNOWN</type>
+  <matches>
+    <match>
+      <name>matched-name</name>
+      <reason>why this entity matches</reason>
+    </match>
+  </matches>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Get recent interactions between a source entity and candidate entities in a specific room.
@@ -226,7 +228,7 @@ export async function findEntityByName(
   });
 
   // Parse LLM response
-  const resolution = parseJSONObjectFromText(result);
+  const resolution = parseKeyValueXml(result);
   if (!resolution) {
     logger.warn('Failed to parse entity resolution result');
     return null;
@@ -254,8 +256,17 @@ export async function findEntityByName(
   }
 
   // For username/name/relationship matches, search through all entities
-  if (resolution.matches?.[0]?.name) {
-    const matchName = resolution.matches[0].name.toLowerCase();
+  // Handle matches - parseKeyValueXml returns nested structures differently
+  let matchesArray: any[] = [];
+  if (resolution.matches?.match) {
+    // Normalize to array
+    matchesArray = Array.isArray(resolution.matches.match)
+      ? resolution.matches.match
+      : [resolution.matches.match];
+  }
+
+  if (matchesArray.length > 0 && matchesArray[0]?.name) {
+    const matchName = matchesArray[0].name.toLowerCase();
 
     // Find matching entity by username/handle in components or by name
     const matchingEntity = allEntities.find((entity) => {

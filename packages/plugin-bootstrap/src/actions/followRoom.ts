@@ -9,6 +9,7 @@ import {
   type Memory,
   ModelType,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -66,10 +67,22 @@ export const followRoomAction: Action = {
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
     _responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     if (!state) {
       logger.error('State is required for followRoomAction');
-      throw new Error('State is required for followRoomAction');
+      return {
+        text: 'State is required for follow room action',
+        values: {
+          success: false,
+          error: 'STATE_REQUIRED',
+        },
+        data: {
+          actionName: 'FOLLOW_ROOM',
+          error: 'State is required',
+        },
+        success: false,
+        error: new Error('State is required for followRoomAction'),
+      };
     }
 
     async function _shouldFollow(state: State): Promise<boolean> {
@@ -145,24 +158,80 @@ export const followRoomAction: Action = {
       return false;
     }
 
-    if (await _shouldFollow(state)) {
-      await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'FOLLOWED');
-    }
-
+    const shouldFollow = await _shouldFollow(state);
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    await runtime.createMemory(
-      {
-        entityId: message.entityId,
-        agentId: message.agentId,
-        roomId: message.roomId,
-        content: {
-          thought: `I followed the room ${room.name}`,
-          actions: ['FOLLOW_ROOM_START'],
+    if (shouldFollow) {
+      try {
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'FOLLOWED');
+
+        await runtime.createMemory(
+          {
+            entityId: message.entityId,
+            agentId: message.agentId,
+            roomId: message.roomId,
+            content: {
+              thought: `I followed the room ${room.name}`,
+              actions: ['FOLLOW_ROOM_START'],
+            },
+          },
+          'messages'
+        );
+
+        return {
+          text: `Now following room: ${room.name}`,
+          values: {
+            success: true,
+            roomFollowed: true,
+            roomId: message.roomId,
+            roomName: room.name,
+            newState: 'FOLLOWED',
+          },
+          data: {
+            actionName: 'FOLLOW_ROOM',
+            roomId: message.roomId,
+            roomName: room.name,
+            followed: true,
+          },
+          success: true,
+        };
+      } catch (error) {
+        logger.error({ error }, 'Error following room');
+        return {
+          text: 'Failed to follow room',
+          values: {
+            success: false,
+            error: 'FOLLOW_FAILED',
+          },
+          data: {
+            actionName: 'FOLLOW_ROOM',
+            error: error instanceof Error ? error.message : String(error),
+            roomId: message.roomId,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+    } else {
+      return {
+        text: `Decided not to follow room: ${room.name}`,
+        values: {
+          success: true,
+          roomFollowed: false,
+          roomId: message.roomId,
+          roomName: room.name,
+          reason: 'NOT_APPROPRIATE',
         },
-      },
-      'messages'
-    );
+        data: {
+          actionName: 'FOLLOW_ROOM',
+          roomId: message.roomId,
+          roomName: room.name,
+          followed: false,
+          reason: 'Decision criteria not met',
+        },
+        success: true,
+      };
+    }
   },
   examples: [
     [

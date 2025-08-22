@@ -159,7 +159,7 @@ jobs:
           time bun run build || true
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: performance-results
           path: packages/cli/benchmark-results.json

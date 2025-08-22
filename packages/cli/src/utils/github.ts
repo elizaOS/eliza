@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 import { existsSync } from 'node:fs';
-import { execa } from 'execa';
+import { bunExecSimple, bunExec } from './bun-exec.js';
 import { UserEnvironment } from './user-environment';
 import * as clack from '@clack/prompts';
 
@@ -726,12 +726,20 @@ export async function ensureDirectory(
       logger.info(`Directory ${path} doesn't exist, creating it`);
     }
 
+    // Split repo into owner and repo name for updateFile
+    const [owner, repoName] = repo.split('/');
+    if (!owner || !repoName) {
+      logger.error(`Invalid repository format: ${repo}. Expected format: owner/repo`);
+      return false;
+    }
+
     // Create a placeholder file in the directory
     // (GitHub doesn't have a concept of empty directories)
     const placeholderPath = `${path}/.gitkeep`;
     const result = await updateFile(
       token,
-      repo,
+      owner,
+      repoName,
       placeholderPath,
       '', // Empty content for placeholder
       `Create directory: ${path}`,
@@ -878,7 +886,9 @@ export async function pushToGitHub(
     let hasCorrectRemote = false;
     if (gitDirExists) {
       try {
-        const { stdout: remoteUrl } = await execa('git', ['remote', 'get-url', 'origin'], { cwd });
+        const { stdout: remoteUrl } = await bunExecSimple('git', ['remote', 'get-url', 'origin'], {
+          cwd,
+        });
         // Check if the remote URL matches our target (ignoring the token part)
         const sanitizedRepoUrl = repoUrl.replace(/https:\/\/.*?@/, 'https://');
         const sanitizedRemoteUrl = remoteUrl.replace(/https:\/\/.*?@/, 'https://');
@@ -895,45 +905,45 @@ export async function pushToGitHub(
     if (!gitDirExists || !hasCorrectRemote) {
       if (gitDirExists) {
         logger.info('Existing git repository has incorrect remote, reinitializing...');
-        await execa('rm', ['-rf', '.git'], { cwd });
+        await bunExec('rm', ['-rf', '.git'], { cwd });
       }
 
-      await execa('git', ['init'], { cwd });
+      await bunExec('git', ['init'], { cwd });
       // Explicitly create and switch to main branch
-      await execa('git', ['checkout', '-b', 'main'], { cwd });
+      await bunExec('git', ['checkout', '-b', 'main'], { cwd });
       logger.info('Git repository initialized with main branch');
 
       // Add remote
-      await execa('git', ['remote', 'add', 'origin', repoUrl], { cwd });
+      await bunExec('git', ['remote', 'add', 'origin', repoUrl], { cwd });
       logger.info(`Added remote: ${repoUrl.replace(/\/\/.*?@/, '//***@')}`);
     } else {
       // Make sure we're on the main branch
       try {
-        await execa('git', ['rev-parse', '--verify', branch], { cwd });
-        await execa('git', ['checkout', branch], { cwd });
+        await bunExec('git', ['rev-parse', '--verify', branch], { cwd });
+        await bunExec('git', ['checkout', branch], { cwd });
       } catch (error) {
         // Branch doesn't exist, create it
-        await execa('git', ['checkout', '-b', branch], { cwd });
+        await bunExec('git', ['checkout', '-b', branch], { cwd });
         logger.info(`Created and switched to ${branch} branch`);
       }
     }
 
     // Add all files
-    await execa('git', ['add', '.'], { cwd });
+    await bunExec('git', ['add', '.'], { cwd });
     logger.info('Added files to git');
 
     // Set git user info if not already set
     try {
-      await execa('git', ['config', 'user.email'], { cwd });
+      await bunExec('git', ['config', 'user.email'], { cwd });
     } catch (error) {
-      await execa('git', ['config', 'user.email', 'plugindev@elizaos.com'], { cwd });
-      await execa('git', ['config', 'user.name', 'ElizaOS Plugin Dev'], { cwd });
+      await bunExec('git', ['config', 'user.email', 'plugindev@elizaos.com'], { cwd });
+      await bunExec('git', ['config', 'user.name', 'ElizaOS Plugin Dev'], { cwd });
       logger.info('Set git user info for commit');
     }
 
     // Commit if there are changes
     try {
-      await execa('git', ['commit', '-m', 'Initial commit from ElizaOS CLI'], { cwd });
+      await bunExec('git', ['commit', '-m', 'Initial commit from ElizaOS CLI'], { cwd });
       logger.info('Committed changes');
     } catch (error) {
       // If no changes to commit, that's okay
@@ -942,7 +952,7 @@ export async function pushToGitHub(
 
     // Push to GitHub
     try {
-      await execa('git', ['push', '-u', 'origin', branch], { cwd });
+      await bunExec('git', ['push', '-u', 'origin', branch], { cwd });
       logger.success(`Pushed to GitHub repository: ${repoUrl}`);
       return true;
     } catch (error) {
@@ -954,9 +964,8 @@ export async function pushToGitHub(
       try {
         logger.info('Attempting force push...');
         // Use force-with-lease as a slightly safer option than force
-        await execa('git', ['push', '-u', 'origin', 'main', '--force-with-lease'], {
+        await bunExec('git', ['push', '-u', 'origin', 'main', '--force-with-lease'], {
           cwd,
-          stdio: 'pipe',
         });
         return true;
       } catch (forcePushError) {

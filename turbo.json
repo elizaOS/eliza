@@ -11,6 +11,11 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/server#build": {
+      "dependsOn": ["@elizaos/client#build", "^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
     "lint": {
       "outputs": [".eslintcache"]
     },

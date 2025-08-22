@@ -13,34 +13,32 @@ export const character: Character = {
     '@elizaos/plugin-sql',
 
     // Text-only plugins (no embedding support)
-    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+    ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
 
-    // Embedding-capable plugins last (lowest priority for embedding fallback)
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : []),
+    // Embedding-capable plugins (optional, based on available credentials)
+    ...(process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
+
+    // Ollama as fallback (only if no main LLM providers are configured)
+    ...(process.env.OLLAMA_API_ENDPOINT?.trim() ? ['@elizaos/plugin-ollama'] : []),
 
     // Platform plugins
-    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
-    ...(process.env.TWITTER_API_KEY &&
-    process.env.TWITTER_API_SECRET_KEY &&
-    process.env.TWITTER_ACCESS_TOKEN &&
-    process.env.TWITTER_ACCESS_TOKEN_SECRET
+    ...(process.env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
+    ...(process.env.TWITTER_API_KEY?.trim() &&
+    process.env.TWITTER_API_SECRET_KEY?.trim() &&
+    process.env.TWITTER_ACCESS_TOKEN?.trim() &&
+    process.env.TWITTER_ACCESS_TOKEN_SECRET?.trim()
       ? ['@elizaos/plugin-twitter']
       : []),
-    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+    ...(process.env.TELEGRAM_BOT_TOKEN?.trim() ? ['@elizaos/plugin-telegram'] : []),
 
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ],
   settings: {
     secrets: {},
+    avatar: 'https://elizaos.github.io/eliza-avatars/Eliza/portrait.png',
   },
   system:
     'Respond to all messages in a helpful, conversational manner. Provide assistance on a wide range of topics, using knowledge when needed. Be concise but thorough, friendly but professional. Use humor when appropriate and be empathetic to user needs. Provide valuable information and insights when questions are asked.',

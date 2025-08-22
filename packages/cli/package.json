@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.15",
+  "version": "1.4.2",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -20,7 +20,11 @@
   },
   "files": [
     "dist",
-    "templates"
+    "dist/**/.gitignore",
+    "dist/**/.npmignore",
+    "templates",
+    "templates/**/.gitignore",
+    "templates/**/.npmignore"
   ],
   "keywords": [],
   "type": "module",
@@ -32,8 +36,8 @@
     "elizaos": "./dist/index.js"
   },
   "scripts": {
-    "start": "bun run build && node dist/index.js start",
-    "build": "bun run src/scripts/copy-templates.ts && bun x tsup && bun run src/scripts/copy-client-dist.ts",
+    "start": "bun run build && bun dist/index.js start",
+    "build": "bun run src/scripts/copy-templates.ts && bun x tsup",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -57,11 +61,9 @@
     "@types/express": "^5.0.2",
     "@types/fs-extra": "^11.0.1",
     "@types/helmet": "^4.0.0",
-    "@types/inquirer": "^9.0.8",
     "@types/node": "^24.0.3",
     "@types/prompts": "^2.4.2",
     "@types/semver": "^7.5.8",
-    "bats-assert": "^2.0.0",
     "bats-support": "^0.3.0",
     "cross-env": "^7.0.3",
     "esbuild-plugin-copy": "^2.1.1",
@@ -70,11 +72,12 @@
     "typescript": "5.8.3",
     "vite": "^6.3.5"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7",
+  "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2",
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.35",
     "@anthropic-ai/sdk": "^0.54.0",
     "@clack/prompts": "^0.11.0",
+    "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
@@ -83,11 +86,9 @@
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
-    "execa": "^9.6.0",
     "fs-extra": "^11.1.0",
     "globby": "^14.0.2",
     "https-proxy-agent": "^7.0.6",
-    "inquirer": "^12.6.3",
     "ora": "^8.1.1",
     "rimraf": "6.0.1",
     "semver": "^7.7.2",
@@ -96,6 +97,6 @@
     "tsconfig-paths": "^4.2.0",
     "type-fest": "^4.41.0",
     "yoctocolors": "^2.1.1",
-    "zod": "^3.25.67"
+    "zod": "3.24.2"
   }
 }

@@ -33,7 +33,7 @@ export async function loadPluginDependencies(projectInfo: DirectoryInfo): Promis
             dependencyPlugins.push(pluginProject.pluginModule);
           }
         } catch (error) {
-          logger.error(`Failed to load or build dependency ${dependency}:`, error);
+          logger.error({ error, dependency }, `Failed to load or build dependency`);
         }
       }
     }

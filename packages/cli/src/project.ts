@@ -191,18 +191,18 @@ export async function loadProject(dir: string): Promise<Project> {
 
           // Debug the module structure
           const exportKeys = Object.keys(projectModule);
-          logger.debug(`Module exports: ${exportKeys.join(', ')}`);
+          logger.debug({ exportKeys }, `Module exports:`);
 
           if (exportKeys.includes('default')) {
-            logger.debug(`Default export type: ${typeof projectModule.default}`);
+            logger.debug({ type: typeof projectModule.default }, `Default export type:`);
             if (typeof projectModule.default === 'object' && projectModule.default !== null) {
-              logger.debug(`Default export keys: ${Object.keys(projectModule.default).join(', ')}`);
+              logger.debug({ keys: Object.keys(projectModule.default) }, `Default export keys:`);
             }
           }
 
           break;
         } catch (error) {
-          logger.warn(`Failed to import project from ${entryPoint}:`, error);
+          logger.warn({ error, entryPoint }, `Failed to import project`);
         }
       }
     }
@@ -213,7 +213,7 @@ export async function loadProject(dir: string): Promise<Project> {
 
     // Check if it's a plugin using our improved detection
     const moduleIsPlugin = isPlugin(projectModule);
-    logger.debug(`Is this a plugin? ${moduleIsPlugin}`);
+    logger.debug({ moduleIsPlugin }, `Is this a plugin?`);
 
     if (moduleIsPlugin) {
       logger.info('Detected plugin module instead of project');
@@ -221,10 +221,10 @@ export async function loadProject(dir: string): Promise<Project> {
       try {
         // Extract the plugin object
         const plugin = extractPlugin(projectModule);
-        logger.debug(`Found plugin: ${plugin.name} - ${plugin.description}`);
+        logger.debug({ name: plugin.name, description: plugin.description }, `Found plugin:`);
 
         // Log plugin structure for debugging
-        logger.debug(`Plugin has the following properties: ${Object.keys(plugin).join(', ')}`);
+        logger.debug({ keys: Object.keys(plugin) }, `Plugin has the following properties:`);
 
         // Create a more complete plugin object with all required properties
         const completePlugin: Plugin = {
@@ -291,7 +291,7 @@ export async function loadProject(dir: string): Promise<Project> {
     ) {
       // Use the agents from the default export
       agents.push(...(projectModule.default.agents as ProjectAgent[]));
-      logger.debug(`Found ${agents.length} agents in default export's agents array`);
+      logger.debug({ count: agents.length }, `Found agents in default export's agents array`);
     }
     // Only if we didn't find agents in the default export, look for other exports
     else {
@@ -312,7 +312,7 @@ export async function loadProject(dir: string): Promise<Project> {
         ) {
           // If it's a named export that looks like an agent, add it
           agents.push(value as ProjectAgent);
-          logger.debug(`Found agent in named export: ${key}`);
+          logger.debug({ key }, `Found agent in named export`);
         }
       }
     }
@@ -329,7 +329,7 @@ export async function loadProject(dir: string): Promise<Project> {
 
     return project;
   } catch (error) {
-    logger.error('Error loading project:', error);
+    logger.error({ error }, 'Error loading project:');
     throw error;
   }
 }

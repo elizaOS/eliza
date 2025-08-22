@@ -1,7 +1,8 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExecSimple } from '@/src/utils/bun-exec';
 import * as semver from 'semver';
 import { UserEnvironment } from '@/src/utils/user-environment';
+import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { VersionCheckResult } from '../types';
 
 // Constants
@@ -14,10 +15,26 @@ export const FALLBACK_VERSION = '0.0.0';
  */
 export async function getVersion(): Promise<string> {
   try {
+    // Check if we're in the monorepo context using standard pattern
+    const directoryInfo = detectDirectoryType(process.cwd());
+    const isMonorepo = directoryInfo.type === 'elizaos-monorepo';
+
+    if (isMonorepo) {
+      // We're in the monorepo, return 'monorepo' as version
+      return 'monorepo';
+    }
+
     const envInfo = await UserEnvironment.getInstance().getInfo();
-    return envInfo.cli.version;
+    const version = envInfo.cli.version;
+
+    // In case version is still workspace:*, return 'monorepo'
+    if (isWorkspaceVersion(version)) {
+      return 'monorepo';
+    }
+
+    return version;
   } catch (error) {
-    logger.error('Error getting CLI version:', error);
+    logger.error({ error }, 'Error getting CLI version:');
     return FALLBACK_VERSION;
   }
 }
@@ -87,7 +104,7 @@ export function isMajorUpdate(currentVersion: string, targetVersion: string): bo
 export async function fetchLatestVersion(packageName: string): Promise<string | null> {
   try {
     // Always check npm registry for the actual latest version
-    const { stdout } = await execa('npm', ['view', packageName, 'version'], {
+    const { stdout } = await bunExecSimple('npm', ['view', packageName, 'version'], {
       env: { NODE_ENV: 'production' },
     });
     const version = stdout.trim();

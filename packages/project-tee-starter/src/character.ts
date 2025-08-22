@@ -32,6 +32,9 @@ export const mrTeeCharacter: Character = {
     // Embedding-capable plugins after other AI plugins
     '@elizaos/plugin-openai',
 
+    // Ollama as universal fallback (always included for local AI capabilities)
+    '@elizaos/plugin-ollama',
+
     // Specialized Plugins
     '@elizaos/plugin-tee',
 

@@ -109,7 +109,7 @@ export default function ConnectionStatus() {
     <SidebarMenuItem data-testid="connection-status">
       <Tooltip>
         <TooltipTrigger asChild>
-          <SidebarMenuButton>
+          <SidebarMenuButton className="rounded">
             <div className="flex flex-col gap-1 select-none">
               <div className="flex items-center gap-1">
                 {showingError || isUnauthorized ? (

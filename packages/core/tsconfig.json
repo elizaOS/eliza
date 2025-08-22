@@ -11,5 +11,5 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["src/**/*", "../plugin-local-ai/src/types", "src/__tests__"]
+  "include": ["src/**/*", "src/__tests__"]
 }

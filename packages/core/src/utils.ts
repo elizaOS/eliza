@@ -215,7 +215,7 @@ export const formatPosts = ({
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
         if (!entity) {
-          logger.warn('core::prompts:formatPosts - no entity for', message.entityId);
+          logger.warn({ entityId: message.entityId }, 'core::prompts:formatPosts - no entity for');
         }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
@@ -359,29 +359,184 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     xmlContent = xmlBlockMatch[1];
     logger.debug('Found response XML block');
   } else {
-    // Fall back to finding any XML block (e.g., <response>...</response>)
-    const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
-    if (!fallbackMatch) {
+    // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
+    // This avoids potentially expensive backtracking on crafted inputs
+    const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
+      let i = 0;
+      const length = input.length;
+      while (i < length) {
+        const openIdx = input.indexOf('<', i);
+        if (openIdx === -1) break;
+        // Skip closing tags and comments/decls
+        if (
+          input.startsWith('</', openIdx) ||
+          input.startsWith('<!--', openIdx) ||
+          input.startsWith('<?', openIdx)
+        ) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Extract tag name [letters, digits, dash, underscore]
+        let j = openIdx + 1;
+        let tag = '';
+        while (j < length) {
+          const ch = input[j];
+          if (/^[A-Za-z0-9_-]$/.test(ch)) {
+            tag += ch;
+            j++;
+            continue;
+          }
+          break;
+        }
+        if (!tag) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Find end of start tag '>' (skip attributes if present)
+        const startTagEnd = input.indexOf('>', j);
+        if (startTagEnd === -1) break;
+        // Self-closing tag? tolerate whitespace before '/>'
+        const startTagText = input.slice(openIdx, startTagEnd + 1);
+        if (/\/\s*>$/.test(startTagText)) {
+          i = startTagEnd + 1;
+          continue;
+        }
+        const closeSeq = `</${tag}>`;
+        // Implement nested tag counting for same-named tags
+        let depth = 1;
+        let searchStart = startTagEnd + 1;
+        while (depth > 0 && searchStart < length) {
+          const nextOpen = input.indexOf(`<${tag}`, searchStart);
+          const nextClose = input.indexOf(closeSeq, searchStart);
+          if (nextClose === -1) {
+            break;
+          }
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            // Determine if the next open is self-closing; if so, do not increase depth
+            const nestedStartEnd = input.indexOf('>', nextOpen + 1);
+            if (nestedStartEnd === -1) {
+              break;
+            }
+            const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
+            if (/\/\s*>$/.test(nestedStartText)) {
+              // self-closing; skip without changing depth
+              searchStart = nestedStartEnd + 1;
+            } else {
+              depth++;
+              searchStart = nestedStartEnd + 1;
+            }
+          } else {
+            depth--;
+            searchStart = nextClose + closeSeq.length;
+          }
+        }
+        if (depth === 0) {
+          const closeIdx = searchStart - closeSeq.length;
+          const inner = input.slice(startTagEnd + 1, closeIdx);
+          return { tag, content: inner };
+        }
+        i = startTagEnd + 1;
+      }
+      return null;
+    };
+
+    const fb = findFirstXmlBlock(text);
+    if (!fb) {
       logger.warn('Could not find XML block in text');
-      logger.debug('Text content:', text.substring(0, 200) + '...');
+      logger.debug({ textPreview: text.substring(0, 200) + '...' }, 'Text content');
       return null;
     }
-    xmlContent = fallbackMatch[2];
-    logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
+    xmlContent = fb.content;
+    logger.debug(`Found XML block with tag: ${fb.tag}`);
   }
 
   const result: Record<string, any> = {};
 
-  // Regex to find <key>value</key> patterns
-  const tagPattern = /<([\w-]+)>([\s\S]*?)<\/([\w-]+)>/g;
-  let match;
+  // Safer linear scan to extract direct child <key>value</key> elements
+  // Avoids potentially expensive backtracking from broad regexes
+  const extractDirectChildren = (input: string): Array<{ key: string; value: string }> => {
+    const pairs: Array<{ key: string; value: string }> = [];
+    const length = input.length;
+    let i = 0;
 
-  while ((match = tagPattern.exec(xmlContent)) !== null) {
-    // Ensure opening and closing tags match
-    if (match[1] === match[3]) {
-      const key = match[1];
+    while (i < length) {
+      const openIdx = input.indexOf('<', i);
+      if (openIdx === -1) break;
+
+      // Skip closing tags and comments/decls
+      if (
+        input.startsWith('</', openIdx) ||
+        input.startsWith('<!--', openIdx) ||
+        input.startsWith('<?', openIdx)
+      ) {
+        i = openIdx + 1;
+        continue;
+      }
+
+      // Extract tag name [letters, digits, dash, underscore]
+      let j = openIdx + 1;
+      let tag = '';
+      while (j < length) {
+        const ch = input[j];
+        if (/^[A-Za-z0-9_-]$/.test(ch)) {
+          tag += ch;
+          j++;
+          continue;
+        }
+        break;
+      }
+      if (!tag) {
+        i = openIdx + 1;
+        continue;
+      }
+
+      // Find end of start tag '>' (skip attributes if present)
+      const startTagEnd = input.indexOf('>', j);
+      if (startTagEnd === -1) break;
+
+      // Self-closing tag? tolerate whitespace before '/>'
+      const startTagText = input.slice(openIdx, startTagEnd + 1);
+      if (/\/\s*>$/.test(startTagText)) {
+        i = startTagEnd + 1;
+        continue;
+      }
+
+      // Find the matching close tag, handling nested tags with the same name
+      const closeSeq = `</${tag}>`;
+      let depth = 1;
+      let searchStart = startTagEnd + 1;
+      while (depth > 0 && searchStart < length) {
+        const nextOpen = input.indexOf(`<${tag}`, searchStart);
+        const nextClose = input.indexOf(closeSeq, searchStart);
+        if (nextClose === -1) {
+          break;
+        }
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          const nestedStartEnd = input.indexOf('>', nextOpen + 1);
+          if (nestedStartEnd === -1) {
+            break;
+          }
+          const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
+          if (!/\/\s*>$/.test(nestedStartText)) {
+            depth++;
+          }
+          searchStart = nestedStartEnd + 1;
+        } else {
+          depth--;
+          searchStart = nextClose + closeSeq.length;
+        }
+      }
+      if (depth !== 0) {
+        // Unbalanced tag, advance to avoid infinite loops
+        i = startTagEnd + 1;
+        continue;
+      }
+
+      const closeIdx = searchStart - closeSeq.length;
+      const innerRaw = input.slice(startTagEnd + 1, closeIdx);
+
       // Basic unescaping for common XML entities (add more as needed)
-      const value = match[2]
+      const unescaped = innerRaw
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&')
@@ -389,24 +544,29 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
         .replace(/&apos;/g, "'")
         .trim();
 
-      // Handle potential comma-separated lists for specific keys
-      if (key === 'actions' || key === 'providers' || key === 'evaluators') {
-        result[key] = value ? value.split(',').map((s) => s.trim()) : [];
-      } else if (key === 'simple') {
-        result[key] = value.toLowerCase() === 'true';
-      } else {
-        result[key] = value;
-      }
+      pairs.push({ key: tag, value: unescaped });
+      // Move cursor past this element to avoid processing nested children as direct siblings
+      i = searchStart;
+    }
+
+    return pairs;
+  };
+
+  const children = extractDirectChildren(xmlContent);
+  for (const { key, value } of children) {
+    if (key === 'actions' || key === 'providers' || key === 'evaluators') {
+      result[key] = value ? value.split(',').map((s) => s.trim()) : [];
+    } else if (key === 'simple') {
+      result[key] = value.toLowerCase() === 'true';
     } else {
-      logger.warn(`Mismatched XML tags found: <${match[1]}> and </${match[3]}>`);
-      // Potentially skip this mismatched pair or return null depending on strictness needed
+      result[key] = value;
     }
   }
 
   // Return null if no key-value pairs were found
   if (Object.keys(result).length === 0) {
     logger.warn('No key-value pairs extracted from XML content');
-    logger.debug('XML content was:', xmlContent.substring(0, 200) + '...');
+    logger.debug({ xmlPreview: xmlContent.substring(0, 200) + '...' }, 'XML content was');
     return null;
   }
 
@@ -533,10 +693,13 @@ export async function splitChunks(content: string, chunkSize = 512, bleed = 20):
   });
 
   const chunks = await textSplitter.splitText(content);
-  logger.debug('[splitChunks] Split complete:', {
-    numberOfChunks: chunks.length,
-    averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
-  });
+  logger.debug(
+    {
+      numberOfChunks: chunks.length,
+      averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
+    },
+    '[splitChunks] Split complete'
+  );
 
   return chunks;
 }

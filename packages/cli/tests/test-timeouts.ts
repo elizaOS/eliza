@@ -10,27 +10,27 @@ const isMacOS = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
 export const TEST_TIMEOUTS = {
-  // Test framework timeouts - More conservative for CI stability
+  // Test framework timeouts - More generous for CI stability (CI is slower than local)
   SUITE_TIMEOUT: isCI
-    ? 2 * 60 * 1000 // 2 minutes in CI for all platforms
+    ? 10 * 60 * 1000 // 10 minutes in CI for all platforms (increased for Ubuntu 22.04 performance issues)
     : isWindows
       ? 8 * 60 * 1000
       : isMacOS
         ? 6 * 60 * 1000
         : 5 * 60 * 1000, // Platform-specific locally
   INDIVIDUAL_TEST: isCI
-    ? 60 * 1000 // 60 seconds in CI for all platforms - matches bunfig.toml
+    ? 3 * 60 * 1000 // 3 minutes in CI for all platforms (increased for complex agent tests)
     : isWindows
       ? 5 * 60 * 1000
       : isMacOS
         ? 4 * 60 * 1000
         : 3 * 60 * 1000, // Platform-specific locally
 
-  // Command execution timeouts (execSync) - Platform-specific
+  // Command execution timeouts (execSync) - Increased for CI environments
   QUICK_COMMAND: isCI
     ? isMacOS
-      ? 25 * 1000
-      : 15 * 1000 // 25/15 seconds in CI
+      ? 60 * 1000
+      : 45 * 1000 // 60/45 seconds in CI (increased for slower CI environments)
     : isWindows
       ? 45 * 1000
       : isMacOS
@@ -38,20 +38,20 @@ export const TEST_TIMEOUTS = {
         : 30 * 1000, // Platform-specific locally
   STANDARD_COMMAND: isCI
     ? isMacOS
-      ? 45 * 1000
-      : 30 * 1000 // 45/30 seconds in CI
+      ? 120 * 1000
+      : 90 * 1000 // 2/1.5 minutes in CI (increased for agent operations)
     : isWindows
       ? 90 * 1000
       : isMacOS
         ? 75 * 1000
         : 60 * 1000, // Platform-specific locally
   PLUGIN_INSTALLATION: isCI
-    ? 90 * 1000 // 90 seconds in CI (increased to handle slow postinstall scripts)
+    ? 150 * 1000 // 2.5 minutes in CI (increased to handle slow postinstall scripts)
     : process.platform === 'win32'
       ? 3 * 60 * 1000
       : 2 * 60 * 1000, // 3/2 minutes locally
   PROJECT_CREATION: isCI
-    ? 60 * 1000 // 1 minute in CI
+    ? 150 * 1000 // 2.5 minutes in CI (increased for slower CI environments)
     : process.platform === 'win32'
       ? 3 * 60 * 1000
       : 2 * 60 * 1000, // 3/2 minutes locally
@@ -61,11 +61,11 @@ export const TEST_TIMEOUTS = {
       ? 2 * 60 * 1000
       : 90 * 1000, // 2 minutes/90 seconds locally
 
-  // Server and process timeouts - macOS needs more time, especially in CI
+  // Server and process timeouts - Agent startup is complex and needs more time in CI
   SERVER_STARTUP: isCI
     ? isMacOS
-      ? 60 * 1000
-      : 15 * 1000 // 60/15 seconds in CI - doubled for macOS CI
+      ? 180 * 1000
+      : 150 * 1000 // 3/2.5 minutes in CI - increased significantly for agent startup
     : isWindows
       ? 45 * 1000
       : isMacOS

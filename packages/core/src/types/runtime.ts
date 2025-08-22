@@ -3,7 +3,7 @@ import type { Action, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
-import { Memory } from './memory';
+import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
 import type { Plugin, Route } from './plugin';
@@ -26,10 +26,11 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   actions: Action[];
   evaluators: Evaluator[];
   plugins: Plugin[];
-  services: Map<ServiceTypeName, Service>;
+  services: Map<ServiceTypeName, Service[]>;
   events: Map<string, ((params: any) => Promise<void>)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
+  logger: any;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -40,9 +41,17 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
-  getAllServices(): Map<ServiceTypeName, Service>;
+  getServicesByType<T extends Service>(service: ServiceTypeName | string): T[];
+
+  getAllServices(): Map<ServiceTypeName, Service[]>;
 
   registerService(service: typeof Service): Promise<void>;
+
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
+
+  getRegisteredServiceTypes(): ServiceTypeName[];
+
+  hasService(serviceType: ServiceTypeName | string): boolean;
 
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
@@ -145,9 +154,20 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
+  /**
+   * Queue a memory for async embedding generation.
+   * This method is non-blocking and returns immediately.
+   * The embedding will be generated asynchronously via event handlers.
+   * @param memory The memory to generate embeddings for
+   * @param priority Priority level for the embedding generation
+   */
+  queueEmbeddingGeneration(memory: Memory, priority?: 'high' | 'normal' | 'low'): Promise<void>;
+
   getAllMemories(): Promise<Memory[]>;
 
   clearAllAgentMemories(): Promise<void>;
+
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
 
   // Run tracking methods
   createRunId(): UUID;

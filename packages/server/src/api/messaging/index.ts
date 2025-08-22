@@ -4,6 +4,7 @@ import type { AgentServer } from '../../index';
 import { createMessagingCoreRouter } from './core';
 import { createServersRouter } from './servers';
 import { createChannelsRouter } from './channels';
+import { createSessionsRouter } from './sessions';
 
 /**
  * Creates the messaging router for all communication functionality
@@ -26,6 +27,9 @@ export function messagingRouter(
 
   // Mount channel management functionality
   router.use('/', createChannelsRouter(agents, serverInstance));
+
+  // Mount unified sessions API for simplified messaging
+  router.use('/', createSessionsRouter(agents, serverInstance));
 
   return router;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.15",
+  "version": "1.4.2",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -14,18 +14,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
-    },
-    "./v1": {
-      "import": {
-        "types": "./dist/specs/v1/index.d.ts",
-        "default": "./dist/specs/v1/index.js"
-      }
-    },
-    "./v2": {
-      "import": {
-        "types": "./dist/specs/v2/index.d.ts",
-        "default": "./dist/specs/v2/index.js"
       }
     }
   },
@@ -75,5 +63,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2"
 }

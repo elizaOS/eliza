@@ -52,3 +52,6 @@ export interface MessageServiceStructure {
   created_at: number; // timestamp ms
   metadata?: any;
 }
+
+// Re-export session types
+export * from './types/sessions';

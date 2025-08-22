@@ -369,7 +369,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
 
-  getEntityByIds(_entityIds: UUID[]): Promise<Entity[]> {
+  getEntitiesByIds(_entityIds: UUID[]): Promise<Entity[]> {
     throw new Error('Method not implemented.');
   }
 

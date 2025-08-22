@@ -1,18 +1,9 @@
-import {
-  ITokenDataService,
-  TokenData,
-  Service,
-  IAgentRuntime,
-  ServiceType,
-  logger,
-} from '@elizaos/core';
+import { ITokenDataService, TokenData, IAgentRuntime, ServiceType, logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
-export class DummyTokenDataService extends Service implements ITokenDataService {
+export class DummyTokenDataService extends ITokenDataService {
   readonly serviceName = 'dummy-token-data';
   static readonly serviceType = ServiceType.TOKEN_DATA;
-  readonly capabilityDescription =
-    'Provides dummy token data for testing and development purposes.';
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -60,7 +51,7 @@ export class DummyTokenDataService extends Service implements ITokenDataService 
   }
 
   async getTokensByAddresses(addresses: string[], chain: string): Promise<TokenData[]> {
-    logger.debug(`DummyTokenDataService: getTokensByAddresses on ${chain} for`, addresses);
+    logger.debug({ addresses, chain }, 'DummyTokenDataService: getTokensByAddresses');
     return addresses.map((addr) => this.generateDummyToken(chain, addr));
   }
 

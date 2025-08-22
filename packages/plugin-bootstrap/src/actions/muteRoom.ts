@@ -9,6 +9,7 @@ import {
   type Memory,
   ModelType,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -66,10 +67,22 @@ export const muteRoomAction: Action = {
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
     _responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     if (!state) {
       logger.error('State is required for muting a room');
-      throw new Error('State is required for muting a room');
+      return {
+        text: 'State is required for mute room action',
+        values: {
+          success: false,
+          error: 'STATE_REQUIRED',
+        },
+        data: {
+          actionName: 'MUTE_ROOM',
+          error: 'State is required',
+        },
+        success: false,
+        error: new Error('State is required for muting a room'),
+      };
     }
 
     async function _shouldMute(state: State): Promise<boolean> {
@@ -144,24 +157,80 @@ export const muteRoomAction: Action = {
       return false;
     }
 
-    if (await _shouldMute(state)) {
-      await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'MUTED');
-    }
-
+    const shouldMute = await _shouldMute(state);
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    await runtime.createMemory(
-      {
-        entityId: message.entityId,
-        agentId: message.agentId,
-        roomId: message.roomId,
-        content: {
-          thought: `I muted the room ${room.name}`,
-          actions: ['MUTE_ROOM_START'],
+    if (shouldMute) {
+      try {
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'MUTED');
+
+        await runtime.createMemory(
+          {
+            entityId: message.entityId,
+            agentId: message.agentId,
+            roomId: message.roomId,
+            content: {
+              thought: `I muted the room ${room.name}`,
+              actions: ['MUTE_ROOM_START'],
+            },
+          },
+          'messages'
+        );
+
+        return {
+          text: `Room muted: ${room.name}`,
+          values: {
+            success: true,
+            roomMuted: true,
+            roomId: message.roomId,
+            roomName: room.name,
+            newState: 'MUTED',
+          },
+          data: {
+            actionName: 'MUTE_ROOM',
+            roomId: message.roomId,
+            roomName: room.name,
+            muted: true,
+          },
+          success: true,
+        };
+      } catch (error) {
+        logger.error({ error }, 'Error muting room');
+        return {
+          text: 'Failed to mute room',
+          values: {
+            success: false,
+            error: 'MUTE_FAILED',
+          },
+          data: {
+            actionName: 'MUTE_ROOM',
+            error: error instanceof Error ? error.message : String(error),
+            roomId: message.roomId,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+    } else {
+      return {
+        text: `Decided not to mute room: ${room.name}`,
+        values: {
+          success: true,
+          roomMuted: false,
+          roomId: message.roomId,
+          roomName: room.name,
+          reason: 'NOT_APPROPRIATE',
         },
-      },
-      'messages'
-    );
+        data: {
+          actionName: 'MUTE_ROOM',
+          roomId: message.roomId,
+          roomName: room.name,
+          muted: false,
+          reason: 'Decision criteria not met',
+        },
+        success: true,
+      };
+    }
   },
   examples: [
     [

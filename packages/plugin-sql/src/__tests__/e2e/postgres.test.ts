@@ -143,7 +143,7 @@ describe('PostgreSQL E2E Tests', () => {
       expect(created).toBe(true);
 
       const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
-      const retrieved = await adapter.getEntityByIds(entityIds);
+      const retrieved = await adapter.getEntitiesByIds(entityIds);
       expect(retrieved).toHaveLength(2);
 
       // Sort by name to ensure consistent order
@@ -177,7 +177,7 @@ describe('PostgreSQL E2E Tests', () => {
         metadata: { updated: true },
       });
 
-      const retrieved = await adapter.getEntityByIds([entity.id!]);
+      const retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved?.[0].names).toContain('Updated');
       expect(retrieved?.[0].metadata).toEqual({ updated: true });
 
@@ -423,11 +423,9 @@ describe('PostgreSQL E2E Tests', () => {
         sourceEntityId,
         type: 'update-test',
         data: { original: true },
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
-
       await adapter.createComponent(component);
-
       await adapter.updateComponent({
         ...component,
         data: { updated: true },
@@ -516,7 +514,7 @@ describe('PostgreSQL E2E Tests', () => {
       expect(created).toBe(true);
 
       const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
-      const retrieved = await adapter.getEntityByIds(entityIds);
+      const retrieved = await adapter.getEntitiesByIds(entityIds);
       expect(retrieved).toHaveLength(100);
 
       await adapter.close();
@@ -543,7 +541,7 @@ describe('PostgreSQL E2E Tests', () => {
       const { adapter } = await createTestAdapter();
 
       const nonExistentId = uuidv4() as UUID;
-      const result = await adapter.getEntityByIds([nonExistentId]);
+      const result = await adapter.getEntitiesByIds([nonExistentId]);
       expect(result).toHaveLength(0);
 
       await adapter.close();

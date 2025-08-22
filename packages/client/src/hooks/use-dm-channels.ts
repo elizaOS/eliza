@@ -181,10 +181,6 @@ export function useCreateDmChannel() {
       queryClient.invalidateQueries({ queryKey: ['dmChannels', variables.agentId, currentUserId] });
       // Also invalidate general channels list if it might show DMs (though less likely)
       queryClient.invalidateQueries({ queryKey: ['channels'] });
-
-      // Navigate to the new DM chat
-      // data.id is the channelId, variables.agentId is the agentId (target user for DM)
-      navigate(`/chat/${variables.agentId}/${data.id}`);
     },
     onError: (error) => {
       clientLogger.error('[useCreateDmChannel] Error creating distinct DM channel:', error);

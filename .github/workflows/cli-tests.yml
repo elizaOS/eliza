@@ -26,6 +26,7 @@ jobs:
     # Skip duplicate runs: run on push to main/develop, or on pull_request events only
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45 # Prevent job timeout from killing processes prematurely
     strategy:
       fail-fast: false
       matrix:
@@ -33,12 +34,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 23
+        uses: actions/checkout@v4
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -69,6 +65,36 @@ jobs:
       - name: Build all packages
         run: bun run build
 
+      - name: Link packages globally
+        run: |
+          # Link core package first (everything depends on it)
+          cd packages/core
+          bun link
+          cd ../..
+          echo "Linked @elizaos/core package globally"
+
+          # Link server package (CLI depends on it)
+          cd packages/server
+          bun link
+          cd ../..
+          echo "Linked @elizaos/server package globally"
+
+          # Link CLI package
+          cd packages/cli
+          bun link
+          cd ../..
+          echo "Linked elizaos command globally"
+
+      - name: Verify package links
+        shell: bash
+        run: |
+          echo "Verifying @elizaos/server package is available..."
+          bun pm ls -g | grep "@elizaos/server" || echo "@elizaos/server not found in global links"
+
+          echo "Verifying elizaos command is available..."
+          which elizaos || echo "elizaos not found in PATH"
+          elizaos --version || echo "Failed to run elizaos --version"
+
       - name: Verify CLI build artifacts
         shell: bash
         run: |
@@ -92,90 +118,15 @@ jobs:
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
 
-      - name: Download models
-        shell: bash
-        run: |
-          MODEL_DIR="$HOME/.eliza/models"
-          mkdir -p "$MODEL_DIR"
-          declare -a models=(
-            "DeepHermes-3-Llama-3-3B-Preview-q4.gguf https://huggingface.co/NousResearch/DeepHermes-3-Llama-3-3B-Preview-GGUF/resolve/main/DeepHermes-3-Llama-3-3B-Preview-q4.gguf"
-            "bge-small-en-v1.5.Q4_K_M.gguf https://huggingface.co/ChristianAzinn/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5.Q4_K_M.gguf"
-          )
-          for entry in "${models[@]}"; do
-            name="${entry%% *}"
-            url="${entry#* }"
-            path="$MODEL_DIR/$name"
-            if [ ! -f "$path" ]; then
-              echo "Downloading $name..."
-              start=$(date +%s)
-              curl -L -f -sS -o "$path" "$url"
-              status=$?
-              end=$(date +%s)
-              duration=$((end - start))
-              if [ $status -eq 0 ]; then
-                echo "Downloaded $name in ${duration}s."
-              else
-                echo "Failed to download $name after ${duration}s."
-                exit 1
-              fi
-            else
-              echo "$name already exists, skipping."
-            fi
-          done
-
       - name: Install cross-env globally
-        run: npm install -g cross-env
+        run: bun install -g cross-env
 
       - name: Install BATS on macOS
         if: matrix.os == 'macos-latest'
-        run: npm install -g bats
+        run: bun install -g bats
 
-      - name: Run CLI TypeScript tests (macOS optimized)
-        if: matrix.os == 'macos-latest'
-        timeout-minutes: 15
-        run: cross-env NODE_OPTIONS="--max-old-space-size=8192" bun test tests/commands/ --timeout 240000
+      - name: Run CLI TypeScript tests
+        run: cross-env bun test tests/commands/
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true
-
-      - name: Cleanup test processes (macOS)
-        if: always() && matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          pkill -f "bun.*dist/index.js" || true
-          lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-          lsof -ti:3100 | xargs kill -9 2>/dev/null || true
-          echo "Cleanup complete"
-
-      - name: Run CLI TypeScript tests (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        timeout-minutes: 15
-        run: cross-env NODE_OPTIONS="--max-old-space-size=4096" bun test tests/commands/ --timeout 240000; EXIT_CODE=$?; bash tests/cleanup-processes.sh; exit $EXIT_CODE
-        working-directory: packages/cli
-        env:
-          ELIZA_TEST_MODE: true
-
-      - name: Cleanup test processes (Ubuntu)
-        if: always() && matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          pkill -f "bun.*dist/index.js" || true
-          lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-          lsof -ti:3100 | xargs kill -9 2>/dev/null || true
-          echo "Cleanup complete"
-
-      - name: Run CLI TypeScript tests (Windows)
-        if: matrix.os == 'windows-latest'
-        timeout-minutes: 15
-        run: cross-env NODE_OPTIONS="--max-old-space-size=4096" bun test tests/commands/ --timeout 240000
-        working-directory: packages/cli
-        env:
-          ELIZA_TEST_MODE: true
-
-      - name: Cleanup test processes (Windows)
-        if: always() && matrix.os == 'windows-latest'
-        shell: powershell
-        run: |
-          Get-Process | Where-Object { $_.Path -like "*dist\index.js*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-          Get-NetTCPConnection -LocalPort 3000,3100 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
-          Write-Host "Cleanup complete"

@@ -4,7 +4,7 @@ import { displayBunInstallationTipCompact } from './bun-installation-helper';
 import { runBunCommand } from './run-bun';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { execa } from 'execa';
+import { bunExec } from './bun-exec';
 
 /**
  * Always returns 'bun' as the package manager for ElizaOS CLI.
@@ -67,18 +67,25 @@ export async function removeFromBunLock(packageName: string, directory: string):
 
   try {
     // Use bun remove to cleanly remove the package from lockfile
-    await execa('bun', ['remove', packageName], {
+    const result = await bunExec('bun', ['remove', packageName], {
       cwd: directory,
-      stdio: 'pipe', // Don't show output for cleanup operation
     });
-    logger.debug(`Successfully removed ${packageName} from bun.lock`);
-  } catch (error: any) {
-    // If the package isn't in the lockfile, that's fine - we just want to ensure it's not there
-    if (error.message?.includes('not found') || error.message?.includes('No such package')) {
-      logger.debug(`Package ${packageName} not found in lockfile (expected for cleanup)`);
+
+    if (result.success) {
+      logger.debug(`Successfully removed ${packageName} from bun.lock`);
     } else {
-      logger.warn(`Failed to remove ${packageName} from bun.lock: ${error.message}`);
+      // Check stderr for specific error messages
+      if (result.stderr?.includes('not found') || result.stderr?.includes('No such package')) {
+        logger.debug(`Package ${packageName} not found in lockfile (expected for cleanup)`);
+      } else {
+        logger.warn(
+          `Failed to remove ${packageName} from bun.lock: ${result.stderr || 'Unknown error'}`
+        );
+      }
     }
+  } catch (error: any) {
+    // Handle unexpected errors (e.g., bunExec itself throwing)
+    logger.warn(`Unexpected error removing ${packageName} from bun.lock: ${error.message}`);
   }
 }
 
@@ -108,7 +115,8 @@ export async function executeInstallation(
 
   try {
     const args = [...installCommand, finalSpecifier];
-    await runBunCommand(args, directory);
+    // Run silently to suppress bun's timestamped output
+    await runBunCommand(args, directory, true);
 
     const installedIdentifier = packageName.startsWith('github:')
       ? (() => {

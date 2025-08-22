@@ -53,6 +53,38 @@ describe('Reflection Evaluator', () => {
   });
 
   it('should call the model with the correct prompt', async () => {
+    // Mock parseKeyValueXml for this test
+    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+      return {
+        thought: 'I am doing well in this conversation.',
+        facts: {
+          fact: [
+            {
+              claim: 'User likes ice cream',
+              type: 'fact',
+              in_bio: 'false',
+              already_known: 'false',
+            },
+          ],
+        },
+        relationships: {
+          relationship: [
+            { sourceEntityId: 'test-entity-id', targetEntityId: 'test-agent-id', tags: 'friendly' },
+          ],
+        },
+      };
+    });
+
+    // Override the module mock for this test
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+      getEntityDetails: mock().mockResolvedValue([
+        { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+        { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+      ]),
+    }));
+
     // Import the evaluator dynamically to avoid polluting the test scope
     const { reflectionEvaluator } = await import('../evaluators/reflection');
 
@@ -70,13 +102,25 @@ describe('Reflection Evaluator', () => {
     mockRuntime.character.templates.reflectionTemplate =
       'Test reflection template {{recentMessages}}';
 
-    mockRuntime.useModel.mockResolvedValueOnce({
-      thought: 'I am doing well in this conversation.',
-      facts: [{ claim: 'User likes ice cream', type: 'fact', in_bio: false, already_known: false }],
-      relationships: [
-        { sourceEntityId: 'test-entity-id', targetEntityId: 'test-agent-id', tags: ['friendly'] },
-      ],
-    });
+    // Mock XML response
+    mockRuntime.useModel.mockResolvedValueOnce(`<response>
+  <thought>I am doing well in this conversation.</thought>
+  <facts>
+    <fact>
+      <claim>User likes ice cream</claim>
+      <type>fact</type>
+      <in_bio>false</in_bio>
+      <already_known>false</already_known>
+    </fact>
+  </facts>
+  <relationships>
+    <relationship>
+      <sourceEntityId>test-entity-id</sourceEntityId>
+      <targetEntityId>test-agent-id</targetEntityId>
+      <tags>friendly</tags>
+    </relationship>
+  </relationships>
+</response>`);
 
     // Act
     await reflectionEvaluator.handler(
@@ -88,7 +132,7 @@ describe('Reflection Evaluator', () => {
     // Assert - Verify useModel was called with proper parameters
     expect(mockRuntime.useModel).toHaveBeenCalledTimes(1);
     expect(mockRuntime.useModel).toHaveBeenCalledWith(
-      ModelType.OBJECT_SMALL,
+      ModelType.TEXT_SMALL,
       expect.objectContaining({
         prompt: expect.any(String), // The actual prompt will be composed by composePrompt
       })
@@ -101,34 +145,67 @@ describe('Reflection Evaluator', () => {
   });
 
   it('should store new facts and relationships', async () => {
+    // Mock parseKeyValueXml for this test
+    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+      return {
+        thought: 'I am doing well in this conversation.',
+        facts: {
+          fact: [
+            {
+              claim: 'User likes ice cream',
+              type: 'fact',
+              in_bio: 'false',
+              already_known: 'false',
+            },
+          ],
+        },
+        relationships: {
+          relationship: [
+            { sourceEntityId: 'entity-1', targetEntityId: 'entity-2', tags: 'friendly' },
+          ],
+        },
+      };
+    });
+
+    // Override the module mock for this test
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+      getEntityDetails: mock().mockResolvedValue([
+        { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+        { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+        { id: 'entity-1', names: ['Entity 1'], metadata: {} },
+        { id: 'entity-2', names: ['Entity 2'], metadata: {} },
+      ]),
+    }));
+
     // Import the evaluator dynamically to avoid polluting the test scope
     const { reflectionEvaluator } = await import('../evaluators/reflection');
-
-    // Spy on the composePrompt function in the @elizaos/core module
-    // Note: We can't easily spy on imported functions from external modules,
-    // so we'll verify the behavior through other means
-
-    // Explicitly mock getEntityDetails using spyOn for this test case
-    // Note: bun:test doesn't have mock.spyOn, skipping spy functionality
-    const getEntityDetailsSpy = mock().mockResolvedValue([
-      { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
-      { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
-      { id: 'entity-1', names: ['Entity 1'], metadata: {} },
-      { id: 'entity-2', names: ['Entity 2'], metadata: {} },
-    ]);
 
     // Arrange
     mockRuntime.getRelationships.mockResolvedValue([]); // Ensure getRelationships returns an array
     mockRuntime.getMemories &&
       (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]); // Ensure getMemories for knownFacts returns an array
 
-    mockRuntime.useModel.mockResolvedValueOnce({
-      thought: 'I am doing well in this conversation.',
-      facts: [{ claim: 'User likes ice cream', type: 'fact', in_bio: false, already_known: false }],
-      relationships: [
-        { sourceEntityId: 'entity-1', targetEntityId: 'entity-2', tags: ['friendly'] },
-      ],
-    });
+    // Mock XML response
+    mockRuntime.useModel.mockResolvedValueOnce(`<response>
+  <thought>I am doing well in this conversation.</thought>
+  <facts>
+    <fact>
+      <claim>User likes ice cream</claim>
+      <type>fact</type>
+      <in_bio>false</in_bio>
+      <already_known>false</already_known>
+    </fact>
+  </facts>
+  <relationships>
+    <relationship>
+      <sourceEntityId>entity-1</sourceEntityId>
+      <targetEntityId>entity-2</targetEntityId>
+      <tags>friendly</tags>
+    </relationship>
+  </relationships>
+</response>`);
 
     // Mock the createRelationship implementation
     mockRuntime.createRelationship.mockImplementation((_relationship) => {
@@ -142,19 +219,26 @@ describe('Reflection Evaluator', () => {
       mockState as State
     );
 
-    // Assert
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledTimes(1);
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledWith({
-      entityId: 'test-agent-id',
-      agentId: 'test-agent-id',
-      content: { text: 'User likes ice cream' },
-      roomId: 'test-room-id',
-      createdAt: expect.any(Number),
-    });
+    // Assert - now using queueEmbeddingGeneration instead of addEmbeddingToMemory
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'test-agent-id',
+        agentId: 'test-agent-id',
+        content: { text: 'User likes ice cream' },
+        roomId: 'test-room-id',
+      }),
+      'low'
+    );
 
     expect(mockRuntime.createMemory).toHaveBeenCalledTimes(1);
     expect(mockRuntime.createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'memory-id' }),
+      expect.objectContaining({
+        entityId: 'test-agent-id',
+        agentId: 'test-agent-id',
+        content: { text: 'User likes ice cream' },
+        roomId: 'test-room-id',
+      }),
       'facts',
       true
     );
@@ -178,7 +262,7 @@ describe('Reflection Evaluator', () => {
       `${mockMessage.roomId}-reflection-last-processed`,
       mockMessage.id
     );
-    getEntityDetailsSpy.mockRestore(); // Restore the spy
+    // getEntityDetailsSpy removed - now handled by module mock
   });
 
   it('should handle model errors without crashing', async () => {
@@ -204,27 +288,74 @@ describe('Reflection Evaluator', () => {
     expect(error).toBeUndefined();
 
     // No facts or relationships should be stored
-    expect(mockRuntime.addEmbeddingToMemory).not.toHaveBeenCalled();
+    expect(mockRuntime.queueEmbeddingGeneration).not.toHaveBeenCalled();
     expect(mockRuntime.createMemory).not.toHaveBeenCalled();
     expect(mockRuntime.createRelationship).not.toHaveBeenCalled();
   });
 
   it('should filter out invalid facts', async () => {
+    // Mock parseKeyValueXml for this test
+    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+      return {
+        thought: 'Some of these facts are invalid',
+        facts: {
+          fact: [
+            { claim: 'Valid fact', type: 'fact', in_bio: 'false', already_known: 'false' },
+            { claim: '', type: 'fact', in_bio: 'false', already_known: 'false' }, // Empty claim
+            { claim: 'Already known fact', type: 'fact', in_bio: 'false', already_known: 'true' }, // Already known
+            { claim: 'From bio', type: 'fact', in_bio: 'true', already_known: 'false' }, // From bio
+            null, // null fact
+          ],
+        },
+        relationships: {},
+      };
+    });
+
+    // Override the module mock for this test
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+      getEntityDetails: mock().mockResolvedValue([
+        { id: 'test-entity-id', names: ['Test Entity'], metadata: {} },
+        { id: 'test-agent-id', names: ['Test Agent'], metadata: {} },
+      ]),
+    }));
+
     // Import the evaluator dynamically to avoid polluting the test scope
     const { reflectionEvaluator } = await import('../evaluators/reflection');
 
     // Arrange
-    mockRuntime.useModel.mockResolvedValueOnce({
-      thought: 'Some of these facts are invalid',
-      facts: [
-        { claim: 'Valid fact', type: 'fact', in_bio: false, already_known: false },
-        { claim: '', type: 'fact', in_bio: false, already_known: false }, // Empty claim
-        { claim: 'Already known fact', type: 'fact', in_bio: false, already_known: true }, // Already known
-        { claim: 'From bio', type: 'fact', in_bio: true, already_known: false }, // From bio
-        null, // null fact
-      ],
-      relationships: [],
-    });
+    // Mock XML response
+    mockRuntime.useModel.mockResolvedValueOnce(`<response>
+  <thought>Some of these facts are invalid</thought>
+  <facts>
+    <fact>
+      <claim>Valid fact</claim>
+      <type>fact</type>
+      <in_bio>false</in_bio>
+      <already_known>false</already_known>
+    </fact>
+    <fact>
+      <claim></claim>
+      <type>fact</type>
+      <in_bio>false</in_bio>
+      <already_known>false</already_known>
+    </fact>
+    <fact>
+      <claim>Already known fact</claim>
+      <type>fact</type>
+      <in_bio>false</in_bio>
+      <already_known>true</already_known>
+    </fact>
+    <fact>
+      <claim>From bio</claim>
+      <type>fact</type>
+      <in_bio>true</in_bio>
+      <already_known>false</already_known>
+    </fact>
+  </facts>
+  <relationships></relationships>
+</response>`);
 
     // Act
     await reflectionEvaluator.handler(
@@ -234,11 +365,13 @@ describe('Reflection Evaluator', () => {
     );
 
     // Assert - only one valid fact should be processed
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledTimes(1);
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledWith(
+    expect(mockRuntime.createMemory).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledWith(
       expect.objectContaining({
         content: { text: 'Valid fact' },
-      })
+      }),
+      'low'
     );
   });
 
@@ -342,7 +475,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -467,7 +600,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -514,8 +647,8 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
     // Check the warning was logged
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Error in prompt'),
-      expect.any(Error)
+      { error: expect.any(Error) },
+      expect.stringContaining('Error in prompt')
     );
 
     // The result should include the successful prompt's response and an error for the failed one

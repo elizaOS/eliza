@@ -11,8 +11,9 @@ import {
   logger,
   type Memory,
   ModelType,
-  parseJSONObjectFromText,
+  parseKeyValueXml,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -27,79 +28,35 @@ import {
  * 2. The target platform/source (e.g. telegram, discord, etc)
  * 3. Any identifying information about the target
  *
- * Return a JSON object with:
- * {
- *   "targetType": "user|room",
- *   "source": "platform-name",
- *   "identifiers": {
- *     // Relevant identifiers for that target
- *     // e.g. username, roomName, etc.
- *   }
- * }
+ * Return an XML response with:
+ * <response>
+ *   <targetType>user|room</targetType>
+ *   <source>platform-name</source>
+ *   <identifiers>
+ *     <username>username_if_applicable</username>
+ *     <roomName>room_name_if_applicable</roomName>
+ *     <!-- Add other relevant identifiers as needed -->
+ *   </identifiers>
+ * </response>
  *
  * Example outputs:
  * For "send a message to @dev_guru on telegram":
- * {
- *   "targetType": "user",
- *   "source": "telegram",
- *   "identifiers": {
- *     "username": "dev_guru"
- *   }
- * }
+ * <response>
+ *   <targetType>user</targetType>
+ *   <source>telegram</source>
+ *   <identifiers>
+ *     <username>dev_guru</username>
+ *   </identifiers>
+ * </response>
  *
  * For "post this in #announcements":
- * {
- *   "targetType": "room",
- *   "source": "discord",
- *   "identifiers": {
- *     "roomName": "announcements"
- *   }
- * }
- *
- * Make sure to include the ```json``` tags around the JSON object.
- */
-/**
- * Task: Extract Target and Source Information
- *
- * Recent Messages:
- * {{recentMessages}}
- *
- * Instructions:
- * Analyze the conversation to identify:
- * 1. The target type (user or room)
- * 2. The target platform/source (e.g. telegram, discord, etc)
- * 3. Any identifying information about the target
- *
- * Return a JSON object with:
- * {
- *    "targetType": "user|room",
- *    "source": "platform-name",
- *    "identifiers": {
- *      // Relevant identifiers for that target
- *      // e.g. username, roomName, etc.
- *    }
- * }
- *
- * Example outputs:
- * 1. For "send a message to @dev_guru on telegram":
- * {
- *    "targetType": "user",
- *    "source": "telegram",
- *    "identifiers": {
- *      "username": "dev_guru"
- *    }
- * }
- *
- * 2. For "post this in #announcements":
- * {
- *    "targetType": "room",
- *    "source": "discord",
- *    "identifiers": {
- *      "roomName": "announcements"
- *    }
- * }
- *
- * Make sure to include the `json` tags around the JSON object.
+ * <response>
+ *   <targetType>room</targetType>
+ *   <source>discord</source>
+ *   <identifiers>
+ *     <roomName>announcements</roomName>
+ *   </identifiers>
+ * </response>
  */
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
 
@@ -112,41 +69,39 @@ Analyze the conversation to identify:
 2. The target platform/source (e.g. telegram, discord, etc)
 3. Any identifying information about the target
 
-Return a JSON object with:
-\`\`\`json
-{
-  "targetType": "user|room",
-  "source": "platform-name",
-  "identifiers": {
-    // Relevant identifiers for that target
-    // e.g. username, roomName, etc.
-  }
-}
-\`\`\`
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Return an XML response with:
+<response>
+  <targetType>user|room</targetType>
+  <source>platform-name</source>
+  <identifiers>
+    <username>username_if_applicable</username>
+    <roomName>room_name_if_applicable</roomName>
+  </identifiers>
+</response>
+
 Example outputs:
 1. For "send a message to @dev_guru on telegram":
-\`\`\`json
-{
-  "targetType": "user",
-  "source": "telegram",
-  "identifiers": {
-    "username": "dev_guru"
-  }
-}
-\`\`\`
+<response>
+  <targetType>user</targetType>
+  <source>telegram</source>
+  <identifiers>
+    <username>dev_guru</username>
+  </identifiers>
+</response>
 
 2. For "post this in #announcements":
-\`\`\`json
-{
-  "targetType": "room",
-  "source": "discord",
-  "identifiers": {
-    "roomName": "announcements"
-  }
-}
-\`\`\`
+<response>
+  <targetType>room</targetType>
+  <source>discord</source>
+  <identifiers>
+    <roomName>announcements</roomName>
+  </identifiers>
+</response>
 
-Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 /**
  * Represents an action to send a message to a user or room.
  *
@@ -188,19 +143,55 @@ export const sendMessageAction: Action = {
     _options?: any,
     callback?: HandlerCallback,
     responses?: Memory[]
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         logger.error('State is required for sendMessage action');
-        throw new Error('State is required for sendMessage action');
+        return {
+          text: 'State is required for sendMessage action',
+          values: {
+            success: false,
+            error: 'STATE_REQUIRED',
+          },
+          data: {
+            actionName: 'SEND_MESSAGE',
+            error: 'State is required',
+          },
+          success: false,
+          error: new Error('State is required for sendMessage action'),
+        };
       }
       if (!callback) {
         logger.error('Callback is required for sendMessage action');
-        throw new Error('Callback is required for sendMessage action');
+        return {
+          text: 'Callback is required for sendMessage action',
+          values: {
+            success: false,
+            error: 'CALLBACK_REQUIRED',
+          },
+          data: {
+            actionName: 'SEND_MESSAGE',
+            error: 'Callback is required',
+          },
+          success: false,
+          error: new Error('Callback is required for sendMessage action'),
+        };
       }
       if (!responses) {
         logger.error('Responses are required for sendMessage action');
-        throw new Error('Responses are required for sendMessage action');
+        return {
+          text: 'Responses are required for sendMessage action',
+          values: {
+            success: false,
+            error: 'RESPONSES_REQUIRED',
+          },
+          data: {
+            actionName: 'SEND_MESSAGE',
+            error: 'Responses are required',
+          },
+          success: false,
+          error: new Error('Responses are required for sendMessage action'),
+        };
       }
 
       // Handle initial responses
@@ -223,14 +214,25 @@ export const sendMessageAction: Action = {
         stopSequences: [],
       });
 
-      const targetData = parseJSONObjectFromText(targetResult);
+      const targetData = parseKeyValueXml(targetResult);
       if (!targetData?.targetType || !targetData?.source) {
         await callback({
           text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
           actions: ['SEND_MESSAGE_ERROR'],
           source: message.content.source,
         });
-        return;
+        return {
+          text: 'Could not determine message target',
+          values: {
+            success: false,
+            error: 'TARGET_UNCLEAR',
+          },
+          data: {
+            actionName: 'SEND_MESSAGE',
+            error: 'Could not parse target information from message',
+          },
+          success: false,
+        };
       }
 
       const source = targetData.source.toLowerCase();
@@ -245,7 +247,21 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: 'Target user not found',
+            values: {
+              success: false,
+              error: 'USER_NOT_FOUND',
+              targetType: 'user',
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: 'Could not find target user',
+              targetType: 'user',
+              source,
+            },
+            success: false,
+          };
         }
 
         // Get the component for the specified source
@@ -262,7 +278,23 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: `No ${source} information found for user`,
+            values: {
+              success: false,
+              error: 'COMPONENT_NOT_FOUND',
+              targetType: 'user',
+              source,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: `No ${source} component found for target user`,
+              targetType: 'user',
+              targetEntityId: targetEntity.id,
+              source,
+            },
+            success: false,
+          };
         }
 
         const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
@@ -273,7 +305,22 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: 'Message service not available',
+            values: {
+              success: false,
+              error: 'SERVICE_NOT_FOUND',
+              targetType: 'user',
+              source,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: `No sendDirectMessage service found for ${source}`,
+              targetType: 'user',
+              source,
+            },
+            success: false,
+          };
         }
         // Send the message using the appropriate client
         try {
@@ -284,6 +331,26 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE'],
             source: message.content.source,
           });
+          return {
+            text: `Message sent to ${targetEntity.names[0]}`,
+            values: {
+              success: true,
+              targetType: 'user',
+              targetId: targetEntity.id,
+              targetName: targetEntity.names[0],
+              source,
+              messageSent: true,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              targetType: 'user',
+              targetId: targetEntity.id,
+              targetName: targetEntity.names[0],
+              source,
+              messageContent: message.content.text,
+            },
+            success: true,
+          };
         } catch (error: any) {
           logger.error(`Failed to send direct message: ${error.message}`);
           await callback({
@@ -291,6 +358,24 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
+          return {
+            text: 'Failed to send direct message',
+            values: {
+              success: false,
+              error: 'SEND_FAILED',
+              targetType: 'user',
+              source,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: error.message,
+              targetType: 'user',
+              targetId: targetEntity.id,
+              source,
+            },
+            success: false,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
         }
       } else if (targetData.targetType === 'room') {
         // Try to find the target room
@@ -306,7 +391,23 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: 'Target room not found',
+            values: {
+              success: false,
+              error: 'ROOM_NOT_FOUND',
+              targetType: 'room',
+              roomName: targetData.identifiers.roomName,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: 'Could not find target room',
+              targetType: 'room',
+              roomName: targetData.identifiers.roomName,
+              source,
+            },
+            success: false,
+          };
         }
 
         const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
@@ -317,7 +418,22 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
-          return;
+          return {
+            text: 'Room message service not available',
+            values: {
+              success: false,
+              error: 'SERVICE_NOT_FOUND',
+              targetType: 'room',
+              source,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: `No sendRoomMessage service found for ${source}`,
+              targetType: 'room',
+              source,
+            },
+            success: false,
+          };
         }
 
         // Send the message to the room
@@ -329,6 +445,26 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE'],
             source: message.content.source,
           });
+          return {
+            text: `Message sent to ${targetRoom.name}`,
+            values: {
+              success: true,
+              targetType: 'room',
+              targetId: targetRoom.id,
+              targetName: targetRoom.name,
+              source,
+              messageSent: true,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              targetType: 'room',
+              targetId: targetRoom.id,
+              targetName: targetRoom.name,
+              source,
+              messageContent: message.content.text,
+            },
+            success: true,
+          };
         } catch (error: any) {
           logger.error(`Failed to send room message: ${error.message}`);
           await callback({
@@ -336,8 +472,41 @@ export const sendMessageAction: Action = {
             actions: ['SEND_MESSAGE_ERROR'],
             source: message.content.source,
           });
+          return {
+            text: 'Failed to send room message',
+            values: {
+              success: false,
+              error: 'SEND_FAILED',
+              targetType: 'room',
+              source,
+            },
+            data: {
+              actionName: 'SEND_MESSAGE',
+              error: error.message,
+              targetType: 'room',
+              targetId: targetRoom.id,
+              targetName: targetRoom.name,
+              source,
+            },
+            success: false,
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
         }
       }
+
+      // Should not reach here
+      return {
+        text: 'Unknown target type',
+        values: {
+          success: false,
+          error: 'UNKNOWN_TARGET_TYPE',
+        },
+        data: {
+          actionName: 'SEND_MESSAGE',
+          error: 'Unknown target type: ' + targetData.targetType,
+        },
+        success: false,
+      };
     } catch (error) {
       logger.error(`Error in sendMessage handler: ${error}`);
       await callback?.({
@@ -345,6 +514,19 @@ export const sendMessageAction: Action = {
         actions: ['SEND_MESSAGE_ERROR'],
         source: message.content.source,
       });
+      return {
+        text: 'Error processing message request',
+        values: {
+          success: false,
+          error: 'HANDLER_ERROR',
+        },
+        data: {
+          actionName: 'SEND_MESSAGE',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
   },
 

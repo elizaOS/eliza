@@ -40,7 +40,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
   const allTabs: { value: TabValue; label: string; icon: JSX.Element }[] = useMemo(() => {
     const fixedTabs: { value: FixedTabValue; label: string; icon: JSX.Element }[] = [
       { value: 'details', label: 'Details', icon: <InfoIcon className="h-4 w-4" /> },
-      { value: 'actions', label: 'Actions', icon: <Eye className="h-4 w-4" /> },
+      { value: 'actions', label: 'Model Calls', icon: <Eye className="h-4 w-4" /> },
       { value: 'memories', label: 'Memories', icon: <Database className="h-4 w-4" /> },
       { value: 'logs', label: 'Logs', icon: <Code className="h-4 w-4" /> },
     ];

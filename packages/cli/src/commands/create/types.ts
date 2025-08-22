@@ -4,7 +4,6 @@ import { z } from 'zod';
  * Zod schema for create command options validation
  */
 export const initOptionsSchema = z.object({
-  dir: z.string().default('.'),
   yes: z.boolean().default(false),
   type: z.enum(['project', 'plugin', 'agent', 'tee']).default('project'),
 });

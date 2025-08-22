@@ -1,0 +1,817 @@
+name: Daily Code Quality Analysis
+
+on:
+  schedule:
+    # Run daily at 1:00 PM UTC on develop branch only
+    # Time zones: 5:00 AM PST / 8:00 AM EST / 2:00 PM CET / 9:00 PM CST
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      create_issues:
+        description: 'Create GitHub issues for found problems'
+        required: false
+        default: 'true'
+        type: boolean
+      branch:
+        description: 'Branch to analyze'
+        required: false
+        default: 'develop'
+        type: string
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  ISSUE_LABEL: 'code-quality'
+  ISSUE_PREFIX: '[Code Quality]'
+
+jobs:
+  analyze-code-quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # Not used for issue creation (uses GH_PAT instead), but needed for other steps
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}
+          fetch-depth: 0 # Full history for better analysis
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23.3.0'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.15
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build all packages
+        run: bun run build
+
+      - name: Install analysis tools
+        run: |
+          bun add -D knip
+
+      - name: Create analysis results directory
+        run: mkdir -p analysis-results
+
+      # Step 1: Dead Code Analysis with Knip
+      - name: Analyze Dead Code with Knip
+        id: dead-code
+        run: |
+          echo "::group::Dead Code Analysis"
+          echo "Starting dead code analysis with Knip..."
+          echo "## Dead Code Analysis" > analysis-results/dead-code.md
+          echo "" >> analysis-results/dead-code.md
+          echo "Analyzed using [Knip](https://knip.dev/) - a comprehensive dead code detection tool" >> analysis-results/dead-code.md
+          echo "" >> analysis-results/dead-code.md
+
+          # Run Knip analysis with no-progress flag (automatically set in CI)
+          echo "### Knip Analysis Results" >> analysis-results/dead-code.md
+          echo "Running Knip analysis..."
+          bunx knip --reporter symbols 2>&1 | tee -a analysis-results/dead-code.md || true
+          echo "::endgroup::"
+
+          # Additional analysis for orphaned files
+          echo "" >> analysis-results/dead-code.md
+          echo "### Potentially Orphaned Files" >> analysis-results/dead-code.md
+          find packages -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" | grep -v node_modules | grep -v dist | while read file; do
+            filename=$(basename "$file")
+            dirname=$(dirname "$file")
+            # Skip test files
+            if [[ ! "$filename" =~ \.(test|spec)\. ]]; then
+              # Check if file is imported anywhere
+              if ! grep -r "from.*${filename%.*}" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist >/dev/null 2>&1; then
+                echo "- $file" >> analysis-results/dead-code.md
+              fi
+            fi
+          done | head -20 || echo "Analysis completed" >> analysis-results/dead-code.md
+
+      # Step 2: Code Quality Analysis
+      - name: Analyze Code Quality
+        id: code-quality
+        run: |
+          echo "::group::Code Quality Analysis"
+          echo "Starting code quality analysis..."
+          echo "## Code Quality Analysis" > analysis-results/code-quality.md
+          echo "" >> analysis-results/code-quality.md
+
+          # Check for console.log statements
+          echo "Checking for console.log statements..."
+          echo "### Console.log Statements Found" >> analysis-results/code-quality.md
+          grep -r "console\.log" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/code-quality.md || echo "None found" >> analysis-results/code-quality.md
+
+          # Check for TODO/FIXME comments
+          echo "" >> analysis-results/code-quality.md
+          echo "### TODO/FIXME Comments" >> analysis-results/code-quality.md
+          grep -r "TODO\|FIXME" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/code-quality.md || echo "None found" >> analysis-results/code-quality.md
+
+          # Check for long functions (more than 50 lines)
+          echo "" >> analysis-results/code-quality.md
+          echo "### Long Functions (>50 lines)" >> analysis-results/code-quality.md
+          find packages -name "*.ts" -o -name "*.tsx" | grep -v node_modules | grep -v dist | while read file; do
+            awk '
+            BEGIN {
+                brace_count = 0
+                in_function = 0
+                function_start = 0
+                function_name = ""
+            }
+
+            # Function declaration patterns - more specific and comprehensive
+            /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+                if (!in_function) {
+                    in_function = 1
+                    function_start = NR
+                    function_name = $0
+                    brace_count = 0
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+                next
+            }
+
+            # Handle opening braces
+            /{/ {
+                if (in_function) {
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+            }
+
+            # Handle closing braces - works with indented braces
+            /}/ {
+                if (in_function) {
+                    # Count closing braces on this line
+                    gsub(/[^}]/, "", $0)
+                    brace_count -= length($0)
+
+                    # If we have balanced braces, function is complete
+                    if (brace_count <= 0) {
+                        function_length = NR - function_start + 1
+                        if (function_length > 50) {
+                            print FILENAME ":" function_start "-" NR " (" function_length " lines) - " substr(function_name, 1, 60)
+                        }
+                        in_function = 0
+                        function_start = 0
+                        function_name = ""
+                        brace_count = 0
+                    }
+                }
+            }
+            ' "$file"
+          done | head -20 >> analysis-results/code-quality.md || echo "Analysis completed" >> analysis-results/code-quality.md
+
+          # Check for complex conditions
+          echo "Analyzing complex conditional statements..."
+          echo "" >> analysis-results/code-quality.md
+          echo "### Complex Conditions (>3 &&/||)" >> analysis-results/code-quality.md
+          grep -r "if.*&&.*&&.*&&\|if.*||.*||.*||" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/code-quality.md || echo "None found" >> analysis-results/code-quality.md
+          echo "::endgroup::"
+
+      # Step 3: Security Analysis
+      - name: Analyze Security Issues
+        id: security
+        run: |
+          echo "::group::Security Analysis"
+          echo "Starting security vulnerability scan..."
+          echo "## Security Analysis" > analysis-results/security.md
+          echo "" >> analysis-results/security.md
+
+          # Check for hardcoded secrets/API keys
+          echo "Scanning for hardcoded secrets and API keys..."
+          echo "### Potential Hardcoded Secrets" >> analysis-results/security.md
+          grep -r -E "(api_key|apiKey|API_KEY|secret|password|token|private_key|privateKey)\s*[:=]\s*[\"'][^\"']+[\"']" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E "(process\.env|import|interface|type|:\s*string|test|spec|example)" | head -20 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
+
+          # Check for eval() usage
+          echo "" >> analysis-results/security.md
+          echo "### Eval() Usage" >> analysis-results/security.md
+          grep -r "eval\s*(" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
+
+          # Check for SQL injection risks
+          echo "" >> analysis-results/security.md
+          echo "### Potential SQL Injection Risks" >> analysis-results/security.md
+          grep -r -E "(query|execute)\s*\(.*\$\{.*\}|query.*\+.*\+" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
+
+          # Check for unsafe regex
+          echo "Checking for ReDoS vulnerabilities..."
+          echo "" >> analysis-results/security.md
+          echo "### Potential ReDoS Vulnerabilities" >> analysis-results/security.md
+          grep -r -E "new RegExp\(|\/.*(\+|\*|\{[0-9]*,\}).*(\+|\*|\{[0-9]*,\}).*\/" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -10 >> analysis-results/security.md || echo "None found" >> analysis-results/security.md
+          echo "::endgroup::"
+
+      # Step 4: Test Coverage Analysis
+      - name: Analyze Test Coverage
+        id: test-coverage
+        run: |
+          echo "::group::Test Coverage Analysis"
+          echo "Analyzing test coverage..."
+          echo "## Test Coverage Analysis" > analysis-results/test-coverage.md
+          echo "" >> analysis-results/test-coverage.md
+
+          # Find files without corresponding test files
+          echo "Finding files without test coverage..."
+          echo "### Files Without Tests" >> analysis-results/test-coverage.md
+          find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(test|spec|\.d\.ts|node_modules|dist)" | while read file; do
+            basename="${file%.*}"
+            dirname=$(dirname "$file")
+            # Check for various test file patterns
+            if ! find "$dirname" -name "$(basename "$basename").test.*" -o -name "$(basename "$basename").spec.*" -o -name "$(basename "$basename").*.test.*" -o -name "$(basename "$basename").*.spec.*" | grep -q .; then
+              # Also check __tests__ directory
+              if ! find "$dirname/__tests__" -name "*$(basename "$basename")*" 2>/dev/null | grep -q .; then
+                echo "- $file" >> analysis-results/test-coverage.md
+              fi
+            fi
+          done | head -50 >> analysis-results/test-coverage.md || echo "Analysis completed" >> analysis-results/test-coverage.md
+
+          # Check for test files with minimal tests
+          echo "" >> analysis-results/test-coverage.md
+          echo "### Test Files With Few Tests" >> analysis-results/test-coverage.md
+          find packages -name "*.test.ts" -o -name "*.spec.ts" -o -name "*.test.tsx" -o -name "*.spec.tsx" | grep -v node_modules | while read file; do
+            test_count=$(grep -c -E "(test|it|describe)\s*\(" "$file" || echo 0)
+            if [ "$test_count" -lt 3 ]; then
+              echo "- $file (only $test_count test blocks)" >> analysis-results/test-coverage.md
+            fi
+          done >> analysis-results/test-coverage.md || echo "Analysis completed" >> analysis-results/test-coverage.md
+          echo "::endgroup::"
+
+      # Step 5: Type Safety Analysis
+      - name: Analyze Type Safety
+        id: type-safety
+        run: |
+          echo "::group::Type Safety Analysis"
+          echo "Checking TypeScript type safety..."
+          echo "## Type Safety Analysis" > analysis-results/type-safety.md
+          echo "" >> analysis-results/type-safety.md
+
+          # Check for 'any' types
+          echo "Scanning for 'any' type usage..."
+          echo "### Usage of 'any' Type" >> analysis-results/type-safety.md
+          grep -r -E ":\s*any(\s|$|,|\)|\[)" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | head -30 >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
+
+          # Check for missing type annotations
+          echo "" >> analysis-results/type-safety.md
+          echo "### Functions Without Return Types" >> analysis-results/type-safety.md
+          grep -r -E "(function|const)\s+\w+\s*\([^)]*\)\s*\{" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E ":\s*\w+|=>" | head -20 >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
+
+          # Check for type assertions
+          echo "" >> analysis-results/type-safety.md
+          echo "### Type Assertions (as keyword)" >> analysis-results/type-safety.md
+          grep -r -E "\s+as\s+\w+" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E "(import|export|const\s+\w+\s+as)" | head -20 >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
+
+          # Check for @ts-ignore
+          echo "Checking for @ts-ignore directives..."
+          echo "" >> analysis-results/type-safety.md
+          echo "### @ts-ignore Usage" >> analysis-results/type-safety.md
+          grep -r "@ts-ignore" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist >> analysis-results/type-safety.md || echo "None found" >> analysis-results/type-safety.md
+          echo "::endgroup::"
+
+      # Step 6: Documentation Analysis
+      - name: Analyze Documentation
+        id: documentation
+        run: |
+          echo "::group::Documentation Analysis"
+          echo "Analyzing code documentation..."
+          echo "## Documentation Analysis" > analysis-results/documentation.md
+          echo "" >> analysis-results/documentation.md
+
+          # Check for functions without JSDoc
+          echo "### Exported Functions Without Documentation" >> analysis-results/documentation.md
+          find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(node_modules|dist|test|spec)" | while read file; do
+            awk '/export\s+(async\s+)?function|export\s+const\s+\w+\s*=\s*(async\s*)?\(/ {
+              if (prev !~ /\/\*\*/ && prev !~ /\/\//) {
+                print FILENAME":"NR" - "substr($0, 1, 60)"..."
+              }
+            } {prev=$0}' "$file"
+          done | head -30 >> analysis-results/documentation.md || echo "Analysis completed" >> analysis-results/documentation.md
+
+          # Check for complex functions without comments
+          echo "" >> analysis-results/documentation.md
+          echo "### Complex Functions Without Comments (>20 lines)" >> analysis-results/documentation.md
+          find packages -name "*.ts" -o -name "*.tsx" | grep -v -E "(node_modules|dist|test|spec)" | while read file; do
+            awk '
+            BEGIN {
+                brace_count = 0
+                in_function = 0
+                function_start = 0
+                function_name = ""
+                has_comment = 0
+            }
+
+            # Function declaration patterns - more specific and comprehensive
+            /^(export\s+)?(async\s+)?function\s+\w+\s*\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?const\s+\w+\s*:\s*\w*\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?let\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?var\s+\w+\s*=\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*\([^)]*\)\s*[:=]\s*(async\s*)?\(/ ||
+            /^(export\s+)?(async\s+)?\w+\s*[:=]\s*(async\s*)?\([^)]*\)\s*[:=]\s*(async\s*)?\(/ {
+                if (!in_function) {
+                    in_function = 1
+                    function_start = NR
+                    function_name = $0
+                    brace_count = 0
+                    has_comment = 0
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+                next
+            }
+
+            # Check for comments before function
+            /\/\*\*|\/\// {
+                if (in_function && NR >= function_start - 3 && NR <= function_start) {
+                    has_comment = 1
+                }
+            }
+
+            # Handle opening braces
+            /{/ {
+                if (in_function) {
+                    # Count opening braces on this line
+                    gsub(/[^{]/, "", $0)
+                    brace_count += length($0)
+                }
+            }
+
+            # Handle closing braces - works with indented braces
+            /}/ {
+                if (in_function) {
+                    # Count closing braces on this line
+                    gsub(/[^}]/, "", $0)
+                    brace_count -= length($0)
+
+                    # If we have balanced braces, function is complete
+                    if (brace_count <= 0) {
+                        function_length = NR - function_start + 1
+                        if (function_length > 20 && !has_comment) {
+                            print FILENAME ":" function_start " - Function with " function_length " lines and no documentation"
+                        }
+                        in_function = 0
+                        function_start = 0
+                        function_name = ""
+                        brace_count = 0
+                        has_comment = 0
+                    }
+                }
+            }
+            ' "$file"
+          done | head -20 >> analysis-results/documentation.md || echo "Analysis completed" >> analysis-results/documentation.md
+          echo "::endgroup::"
+
+      # Step 7: Documentation Accuracy and Completeness
+      - name: Analyze Documentation Accuracy
+        id: docs-accuracy
+        run: |
+          echo "::group::Documentation Accuracy Analysis"
+          echo "Checking documentation accuracy and completeness..."
+          echo "## Documentation Accuracy and Completeness" > analysis-results/docs-accuracy.md
+          echo "" >> analysis-results/docs-accuracy.md
+
+          # Check if docs directory exists
+          if [ -d "docs" ] || [ -d "packages/docs" ]; then
+            DOCS_DIR=$([ -d "docs" ] && echo "docs" || echo "packages/docs")
+
+            echo "### Broken Links in Documentation" >> analysis-results/docs-accuracy.md
+            # Find potential broken internal links
+            grep -r "\[.*\]([^)]*)" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "\]\(\.\.?\/|#" | while read line; do
+              file=$(echo "$line" | cut -d: -f1)
+              link=$(echo "$line" | grep -oE '\]\([^)]+\)' | sed 's/\](\(.*\))/\1/')
+              # Check if it's a relative path
+              if [[ "$link" =~ ^\.\.?/ ]]; then
+                target_path=$(dirname "$file")/"$link"
+                if [ ! -f "$target_path" ] && [ ! -d "$target_path" ]; then
+                  echo "- $file: broken link to '$link'" >> analysis-results/docs-accuracy.md
+                fi
+              fi
+            done | head -20 || echo "No broken links found" >> analysis-results/docs-accuracy.md
+
+            echo "" >> analysis-results/docs-accuracy.md
+            echo "### Missing Documentation for Core Features" >> analysis-results/docs-accuracy.md
+            # Check if important packages have corresponding docs
+            for package in packages/core packages/cli packages/client packages/plugin-*; do
+              if [ -d "$package" ]; then
+                package_name=$(basename "$package")
+                if ! grep -r "$package_name" "$DOCS_DIR" --include="*.md" >/dev/null 2>&1; then
+                  echo "- No documentation found for package: $package_name" >> analysis-results/docs-accuracy.md
+                fi
+              fi
+            done || echo "Analysis completed" >> analysis-results/docs-accuracy.md
+
+            echo "" >> analysis-results/docs-accuracy.md
+            echo "### Outdated Code Examples in Documentation" >> analysis-results/docs-accuracy.md
+            # Look for code blocks that might have outdated imports or syntax
+            grep -r "import.*from" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "(packages/core|@ai16z/|elizaos@)" | head -10 >> analysis-results/docs-accuracy.md || echo "No outdated imports found" >> analysis-results/docs-accuracy.md
+
+            echo "" >> analysis-results/docs-accuracy.md
+            echo "### Missing API Documentation" >> analysis-results/docs-accuracy.md
+            # Check if key APIs are documented
+            echo "Checking for documentation of key APIs..." >> analysis-results/docs-accuracy.md
+            key_apis=("AgentRuntime" "Character" "Memory" "Action" "Provider" "Evaluator" "Service")
+            for api in "${key_apis[@]}"; do
+              if ! grep -r "$api" "$DOCS_DIR" --include="*.md" >/dev/null 2>&1; then
+                echo "- Missing documentation for: $api" >> analysis-results/docs-accuracy.md
+              fi
+            done || echo "Analysis completed" >> analysis-results/docs-accuracy.md
+
+            echo "" >> analysis-results/docs-accuracy.md
+            echo "### Documentation Files Without Updates (>90 days)" >> analysis-results/docs-accuracy.md
+            find "$DOCS_DIR" -name "*.md" -mtime +90 2>/dev/null | head -10 >> analysis-results/docs-accuracy.md || echo "All documentation recently updated" >> analysis-results/docs-accuracy.md
+          else
+            echo "No docs directory found in standard locations" >> analysis-results/docs-accuracy.md
+          fi
+          echo "::endgroup::"
+
+      # Step 8: Repository Standards Analysis
+      - name: Analyze Repository Standards
+        id: repo-standards
+        run: |
+          echo "::group::Repository Standards Analysis"
+          echo "Checking ElizaOS repository standards compliance..."
+          echo "## Repository Standards Analysis" > analysis-results/repo-standards.md
+          echo "" >> analysis-results/repo-standards.md
+
+          # Check for npm/yarn/pnpm usage instead of bun
+          echo "### Non-Bun Package Manager Usage" >> analysis-results/repo-standards.md
+          grep -r -E "(npm (install|run)|yarn|pnpm|npx)" packages --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" --include="*.ts" --include="*.tsx" --exclude-dir=node_modules | grep -v -E "(bun|comment|example)" | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
+
+          # Check for incorrect imports (@elizaos/core vs packages/core)
+          echo "" >> analysis-results/repo-standards.md
+          echo "### Incorrect Core Package Imports" >> analysis-results/repo-standards.md
+          grep -r "from ['\"].*packages/core" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
+
+          # Check for class usage (should use functional programming)
+          echo "" >> analysis-results/repo-standards.md
+          echo "### Class Definitions (Should Use Functional)" >> analysis-results/repo-standards.md
+          grep -r -E "^class\s+|export\s+class\s+" packages --include="*.ts" --include="*.tsx" --exclude-dir=node_modules --exclude-dir=dist | grep -v -E "(Error|Exception)" | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
+
+          # Check for vitest/jest usage instead of bun test
+          echo "" >> analysis-results/repo-standards.md
+          echo "### Non-Bun Test Framework Usage (Should use bun:test)" >> analysis-results/repo-standards.md
+          echo "ElizaOS uses 'bun:test' exclusively. Found usage of other test frameworks:" >> analysis-results/repo-standards.md
+          grep -r -E "(from ['\"]vitest|from ['\"]jest|from ['\"]mocha|import.*vitest|import.*jest|require\(['\"]jest|require\(['\"]vitest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
+          echo "" >> analysis-results/repo-standards.md
+          echo "Test syntax that should use bun:test instead:" >> analysis-results/repo-standards.md
+          grep -r -E "(describe\.only|it\.only|test\.only|jest\.|vitest\.|expect\.extend)" packages --include="*.ts" --include="*.tsx" --include="*.test.*" --include="*.spec.*" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 >> analysis-results/repo-standards.md || echo "None found" >> analysis-results/repo-standards.md
+          echo "::endgroup::"
+
+      # Step 9: Combine all analysis results
+      - name: Combine Analysis Results
+        run: |
+          echo "::group::Combining Analysis Results"
+          echo "Creating full analysis report..."
+          echo "# ElizaOS Code Quality Analysis Report" > analysis-results/full-report.md
+          echo "Generated on: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> analysis-results/full-report.md
+          echo "" >> analysis-results/full-report.md
+          echo "This automated analysis checks for:" >> analysis-results/full-report.md
+          echo "- Dead code using [Knip](https://knip.dev/)" >> analysis-results/full-report.md
+          echo "- Code quality issues" >> analysis-results/full-report.md
+          echo "- Security vulnerabilities" >> analysis-results/full-report.md
+          echo "- Missing test coverage" >> analysis-results/full-report.md
+          echo "- Type safety violations" >> analysis-results/full-report.md
+          echo "- Documentation gaps" >> analysis-results/full-report.md
+          echo "- Documentation accuracy issues" >> analysis-results/full-report.md
+          echo "- Repository standard violations" >> analysis-results/full-report.md
+          echo "" >> analysis-results/full-report.md
+
+          for file in analysis-results/*.md; do
+            if [ "$file" != "analysis-results/full-report.md" ]; then
+              cat "$file" >> analysis-results/full-report.md
+              echo -e "\n---\n" >> analysis-results/full-report.md
+            fi
+          done
+          echo "Full report created successfully"
+          echo "::endgroup::"
+
+      # Step 10: Get existing issues to avoid duplicates
+      - name: Get Existing Issues
+        id: existing-issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: '${{ env.ISSUE_LABEL }}',
+              state: 'open'
+            });
+
+            const existingTitles = issues.data.map(issue => issue.title);
+            core.setOutput('existing_titles', JSON.stringify(existingTitles));
+
+            // Also output current branch for reference
+            core.setOutput('analyzed_branch', '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}');
+
+      # Step 11: Create analysis issue for review
+      # Using GH_PAT instead of GITHUB_TOKEN so the issue is created by a real user
+      # This allows Claude to respond automatically (Claude blocks bot-created issues)
+      - name: Create Code Quality Analysis Issue
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_issues != 'false'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            const fs = require('fs');
+            const date = new Date().toISOString().split('T')[0];
+            const branch = '${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}';
+
+            // Read the full report
+            let reportContent = '';
+            try {
+              reportContent = fs.readFileSync('analysis-results/full-report.md', 'utf8');
+            } catch (error) {
+              console.error('Could not read analysis report:', error);
+              reportContent = 'Error reading analysis report.';
+            }
+
+            // GitHub has a 65536 character limit for issue bodies
+            const maxReportLength = 50000; // Leave room for the rest of the issue body
+            let reportTruncated = false;
+            if (reportContent.length > maxReportLength) {
+              // Truncate at a line boundary to keep markdown valid
+              const truncateAt = reportContent.lastIndexOf('\n', maxReportLength);
+              reportContent = reportContent.substring(0, truncateAt > 0 ? truncateAt : maxReportLength);
+              reportTruncated = true;
+            }
+
+            // Count issues for summary
+            let summaryStats = {
+              deadCode: 0,
+              security: 0,
+              typeSafety: 0,
+              testCoverage: 0,
+              codeQuality: 0,
+              documentation: 0,
+              repoStandards: 0
+            };
+
+            try {
+              summaryStats.deadCode = (reportContent.match(/^- /gm) || []).length;
+              summaryStats.security = (reportContent.match(/### (Potential|Eval|innerHTML|ReDoS)/gm) || []).length;
+              summaryStats.typeSafety = (reportContent.match(/:\s*any/gm) || []).length;
+            } catch (e) {
+              console.log('Error counting issues:', e);
+            }
+
+            const issueBody = `## Code Quality Analysis Report - ${date}
+
+            This automated analysis was run on the \`${branch}\` branch.
+
+            ### Summary of Findings
+
+            - 🗑️ Dead Code Issues: ${summaryStats.deadCode}+
+            - 🔒 Security Concerns: ${summaryStats.security}+
+            - 📝 Type Safety Issues: ${summaryStats.typeSafety}+
+            - 🧪 Missing Test Coverage: Multiple files
+            - 📚 Documentation Gaps: Multiple areas
+
+            ### Next Steps
+
+            1. Review the full analysis report below
+            2. Identify the most critical issues
+            3. Create separate issues for high-priority problems
+            4. You can ask @claude to help analyze specific findings or create issues
+
+            ### Full Analysis Report
+
+            <details>
+            <summary>Click to expand full analysis results</summary>
+
+            ${reportContent}
+
+            ${reportTruncated ? '\n\n**⚠️ Report Truncated**: The full analysis exceeded GitHub\'s 65KB limit.\n\n**📥 Download Full Report:**\n1. Go to the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n2. Scroll to "Artifacts" section at the bottom\n3. Download `code-quality-analysis-${{ github.run_id }}`\n\nThe artifact contains all analysis files and is retained for 30 days.' : ''}
+
+            </details>
+
+            ---
+
+            **Workflow Run:** [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+
+            @claude Your task is to thoroughly analyze this code quality report and create exactly 5 GitHub issues for the most critical problems.
+
+            **IMPORTANT: Check the Workflow Run Logs**
+            You MUST examine the detailed workflow run logs to understand the full context:
+            1. Use the workflow run link above: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            2. Check EACH analysis step's logs thoroughly:
+               - Dead Code Analysis (look for Knip output)
+               - Code Quality Analysis (console.log, TODOs, long functions)
+               - Security Analysis (hardcoded secrets, eval usage)
+               - Test Coverage Analysis (files without tests)
+               - Type Safety Analysis (any types, @ts-ignore)
+               - Documentation Analysis (missing JSDoc)
+               - Repository Standards (non-bun test frameworks)
+            3. Look for any errors, warnings, or unexpected outputs in the logs
+
+            **Use Available Tools:**
+            You have access to GitHub tools - use them to:
+            - Create issues with proper formatting
+            - Apply multiple labels to each issue
+            - Check for existing similar issues before creating new ones
+            - Reference specific commits or files when relevant
+
+            **Analysis Process:**
+            1. First, read the summary statistics in this issue
+            2. Then, expand and review the full analysis report above
+            3. CRITICALLY: Check the workflow run logs for detailed findings
+            4. Cross-reference the report with the actual workflow output
+            5. Identify patterns and root causes, not just symptoms
+
+            **Create EXACTLY 5 Issues Following This Priority:**
+            1. CRITICAL: Security vulnerabilities (exposed secrets, eval, SQL injection)
+            2. CRITICAL: Non-bun test frameworks (ElizaOS uses bun:test ONLY)
+            3. HIGH: Missing tests for core functionality (packages/core especially)
+            4. HIGH: Excessive 'any' types in TypeScript files
+            5. MEDIUM: Significant dead code identified by Knip
+
+            **Issue Format Requirements:**
+            - Title: "[Code Quality] [Priority] [Category] Specific description"
+            - Labels: Apply ALL relevant labels:
+              - Priority: critical, high, medium
+              - Category: security, testing, technical-debt, documentation, type-safety
+              - Type: bug (if applicable)
+              - code-quality (always include this)
+            - Body MUST include:
+              - Problem summary with impact assessment
+              - Specific files/locations (with line numbers from logs)
+              - Reproduction steps or code examples
+              - Suggested fix with implementation approach
+              - Link to relevant workflow step output
+
+            **Example Issue Structure:**
+            \`\`\`
+            ## Problem
+            [Clear description of the issue and its impact]
+
+            ## Evidence
+            Found in workflow step: [Link to specific step]
+            Affected files:
+            - path/to/file.ts:123
+            - path/to/other.ts:45
+
+            ## Current State
+            \`\`\`typescript
+            // Problem code example
+            \`\`\`
+
+            ## Suggested Fix
+            [Specific implementation steps]
+
+            ## Priority
+            [CRITICAL/HIGH/MEDIUM] - [Justification]
+            \`\`\`
+
+            Remember: You MUST check the workflow logs thoroughly. The summary in this issue is truncated - the full details are in the workflow run. Create exactly 5 issues that will have the most impact on code quality and security.`;
+
+            try {
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[Code Quality] Analysis Report - ${date}`,
+                body: issueBody,
+                labels: ['code-quality', 'needs-review', 'automated']
+              });
+
+              console.log(`Created issue #${issue.data.number}`);
+              core.setOutput('issue_number', issue.data.number);
+              core.setOutput('issue_url', issue.data.html_url);
+
+              // Add to summary
+              await core.summary
+                .addHeading('Code Quality Issue Created')
+                .addLink(`Issue #${issue.data.number}`, issue.data.html_url)
+                .write();
+            } catch (error) {
+              console.error('Failed to create issue:', error);
+              core.setFailed(`Failed to create issue: ${error.message}`);
+            }
+
+      # Step 12: Upload analysis artifacts
+      - name: Upload Analysis Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-analysis-${{ github.run_id }}
+          path: analysis-results/
+          retention-days: 30
+
+      # Step 13: Post summary
+      - name: Post Workflow Summary
+        run: |
+          echo "::group::Workflow Summary"
+          echo "# Code Quality Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Type:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Output summary to console for visibility
+          echo "=== WORKFLOW SUMMARY ==="
+          echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'develop' }}"
+          echo "Workflow Type: ${{ github.event_name }}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.create_issues }}" != "false" ]; then
+            echo "**Issue Creation:** An issue has been created for manual review" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "**Issue Creation:** Scheduled runs do not create issues automatically" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Issue Creation:** Disabled for this run" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count issues in each category
+          echo "## Issues Found:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          dead_code_count=$(grep -c "^- " analysis-results/dead-code.md 2>/dev/null || echo 0)
+          knip_issues=$(grep -c "^\[" analysis-results/dead-code.md 2>/dev/null || echo 0)
+          echo "- **Dead Code:** $dead_code_count files + $knip_issues Knip findings" >> $GITHUB_STEP_SUMMARY
+          echo "Dead Code: $dead_code_count files + $knip_issues Knip findings"
+
+          code_quality_count=$(grep -c ":" analysis-results/code-quality.md 2>/dev/null || echo 0)
+          echo "- **Code Quality:** $code_quality_count issues" >> $GITHUB_STEP_SUMMARY
+          echo "Code Quality: $code_quality_count issues"
+
+          security_count=$(grep -c ":" analysis-results/security.md 2>/dev/null || echo 0)
+          echo "- **Security:** $security_count potential vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "Security: $security_count potential vulnerabilities"
+
+          test_count=$(grep -c "^- " analysis-results/test-coverage.md 2>/dev/null || echo 0)
+          echo "- **Missing Tests:** $test_count files without tests" >> $GITHUB_STEP_SUMMARY
+          echo "Missing Tests: $test_count files without tests"
+
+          type_safety_count=$(grep -c ":" analysis-results/type-safety.md 2>/dev/null || echo 0)
+          echo "- **Type Safety:** $type_safety_count violations" >> $GITHUB_STEP_SUMMARY
+          echo "Type Safety: $type_safety_count violations"
+
+          docs_count=$(grep -c ":" analysis-results/documentation.md 2>/dev/null || echo 0)
+          echo "- **Code Documentation:** $docs_count missing docs" >> $GITHUB_STEP_SUMMARY
+          echo "Code Documentation: $docs_count missing docs"
+
+          docs_accuracy_count=$(grep -c "- " analysis-results/docs-accuracy.md 2>/dev/null || echo 0)
+          echo "- **Docs Accuracy:** $docs_accuracy_count issues" >> $GITHUB_STEP_SUMMARY
+          echo "Docs Accuracy: $docs_accuracy_count issues"
+
+          standards_count=$(grep -c ":" analysis-results/repo-standards.md 2>/dev/null || echo 0)
+          echo "- **Standards:** $standards_count violations" >> $GITHUB_STEP_SUMMARY
+          echo "Standards: $standards_count violations"
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Calculate total issues
+          total_issues=$((dead_code_count + knip_issues + code_quality_count + security_count + test_count + type_safety_count + docs_count + docs_accuracy_count + standards_count))
+          echo ""
+          echo "TOTAL ISSUES FOUND: $total_issues"
+          echo ""
+
+          echo "## Analysis Tools Used:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Knip](https://knip.dev/) for comprehensive dead code detection" >> $GITHUB_STEP_SUMMARY
+          echo "  - Using existing knip.config.ts configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- Pattern matching for security and code quality issues" >> $GITHUB_STEP_SUMMARY
+          echo "- Custom analyzers for ElizaOS-specific standards" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "Full analysis results are available as workflow artifacts." >> $GITHUB_STEP_SUMMARY
+
+          # Output critical findings summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Critical Findings Summary" >> $GITHUB_STEP_SUMMARY
+          if [ $security_count -gt 0 ]; then
+            echo "⚠️ **Security Issues Found:** Review security.md for potential vulnerabilities" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ SECURITY ISSUES FOUND - Review immediately!"
+          fi
+
+          if grep -q "jest\|vitest\|mocha" analysis-results/repo-standards.md 2>/dev/null; then
+            echo "⚠️ **Non-Bun Test Framework:** ElizaOS requires bun:test exclusively" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ NON-BUN TEST FRAMEWORK DETECTED - Must use bun:test!"
+          fi
+
+          echo ""
+          echo "=== ANALYSIS COMPLETE ==="
+          echo "Artifacts will be available for 30 days at:"
+          echo "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "::endgroup::"
+
+      # No cleanup needed since we use the existing knip.config.ts
+      - name: Analysis complete
+        if: always()
+        run: |
+          echo "::notice title=Analysis Complete::Code quality analysis completed successfully. Check the workflow summary for results."
+          echo "Analysis completed using existing knip.config.ts configuration"

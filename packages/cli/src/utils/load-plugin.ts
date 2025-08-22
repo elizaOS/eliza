@@ -20,18 +20,61 @@ interface ImportStrategy {
 const DEFAULT_ENTRY_POINT = 'dist/index.js';
 
 /**
- * Get the global node_modules path based on Node.js installation
+ * Get the global node_modules path based on Node.js/Bun installation
  */
 function getGlobalNodeModulesPath(): string {
-  // process.execPath gives us the path to the node executable
-  const nodeDir = path.dirname(process.execPath);
+  const execDir = path.dirname(process.execPath);
+  const isBun = typeof Bun !== 'undefined';
 
   if (process.platform === 'win32') {
-    // On Windows, node_modules is typically in the same directory as node.exe
-    return path.join(nodeDir, 'node_modules');
+    if (isBun) {
+      // For Bun on Windows, check common installation paths
+      const bunPaths = [path.join(execDir, 'node_modules')];
+
+      // Only add paths that have valid environment variables
+      if (process.env.APPDATA) {
+        bunPaths.push(path.join(process.env.APPDATA, 'bun', 'node_modules'));
+      }
+      if (process.env.LOCALAPPDATA) {
+        bunPaths.push(path.join(process.env.LOCALAPPDATA, 'bun', 'node_modules'));
+      }
+      if (process.env.USERPROFILE) {
+        bunPaths.push(path.join(process.env.USERPROFILE, '.bun', 'node_modules'));
+      }
+
+      // Return the first path that exists
+      for (const potentialPath of bunPaths) {
+        if (existsSync(potentialPath)) {
+          return potentialPath;
+        }
+      }
+    }
+
+    // Default for Windows
+    return path.join(execDir, 'node_modules');
   } else {
-    // On Unix systems, we go up one level from bin directory
-    return path.join(nodeDir, '..', 'lib', 'node_modules');
+    // On Unix systems
+    if (isBun) {
+      // Check common locations for Bun on Unix
+      const bunUnixPaths = [
+        path.join(execDir, 'node_modules'),
+        path.join(execDir, '..', 'lib', 'node_modules'),
+      ];
+
+      // Only add home directory path if HOME is defined
+      if (process.env.HOME) {
+        bunUnixPaths.unshift(path.join(process.env.HOME, '.bun', 'node_modules'));
+      }
+
+      for (const potentialPath of bunUnixPaths) {
+        if (existsSync(potentialPath)) {
+          return potentialPath;
+        }
+      }
+    }
+
+    // Default for Unix
+    return path.join(execDir, '..', 'lib', 'node_modules');
   }
 }
 
@@ -58,6 +101,28 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
 }
 
 /**
+ * Normalizes import paths for cross-platform compatibility.
+ * On Windows, converts absolute paths to file:// URLs for dynamic imports.
+ */
+function normalizeImportPath(importPath: string): string {
+  const normalized = path.normalize(importPath);
+
+  // On Windows, convert absolute paths to file:// URLs for dynamic imports
+  if (process.platform === 'win32' && path.isAbsolute(normalized)) {
+    // Handle UNC paths (\\server\share) differently
+    if (normalized.startsWith('\\\\')) {
+      // UNC paths: \\server\share -> file://server/share
+      return `file:${encodeURI(normalized.replace(/\\/g, '/'))}`;
+    } else {
+      // Regular paths: C:\path -> file:///C:/path
+      return `file:///${encodeURI(normalized.replace(/\\/g, '/'))}`;
+    }
+  }
+
+  return normalized;
+}
+
+/**
  * Attempts to import a module from a given path and logs the outcome.
  */
 async function tryImporting(
@@ -66,10 +131,11 @@ async function tryImporting(
   repository: string
 ): Promise<any | null> {
   try {
-    const module = await import(importPath);
+    const pathToImport = normalizeImportPath(importPath);
+    const module = await import(pathToImport);
     logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
     return module;
-  } catch (error) {
+  } catch (error: any) {
     logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
     return null;
   }

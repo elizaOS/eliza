@@ -27,11 +27,16 @@ export const capabilitiesProvider: Provider = {
       // Extract capability descriptions from all services
       const capabilities: string[] = [];
 
-      for (const [serviceType, service] of services) {
-        if (service.capabilityDescription) {
-          capabilities.push(
-            `${serviceType} - ${service.capabilityDescription.replace('{{agentName}}', runtime.character.name)}`
-          );
+      for (const [serviceType, serviceArray] of services) {
+        // Handle the fact that services are stored as arrays
+        if (serviceArray && serviceArray.length > 0) {
+          // Use the first service in the array for the capability description
+          const service = serviceArray[0];
+          if (service.capabilityDescription) {
+            capabilities.push(
+              `${serviceType} - ${service.capabilityDescription.replace('{{agentName}}', runtime.character.name)}`
+            );
+          }
         }
       }
 
@@ -51,7 +56,7 @@ export const capabilitiesProvider: Provider = {
         text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
       };
     } catch (error) {
-      logger.error('Error in capabilities provider:', error);
+      logger.error({ error }, 'Error in capabilities provider:');
       return {
         text: 'Error retrieving capabilities from services.',
       };

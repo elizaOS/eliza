@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.0.15",
+  "version": "1.4.2",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -22,7 +22,7 @@
     "test:e2e": "cypress run --e2e",
     "test:e2e:with-server": "./scripts/test-e2e-with-server.sh",
     "cypress:open": "cypress open",
-    "type-check": "cd cypress && npx tsc --noEmit --project tsconfig.json"
+    "type-check": "cd cypress && bunx tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
     "@elizaos/api-client": "workspace:*",
@@ -59,10 +59,12 @@
     "react-force-graph": "^1.47.6",
     "react-force-graph-2d": "^1.27.1",
     "react-joyride": "^2.9.3",
+    "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
     "react-router": "^7.3.0",
     "react-router-dom": "^7.3.0",
     "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "semver": "^7.7.1",
     "shiki": "^3.6.0",
     "socket.io-client": "^4.8.1",
@@ -70,7 +72,7 @@
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-node-polyfills": "^0.23.0"
+    "vite-plugin-node-polyfills": "0.24.0"
   },
   "devDependencies": {
     "@cypress/react": "^9.0.1",

@@ -35,11 +35,6 @@ describe('Home Page', () => {
     });
   });
 
-  it('displays the add agent button', () => {
-    // Check for add agent button
-    cy.get('[data-testid="add-agent-button"]', { timeout: 10000 }).should('exist');
-  });
-
   it('displays connection status', () => {
     // Check for connection status indicator
     cy.get('[data-testid="connection-status"]', { timeout: 10000 }).should('exist');
@@ -164,7 +159,6 @@ describe('Home Page', () => {
         cy.get('[data-testid="app-sidebar"]').should('exist');
       } else {
         // Just verify basic navigation elements exist
-        cy.get('[data-testid="add-agent-button"]').should('exist');
         cy.get('[data-testid="mobile-menu-button"]').should('exist');
         cy.log('Sidebar toggle not available, verified other navigation elements');
       }

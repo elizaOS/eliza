@@ -45,14 +45,14 @@ export const ignoreAction: Action = {
     _options: any,
     callback: HandlerCallback,
     responses?: Memory[]
-  ) => {
+  ): Promise<void> => {
     // If a callback and the agent's response content are available, call the callback
     if (callback && responses?.[0]?.content) {
       // Pass the agent's original response content (thought, IGNORE action, etc.)
       await callback(responses[0].content);
     }
-    // Still return true to indicate the action handler succeeded
-    return true;
+    // The IGNORE action doesn't need to return an ActionResult as it's a terminal action
+    // This demonstrates backward compatibility - actions can still return void
   },
   examples: [
     [
