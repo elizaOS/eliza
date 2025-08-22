@@ -23,7 +23,13 @@
     "src/**/*.test.tsx",
     "src/**/*.spec.ts",
     "src/**/*.spec.tsx",
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/test/**",
+    "src/**/tests/**",
     "node_modules",
-    "dist"
+    "dist",
+    "build",
+    "coverage"
   ]
 }
