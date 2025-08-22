@@ -229,7 +229,7 @@ export function MessageContent({
             </>
           )}
           {isUser && message.text && !message.isLoading && onRetry && (
-            <RetryButton onClick={() => onRetry(message)} />
+            <RetryButton onClick={() => onRetry(message.text || '')} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
@@ -314,7 +314,7 @@ export default function Chat({
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } =
-    useDeleteAgent(targetAgentData);
+    useDeleteAgent(targetAgentData!);
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
@@ -371,7 +371,9 @@ export default function Chat({
     () =>
       allAgents.reduce(
         (acc, agent) => {
-          if (agent.id && agent.settings?.avatar) acc[agent.id] = agent.settings.avatar;
+          if (agent.id && typeof agent.settings?.avatar === 'string') {
+            acc[agent.id] = agent.settings.avatar;
+          }
           return acc;
         },
         {} as Record<UUID, string | null>
@@ -735,13 +737,13 @@ export default function Chat({
 
     const elizaClient = createElizaClient();
     const data = await elizaClient.messaging.generateChannelTitle(
-      finalChannelIdForHooks,
+      finalChannelIdForHooks!,
       contextId
     );
 
     const title = data?.title;
     const participants = await elizaClient.messaging.getChannelParticipants(
-      chatState.currentDmChannelId
+      chatState.currentDmChannelId!
     );
     if (title && participants) {
       // Handle different possible response formats for participants
@@ -752,7 +754,7 @@ export default function Chat({
         participantIds = participants.map((p) => p.userId || p.id || p);
       }
 
-      await elizaClient.messaging.updateChannel(finalChannelIdForHooks, {
+      await elizaClient.messaging.updateChannel(finalChannelIdForHooks!, {
         name: title,
         participantCentralUserIds: participantIds,
       });
@@ -777,11 +779,11 @@ export default function Chat({
       if (message.isAgent) safeScrollToBottom();
     },
     onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
-      updateMessage(messageId, updates);
+      updateMessage(messageId as UUID, updates);
       if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
     },
     onDeleteMessage: (messageId: string) => {
-      removeMessage(messageId);
+      removeMessage(messageId as UUID);
     },
     onClearMessages: () => {
       // Clear the local message list immediately for instant UI response
@@ -957,9 +959,9 @@ export default function Chat({
     const validMessageId = validateUuid(messageId);
     if (validMessageId) {
       // Immediately remove message from UI for optimistic update
-      removeMessage(messageId);
+      removeMessage(messageId as UUID);
       // Call server mutation to delete on backend
-      deleteMessageCentral({ channelId: finalChannelIdForHooks, messageId: validMessageId });
+      deleteMessageCentral({ channelId: finalChannelIdForHooks!, messageId: validMessageId });
     }
   };
 
@@ -1078,7 +1080,7 @@ export default function Chat({
     confirm(
       {
         title: 'Delete Agent',
-        description: `Are you sure you want to delete the agent "${targetAgentData.name}"? This action cannot be undone.`,
+        description: `Are you sure you want to delete the agent "${targetAgentData?.name}"? This action cannot be undone.`,
         confirmText: 'Delete',
         variant: 'destructive',
       },
@@ -1451,8 +1453,8 @@ export default function Chat({
                   targetAgentData={targetAgentData}
                   allAgents={allAgents}
                   animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef}
-                  contentRef={contentRef}
+                  scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                  contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1460,7 +1462,19 @@ export default function Chat({
                   getAgentInMessage={getAgentInMessage}
                   agentAvatarMap={agentAvatarMap}
                   onDeleteMessage={handleDeleteMessage}
-                  onRetryMessage={handleRetryMessage}
+                  onRetryMessage={(messageText) => {
+                    const message: UiMessage = {
+                      id: randomUUID() as UUID,
+                      text: messageText,
+                      name: USER_NAME,
+                      senderId: currentClientEntityId as UUID,
+                      isAgent: false,
+                      createdAt: Date.now(),
+                      channelId: finalChannelIdForHooks as UUID,
+                      serverId: finalServerIdForHooks,
+                    };
+                    handleRetryMessage(message);
+                  }}
                   selectedGroupAgentId={chatState.selectedGroupAgentId}
                 />
               </div>
@@ -1519,8 +1533,8 @@ export default function Chat({
                         targetAgentData={targetAgentData}
                         allAgents={allAgents}
                         animatedMessageId={animatedMessageId}
-                        scrollRef={scrollRef}
-                        contentRef={contentRef}
+                        scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                        contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}
@@ -1528,7 +1542,19 @@ export default function Chat({
                         getAgentInMessage={getAgentInMessage}
                         agentAvatarMap={agentAvatarMap}
                         onDeleteMessage={handleDeleteMessage}
-                        onRetryMessage={handleRetryMessage}
+                        onRetryMessage={(messageText) => {
+                          const message: UiMessage = {
+                            id: randomUUID() as UUID,
+                            text: messageText,
+                            name: USER_NAME,
+                            senderId: currentClientEntityId as UUID,
+                            isAgent: false,
+                            createdAt: Date.now(),
+                            channelId: finalChannelIdForHooks as UUID,
+                            serverId: finalServerIdForHooks,
+                          };
+                          handleRetryMessage(message);
+                        }}
                         selectedGroupAgentId={chatState.selectedGroupAgentId}
                       />
                     </div>

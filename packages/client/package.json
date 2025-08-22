@@ -5,9 +5,10 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "start:client": "vite",
     "dev:client": "vite --host 0.0.0.0 --port 5173",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
@@ -72,7 +73,7 @@
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-node-polyfills": "0.24.0"
+    "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
     "@cypress/react": "^9.0.1",
