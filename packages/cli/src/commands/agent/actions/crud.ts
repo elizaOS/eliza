@@ -1,36 +1,17 @@
-import type { Agent } from '@elizaos/core';
-import { logger } from '@elizaos/core';
-import type { OptionValues } from 'commander';
-import { writeFileSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { checkServer, displayAgent, handleError } from '@/src/utils';
-import type { ApiResponse } from '../../shared';
-import { getAgentsBaseUrl } from '../../shared';
+import { AgentsService, MemoryService } from '@elizaos/api-client';
+import { asUUID, UUID } from '@elizaos/core';
+import type { OptionValues } from 'commander';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { createApiClientConfig } from '../../shared';
 import { resolveAgentId } from '../utils';
-
-/**
- * Safely parse JSON response with error handling
- * @param response - The fetch Response object
- * @returns Parsed JSON data or null if parsing fails
- */
-async function safeJsonParse<T>(response: Response): Promise<T | null> {
-  try {
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to parse response as JSON:', error);
-    return null;
-  }
-}
 
 /**
  * Parse error response and throw appropriate error
  * @param response - The fetch Response object
  * @param defaultMessage - Default error message if JSON parsing fails
  */
-async function handleErrorResponse(response: Response, defaultMessage: string): Promise<never> {
-  const errorData = await safeJsonParse<ApiResponse<unknown>>(response);
-  throw new Error(errorData?.error?.message || defaultMessage);
-}
 
 /**
  * Get command implementation - retrieves and displays agent details
@@ -38,23 +19,22 @@ async function handleErrorResponse(response: Response, defaultMessage: string): 
 export async function getAgent(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const agentsService = new AgentsService(config);
 
     console.info(`Getting agent ${resolvedAgentId}`);
 
     // API Endpoint: GET /agents/:agentId
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
-    if (!response.ok) {
-      logger.error(`Failed to get agent`);
-      process.exit(1);
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
+    const agent = await agentsService.getAgent(agentId);
 
-    const responseData = await safeJsonParse<ApiResponse<Agent>>(response);
-    if (!responseData) {
-      throw new Error('Failed to parse agent data from server response');
-    }
-
-    const agent = responseData.data;
     if (!agent) {
       throw new Error('No agent data received from server');
     }
@@ -78,7 +58,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     }
 
     // Display agent details if not using output option
-    displayAgent(agent, 'Agent Details');
+    displayAgent(agent as any, 'Agent Details');
 
     // Display JSON if requested
     if (opts.json) {
@@ -99,20 +79,22 @@ export async function getAgent(opts: OptionValues): Promise<void> {
 export async function removeAgent(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const agentsService = new AgentsService(config);
 
     console.info(`Removing agent ${resolvedAgentId}`);
 
     // API Endpoint: DELETE /agents/:agentId
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      await handleErrorResponse(response, `Failed to remove agent: ${response.statusText}`);
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
+    await agentsService.deleteAgent(agentId);
 
-    // Server returns 204 No Content for successful deletion, no need to parse response
     console.log(`Successfully removed agent ${opts.name}`);
     return;
   } catch (error) {
@@ -127,25 +109,23 @@ export async function removeAgent(opts: OptionValues): Promise<void> {
 export async function clearAgentMemories(opts: OptionValues): Promise<void> {
   try {
     const resolvedAgentId = await resolveAgentId(opts.name, opts);
-    const baseUrl = getAgentsBaseUrl(opts);
+    const config = createApiClientConfig(opts);
+    const memoryService = new MemoryService(config);
 
     console.info(`Clearing all memories for agent ${resolvedAgentId}`);
 
-    // API Endpoint: DELETE /agents/:agentId/memories
-    const response = await fetch(`${baseUrl}/${resolvedAgentId}/memories`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      await handleErrorResponse(response, `Failed to clear agent memories: ${response.statusText}`);
+    // API Endpoint: DELETE /api/memory/:agentId/memories
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
+      );
     }
+    const result = await memoryService.clearAgentMemories(agentId);
 
-    const data = await safeJsonParse<ApiResponse<{ deletedCount: number }>>(response);
-    const result = data?.data || null;
-
-    console.log(
-      `Successfully cleared ${result?.deletedCount || 0} memories for agent ${opts.name}`
-    );
+    console.log(`Successfully cleared ${result?.deleted || 0} memories for agent ${opts.name}`);
     return;
   } catch (error) {
     await checkServer(opts);
@@ -184,23 +164,22 @@ export async function setAgentConfig(opts: OptionValues): Promise<void> {
     }
 
     // API Endpoint: PATCH /agents/:agentId
-    const response = await fetch(`${getAgentsBaseUrl(opts)}/${resolvedAgentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
-    });
+    const clientConfig = createApiClientConfig(opts);
+    const agentsService = new AgentsService(clientConfig);
 
-    if (!response.ok) {
-      await handleErrorResponse(
-        response,
-        `Failed to update agent configuration: ${response.statusText}`
+    let agentId: UUID;
+    try {
+      agentId = asUUID(resolvedAgentId);
+    } catch (error) {
+      throw new Error(
+        `Invalid agent ID format: ${resolvedAgentId}. Please provide a valid UUID, agent name, or index.`
       );
     }
+    const updatedAgent = await agentsService.updateAgent(agentId, config);
 
-    const data = await safeJsonParse<ApiResponse<{ id: string }>>(response);
-    const result = data?.data || null;
-
-    console.log(`Successfully updated configuration for agent ${result?.id || resolvedAgentId}`);
+    console.log(
+      `Successfully updated configuration for agent ${updatedAgent?.id || resolvedAgentId}`
+    );
   } catch (error) {
     await checkServer(opts);
     handleError(error);

@@ -284,7 +284,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         await runtime.updateWorld(world);
         logger.info(`Updated roles in world metadata for server ${serverId}`);
       } catch (error) {
-        logger.error('Failed to save world updates:', error);
+        logger.error({ error }, 'Failed to save world updates');
         return {
           text: 'Failed to save role updates',
           values: {

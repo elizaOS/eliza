@@ -11,7 +11,9 @@ import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
   ChannelType,
+  EventType,
   ModelType,
+  MODEL_SETTINGS,
   type Content,
   type MemoryMetadata,
   type Character,
@@ -79,6 +81,8 @@ export class Semaphore {
   }
 }
 
+type ServiceResolver = (service: Service) => void;
+
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
   readonly agentId: UUID;
@@ -115,6 +119,8 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
+  private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
+  private servicePromises = new Map<string, Promise<Service>>(); // read
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -301,6 +307,12 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.services) {
       for (const service of plugin.services) {
+        // ensure we have a promise, so when it's actually loaded via registerService,
+        // we can trigger the loading of service dependencies
+        if (!this.servicePromises.has(service.serviceType)) {
+          this._createServiceResolver(service.serviceType as ServiceTypeName);
+        }
+
         if (this.isInitialized) {
           await this.registerService(service);
         } else {
@@ -514,18 +526,19 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerAction(action: Action) {
-    this.logger.debug(
-      `${this.character.name}(${this.agentId}) - Registering action: ${action.name}`
-    );
     if (this.actions.find((a) => a.name === action.name)) {
       this.logger.warn(
         `${this.character.name}(${this.agentId}) - Action ${action.name} already exists. Skipping registration.`
       );
     } else {
-      this.actions.push(action);
-      this.logger.debug(
-        `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
-      );
+      try {
+        this.actions.push(action);
+        this.logger.success(
+          `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
+        );
+      } catch (e) {
+        console.error('Error registering action', e);
+      }
     }
   }
 
@@ -1158,7 +1171,10 @@ export class AgentRuntime implements IAgentRuntime {
         firstRoom.id
       );
       // pglite handle this at over 10k records fine though
-      await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
+      const batches = chunkArray(missingIdsInRoom, 5000);
+      for (const batch of batches) {
+        await this.addParticipantsRoom(batch, firstRoom.id);
+      }
     }
 
     this.logger.success(`Success: Successfully connected world`);
@@ -1547,6 +1563,17 @@ export class AgentRuntime implements IAgentRuntime {
       this.services.get(serviceType)!.push(serviceInstance);
       this.serviceTypes.get(serviceType)!.push(serviceDef);
 
+      // inform everyone that's waiting for this service, that it's now available
+      // removes the need for polling and timers
+      const resolve = this.servicePromiseHandles.get(serviceType);
+      if (resolve) {
+        resolve(serviceInstance);
+      } else {
+        this.logger.debug(
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+        );
+      }
+
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }
@@ -1560,6 +1587,35 @@ export class AgentRuntime implements IAgentRuntime {
       );
       throw error;
     }
+  }
+
+  /// ensures servicePromises & servicePromiseHandles for a serviceType
+  private _createServiceResolver(serviceType: ServiceTypeName) {
+    // consider this in the future iterations
+    // const { promise, resolve, reject } = Promise.withResolvers<T>();
+    let resolver: ServiceResolver | undefined;
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve) => {
+        resolver = resolve;
+      })
+    );
+    if (!resolver) {
+      throw new Error(`Failed to create resolver for service ${serviceType}`);
+    }
+    this.servicePromiseHandles.set(serviceType, resolver);
+    return this.servicePromises.get(serviceType);
+  }
+
+  /// returns a promise that's resolved once this service is loaded
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service> {
+    // if this.isInitialized then the this p will exist and already be resolved
+    let p = this.servicePromises.get(serviceType);
+    if (!p) {
+      // not initalized or registered yet, registerPlugin is already smart enough to check to see if we make it here
+      p = this._createServiceResolver(serviceType);
+    }
+    return p;
   }
 
   registerModel(
@@ -1618,6 +1674,84 @@ export class AgentRuntime implements IAgentRuntime {
     return models[0].handler;
   }
 
+  /**
+   * Retrieves model configuration settings from character settings with support for
+   * model-specific overrides and default fallbacks.
+   *
+   * Precedence order (highest to lowest):
+   * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
+   * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
+   * 3. Legacy settings for backwards compatibility (e.g., MODEL_TEMPERATURE)
+   *
+   * @param modelType The specific model type to get settings for
+   * @returns Object containing model parameters if they exist, or null if no settings are configured
+   */
+  private getModelSettings(modelType?: ModelTypeName): Record<string, number> | null {
+    const modelSettings: Record<string, number> = {};
+
+    // Helper to get a setting value with fallback chain
+    const getSettingWithFallback = (
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey: string
+    ): number | null => {
+      // Try model-specific setting first
+      if (modelType) {
+        const modelSpecificKey = `${modelType}_${param}`;
+        const modelValue = this.getSetting(modelSpecificKey);
+        if (modelValue !== null && modelValue !== undefined) {
+          const numValue = Number(modelValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
+          // If model-specific value exists but is invalid, continue to fallbacks
+        }
+      }
+
+      // Fall back to default setting
+      const defaultKey = `DEFAULT_${param}`;
+      const defaultValue = this.getSetting(defaultKey);
+      if (defaultValue !== null && defaultValue !== undefined) {
+        const numValue = Number(defaultValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+        // If default value exists but is invalid, continue to legacy
+      }
+
+      // Fall back to legacy setting for backwards compatibility
+      const legacyValue = this.getSetting(legacyKey);
+      if (legacyValue !== null && legacyValue !== undefined) {
+        const numValue = Number(legacyValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+      }
+
+      return null;
+    };
+
+    // Get settings with proper fallback chain
+    const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
+    const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const frequencyPenalty = getSettingWithFallback(
+      'FREQUENCY_PENALTY',
+      MODEL_SETTINGS.MODEL_FREQ_PENALTY
+    );
+    const presencePenalty = getSettingWithFallback(
+      'PRESENCE_PENALTY',
+      MODEL_SETTINGS.MODEL_PRESENCE_PENALTY
+    );
+
+    // Add settings if they exist
+    if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
+    if (temperature !== null) modelSettings.temperature = temperature;
+    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
+    if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
+
+    // Return null if no settings were configured
+    return Object.keys(modelSettings).length > 0 ? modelSettings : null;
+  }
+
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any,
@@ -1649,10 +1783,23 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       paramsWithRuntime = params;
     } else {
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
+      // Include model settings from character configuration if available
+      const modelSettings = this.getModelSettings(modelKey);
+
+      if (modelSettings) {
+        // Apply model settings if configured
+        paramsWithRuntime = {
+          ...modelSettings, // Apply model settings first (includes defaults and model-specific)
+          ...params, // Then apply specific params (allowing overrides)
+          runtime: this,
+        };
+      } else {
+        // No model settings configured, use params as-is
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
     }
     const startTime = performance.now();
     try {
@@ -1927,6 +2074,37 @@ export class AgentRuntime implements IAgentRuntime {
     }
     return memory;
   }
+
+  async queueEmbeddingGeneration(
+    memory: Memory,
+    priority: 'high' | 'normal' | 'low' = 'normal'
+  ): Promise<void> {
+    // Skip if memory is null or undefined
+    if (!memory) {
+      return;
+    }
+
+    // Skip if memory already has embeddings
+    if (memory.embedding) {
+      return;
+    }
+
+    // Skip if no text content
+    if (!memory.content?.text) {
+      this.logger.debug('Skipping embedding generation for memory without text content');
+      return;
+    }
+
+    // Emit event for async embedding generation
+    await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+      runtime: this,
+      memory,
+      priority,
+      source: 'runtime',
+      retryCount: 0,
+      maxRetries: 3,
+    });
+  }
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -2019,6 +2197,7 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique;
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(

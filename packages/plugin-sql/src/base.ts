@@ -136,17 +136,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           const jitter = Math.random() * this.jitterMax;
           const delay = backoffDelay + jitter;
 
-          logger.warn(`Database operation failed (attempt ${attempt}/${this.maxRetries}):`, {
-            error: error instanceof Error ? error.message : String(error),
-            nextRetryIn: `${(delay / 1000).toFixed(1)}s`,
-          });
+          logger.warn(
+            `Database operation failed (attempt ${attempt}/${this.maxRetries}): ${error instanceof Error ? error.message : String(error)}, nextRetryIn: ${(delay / 1000).toFixed(1)}s`
+          );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
         } else {
-          logger.error('Max retry attempts reached:', {
-            error: error instanceof Error ? error.message : String(error),
-            totalAttempts: attempt,
-          });
+          logger.error(
+            `Max retry attempts reached: ${error instanceof Error ? error.message : String(error)}, totalAttempts: ${attempt}`
+          );
           throw error instanceof Error ? error : new Error(String(error));
         }
       }
@@ -259,10 +257,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             : [];
 
         if (existing.length > 0) {
-          logger.warn('Attempted to create an agent with a duplicate ID or name.', {
-            id: agent.id,
-            name: agent.name,
-          });
+          logger.warn(
+            `Attempted to create an agent with a duplicate ID or name. ID: ${agent.id}, name: ${agent.name}`
+          );
           return false;
         }
 
@@ -274,16 +271,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           });
         });
 
-        logger.debug('Agent created successfully:', {
-          agentId: agent.id,
-        });
+        logger.debug(`Agent created successfully: ${agent.id}`);
         return true;
       } catch (error) {
-        logger.error('Error creating agent:', {
-          error: error instanceof Error ? error.message : String(error),
-          agentId: agent.id,
-          agent,
-        });
+        logger.error(
+          `Error creating agent: ${error instanceof Error ? error.message : String(error)}, agentId: ${agent.id}`
+        );
         return false;
       }
     });
@@ -331,16 +324,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           await tx.update(agentTable).set(updateData).where(eq(agentTable.id, agentId));
         });
 
-        logger.debug('Agent updated successfully:', {
-          agentId,
-        });
+        logger.debug(`Agent updated successfully: ${agentId}`);
         return true;
       } catch (error) {
-        logger.error('Error updating agent:', {
-          error: error instanceof Error ? error.message : String(error),
-          agentId,
-          agent,
-        });
+        logger.error(
+          `Error updating agent: ${error instanceof Error ? error.message : String(error)}, agentId: ${agentId}`
+        );
         return false;
       }
     });
@@ -456,7 +445,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         );
         return true;
       } catch (error) {
-        logger.error(`[DB] Failed to delete agent ${agentId}:`, error);
+        logger.error(
+          `[DB] Failed to delete agent ${agentId}: ${error instanceof Error ? error.message : String(error)}`
+        );
         if (error instanceof Error) {
           logger.error(`[DB] Error details: ${error.name} - ${error.message}`);
           logger.error(`[DB] Stack trace: ${error.stack}`);
@@ -481,9 +472,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
         return result[0]?.count || 0;
       } catch (error) {
-        logger.error('Error counting agents:', {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          `Error counting agents: ${error instanceof Error ? error.message : String(error)}`
+        );
         return 0;
       }
     });
@@ -500,9 +491,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         await this.db.delete(agentTable);
         logger.success('Successfully cleaned up agent table');
       } catch (error) {
-        logger.error('Error cleaning up agent table:', {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          `Error cleaning up agent table: ${error instanceof Error ? error.message : String(error)}`
+        );
         throw error;
       }
     });
@@ -621,11 +612,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           return true;
         });
       } catch (error) {
-        logger.error('Error creating entity:', {
-          error: error instanceof Error ? error.message : String(error),
-          entityId: entities[0].id,
-          name: entities[0].metadata?.name,
-        });
+        logger.error(
+          `Error creating entities: ${error instanceof Error ? error.message : String(error)}, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`
+        );
         // trace the error
         logger.trace(error);
         return false;
@@ -653,10 +642,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
       return true;
     } catch (error) {
-      logger.error('Error ensuring entity exists:', {
-        error: error instanceof Error ? error.message : String(error),
-        entityId: entity.id,
-      });
+      logger.error(
+        `Error ensuring entity exists: ${error instanceof Error ? error.message : String(error)}, entityId: ${entity.id}`
+      );
       return false;
     }
   }
@@ -885,7 +873,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       await this.db.insert(componentTable).values({
         ...component,
-        createdAt: new Date(component.createdAt),
+        createdAt: new Date(),
       });
       return true;
     });
@@ -898,13 +886,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   async updateComponent(component: Component): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db
-        .update(componentTable)
-        .set({
-          ...component,
-          createdAt: new Date(component.createdAt),
-        })
-        .where(eq(componentTable.id, component.id));
+      try {
+        await this.db
+          .update(componentTable)
+          .set({
+            ...component,
+            updatedAt: new Date(),
+          })
+          .where(eq(componentTable.id, component.id));
+      } catch (e) {
+        console.error('updateComponent error', e);
+      }
     });
   }
 
@@ -1220,11 +1212,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           }))
           .filter((row) => Array.isArray(row.embedding));
       } catch (error) {
-        logger.error('Error in getCachedEmbeddings:', {
-          error: error instanceof Error ? error.message : String(error),
-          tableName: opts.query_table_name,
-          fieldName: opts.query_field_name,
-        });
+        logger.error(
+          `Error in getCachedEmbeddings: ${error instanceof Error ? error.message : String(error)}, tableName: ${opts.query_table_name}, fieldName: ${opts.query_field_name}`
+        );
         if (
           error instanceof Error &&
           error.message === 'levenshtein argument exceeds maximum length of 255 characters'
@@ -1269,12 +1259,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           });
         });
       } catch (error) {
-        logger.error('Failed to create log entry:', {
-          error: error instanceof Error ? error.message : String(error),
-          type: params.type,
-          roomId: params.roomId,
-          entityId: params.entityId,
-        });
+        logger.error(
+          `Failed to create log entry: ${error instanceof Error ? error.message : String(error)}, type: ${params.type}, roomId: ${params.roomId}, entityId: ${params.entityId}`
+        );
         throw error;
       }
     });
@@ -1523,34 +1510,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     memory: Memory & { metadata?: MemoryMetadata },
     tableName: string
   ): Promise<UUID> {
-    logger.debug('DrizzleAdapter createMemory:', {
-      memoryId: memory.id,
-      embeddingLength: memory.embedding?.length,
-      contentLength: memory.content?.text?.length,
-    });
+    logger.debug(
+      `DrizzleAdapter createMemory: memoryId: ${memory.id}, embeddingLength: ${memory.embedding?.length}, contentLength: ${memory.content?.text?.length}`
+    );
 
     const memoryId = memory.id ?? (v4() as UUID);
 
     const existing = await this.getMemoryById(memoryId);
     if (existing) {
-      logger.debug('Memory already exists, skipping creation:', {
-        memoryId,
-      });
+      logger.debug(`Memory already exists, skipping creation: ${memoryId}`);
       return memoryId;
     }
 
-    let isUnique = true;
-    if (memory.embedding && Array.isArray(memory.embedding)) {
-      const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
-        tableName,
-        // Use the scope fields from the memory object for similarity check
-        roomId: memory.roomId,
-        worldId: memory.worldId,
-        entityId: memory.entityId,
-        match_threshold: 0.95,
-        count: 1,
-      });
-      isUnique = similarMemories.length === 0;
+    // only do costly check if we need to
+    if (memory.unique === undefined) {
+      memory.unique = true; // set default
+      if (memory.embedding && Array.isArray(memory.embedding)) {
+        const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
+          tableName,
+          // Use the scope fields from the memory object for similarity check
+          roomId: memory.roomId,
+          worldId: memory.worldId,
+          entityId: memory.entityId,
+          match_threshold: 0.95,
+          count: 1,
+        });
+        memory.unique = similarMemories.length === 0;
+      }
     }
 
     // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
@@ -1572,7 +1558,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
           agentId: memory.agentId || this.agentId,
-          unique: memory.unique ?? isUnique,
+          unique: memory.unique,
           createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         },
       ]);
@@ -1607,10 +1593,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   ): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        logger.debug('Updating memory:', {
-          memoryId: memory.id,
-          hasEmbedding: !!memory.embedding,
-        });
+        logger.debug(
+          `Updating memory: memoryId: ${memory.id}, hasEmbedding: ${!!memory.embedding}`
+        );
 
         await this.db.transaction(async (tx) => {
           // Update memory content if provided
@@ -1682,15 +1667,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           }
         });
 
-        logger.debug('Memory updated successfully:', {
-          memoryId: memory.id,
-        });
+        logger.debug(`Memory updated successfully: ${memory.id}`);
         return true;
       } catch (error) {
-        logger.error('Error updating memory:', {
-          error: error instanceof Error ? error.message : String(error),
-          memoryId: memory.id,
-        });
+        logger.error(
+          `Error updating memory: ${error instanceof Error ? error.message : String(error)}, memoryId: ${memory.id}`
+        );
         return false;
       }
     });
@@ -1714,9 +1696,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
       });
 
-      logger.debug('Memory and related fragments removed successfully:', {
-        memoryId,
-      });
+      logger.debug(`Memory and related fragments removed successfully: ${memoryId}`);
     });
   }
 
@@ -1752,9 +1732,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         }
       });
 
-      logger.debug('Batch memory deletion completed successfully:', {
-        count: memoryIds.length,
-      });
+      logger.debug(`Batch memory deletion completed successfully: ${memoryIds.length}`);
     });
   }
 
@@ -1776,10 +1754,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       // Delete the fragments
       await tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds));
 
-      logger.debug('Deleted related fragments:', {
-        documentId,
-        fragmentCount: fragmentsToDelete.length,
-      });
+      logger.debug(
+        `Deleted related fragments: documentId: ${documentId}, fragmentCount: ${fragmentsToDelete.length}`
+      );
     }
   }
 
@@ -1820,7 +1797,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
 
         const ids = rows.map((r) => r.id);
-        logger.debug('[deleteAllMemories] memory IDs to delete:', { roomId, tableName, ids });
+        logger.debug(
+          `[deleteAllMemories] memory IDs to delete: roomId: ${roomId}, tableName: ${tableName}, ids: ${JSON.stringify(ids)}`
+        );
 
         if (ids.length === 0) {
           return;
@@ -1840,7 +1819,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
       });
 
-      logger.debug('All memories removed successfully:', { roomId, tableName });
+      logger.debug(`All memories removed successfully: roomId: ${roomId}, tableName: ${tableName}`);
     });
   }
 
@@ -1989,7 +1968,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
    */
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-    console.log('getRoomsForParticipant', entityId);
     return this.withDatabase(async () => {
       const result = await this.db
         .select({ roomId: participantTable.roomId })
@@ -2039,12 +2017,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .onConflictDoNothing();
         return true;
       } catch (error) {
-        logger.error('Error adding participant', {
-          error: error instanceof Error ? error.message : String(error),
-          entityId,
-          roomId,
-          agentId: this.agentId,
-        });
+        logger.error(
+          `Error adding participant to room: ${error instanceof Error ? error.message : String(error)}, entityId: ${entityId}, roomId: ${roomId}, agentId: ${this.agentId}`
+        );
         return false;
       }
     });
@@ -2062,12 +2037,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         logger.debug(entityIds.length, 'Entities linked successfully');
         return true;
       } catch (error) {
-        logger.error('Error adding participants', {
-          error: error instanceof Error ? error.message : String(error),
-          entityIdSample: entityIds[0],
-          roomId,
-          agentId: this.agentId,
-        });
+        logger.error(
+          `Error adding participants to room: ${error instanceof Error ? error.message : String(error)}, entityIdSample: ${entityIds[0]}, roomId: ${roomId}, agentId: ${this.agentId}`
+        );
         return false;
       }
     });
@@ -2092,19 +2064,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
 
         const removed = result.length > 0;
-        logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
-          entityId,
-          roomId,
-          removed,
-        });
+        logger.debug(
+          `Participant ${removed ? 'removed' : 'not found'}: entityId: ${entityId}, roomId: ${roomId}, removed: ${removed}`
+        );
 
         return removed;
       } catch (error) {
-        logger.error('Failed to remove participant:', {
-          error: error instanceof Error ? error.message : String(error),
-          entityId,
-          roomId,
-        });
+        logger.error(
+          `Error removing participant from room: ${error instanceof Error ? error.message : String(error)}, entityId: ${entityId}, roomId: ${roomId}`
+        );
         return false;
       }
     });
@@ -2209,12 +2177,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             );
         });
       } catch (error) {
-        logger.error('Failed to set participant user state:', {
-          roomId,
-          entityId,
-          state,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          `Error setting participant follow state: roomId: ${roomId}, entityId: ${entityId}, state: ${state}, error: ${error instanceof Error ? error.message : String(error)}`
+        );
         throw error;
       }
     });
@@ -2249,10 +2214,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         await this.db.insert(relationshipTable).values(saveParams);
         return true;
       } catch (error) {
-        logger.error('Error creating relationship:', {
-          error: error instanceof Error ? error.message : String(error),
-          saveParams,
-        });
+        logger.error(
+          `Error creating relationship: ${error instanceof Error ? error.message : String(error)}, saveParams: ${JSON.stringify(saveParams)}`
+        );
         return false;
       }
     });
@@ -2274,10 +2238,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           })
           .where(eq(relationshipTable.id, relationship.id));
       } catch (error) {
-        logger.error('Error updating relationship:', {
-          error: error instanceof Error ? error.message : String(error),
-          relationship,
-        });
+        logger.error(
+          `Error updating relationship: ${error instanceof Error ? error.message : String(error)}, relationship: ${JSON.stringify(relationship)}`
+        );
         throw error;
       }
     });
@@ -2385,11 +2348,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
         return undefined;
       } catch (error) {
-        logger.error('Error fetching cache', {
-          error: error instanceof Error ? error.message : String(error),
-          key: key,
-          agentId: this.agentId,
-        });
+        logger.error(
+          `Error fetching cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+        );
         return undefined;
       }
     });
@@ -2420,11 +2381,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
         return true;
       } catch (error) {
-        logger.error('Error setting cache', {
-          error: error instanceof Error ? error.message : String(error),
-          key: key,
-          agentId: this.agentId,
-        });
+        logger.error(
+          `Error setting cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+        );
         return false;
       }
     });
@@ -2445,11 +2404,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
         return true;
       } catch (error) {
-        logger.error('Error deleting cache', {
-          error: error instanceof Error ? error.message : String(error),
-          key: key,
-          agentId: this.agentId,
-        });
+        logger.error(
+          `Error deleting cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+        );
         return false;
       }
     });

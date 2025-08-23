@@ -35,7 +35,7 @@ function isRunningFromLocalCli(): boolean {
 
     return isInLocalCli;
   } catch (error) {
-    logger.debug('Error checking if running from local CLI:', error);
+    logger.debug({ error }, 'Error checking if running from local CLI:');
     return false;
   }
 }
@@ -125,7 +125,7 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 
     // Handle process errors
     childProcess.on('error', (error) => {
-      logger.error(`Failed to start local CLI: ${error.message}`);
+      logger.error({ message: error.message }, `Failed to start local CLI:`);
       reject(error);
     });
 
@@ -201,6 +201,12 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
     const args = process.argv.slice(2);
     if (args.length > 0 && args[0] === 'update') {
       logger.debug('Update command detected, skipping local CLI delegation');
+      return false;
+    }
+
+    // Skip delegation for version command (should always use global CLI)
+    if (args.length > 0 && (args[0] === '-v' || args[0] === '--version')) {
+      logger.debug('Version command detected, skipping local CLI delegation');
       return false;
     }
 

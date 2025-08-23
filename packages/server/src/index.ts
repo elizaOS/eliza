@@ -77,14 +77,12 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     path.join(process.cwd(), '.eliza', '.elizadb');
 
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const resolved = expandTildePath(base);
+  const migrated = expandTildePath(base);
   const legacyPath = path.join(process.cwd(), '.elizadb');
-  if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
-    process.env.PGLITE_DATA_DIR = newPath;
-    return newPath;
-  }
+  const resolved = migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
 
+  // Persist chosen root for the process so child modules see it
+  process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
 }
 
@@ -140,8 +138,8 @@ export function isWebUIEnabled(): boolean {
 /**
  * Class representing an agent server.
  */ /**
- * Represents an agent server which handles agents, database, and server functionalities.
- */
+* Represents an agent server which handles agents, database, and server functionalities.
+*/
 export class AgentServer {
   public app!: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
@@ -175,7 +173,7 @@ export class AgentServer {
       // Register signal handlers once in constructor to prevent accumulation
       this.registerSignalHandlers();
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (constructor):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (constructor):');
       throw error;
     }
   }
@@ -224,7 +222,7 @@ export class AgentServer {
 
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
-        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        logger.error({ error: migrationError }, '[INIT] Failed to run database migrations:');
         throw new Error(
           `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
         );
@@ -242,7 +240,7 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (async operations):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (async operations):');
       console.trace(error);
       throw error;
     }
@@ -319,7 +317,7 @@ export class AgentServer {
         logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
-      logger.error('[AgentServer] Error ensuring default server:', error);
+      logger.error({ error }, '[AgentServer] Error ensuring default server:');
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
@@ -352,41 +350,41 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-                // Production CSP - includes upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // upgrade-insecure-requests is added by helmet automatically
-                },
-                useDefaults: true,
-              }
-            : {
-                // Development CSP - minimal policy without upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'self'", 'data:'],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
-                },
-                useDefaults: false,
+              // Production CSP - includes upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // upgrade-insecure-requests is added by helmet automatically
               },
+              useDefaults: true,
+            }
+            : {
+              // Development CSP - minimal policy without upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: ["'self'", 'data:'],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+              },
+              useDefaults: false,
+            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -398,10 +396,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-                maxAge: 31536000, // 1 year
-                includeSubDomains: true,
-                preload: true,
-              }
+              maxAge: 31536000, // 1 year
+              includeSubDomains: true,
+              preload: true,
+            }
             : false,
           // No Sniff
           noSniff: true,
@@ -564,7 +562,7 @@ export class AgentServer {
 
           res.sendFile(filePath, (err) => {
             if (err) {
-              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              logger.warn({ err, filePath }, `[STATIC] Channel media file not found: ${filePath}`);
               if (!res.headersSent) {
                 res.status(404).json({ error: 'File not found' });
               }
@@ -785,7 +783,7 @@ export class AgentServer {
         },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
-          logger.error(`API error: ${req.method} ${req.path}`, err);
+          logger.error({ err }, `API error: ${req.method} ${req.path}`);
           res.status(500).json({
             success: false,
             error: {
@@ -881,7 +879,7 @@ export class AgentServer {
 
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
-      logger.error('Failed to complete server initialization:', error);
+      logger.error({ error }, 'Failed to complete server initialization:');
       throw error;
     }
   }
@@ -920,8 +918,8 @@ export class AgentServer {
         }
       } catch (e) {
         logger.error(
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
-          e
+          { error: e },
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
         // Decide if this is a fatal error for the agent.
       }
@@ -953,7 +951,7 @@ export class AgentServer {
         `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
-      logger.error('Failed to register agent:', error);
+      logger.error({ error }, 'Failed to register agent:');
       throw error;
     }
   }
@@ -979,13 +977,16 @@ export class AgentServer {
         try {
           agent.stop().catch((stopError) => {
             logger.error(
-              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
-              stopError
+              { error: stopError, agentId },
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
             );
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 
@@ -993,7 +994,7 @@ export class AgentServer {
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
-      logger.error(`Error removing agent ${agentId}:`, error);
+      logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
     }
   }
 
@@ -1042,10 +1043,10 @@ export class AgentServer {
 
               console.log(
                 `\x1b[32mStartup successful!\x1b[0m\n` +
-                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
               );
             }
 
@@ -1064,7 +1065,7 @@ export class AgentServer {
             resolve();
           })
           .on('error', (error: any) => {
-            logger.error(`Failed to bind server to ${host}:${port}:`, error);
+            logger.error({ error, host, port }, `Failed to bind server to ${host}:${port}:`);
 
             // Provide helpful error messages for common issues
             if (error.code === 'EADDRINUSE') {
@@ -1087,7 +1088,7 @@ export class AgentServer {
 
         // Server is now listening successfully
       } catch (error) {
-        logger.error('Failed to start server:', error);
+        logger.error({ error }, 'Failed to start server:');
         reject(error);
       }
     });
@@ -1216,6 +1217,7 @@ export class AgentServer {
     limit: number = 50,
     beforeTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
+    // TODO: Add afterTimestamp support when database layer is updated
     return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
   }
 
@@ -1297,7 +1299,7 @@ export class AgentServer {
           await agent.stop();
           logger.debug(`Stopped agent ${id}`);
         } catch (error) {
-          logger.error(`Error stopping agent ${id}:`, error);
+          logger.error({ error, agentId: id }, `Error stopping agent ${id}:`);
         }
       }
 
@@ -1307,7 +1309,7 @@ export class AgentServer {
           await this.database.close();
           logger.info('Database closed.');
         } catch (error) {
-          logger.error('Error closing database:', error);
+          logger.error({ error }, 'Error closing database:');
         }
       }
 

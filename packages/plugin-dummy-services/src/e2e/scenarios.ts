@@ -1,5 +1,5 @@
 import type { IAgentRuntime, TestSuite, IWalletService } from '@elizaos/core';
-import { ILpService, ServiceType } from '@elizaos/core';
+import { ILpService, ServiceType, logger } from '@elizaos/core';
 import { strict as assert } from 'node:assert';
 import { DummyLpService } from '../lp/service';
 import { DummyTokenDataService } from '../tokenData/service';
@@ -12,7 +12,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
     {
       name: 'Scenario 1: Should initialize dummy services and verify they are available',
       fn: async (runtime: IAgentRuntime) => {
-        console.log('Testing dummy services initialization...');
+        logger.info('Testing dummy services initialization...');
 
         // Check DummyLpService
         const lpService = runtime.getService<DummyLpService>(ILpService.serviceType);
@@ -29,7 +29,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         );
         assert(tokenDataService, 'DummyTokenDataService not found in runtime');
 
-        console.log('Successfully verified both dummy services are initialized and available.');
+        logger.info('Successfully verified both dummy services are initialized and available.');
       },
     },
     {
@@ -38,7 +38,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         const lpService = runtime.getService<DummyLpService>(ILpService.serviceType);
         assert(lpService, 'DummyLpService not found');
 
-        console.log('Fetching all pools from DummyLpService...');
+        logger.info('Fetching all pools from DummyLpService...');
         const allPools = await lpService.getPools();
         assert(Array.isArray(allPools), 'getPools should return an array');
         assert.equal(allPools.length, 2, 'Should return 2 dummy pools');
@@ -51,7 +51,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(pool1.tokenB.symbol, 'USDC', 'Pool should have USDC as tokenB');
         assert.equal(pool1.tvl, 1234567.89, 'Pool should have correct TVL');
 
-        console.log('Successfully fetched and verified pool data.');
+        logger.info('Successfully fetched and verified pool data.');
       },
     },
     {
@@ -61,7 +61,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert(lpService, 'DummyLpService not found');
 
         const solMint = 'So11111111111111111111111111111111111111112';
-        console.log(`Filtering pools containing SOL (${solMint})...`);
+        logger.info(`Filtering pools containing SOL (${solMint})...`);
 
         const solPools = await lpService.getPools(solMint);
         assert(Array.isArray(solPools), 'getPools with filter should return an array');
@@ -73,7 +73,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           assert(containsSol, `Pool ${pool.id} should contain SOL`);
         });
 
-        console.log(`Found ${solPools.length} pools containing SOL.`);
+        logger.info(`Found ${solPools.length} pools containing SOL.`);
       },
     },
     {
@@ -85,7 +85,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         // Create a mock vault object
         const mockVault = { publicKey: 'dummy-public-key', secretKey: 'dummy-secret-key' };
 
-        console.log('Testing add liquidity to dummy-pool-1...');
+        logger.info('Testing add liquidity to dummy-pool-1...');
         const result = await lpService.addLiquidity({
           userVault: mockVault,
           poolId: 'dummy-pool-1',
@@ -108,7 +108,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           'LP token should have correct address'
         );
 
-        console.log('Successfully added liquidity:', result);
+        logger.info('Successfully added liquidity:', result);
       },
     },
     {
@@ -120,7 +120,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         // Create a mock vault object
         const mockVault = { publicKey: 'dummy-public-key-2', secretKey: 'dummy-secret-key-2' };
 
-        console.log('Testing remove liquidity from dummy-pool-1...');
+        logger.info('Testing remove liquidity from dummy-pool-1...');
         const result = await lpService.removeLiquidity({
           userVault: mockVault,
           poolId: 'dummy-pool-1',
@@ -142,7 +142,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(solToken.uiAmount, 0.5, 'Should receive 0.5 SOL');
         assert.equal(usdcToken.uiAmount, 500, 'Should receive 500 USDC');
 
-        console.log('Successfully removed liquidity:', result);
+        logger.info('Successfully removed liquidity:', result);
       },
     },
     {
@@ -154,7 +154,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         const userPublicKey = 'HtiYLjY9dGMrmpwjDcGmxQCo2VsCCAQiBgt5xPLanTJa';
         const lpMint = 'dummy-lp-mint-dummy-pool-1';
 
-        console.log(`Getting LP position details for user ${userPublicKey}...`);
+        logger.info(`Getting LP position details for user ${userPublicKey}...`);
         const position = await lpService.getLpPositionDetails(userPublicKey, lpMint);
 
         assert(position, 'Should return LP position details');
@@ -182,7 +182,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(sol.uiAmount, 0.5, 'Should have 0.5 SOL');
         assert.equal(usdc.uiAmount, 500, 'Should have 500 USDC');
 
-        console.log('Successfully retrieved LP position details:', position);
+        logger.info('Successfully retrieved LP position details:', position);
       },
     },
     {
@@ -192,7 +192,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert(lpService, 'DummyLpService not found');
 
         const poolIds = ['dummy-pool-1', 'dummy-stable-pool-2'];
-        console.log(`Getting market data for pools: ${poolIds.join(', ')}...`);
+        logger.info(`Getting market data for pools: ${poolIds.join(', ')}...`);
 
         const marketData = await lpService.getMarketDataForPools(poolIds);
         assert(marketData, 'Should return market data');
@@ -212,7 +212,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           assert(data.apr >= 0 && data.apr <= 1, 'APR should be between 0 and 1');
         });
 
-        console.log('Successfully retrieved market data:', marketData);
+        logger.info('Successfully retrieved market data:', marketData);
       },
     },
     {
@@ -224,7 +224,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert(tokenDataService, 'DummyTokenDataService not found');
 
         const solMint = 'So11111111111111111111111111111111111111112';
-        console.log(`Fetching token data for SOL (${solMint})...`);
+        logger.info(`Fetching token data for SOL (${solMint})...`);
 
         const tokenData = await tokenDataService.getTokenDetails(solMint, 'solana');
         assert(tokenData, 'Should return token data');
@@ -233,7 +233,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert.equal(tokenData.decimals, 18, 'Should have decimals');
         assert(typeof tokenData.price === 'number', 'Should have price');
 
-        console.log('Successfully fetched token data:', tokenData);
+        logger.info('Successfully fetched token data:', tokenData);
       },
     },
     {
@@ -244,7 +244,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         );
         assert(tokenDataService, 'DummyTokenDataService not found');
 
-        console.log('Fetching trending tokens...');
+        logger.info('Fetching trending tokens...');
 
         const trendingTokens = await tokenDataService.getTrendingTokens('solana', 5);
         assert(Array.isArray(trendingTokens), 'Should return array of trending tokens');
@@ -256,7 +256,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           assert(typeof token.price === 'number', `Token ${i} should have price`);
         });
 
-        console.log('Successfully fetched trending tokens.');
+        logger.info('Successfully fetched trending tokens.');
       },
     },
     {
@@ -266,7 +266,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert(lpService, 'DummyLpService not found');
 
         // Test that we can work with both pools
-        console.log('Testing integration with multiple pools...');
+        logger.info('Testing integration with multiple pools...');
 
         // Get all pools
         const allPools = await lpService.getPools();
@@ -274,7 +274,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
 
         // Test operations on each pool
         for (const pool of allPools) {
-          console.log(`Testing operations on pool ${pool.id}...`);
+          logger.info(`Testing operations on pool ${pool.id}...`);
 
           // Add liquidity
           const addResult = await lpService.addLiquidity({
@@ -299,13 +299,13 @@ export const dummyServicesScenariosSuite: TestSuite = {
           );
         }
 
-        console.log('Successfully tested operations on all pools.');
+        logger.info('Successfully tested operations on all pools.');
       },
     },
     {
       name: 'Scenario 11: Should initialize wallet service and verify functionality',
       fn: async (runtime: IAgentRuntime) => {
-        console.log('Testing wallet service initialization...');
+        logger.info('Testing wallet service initialization...');
 
         // Check DummyWalletService
         const walletService = runtime.getService<DummyWalletService>(ServiceType.WALLET);
@@ -315,7 +315,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         const initialBalance = await walletService.getBalance('USDC');
         assert.equal(initialBalance, 10000, 'Should have initial USDC balance of 10000');
 
-        console.log('Successfully verified wallet service is initialized.');
+        logger.info('Successfully verified wallet service is initialized.');
       },
     },
     {
@@ -324,7 +324,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         const walletService = runtime.getService<DummyWalletService>(ServiceType.WALLET);
         assert(walletService, 'DummyWalletService not found');
 
-        console.log('Testing wallet operations...');
+        logger.info('Testing wallet operations...');
 
         // Add funds
         await walletService.addFunds('SOL', 5);
@@ -342,7 +342,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         assert(solAsset, 'SOL should be in portfolio');
         assert.equal(solAsset.balance, '5', 'SOL balance string should be "5"');
 
-        console.log('Successfully tested wallet operations.');
+        logger.info('Successfully tested wallet operations.');
       },
     },
     {
@@ -351,7 +351,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
         const walletService = runtime.getService<DummyWalletService>(ServiceType.WALLET);
         assert(walletService, 'DummyWalletService not found');
 
-        console.log('Testing SOL transfer functionality...');
+        logger.info('Testing SOL transfer functionality...');
 
         // Reset wallet to ensure clean state
         await walletService.resetWallet(10000, 'USDC');
@@ -380,7 +380,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
           );
         }
 
-        console.log('Successfully tested SOL transfers.');
+        logger.info('Successfully tested SOL transfers.');
       },
     },
   ],

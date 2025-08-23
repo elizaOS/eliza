@@ -596,6 +596,7 @@ describe('Memory Integration Tests', () => {
   it('should properly convert metadata objects to JSON when updating only metadata', async () => {
     // This test specifically verifies the fix for the bug where metadata objects
     // were being sent as [object Object] instead of proper JSON
+    await adapter.ensureEmbeddingDimension(768);
     const memory = {
       entityId: testEntityId,
       roomId: testRoomId,

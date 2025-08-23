@@ -134,6 +134,32 @@ bun run release:alpha   # Release alpha version
 - **IF A COMMAND DOESN'T WORK:** Check `package.json` in the relevant package directory for correct script names
 - Use `bun` for global installs: `bun install -g @elizaos/cli`
 
+### Workspace Dependencies
+
+- **ALWAYS USE `workspace:*` FOR ALL `@elizaos/` PACKAGE DEPENDENCIES**
+- **NEVER USE HARDCODED VERSIONS** for internal monorepo packages
+- **Example of CORRECT usage:**
+  ```json
+  {
+    "dependencies": {
+      "@elizaos/core": "workspace:*",
+      "@elizaos/plugin-sql": "workspace:*",
+      "@elizaos/server": "workspace:*"
+    }
+  }
+  ```
+- **Example of INCORRECT usage:**
+  ```json
+  {
+    "dependencies": {
+      "@elizaos/core": "1.4.2",           // ❌ Don't use hardcoded versions
+      "@elizaos/plugin-sql": "^1.4.0",   // ❌ Don't use version ranges
+      "@elizaos/server": "latest"         // ❌ Don't use version tags
+    }
+  }
+  ```
+- **RATIONALE:** Workspace references ensure proper monorepo dependency resolution and prevent version conflicts
+
 ### Process Execution
 
 - **NEVER USE `execa` OR OTHER PROCESS EXECUTION LIBRARIES**
@@ -399,9 +425,11 @@ handler: async (runtime, message, state, options, callback): Promise<ActionResul
 
 ### Testing Philosophy
 
-- **Test Framework:** Bun's built-in test runner
+- **Test Framework:** bun:test EXCLUSIVELY - NEVER use jest, vitest, mocha, or any other testing framework
+- **All tests must pass successfully before considering code complete**
+- **Prefer real integration tests that cover entire functionality flow over isolated unit tests**
 - **E2E Tests:** Use actual runtime with real integrations
-- **Unit Tests:** Use Bun test with standard primitives
+- **Unit Tests:** Use bun:test with standard primitives
 - **Always verify tests pass before declaring changes correct**
 - **First attempts are usually incorrect - test thoroughly**
 
@@ -444,7 +472,8 @@ bun run build
 ### Language & Patterns
 
 - **TypeScript with proper typing for all new code**
-- **Use functional programming patterns; avoid classes**
+- **NEVER use any, never, or unknown types - always opt for specific types that accurately represent the data**
+- **Ensure code is free of TypeScript errors or warnings - code must compile without issues**
 - **Prefer iteration and modularization over code duplication**
 - **Comprehensive error handling required**
 - **Clear separation of concerns**
@@ -574,7 +603,6 @@ SOLANA_PRIVATE_KEY=
 
 ### Compatibility
 
-- Plugin compatibility through `/specs` (currently defaulting to v2)
 - Maintain backwards compatibility in changes
 - Consider migration paths for proposed changes
 

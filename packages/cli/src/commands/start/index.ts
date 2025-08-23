@@ -1,6 +1,7 @@
 import { loadProject } from '@/src/project';
 import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
+import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
@@ -25,6 +26,9 @@ export const start = new Command()
     try {
       // Load env config first before any character loading
       await loadEnvConfig();
+
+      // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
+      await ensureElizaOSCli();
 
       // Setup proper module resolution environment variables
       // This ensures consistent plugin loading between dev and start commands
@@ -90,7 +94,7 @@ export const start = new Command()
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
-            logger.error(`Failed to load character from ${resolvedPath}:`, e);
+            logger.error({ error: e, resolvedPath }, `Failed to load character from path:`);
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
@@ -119,7 +123,7 @@ export const start = new Command()
             }
           }
         } catch (e) {
-          logger.debug('Failed to load project agents, will use default character:', e);
+          logger.debug({ error: e }, 'Failed to load project agents, will use default character:');
         }
       }
 

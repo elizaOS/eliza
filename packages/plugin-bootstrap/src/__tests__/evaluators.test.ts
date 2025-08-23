@@ -219,19 +219,26 @@ describe('Reflection Evaluator', () => {
       mockState as State
     );
 
-    // Assert
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledTimes(1);
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledWith({
-      entityId: 'test-agent-id',
-      agentId: 'test-agent-id',
-      content: { text: 'User likes ice cream' },
-      roomId: 'test-room-id',
-      createdAt: expect.any(Number),
-    });
+    // Assert - now using queueEmbeddingGeneration instead of addEmbeddingToMemory
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: 'test-agent-id',
+        agentId: 'test-agent-id',
+        content: { text: 'User likes ice cream' },
+        roomId: 'test-room-id',
+      }),
+      'low'
+    );
 
     expect(mockRuntime.createMemory).toHaveBeenCalledTimes(1);
     expect(mockRuntime.createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'memory-id' }),
+      expect.objectContaining({
+        entityId: 'test-agent-id',
+        agentId: 'test-agent-id',
+        content: { text: 'User likes ice cream' },
+        roomId: 'test-room-id',
+      }),
       'facts',
       true
     );
@@ -281,7 +288,7 @@ describe('Reflection Evaluator', () => {
     expect(error).toBeUndefined();
 
     // No facts or relationships should be stored
-    expect(mockRuntime.addEmbeddingToMemory).not.toHaveBeenCalled();
+    expect(mockRuntime.queueEmbeddingGeneration).not.toHaveBeenCalled();
     expect(mockRuntime.createMemory).not.toHaveBeenCalled();
     expect(mockRuntime.createRelationship).not.toHaveBeenCalled();
   });
@@ -358,11 +365,13 @@ describe('Reflection Evaluator', () => {
     );
 
     // Assert - only one valid fact should be processed
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledTimes(1);
-    expect(mockRuntime.addEmbeddingToMemory).toHaveBeenCalledWith(
+    expect(mockRuntime.createMemory).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledTimes(1);
+    expect(mockRuntime.queueEmbeddingGeneration).toHaveBeenCalledWith(
       expect.objectContaining({
         content: { text: 'Valid fact' },
-      })
+      }),
+      'low'
     );
   });
 
@@ -466,7 +475,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -591,7 +600,7 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
               results[prompt.name] = response;
             } catch (error) {
-              logger.warn(`Error in prompt ${prompt.name}:`, error);
+              logger.warn({ error }, `Error in prompt ${prompt.name}:`);
               results[prompt.name] = { error: String(error) };
             }
           }
@@ -638,8 +647,8 @@ describe('Multiple Prompt Evaluator Factory', () => {
 
     // Check the warning was logged
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Error in prompt'),
-      expect.any(Error)
+      { error: expect.any(Error) },
+      expect.stringContaining('Error in prompt')
     );
 
     // The result should include the successful prompt's response and an error for the failed one

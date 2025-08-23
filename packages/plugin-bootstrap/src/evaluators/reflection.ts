@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getEntityDetails, logger, parseKeyValueXml } from '@elizaos/core';
+import { asUUID, getEntityDetails, logger, parseKeyValueXml } from '@elizaos/core';
 import { composePrompt } from '@elizaos/core';
 import {
   type Entity,
@@ -10,6 +10,7 @@ import {
   type State,
   type UUID,
 } from '@elizaos/core';
+import { v4 } from 'uuid';
 
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({
@@ -161,7 +162,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
   const { agentId, roomId } = message;
 
   if (!agentId || !roomId) {
-    logger.warn('Missing agentId or roomId in message', message);
+    logger.warn({ message }, 'Missing agentId or roomId in message');
     return;
   }
 
@@ -198,7 +199,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     });
 
     if (!response) {
-      logger.warn('Getting reflection failed - empty response', prompt);
+      logger.warn({ prompt }, 'Getting reflection failed - empty response');
       return;
     }
 
@@ -206,18 +207,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const reflection = parseKeyValueXml(response);
 
     if (!reflection) {
-      logger.warn('Getting reflection failed - failed to parse XML', response);
+      logger.warn({ response }, 'Getting reflection failed - failed to parse XML');
       return;
     }
 
     // Perform basic structure validation
     if (!reflection.facts) {
-      logger.warn('Getting reflection failed - invalid facts structure', reflection);
+      logger.warn({ reflection }, 'Getting reflection failed - invalid facts structure');
       return;
     }
 
     if (!reflection.relationships) {
-      logger.warn('Getting reflection failed - invalid relationships structure', reflection);
+      logger.warn({ reflection }, 'Getting reflection failed - invalid relationships structure');
       return;
     }
 
@@ -246,14 +247,21 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     await Promise.all(
       newFacts.map(async (fact: any) => {
-        const factMemory = await runtime.addEmbeddingToMemory({
+        const factMemory = {
+          id: asUUID(v4()),
           entityId: agentId,
           agentId,
           content: { text: fact.claim },
           roomId,
           createdAt: Date.now(),
-        });
-        return runtime.createMemory(factMemory, 'facts', true);
+        };
+        // Create memory first and capture the returned ID
+        const createdMemoryId = await runtime.createMemory(factMemory, 'facts', true);
+        // Update the memory object with the actual ID from the database
+        const createdMemory = { ...factMemory, id: createdMemoryId };
+        // Queue embedding generation asynchronously for the memory with correct ID
+        await runtime.queueEmbeddingGeneration(createdMemory, 'low');
+        return createdMemory;
       })
     );
 
@@ -323,7 +331,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       message?.id || ''
     );
   } catch (error) {
-    logger.error('Error in reflection handler:', error);
+    logger.error({ error }, 'Error in reflection handler:');
     return;
   }
 }

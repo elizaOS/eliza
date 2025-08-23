@@ -243,7 +243,7 @@ export const create = new Command('create')
         const errorType = formatProjectType(projectType || 'project');
         clack.cancel(`Failed to create ${errorType}.`);
       }
-      logger.error('Create command failed:', error);
+      logger.error({ error }, 'Create command failed:');
       handleError(error);
       process.exit(1);
     }

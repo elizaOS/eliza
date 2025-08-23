@@ -29,7 +29,8 @@ export async function runTypeCheck(
       args.push('--strict');
     }
 
-    const result = await bunExec('tsc', args, {
+    // Use bun x to run the project's local TypeScript compiler
+    const result = await bunExec('bun', ['x', 'tsc', ...args], {
       cwd: projectPath,
     });
     const { stdout, stderr } = result;
@@ -42,7 +43,7 @@ export async function runTypeCheck(
       warnings: stderr.includes('warning') ? [stderr] : [],
     };
   } catch (error: any) {
-    logger.error('TypeScript validation failed:', error);
+    logger.error({ error }, 'TypeScript validation failed:');
     return {
       success: false,
       errors: [`TypeScript validation error: ${error.message}`],

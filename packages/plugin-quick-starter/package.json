@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-quick-starter",
   "description": "Quick backend-only plugin template for ElizaOS",
-  "version": "1.3.0",
+  "version": "1.4.2",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -36,6 +36,7 @@
     "dist",
     "README.md",
     ".npmignore",
+    ".gitignore",
     "package.json",
     "tsup.config.ts"
   ],
@@ -44,7 +45,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@elizaos/cli": "latest",
+    "@elizaos/cli": "workspace:*",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "tsup": "8.5.0",
@@ -54,6 +55,7 @@
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "tsc --noEmit && tsup",
+    "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test": "bun test",
     "format": "prettier --write ./src"
   },
@@ -61,7 +63,13 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "^3.24.4"
+    "// Note": "langchain 0.3.30 fixes @langchain/core zod/v3 import issues",
+    "zod": "^3.24.4",
+    "langchain": "0.3.30",
+    "@langchain/core": "0.3.30"
+  },
+  "overrides": {
+    "@langchain/core": "0.3.30"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

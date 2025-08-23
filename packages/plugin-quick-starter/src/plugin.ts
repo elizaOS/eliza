@@ -51,9 +51,9 @@ const configSchema = z.object({
  * @property {Function} handler - Asynchronous function to handle the action and generate a response.
  * @property {Object[]} examples - An array of example inputs and expected outputs for the action.
  */
-const helloWorldAction: Action = {
-  name: 'HELLO_WORLD',
-  similes: ['GREET', 'SAY_HELLO'],
+const quickAction: Action = {
+  name: 'QUICK_ACTION',
+  similes: ['GREET', 'SAY_HELLO', 'HELLO_WORLD'],
   description: 'Responds with a simple hello world message',
 
   validate: async (
@@ -74,31 +74,25 @@ const helloWorldAction: Action = {
     _responses?: Memory[]
   ): Promise<ActionResult> => {
     try {
-      logger.info('Handling HELLO_WORLD action');
+      const response = 'Hello world!';
 
-      // Simple response content for callback
-      const responseContent: Content = {
-        text: 'hello world!',
-        actions: ['HELLO_WORLD'],
-        source: message.content.source,
-      };
-
-      // Call back with the hello world message if callback is provided
       if (callback) {
-        await callback(responseContent);
+        await callback({
+          text: response,
+          actions: ['QUICK_ACTION'],
+          source: message.content.source,
+        });
       }
 
-      // Return ActionResult
       return {
-        text: 'hello world!',
+        text: response,
         success: true,
         data: {
-          actions: ['HELLO_WORLD'],
+          actions: ['QUICK_ACTION'],
           source: message.content.source,
         },
       };
     } catch (error) {
-      logger.error('Error in HELLO_WORLD action:', error);
       return {
         success: false,
         error: error instanceof Error ? error : new Error(String(error)),
@@ -118,7 +112,7 @@ const helloWorldAction: Action = {
         name: '{{name2}}',
         content: {
           text: 'hello world!',
-          actions: ['HELLO_WORLD'],
+          actions: ['QUICK_ACTION'],
         },
       },
     ],
@@ -129,8 +123,8 @@ const helloWorldAction: Action = {
  * Example Hello World Provider
  * This demonstrates the simplest possible provider implementation
  */
-const helloWorldProvider: Provider = {
-  name: 'HELLO_WORLD_PROVIDER',
+const quickProvider: Provider = {
+  name: 'QUICK_PROVIDER',
   description: 'A simple example provider',
 
   get: async (
@@ -241,31 +235,31 @@ export const starterPlugin: Plugin = {
     [EventType.MESSAGE_RECEIVED]: [
       async (params: MessagePayload) => {
         logger.debug('MESSAGE_RECEIVED event received');
-        logger.debug('Message:', params.message);
+        logger.debug({ message: params.message }, 'Message:');
       },
     ],
     [EventType.VOICE_MESSAGE_RECEIVED]: [
       async (params: MessagePayload) => {
         logger.debug('VOICE_MESSAGE_RECEIVED event received');
-        logger.debug('Message:', params.message);
+        logger.debug({ message: params.message }, 'Message:');
       },
     ],
     [EventType.WORLD_CONNECTED]: [
       async (params: WorldPayload) => {
         logger.debug('WORLD_CONNECTED event received');
-        logger.debug('World:', params.world);
+        logger.debug({ world: params.world }, 'World:');
       },
     ],
     [EventType.WORLD_JOINED]: [
       async (params: WorldPayload) => {
         logger.debug('WORLD_JOINED event received');
-        logger.debug('World:', params.world);
+        logger.debug({ world: params.world }, 'World:');
       },
     ],
   },
   services: [StarterService],
-  actions: [helloWorldAction],
-  providers: [helloWorldProvider],
+  actions: [quickAction],
+  providers: [quickProvider],
   // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependencies go here (if requires another plugin)
 };
 

@@ -1,20 +1,70 @@
-# Ignore node_modules from the build context
-node_modules
-
-# Ignore logs and temporary files
-*.log
-*.tmp
-.DS_Store
-
-# Ignore Git files and metadata
+# Git files
+.git
 .gitignore
 
-# Ignore IDE and editor config files
-.vscode
-.idea
-*.swp
+# Logs
+*.log
+logs/
 
-# Ignore build artifacts from the host
-dist
-build
-.env
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build outputs (we'll build fresh in Docker)
+dist/
+build/
+*.tsbuildinfo
+
+# Test files
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+# Cypress directories removed
+
+# Development files
+**/*.map
+.env.local
+.env.development
+.env.test
+
+# Documentation
+*.md
+docs/
+GUIDE.md
+PR_REPORT.md
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Package manager files (we'll use the ones in builder)
+**/node_modules/
+.pnp
+.pnp.js
+
+# ElizaOS specific
+.eliza/
+.elizadb/
+pglite/
+cache/
+*.db
+*.pglite

@@ -1,0 +1,35 @@
+name: 'Execution Time Test'
+description: 'Tests the execution time evaluator with various timing constraints'
+environment:
+  type: local
+run:
+  - name: 'Fast execution test'
+    input: 'Please respond with a simple greeting message'
+    evaluations:
+      - type: 'execution_time'
+        max_duration_ms: 500
+        min_duration_ms: 50
+        target_duration_ms: 150
+
+  - name: 'Slow execution test'
+    input: 'Please provide a detailed analysis of the benefits of artificial intelligence in modern society, including specific examples and potential future implications'
+    evaluations:
+      - type: 'execution_time'
+        max_duration_ms: 1000
+        min_duration_ms: 400
+
+  - name: 'Too slow execution test (should fail)'
+    input: 'Please write a comprehensive research paper on the history of computing, including detailed technical specifications, historical context, and future predictions. Include at least 10 pages of content with proper citations and references.'
+    evaluations:
+      - type: 'execution_time'
+        max_duration_ms: 500 # This should fail
+
+  - name: 'Too fast execution test (should fail)'
+    input: 'Hello'
+    evaluations:
+      - type: 'execution_time'
+        max_duration_ms: 1000
+        min_duration_ms: 100 # This should fail
+
+judgment:
+  strategy: all_pass

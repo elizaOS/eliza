@@ -663,5 +663,316 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(runtime.actions).toContain(action2);
       });
     });
+
+    describe('model settings from character configuration', () => {
+      it('should apply character model settings as defaults and allow overrides', async () => {
+        // Create character with model settings
+        const characterWithSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            MODEL_MAX_TOKEN: 4096,
+            MODEL_TEMPERATURE: 0.5,
+            MODEL_FREQ_PENALTY: 0.8,
+            MODEL_PRESENCE_PENALTY: 0.9,
+            // Test invalid values that should be ignored
+            MODEL_INVALID: 'not-a-number',
+          },
+        };
+
+        // Create runtime with character settings
+        const runtimeWithSettings = new AgentRuntime({
+          character: characterWithSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        // Register the mock model
+        runtimeWithSettings.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test 1: Model settings are applied as defaults
+        await runtimeWithSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+        });
+
+        expect(capturedParams.maxTokens).toBe(4096);
+        expect(capturedParams.temperature).toBe(0.5);
+        expect(capturedParams.frequencyPenalty).toBe(0.8);
+        expect(capturedParams.presencePenalty).toBe(0.9);
+        expect(capturedParams.prompt).toBe('test prompt');
+
+        // Test 2: Explicit parameters override character defaults
+        await runtimeWithSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt 2',
+          temperature: 0.2,
+          maxTokens: 2048,
+        });
+
+        expect(capturedParams.temperature).toBe(0.2);
+        expect(capturedParams.maxTokens).toBe(2048);
+        expect(capturedParams.frequencyPenalty).toBe(0.8); // Still from character
+        expect(capturedParams.presencePenalty).toBe(0.9); // Still from character
+
+        // Test 3: No settings configured - use only provided params
+        const characterNoSettings: Character = {
+          ...mockCharacter,
+          name: 'TestAgentNoSettings',
+        };
+        const runtimeNoSettings = new AgentRuntime({
+          character: characterNoSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        // Use same mockHandler for the second test
+        mockHandler.mockClear();
+        runtimeNoSettings.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        await runtimeNoSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt 3',
+          temperature: 0.7,
+        });
+
+        expect(capturedParams.temperature).toBe(0.7);
+        expect(capturedParams.maxTokens).toBeUndefined();
+        expect(capturedParams.frequencyPenalty).toBeUndefined();
+        expect(capturedParams.presencePenalty).toBeUndefined();
+      });
+    });
+
+    describe('model settings from character configuration', () => {
+      it('should support per-model-type configuration with proper fallback chain', async () => {
+        // Create character with mixed settings: defaults, model-specific, and legacy
+        const characterWithMixedSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            // Default settings (apply to all models)
+            DEFAULT_TEMPERATURE: 0.7,
+            DEFAULT_MAX_TOKENS: 2048,
+
+            // Model-specific settings (override defaults)
+            TEXT_SMALL_TEMPERATURE: 0.5,
+            TEXT_SMALL_MAX_TOKENS: 1024,
+            TEXT_LARGE_TEMPERATURE: 0.8,
+            TEXT_LARGE_FREQUENCY_PENALTY: 0.5,
+            OBJECT_SMALL_TEMPERATURE: 0.3,
+            OBJECT_LARGE_PRESENCE_PENALTY: 0.6,
+
+            // Legacy settings (should be lowest priority)
+            MODEL_TEMPERATURE: 0.9,
+            MODEL_MAX_TOKEN: 4096,
+            MODEL_FREQ_PENALTY: 0.7,
+            MODEL_PRESENCE_PENALTY: 0.8,
+          },
+        };
+
+        const runtimeWithMixedSettings = new AgentRuntime({
+          character: characterWithMixedSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        // Mock handlers to capture params
+        let capturedTextSmall: any = null;
+        let capturedTextLarge: any = null;
+        let capturedObjectSmall: any = null;
+        let capturedObjectLarge: any = null;
+
+        const mockTextSmallHandler = mock().mockImplementation(
+          async (_runtime: any, params: any) => {
+            capturedTextSmall = params;
+            return 'text small response';
+          }
+        );
+        const mockTextLargeHandler = mock().mockImplementation(
+          async (_runtime: any, params: any) => {
+            capturedTextLarge = params;
+            return 'text large response';
+          }
+        );
+        const mockObjectSmallHandler = mock().mockImplementation(
+          async (_runtime: any, params: any) => {
+            capturedObjectSmall = params;
+            return { type: 'small' };
+          }
+        );
+        const mockObjectLargeHandler = mock().mockImplementation(
+          async (_runtime: any, params: any) => {
+            capturedObjectLarge = params;
+            return { type: 'large' };
+          }
+        );
+
+        // Register all models
+        runtimeWithMixedSettings.registerModel(
+          ModelType.TEXT_SMALL,
+          mockTextSmallHandler,
+          'test-provider'
+        );
+        runtimeWithMixedSettings.registerModel(
+          ModelType.TEXT_LARGE,
+          mockTextLargeHandler,
+          'test-provider'
+        );
+        runtimeWithMixedSettings.registerModel(
+          ModelType.OBJECT_SMALL,
+          mockObjectSmallHandler,
+          'test-provider'
+        );
+        runtimeWithMixedSettings.registerModel(
+          ModelType.OBJECT_LARGE,
+          mockObjectLargeHandler,
+          'test-provider'
+        );
+
+        // Test 1: TEXT_SMALL - should use model-specific settings, fall back to defaults/legacy
+        await runtimeWithMixedSettings.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test text small',
+        });
+
+        expect(capturedTextSmall.temperature).toBe(0.5); // Model-specific
+        expect(capturedTextSmall.maxTokens).toBe(1024); // Model-specific
+        expect(capturedTextSmall.frequencyPenalty).toBe(0.7); // Legacy fallback
+        expect(capturedTextSmall.presencePenalty).toBe(0.8); // Legacy fallback
+
+        // Test 2: TEXT_LARGE - mixed model-specific and defaults
+        await runtimeWithMixedSettings.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'test text large',
+        });
+
+        expect(capturedTextLarge.temperature).toBe(0.8); // Model-specific
+        expect(capturedTextLarge.maxTokens).toBe(2048); // Default fallback
+        expect(capturedTextLarge.frequencyPenalty).toBe(0.5); // Model-specific
+        expect(capturedTextLarge.presencePenalty).toBe(0.8); // Legacy fallback
+
+        // Test 3: OBJECT_SMALL - some model-specific, rest from defaults/legacy
+        await runtimeWithMixedSettings.useModel(ModelType.OBJECT_SMALL, {
+          prompt: 'test object small',
+        });
+
+        expect(capturedObjectSmall.temperature).toBe(0.3); // Model-specific
+        expect(capturedObjectSmall.maxTokens).toBe(2048); // Default fallback
+        expect(capturedObjectSmall.frequencyPenalty).toBe(0.7); // Legacy fallback
+        expect(capturedObjectSmall.presencePenalty).toBe(0.8); // Legacy fallback
+
+        // Test 4: OBJECT_LARGE - minimal model-specific settings
+        await runtimeWithMixedSettings.useModel(ModelType.OBJECT_LARGE, {
+          prompt: 'test object large',
+        });
+
+        expect(capturedObjectLarge.temperature).toBe(0.7); // Default fallback
+        expect(capturedObjectLarge.maxTokens).toBe(2048); // Default fallback
+        expect(capturedObjectLarge.frequencyPenalty).toBe(0.7); // Legacy fallback
+        expect(capturedObjectLarge.presencePenalty).toBe(0.6); // Model-specific
+      });
+
+      it('should allow direct params to override all configuration levels', async () => {
+        const characterWithAllSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            // All levels of configuration
+            DEFAULT_TEMPERATURE: 0.7,
+            TEXT_SMALL_TEMPERATURE: 0.5,
+            MODEL_TEMPERATURE: 0.9,
+          },
+        };
+
+        const runtime = new AgentRuntime({
+          character: characterWithAllSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Direct params should override everything
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test',
+          temperature: 0.1, // This should win
+        });
+
+        expect(capturedParams.temperature).toBe(0.1);
+      });
+
+      it('should handle models without specific configuration support', async () => {
+        const characterWithSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            DEFAULT_TEMPERATURE: 0.7,
+            TEXT_SMALL_TEMPERATURE: 0.5,
+            // No specific settings for TEXT_REASONING_SMALL
+          },
+        };
+
+        const runtime = new AgentRuntime({
+          character: characterWithSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'response';
+        });
+
+        // Register a model type that doesn't have specific configuration support
+        runtime.registerModel(ModelType.TEXT_REASONING_SMALL, mockHandler, 'test-provider');
+
+        await runtime.useModel(ModelType.TEXT_REASONING_SMALL, {
+          prompt: 'test reasoning',
+        });
+
+        // Should fall back to default settings
+        expect(capturedParams.temperature).toBe(0.7);
+        expect(capturedParams.maxTokens).toBeUndefined(); // No default for this
+      });
+
+      it('should validate and ignore invalid numeric values at all configuration levels', async () => {
+        const characterWithInvalidSettings: Character = {
+          ...mockCharacter,
+          settings: {
+            // Mix of valid and invalid values at different levels
+            DEFAULT_TEMPERATURE: 'not-a-number',
+            DEFAULT_MAX_TOKENS: 2048,
+            TEXT_SMALL_TEMPERATURE: 0.5,
+            TEXT_SMALL_MAX_TOKENS: 'invalid',
+            TEXT_SMALL_FREQUENCY_PENALTY: null,
+            MODEL_TEMPERATURE: undefined,
+            MODEL_PRESENCE_PENALTY: 0.8,
+          },
+        };
+
+        const runtime = new AgentRuntime({
+          character: characterWithInvalidSettings,
+          adapter: mockDatabaseAdapter,
+        });
+
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test invalid',
+        });
+
+        // Valid values should be used, invalid ones ignored
+        expect(capturedParams.temperature).toBe(0.5); // Valid model-specific
+        expect(capturedParams.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
+        expect(capturedParams.frequencyPenalty).toBeUndefined(); // All invalid
+        expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
+      });
+    });
   });
 }); // End of main describe block

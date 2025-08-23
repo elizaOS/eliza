@@ -176,7 +176,11 @@ export async function createPlugin(
     console.info(`  bun run build   # Build the plugin`);
     console.info(`\n  Common commands:`);
     console.info(`  elizaos dev    # Start development mode with hot reloading`);
-    console.info(`  elizaos start  # Start in production mode\n`);
+    console.info(`  elizaos start  # Start in production mode`);
+    console.info(`\n${colors.yellow('⚠️')}  Security reminder:`);
+    console.info(`  - Check .gitignore is present before committing`);
+    console.info(`  - Never commit .env files or API keys`);
+    console.info(`  - Add sensitive files to .gitignore if needed\n`);
   });
 }
 

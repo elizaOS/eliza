@@ -1,0 +1,172 @@
+name: 'Complex Nested Scenario'
+description: 'A scenario with deep nesting for testing complex path overrides'
+
+character:
+  name: 'DeepTestAgent'
+  personality:
+    traits:
+      - curious
+      - helpful
+      - analytical
+    preferences:
+      communication:
+        style: 'formal'
+        language: 'english'
+        responseLength: 'medium'
+      analysis:
+        depth: 'thorough'
+        methodology: 'systematic'
+  llm:
+    model: 'gpt-4'
+    parameters:
+      temperature: 0.5
+      maxTokens: 4000
+      topP: 0.9
+      frequencyPenalty: 0.1
+    fallback:
+      model: 'gpt-3.5-turbo'
+      parameters:
+        temperature: 0.7
+        maxTokens: 2000
+
+environment:
+  type: 'production'
+  region: 'us-east-1'
+  resources:
+    compute:
+      cpu: '2 cores'
+      memory: '4GB'
+      storage: '20GB'
+    network:
+      bandwidth: '1Gbps'
+      latency: 'low'
+  settings:
+    monitoring:
+      enabled: true
+      interval: 60
+      alerts:
+        - type: 'error_rate'
+          threshold: 0.05
+        - type: 'response_time'
+          threshold: 2000
+    security:
+      authentication:
+        required: true
+        method: 'oauth2'
+        providers:
+          - google
+          - github
+      encryption:
+        enabled: true
+        algorithm: 'AES-256'
+
+plugins:
+  - name: 'analytics-plugin'
+    enabled: true
+    priority: 1
+    config:
+      tracking:
+        events: true
+        metrics: true
+        errors: true
+      storage:
+        type: 'redis'
+        connection:
+          host: 'localhost'
+          port: 6379
+          database: 0
+        retention:
+          events: 30
+          metrics: 90
+          errors: 7
+  - name: 'security-plugin'
+    enabled: true
+    priority: 2
+    config:
+      scanning:
+        enabled: true
+        schedule: '0 2 * * *'
+        types:
+          - 'vulnerability'
+          - 'malware'
+          - 'compliance'
+      reporting:
+        email: 'security@example.com'
+        webhook: 'https://hooks.example.com/security'
+
+data:
+  sources:
+    - name: 'primary-db'
+      type: 'postgresql'
+      connection:
+        host: 'db.example.com'
+        port: 5432
+        database: 'production'
+        credentials:
+          username: 'app_user'
+          password: '${DB_PASSWORD}'
+      settings:
+        poolSize: 10
+        timeout: 30000
+        ssl: true
+    - name: 'cache-layer'
+      type: 'redis'
+      connection:
+        cluster:
+          - host: 'cache1.example.com'
+            port: 6379
+          - host: 'cache2.example.com'
+            port: 6379
+          - host: 'cache3.example.com'
+            port: 6379
+      settings:
+        keyPrefix: 'app:'
+        ttl: 3600
+
+run:
+  - input: 'Analyze the quarterly sales data'
+    context:
+      quarter: 'Q1'
+      year: 2024
+      departments:
+        - sales
+        - marketing
+        - product
+    timeout: 60000
+    evaluations:
+      - type: 'data_analysis'
+        criteria:
+          completeness: 0.95
+          accuracy: 0.98
+          insights: 3
+        description: 'Should provide comprehensive quarterly analysis'
+      - type: 'response_format'
+        requirements:
+          structure: 'sections'
+          charts: true
+          summary: true
+        description: 'Should include proper formatting and visuals'
+
+  - input: 'Generate a security assessment report'
+    context:
+      scope: 'full-system'
+      compliance:
+        frameworks:
+          - SOC2
+          - GDPR
+          - HIPAA
+      timeframe:
+        start: '2024-01-01'
+        end: '2024-03-31'
+    timeout: 120000
+    evaluations:
+      - type: 'security_coverage'
+        requirements:
+          vulnerabilities: true
+          compliance: true
+          recommendations: true
+        thresholds:
+          critical: 0
+          high: 2
+          medium: 10
+        description: 'Should meet security assessment standards'

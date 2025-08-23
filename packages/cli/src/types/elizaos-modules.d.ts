@@ -23,3 +23,9 @@ declare module '@elizaos/plugin-sql' {
 
   export const plugin: Plugin;
 }
+
+declare module '@elizaos/plugin-e2b' {
+  import type { Plugin } from '@elizaos/core';
+
+  export const e2bPlugin: Plugin;
+}

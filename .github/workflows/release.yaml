@@ -51,6 +51,9 @@ jobs:
           npm config set registry https://registry.npmjs.org/
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
+      - name: Install Protobuf Compiler
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Install dependencies
         run: bun install
 
@@ -204,17 +207,3 @@ jobs:
             git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
             git push origin main
           fi
-
-      - name: Merge main to develop
-        run: |
-          # Fetch the latest develop branch
-          git fetch origin develop:develop
-
-          # Checkout develop branch
-          git checkout develop
-
-          # Merge main into develop
-          git merge main --no-ff -m "chore: merge main to develop for v${{ env.VERSION }} release"
-
-          # Push the updated develop branch
-          git push origin develop

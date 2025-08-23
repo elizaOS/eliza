@@ -158,7 +158,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should skip delegation when --test is in process.argv', async () => {
-      process.argv = ['node', 'script.js', '--test'];
+      process.argv = ['bun', 'script.js', '--test'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -171,7 +171,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should skip delegation when test is in process.argv', async () => {
-      process.argv = ['node', 'script.js', 'test'];
+      process.argv = ['bun', 'script.js', 'test'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -184,7 +184,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should skip delegation when script path includes test', async () => {
-      process.argv = ['node', '/path/to/test/script.js', 'start'];
+      process.argv = ['bun', '/path/to/test/script.js', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -252,7 +252,7 @@ describe('Local CLI Delegation', () => {
   describe('Update Command Detection', () => {
     it('should skip delegation when update command is used', async () => {
       const originalArgv = process.argv;
-      process.argv = ['node', 'script.js', 'update'];
+      process.argv = ['bun', 'script.js', 'update'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -268,7 +268,7 @@ describe('Local CLI Delegation', () => {
 
     it('should skip delegation when update command is used with flags', async () => {
       const originalArgv = process.argv;
-      process.argv = ['node', 'script.js', 'update', '--check'];
+      process.argv = ['bun', 'script.js', 'update', '--check'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -276,6 +276,40 @@ describe('Local CLI Delegation', () => {
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Update command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
+    });
+  });
+
+  describe('Version Command Detection', () => {
+    it('should skip delegation when -v flag is used', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['bun', 'script.js', '-v'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Version command detected, skipping local CLI delegation'
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
+
+      process.argv = originalArgv;
+    });
+
+    it('should skip delegation when --version flag is used', async () => {
+      const originalArgv = process.argv;
+      process.argv = ['bun', 'script.js', '--version'];
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await tryDelegateToLocalCli();
+
+      expect(result).toBe(false);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Version command detected, skipping local CLI delegation'
       );
       expect(mockSpawn).not.toHaveBeenCalled();
 
@@ -293,7 +327,7 @@ describe('Local CLI Delegation', () => {
       delete process.env.JEST_WORKER_ID;
       delete process.env.npm_lifecycle_event;
       // Also clear process.argv to avoid test-related detection
-      process.argv = ['node', '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start'];
+      process.argv = ['bun', '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();
@@ -304,7 +338,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should continue when no local CLI is found', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(false);
 
       const result = await tryDelegateToLocalCli();
@@ -317,7 +351,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should delegate when local CLI is found and not running from it', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start', '--port', '3000'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start', '--port', '3000'];
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
@@ -353,7 +387,7 @@ describe('Local CLI Delegation', () => {
 
   describe('Environment Setup', () => {
     it('should set up proper environment variables for local execution', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
@@ -382,7 +416,7 @@ describe('Local CLI Delegation', () => {
     it('should preserve existing NODE_PATH and PATH', async () => {
       process.env.NODE_PATH = '/existing/node/path';
       process.env.PATH = '/existing/bin/path';
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
@@ -412,7 +446,7 @@ describe('Local CLI Delegation', () => {
 
   describe('Error Handling', () => {
     it('should handle spawn errors gracefully', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const testError = new Error('Spawn failed');
@@ -431,7 +465,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should handle process errors', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const testError = new Error('Process error');
@@ -468,7 +502,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('getCliContext should return correct context information', () => {
-      process.argv = ['node', '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start'];
+      process.argv = ['bun', '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const context = getCliContext();
@@ -480,7 +514,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('getCliContext should return correct context when not running from local CLI', () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(false);
 
       const context = getCliContext();
@@ -494,7 +528,7 @@ describe('Local CLI Delegation', () => {
 
   describe('Process Exit Handling', () => {
     it('should exit with child process exit code', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const mockChildProcess = {
@@ -514,7 +548,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should exit with appropriate code when killed by signal', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const mockChildProcess = {
@@ -534,7 +568,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should exit with 130 for SIGINT', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const mockChildProcess = {
@@ -554,7 +588,7 @@ describe('Local CLI Delegation', () => {
     });
 
     it('should exit with 1 for unknown signal', async () => {
-      process.argv = ['node', '/usr/bin/elizaos', 'start'];
+      process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
       const mockChildProcess = {

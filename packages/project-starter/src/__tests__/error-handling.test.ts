@@ -5,26 +5,12 @@ import { logger } from '@elizaos/core';
 import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
-// Mock logger
-mock.module('@elizaos/core', () => {
-  const actual = require('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: mock(),
-      error: mock(),
-      warn: mock(),
-    },
-  };
-});
-
 describe('Error Handling', () => {
   beforeEach(() => {
-    mock.restore();
-  });
-
-  afterEach(() => {
-    // No global restore needed in bun:test;
+    // Use spyOn for logger methods
+    spyOn(logger, 'info');
+    spyOn(logger, 'error');
+    spyOn(logger, 'warn');
   });
 
   describe('HELLO_WORLD Action Error Handling', () => {
