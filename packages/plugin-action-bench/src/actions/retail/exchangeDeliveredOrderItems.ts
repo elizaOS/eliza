@@ -375,17 +375,52 @@ If a value is not found, return an empty string for that element. Do not add any
         updatedGiftCard.balance -= totalPriceDiff;
       }
 
-      // Prepare conversational response message
-      let responseText = '';
+      // Prepare detailed exchange summary
+      const itemSummaries: string[] = [];
+      let index = 0;
+
+      for (const [oldItemId, newItemId] of Object.entries(exchangeMapping)) {
+        const oldItem = order.items.find((item) => item.item_id === oldItemId)!;
+        const product = retailData.products[oldItem.product_id];
+        const newVariant = product.variants[newItemId];
+        const priceDiff = priceDifferences[index++];
+
+        // Format options from object to string
+        const optionString = newVariant.options
+          ? Object.entries(newVariant.options)
+              .map(([key, val]) => `${key}: ${val}`)
+              .join(', ')
+          : 'unknown variant';
+
+        const priceNote =
+          priceDiff === 0
+            ? 'no price difference'
+            : priceDiff > 0
+              ? `+ $${priceDiff.toFixed(2)}`
+              : `– $${Math.abs(priceDiff).toFixed(2)}`;
+
+        itemSummaries.push(
+          `• "${oldItem.name}" (${oldItemId}) → "${product.name} - ${optionString}" (${newItemId}) [${priceNote}]`
+        );
+      }
+
+      let responseText = `Exchange processed for order ${orderId}. Here are the item-level details:\n\n${itemSummaries.join(
+        '\n'
+      )}\n\n`;
 
       if (totalPriceDiff === 0) {
-        responseText = `I've processed your exchange request for order ${orderId}. The new item(s) will be shipped within 2-3 business days to your original address.`;
+        responseText += `There is no price difference. The new item(s) will be shipped within 2-3 business days to your original address.`;
       } else if (totalPriceDiff < 0) {
         const refundAmount = Math.abs(totalPriceDiff);
-        responseText = `Exchange processed for order ${orderId}. You'll receive a refund of $${refundAmount.toFixed(2)} for the price difference.`;
+        responseText += `You'll receive a total refund of $${refundAmount.toFixed(
+          2
+        )} for the price difference.`;
       } else {
-        responseText = `Exchange processed for order ${orderId}. An additional charge of $${totalPriceDiff.toFixed(2)} will be applied to your original payment method.`;
+        responseText += `An additional charge of $${totalPriceDiff.toFixed(
+          2
+        )} will be applied to your original payment method.`;
       }
+
 
       if (callback) {
         await callback({
