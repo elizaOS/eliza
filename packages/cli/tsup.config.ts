@@ -51,6 +51,10 @@ export default defineConfig({
           from: '../docs/docs/plugins/migration/claude-code/**/*',
           to: './dist/migration-guides',
         },
+        {
+          from: './src/commands/report/src/assets/**/*',
+          to: './dist/src/commands/report/src/assets',
+        },
       ],
       // Setting this to true will output a list of copied files
       verbose: true,

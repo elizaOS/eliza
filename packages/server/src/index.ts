@@ -77,14 +77,13 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     path.join(process.cwd(), '.eliza', '.elizadb');
 
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const resolved = expandTildePath(base);
+  const migrated = expandTildePath(base);
   const legacyPath = path.join(process.cwd(), '.elizadb');
-  if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
-    process.env.PGLITE_DATA_DIR = newPath;
-    return newPath;
-  }
+  const resolved =
+    migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
 
+  // Persist chosen root for the process so child modules see it
+  process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
 }
 

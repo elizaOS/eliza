@@ -1,0 +1,62 @@
+name: 'LLM Judge Failure Test'
+description: 'Tests the LLM judge evaluator with both passing and failing cases'
+environment:
+  type: e2b
+setup:
+  virtual_fs:
+    'data.json': '{"name": "test", "value": 42}'
+    'output.txt': 'Hello World'
+run:
+  - input: 'Please read the data.json file and create a summary of its contents in a well-formatted response'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Does the output show successful JSON processing?'
+        expected: 'yes'
+        temperature: 0.1
+      - type: 'llm_judge'
+        prompt: 'Is the code output well-formatted and readable?'
+        expected: '0.8+'
+        temperature: 0.3
+      - type: 'file_exists'
+        path: 'result.json'
+  - input: 'Please provide a multi-line response explaining the benefits of structured data formats like JSON'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Does the output contain multiple lines?'
+        expected: 'yes'
+        temperature: 0.1
+      - type: 'llm_judge'
+        prompt: 'Is this output well-structured and clear?'
+        expected: '0.7+'
+        temperature: 0.2
+        json_schema:
+          type: 'object'
+          properties:
+            judgment: { type: 'string', enum: ['yes', 'no'] }
+            confidence: { type: 'number', minimum: 0, maximum: 1 }
+            reasoning: { type: 'string' }
+            suggestions: { type: 'string' }
+          required: ['judgment', 'confidence', 'reasoning', 'suggestions']
+  - input: 'Please respond with a poorly formatted and unclear message about data structures'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Is this output well-structured and clear?'
+        expected: 'no'
+        temperature: 0.1
+      - type: 'llm_judge'
+        prompt: 'Does this output have high readability?'
+        expected: '0.3-'
+        temperature: 0.1
+      - type: 'llm_judge'
+        prompt: 'Is this output professional quality?'
+        expected: 'no'
+        temperature: 0.1
+        json_schema:
+          type: 'object'
+          properties:
+            judgment: { type: 'string', enum: ['yes', 'no'] }
+            confidence: { type: 'number', minimum: 0, maximum: 1 }
+            reasoning: { type: 'string' }
+          required: ['judgment', 'confidence', 'reasoning']
+judgment:
+  strategy: all_pass

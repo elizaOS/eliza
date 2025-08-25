@@ -1612,7 +1612,7 @@ export class AgentRuntime implements IAgentRuntime {
     // if this.isInitialized then the this p will exist and already be resolved
     let p = this.servicePromises.get(serviceType);
     if (!p) {
-      // not initalized or registered yet, registerPlugin is already smart enough to check to see if we make it here
+      // not initialized or registered yet, registerPlugin is already smart enough to check to see if we make it here
       p = this._createServiceResolver(serviceType);
     }
     return p;
@@ -2197,6 +2197,7 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique;
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(

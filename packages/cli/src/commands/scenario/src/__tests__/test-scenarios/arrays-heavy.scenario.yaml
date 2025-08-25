@@ -1,0 +1,163 @@
+name: 'Arrays Heavy Scenario'
+description: 'A scenario with many arrays for testing array indexing overrides'
+
+character:
+  name: 'ArrayTestAgent'
+  skills:
+    - 'data-analysis'
+    - 'pattern-recognition'
+    - 'statistical-modeling'
+  languages:
+    - code: 'python'
+      proficiency: 0.95
+    - code: 'javascript'
+      proficiency: 0.85
+    - code: 'sql'
+      proficiency: 0.90
+
+datasets:
+  - name: 'sales-data'
+    format: 'csv'
+    columns:
+      - name: 'date'
+        type: 'datetime'
+        nullable: false
+      - name: 'amount'
+        type: 'decimal'
+        nullable: false
+      - name: 'region'
+        type: 'string'
+        nullable: true
+    validation:
+      rules:
+        - field: 'amount'
+          constraint: 'positive'
+        - field: 'date'
+          constraint: 'not_future'
+  - name: 'user-behavior'
+    format: 'json'
+    schema:
+      properties:
+        - name: 'user_id'
+          type: 'integer'
+        - name: 'actions'
+          type: 'array'
+          items:
+            - event: 'string'
+            - timestamp: 'datetime'
+            - metadata: 'object'
+
+workflows:
+  - name: 'data-processing'
+    steps:
+      - action: 'load'
+        source: 'sales-data'
+        config:
+          batchSize: 1000
+          parallel: true
+      - action: 'validate'
+        rules:
+          - 'check_nulls'
+          - 'validate_types'
+          - 'business_rules'
+      - action: 'transform'
+        operations:
+          - type: 'aggregation'
+            groupBy: ['region', 'date']
+            metrics: ['sum', 'avg', 'count']
+          - type: 'filtering'
+            conditions:
+              - field: 'amount'
+                operator: '>'
+                value: 0
+      - action: 'export'
+        destination: 'processed-data'
+        format: 'parquet'
+
+tests:
+  - suite: 'unit-tests'
+    cases:
+      - name: 'test-data-loading'
+        input:
+          file: 'sample-sales.csv'
+          rows: 100
+        expected:
+          loaded: 100
+          errors: 0
+      - name: 'test-validation-rules'
+        input:
+          data:
+            - date: '2024-01-01'
+              amount: 100.50
+              region: 'north'
+            - date: '2024-01-02'
+              amount: -50.00
+              region: 'south'
+        expected:
+          valid: 1
+          invalid: 1
+          errors:
+            - field: 'amount'
+              value: -50.00
+              rule: 'positive'
+
+  - suite: 'integration-tests'
+    cases:
+      - name: 'test-full-workflow'
+        input:
+          dataset: 'sales-data'
+          size: 'large'
+        expected:
+          duration: 300
+          records: 10000
+          accuracy: 0.99
+      - name: 'test-error-handling'
+        input:
+          dataset: 'corrupted-data'
+          errorRate: 0.05
+        expected:
+          recovered: true
+          dataLoss: 0.01
+
+metrics:
+  performance:
+    - name: 'throughput'
+      target: 1000
+      unit: 'records/second'
+    - name: 'latency'
+      target: 100
+      unit: 'milliseconds'
+    - name: 'memory'
+      target: 2
+      unit: 'GB'
+  quality:
+    - name: 'accuracy'
+      target: 0.95
+      measurement: 'percentage'
+    - name: 'completeness'
+      target: 0.98
+      measurement: 'percentage'
+
+run:
+  - input: 'Process the quarterly sales dataset'
+    config:
+      dataset: 0
+      workflow: 0
+      tests: [0, 1]
+    evaluations:
+      - type: 'workflow_execution'
+        metrics: [0, 1, 2]
+        description: 'Should execute workflow successfully'
+
+  - input: 'Run comprehensive data validation'
+    config:
+      datasets: [0, 1]
+      workflows: [0]
+      tests: [0]
+    evaluations:
+      - type: 'data_quality'
+        metrics: [3, 4]
+        thresholds:
+          accuracy: 0.95
+          completeness: 0.98
+        description: 'Should meet data quality standards'

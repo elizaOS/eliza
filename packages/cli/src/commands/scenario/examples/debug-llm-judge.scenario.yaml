@@ -1,0 +1,24 @@
+name: 'Debug LLM Judge with Capabilities'
+description: 'Simple scenario to test LLM Judge with custom capabilities and structured output'
+
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+
+environment:
+  type: local
+
+run:
+  - name: 'Simple Test'
+    input: 'Hello, how are you?'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Did the agent respond appropriately to the greeting?'
+        expected: 'yes'
+        capabilities:
+          - 'Responds to the greeting'
+          - 'Provides a friendly response'
+        # The LLM should return: qualitative_summary, capability_checklist, confidence, overall_success
+
+judgment:
+  strategy: 'all_pass'
