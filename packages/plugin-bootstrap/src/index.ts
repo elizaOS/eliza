@@ -466,6 +466,17 @@ ${lastThought || 'No final reasoning step was recorded.'}
    - Clearly state what will be changed
    - Request explicit confirmation ("yes") before proceeding
 
+# Exchange Option Formatting Rules
+When presenting exchange options from GET_PRODUCT_DETAILS results:
+- ALWAYS include the item_id for each option
+- Format each option with ALL details for clarity
+- Example format:
+  "Option 1 - Item ID: 1234567890
+   • Color: Blue, Size: M
+   • Price: $45.99
+   • Available: Yes"
+- Ask customer to confirm by specifying the item_id they want
+
 # Instructions
 1. Identify what phase we're in:
    - Just authenticated → Welcome and ask how to proceed
@@ -478,6 +489,7 @@ ${lastThought || 'No final reasoning step was recorded.'}
    - Post-authentication: "Thank you for verifying your identity, [Name]. I see you mentioned [original concern]. How would you like me to help you with that?"
    - Task progress: Provide results and guide next steps
    - Completion: Summarize what was accomplished
+   - Exchange options: Present all variants with item_ids and ask for confirmation
 
 4. Your final output MUST be in this XML format:
 <output>

@@ -28,10 +28,10 @@ export const exchangeDeliveredOrderItems: Action = {
     responses?: Memory[]
   ): Promise<ActionResult> => {
     const thoughtSnippets =
-    responses
-      ?.map((res) => res.content?.thought)
-      .filter(Boolean)
-      .join('\n') ?? '';
+      responses
+        ?.map((res) => res.content?.thought)
+        .filter(Boolean)
+        .join('\n') ?? '';
     const retailData: RetailData = state?.values?.retailData || getRetailData();
 
     // Use LLM to extract parameters
@@ -59,12 +59,12 @@ If a value is not found, return an empty string for that element. Do not add any
 
     try {
       const prompt = composePromptFromState({
-        state,
+        state: state || { values: {}, data: {}, text: '' },
         template: extractionPrompt,
       });
 
       const extractionResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt
+        prompt,
       });
 
       // Parse XML response
@@ -134,6 +134,9 @@ If a value is not found, return an empty string for that element. Do not add any
 
       // Find the order
       const order = retailData.orders[orderId];
+
+      console.log('############### order', order);
+
       if (!order) {
         const errorMsg = `Cannot process exchange: Order ${orderId} not found.`;
         if (callback) {
@@ -269,7 +272,7 @@ If a value is not found, return an empty string for that element. Do not add any
       // Get user profile and payment method
       const userProfile = retailData.users[currentUserId];
       const payment = order?.payment_history?.find((p) => p.transaction_type === 'payment');
-      
+
       const paymentMethodId = payment?.payment_method_id;
 
       if (!paymentMethodId) {

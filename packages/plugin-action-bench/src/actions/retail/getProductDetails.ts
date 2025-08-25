@@ -39,21 +39,21 @@ export const getProductDetails: Action = {
     2. Customer explicitly providing a product ID
     3. Previous conversation context
   
-  **Action Chaining:**
-  Typically follows GET_ORDER_DETAILS when customer wants to:
-  - Exchange an item for a different size/color
-  - Get details about a product in their order
-  - Check available variants for replacement
+  **Action Chaining for Exchanges:**
+  - ALWAYS follows GET_ORDER_DETAILS when handling exchanges
+  - For SECOND item exchange: GET_ORDER_DETAILS → GET_PRODUCT_DETAILS (new product_id)
+  - Never reuse old product_id from previous exchanges
   
   **When to use:**
-  - Customer wants to exchange a product (after getting product_id from order)
+  - AFTER GET_ORDER_DETAILS when customer wants to exchange
   - Customer asks about product variants/options
   - Customer needs product specifications
   - Checking inventory for a specific product
   
   **Do NOT use when:**
   - You don't have a valid 10-digit product_id
-  - Customer is only asking about their order (use GET_ORDER_DETAILS instead)`,
+  - Customer is only asking about their order (use GET_ORDER_DETAILS instead)
+  - You haven't fetched fresh order details for a new exchange request`,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },

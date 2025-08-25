@@ -63,10 +63,17 @@ export const getOrderDetails: Action = {
   **Action Chaining:**
   This action returns product_id values that can be used with GET_PRODUCT_DETAILS to get full product information for exchanges or detailed inquiries.
   
+  **CRITICAL for Multiple Exchanges:**
+  - If customer wants to exchange ANOTHER item after an exchange was processed:
+    → ALWAYS call GET_ORDER_DETAILS again to get fresh product_ids
+    → Then call GET_PRODUCT_DETAILS with the new product_id
+  - This ensures you have current item_ids and product_ids for each exchange
+  
   **When to use:**
   - Customer asks about order status
   - Customer wants to track their order
-  - Customer wants to exchange/return items (first step to get product_ids)
+  - Customer wants to exchange/return items (ALWAYS first step)
+  - Customer mentions ANOTHER item to exchange (re-fetch order details)
   - Customer has issues with their order`,
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
