@@ -3,7 +3,7 @@
  * Common build utilities for Bun.build across the monorepo
  */
 
-import type { BuildConfig } from 'bun';
+import type { BuildConfig, BunPlugin } from 'bun';
 import { existsSync, watch } from 'node:fs';
 import { join } from 'node:path';
 
@@ -23,7 +23,7 @@ export interface ElizaBuildOptions {
   /** Whether to minify */
   minify?: boolean;
   /** Additional plugins */
-  plugins?: any[];
+  plugins?: BunPlugin[];
   /** Format - defaults to 'esm' */
   format?: 'esm' | 'cjs';
   /** Copy assets configuration */
@@ -185,10 +185,10 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
     // Use incremental compilation for faster subsequent builds
     await $`tsc --emitDeclarationOnly --incremental --project ${tsconfigPath}`;
     console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);
     console.error("This is usually due to test files or type errors that don't affect the build.");
-    console.error('Error details:', error.message || error);
+    console.error('Error details:', error instanceof Error ? error.message : String(error));
 
     if (throwOnError) {
       throw error;
