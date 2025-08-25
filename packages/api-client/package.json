@@ -8,12 +8,11 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
-    "dev": "tsup --watch",
+    "dev": "bun run build.ts --watch",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "lint": "prettier --write ./src",
-    "typecheck": "tsc --noEmit",
-    "watch": "bun run --watch build.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"
