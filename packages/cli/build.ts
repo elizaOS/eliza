@@ -1,33 +1,24 @@
 #!/usr/bin/env bun
 /**
- * Build script for @elizaos/cli using Bun.build
+ * Build script for @elizaos/cli using standardized build utilities
  */
 
-import {
-  createElizaBuildConfig,
-  copyAssets,
-  generateDts,
-  cleanBuild,
-  getTimer,
-} from '../../build-utils';
+import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
 
-async function build() {
-  const totalTimer = getTimer();
-  console.log('🚀 Building @elizaos/cli...\n');
-
-  // Clean previous build
-  await cleanBuild('dist');
-
-  // Copy templates before build
+// Custom pre-build step to copy templates
+async function preBuild() {
   console.log('\nCopying templates...');
-  const templateTimer = getTimer();
+  const start = performance.now();
   await $`bun run src/scripts/copy-templates.ts`;
-  console.log(`✓ Templates copied (${templateTimer.elapsed()}ms)`);
+  const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  console.log(`✓ Templates copied (${elapsed}s)`);
+}
 
-  // Create build configuration
-  const configTimer = getTimer();
-  const config = await createElizaBuildConfig({
+// Create and run the standardized build runner
+const run = createBuildRunner({
+  packageName: '@elizaos/cli',
+  buildOptions: {
     entrypoints: ['src/index.ts'],
     outdir: 'dist',
     target: 'bun',
@@ -44,39 +35,27 @@ async function build() {
     minify: false,
     isCli: true,
     generateDts: true,
-  });
-  console.log(`✓ Configuration prepared (${configTimer.elapsed()}ms)`);
+    // Assets will be copied after build via onBuildComplete
+  },
+  onBuildComplete: async (success) => {
+    if (success) {
+      // Copy templates and migration guides to dist
+      console.log('\nCopying assets...');
+      await copyAssets([
+        { from: './templates', to: './dist/templates' },
+        { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
+      ]);
+    }
+  },
+});
 
-  // Build with Bun
-  console.log('\nBundling with Bun...');
-  const buildTimer = getTimer();
-  const result = await Bun.build(config);
-
-  if (!result.success) {
-    console.error('✗ Build failed:', result.logs);
-    process.exit(1);
-  }
-
-  const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
-  const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-  console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`);
-
-  // Copy templates and migration guides to dist
-  console.log('\nCopying assets...');
-  await copyAssets([
-    { from: './templates', to: './dist/templates' },
-    { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
-  ]);
-
-  // Generate TypeScript declarations
-  await generateDts('./tsconfig.build.json');
-
-  console.log('\n✅ @elizaos/cli build complete!');
-  console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
+// Execute the build with pre-build step
+async function buildWithPreStep() {
+  await preBuild();
+  await run();
 }
 
-// Run build
-build().catch((error) => {
-  console.error('Build error:', error);
+buildWithPreStep().catch((error) => {
+  console.error('Build script error:', error);
   process.exit(1);
 });
