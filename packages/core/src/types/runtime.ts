@@ -65,7 +65,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback
-  ): Promise<ActionResult[]>;
+  ): Promise<void>;
 
   evaluate(
     message: Memory,

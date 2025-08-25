@@ -337,10 +337,13 @@ You are a customer service representative for an online retail company. You can 
 
 # Critical Authentication & Authorization Rules
 1. **Authentication Required**: ALWAYS verify customer identity BEFORE any action:
-   - Check recentMessages AND Previous Action Results for existing authentication
-   - Look for successful FIND_USER_ID_BY_EMAIL or FIND_USER_ID_BY_NAME_ZIP actions
-   - If not authenticated, request **email** OR **name + zip code**
-   - If customer ID not found, STOP and inform the customer
+  - Check 'recentMessages' AND 'Previous Action Results' for authentication status
+  - A user is authenticated ONLY if a successful 'FIND_USER_ID_BY_EMAIL' or 'FIND_USER_ID_BY_NAME_ZIP' was executed
+  - If the user is NOT authenticated:
+    - Return 'finish' and request EITHER:
+      - Their **email address** (preferred method), OR
+      - Their **first name + last name + zip code** (fallback method)
+    - Do NOT attempt authentication actions unless the required input is present
 
 2. **Post-Authentication**: When authentication is JUST completed:
    - Return 'finish' immediately after successful authentication
@@ -623,7 +626,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           thought: parsedStep.thought,
         };
 
-        const result = await runtime.processActions(
+        await runtime.processActions(
           message,
           [
             {
@@ -645,19 +648,20 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           }
         );
 
-        success = result[0].success;
-        executionResult = result[0].text;
+        const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
+        if (cachedState) {
+          const actionResults = cachedState.values.actionResults;
+          success = actionResults[0].success;
+          executionResult = actionResults[0].text;
+        }
+      } else if (parsedStep.nextStepType === 'provider') {
+        const provider = runtime.providers.find((p) => p.name === parsedStep.stepName);
+        executionResult = await provider?.get(runtime, message, state);
       }
-
-      // Check if this was an authentication action
-      const isAuthAction =
-        parsedStep.actionName === 'FIND_USER_ID_BY_EMAIL' ||
-        parsedStep.actionName === 'FIND_USER_ID_BY_NAME_ZIP';
 
       traceActionResult.push({
         data: {
           actionName: parsedStep.actionName,
-          isAuthentication: isAuthAction && success,
         },
         success,
         text: success ? executionResult : undefined,
