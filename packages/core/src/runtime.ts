@@ -1612,7 +1612,7 @@ export class AgentRuntime implements IAgentRuntime {
     // if this.isInitialized then the this p will exist and already be resolved
     let p = this.servicePromises.get(serviceType);
     if (!p) {
-      // not initalized or registered yet, registerPlugin is already smart enough to check to see if we make it here
+      // not initialized or registered yet, registerPlugin is already smart enough to check to see if we make it here
       p = this._createServiceResolver(serviceType);
     }
     return p;
