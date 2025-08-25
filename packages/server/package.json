@@ -41,7 +41,7 @@
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
     "test:cli": "bun test tests/commands/",
-    "watch": "bun run --watch build.ts"
+    "dev": "bun run build.ts --watch"
   },
   "devDependencies": {
     "@types/node": "^24.0.1",

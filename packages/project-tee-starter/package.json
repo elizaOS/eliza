@@ -77,7 +77,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "check-all": "bun run type-check && bun run format:check && bun run test",
-    "watch": "bun run --watch build.ts"
+    "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {
     "access": "public"

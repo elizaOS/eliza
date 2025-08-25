@@ -70,7 +70,7 @@
     "cypress:component": "bun run test:install && cypress run --component",
     "cypress:e2e": "bun run test:install && cypress run --e2e",
     "cypress:open": "bun run test:install && cypress open",
-    "watch": "bun run --watch build.ts"
+    "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {
     "access": "public"
