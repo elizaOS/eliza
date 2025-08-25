@@ -1,4 +1,4 @@
-import { UUID } from '@elizaos/core';
+import { UUID, ChannelType } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
 import {
   Message,
@@ -17,6 +17,28 @@ import {
   ChannelUpdateParams,
 } from '../types/messaging';
 import { PaginationParams } from '../types/base';
+
+// Internal payload interfaces for API requests
+interface ChannelCreatePayload {
+  name: string;
+  type: ChannelType;
+  server_id: UUID;
+  metadata?: Record<string, any>;
+}
+
+interface GroupChannelCreatePayload {
+  name: string;
+  server_id: UUID;
+  participantCentralUserIds: UUID[];
+  type?: ChannelType;
+  metadata?: Record<string, any>;
+}
+
+interface DmChannelQuery {
+  currentUserId: UUID;
+  targetUserId: UUID;
+  dmServerId: UUID;
+}
 
 export class MessagingService extends BaseApiClient {
   /**
@@ -45,10 +67,10 @@ export class MessagingService extends BaseApiClient {
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
     // Server expects: { name, type, server_id, metadata }
-    const payload: any = {
+    const payload: ChannelCreatePayload = {
       name: params.name,
       type: params.type,
-      server_id: params.serverId,
+      server_id: params.serverId || ('00000000-0000-0000-0000-000000000000' as UUID),
       metadata: params.metadata,
     };
     return this.post<MessageChannel>('/api/messaging/central-channels', payload);
@@ -61,20 +83,20 @@ export class MessagingService extends BaseApiClient {
     // Server expects: { name, server_id, participantCentralUserIds, type?, metadata? }
     // The client currently provides participantIds and may include server_id/type in metadata.
     const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-    const meta = { ...(params.metadata || {}) } as Record<string, any>;
+    const meta = { ...(params.metadata || {}) } as Record<string, unknown>;
     const serverIdFromMeta = meta.server_id as UUID | undefined;
-    const typeFromMeta = meta.type as any | undefined;
+    const typeFromMeta = meta.type as ChannelType | undefined;
     // Remove hoisted fields from metadata to avoid duplication
     if ('server_id' in meta) delete meta.server_id;
     if ('type' in meta) delete meta.type;
 
-    const payload: any = {
+    const payload: GroupChannelCreatePayload = {
       name: params.name,
       server_id: serverIdFromMeta || DEFAULT_SERVER_ID,
       participantCentralUserIds: params.participantIds,
       // If caller intended DM, allow type override
       ...(typeFromMeta ? { type: typeFromMeta } : {}),
-      ...(Object.keys(meta).length ? { metadata: meta } : {}),
+      ...(Object.keys(meta).length ? { metadata: meta as Record<string, any> } : {}),
     };
 
     return this.post<MessageChannel>('/api/messaging/central-channels', payload);
@@ -87,7 +109,7 @@ export class MessagingService extends BaseApiClient {
     // Map participantIds -> { currentUserId, targetUserId }
     const [userA, userB] = params.participantIds;
     // Arbitrarily treat the first as current and second as target; callers pass [current, target]
-    const query: any = {
+    const query: DmChannelQuery = {
       currentUserId: userA,
       targetUserId: userB,
       dmServerId: '00000000-0000-0000-0000-000000000000' as UUID,
