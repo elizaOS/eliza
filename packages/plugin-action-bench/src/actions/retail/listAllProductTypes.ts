@@ -9,11 +9,12 @@ import type {
 } from '@elizaos/core';
 import { ModelType, parseKeyValueXml } from '@elizaos/core';
 import { getRetailData } from '../../data/retail/mockData';
-import { RetailData, Product } from '../../types/retail';
+import { Product } from '../../types/retail';
 
 export const listAllProductTypes: Action = {
   name: 'LIST_ALL_PRODUCT_TYPES',
-  description: 'List all unique product types/categories available in the catalog',
+  description:
+    'List the name and product id of all product types. Each product type has a variety of different items with unique item ids and options. There are only 50 product types in the store.',
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },

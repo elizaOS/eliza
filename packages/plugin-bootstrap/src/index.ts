@@ -620,6 +620,8 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
 
+    console.log('### accumulatedState.data.actionResults', accumulatedState.data.actionResults);
+
     const prompt = composePromptFromState({
       state: accumulatedState,
       template: loopingTemplate,

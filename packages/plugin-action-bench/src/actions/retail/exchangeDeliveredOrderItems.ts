@@ -135,8 +135,6 @@ If a value is not found, return an empty string for that element. Do not add any
       // Find the order
       const order = retailData.orders[orderId];
 
-      console.log('############### order', order);
-
       if (!order) {
         const errorMsg = `Cannot process exchange: Order ${orderId} not found.`;
         if (callback) {
