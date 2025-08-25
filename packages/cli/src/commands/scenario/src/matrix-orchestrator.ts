@@ -1079,7 +1079,13 @@ async function getResourceSnapshot(): Promise<{ memoryUsage: number; cpuUsage: n
 async function calculateRunDiskUsage(tempDir: string): Promise<number> {
   try {
     const { monitorIsolatedResources } = await import('./run-isolation');
-    const context: IsolationContext = { tempDir, runId: '', scenarioPath: '', dbPath: '', logPath: '' };
+    const context: IsolationContext = {
+      tempDir,
+      runId: '',
+      scenarioPath: '',
+      dbPath: '',
+      logPath: '',
+    };
     const resources = await monitorIsolatedResources(context);
     return resources.diskUsage;
   } catch {

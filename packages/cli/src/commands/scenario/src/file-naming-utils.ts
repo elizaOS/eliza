@@ -7,19 +7,19 @@
  * @returns Timestamp string in PST timezone
  */
 export function generatePSTTimestamp(): string {
-    const now = new Date();
+  const now = new Date();
 
-    // Convert to PST (UTC-8) or PDT (UTC-7) depending on daylight saving time
-    const pstDate = new Date(now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  // Convert to PST (UTC-8) or PDT (UTC-7) depending on daylight saving time
+  const pstDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
 
-    const year = pstDate.getFullYear();
-    const month = String(pstDate.getMonth() + 1).padStart(2, '0');
-    const day = String(pstDate.getDate()).padStart(2, '0');
-    const hour = String(pstDate.getHours()).padStart(2, '0');
-    const minute = String(pstDate.getMinutes()).padStart(2, '0');
-    const second = String(pstDate.getSeconds()).padStart(2, '0');
+  const year = pstDate.getFullYear();
+  const month = String(pstDate.getMonth() + 1).padStart(2, '0');
+  const day = String(pstDate.getDate()).padStart(2, '0');
+  const hour = String(pstDate.getHours()).padStart(2, '0');
+  const minute = String(pstDate.getMinutes()).padStart(2, '0');
+  const second = String(pstDate.getSeconds()).padStart(2, '0');
 
-    return `${year}-${month}-${day}-${hour}-${minute}-${second}`;
+  return `${year}-${month}-${day}-${hour}-${minute}-${second}`;
 }
 
 /**
@@ -29,9 +29,9 @@ export function generatePSTTimestamp(): string {
  * @returns Formatted filename
  */
 export function generateRunFilename(index: number, timestamp?: string): string {
-    const ts = timestamp || generatePSTTimestamp();
-    const paddedIndex = String(index).padStart(3, '0');
-    return `run-${ts.slice(0, 10)}-${paddedIndex}-${ts.slice(11)}`;
+  const ts = timestamp || generatePSTTimestamp();
+  const paddedIndex = String(index).padStart(3, '0');
+  return `run-${ts.slice(0, 10)}-${paddedIndex}-${ts.slice(11)}`;
 }
 
 /**
@@ -41,9 +41,9 @@ export function generateRunFilename(index: number, timestamp?: string): string {
  * @returns Formatted filename
  */
 export function generateMatrixFilename(index: number, timestamp?: string): string {
-    const ts = timestamp || generatePSTTimestamp();
-    const paddedIndex = String(index).padStart(3, '0');
-    return `matrix-${ts.slice(0, 10)}-${paddedIndex}-${ts.slice(11)}`;
+  const ts = timestamp || generatePSTTimestamp();
+  const paddedIndex = String(index).padStart(3, '0');
+  return `matrix-${ts.slice(0, 10)}-${paddedIndex}-${ts.slice(11)}`;
 }
 
 /**
@@ -53,6 +53,10 @@ export function generateMatrixFilename(index: number, timestamp?: string): strin
  * @param suffix - File suffix (e.g., 'evaluation', 'execution')
  * @returns Formatted filename with step info
  */
-export function generateStepFilename(baseFilename: string, stepIndex: number, suffix: string): string {
-    return `${baseFilename}-step-${stepIndex}-${suffix}.json`;
+export function generateStepFilename(
+  baseFilename: string,
+  stepIndex: number,
+  suffix: string
+): string {
+  return `${baseFilename}-step-${stepIndex}-${suffix}.json`;
 }

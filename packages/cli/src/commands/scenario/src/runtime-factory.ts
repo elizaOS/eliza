@@ -394,7 +394,8 @@ export async function askAgentViaApi(
 
       if (agentMessages.length > 0) {
         const latestMessage = agentMessages.sort(
-          (a: Message, b: Message) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          (a: Message, b: Message) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )[0];
         console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
         return { response: latestMessage.content, roomId: channel.id as UUID };

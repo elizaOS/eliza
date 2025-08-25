@@ -16,7 +16,7 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
     configName: config.name,
     combinationsCount: combinations.length,
     outputDir: options.outputDir,
-    runsPerCombination: config.runs_per_combination
+    runsPerCombination: config.runs_per_combination,
   });
 
   // Return mock results that match the expected structure
@@ -69,26 +69,30 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
         duration: options.runTimeout && options.runTimeout < 1000 ? 50 : 1000, // Shorter duration for timeout tests
         success,
         error,
-        scenarioResult: success ? {
-          success: true,
-          evaluations: [{ success: true, summary: 'Mock evaluation passed' }],
-          executionResults: { response: 'Mock response' },
-          tokenCount: 150,
-          duration: options.runTimeout && options.runTimeout < 1000 ? 50 : 1000
-        } : undefined,
+        scenarioResult: success
+          ? {
+              success: true,
+              evaluations: [{ success: true, summary: 'Mock evaluation passed' }],
+              executionResults: { response: 'Mock response' },
+              tokenCount: 150,
+              duration: options.runTimeout && options.runTimeout < 1000 ? 50 : 1000,
+            }
+          : undefined,
         metrics: {
           memoryUsage: 1024 * 1024, // 1MB
           diskUsage: 512 * 1024, // 512KB
           tokenCount: 150,
-          cpuUsage: 25
-        }
+          cpuUsage: 25,
+        },
       };
 
       results.push(result);
 
       // Simulate progress callback if provided
       if (options.onProgress) {
-        options.onProgress(`Executing run ${runCounter} of ${totalRuns} - Combination ${combination.id}`);
+        options.onProgress(
+          `Executing run ${runCounter} of ${totalRuns} - Combination ${combination.id}`
+        );
         if (runCounter > 1) {
           options.onProgress(`ETA: ${Math.ceil((totalRuns - runCounter) * 1.5)} seconds remaining`);
         }
@@ -101,12 +105,14 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
 
       // Simulate combination complete callback if provided
       if (options.onCombinationComplete && runIndex === config.runs_per_combination - 1) {
-        const combinationResults = results.filter(r => r.combinationId === combination.id);
+        const combinationResults = results.filter((r) => r.combinationId === combination.id);
         const summary = {
           combinationId: combination.id,
           runsCompleted: combinationResults.length,
-          successRate: combinationResults.filter(r => r.success).length / combinationResults.length,
-          averageDuration: combinationResults.reduce((sum, r) => sum + r.duration, 0) / combinationResults.length
+          successRate:
+            combinationResults.filter((r) => r.success).length / combinationResults.length,
+          averageDuration:
+            combinationResults.reduce((sum, r) => sum + r.duration, 0) / combinationResults.length,
         };
         options.onCombinationComplete(summary);
       }
@@ -116,7 +122,7 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
         options.onResourceUpdate({
           memoryUsage: 1024 * 1024 * (1 + Math.random() * 0.5), // 1-1.5MB
           diskUsage: 512 * 1024 * (1 + Math.random() * 0.3), // 512-665KB
-          cpuUsage: 20 + Math.random() * 30 // 20-50%
+          cpuUsage: 20 + Math.random() * 30, // 20-50%
         });
       }
     }
@@ -128,11 +134,17 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
       await fs.mkdir(join(options.outputDir, 'runs'), { recursive: true });
       await fs.mkdir(join(options.outputDir, 'logs'), { recursive: true });
       await fs.writeFile(join(options.outputDir, 'config.yaml'), 'mock config');
-      await fs.writeFile(join(options.outputDir, 'summary.json'), JSON.stringify({ totalRuns: results.length }));
+      await fs.writeFile(
+        join(options.outputDir, 'summary.json'),
+        JSON.stringify({ totalRuns: results.length })
+      );
 
       // Write individual run files
       for (const result of results) {
-        await fs.writeFile(join(options.outputDir, 'runs', `${result.runId}.json`), JSON.stringify(result));
+        await fs.writeFile(
+          join(options.outputDir, 'runs', `${result.runId}.json`),
+          JSON.stringify(result)
+        );
       }
     } catch (error) {
       console.log('⚠️ [MOCK] Could not create output structure:', error);
@@ -146,8 +158,8 @@ const mockExecuteMatrixRuns = mock(async (config: any, combinations: any, option
 // Mock the module
 mock.module('../matrix-orchestrator', () => ({
   executeMatrixRuns: mockExecuteMatrixRuns,
-  MatrixRunResult: class { },
-  MatrixExecutionSummary: class { }
+  MatrixRunResult: class {},
+  MatrixExecutionSummary: class {},
 }));
 
 // Import after mocking
@@ -224,7 +236,9 @@ describe('Matrix Orchestrator', () => {
   describe('Matrix Execution Loop (Acceptance Criterion 1)', () => {
     it('should execute all matrix combinations the specified number of times', async () => {
       console.log('🚀 [TEST] Starting matrix execution test...');
-      console.log(`📊 [TEST] Executing ${mockCombinations.length} combinations with ${mockMatrixConfig.runs_per_combination} runs each`);
+      console.log(
+        `📊 [TEST] Executing ${mockCombinations.length} combinations with ${mockMatrixConfig.runs_per_combination} runs each`
+      );
 
       console.log('⏳ [TEST] About to call executeMatrixRuns...');
       const results = await executeMatrixRuns(mockMatrixConfig, mockCombinations, {

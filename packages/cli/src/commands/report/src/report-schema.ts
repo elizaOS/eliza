@@ -18,25 +18,25 @@ import { ScenarioRunResult } from '../../scenario/src/schema';
 export interface ReportSummaryStats {
   /** Total number of runs analyzed */
   total_runs: number;
-  
+
   /** Number of runs that failed to complete */
   total_failed_runs: number;
-  
+
   /** Average execution time across all runs (in seconds) */
   average_execution_time: number;
-  
+
   /** Median execution time across all runs (in seconds) */
   median_execution_time: number;
-  
+
   /** Average number of LLM calls per run */
   average_llm_calls: number;
-  
+
   /** Average total tokens used per run */
   average_total_tokens: number;
-  
+
   /** Success rates for each capability/evaluation type */
   capability_success_rates: Record<string, number>;
-  
+
   /** Overall success rate (percentage of runs that completed without error) */
   overall_success_rate: number;
 }
@@ -47,13 +47,13 @@ export interface ReportSummaryStats {
 export interface CommonTrajectory {
   /** Sequence of trajectory step types */
   sequence: string[];
-  
+
   /** Number of runs that followed this trajectory */
   count: number;
-  
+
   /** Average duration for runs following this trajectory */
   average_duration: number;
-  
+
   /** Percentage of total runs that followed this trajectory */
   percentage: number;
 }
@@ -66,16 +66,16 @@ export interface ReportData {
   metadata: {
     /** When this report was generated */
     report_generated_at: string;
-    
+
     /** The original matrix configuration that was analyzed */
     matrix_config: MatrixConfig;
-    
+
     /** Input directory that was processed */
     input_directory: string;
-    
+
     /** Number of run files that were successfully processed */
     processed_files: number;
-    
+
     /** Number of files that were skipped due to errors */
     skipped_files: number;
   };
@@ -120,10 +120,9 @@ export const CommonTrajectorySchema = z.object({
 
 export const ReportDataSchema = z.object({
   metadata: z.object({
-    report_generated_at: z.string().refine(
-      (val) => !isNaN(Date.parse(val)),
-      { message: 'report_generated_at must be a valid ISO string' }
-    ),
+    report_generated_at: z.string().refine((val) => !isNaN(Date.parse(val)), {
+      message: 'report_generated_at must be a valid ISO string',
+    }),
     matrix_config: z.any(), // MatrixConfig schema from scenario module
     input_directory: z.string().min(1),
     processed_files: z.number().int().min(0),

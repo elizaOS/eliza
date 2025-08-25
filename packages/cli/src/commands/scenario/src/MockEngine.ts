@@ -17,7 +17,12 @@ export class MockEngine {
   private originalGetService: AgentRuntime['getService'];
   private mockRegistry: Map<string, MockDefinition[]> = new Map();
   private mockHistory: MockExecutionHistory[] = [];
-  private logger: { info: (msg: string) => void; debug: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void; };
+  private logger: {
+    info: (msg: string) => void;
+    debug: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
 
   constructor(private runtime: AgentRuntime) {
     this.originalGetService = this.runtime.getService.bind(this.runtime);

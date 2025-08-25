@@ -30,7 +30,7 @@ describe('ProcessManager', () => {
         runId: 'test-run-1',
         type: 'agent-server',
         startTime: expect.any(Date),
-        port: 3001
+        port: 3001,
       });
     });
 
@@ -79,7 +79,7 @@ describe('ProcessManager', () => {
       expect(summary).toEqual({
         total: 0,
         byType: {},
-        oldestProcess: undefined
+        oldestProcess: undefined,
       });
     });
 
@@ -93,7 +93,7 @@ describe('ProcessManager', () => {
       expect(summary.total).toBe(3);
       expect(summary.byType).toEqual({
         'agent-server': 2,
-        'scenario-runner': 1
+        'scenario-runner': 1,
       });
       expect(summary.oldestProcess).toBeDefined();
     });
