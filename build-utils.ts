@@ -4,7 +4,7 @@
  */
 
 import type { BuildConfig } from 'bun';
-import { existsSync } from 'node:fs';
+import { existsSync, watch } from 'node:fs';
 import { join } from 'node:path';
 
 export interface ElizaBuildOptions {
@@ -211,4 +211,157 @@ export async function cleanBuild(outdir = 'dist') {
   } else {
     console.log(`✓ ${outdir} directory already clean (${timer.elapsed()}ms)`);
   }
+}
+
+/**
+ * Watch files for changes and trigger rebuilds
+ */
+export function watchFiles(
+  directory: string,
+  onChange: () => void,
+  options: {
+    extensions?: string[];
+    debounceMs?: number;
+  } = {}
+) {
+  const { extensions = ['.ts', '.js', '.tsx', '.jsx'], debounceMs = 100 } = options;
+  
+  let debounceTimer: NodeJS.Timeout | null = null;
+  
+  console.log(`📁 Watching ${directory} for changes...`);
+  console.log('💡 Press Ctrl+C to stop\n');
+  
+  watch(directory, { recursive: true }, (eventType, filename) => {
+    if (filename && extensions.some(ext => filename.endsWith(ext))) {
+      // Debounce to avoid multiple rapid rebuilds
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      
+      debounceTimer = setTimeout(() => {
+        console.log(`\n📝 File changed: ${filename}`);
+        onChange();
+      }, debounceMs);
+    }
+  });
+  
+  // Handle graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\n\n👋 Stopping watch mode...');
+    process.exit(0);
+  });
+}
+
+/**
+ * Standard build runner configuration
+ */
+export interface BuildRunnerOptions {
+  packageName: string;
+  buildOptions: ElizaBuildOptions;
+  onBuildComplete?: (success: boolean) => void;
+}
+
+/**
+ * Run a build with optional watch mode support
+ */
+export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boolean }) {
+  const { packageName, buildOptions, isRebuild = false, onBuildComplete } = options;
+  const totalTimer = getTimer();
+  
+  // Clear console and show timestamp for rebuilds
+  if (isRebuild) {
+    console.clear();
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${timestamp}] 🔄 Rebuilding ${packageName}...\n`);
+  } else {
+    console.log(`🚀 Building ${packageName}...\n`);
+  }
+
+  try {
+    // Clean previous build
+    await cleanBuild(buildOptions.outdir);
+
+    // Create build configuration
+    const configTimer = getTimer();
+    const config = await createElizaBuildConfig(buildOptions);
+    console.log(`✓ Configuration prepared (${configTimer.elapsed()}ms)`);
+
+    // Build with Bun
+    console.log('\nBundling with Bun...');
+    const buildTimer = getTimer();
+    const result = await Bun.build(config);
+
+    if (!result.success) {
+      console.error('✗ Build failed:', result.logs);
+      onBuildComplete?.(false);
+      return false;
+    }
+
+    const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
+    const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+    console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`);
+
+    // Generate TypeScript declarations if requested
+    if (buildOptions.generateDts) {
+      await generateDts('./tsconfig.build.json');
+    }
+
+    // Copy assets if specified
+    if (buildOptions.assets?.length) {
+      await copyAssets(buildOptions.assets);
+    }
+
+    console.log(`\n✅ ${packageName} build complete!`);
+    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
+    
+    onBuildComplete?.(true);
+    return true;
+  } catch (error) {
+    console.error('Build error:', error);
+    onBuildComplete?.(false);
+    return false;
+  }
+}
+
+/**
+ * Create a standardized build runner with watch mode support
+ */
+export function createBuildRunner(options: BuildRunnerOptions) {
+  const isWatchMode = process.argv.includes('--watch');
+  
+  async function build(isRebuild = false) {
+    return runBuild({
+      ...options,
+      isRebuild,
+    });
+  }
+  
+  async function startWatchMode() {
+    console.log('👀 Starting watch mode...\n');
+    
+    // Initial build
+    const buildSuccess = await build(false);
+    
+    if (buildSuccess) {
+      const srcDir = join(process.cwd(), 'src');
+      watchFiles(srcDir, () => {
+        build(true).then(() => {
+          console.log('📁 Watching src/ directory for changes...');
+          console.log('💡 Press Ctrl+C to stop\n');
+        });
+      });
+    }
+  }
+  
+  // Return the main function to run
+  return async function run() {
+    if (isWatchMode) {
+      await startWatchMode();
+    } else {
+      const success = await build();
+      if (!success) {
+        process.exit(1);
+      }
+    }
+  };
 }
