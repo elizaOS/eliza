@@ -43,10 +43,10 @@
   },
   "scripts": {
     "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "watch": "bun run --watch build.ts"
+    "format:check": "prettier --check ./src"
   },
   "publishConfig": {
     "access": "public"
