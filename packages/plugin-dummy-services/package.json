@@ -31,13 +31,12 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "dev": "tsup --watch",
+    "dev": "bun run build.ts --watch",
     "test": "bun test",
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "watch": "bun run --watch build.ts"
+    "format:check": "prettier --check ./src"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"

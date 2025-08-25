@@ -37,8 +37,7 @@
     "README.md",
     ".npmignore",
     ".gitignore",
-    "package.json",
-    "tsup.config.ts"
+    "package.json"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -72,7 +71,7 @@
     "test:install": "node scripts/install-test-deps.js",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "watch": "bun run --watch build.ts"
+    "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {
     "access": "public"

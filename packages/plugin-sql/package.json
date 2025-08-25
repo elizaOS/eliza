@@ -44,7 +44,7 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "dev": "tsup --watch",
+    "dev": "bun run build.ts --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
     "lint": "eslint .",
@@ -58,8 +58,7 @@
     "test:integration:fast": "bun test __tests__/integration --bail=5 --timeout=180000",
     "test:postgres": "POSTGRES_URL=postgresql://postgres:cT5nfCeebBS8R0q3@db.mwyntrazuakaieibjuvo.supabase.co:5432/postgres bun test",
     "build:clean": "rm -rf dist",
-    "lint:fix": "eslint . --fix",
-    "watch": "bun run --watch build.ts"
+    "lint:fix": "eslint . --fix"
   },
   "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2"
 }

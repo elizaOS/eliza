@@ -37,8 +37,7 @@
     "README.md",
     ".npmignore",
     ".gitignore",
-    "package.json",
-    "tsup.config.ts"
+    "package.json"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -54,10 +53,10 @@
     "start": "elizaos start",
     "dev": "elizaos dev",
     "build": "bun run build.ts",
+    "build:watch": "bun run build.ts --watch",
     "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test": "bun test",
-    "format": "prettier --write ./src",
-    "watch": "bun run --watch build.ts"
+    "format": "prettier --write ./src"
   },
   "publishConfig": {
     "access": "public"
