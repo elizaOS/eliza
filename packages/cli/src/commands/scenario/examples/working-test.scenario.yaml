@@ -1,0 +1,21 @@
+name: 'Working Test Scenario'
+description: 'Simple test that should work without external plugin dependencies'
+
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+
+environment:
+  type: local
+
+run:
+  - name: 'Simple agent test'
+    input: 'Hello! Can you introduce yourself?'
+    evaluations:
+      - type: 'string_contains'
+        value: 'hello'
+        description: 'Agent should respond with a greeting'
+
+judgment:
+  strategy: 'all_pass'
+

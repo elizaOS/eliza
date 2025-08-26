@@ -166,7 +166,6 @@ export async function createScenarioAgent(
     '@elizaos/plugin-sql',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-bootstrap',
-    '@elizaos/plugin-e2b',
   ]
 ): Promise<{
   runtime: IAgentRuntime;
@@ -216,7 +215,6 @@ export async function createScenarioServerAndAgent(
     '@elizaos/plugin-sql',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-bootstrap',
-    '@elizaos/plugin-e2b',
   ],
   agentName: string = 'scenario-agent'
 ): Promise<{
