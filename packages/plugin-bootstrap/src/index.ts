@@ -667,8 +667,8 @@ const messageReceivedHandler = async ({
           const ignoreContent: Content = {
             thought: 'Agent decided not to respond to this message.',
             actions: ['IGNORE'],
-            simple: true,
-            inReplyTo: createUniqueUuid(runtime, message.id),
+            simple: true, // Treat it as simple for callback purposes
+            inReplyTo: createUniqueUuid(runtime, message.id), // Reference original message
           };
 
           // Call the callback directly with the ignore content
@@ -742,7 +742,7 @@ const messageReceivedHandler = async ({
 
         // get available actions
         const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
-          (a: any) => a.name
+          (a) => a.name
         ) || [-1];
 
         // generate data of interest
@@ -948,26 +948,43 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
     const parsedStep = parseKeyValueXml(stepResultRaw);
     
-    const { thought, nextStepName, nextStepType } = parsedStep || {};
+    const { thought, providers = [], action, isFinish } = parsedStep || {};
 
-    const stepContent = {
-      actions: nextStepName ? [nextStepName] : undefined,
-      text: nextStepName ? `🔎 Executing action: ${nextStepName}` : '',
-      thought: thought ?? '',
-    };
-
-    if (!parsedStep || nextStepType === 'finish') {
+    if (!parsedStep || isFinish === 'true') {
       continueLoop = false;
-      await callback(stepContent);
+      await callback({
+        text: '',
+        thought: thought ?? '',
+      });
       break;
     }
 
     try {
-      let executionResult: any;
-      let success = true;
-
-      if (nextStepType === 'action') {
-        
+      for (const providerName of providers) {
+        const provider = runtime.providers.find((p: any) => p.name === providerName);
+        const providerResult = await provider?.get(runtime, message, state);
+        const success = !!providerResult?.text;
+  
+        traceActionResult.push({
+          data: { actionName: providerName },
+          success,
+          text: success ? providerResult.text : undefined,
+          error: success ? undefined : providerResult?.error,
+        });
+  
+        await callback({
+          text: `🔎 Provider executed: ${providerName}`,
+          actions: [providerName],
+          thought: thought ?? '',
+        });
+      }
+  
+      if (action) {
+        const actionContent = {
+          text: `🔎 Executing action: ${action}`,
+          actions: [action],
+          thought: thought ?? '',
+        };
         await runtime.processActions(
           message,
           [
@@ -976,44 +993,34 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
               entityId: runtime.agentId,
               roomId: message.roomId,
               createdAt: Date.now(),
-              content: stepContent,
+              content: actionContent,
             },
           ],
           state,
           async () => {
-            await callback(stepContent);
+            await callback(actionContent);
             return [];
           }
         );
-
+  
         const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
-        if (cachedState) {
-          const actionResults = cachedState.values.actionResults;
-          success = actionResults[0].success;
-          executionResult = actionResults[0].text;
-        }
-      } else if (nextStepType === 'provider') {
-        const provider = runtime.providers.find(
-          (p) => p.name === nextStepName
-        );
-        const providerResult = await provider?.get(runtime, message, state);
-        executionResult = providerResult.text;
-        await callback(stepContent);
+        const actionResults = cachedState?.values?.actionResults || [];
+        const result = actionResults[0];
+        const success = result?.success ?? false;
+  
+        traceActionResult.push({
+          data: { actionName: action },
+          success,
+          text: result?.text,
+          error: success ? undefined : result?.text,
+        });
       }
-
-      traceActionResult.push({
-        data: {
-          actionName: nextStepName,
-        },
-        success,
-        text: success ? executionResult : undefined,
-        error: success ? undefined : executionResult,
-      });
+  
     } catch (err) {
       runtime.logger.error({ err }, '[MultiStep] Error executing step');
       traceActionResult.push({
-        data: { actionName: nextStepName },
-        success: 'failed',
+        data: { actionName: action || 'unknown' },
+        success: false,
         error: err,
       });
     }

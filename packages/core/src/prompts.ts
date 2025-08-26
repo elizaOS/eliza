@@ -163,12 +163,19 @@ Determine the next step the assistant should take in this conversation to help t
 
 {{recentMessages}}
 
-# Two-Step Workflow
-- **Step 1: Gather or Execute**  
-  If any data is missing or a backend step needs to be executed (e.g. calling an action to exchange items or retrieve info), call the appropriate action/provider.
+# Multi-Step Workflow
 
-- **Step 2: Finish**  
-  If nothing more is required and the task is truly complete, return \`FINISH\` Do not return \`REPLY\` in any case.
+In each step, decide:
+
+1. **Which providers (if any)** should be called to gather necessary data.
+2. **Which action (if any)** should be executed after providers return.
+3. Whether the task is now complete — if so, mark it as finished.
+
+You can select **multiple providers** and at most **one action** per step.
+
+If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
+
+---
 
 {{actionsWithDescriptions}}
 
@@ -178,13 +185,19 @@ These are the actions or data provider calls that have already been used in this
 
 {{actionResults}}
 
+<keys>
+"thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
+"action"  Name of the action to execute after providers return (can be null if no action is needed).
+"providers" List of provider names to call in this step (can be empty if none are needed).
+"isFinish" Set to true only if the task is fully complete.
+</keys>
+
 <output>
 <response>
-  <thought>
-    Clearly explain your reasoning for the next step and how it helps resolve the user's request.
-  </thought>
-  <nextStepType>action | provider | finish</nextStepType>
-  <nextStepName>(Required only if nextStepType is action or provider)</nextStepName>
+  <thought>Your thought here</thought>
+  <action>ACTION</action>
+  <providers>PROVIDER1,PROVIDER2</providers>
+  <isFinish>true | false</isFinish>
 </response>
 </output>`;
 
