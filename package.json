@@ -77,7 +77,6 @@
     "utf-8-validate"
   ],
   "dependencies": {
-    "helmet": "^8.1.0",
-    "@elizaos/plugin-action-bench": "workspace:*"
+    "helmet": "^8.1.0"
   }
 }
