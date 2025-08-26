@@ -1,4 +1,5 @@
 import type { UUID } from '@elizaos/core';
+import type { MessageMetadata } from '@elizaos/api-client';
 
 /**
  * Session timeout configuration
@@ -12,6 +13,8 @@ export interface SessionTimeoutConfig {
   maxDurationMinutes?: number;
   /** Warning threshold in minutes before timeout */
   warningThresholdMinutes?: number;
+  /** Allow additional properties */
+  [key: string]: unknown;
 }
 
 /**
@@ -85,7 +88,7 @@ export interface SendMessageRequest {
     url: string;
     name?: string;
   }>;
-  metadata?: Record<string, any>;
+  metadata?: MessageMetadata;
 }
 
 /**

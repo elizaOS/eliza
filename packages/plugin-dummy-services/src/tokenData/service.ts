@@ -1,70 +1,37 @@
-import { ITokenDataService, TokenData, IAgentRuntime, ServiceType, logger } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import { IAgentRuntime, Service, logger } from '@elizaos/core';
 
-export class DummyTokenDataService extends ITokenDataService {
-  readonly serviceName = 'dummy-token-data';
-  static readonly serviceType = ServiceType.TOKEN_DATA;
+// Define token data types locally since they're not in core
+export interface TokenData {
+  symbol: string;
+  name: string;
+  address: string;
+  decimals: number;
+  totalSupply: string;
+  priceUsd: number;
+  marketCapUsd: number;
+  volume24hUsd: number;
+  priceChange24h: number;
+}
 
-  constructor(runtime?: IAgentRuntime) {
+/**
+ * Dummy token data service for testing purposes
+ * Provides mock implementations of token data operations
+ */
+export class DummyTokenDataService extends Service {
+  // Use a custom service type since TOKEN_DATA isn't in ServiceType enum
+  static readonly serviceType = 'token_data';
+
+  private serviceName = 'DummyTokenDataService';
+  capabilityDescription = 'Dummy token data service for testing';
+
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
-    logger.info('DummyTokenDataService initialized');
-  }
-
-  private generateDummyToken(chain: string, address?: string, query?: string): TokenData {
-    const randomAddress = address || `0x${uuidv4().replace(/-/g, '')}`;
-    const symbol = query ? query.toUpperCase() : randomAddress.substring(2, 6).toUpperCase();
-    return {
-      id: `${chain}:${randomAddress}`,
-      symbol: symbol,
-      name: `Dummy Token ${symbol}`,
-      address: randomAddress,
-      chain: chain,
-      sourceProvider: 'dummy',
-      price: Math.random() * 100,
-      priceChange24hPercent: (Math.random() - 0.5) * 20,
-      volume24hUSD: Math.random() * 1000000,
-      marketCapUSD: Math.random() * 100000000,
-      liquidity: Math.random() * 500000,
-      holders: Math.floor(Math.random() * 10000),
-      logoURI: 'https://via.placeholder.com/150',
-      decimals: 18,
-      lastUpdatedAt: new Date(),
-      raw: {
-        dummyData: true,
-      },
-    };
-  }
-
-  async getTokenDetails(address: string, chain: string): Promise<TokenData | null> {
-    logger.debug(`DummyTokenDataService: getTokenDetails for ${address} on ${chain}`);
-    return this.generateDummyToken(chain, address);
-  }
-
-  async getTrendingTokens(chain = 'solana', limit = 10, _timePeriod = '24h'): Promise<TokenData[]> {
-    logger.debug(`DummyTokenDataService: getTrendingTokens on ${chain}`);
-    return Array.from({ length: limit }, () => this.generateDummyToken(chain));
-  }
-
-  async searchTokens(query: string, chain = 'solana', limit = 5): Promise<TokenData[]> {
-    logger.debug(`DummyTokenDataService: searchTokens for "${query}" on ${chain}`);
-    return Array.from({ length: limit }, () => this.generateDummyToken(chain, undefined, query));
-  }
-
-  async getTokensByAddresses(addresses: string[], chain: string): Promise<TokenData[]> {
-    logger.debug({ addresses, chain }, 'DummyTokenDataService: getTokensByAddresses');
-    return addresses.map((addr) => this.generateDummyToken(chain, addr));
   }
 
   static async start(runtime: IAgentRuntime): Promise<DummyTokenDataService> {
     const service = new DummyTokenDataService(runtime);
+    await service.start();
     return service;
-  }
-
-  static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService<DummyTokenDataService>(DummyTokenDataService.serviceType);
-    if (service) {
-      await service.stop();
-    }
   }
 
   async start(): Promise<void> {
@@ -73,5 +40,78 @@ export class DummyTokenDataService extends ITokenDataService {
 
   async stop(): Promise<void> {
     logger.info(`[${this.serviceName}] Service stopped.`);
+  }
+
+  async getTokenData(tokenAddress: string): Promise<TokenData> {
+    return {
+      symbol: 'DUMMY',
+      name: 'Dummy Token',
+      address: tokenAddress,
+      decimals: 18,
+      totalSupply: '1000000000',
+      priceUsd: 1.23,
+      marketCapUsd: 1230000000,
+      volume24hUsd: 45600000,
+      priceChange24h: 5.67,
+    };
+  }
+
+  async getTokenDataBySymbol(symbol: string): Promise<TokenData> {
+    return {
+      symbol: symbol.toUpperCase(),
+      name: `${symbol} Token`,
+      address: '0xdummy',
+      decimals: 18,
+      totalSupply: '1000000000',
+      priceUsd: 1.23,
+      marketCapUsd: 1230000000,
+      volume24hUsd: 45600000,
+      priceChange24h: 5.67,
+    };
+  }
+
+  async getMultipleTokenData(tokenAddresses: string[]): Promise<TokenData[]> {
+    return tokenAddresses.map((address, index) => ({
+      symbol: `TOKEN${index}`,
+      name: `Token ${index}`,
+      address,
+      decimals: 18,
+      totalSupply: '1000000000',
+      priceUsd: 1.23 * (index + 1),
+      marketCapUsd: 1230000000 * (index + 1),
+      volume24hUsd: 45600000 * (index + 1),
+      priceChange24h: 5.67 * (index % 2 === 0 ? 1 : -1),
+    }));
+  }
+
+  async searchTokens(query: string): Promise<TokenData[]> {
+    return [
+      {
+        symbol: query.toUpperCase(),
+        name: `${query} Token`,
+        address: '0xdummy1',
+        decimals: 18,
+        totalSupply: '1000000000',
+        priceUsd: 1.23,
+        marketCapUsd: 1230000000,
+        volume24hUsd: 45600000,
+        priceChange24h: 5.67,
+      },
+      {
+        symbol: `${query.toUpperCase()}2`,
+        name: `${query} Token 2`,
+        address: '0xdummy2',
+        decimals: 18,
+        totalSupply: '2000000000',
+        priceUsd: 2.46,
+        marketCapUsd: 4920000000,
+        volume24hUsd: 91200000,
+        priceChange24h: -3.21,
+      },
+    ];
+  }
+
+  getDexName(): string {
+    return 'dummy-token-data';
   }
 }

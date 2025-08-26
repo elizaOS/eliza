@@ -8,6 +8,23 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- Minimal early polyfills to avoid Buffer/process undefined during preloads -->
+    <script type="module">
+      import { Buffer } from 'buffer';
+      // Ensure globals for dependencies that expect Node shims
+      if (typeof globalThis.Buffer === 'undefined') {
+        globalThis.Buffer = Buffer;
+      }
+      if (typeof globalThis.global === 'undefined') {
+        globalThis.global = globalThis;
+      }
+      if (typeof globalThis.process === 'undefined') {
+        globalThis.process = { env: {} };
+      } else if (!globalThis.process.env) {
+        globalThis.process.env = {};
+      }
+    </script>
+    <!-- Use entry point that loads polyfills first -->
+    <script type="module" src="/src/entry.tsx"></script>
   </body>
 </html>

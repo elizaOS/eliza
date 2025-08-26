@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAgents } from '@/hooks/use-query-hooks';
-import type { Agent } from '@elizaos/core';
+import type { AgentWithStatus } from '@/types';
 
 const AgentList: React.FC = () => {
   const { data, isLoading, error } = useAgents();
@@ -13,7 +13,7 @@ const AgentList: React.FC = () => {
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Agents</h1>
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {agents.map((agent: Agent) => (
+        {agents.map((agent) => (
           <div key={agent.id} className="border rounded-lg p-4 shadow-sm">
             <h2 className="text-xl font-semibold">{agent.name}</h2>
             <p className="text-sm text-gray-500">{agent.id}</p>

@@ -11,6 +11,9 @@ interface AgentDetailsPanelProps {
 
 export default function AgentDetailsPanel({ agent }: AgentDetailsPanelProps) {
   const isActive = agent.status === AgentStatus.ACTIVE;
+  // Extract avatar as string, handling various types
+  const avatarUrl =
+    typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '/elizaos-icon.png';
 
   return (
     <div className="h-full flex flex-col bg-background" data-testid="agent-details">
@@ -18,7 +21,7 @@ export default function AgentDetailsPanel({ agent }: AgentDetailsPanelProps) {
         {/* Agent Header */}
         <div className="flex items-center gap-4">
           <Avatar className="size-16 border">
-            <AvatarImage src={agent.settings?.avatar || '/elizaos-icon.png'} />
+            <AvatarImage src={avatarUrl} />
           </Avatar>
           <div className="flex-1">
             <h3 className="font-semibold text-lg">{agent.name}</h3>

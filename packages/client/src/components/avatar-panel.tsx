@@ -16,13 +16,19 @@ interface AvatarPanelProps {
 }
 
 export default function AvatarPanel({ characterValue, setCharacterValue }: AvatarPanelProps) {
-  const [avatar, setAvatar] = useState<string | null>(characterValue?.settings?.avatar || null);
+  // Extract avatar as string, handling various types
+  const getAvatarUrl = () => {
+    const avatarSetting = characterValue?.settings?.avatar;
+    return typeof avatarSetting === 'string' ? avatarSetting : null;
+  };
+
+  const [avatar, setAvatar] = useState<string | null>(getAvatarUrl());
   const [hasChanged, setHasChanged] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset the change flag when component initializes or character changes
   useEffect(() => {
-    setAvatar(characterValue?.settings?.avatar || null);
+    setAvatar(getAvatarUrl());
     setHasChanged(false);
   }, [characterValue.id]);
 

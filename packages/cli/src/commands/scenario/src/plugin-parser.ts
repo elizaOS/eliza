@@ -1,5 +1,5 @@
-import { PluginReference, PluginConfig } from './schema';
-import { loadAndPreparePlugin, isValidPluginShape } from '../../start/utils/plugin-utils';
+import { PluginReference } from './schema';
+import { loadAndPreparePlugin } from '../../start/utils/plugin-utils';
 import { Plugin } from '@elizaos/core';
 
 export interface ParsedPlugin {
@@ -30,7 +30,7 @@ export class PluginParser {
       return [];
     }
 
-    return pluginReferences.map((ref, index) => {
+    return pluginReferences.map((ref) => {
       if (typeof ref === 'string') {
         return {
           name: ref,

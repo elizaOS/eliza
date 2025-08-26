@@ -46,15 +46,20 @@ export class E2BEnvironmentProvider implements EnvironmentProvider {
     if (virtualFs && this.sandboxId) {
       for (const [filePath, content] of Object.entries(virtualFs)) {
         // Validate file path to prevent injection
-        if (typeof filePath !== 'string' || filePath.includes('..') || filePath.includes('`') || filePath.includes('$')) {
+        if (
+          typeof filePath !== 'string' ||
+          filePath.includes('..') ||
+          filePath.includes('`') ||
+          filePath.includes('$')
+        ) {
           throw new Error(`Invalid file path: ${filePath}`);
         }
-        
+
         // Validate content to prevent injection
         if (typeof content !== 'string') {
           throw new Error(`Invalid file content for ${filePath}`);
         }
-        
+
         // Use safe Python code with escaped strings
         const safeFilePath = JSON.stringify(filePath);
         const safeContent = JSON.stringify(content);

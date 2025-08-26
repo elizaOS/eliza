@@ -37,11 +37,11 @@
   },
   "scripts": {
     "start": "bun run build && bun dist/index.js start",
-    "build": "bun run src/scripts/copy-templates.ts && bun x tsup",
+    "build": "bun run build.ts",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "bun run test:all",
     "test:all": "./run-all-tests.sh",
     "test:unit": "bun test --timeout 30000",
@@ -56,6 +56,7 @@
     "coverage": "c8 --reporter=lcov --reporter=text bun test",
     "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
     "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000; EXIT_CODE=$?; bash tests/cleanup-processes.sh; exit $EXIT_CODE",
+    "dev": "bun run build.ts --watch",
     "test:scenarios": "for f in src/commands/scenario/examples/*.scenario.yaml; do echo \"=== $f ===\"; bun dist/index.js scenario run \"$f\" || echo \"FAIL $f\"; echo; done | cat"
   },
   "devDependencies": {
@@ -68,11 +69,9 @@
     "@types/semver": "^7.5.8",
     "bats-support": "^0.3.0",
     "cross-env": "^7.0.3",
-    "esbuild-plugin-copy": "^2.1.1",
     "node-html-parser": "^7.0.1",
     "prettier": "3.5.3",
     "puppeteer": "^22.15.0",
-    "tsup": "8.5.0",
     "typescript": "5.8.3",
     "vite": "^6.3.5"
   },

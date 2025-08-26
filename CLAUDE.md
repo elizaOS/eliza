@@ -152,9 +152,9 @@ bun run release:alpha   # Release alpha version
   ```json
   {
     "dependencies": {
-      "@elizaos/core": "1.4.2",           // ❌ Don't use hardcoded versions
-      "@elizaos/plugin-sql": "^1.4.0",   // ❌ Don't use version ranges
-      "@elizaos/server": "latest"         // ❌ Don't use version tags
+      "@elizaos/core": "1.4.2", // ❌ Don't use hardcoded versions
+      "@elizaos/plugin-sql": "^1.4.0", // ❌ Don't use version ranges
+      "@elizaos/server": "latest" // ❌ Don't use version tags
     }
   }
   ```

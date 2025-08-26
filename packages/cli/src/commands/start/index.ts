@@ -57,7 +57,7 @@ export const start = new Command()
           // Use buildProject function with proper UI feedback and error handling
           await buildProject(cwd, false);
         } catch (error) {
-          logger.error(`Build error: ${error instanceof Error ? error.message : String(error)}`);
+          logger.error('Build error:', error instanceof Error ? error.message : String(error));
           logger.warn(
             'Build failed, but continuing with start. Some features may not work correctly.'
           );

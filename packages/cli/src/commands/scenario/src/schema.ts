@@ -74,7 +74,7 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
   model_type: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
   json_schema: z.record(z.any()).optional(), // JSON schema object for response validation
-  capabilities: z.array(z.string()).min(1, "Capabilities array must not be empty").optional(), // Custom capabilities for evaluation
+  capabilities: z.array(z.string()).min(1, 'Capabilities array must not be empty').optional(), // Custom capabilities for evaluation
 });
 
 const ExecutionTimeEvaluationSchema = BaseEvaluationSchema.extend({
@@ -284,10 +284,13 @@ export interface TrajectoryStep {
   timestamp: string;
 
   /** Step content based on type */
-  content: string | {
-    name: string;
-    parameters: Record<string, any>;
-  } | any;
+  content:
+    | string
+    | {
+        name: string;
+        parameters: Record<string, any>;
+      }
+    | any;
 }
 
 /**
@@ -343,20 +346,23 @@ export const ScenarioRunResultSchema = z.object({
   run_id: z.string().min(1, 'Run ID cannot be empty'),
   matrix_combination_id: z.string().min(1, 'Matrix combination ID cannot be empty'),
   parameters: z.record(z.any()),
-  metrics: z.object({
-    execution_time_seconds: z.number().min(0),
-    llm_calls: z.number().int().min(0),
-    total_tokens: z.number().int().min(0),
-  }).catchall(z.number()), // Allow additional numeric metrics
+  metrics: z
+    .object({
+      execution_time_seconds: z.number().min(0),
+      llm_calls: z.number().int().min(0),
+      total_tokens: z.number().int().min(0),
+    })
+    .catchall(z.number()), // Allow additional numeric metrics
   final_agent_response: z.string().optional(),
   evaluations: z.array(EnhancedEvaluationResultSchema),
-  trajectory: z.array(z.object({
-    type: z.enum(['thought', 'action', 'observation']),
-    timestamp: z.string().refine(
-      (val) => !isNaN(Date.parse(val)),
-      { message: 'Timestamp must be a valid ISO string' }
-    ),
-    content: z.any(),
-  })),
+  trajectory: z.array(
+    z.object({
+      type: z.enum(['thought', 'action', 'observation']),
+      timestamp: z.string().refine((val) => !isNaN(Date.parse(val)), {
+        message: 'Timestamp must be a valid ISO string',
+      }),
+      content: z.any(),
+    })
+  ),
   error: z.string().nullable(),
 });

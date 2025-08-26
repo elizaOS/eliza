@@ -1190,10 +1190,9 @@ export class BM25 {
       this.averageDocLength = 0;
       return;
     }
-    // Use Array.prototype.reduce for compatibility, though typed array reduce might be faster
-    const totalLength = Array.prototype.reduce.call(
-      this.documentLengths,
-      (sum: number, len: number) => sum + len,
+    // Use the typed array's reduce method for type safety and performance
+    const totalLength = this.documentLengths.reduce(
+      (sum, len) => sum + len,
       0
     );
     this.averageDocLength = totalLength / this.documentLengths.length;
@@ -1285,7 +1284,9 @@ export class BM25 {
         candidateDocs = currentTermDocs;
       } else {
         // Intersect: Keep only documents present in both sets
-        candidateDocs = new Set([...candidateDocs].filter((docIdx) => currentTermDocs.has(docIdx)));
+        candidateDocs = new Set(
+          [...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx))
+        );
       }
 
       // If intersection becomes empty, the phrase cannot exist

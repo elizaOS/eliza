@@ -120,7 +120,7 @@ export async function createScenarioServer(
         createdServer = true;
 
         // Register the server process for cleanup
-        const serverPid = server.server?.pid || process.pid;
+        const serverPid = (server as any).server?.pid || process.pid;
         const runId = `agent-server-${port}`;
         processManager.registerProcess(runId, serverPid, 'agent-server', port);
         console.log(
@@ -247,11 +247,9 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     }
 
     // Unregister from process manager
-    const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
-    processManager.unregisterProcess(serverPid);
-    console.log(
-      `🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`
-    );
+    const runId = `agent-server-${port}`;
+    processManager.unregisterProcess(runId);
+    console.log(`🔧 [DEBUG] [ProcessManager] Unregistered AgentServer for port ${port}`);
   } catch (error) {
     console.log(`🔧 [DEBUG] Error shutting down AgentServer on port ${port}:`, error);
 
@@ -259,7 +257,8 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
     if (processManager.isProcessRunning(serverPid)) {
       console.log(`🔧 [DEBUG] Force terminating AgentServer process ${serverPid}...`);
-      processManager.terminateProcess(serverPid);
+      const runId = `agent-server-${port}`;
+      processManager.terminateProcess(runId);
     }
   }
 }
@@ -376,7 +375,7 @@ export async function askAgentViaApi(
     // Poll for response at regular intervals instead of waiting full timeout
     const pollInterval = 100; // Check every 100ms
 
-    const checkForResponse = async (): Promise<{ response: string; roomId: UUID }> => {
+    const checkForResponse = async (): Promise<{ response: string; roomId: UUID } | null> => {
       console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
       const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
       console.log(
@@ -392,7 +391,8 @@ export async function askAgentViaApi(
 
       if (agentMessages.length > 0) {
         const latestMessage = agentMessages.sort(
-          (a: Message, b: Message) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          (a: Message, b: Message) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )[0];
         console.log(`🔧 [askAgentViaApi] ✅ Returning latest message: "${latestMessage.content}"`);
         return { response: latestMessage.content, roomId: channel.id as UUID };

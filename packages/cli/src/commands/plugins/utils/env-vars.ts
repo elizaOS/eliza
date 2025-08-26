@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { EnvVarConfig } from '../types';

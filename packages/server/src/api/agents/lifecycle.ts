@@ -57,7 +57,10 @@ export function createAgentLifecycleRouter(
         status: 'active',
       });
     } catch (error) {
-      logger.error('[AGENT START] Error starting agent:', error);
+      logger.error(
+        '[AGENT START] Error starting agent:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

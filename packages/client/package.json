@@ -5,14 +5,15 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
+    "dev": "vite",
     "start:client": "vite",
     "dev:client": "vite --host 0.0.0.0 --port 5173",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "bun test",
     "test:all": "./scripts/test-all.sh",
     "test:quick": "./scripts/test-quick.sh",
@@ -72,9 +73,10 @@
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
     "vite-plugin-compression": "^0.5.1",
-    "vite-plugin-node-polyfills": "0.24.0"
+    "vite-plugin-node-polyfills": "^0.24.0"
   },
   "devDependencies": {
+    "@rollup/plugin-inject": "^5.0.5",
     "@cypress/react": "^9.0.1",
     "@cypress/vite-dev-server": "^6.0.3",
     "@eslint/js": "^9.22.0",
@@ -93,7 +95,7 @@
     "@types/semver": "^7.5.8",
     "@typescript-eslint/eslint-plugin": "8.26.0",
     "@typescript-eslint/parser": "8.26.0",
-    "@vitejs/plugin-react-swc": "^3.8.0",
+    "@vitejs/plugin-react-swc": "^4.0.1",
     "asn1.js": "^5.4.1",
     "assert": "^2.1.0",
     "bn.js": "^5.2.2",
@@ -126,8 +128,10 @@
     "jsdom": "^26.1.0",
     "md5.js": "^1.3.5",
     "miller-rabin": "^4.0.1",
+    "node-stdlib-browser": "^1.3.1",
     "os-browserify": "^0.3.0",
     "parse-asn1": "^5.1.7",
+    "path-browserify": "^1.0.1",
     "pbkdf2": "^3.1.2",
     "postcss": "^8.5.3",
     "prettier": "3.5.3",
@@ -145,7 +149,7 @@
     "typescript-eslint": "^8.26.0",
     "url": "^0.11.4",
     "util": "^0.12.5",
-    "vite": "^6.3.5",
+    "vite": "^7.1.3",
     "vite-tsconfig-paths": "^5.1.4",
     "wait-on": "^8.0.3"
   }

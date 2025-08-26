@@ -2,7 +2,7 @@ import { type IAgentRuntime } from '@elizaos/core';
 
 /**
  * Base class for E2E test suites that work with the ElizaOS test runner.
- * 
+ *
  * This follows the ElizaOS testing pattern where test classes are instantiated
  * by the TestRunner and provided with a live IAgentRuntime instance.
  */
@@ -36,7 +36,9 @@ export abstract class TestSuite {
       },
       toEqual: (expected: any) => {
         if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-          throw new Error(`Expected ${JSON.stringify(actual)} to equal ${JSON.stringify(expected)}`);
+          throw new Error(
+            `Expected ${JSON.stringify(actual)} to equal ${JSON.stringify(expected)}`
+          );
         }
       },
       toBeDefined: () => {
@@ -89,7 +91,7 @@ export abstract class TestSuite {
         if (!threw) {
           throw new Error(`Expected function to throw an error`);
         }
-      }
+      },
     };
   }
 }

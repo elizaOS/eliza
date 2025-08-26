@@ -208,6 +208,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     registerService: mock().mockResolvedValue(undefined),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
+    getServiceLoadPromise: mock().mockResolvedValue(null),
 
     // Plugin/Action/Provider methods
     registerPlugin: mock().mockResolvedValue(undefined),

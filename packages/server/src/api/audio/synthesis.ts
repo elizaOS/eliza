@@ -40,7 +40,10 @@ export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express
 
       res.send(audioResult.buffer);
     } catch (error) {
-      logger.error('[TTS] Error generating speech:', error);
+      logger.error(
+        '[TTS] Error generating speech:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -87,7 +90,10 @@ export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express
         `[SPEECH GENERATE] Successfully generated speech for: ${runtime.character.name}`
       );
     } catch (error) {
-      logger.error('[SPEECH GENERATE] Error generating speech:', error);
+      logger.error(
+        '[SPEECH GENERATE] Error generating speech:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

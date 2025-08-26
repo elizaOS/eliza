@@ -1,5 +1,6 @@
-import { AgentRuntime } from '@elizaos/core';
+import { AgentRuntime, Service } from '@elizaos/core';
 import { Scenario } from './schema';
+// @ts-ignore - lodash types not available
 import _ from 'lodash';
 
 type MockDefinition = NonNullable<NonNullable<Scenario['setup']>['mocks']>[0];
@@ -17,7 +18,12 @@ export class MockEngine {
   private originalGetService: AgentRuntime['getService'];
   private mockRegistry: Map<string, MockDefinition[]> = new Map();
   private mockHistory: MockExecutionHistory[] = [];
-  private logger: { info: (msg: string) => void; debug: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void; };
+  private logger: {
+    info: (msg: string) => void;
+    debug: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+  };
 
   constructor(private runtime: AgentRuntime) {
     this.originalGetService = this.runtime.getService.bind(this.runtime);
@@ -38,8 +44,12 @@ export class MockEngine {
     }
 
     // Replace the original getService with our mocked version
-    this.runtime.getService = <T>(name: string): T => {
+    this.runtime.getService = <T extends Service = Service>(name: string): T | null => {
       const originalService = this.originalGetService<T>(name);
+
+      if (!originalService) {
+        return null;
+      }
 
       // Return a proxy for the service that intercepts all method calls
       return new Proxy(originalService as object, {
@@ -73,7 +83,7 @@ export class MockEngine {
             return Reflect.get(target, prop, receiver)(...args);
           };
         },
-      }) as T;
+      }) as unknown as T;
     };
   }
 
@@ -112,7 +122,7 @@ export class MockEngine {
   private async executeMock(mock: MockDefinition, args: unknown[]): Promise<unknown> {
     // Handle metadata (delay, probability)
     if (mock.metadata?.delay) {
-      await new Promise((resolve) => setTimeout(resolve, mock.metadata.delay));
+      await new Promise((resolve) => setTimeout(resolve, mock.metadata!.delay));
     }
 
     if (mock.metadata?.probability && Math.random() < mock.metadata.probability) {
@@ -468,7 +478,7 @@ export class MockEngine {
       // Navigate the property path safely
       for (const prop of propertyPath) {
         if (current && typeof current === 'object' && prop in current) {
-          current = current[prop];
+          current = (current as any)[prop];
         } else {
           return undefined;
         }
