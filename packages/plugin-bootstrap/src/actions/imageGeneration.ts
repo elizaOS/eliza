@@ -10,6 +10,7 @@ import {
   ContentType,
   parseKeyValueXml,
   type ActionResult,
+  logger,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -51,82 +52,102 @@ export const generateImageAction = {
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
-    const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
+    try {
+      const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
 
-    state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
+      state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
 
-    const prompt = composePromptFromState({
-      state,
-      template: runtime.character.templates?.imageGenerationTemplate || imageGenerationTemplate,
-    });
+      const prompt = composePromptFromState({
+        state,
+        template: runtime.character.templates?.imageGenerationTemplate || imageGenerationTemplate,
+      });
 
-    const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-    });
+      const promptResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
 
-    // Parse XML response
-    const parsedXml = parseKeyValueXml(promptResponse);
+      // Parse XML response
+      const parsedXml = parseKeyValueXml(promptResponse);
 
-    const imagePrompt = parsedXml?.prompt || 'Unable to generate descriptive prompt for image';
+      const imagePrompt = parsedXml?.prompt || 'Unable to generate descriptive prompt for image';
 
-    const imageResponse = await runtime.useModel(ModelType.IMAGE, {
-      prompt: imagePrompt,
-    });
+      const imageResponse = await runtime.useModel(ModelType.IMAGE, {
+        prompt: imagePrompt,
+      });
 
-    if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
-      console.error('generateImageAction: Image generation failed - no valid response received', {
-        imageResponse,
-        imagePrompt,
+      if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
+        logger.error('generateImageAction: Image generation failed - no valid response received', {
+          imageResponse,
+          imagePrompt,
+        });
+        return {
+          text: 'Image generation failed',
+          values: {
+            success: false,
+            error: 'IMAGE_GENERATION_FAILED',
+            prompt: imagePrompt,
+          },
+          data: {
+            actionName: 'GENERATE_IMAGE',
+            prompt: imagePrompt,
+            rawResponse: imageResponse,
+          },
+          success: false,
+        };
+      }
+
+      const imageUrl = imageResponse[0].url;
+
+      const responseContent = {
+        attachments: [
+          {
+            id: v4(),
+            url: imageUrl,
+            title: 'Generated Image',
+            contentType: ContentType.IMAGE,
+          },
+        ],
+        thought: `Generated an image based on: "${imagePrompt}"`,
+        actions: ['GENERATE_IMAGE'],
+        text: imagePrompt,
+      };
+
+      await callback(responseContent);
+
+      return {
+        text: 'Generated image',
+        values: {
+          success: true,
+          imageGenerated: true,
+          imageUrl,
+          prompt: imagePrompt,
+        },
+        data: {
+          actionName: 'GENERATE_IMAGE',
+          imageUrl,
+          prompt: imagePrompt,
+        },
+        success: true,
+      };
+    } catch (error) {
+      const err = error as Error;
+      logger.error('generateImageAction: Exception during image generation', {
+        message: err.message,
+        stack: err.stack,
       });
       return {
         text: 'Image generation failed',
         values: {
           success: false,
           error: 'IMAGE_GENERATION_FAILED',
-          prompt: imagePrompt,
         },
         data: {
           actionName: 'GENERATE_IMAGE',
-          prompt: imagePrompt,
-          rawResponse: imageResponse,
+          errorMessage: err.message,
         },
         success: false,
       };
     }
-
-    const imageUrl = imageResponse[0].url;
-
-    const responseContent = {
-      attachments: [
-        {
-          id: v4(),
-          url: imageUrl,
-          title: 'Generated Image',
-          contentType: ContentType.IMAGE,
-        },
-      ],
-      thought: `Generated an image based on: "${imagePrompt}"`,
-      actions: ['GENERATE_IMAGE'],
-      text: imagePrompt,
-    };
-
-    await callback(responseContent);
-
-    return {
-      text: 'Generated image',
-      values: {
-        success: true,
-        imageGenerated: true,
-        imageUrl,
-        prompt: imagePrompt,
-      },
-      data: {
-        actionName: 'GENERATE_IMAGE',
-        imageUrl,
-        prompt: imagePrompt,
-      },
-      success: true,
-    };
   },
   examples: [
     [
