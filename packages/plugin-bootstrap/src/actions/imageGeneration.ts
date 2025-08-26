@@ -9,6 +9,7 @@ import {
   type State,
   ContentType,
   parseKeyValueXml,
+  type ActionResult,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -49,7 +50,7 @@ export const generateImageAction = {
     _options: any,
     callback: HandlerCallback,
     responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
 
     state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
@@ -77,7 +78,20 @@ export const generateImageAction = {
         imageResponse,
         imagePrompt,
       });
-      return;
+      return {
+        text: 'Image generation failed',
+        values: {
+          success: false,
+          error: 'IMAGE_GENERATION_FAILED',
+          prompt: imagePrompt,
+        },
+        data: {
+          actionName: 'GENERATE_IMAGE',
+          prompt: imagePrompt,
+          rawResponse: imageResponse,
+        },
+        success: false,
+      };
     }
 
     const imageUrl = imageResponse[0].url;
@@ -98,7 +112,21 @@ export const generateImageAction = {
 
     await callback(responseContent);
 
-    return true;
+    return {
+      text: 'Generated image',
+      values: {
+        success: true,
+        imageGenerated: true,
+        imageUrl,
+        prompt: imagePrompt,
+      },
+      data: {
+        actionName: 'GENERATE_IMAGE',
+        imageUrl,
+        prompt: imagePrompt,
+      },
+      success: true,
+    };
   },
   examples: [
     [
