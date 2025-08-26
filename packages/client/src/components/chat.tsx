@@ -314,7 +314,7 @@ export default function Chat({
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
-    targetAgentData!
+    targetAgentData || ({} as Agent)  // Provide safe default if undefined
   );
 
   // Use the new hooks for DM channel management
@@ -736,15 +736,21 @@ export default function Chat({
       return;
     }
 
+    // Guard against undefined channel IDs
+    if (!finalChannelIdForHooks || !chatState.currentDmChannelId) {
+      clientLogger.warn('Cannot update chat title: missing channel ID');
+      return;
+    }
+
     const elizaClient = createElizaClient();
     const data = await elizaClient.messaging.generateChannelTitle(
-      finalChannelIdForHooks!,
+      finalChannelIdForHooks,
       contextId
     );
 
     const title = data?.title;
     const participants = await elizaClient.messaging.getChannelParticipants(
-      chatState.currentDmChannelId!
+      chatState.currentDmChannelId
     );
     if (title && participants) {
       // Handle different possible response formats for participants
@@ -755,7 +761,7 @@ export default function Chat({
         participantIds = participants.map((p) => p.userId || p.id || p);
       }
 
-      await elizaClient.messaging.updateChannel(finalChannelIdForHooks!, {
+      await elizaClient.messaging.updateChannel(finalChannelIdForHooks, {
         name: title,
         participantCentralUserIds: participantIds,
       });
@@ -962,7 +968,7 @@ export default function Chat({
       // Immediately remove message from UI for optimistic update
       removeMessage(messageId as UUID);
       // Call server mutation to delete on backend
-      deleteMessageCentral({ channelId: finalChannelIdForHooks!, messageId: validMessageId });
+      deleteMessageCentral({ channelId: finalChannelIdForHooks, messageId: validMessageId });
     }
   };
 
@@ -992,15 +998,28 @@ export default function Chat({
     addMessage(optimisticUiMessage);
     safeScrollToBottom();
 
+    // Guard against undefined IDs
+    if (!finalServerIdForHooks || !finalChannelIdForHooks) {
+      clientLogger.error('Cannot retry message: missing server or channel ID');
+      toast({
+        title: 'Error Sending Message',
+        description: 'Missing required channel information.',
+        variant: 'destructive',
+      });
+      updateChatState({ inputDisabled: false });
+      removeMessage(retryMessageId);
+      return;
+    }
+
     try {
       await sendMessage(
         finalTextContent,
-        finalServerIdForHooks!,
+        finalServerIdForHooks,
         chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
         message.attachments,
         retryMessageId,
         undefined,
-        finalChannelIdForHooks!
+        finalChannelIdForHooks
       );
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
@@ -1336,6 +1355,8 @@ export default function Chat({
                     label: 'Delete Group',
                     onClick: () => {
                       if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                      // Capture the channel ID to use in the async callback
+                      const channelIdToDelete = finalChannelIdForHooks;
                       confirm(
                         {
                           title: 'Delete Group',
@@ -1347,7 +1368,7 @@ export default function Chat({
                         async () => {
                           try {
                             const elizaClient = createElizaClient();
-                            await elizaClient.messaging.deleteChannel(finalChannelIdForHooks);
+                            await elizaClient.messaging.deleteChannel(channelIdToDelete);
                             toast({
                               title: 'Group Deleted',
                               description: 'The group has been successfully deleted.',
@@ -1466,6 +1487,15 @@ export default function Chat({
                   agentAvatarMap={agentAvatarMap}
                   onDeleteMessage={handleDeleteMessage}
                   onRetryMessage={(messageText) => {
+                    // Ensure we have required IDs before retrying
+                    if (!finalChannelIdForHooks) {
+                      toast({
+                        title: 'Error',
+                        description: 'Cannot retry message: missing channel information.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
                     const message: UiMessage = {
                       id: randomUUID() as UUID,
                       text: messageText,
@@ -1473,7 +1503,7 @@ export default function Chat({
                       senderId: currentClientEntityId as UUID,
                       isAgent: false,
                       createdAt: Date.now(),
-                      channelId: finalChannelIdForHooks as UUID,
+                      channelId: finalChannelIdForHooks,
                       serverId: finalServerIdForHooks,
                     };
                     handleRetryMessage(message);
@@ -1546,6 +1576,15 @@ export default function Chat({
                         agentAvatarMap={agentAvatarMap}
                         onDeleteMessage={handleDeleteMessage}
                         onRetryMessage={(messageText) => {
+                          // Ensure we have required IDs before retrying
+                          if (!finalChannelIdForHooks) {
+                            toast({
+                              title: 'Error',
+                              description: 'Cannot retry message: missing channel information.',
+                              variant: 'destructive',
+                            });
+                            return;
+                          }
                           const message: UiMessage = {
                             id: randomUUID() as UUID,
                             text: messageText,
@@ -1553,7 +1592,7 @@ export default function Chat({
                             senderId: currentClientEntityId as UUID,
                             isAgent: false,
                             createdAt: Date.now(),
-                            channelId: finalChannelIdForHooks as UUID,
+                            channelId: finalChannelIdForHooks,
                             serverId: finalServerIdForHooks,
                           };
                           handleRetryMessage(message);
