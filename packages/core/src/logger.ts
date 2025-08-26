@@ -629,7 +629,7 @@ function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
 // Configuration
 // ============================================================================
 
-const customLevels: Record<string, number> = {
+export const customLevels: Record<string, number> = {
   fatal: 60,
   error: 50,
   warn: 40,

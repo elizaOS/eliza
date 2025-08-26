@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from '@elizaos/core';
 import {
   logger,
+  customLevels,
   SOCKET_MESSAGE_TYPE,
   validateUuid,
   ChannelType,
@@ -477,17 +478,10 @@ export class SocketIORouter {
           shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
         }
         if (filters.level && filters.level !== 'all') {
-          // Map log levels to numeric values
-          const levelMap: Record<string, number> = {
-            error: 50,
-            warn: 40,
-            info: 30,
-            debug: 20,
-            trace: 10,
-          };
+          // Use logger levels directly from @elizaos/core
           const numericLevel =
             typeof filters.level === 'string'
-              ? levelMap[filters.level.toLowerCase()] || 70
+              ? customLevels[filters.level.toLowerCase()] || 70
               : filters.level;
           shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
         }
