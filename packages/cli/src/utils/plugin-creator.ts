@@ -64,11 +64,11 @@ export class PluginCreator {
       message,
       validate: required
         ? (value) => {
-            if (!value || value.trim() === '') {
-              return 'At least one item is required';
-            }
-            return undefined;
+          if (!value || value.trim() === '') {
+            return 'At least one item is required';
           }
+          return undefined;
+        }
         : undefined,
     });
 
@@ -351,8 +351,8 @@ export class PluginCreator {
       main: 'dist/index.js',
       types: 'dist/index.d.ts',
       scripts: {
-        build: 'tsup',
-        dev: 'tsup --watch',
+        build: 'bun run build.ts',
+        dev: 'bun run build.ts --watch',
         test: 'bun test',
         'test:watch': 'bun test --watch',
       },
@@ -360,7 +360,6 @@ export class PluginCreator {
         '@elizaos/core': '^1.0.0',
       },
       devDependencies: {
-        tsup: '^8.4.0',
         typescript: '^5.3.0',
         '@types/bun': '^1.0.0',
         '@types/node': '^20.0.0',
@@ -386,20 +385,62 @@ export class PluginCreator {
 
     await fs.writeJSON(path.join(this.pluginPath!, 'tsconfig.json'), tsconfig, { spaces: 2 });
 
-    // Create tsup.config.ts
-    const tsupConfig = `import { defineConfig } from 'tsup';
+    // Create tsconfig.build.json for declaration generation
+    const tsconfigBuild = {
+      extends: './tsconfig.json',
+      compilerOptions: {
+        target: 'ES2021',
+        module: 'ESNext',
+        moduleResolution: 'node',
+        esModuleInterop: true,
+        skipLibCheck: true,
+        lib: ['ES2021'],
+        forceConsistentCasingInFileNames: true,
+        allowSyntheticDefaultImports: true,
+        rootDir: './src',
+        outDir: './dist',
+        declaration: true,
+        noEmit: false,
+        sourceMap: true,
+        typeRoots: ['./node_modules/@types'],
+      },
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/__tests__/**', 'src/**/*.test.ts', 'src/**/*.spec.ts', 'node_modules', 'dist'],
+    };
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['cjs', 'esm'],
-  dts: true,
-  sourcemap: true,
-  clean: true,
-  external: ['@elizaos/core'],
+    await fs.writeJSON(path.join(this.pluginPath!, 'tsconfig.build.json'), tsconfigBuild, { spaces: 2 });
+
+    // Create build.ts
+    const buildScript = `#!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-${pluginName} using standardized build utilities
+ */
+
+import { createBuildRunner } from '@elizaos/utils';
+
+// Create and run the standardized build runner
+const run = createBuildRunner({
+  packageName: '@elizaos/plugin-${pluginName}',
+  buildOptions: {
+    entrypoints: ['src/index.ts'],
+    outdir: 'dist',
+    target: 'node',
+    format: 'esm',
+    external: ['@elizaos/core'],
+    sourcemap: true,
+    minify: false,
+    generateDts: true,
+  },
+});
+
+// Execute the build
+run().catch((error) => {
+  console.error('Build script error:', error);
+  process.exit(1);
 });
 `;
 
-    await fs.writeFile(path.join(this.pluginPath!, 'tsup.config.ts'), tsupConfig);
+    await fs.writeFile(path.join(this.pluginPath!, 'build.ts'), buildScript);
 
     // Bun test doesn't need a separate config file
     // Configuration is handled in package.json
@@ -432,9 +473,9 @@ bun install @elizaos/plugin-${pluginName}
 
 \`\`\`typescript
 import { plugin${pluginName
-      .split('-')
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join('')} } from '@elizaos/plugin-${pluginName}';
+        .split('-')
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join('')} } from '@elizaos/plugin-${pluginName}';
 
 // Add to your ElizaOS configuration
 \`\`\`
@@ -446,9 +487,9 @@ import { plugin${pluginName
     const indexContent = `import { Plugin } from '@elizaos/core';
 
 export const plugin${pluginName
-      .split('-')
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join('')}: Plugin = {
+        .split('-')
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join('')}: Plugin = {
   name: 'plugin-${pluginName}',
   version: '0.1.0',
   actions: [],
@@ -458,9 +499,9 @@ export const plugin${pluginName
 };
 
 export default plugin${pluginName
-      .split('-')
-      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-      .join('')};
+        .split('-')
+        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+        .join('')};
 `;
 
     await fs.writeFile(path.join(this.pluginPath!, 'src/index.ts'), indexContent);

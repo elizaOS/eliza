@@ -1,0 +1,21 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "types": [
+            "node",
+            "bun"
+        ],
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "allowUnusedLabels": true
+    },
+    "include": [
+        "src/**/*",
+        "src/__tests__"
+    ]
+}

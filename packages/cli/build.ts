@@ -3,7 +3,7 @@
  * Build script for @elizaos/cli using standardized build utilities
  */
 
-import { createBuildRunner, copyAssets } from '../../build-utils';
+import { createBuildRunner, copyAssets } from '@elizaos/utils';
 import { $ } from 'bun';
 
 // Custom pre-build step to copy templates

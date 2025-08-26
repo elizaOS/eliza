@@ -23,6 +23,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/utils": "workspace:*",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

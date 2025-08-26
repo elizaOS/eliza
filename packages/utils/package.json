@@ -1,0 +1,46 @@
+{
+    "name": "@elizaos/utils",
+    "version": "1.4.2",
+    "description": "Common build utilities for ElizaOS packages",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "bun": "./dist/index.js",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "bun": "./dist/index.js",
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "bun run build.ts",
+        "dev": "bun run build.ts --watch",
+        "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+        "test": "bun test --coverage",
+        "test:coverage": "bun test --coverage",
+        "test:watch": "bun test --watch",
+        "format": "prettier --write ./src",
+        "format:check": "prettier --check ./src",
+        "lint": "prettier --write ./src"
+    },
+    "author": "ElizaOS",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/bun": "^1.2.20",
+        "@types/node": "^24.0.3",
+        "prettier": "3.5.3",
+        "typescript": "5.8.3"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2"
+}

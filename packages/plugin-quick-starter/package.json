@@ -41,6 +41,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/utils": "workspace:*",
     "zod": "^3.24.4"
   },
   "devDependencies": {

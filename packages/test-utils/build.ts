@@ -3,7 +3,7 @@
  * Build script for @elizaos/test-utils using standardized build utilities
  */
 
-import { createBuildRunner } from '../../build-utils';
+import { createBuildRunner } from '@elizaos/utils';
 
 // Create and run the standardized build runner
 const run = createBuildRunner({
