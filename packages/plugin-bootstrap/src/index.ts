@@ -923,8 +923,11 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           executionResult = actionResults[0].text;
         }
       } else if (nextStepType === 'provider') {
-        const provider = runtime.providers.find((p) => p.name === nextStepName);
-        executionResult = await provider?.get(runtime, message, state);
+        const provider = runtime.providers.find(
+          (p) => p.name === nextStepName
+        );
+        const providerResult = await provider?.get(runtime, message, state);
+        executionResult = providerResult.text;
         await callback(stepContent);
       }
 
