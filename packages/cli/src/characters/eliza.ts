@@ -226,7 +226,7 @@ export function getElizaCharacter(): Character {
   const plugins = [
     // Core plugins first
     '@elizaos/plugin-sql',
-    
+
     // Text-only plugins (no embedding support)
     ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
     ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
