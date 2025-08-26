@@ -1190,12 +1190,11 @@ export class BM25 {
       this.averageDocLength = 0;
       return;
     }
-    // Use Array.prototype.reduce for compatibility, though typed array reduce might be faster
-    const totalLength = Array.prototype.reduce.call(
-      this.documentLengths,
-      (sum: unknown, len: any) => (sum as number) + (len as number),
+    // Use the typed array's reduce method for type safety and performance
+    const totalLength = this.documentLengths.reduce(
+      (sum, len) => sum + len,
       0
-    ) as number;
+    );
     this.averageDocLength = totalLength / this.documentLengths.length;
   }
 
