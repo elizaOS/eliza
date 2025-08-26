@@ -417,7 +417,7 @@ Analyze the conversation and previous results, then choose ONE of:
 </response>
 </output>`;
 
-const multiStepSummaryTemplate = () => `
+const multiStepSummaryTemplate = `
 <task>
 Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
 </task>
@@ -700,10 +700,9 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
   }
 
   accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
-  const summaryTemplate = multiStepSummaryTemplate();
   const summaryPrompt = composePromptFromState({
     state: accumulatedState,
-    template: summaryTemplate,
+    template: multiStepSummaryTemplate,
   });
 
   const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
