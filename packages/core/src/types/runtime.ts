@@ -3,7 +3,7 @@ import type { Action, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { Entity, Room, World } from './environment';
-import { Memory } from './memory';
+import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
 import type { Plugin, Route } from './plugin';
@@ -46,6 +46,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getAllServices(): Map<ServiceTypeName, Service[]>;
 
   registerService(service: typeof Service): Promise<void>;
+
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service>;
 
   getRegisteredServiceTypes(): ServiceTypeName[];
 
@@ -152,9 +154,20 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
+  /**
+   * Queue a memory for async embedding generation.
+   * This method is non-blocking and returns immediately.
+   * The embedding will be generated asynchronously via event handlers.
+   * @param memory The memory to generate embeddings for
+   * @param priority Priority level for the embedding generation
+   */
+  queueEmbeddingGeneration(memory: Memory, priority?: 'high' | 'normal' | 'low'): Promise<void>;
+
   getAllMemories(): Promise<Memory[]>;
 
   clearAllAgentMemories(): Promise<void>;
+
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
 
   // Run tracking methods
   createRunId(): UUID;

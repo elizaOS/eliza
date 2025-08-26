@@ -146,7 +146,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     }),
     composePrompt: mock().mockReturnValue('Composed prompt'),
     composeState: mock().mockResolvedValue({ values: {}, data: {} }),
-    createMemory: mock().mockResolvedValue({ id: 'memory-id' }),
+    createMemory: mock().mockResolvedValue('memory-id' as UUID),
     getRoom: mock().mockResolvedValue({
       id: 'room-id',
       name: 'Test Room',
@@ -180,6 +180,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       roomId: 'test-room-id',
       content: { text: 'Test fact' },
     }),
+    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
     createRelationship: mock().mockResolvedValue(true),
     updateRelationship: mock().mockResolvedValue(true),
     getRelationships: mock().mockResolvedValue([]),

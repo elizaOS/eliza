@@ -145,9 +145,10 @@ export async function upgradePlugin(pluginPath: string, opts: UpgradePluginOptio
     });
 
     // Set up event listeners for progress
-    let messageCount = 0;
-    agent.on('progress', (count) => {
-      messageCount = count;
+    agent.on('progress', (data?: unknown) => {
+      // Progress tracking handled by event
+      const count = typeof data === 'number' ? data : 0;
+      console.debug(`Migration progress: ${count} messages`);
     });
 
     // Run migration

@@ -13,7 +13,7 @@ const CLIENT_PLUGIN_MAPPINGS: Record<string, string> = {
 
 const ESSENTIAL_PLUGINS = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'];
 
-export interface V1Character extends Character {
+export interface V1Character {
   name: string;
   lore?: string[];
   clients?: string[];
@@ -33,6 +33,8 @@ export interface V1Character extends Character {
   };
   adjectives?: string[];
   postExamples?: string[];
+  // Additional properties that might exist
+  [key: string]: any;
 }
 
 export function useConvertCharacter() {

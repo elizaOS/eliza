@@ -271,10 +271,9 @@ interface ExtendedPrettyOptions extends Partial<BasePrettyOptions> {
   // Custom level colors mapping
   levelColors?: Record<string | number, string>;
   // Custom prettifiers for different log properties
-  customPrettifiers?: {
+  customPrettifiers?: Record<string, (value: unknown) => string> & {
     level?: (inputData: unknown) => string;
-    msg?: (msg: string) => string;
-    [key: string]: ((value: unknown) => string) | undefined;
+    msg?: (msg: unknown) => string;
   };
 }
 
@@ -591,10 +590,13 @@ function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
     };
 
   const clear = (): void => {
-    inMemoryDestination.clear();
+    // Check if inMemoryDestination.clear exists before calling it
+    if (inMemoryDestination.clear && typeof inMemoryDestination.clear === 'function') {
+      inMemoryDestination.clear();
+    }
     // Check if console.clear exists before calling it
     const consoleObj = getConsole();
-    if (consoleObj && consoleObj.clear) {
+    if (consoleObj && typeof consoleObj.clear === 'function') {
       consoleObj.clear();
     }
   };
@@ -627,7 +629,7 @@ function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
 // Configuration
 // ============================================================================
 
-const customLevels: Record<string, number> = {
+export const customLevels: Record<string, number> = {
   fatal: 60,
   error: 50,
   warn: 40,
@@ -745,9 +747,12 @@ const createPrettyConfig = (): ExtendedPrettyOptions => ({
       return String(level).toUpperCase();
     },
     // Add a custom prettifier for error messages
-    msg: (msg: string) => {
+    msg: (msg: unknown) => {
       // Replace "ERROR (TypeError):" pattern with just "ERROR:"
-      return msg.replace(/ERROR \([^)]+\):/g, 'ERROR:');
+      if (typeof msg === 'string') {
+        return msg.replace(/ERROR \([^)]+\):/g, 'ERROR:');
+      }
+      return String(msg);
     },
   },
   messageFormat: '{msg}',

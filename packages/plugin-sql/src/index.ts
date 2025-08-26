@@ -83,7 +83,7 @@ export const plugin: Plugin = {
   name: '@elizaos/plugin-sql',
   description: 'A plugin for SQL database access with dynamic schema migrations',
   priority: 0,
-  schema,
+  schema: schema,
   init: async (_, runtime: IAgentRuntime) => {
     logger.info('plugin-sql init starting...');
 

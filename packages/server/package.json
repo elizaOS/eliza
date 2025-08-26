@@ -29,23 +29,23 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsup && bun run src/scripts/copy-client-dist.ts",
+    "build": "bun run build.ts",
     "type-check": "tsc --project tsconfig.build.json --noEmit",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "bun test src/**/*.test.ts",
     "test:unit": "bun test src/**/*.test.ts --exclude **/integration/**",
     "test:integration": "bun test src/__tests__/integration/**/*.test.ts",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
-    "test:cli": "bun test tests/commands/"
+    "test:cli": "bun test tests/commands/",
+    "dev": "bun run build.ts --watch"
   },
   "devDependencies": {
     "@types/node": "^24.0.1",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "tsx": "4.19.4",
     "typescript": "^5.5.4",
     "which": "^4.0.0",

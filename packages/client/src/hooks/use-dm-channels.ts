@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 const elizaClient = createElizaClient();
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
+import { mapApiChannelToClient } from '@/lib/api-type-mappers';
 import clientLogger from '@/lib/logger';
 import { STALE_TIMES } from './use-query-hooks';
 import { getEntityId } from '@/lib/utils';
@@ -76,7 +77,10 @@ export function useDmChannelsForAgent(
 
       const elizaClient = createElizaClient();
       const result = await elizaClient.messaging.getServerChannels(serverId);
-      const allChannels = result.channels || [];
+      const apiChannels = result.channels || [];
+
+      // Map API channels to client type
+      const allChannels = apiChannels.map(mapApiChannelToClient);
 
       const dmChannels = allChannels.filter((channel) => {
         const metadata = channel.metadata || {};
@@ -157,10 +161,10 @@ export function useCreateDmChannel() {
       const elizaClient = createElizaClient();
       const result = await elizaClient.messaging.createGroupChannel({
         name: channelName.trim(),
-        participantCentralUserIds: [currentUserId, agentId],
-        type: ChannelType.DM, // Set type to DM
-        server_id: '00000000-0000-0000-0000-000000000000' as UUID, // Use the default server
+        participantIds: [currentUserId, agentId],
         metadata: {
+          type: ChannelType.DM, // Set type to DM
+          server_id: '00000000-0000-0000-0000-000000000000' as UUID, // Use the default server
           isDm: true, // Mark it as a DM type conversation
           user1: currentUserId, // Explicitly store participants for filtering
           user2: agentId,
