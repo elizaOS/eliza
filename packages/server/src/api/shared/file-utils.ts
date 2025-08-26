@@ -70,7 +70,10 @@ export const cleanupFile = (filePath: string) => {
       logger.debug(`[FILE] Successfully cleaned up file: ${normalizedPath}`);
     }
   } catch (error) {
-    logger.error(`Error cleaning up file ${filePath}:`, error);
+    logger.error(
+      `Error cleaning up file ${filePath}:`,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 };
 

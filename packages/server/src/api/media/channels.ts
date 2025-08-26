@@ -6,6 +6,8 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
+
+
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -14,11 +16,15 @@ const upload = multer({
     fileSize: MAX_FILE_SIZE,
     files: 1,
   },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+  fileFilter: (_req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    // Check if mimetype is in the allowed list
+    const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some(
+      (allowed) => allowed === file.mimetype
+    );
+    if (isAllowed) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type'), false);
+      cb(new Error(`Invalid file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
     }
   },
 });

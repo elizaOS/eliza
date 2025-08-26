@@ -29,11 +29,6 @@ export const messageHandlerTemplate = `<task>Generate dialog and actions for the
 {{providers}}
 </providers>
 
-These are the available valid actions:
-<actionNames>
-{{actionNames}}
-</actionNames>
-
 <instructions>
 Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
 

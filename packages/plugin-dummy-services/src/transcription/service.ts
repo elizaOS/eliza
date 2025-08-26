@@ -1,28 +1,57 @@
-import { IAgentRuntime } from '@elizaos/core';
-import {
-  ITranscriptionService,
-  TranscriptionOptions,
-  TranscriptionResult,
-  TranscriptionSegment,
-  TranscriptionWord,
-  SpeechToTextOptions,
-  TextToSpeechOptions,
-} from '@elizaos/core';
+import { IAgentRuntime, Service, ServiceType, logger } from '@elizaos/core';
+
+// Define transcription-specific types locally since they're not in core
+export interface TranscriptionOptions {
+  language?: string;
+  model?: string;
+  prompt?: string;
+  temperature?: number;
+  timestamps?: boolean;
+}
+
+export interface TranscriptionResult {
+  text: string;
+  language?: string;
+  duration?: number;
+  segments?: TranscriptionSegment[];
+  words?: TranscriptionWord[];
+}
+
+export interface TranscriptionSegment {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  confidence?: number;
+}
+
+export interface TranscriptionWord {
+  word: string;
+  start: number;
+  end: number;
+  confidence?: number;
+}
+
+export interface SpeechToTextOptions extends TranscriptionOptions {
+  format?: 'json' | 'text' | 'srt' | 'vtt';
+}
+
+export interface TextToSpeechOptions {
+  voice?: string;
+  speed?: number;
+  pitch?: number;
+  language?: string;
+  format?: 'mp3' | 'wav' | 'ogg';
+}
 
 /**
  * Dummy transcription service for testing purposes
  * Provides mock implementations of transcription operations
  */
-export class DummyTranscriptionService extends ITranscriptionService {
-  static override readonly serviceType = ITranscriptionService.serviceType;
+export class DummyTranscriptionService extends Service {
+  static readonly serviceType = ServiceType.TRANSCRIPTION;
 
-  private supportedLanguages = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko'];
-  private availableVoices = [
-    { id: 'en-US-male', name: 'John', language: 'en-US', gender: 'male' as const },
-    { id: 'en-US-female', name: 'Jane', language: 'en-US', gender: 'female' as const },
-    { id: 'es-ES-male', name: 'Carlos', language: 'es-ES', gender: 'male' as const },
-    { id: 'fr-FR-female', name: 'Marie', language: 'fr-FR', gender: 'female' as const },
-  ];
+  capabilityDescription = 'Dummy transcription service for testing';
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -35,173 +64,130 @@ export class DummyTranscriptionService extends ITranscriptionService {
   }
 
   async initialize(): Promise<void> {
-    this.runtime.logger.info('DummyTranscriptionService initialized');
+    logger.info('DummyTranscriptionService initialized');
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger.info('DummyTranscriptionService stopped');
+    logger.info('DummyTranscriptionService stopped');
   }
 
   async transcribeAudio(
-    audioPath: string | Buffer,
+    audioBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    const filename = Buffer.isBuffer(audioPath) ? 'audio-buffer' : audioPath;
-    this.runtime.logger.debug(`Transcribing audio from ${filename}`);
+    logger.debug(`Transcribing audio (${audioBuffer.length} bytes)`, JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Transcription options:', options);
-    }
-
-    // Mock transcription result
-    const mockText =
-      'Hello, this is a mock transcription from the dummy service. The audio has been processed and converted to text. This demonstrates the transcription capabilities of the system.';
-
-    const words: TranscriptionWord[] = mockText.split(' ').map((word, index) => ({
-      word: word.replace(/[.,!?]/, ''),
-      start: index * 0.5,
-      end: (index + 1) * 0.5,
-      confidence: 0.9 + Math.random() * 0.1,
-    }));
-
+    // Generate dummy transcription with segments
     const segments: TranscriptionSegment[] = [
       {
         id: 0,
-        text: 'Hello, this is a mock transcription from the dummy service.',
         start: 0,
         end: 5,
+        text: 'This is the first segment of dummy transcription.',
         confidence: 0.95,
-        temperature: 0.0,
-        avg_logprob: -0.1,
-        compression_ratio: 1.2,
-        no_speech_prob: 0.01,
       },
       {
         id: 1,
-        text: 'The audio has been processed and converted to text.',
         start: 5,
         end: 10,
+        text: 'This is the second segment with more text.',
         confidence: 0.92,
-        temperature: 0.0,
-        avg_logprob: -0.12,
-        compression_ratio: 1.1,
-        no_speech_prob: 0.02,
       },
       {
         id: 2,
-        text: 'This demonstrates the transcription capabilities of the system.',
         start: 10,
         end: 15,
-        confidence: 0.89,
-        temperature: 0.0,
-        avg_logprob: -0.15,
-        compression_ratio: 1.3,
-        no_speech_prob: 0.03,
+        text: 'And this is the final segment of the transcription.',
+        confidence: 0.94,
       },
     ];
 
-    return {
-      text: mockText,
+    const words: TranscriptionWord[] = [
+      { word: 'This', start: 0, end: 0.5, confidence: 0.96 },
+      { word: 'is', start: 0.5, end: 0.8, confidence: 0.98 },
+      { word: 'the', start: 0.8, end: 1.0, confidence: 0.99 },
+      { word: 'first', start: 1.0, end: 1.5, confidence: 0.94 },
+      { word: 'segment', start: 1.5, end: 2.0, confidence: 0.93 },
+    ];
+
+    const result: TranscriptionResult = {
+      text: segments.map((s) => s.text).join(' '),
       language: options?.language || 'en',
       duration: 15,
-      segments: options?.response_format === 'verbose_json' ? segments : undefined,
-      words: options?.word_timestamps ? words : undefined,
-      confidence: 0.92,
+      segments: options?.timestamps ? segments : undefined,
+      words: options?.timestamps ? words : undefined,
     };
+
+    logger.debug(`Transcription complete: ${result.text.substring(0, 50)}...`);
+
+    return result;
   }
 
   async transcribeVideo(
-    videoPath: string | Buffer,
+    videoBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    const filename = Buffer.isBuffer(videoPath) ? 'video-buffer' : videoPath;
-    this.runtime.logger.debug(`Transcribing video from ${filename}`);
+    logger.debug(`Transcribing video (${videoBuffer.length} bytes)`, JSON.stringify(options));
 
-    // For video, we simulate extracting audio first, then transcribing
-    const mockText =
-      "This is a mock transcription from a video file. The video's audio track has been extracted and processed. The speaker discusses various topics including technology, AI, and automation systems.";
-
-    const words: TranscriptionWord[] = mockText.split(' ').map((word, index) => ({
-      word: word.replace(/[.,!?]/, ''),
-      start: index * 0.6,
-      end: (index + 1) * 0.6,
-      confidence: 0.85 + Math.random() * 0.15,
-    }));
-
-    return {
-      text: mockText,
-      language: options?.language || 'en',
-      duration: 20,
-      words: options?.word_timestamps ? words : undefined,
-      confidence: 0.88,
-    };
+    // Reuse audio transcription logic for video
+    return this.transcribeAudio(videoBuffer, options);
   }
 
   async speechToText(
-    audioStream: NodeJS.ReadableStream | Buffer,
+    audioBuffer: Buffer,
     options?: SpeechToTextOptions
-  ): Promise<TranscriptionResult> {
-    this.runtime.logger.debug('Processing real-time speech to text');
+  ): Promise<string | TranscriptionResult> {
+    logger.debug('Converting speech to text', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Speech to text options:', options);
+    const result = await this.transcribeAudio(audioBuffer, options);
+
+    logger.debug(`Speech to text complete: ${result.text.substring(0, 50)}...`);
+
+    // Return based on format option
+    if (options?.format === 'text' || !options?.format) {
+      return result.text;
     }
 
-    // Mock real-time transcription
-    const mockText =
-      'Real-time speech recognition is working. This is a continuous transcription from the audio stream.';
-
-    return {
-      text: mockText,
-      language: options?.language || 'en',
-      duration: 5,
-      confidence: 0.85,
-    };
+    return result;
   }
 
   async textToSpeech(text: string, options?: TextToSpeechOptions): Promise<Buffer> {
-    this.runtime.logger.debug(`Converting text to speech: "${text.substring(0, 50)}..."`);
+    logger.debug(
+      `Converting text to speech: "${text.substring(0, 50)}..."`,
+      JSON.stringify(options)
+    );
 
-    if (options) {
-      this.runtime.logger.debug('Text to speech options:', options);
-    }
+    // Return dummy audio buffer
+    const format = options?.format || 'mp3';
+    const dummyAudio = Buffer.from(`dummy-audio-${format}-${text.length}-chars`);
 
-    // Mock audio generation
-    const mockAudioData = `Mock audio data for: ${text}`;
-    const audioBuffer = Buffer.from(mockAudioData, 'utf8');
+    logger.debug(`Generated ${format} audio: ${dummyAudio.length} bytes`);
 
-    // Simulate processing time based on text length
-    await new Promise((resolve) => setTimeout(resolve, Math.min(text.length * 10, 1000)));
-
-    return audioBuffer;
+    return dummyAudio;
   }
 
-  async getSupportedLanguages(): Promise<string[]> {
-    return [...this.supportedLanguages];
+  async detectLanguage(audioBuffer: Buffer): Promise<string> {
+    logger.debug(`Detecting language from audio (${audioBuffer.length} bytes)`);
+
+    // Return dummy language code
+    return 'en';
   }
 
-  async getAvailableVoices(): Promise<
-    Array<{
-      id: string;
-      name: string;
-      language: string;
-      gender?: 'male' | 'female' | 'neutral';
-    }>
-  > {
-    return [...this.availableVoices];
+  async translateAudio(
+    audioBuffer: Buffer,
+    targetLanguage: string,
+    sourceLanguage?: string
+  ): Promise<TranscriptionResult> {
+    logger.debug(`Translating audio to ${targetLanguage}`, JSON.stringify({ sourceLanguage }));
+
+    return {
+      text: `This is dummy translated text in ${targetLanguage}.`,
+      language: targetLanguage,
+      duration: 10,
+    };
   }
 
-  async detectLanguage(audioPath: string | Buffer): Promise<string> {
-    const filename = Buffer.isBuffer(audioPath) ? 'audio-buffer' : audioPath;
-    this.runtime.logger.debug(`Detecting language from ${filename}`);
-
-    // Mock language detection - randomly pick a supported language
-    const randomLanguage =
-      this.supportedLanguages[Math.floor(Math.random() * this.supportedLanguages.length)];
-
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    return randomLanguage;
+  getDexName(): string {
+    return 'dummy-transcription';
   }
 }

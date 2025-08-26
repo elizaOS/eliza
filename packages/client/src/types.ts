@@ -8,6 +8,11 @@ import type {
   AgentStatus as CoreAgentStatus,
   ChannelType as CoreChannelType,
 } from '@elizaos/core';
+import type {
+  ServerMetadata,
+  ChannelMetadata,
+  MessageMetadata,
+} from '@elizaos/api-client';
 
 /**
  * Interface representing an attachment.
@@ -46,7 +51,7 @@ export interface MessageServer {
   name: string;
   sourceType: string;
   sourceId?: string;
-  metadata?: Record<string, any>;
+  metadata?: ServerMetadata;
   createdAt: string; // ISO Date string from server, or Date object
   updatedAt: string; // ISO Date string from server, or Date object
 }
@@ -60,7 +65,7 @@ export interface MessageChannel {
   sourceType?: string;
   sourceId?: string;
   topic?: string;
-  metadata?: Record<string, any>;
+  metadata?: ChannelMetadata;
   createdAt: string; // ISO Date string from server, or Date object
   updatedAt: string; // ISO Date string from server, or Date object
 }
@@ -75,18 +80,9 @@ export interface ServerMessage {
   authorDisplayName?: string; // Optional: May be in metadata or fetched separately
   content: string;
   createdAt: number; // Expecting timestamp MS for UI sorting/display
-  rawMessage?: any;
+  rawMessage?: unknown;
   inReplyToRootMessageId?: UUID;
   sourceType?: string;
   sourceId?: string;
-  metadata?: {
-    agentName?: string;
-    thought?: string;
-    actions?: string[];
-    attachments?: any[];
-    authorDisplayName?: string; // If API puts it here
-    serverId?: UUID; // If API puts it here
-    prompt?: string; // Add prompt field to store the LLM prompt
-    [key: string]: any;
-  };
+  metadata?: MessageMetadata;
 }

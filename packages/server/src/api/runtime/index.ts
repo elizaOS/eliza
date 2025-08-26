@@ -18,7 +18,7 @@ export function runtimeRouter(
   router.use('/', createHealthRouter(agents, serverInstance));
 
   // Mount logging endpoints
-  router.use('/', createLoggingRouter(agents, serverInstance));
+  router.use('/', createLoggingRouter());
 
   // Mount debug endpoints under /debug
   router.use('/debug', createDebugRouter(serverInstance));

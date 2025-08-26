@@ -1,7 +1,14 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 // Direct error handling without bridge layer
 import { createElizaClient } from '@/lib/api-client-config';
-import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
+import type {
+  Agent,
+  Content,
+  Memory,
+  UUID,
+  Memory as CoreMemory,
+  AgentStatus,
+} from '@elizaos/core';
 import {
   useQuery,
   useMutation,
@@ -23,6 +30,19 @@ import type {
 } from '@/types';
 import clientLogger from '@/lib/logger';
 import { useNavigate } from 'react-router-dom';
+import {
+  mapApiAgentToClient,
+  mapApiChannelToClient,
+  mapApiServerToClient,
+  mapApiServersToClient,
+  mapApiChannelsToClient,
+  mapApiMessageToUi,
+  mapApiLogToClient,
+  mapApiMemoryToClient,
+  mapEnumToApiStatus,
+  apiDateToTimestamp,
+  type AgentLog,
+} from '@/lib/api-type-mappers';
 
 // Create ElizaClient instance for direct API calls
 const elizaClient = createElizaClient();
@@ -44,28 +64,7 @@ type ContentWithUser = Content & {
   id?: UUID; // Add optional ID field
 };
 
-// AgentLog type from the API
-type AgentLog = {
-  id?: UUID;
-  type?: string;
-  timestamp?: number;
-  message?: string;
-  details?: string;
-  roomId?: UUID;
-  body?: {
-    modelType?: string;
-    modelKey?: string;
-    params?: any;
-    response?: any;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-  };
-  createdAt?: number;
-  [key: string]: any;
-};
+// AgentLog type is now imported from api-type-mappers
 
 // Constants for stale times
 export const STALE_TIMES = {
@@ -131,7 +130,9 @@ export function useAgents(options = {}) {
     queryKey: ['agents'],
     queryFn: async () => {
       const result = await elizaClient.agents.listAgents();
-      return { data: result };
+      // Map the API agents to client format
+      const mappedAgents = result.agents.map((agent) => mapApiAgentToClient(agent));
+      return { data: { agents: mappedAgents } };
     },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     // Use more frequent polling for real-time updates
@@ -163,7 +164,7 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID is required');
       const result = await elizaClient.agents.getAgent(agentId);
-      return { data: result };
+      return { data: mapApiAgentToClient(result) };
     },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
     enabled: Boolean(agentId),
@@ -424,7 +425,7 @@ export function useChannelMessages(
         });
 
         const newUiMessages = response.messages.map((msg) =>
-          transformServerMessageToUiMessage(msg, initialServerId || msg.metadata?.serverId)
+          mapApiMessageToUi(msg, initialServerId || msg.metadata?.serverId)
         );
 
         setMessages((prev) => {
@@ -564,11 +565,10 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
     queryKey: ['agentActions', agentId, roomId, excludeTypes],
     queryFn: async () => {
       const response = await elizaClient.agents.getAgentLogs(agentId, {
-        roomId,
-        count: 50,
-        excludeTypes,
+        limit: 50,
       });
-      return response || [];
+      // Map the API logs to client format
+      return response ? response.map(mapApiLogToClient) : [];
     },
     refetchInterval: 1000,
     staleTime: 1000,
@@ -647,11 +647,13 @@ export function useAgentMemories(
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const result = await elizaClient.memory.getAgentMemories(agentId, {
-        roomId: channelId,
+      const params: any = {
         tableName,
         includeEmbedding,
-      });
+      };
+      const result = channelId
+        ? await elizaClient.memory.getRoomMemories(agentId, channelId, params)
+        : await elizaClient.memory.getAgentMemories(agentId, params);
       console.log('Agent memories result:', {
         agentId,
         tableName,
@@ -662,7 +664,9 @@ export function useAgentMemories(
         firstMemory: result.memories?.[0],
         hasEmbeddings: (result.memories || []).some((m: any) => m.embedding?.length > 0),
       });
-      return result.memories || [];
+      // Map the API memories to client format
+      const memories = result.memories || [];
+      return memories.map(mapApiMemoryToClient);
     },
     enabled: Boolean(agentId && tableName),
     staleTime: 1000,
@@ -934,11 +938,10 @@ export function useAgentInternalActions(
     queryFn: async () => {
       if (!agentId) return []; // Or throw error, depending on desired behavior for null agentId
       const response = await elizaClient.agents.getAgentLogs(agentId, {
-        roomId: agentPerspectiveRoomId ?? undefined,
-        type: 'action',
-        count: 50,
+        limit: 50,
       });
-      return response || [];
+      // Map the API logs to client format
+      return response ? response.map(mapApiLogToClient) : [];
     },
     enabled: !!agentId, // Only enable if agentId is present
     staleTime: STALE_TIMES.FREQUENT,
@@ -952,7 +955,6 @@ export function useDeleteAgentInternalLog() {
   return useMutation<void, Error, { agentId: UUID; logId: UUID }>({
     mutationFn: async ({ agentId, logId }: { agentId: UUID; logId: UUID }) => {
       await elizaClient.agents.deleteAgentLog(agentId, logId);
-      return { agentId, logId };
     },
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agentInternalActions', agentId] });
@@ -993,7 +995,7 @@ export function useAgentInternalMemories(
         agentPerspectiveRoomId,
         includeEmbedding
       );
-      return response.memories;
+      return response.data || [];
     },
     enabled: !!agentId && !!agentPerspectiveRoomId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1102,7 +1104,7 @@ export function useServers(options = {}) {
     queryKey: ['servers'],
     queryFn: async () => {
       const result = await elizaClient.messaging.listServers();
-      return { data: { servers: result.servers } };
+      return { data: { servers: mapApiServersToClient(result.servers) } };
     },
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
@@ -1117,7 +1119,7 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
     queryFn: async () => {
       if (!serverId) return Promise.resolve({ data: { channels: [] } });
       const result = await elizaClient.messaging.getServerChannels(serverId);
-      return { data: { channels: result.channels } };
+      return { data: { channels: mapApiChannelsToClient(result.channels) } };
     },
     enabled: !!serverId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1134,7 +1136,7 @@ export function useChannelDetails(channelId: UUID | undefined, options = {}) {
     queryFn: async () => {
       if (!channelId) return Promise.resolve({ success: true, data: null });
       const result = await elizaClient.messaging.getChannelDetails(channelId);
-      return { success: true, data: result };
+      return { success: true, data: mapApiChannelToClient(result) };
     },
     enabled: !!channelId,
     staleTime: STALE_TIMES.STANDARD,

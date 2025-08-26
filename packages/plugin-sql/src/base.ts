@@ -607,16 +607,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return await this.db.transaction(async (tx) => {
           await tx.insert(entityTable).values(entities);
 
-          logger.debug(entities.length, 'Entities created successfully');
+          logger.debug(`${entities.length} Entities created successfully`);
 
           return true;
         });
       } catch (error) {
         logger.error(
-          `Error creating entity: ${error instanceof Error ? error.message : String(error)}, entityId: ${entities[0].id}, name: ${entities[0].metadata?.name}`
+          `Error creating entities, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`,
+          error instanceof Error ? error.message : String(error)
         );
-        // trace the error
-        logger.trace(error);
+        // trace the full error with stack
+        if (error instanceof Error && error.stack) {
+          logger.trace('Stack trace:', error.stack);
+        }
         return false;
       }
     });
@@ -873,7 +876,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       await this.db.insert(componentTable).values({
         ...component,
-        createdAt: new Date(component.createdAt),
+        createdAt: new Date(),
       });
       return true;
     });
@@ -886,13 +889,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   async updateComponent(component: Component): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db
-        .update(componentTable)
-        .set({
-          ...component,
-          createdAt: new Date(component.createdAt),
-        })
-        .where(eq(componentTable.id, component.id));
+      try {
+        await this.db
+          .update(componentTable)
+          .set({
+            ...component,
+            updatedAt: new Date(),
+          })
+          .where(eq(componentTable.id, component.id));
+      } catch (e) {
+        console.error('updateComponent error', e);
+      }
     });
   }
 
@@ -1518,18 +1525,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return memoryId;
     }
 
-    let isUnique = true;
-    if (memory.embedding && Array.isArray(memory.embedding)) {
-      const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
-        tableName,
-        // Use the scope fields from the memory object for similarity check
-        roomId: memory.roomId,
-        worldId: memory.worldId,
-        entityId: memory.entityId,
-        match_threshold: 0.95,
-        count: 1,
-      });
-      isUnique = similarMemories.length === 0;
+    // only do costly check if we need to
+    if (memory.unique === undefined) {
+      memory.unique = true; // set default
+      if (memory.embedding && Array.isArray(memory.embedding)) {
+        const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
+          tableName,
+          // Use the scope fields from the memory object for similarity check
+          roomId: memory.roomId,
+          worldId: memory.worldId,
+          entityId: memory.entityId,
+          match_threshold: 0.95,
+          count: 1,
+        });
+        memory.unique = similarMemories.length === 0;
+      }
     }
 
     // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
@@ -1551,7 +1561,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           roomId: memory.roomId,
           worldId: memory.worldId, // Include worldId
           agentId: memory.agentId || this.agentId,
-          unique: memory.unique ?? isUnique,
+          unique: memory.unique,
           createdAt: memory.createdAt ? new Date(memory.createdAt) : new Date(),
         },
       ]);
@@ -1961,7 +1971,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
    */
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-    console.log('getRoomsForParticipant', entityId);
     return this.withDatabase(async () => {
       const result = await this.db
         .select({ roomId: participantTable.roomId })
@@ -2028,7 +2037,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId: this.agentId,
         }));
         await this.db.insert(participantTable).values(values).onConflictDoNothing().execute();
-        logger.debug(entityIds.length, 'Entities linked successfully');
+        logger.debug(`${entityIds.length} Entities linked successfully`);
         return true;
       } catch (error) {
         logger.error(

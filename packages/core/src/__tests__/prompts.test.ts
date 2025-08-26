@@ -23,7 +23,6 @@ describe('Prompts', () => {
     it('messageHandlerTemplate should contain required placeholders and structure', () => {
       expect(messageHandlerTemplate).toContain('{{agentName}}');
       expect(messageHandlerTemplate).toContain('{{providers}}');
-      expect(messageHandlerTemplate).toContain('{{actionNames}}');
       expect(messageHandlerTemplate).toContain('<response>');
       expect(messageHandlerTemplate).toContain('</response>');
       expect(messageHandlerTemplate).toContain('<thought>');

@@ -42,6 +42,7 @@ import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
+import { EmbeddingGenerationService } from './services/embedding.ts';
 
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
@@ -416,27 +417,32 @@ const messageReceivedHandler = async ({
         );
 
         // First, save the incoming message
-        runtime.logger.debug('[Bootstrap] Saving message to memory and embeddings');
+        runtime.logger.debug('[Bootstrap] Saving message to memory and queueing embeddings');
+
         // Check if memory already exists (it might have been created by MessageBusService)
+        let memoryToQueue: Memory;
+
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
-            // Still add embedding if needed
             runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
-            await runtime.addEmbeddingToMemory(message);
+            memoryToQueue = existingMemory;
           } else {
-            // Create memory if it doesn't exist
-            await Promise.all([
-              runtime.addEmbeddingToMemory(message),
-              runtime.createMemory(message, 'messages'),
-            ]);
+            // Create memory with the existing ID (preserving external IDs)
+            const createdMemoryId = await runtime.createMemory(message, 'messages');
+            // Use the created memory with the actual ID returned by the database
+            memoryToQueue = { ...message, id: createdMemoryId };
           }
+          // Queue with high priority for messages with pre-existing IDs
+          await runtime.queueEmbeddingGeneration(memoryToQueue, 'high');
         } else {
-          // No ID, create new memory
-          await Promise.all([
-            runtime.addEmbeddingToMemory(message),
-            runtime.createMemory(message, 'messages'),
-          ]);
+          // No ID, create new memory and queue embedding
+          const memoryId = await runtime.createMemory(message, 'messages');
+          // Set the ID on the message for downstream processing
+          message.id = memoryId;
+          // Create a memory object with the new ID for queuing
+          memoryToQueue = { ...message, id: memoryId };
+          await runtime.queueEmbeddingGeneration(memoryToQueue, 'normal');
         }
 
         const agentUserState = await runtime.getParticipantUserState(
@@ -1733,7 +1739,7 @@ const events = {
           `[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`
         );
       } catch (error: any) {
-        payload.runtime.logger.error(`[Bootstrap] Error handling user left: ${error.message}`);
+        payload.runtime.logger.error('[Bootstrap] Error handling user left:', error instanceof Error ? error.message : String(error));
       }
     },
   ],
@@ -1802,7 +1808,8 @@ export const bootstrapPlugin: Plugin = {
     providers.factsProvider,
     providers.roleProvider,
     providers.settingsProvider,
-    providers.capabilitiesProvider,
+    // there is given no reason for this - odi
+    //providers.capabilitiesProvider,
     providers.attachmentsProvider,
     providers.providersProvider,
     providers.actionsProvider,
@@ -1811,7 +1818,7 @@ export const bootstrapPlugin: Plugin = {
     providers.recentMessagesProvider,
     providers.worldProvider,
   ],
-  services: [TaskService],
+  services: [TaskService, EmbeddingGenerationService],
 };
 
 export default bootstrapPlugin;

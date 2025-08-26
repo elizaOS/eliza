@@ -13,9 +13,9 @@ export interface MessageAttachment {
 }
 
 /**
- * Message metadata type
+ * Session message metadata type
  */
-export interface MessageMetadata {
+export interface SessionMessageMetadata {
   source?: string;
   priority?: 'low' | 'normal' | 'high';
   tags?: string[];
@@ -81,7 +81,7 @@ export interface CreateSessionResponse {
 export interface SendMessageParams {
   content: string;
   attachments?: MessageAttachment[];
-  metadata?: MessageMetadata;
+  metadata?: SessionMessageMetadata;
 }
 
 /**
@@ -101,7 +101,7 @@ export interface SimplifiedMessage {
   authorId: string;
   isAgent: boolean;
   createdAt: Date;
-  metadata: MessageMetadata;
+  metadata: SessionMessageMetadata;
 }
 
 /**
@@ -149,5 +149,5 @@ export interface MessageResponse {
   content: string;
   authorId: string;
   createdAt: Date;
-  metadata?: MessageMetadata;
+  metadata?: SessionMessageMetadata;
 }

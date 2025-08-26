@@ -1,4 +1,5 @@
 import type { UUID } from '@elizaos/core';
+import type { AgentLog } from '@/lib/api-type-mappers';
 import {
   Bot,
   Brain,
@@ -45,36 +46,6 @@ enum ActionType {
 }
 
 // Types
-type AgentLog = {
-  id?: string;
-  type?: string;
-  timestamp?: number;
-  message?: string;
-  details?: string;
-  roomId?: string;
-  body?: {
-    modelType?: string;
-    modelKey?: string;
-    action?: string;
-    actionId?: string;
-    params?: any;
-    response?: any;
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-    prompts?: {
-      modelType?: string;
-      prompt: string;
-      timestamp?: number;
-    }[];
-    promptCount?: number;
-  };
-  createdAt?: number;
-  [key: string]: any;
-};
-
 type ActionCardProps = {
   action: AgentLog;
   onDelete?: (logId: string) => void;
@@ -711,7 +682,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
         variant: 'destructive',
       },
       () => {
-        deleteLog({ agentId, logId });
+        deleteLog({ agentId, logId: logId as UUID });
       }
     );
   };

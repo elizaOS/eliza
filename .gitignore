@@ -20,9 +20,6 @@ dist/
 *.mp3
 
 logs/
-
-test-report.json
-test_data/
 tokencache/
 
 # Character configurations
@@ -181,3 +178,8 @@ tasks/
 .roomodes
 bun.lock
 /.kiro
+# TypeScript incremental compilation cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+test-data/

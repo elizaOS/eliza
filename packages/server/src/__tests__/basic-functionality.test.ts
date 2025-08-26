@@ -143,7 +143,7 @@ describe('Basic Server Functionality', () => {
       type MiddlewareFunction = (req: any, res: any, next: () => void) => void;
 
       const createValidationMiddleware = (paramName: string): MiddlewareFunction => {
-        return (req, res, next) => {
+        return (_req, res, next) => {
           const paramValue = req.params?.[paramName];
 
           if (!paramValue) {

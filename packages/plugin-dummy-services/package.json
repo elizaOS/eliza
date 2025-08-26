@@ -27,15 +27,14 @@
   },
   "devDependencies": {
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
     "test": "bun test",
     "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },

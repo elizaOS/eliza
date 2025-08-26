@@ -4,3 +4,6 @@ dist
 cache
 models
 templates/
+
+# Scenario and Report logs
+/src/commands/scenario/_logs_/

@@ -1,7 +1,6 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { getModuleLoader } from '@/src/utils/module-loader';
-import { UserEnvironment } from '@/src/utils/user-environment';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
 import path from 'node:path';
@@ -76,8 +75,8 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
     postgresUrl: postgresUrl || undefined,
   });
 
-  server.startAgent = (character) => startAgent(character, server);
-  server.stopAgent = (runtime) => stopAgent(runtime, server);
+  server.startAgent = (character: Character) => startAgent(character, server);
+  server.stopAgent = (runtime: any) => stopAgent(runtime, server);
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 

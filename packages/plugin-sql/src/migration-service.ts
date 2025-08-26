@@ -17,14 +17,19 @@ export class DatabaseMigrationService {
 
   discoverAndRegisterPluginSchemas(plugins: Plugin[]): void {
     for (const plugin of plugins) {
-      if (plugin.schema) {
-        this.registeredSchemas.set(plugin.name, plugin.schema);
+      if ((plugin as any).schema) {
+        this.registeredSchemas.set(plugin.name, (plugin as any).schema);
         logger.info(`Registered schema for plugin: ${plugin.name}`);
       }
     }
     logger.info(
       `Discovered ${this.registeredSchemas.size} plugin schemas out of ${plugins.length} plugins`
     );
+  }
+
+  registerSchema(pluginName: string, schema: any): void {
+    this.registeredSchemas.set(pluginName, schema);
+    logger.info(`Registered schema for plugin: ${pluginName}`);
   }
 
   async runAllPluginMigrations(): Promise<void> {

@@ -3,7 +3,7 @@
 
 import { createUniqueUuid } from './entities';
 import { logger } from './logger';
-import { type IAgentRuntime, Role, type World } from './types';
+import { type IAgentRuntime, Role, type World, type UUID } from './types';
 
 /**
  * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.
@@ -41,13 +41,13 @@ export async function getUserServerRole(
     return Role.NONE;
   }
 
-  if (world.metadata.roles[entityId]) {
-    return world.metadata.roles[entityId] as Role;
+  if (world.metadata.roles[entityId as UUID]) {
+    return world.metadata.roles[entityId as UUID] as Role;
   }
 
   // Also check original ID format
-  if (world.metadata.roles[entityId]) {
-    return world.metadata.roles[entityId] as Role;
+  if (world.metadata.roles[entityId as UUID]) {
+    return world.metadata.roles[entityId as UUID] as Role;
   }
 
   return Role.NONE;

@@ -32,7 +32,10 @@ export function createAgentPanelsRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       sendSuccess(res, publicPanels);
     } catch (error) {
-      logger.error(`[AGENT PANELS] Error retrieving panels for agent ${agentId}:`, error);
+      logger.error(
+        `[AGENT PANELS] Error retrieving panels for agent ${agentId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

@@ -457,7 +457,10 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
 
     logger.success('OpenAI API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving OpenAI API key:', error);
+    logger.error(
+      'Error saving OpenAI API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -488,7 +491,10 @@ export async function storeGoogleKey(key: string, envFilePath: string): Promise<
 
     logger.success('Google Generative AI API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving Google API key:', error);
+    logger.error(
+      'Error saving Google API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -517,7 +523,10 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
 
     logger.success('Anthropic API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving Anthropic API key:', error);
+    logger.error(
+      'Error saving Anthropic API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -721,7 +730,10 @@ export async function storeOllamaConfig(
 
     logger.success('Ollama configuration saved to configuration');
   } catch (error) {
-    logger.error('Error saving Ollama configuration:', error);
+    logger.error(
+      'Error saving Ollama configuration:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -813,7 +825,10 @@ export async function promptAndStoreOllamaEmbeddingConfig(
 
         logger.success('Ollama embedding configuration saved');
       } catch (error) {
-        logger.error('Error saving Ollama embedding configuration:', error);
+        logger.error(
+          'Error saving Ollama embedding configuration:',
+          error instanceof Error ? error.message : String(error)
+        );
         throw error;
       }
     },
@@ -954,7 +969,10 @@ export async function storeOpenRouterKey(key: string, envFilePath: string): Prom
 
     logger.success('OpenRouter API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving OpenRouter API key:', error);
+    logger.error(
+      'Error saving OpenRouter API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -1088,7 +1106,10 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
       },
     });
   } catch (error) {
-    logger.error('Failed to resolve config paths:', error);
+    logger.error(
+      'Failed to resolve config paths:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw new Error('Invalid configuration: failed to resolve paths');
   }
 }

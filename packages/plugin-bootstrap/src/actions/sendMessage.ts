@@ -352,7 +352,7 @@ export const sendMessageAction: Action = {
             success: true,
           };
         } catch (error: any) {
-          logger.error(`Failed to send direct message: ${error.message}`);
+          logger.error('Failed to send direct message:', error instanceof Error ? error.message : String(error));
           await callback({
             text: 'I encountered an error trying to send the message. Please try again.',
             actions: ['SEND_MESSAGE_ERROR'],
@@ -466,7 +466,7 @@ export const sendMessageAction: Action = {
             success: true,
           };
         } catch (error: any) {
-          logger.error(`Failed to send room message: ${error.message}`);
+          logger.error('Failed to send room message:', error instanceof Error ? error.message : String(error));
           await callback({
             text: 'I encountered an error trying to send the message to the room. Please try again.',
             actions: ['SEND_MESSAGE_ERROR'],
