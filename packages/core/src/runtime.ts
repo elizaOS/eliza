@@ -564,7 +564,7 @@ export class AgentRuntime implements IAgentRuntime {
     responses: Memory[],
     state?: State,
     callback?: HandlerCallback
-  ): Promise<ActionResult[]> {
+  ): Promise<void> {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
     for (const response of responses) {
@@ -611,8 +611,6 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     let actionIndex = 0;
-
-    let finalActionResults: ActionResult[] = [];
 
     for (const response of responses) {
       if (!response.content?.actions || response.content.actions.length === 0) {
@@ -999,8 +997,6 @@ export class AgentRuntime implements IAgentRuntime {
         actionIndex++;
       }
 
-      finalActionResults = [...finalActionResults, ...actionResults];
-
       // Store accumulated results for evaluators and providers
       if (message.id) {
         this.stateCache.set(`${message.id}_action_results`, {
@@ -1010,8 +1006,6 @@ export class AgentRuntime implements IAgentRuntime {
         });
       }
     }
-
-    return finalActionResults;
   }
 
   async evaluate(

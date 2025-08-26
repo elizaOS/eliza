@@ -32,11 +32,13 @@ import {
   type UUID,
   type WorldPayload,
   getLocalServerUrl,
+  multiStepDecisionTemplate,
+  multiStepSummaryTemplate,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
 // import * as actions from './actions/index.ts';
-import * as evaluators from './evaluators/index.ts';
+// import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
@@ -322,358 +324,12 @@ export function shouldBypassShouldRespond(
   return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
 }
 
-// Hardcoded setup to simplify testing
-
-const useMultiStep = true;
-
-const loopingTemplate = `<task>
-Determine the next step the assistant should take in this conversation to help the user reach their goal.
-</task>
-
-{{recentMessages}}
-
-# Global Decision Rules (MUST follow before choosing any next step)
-1. You are a customer service representative for an online retail company. You are chatting with a customer, and you can call tools or respond to the user.  
-2. Always first confirm the user id by **email** or **name + zip code** before proceeding with any task. Check the recentMessages to see if the user has already been authenticated. If not, request authentication first.  
-3. If the user id is not found, do not proceed with any task.  
-4. For any change to the backend database (e.g., address update, refund, or order cancellation), you must confirm the transaction details with the user and ask for explicit authorization ("yes") before proceeding.  
-5. You must solve the user’s task given the available tools, without transferring to a human agent.  
-6. Do not make up any information or knowledge not provided by the user or the tools.  
-7. You may make at most **one tool call at a time**. If you call a tool, do not also respond to the user in the same step.  
-8. Analyze what information is still missing or what needs to be done to fulfill the user’s request.  
-9. Use the available actions or providers below to gather that information or complete the next step.  
-10. Do NOT proceed to a final response ('finish') unless you are absolutely sure that:  
-    - The user request has been fully resolved.  
-    - No further actions or data are required.  
-11. Think step by step and ensure your reasoning is clear and justifiable.  
-12. You may ONLY use actions/providers listed in **availableActions** and **availableProviders** below.  
-13. You may NOT repeat any action or provider that has already been used in this session (see "Previous Action Results" below).  
-14. Never invent new action names.  
-15. Always explain *why* you are choosing the next step.  
-16. When calling an action or provider, you must include the **parameters** inside your thought. Do not output them as a separate field.  
-
-# Two-Step Workflow
-- **Step 1: Gather or Execute**  
-  If any data is missing or a backend step needs to be executed (e.g. calling an action to exchange items or retrieve info), call the appropriate action/provider.
-
-- **Step 2: Finish**  
-  If nothing more is required and the task is truly complete, return \`FINISH\`.
-
-{{actionsWithDescriptions}}
-
-{{providersWithDescriptions}}
-
-These are the actions or data provider calls that have already been used in this run. You MUST NOT call the same step again. Use this to avoid redundancy and guide your next move.
-
-{{actionResults}}
-
-<output>
-<response>
-  <thought>
-    Clearly explain your reasoning for the next step and how it helps resolve the user's request. 
-    If calling an action or provider, mention the relevant parameters you are passing.  
-    Example: "To proceed, I need to call ACTION_NAME with parameters { 'key': 'value' } to gather the necessary data."
-  </thought>
-  <nextStepType>action | provider | finish</nextStepType>
-  <stepName>(Required only if nextStepType is action or provider)</stepName>
-</response>
-</output>`;
-
-
-const finalSummaryTemplate = (lastThought?: string) => `
-<task>
-Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
-</task>
-
-<providers>
-{{bio}}
-
----
-
-{{system}}
-
----
-
-{{messageDirections}}
-
-</providers>
-
-# Conversation Summary
-Below is the user’s original request and conversation so far:
-{{recentMessages}}
-
-# Execution Trace
-Here are the steps (actions/providers) taken by the assistant to fulfill the request:
-{{actionResults}}
-
-# Assistant’s Last Reasoning Step
-${lastThought || 'No final reasoning step was recorded.'}
-
-# Authentication & Compliance Rules
-1. The assistant must always confirm the user ID by **email** or **name + zip code** before proceeding with any task.  
-2. Check the conversation, execution trace, and last reasoning step to see if authentication has already been done.  
-3. If authentication is missing, the final response must **ask the user for authentication** before confirming any backend action or providing results.  
-4. If the user ID was not found, the assistant must not proceed with any task.  
-5. For backend changes (address update, refund, cancellation, etc.), the assistant must confirm the transaction details and request explicit authorization ("yes").  
-6. Only base your output on the actual steps in the execution trace and the last reasoning step. Do not invent anything.  
-
-# Instructions
-1. Analyze the user’s intent and what result they expected.  
-2. Carefully review the execution trace **and the last reasoning step**, along with the authentication rules.  
-3. Compose a clear and helpful final message to the user:
-   - If authentication was missing, explicitly ask for it (do not continue with task completion).  
-   - If authentication is present, summarize what was done, provide results, and confirm any pending authorization if required.  
-   - If everything is complete, wrap up clearly.  
-4. Your final output MUST be in this XML format:
-<output>
-<response>
-  <thought>Your thought here</thought>
-  <text>Your final message to the user</text>
-</response>
-</output>
-`;
-
-
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
  * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
  * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
  */
-type StrategyMode = 'simple' | 'actions' | 'none';
-type StrategyResult = {
-  responseContent: Content | null;
-  responseMessages: Memory[];
-  state: any; // whatever composeState returns in your codebase
-  mode: StrategyMode;
-};
-
-async function runSingleShotCore({
-  runtime,
-  message,
-  state,
-}): Promise<StrategyResult> {
-  // Single-shot unique logic (was inside handleSingleShotResponse -> shouldRespond branch)
-  state = await runtime.composeState(message, ['ACTIONS']);
-
-  if (!state.values?.actionNames) {
-    runtime.logger.warn('actionNames data missing from state, even though it was requested');
-  }
-
-  const prompt = composePromptFromState({
-    state,
-    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
-  });
-
-  let responseContent: Content | null = null;
-
-  // Retry if missing required fields
-  let retries = 0;
-  const maxRetries = 3;
-
-  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-
-    runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
-
-    const parsedXml = parseKeyValueXml(response);
-    runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
-
-    if (parsedXml) {
-      responseContent = {
-        ...parsedXml,
-        thought: parsedXml.thought || '',
-        actions: parsedXml.actions || ['IGNORE'],
-        providers: parsedXml.providers || [],
-        text: parsedXml.text || '',
-        simple: parsedXml.simple || false,
-      };
-    } else {
-      responseContent = null;
-    }
-
-    retries++;
-    if (!responseContent?.thought || !responseContent?.actions) {
-      runtime.logger.warn(
-        { response, parsedXml, responseContent },
-        '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
-      );
-    }
-  }
-
-  if (!responseContent) {
-    return { responseContent: null, responseMessages: [], state, mode: 'none' };
-  }
-
-  // IGNORE/REPLY ambiguity handling
-  if (responseContent.actions && responseContent.actions.length > 1) {
-    const isIgnore = (a: unknown) => typeof a === 'string' && a.toUpperCase() === 'IGNORE';
-    const hasIgnore = responseContent.actions.some(isIgnore);
-
-    if (hasIgnore) {
-      if (!responseContent.text || responseContent.text.trim() === '') {
-        responseContent.actions = ['IGNORE'];
-      } else {
-        const filtered = responseContent.actions.filter(a => !isIgnore(a));
-        responseContent.actions = filtered.length ? filtered : ['REPLY'];
-      }
-    }
-  }
-
-  const isSimple =
-    responseContent.actions?.length === 1 &&
-    typeof responseContent.actions[0] === 'string' &&
-    responseContent.actions[0].toUpperCase() === 'REPLY' &&
-    (!responseContent.providers || responseContent.providers.length === 0);
-
-  responseContent.simple = isSimple;
-
-  const responseMessages: Memory[] = [
-    {
-      id: asUUID(v4()),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      content: responseContent,
-      roomId: message.roomId,
-      createdAt: Date.now(),
-    },
-  ];
-
-  return {
-    responseContent,
-    responseMessages,
-    state,
-    mode: isSimple && responseContent.text ? 'simple' : 'actions',
-  };
-}
-
-async function runMultiStepCore({
-  runtime,
-  message,
-  state,
-  callback
-}): Promise<StrategyResult> {
-  // Multi-step unique logic (was inside handleMultiStepResponse -> shouldRespond branch)
-  const traceActionResult: any[] = [];
-  let continueLoop = true;
-  let accumulatedState: any = state;
-  let finalThought;
-
-  while (continueLoop) {
-    accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
-    accumulatedState.data.actionResults = traceActionResult;
-
-    const prompt = composePromptFromState({
-      state: accumulatedState,
-      template: loopingTemplate,
-    });
-    console.log('[@@@ MultiStep Prompt @@@]', prompt);
-
-    const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const parsedStep = parseKeyValueXml(stepResultRaw);
-    console.log('### Iterative Step Decision', { parsedStep });
-
-    if (!parsedStep || parsedStep.nextStepType === 'finish') {
-      continueLoop = false;
-      finalThought = parsedStep?.thought;
-      break;
-    }
-
-    try {
-      let executionResult: any;
-      let success = true;
-
-      if (parsedStep.nextStepType === 'action') {
-        const actionContent = {
-          actions: [parsedStep.stepName],
-          text: '',
-          thought: parsedStep.thought,
-        };
-
-        const result = await runtime.processActions(
-          message,
-          [
-            {
-              id: v4() as UUID,
-              entityId: runtime.agentId,
-              roomId: message.roomId,
-              createdAt: Date.now(),
-              content: actionContent,
-            },
-          ],
-          state,
-          async () => {
-            await callback({
-              text: `🔎 Executing action: ${parsedStep.stepName}`,
-              thought: parsedStep.thought,
-              stepType: parsedStep.nextStepType,
-            });
-            return [];
-          }
-        );
-
-        success = result[0].success;
-        executionResult = result[0].text;
-      } else if (parsedStep.nextStepType === 'provider') {
-        const provider = runtime.providers.find((p) => p.name === parsedStep.stepName);
-        executionResult = await provider?.get(runtime, message, state);
-      }
-
-      traceActionResult.push({
-        data: { actionName: parsedStep.stepName },
-        success,
-        text: success ? executionResult : undefined,
-        error: success ? undefined : executionResult
-      });
-    } catch (err) {
-      runtime.logger.error({ err }, '[MultiStep] Error executing step');
-      traceActionResult.push({
-        data: { actionName: parsedStep.stepName },
-        success: 'failed',
-        error: err
-      });
-    }
-  }
-
-  const summaryTemplate = finalSummaryTemplate(finalThought);
-  const summaryPrompt = composePromptFromState({
-    state: accumulatedState,
-    template: summaryTemplate,
-  });
-
-  const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
-  const summary = parseKeyValueXml(finalOutput);
-
-  let responseContent: Content | null = null;
-  if (summary?.text) {
-    responseContent = {
-      actions: ['REPLY'],
-      text: summary.text,
-      thought: summary.thought || 'Final user-facing message after task completion.',
-      simple: true,
-    };
-  }
-
-  const responseMessages: Memory[] = responseContent
-    ? [
-        {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
-    : [];
-
-  return {
-    responseContent,
-    responseMessages,
-    state: accumulatedState,
-    mode: responseContent ? 'simple' : 'none',
-  };
-}
 
 // --- REFACTORED: Consolidated handler with all the shared scaffolding ---
 
@@ -683,6 +339,7 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
+  const useMultiStep = runtime.getSetting('USE_MULTI_STEP');
 
   // Timeout setup (shared)
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
@@ -836,7 +493,10 @@ const messageReceivedHandler = async ({
 
         // attachments
         if (message.content.attachments && message.content.attachments.length > 0) {
-          message.content.attachments = await processAttachments(message.content.attachments, runtime);
+          message.content.attachments = await processAttachments(
+            message.content.attachments,
+            runtime
+          );
           if (message.id) {
             await runtime.updateMemory({ id: message.id, content: message.content });
           }
@@ -846,8 +506,7 @@ const messageReceivedHandler = async ({
         if (!shouldSkipShouldRespond) {
           const shouldRespondPrompt = composePromptFromState({
             state,
-            template:
-              runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+            template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
           });
 
           runtime.logger.debug(
@@ -908,10 +567,7 @@ const messageReceivedHandler = async ({
 
           // Send response based on mode (shared)
           if (responseContent) {
-            const mode =
-              useMultiStep
-                ? 'simple'
-                : (result.mode ?? ('actions' as StrategyMode));
+            const mode = useMultiStep ? 'simple' : (result.mode ?? ('actions' as StrategyMode));
 
             if (mode === 'simple') {
               if (responseContent.providers && responseContent.providers.length > 0) {
@@ -953,7 +609,9 @@ const messageReceivedHandler = async ({
           }
 
           if (!message.id) {
-            runtime.logger.error('[Bootstrap] Message ID is missing, cannot create ignore response.');
+            runtime.logger.error(
+              '[Bootstrap] Message ID is missing, cannot create ignore response.'
+            );
             await runtime.emitEvent(EventType.RUN_ENDED, {
               runtime,
               runId,
@@ -1034,8 +692,9 @@ const messageReceivedHandler = async ({
         }
 
         const date = new Date();
-        const availableActions =
-          state.data?.providers?.ACTIONS?.data?.actionsData?.map((a: any) => a.name) || [-1];
+        const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
+          (a: any) => a.name
+        ) || [-1];
 
         const logData = {
           at: date.toString(),
@@ -1095,6 +754,237 @@ const messageReceivedHandler = async ({
     onComplete?.();
   }
 };
+
+type StrategyMode = 'simple' | 'actions' | 'none';
+type StrategyResult = {
+  responseContent: Content | null;
+  responseMessages: Memory[];
+  state: any;
+  mode: StrategyMode;
+};
+
+async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
+  state = await runtime.composeState(message, ['ACTIONS']);
+
+  if (!state.values?.actionNames) {
+    runtime.logger.warn('actionNames data missing from state, even though it was requested');
+  }
+
+  const prompt = composePromptFromState({
+    state,
+    template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+  });
+
+  let responseContent: Content | null = null;
+
+  // Retry if missing required fields
+  let retries = 0;
+  const maxRetries = 3;
+
+  while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+    const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+
+    runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
+
+    const parsedXml = parseKeyValueXml(response);
+    runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
+
+    if (parsedXml) {
+      responseContent = {
+        ...parsedXml,
+        thought: parsedXml.thought || '',
+        actions: parsedXml.actions || ['IGNORE'],
+        providers: parsedXml.providers || [],
+        text: parsedXml.text || '',
+        simple: parsedXml.simple || false,
+      };
+    } else {
+      responseContent = null;
+    }
+
+    retries++;
+    if (!responseContent?.thought || !responseContent?.actions) {
+      runtime.logger.warn(
+        { response, parsedXml, responseContent },
+        '[Bootstrap] *** Missing required fields (thought or actions), retrying... ***'
+      );
+    }
+  }
+
+  if (!responseContent) {
+    return { responseContent: null, responseMessages: [], state, mode: 'none' };
+  }
+
+  // IGNORE/REPLY ambiguity handling
+  if (responseContent.actions && responseContent.actions.length > 1) {
+    const isIgnore = (a: unknown) => typeof a === 'string' && a.toUpperCase() === 'IGNORE';
+    const hasIgnore = responseContent.actions.some(isIgnore);
+
+    if (hasIgnore) {
+      if (!responseContent.text || responseContent.text.trim() === '') {
+        responseContent.actions = ['IGNORE'];
+      } else {
+        const filtered = responseContent.actions.filter((a) => !isIgnore(a));
+        responseContent.actions = filtered.length ? filtered : ['REPLY'];
+      }
+    }
+  }
+
+  const isSimple =
+    responseContent.actions?.length === 1 &&
+    typeof responseContent.actions[0] === 'string' &&
+    responseContent.actions[0].toUpperCase() === 'REPLY' &&
+    (!responseContent.providers || responseContent.providers.length === 0);
+
+  responseContent.simple = isSimple;
+
+  const responseMessages: Memory[] = [
+    {
+      id: asUUID(v4()),
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: responseContent,
+      roomId: message.roomId,
+      createdAt: Date.now(),
+    },
+  ];
+
+  return {
+    responseContent,
+    responseMessages,
+    state,
+    mode: isSimple && responseContent.text ? 'simple' : 'actions',
+  };
+}
+
+async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
+  const traceActionResult: any[] = [];
+  let continueLoop = true;
+  let accumulatedState: any = state;
+  
+  while (continueLoop) {
+    accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+    accumulatedState.data.actionResults = traceActionResult;
+
+    console.log('### accumulatedState.data.actionResults', accumulatedState.data.actionResults);
+
+    const prompt = composePromptFromState({
+      state: accumulatedState,
+      template: runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+    });
+    console.log('[@@@ MultiStep Prompt @@@]', prompt);
+
+    const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+    const parsedStep = parseKeyValueXml(stepResultRaw);
+    console.log('### Iterative Step Decision', { parsedStep });
+
+    const { thought, nextStepName, nextStepType } = parsedStep || {};
+
+    const stepContent = {
+      actions: nextStepName ? [nextStepName] : undefined,
+      text: nextStepName ? `🔎 Executing action: ${nextStepName}` : '',
+      thought: thought ?? '',
+    };
+
+    if (!parsedStep || nextStepType === 'finish') {
+      continueLoop = false;
+      await callback(stepContent);
+      break;
+    }
+
+    try {
+      let executionResult: any;
+      let success = true;
+
+      if (nextStepType === 'action') {
+        
+        await runtime.processActions(
+          message,
+          [
+            {
+              id: v4() as UUID,
+              entityId: runtime.agentId,
+              roomId: message.roomId,
+              createdAt: Date.now(),
+              content: stepContent,
+            },
+          ],
+          state,
+          async () => {
+            await callback(stepContent);
+            return [];
+          }
+        );
+
+        const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
+        if (cachedState) {
+          const actionResults = cachedState.values.actionResults;
+          success = actionResults[0].success;
+          executionResult = actionResults[0].text;
+        }
+      } else if (nextStepType === 'provider') {
+        const provider = runtime.providers.find((p) => p.name === nextStepName);
+        executionResult = await provider?.get(runtime, message, state);
+        await callback(stepContent);
+      }
+
+      traceActionResult.push({
+        data: {
+          actionName: nextStepName,
+        },
+        success,
+        text: success ? executionResult : undefined,
+        error: success ? undefined : executionResult,
+      });
+    } catch (err) {
+      runtime.logger.error({ err }, '[MultiStep] Error executing step');
+      traceActionResult.push({
+        data: { actionName: nextStepName },
+        success: 'failed',
+        error: err,
+      });
+    }
+  }
+
+  accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  const summaryPrompt = composePromptFromState({
+    state: accumulatedState,
+    template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+  });
+
+  const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+  const summary = parseKeyValueXml(finalOutput);
+
+  let responseContent: Content | null = null;
+  if (summary?.text) {
+    responseContent = {
+      actions: ['REPLY'],
+      text: summary.text,
+      thought: summary.thought || 'Final user-facing message after task completion.',
+      simple: true,
+    };
+  }
+
+  const responseMessages: Memory[] = responseContent
+    ? [
+        {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
+    : [];
+
+  return {
+    responseContent,
+    responseMessages,
+    state: accumulatedState,
+    mode: responseContent ? 'simple' : 'none',
+  };
+}
 
 /**
  * Handles the receipt of a reaction message and creates a memory in the designated memory manager.
@@ -1834,9 +1724,9 @@ export const bootstrapPlugin: Plugin = {
   ],
   // this is jank, these events are not valid
   events: events as any as PluginEvents,
-  evaluators: [evaluators.reflectionEvaluator],
+  // evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    providers.evaluatorsProvider,
+    // providers.evaluatorsProvider,
     providers.anxietyProvider,
     // providers.timeProvider,
     // providers.entitiesProvider,
