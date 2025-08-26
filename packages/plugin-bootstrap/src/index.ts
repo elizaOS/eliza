@@ -326,7 +326,7 @@ export function shouldBypassShouldRespond(
 
 const useMultiStep = true;
 
-const loopingTemplate = `<task>
+const multiStepDecisionTemplate = `<task>
 Determine the next action the assistant should take to help the customer achieve their goal.
 </task>
 
@@ -413,11 +413,11 @@ Analyze the conversation and previous results, then choose ONE of:
     Example: "Authentication just completed successfully. I should finish here and ask the customer how they want to proceed with their request."
   </thought>
   <nextStepType>action | finish</nextStepType>
-  <actionName>(Required only if nextStepType is 'action')</actionName>
+  <nextStepName>(Required only if nextStepType is 'action')</nextStepName>
 </response>
 </output>`;
 
-const finalSummaryTemplate = (lastThought?: string) => `
+const multiStepSummaryTemplate = () => `
 <task>
 Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
 </task>
@@ -442,7 +442,7 @@ Here are the actions taken by the assistant to fulfill the request:
 {{actionResults}}
 
 # Assistant’s Last Reasoning Step
-${lastThought || 'No final reasoning step was recorded.'}
+{{recentMessage}}
 
 # Authentication & Response Rules
 1. **Authentication Check**: Review the execution trace for authentication status:
@@ -614,8 +614,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
   const traceActionResult: any[] = [];
   let continueLoop = true;
   let accumulatedState: any = state;
-  let finalThought;
-
+  
   while (continueLoop) {
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
@@ -624,7 +623,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
     const prompt = composePromptFromState({
       state: accumulatedState,
-      template: loopingTemplate,
+      template: multiStepDecisionTemplate,
     });
     console.log('[@@@ MultiStep Prompt @@@]', prompt);
 
@@ -632,9 +631,17 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     const parsedStep = parseKeyValueXml(stepResultRaw);
     console.log('### Iterative Step Decision', { parsedStep });
 
-    if (!parsedStep || parsedStep.nextStepType === 'finish') {
+    const { thought, nextStepName, nextStepType } = parsedStep || {};
+
+    const stepContent = {
+      actions: nextStepName ? [nextStepName] : undefined,
+      text: nextStepName ? `🔎 Executing action: ${nextStepName}` : '',
+      thought: thought ?? '',
+    };
+
+    if (!parsedStep || nextStepType === 'finish') {
       continueLoop = false;
-      finalThought = parsedStep?.thought;
+      await callback(stepContent);
       break;
     }
 
@@ -642,13 +649,8 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
       let executionResult: any;
       let success = true;
 
-      if (parsedStep.nextStepType === 'action') {
-        const actionContent = {
-          actions: [parsedStep.actionName],
-          text: '',
-          thought: parsedStep.thought,
-        };
-
+      if (nextStepType === 'action') {
+        
         await runtime.processActions(
           message,
           [
@@ -657,16 +659,12 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
               entityId: runtime.agentId,
               roomId: message.roomId,
               createdAt: Date.now(),
-              content: actionContent,
+              content: stepContent,
             },
           ],
           state,
           async () => {
-            await callback({
-              text: `🔎 Executing action: ${parsedStep.actionName}`,
-              thought: parsedStep.thought,
-              stepType: parsedStep.nextStepType,
-            });
+            await callback(stepContent);
             return [];
           }
         );
@@ -677,14 +675,15 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           success = actionResults[0].success;
           executionResult = actionResults[0].text;
         }
-      } else if (parsedStep.nextStepType === 'provider') {
-        const provider = runtime.providers.find((p) => p.name === parsedStep.stepName);
+      } else if (nextStepType === 'provider') {
+        const provider = runtime.providers.find((p) => p.name === nextStepName);
         executionResult = await provider?.get(runtime, message, state);
+        await callback(stepContent);
       }
 
       traceActionResult.push({
         data: {
-          actionName: parsedStep.actionName,
+          actionName: nextStepName,
         },
         success,
         text: success ? executionResult : undefined,
@@ -693,14 +692,15 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     } catch (err) {
       runtime.logger.error({ err }, '[MultiStep] Error executing step');
       traceActionResult.push({
-        data: { actionName: parsedStep.actionName },
+        data: { actionName: nextStepName },
         success: 'failed',
         error: err,
       });
     }
   }
 
-  const summaryTemplate = finalSummaryTemplate(finalThought);
+  accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+  const summaryTemplate = multiStepSummaryTemplate();
   const summaryPrompt = composePromptFromState({
     state: accumulatedState,
     template: summaryTemplate,
