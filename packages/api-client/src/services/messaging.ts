@@ -85,12 +85,32 @@ export class MessagingService extends BaseApiClient {
     // Server expects: { name, server_id, participantCentralUserIds, type?, metadata? }
     // The client currently provides participantIds and may include server_id/type in metadata.
     const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-    const meta = { ...(params.metadata || {}) } as Record<string, unknown>;
-    const serverIdFromMeta = meta.server_id as UUID | undefined;
-    const typeFromMeta = meta.type as ChannelType | undefined;
-    // Remove hoisted fields from metadata to avoid duplication
-    if ('server_id' in meta) delete meta.server_id;
-    if ('type' in meta) delete meta.type;
+    
+    // Extract and clean metadata - handle legacy fields that might be in metadata
+    let cleanedMetadata: ChannelMetadata | undefined;
+    let serverIdFromMeta: UUID | undefined;
+    let typeFromMeta: ChannelType | undefined;
+    
+    if (params.metadata) {
+      // Create a new metadata object without the hoisted fields
+      const metadataCopy: ChannelMetadata = { ...params.metadata };
+      
+      // Extract hoisted fields safely using bracket notation (ChannelMetadata allows [key: string]: unknown)
+      if ('server_id' in metadataCopy) {
+        serverIdFromMeta = metadataCopy['server_id'] as UUID | undefined;
+        delete metadataCopy['server_id'];
+      }
+      
+      if ('type' in metadataCopy) {
+        typeFromMeta = metadataCopy['type'] as ChannelType | undefined;
+        delete metadataCopy['type'];
+      }
+      
+      // Only include metadata if there are remaining properties
+      if (Object.keys(metadataCopy).length > 0) {
+        cleanedMetadata = metadataCopy;
+      }
+    }
 
     const payload: GroupChannelCreatePayload = {
       name: params.name,
@@ -98,7 +118,7 @@ export class MessagingService extends BaseApiClient {
       participantCentralUserIds: params.participantIds,
       // If caller intended DM, allow type override
       ...(typeFromMeta ? { type: typeFromMeta } : {}),
-      ...(Object.keys(meta).length ? { metadata: meta as ChannelMetadata } : {}),
+      ...(cleanedMetadata ? { metadata: cleanedMetadata } : {}),
     };
 
     return this.post<MessageChannel>('/api/messaging/central-channels', payload);
