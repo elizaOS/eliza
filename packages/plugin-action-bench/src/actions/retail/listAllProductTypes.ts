@@ -14,7 +14,7 @@ import { Product } from '../../types/retail';
 export const listAllProductTypes: Action = {
   name: 'LIST_ALL_PRODUCT_TYPES',
   description:
-    'List the name and product id of all product types. Each product type has a variety of different items with unique item ids and options. There are only 50 product types in the store.',
+    'List all available product types and their product IDs. Use this action when users want to see what products are available, especially when they want to exchange items for different variants (different size, color, or specifications of the same product). Each product type has multiple variants with unique item IDs and different options. This helps users discover products before requesting exchanges or finding specific variants. There are 50 different product types in the store catalog.',
   validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State) => {
     return true;
   },
@@ -29,11 +29,18 @@ export const listAllProductTypes: Action = {
       // Get retail data from state or load from mock data
       const retailData = state?.values?.retailData || getRetailData();
 
-      // For this action, we don't need to extract parameters since it lists all products
-      // But we can check if the user is asking for this action
-      const extractionPrompt = `Determine if the user is asking to see all available products or product types.
+      // Check if the user is asking for product information, especially for exchanges
+      const extractionPrompt = `Determine if the user is asking to see available products, product types, or needs product information for exchanges/variants.
 
 User message: "${message.content.text}"
+
+Consider these scenarios as YES:
+- User wants to see what products are available
+- User is asking about exchanging items for different variants (size, color, etc.)
+- User wants to know what options/variants exist for products
+- User is looking for product catalog or inventory
+- User wants to browse available items
+- User is asking "what can I exchange this for?" or similar exchange-related questions
 
 Respond with ONLY this XML format:
 <response>
@@ -52,7 +59,7 @@ Respond with ONLY this XML format:
       if (!shouldList) {
         // This might not be the right action
         const errorMsg =
-          "I'm not sure what you're looking for. Would you like to see our available products?";
+          "I'm not sure what you're looking for. Would you like to see our available products or need help with an exchange?";
         if (callback) {
           await callback({
             text: errorMsg,
@@ -142,7 +149,7 @@ Respond with ONLY this XML format:
       {
         name: '{{user}}',
         content: {
-          text: 'Show me all available items',
+          text: 'I want to exchange my item for a different variant, what options do I have?',
         },
       },
       {
@@ -156,7 +163,7 @@ Respond with ONLY this XML format:
       {
         name: '{{user}}',
         content: {
-          text: 'List your product catalog',
+          text: 'Show me what I can exchange this for',
         },
       },
       {
@@ -170,7 +177,7 @@ Respond with ONLY this XML format:
       {
         name: '{{user}}',
         content: {
-          text: 'What can I buy?',
+          text: 'What product types are available for different colors and sizes?',
         },
       },
       {

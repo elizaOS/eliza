@@ -7,15 +7,89 @@ import type {
   Memory,
   State,
 } from '@elizaos/core';
-import { ModelType, parseKeyValueXml } from '@elizaos/core';
+import { ModelType, parseKeyValueXml, composePromptFromState } from '@elizaos/core';
 import { getRetailData } from '../../data/retail/mockData';
-import { RetailData, Address } from '../../types/retail';
+import { RetailData } from '../../types/retail';
+
+// Template for extracting user address modification parameters
+const extractionTemplate = `Extract the address modification parameters from the user's message and conversation context.
+
+{{recentMessages}}
+
+**Previous Action Results:**
+{{actionResults}}
+
+Current user message: "{{userMessage}}"
+
+The function requires these parameters:
+- user_id: The user ID (format: "firstname_lastname_numbers", e.g., "sara_doe_496")
+- address1: New street address line 1
+- address2: New street address line 2 (optional - if not found, use empty string)
+- city: New city
+- state: New state code (e.g., CA, NY)
+- zip: New 5-digit zip code  
+- country: New country (optional - if not found, use "USA")
+- current_user_id: The unique internal user ID (if the user is clearly logged in and referenced), otherwise leave it blank.
+
+Note: If the user is modifying their own address, the user_id and current_user_id should be the same.
+
+Respond with ONLY the extracted parameters in this XML format:
+<response>
+  <user_id>extracted user ID</user_id>
+  <address1>extracted street address line 1</address1>
+  <address2>extracted street address line 2 or empty string</address2>
+  <city>extracted city</city>
+  <state>extracted state code</state>
+  <zip>extracted zip code</zip>
+  <country>extracted country or USA if not specified</country>
+  <current_user_id>user_abc123</current_user_id>
+</response>
+
+If any required parameter cannot be found, use empty string for that parameter.`;
 
 export const modifyUserAddress: Action = {
   name: 'MODIFY_USER_ADDRESS',
-  description:
-    'Modify the default address of a user. The agent needs to explain the modification detail and ask for explicit user confirmation (yes/no) to proceed.',
-  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+  similes: ['modify_user_address', 'change_default_address', 'update_account_address'],
+  description: `Modify the default shipping address of a user account.
+  
+  **Required Parameters:**
+  - user_id (string): The user ID in format "firstname_lastname_numbers" (e.g., "sara_doe_496")
+    If not provided, uses the authenticated user from state.
+  - address1 (string): Primary street address line
+  - city (string): City name
+  - state (string): State code (e.g., CA, NY, TX)
+  - zip (string): 5-digit postal code
+  
+  **Optional Parameters:**
+  - address2 (string): Secondary address line (apt, suite, etc.) - defaults to empty string
+  - country (string): Country code - defaults to "USA"
+  
+  **Returns:**
+  A JSON object containing the complete updated user profile with:
+  - name: Object with first_name and last_name
+  - email: User's email address
+  - address: Updated default shipping address
+  - payment_methods: Object of saved payment methods
+  - orders: Array of order IDs associated with this user
+  
+  **Action Prerequisites:**
+  - For modifying own address: User should be authenticated first
+  - For modifying another user's address: Admin privileges may be required
+  
+  **Security Note:**
+  The agent should explain the address modification details and ask for explicit user confirmation (yes/no) before proceeding.
+  
+  **When to use:**
+  - Customer wants to update their default shipping address
+  - Customer moved to a new location
+  - Customer wants to correct address mistakes
+  - Before placing new orders with updated address
+  
+  **Do NOT use when:**
+  - You need to change address for a specific order (use MODIFY_PENDING_ORDER_ADDRESS instead)
+  - User account doesn't exist
+  - Incomplete address information provided`,
+  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
   handler: async (
@@ -25,34 +99,19 @@ export const modifyUserAddress: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
+    // Compose state with RECENT_MESSAGES and ACTION_STATE to get context and previous auth
+    state = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
+
     const retailData: RetailData = state?.values?.retailData || getRetailData();
 
-    // Use LLM to extract parameters with XML format
-    const extractionPrompt = `Extract the parameters from the user message for a function that modifies the default address of a user.
+    // Add userMessage to state values for template
+    state.values.userMessage = message.content.text;
 
-User message: "${message.content.text}"
-
-The function requires these parameters:
-- user_id: The user ID (e.g., "sara_doe_496")
-- address1: New street address line 1
-- address2: New street address line 2 (optional - if not found, use empty string)
-- city: New city
-- state: New state code (e.g., CA, NY)
-- zip: New 5-digit zip code
-- country: New country (optional - if not found, use empty string)
-
-Respond with ONLY the extracted parameters in this XML format:
-<response>
-  <user_id>extracted user ID</user_id>
-  <address1>extracted street address line 1</address1>
-  <address2>extracted street address line 2</address2>
-  <city>extracted city</city>
-  <state>extracted state code</state>
-  <zip>extracted zip code</zip>
-  <country>extracted country</country>
-</response>
-
-If any parameter cannot be found, use empty string for that parameter.`;
+    // Use composePromptFromState with our template
+    const extractionPrompt = composePromptFromState({
+      state,
+      template: extractionTemplate,
+    });
 
     try {
       // Use small model for parameter extraction
@@ -63,17 +122,56 @@ If any parameter cannot be found, use empty string for that parameter.`;
       // Parse XML response using parseKeyValueXml
       const parsedParams = parseKeyValueXml(extractionResult);
 
-      const userId = parsedParams?.user_id?.trim();
+      const currentUserId = parsedParams?.current_user_id?.trim() || '';
+
+      if (!currentUserId) {
+        const errorMsg = `To proceed with modifying the user address, I need to confirm your account. Please provide your email or your name and ZIP code so I can log you in.`;
+        if (callback) {
+          await callback({
+            text: errorMsg,
+            source: message.content.source,
+          });
+        }
+        return {
+          success: false,
+          text: errorMsg,
+          error: 'Missing current_user_id',
+        };
+      }
+
+      let userId = parsedParams?.user_id?.trim();
       const address1 = parsedParams?.address1?.trim();
       const address2 = parsedParams?.address2?.trim() || '';
       const city = parsedParams?.city?.trim();
-      const state = parsedParams?.state?.trim();
+      const parsedState = parsedParams?.state?.trim();
       const zip = parsedParams?.zip?.trim();
       const country = parsedParams?.country?.trim() || 'USA';
 
-      if (!userId || !address1 || !city || !state || !zip) {
+      // If no specific user_id provided, use currentUserId (user modifying their own address)
+      if (!userId) {
+        userId = currentUserId;
+      }
+
+      if (!userId || !address1 || !city || !parsedState || !zip) {
         const errorMsg =
           "I couldn't extract all required address information. Please provide the user ID, street address, city, state, and zip code.";
+        if (callback) {
+          await callback({
+            text: errorMsg,
+            source: message.content.source,
+          });
+        }
+        return {
+          success: false,
+          text: errorMsg,
+          error: errorMsg,
+        };
+      }
+
+      // Security check: users can only modify their own address unless they have admin privileges
+      if (userId !== currentUserId) {
+        const errorMsg =
+          "You can only modify your own address. To modify another user's address, admin privileges are required.";
         if (callback) {
           await callback({
             text: errorMsg,
@@ -109,7 +207,7 @@ If any parameter cannot be found, use empty string for that parameter.`;
         address1,
         address2,
         city,
-        state,
+        state: parsedState,
         zip,
         country,
       };
@@ -118,22 +216,23 @@ If any parameter cannot be found, use empty string for that parameter.`;
       const updatedRetailData = { ...retailData };
       updatedRetailData.users[userId] = user;
 
-      // Return JSON string to match Python implementation
-      const successMsg = JSON.stringify(user);
+      // Return formatted JSON string
+      const responseText = JSON.stringify(user, null, 2);
 
       if (callback) {
         await callback({
-          text: successMsg,
+          text: responseText,
           source: message.content.source,
         });
       }
 
       return {
         success: true,
-        text: successMsg,
+        text: responseText,
         values: {
           ...state?.values,
           retailData: updatedRetailData,
+          lastModifiedUserId: userId,
         },
         data: user,
       };

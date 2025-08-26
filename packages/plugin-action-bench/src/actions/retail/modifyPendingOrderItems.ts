@@ -7,15 +7,96 @@ import type {
   Memory,
   State,
 } from '@elizaos/core';
-import { ModelType, parseKeyValueXml } from '@elizaos/core';
+import { ModelType, parseKeyValueXml, composePromptFromState } from '@elizaos/core';
 import { getRetailData } from '../../data/retail/mockData';
-import { RetailData, OrderItem, GiftCardPayment, Order, Product } from '../../types/retail';
+import { RetailData, GiftCardPayment, Order } from '../../types/retail';
+
+// Template for extracting item modification parameters
+const extractionTemplate = `Extract the item exchange parameters from the user's message and conversation context.
+
+{{recentMessages}}
+
+**Previous Action Results:**
+{{actionResults}}
+
+Current user message: "{{userMessage}}"
+
+The function requires these parameters:
+- order_id: The order ID with # prefix (e.g., #W0000000)
+- item_ids: Comma-separated list of item IDs to modify (e.g., "1008292230,1008292231")
+  These are 10-digit item identifiers from the order
+- new_item_ids: Comma-separated list of new item IDs to replace with (same count as item_ids)
+  These should be variants of the same product
+- payment_method_id: Payment method ID for price difference (e.g., gift_card_1234567, credit_card_1234, paypal_1234567)
+  This should come from the user's saved payment methods
+- current_user_id: The unique internal user ID (if the user is clearly logged in and referenced), otherwise leave it blank.
+
+IMPORTANT:
+- The number of item_ids must match the number of new_item_ids
+- Items can only be exchanged for variants of the same product
+- Look for payment method IDs from previous GET_USER_DETAILS or GET_ORDER_DETAILS results
+
+Respond with ONLY the extracted parameters in this XML format:
+<response>
+  <order_id>extracted order ID with # prefix</order_id>
+  <item_ids>comma-separated item IDs to modify</item_ids>
+  <new_item_ids>comma-separated new item IDs</new_item_ids>
+  <payment_method_id>payment method ID</payment_method_id>
+  <current_user_id>user_abc123</current_user_id>
+</response>
+
+If any parameter cannot be found, use empty string for that parameter.`;
 
 export const modifyPendingOrderItems: Action = {
   name: 'MODIFY_PENDING_ORDER_ITEMS',
-  description:
-    'Modify items in a pending order to new items of the same product type. For a pending order, this function can only be called once. The agent needs to explain the exchange detail and ask for explicit user confirmation (yes/no) to proceed.',
-  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+  similes: ['modify_pending_order_items', 'exchange_items', 'swap_items', 'change_order_items'],
+  description: `Modify items in a pending order to exchange them for variants of the same product.
+  
+  **Required Parameters:**
+  - order_id (string): The order ID with '#' prefix (e.g., #W0000000)
+  - item_ids (string): Comma-separated list of 10-digit item IDs to exchange (e.g., "1008292230,1008292231")
+  - new_item_ids (string): Comma-separated list of new item IDs (same count as item_ids)
+  - payment_method_id (string): Payment method for handling price differences (e.g., gift_card_1234567, credit_card_7815826)
+  
+  **Returns:**
+  A JSON object containing the modified order with:
+  - order_id: The order identifier
+  - user_id: Customer's user ID
+  - items: Updated array of items with new item IDs and prices
+  - status: "pending (item modified)" to indicate the modification
+  - payment_history: Updated payment history including any new charges or refunds
+  
+  **Action Prerequisites:**
+  - User must be authenticated (currentUserId in state)
+  - Order must exist and be in "pending" status
+  - User must own the order
+  - Payment method must exist in user's saved methods
+  - For gift cards: sufficient balance for price increases
+  
+  **Important Limitations:**
+  - Can only be called ONCE per pending order
+  - Items can only be exchanged for variants of the SAME product
+  - Number of items exchanged in must equal items exchanged out
+  
+  **Security Note:**
+  The agent should explain the exchange details (items, price difference) and ask for explicit user confirmation (yes/no) before proceeding.
+  
+  **Action Chaining:**
+  - ALWAYS call GET_ORDER_DETAILS first to get current item_ids
+  - May need GET_USER_DETAILS to see available payment methods
+  - Use GET_PRODUCT_DETAILS to show exchange options
+  
+  **When to use:**
+  - Customer wants to exchange items for different size/color/variant
+  - Customer wants to modify items before order ships
+  - Only works for orders with status "pending"
+  
+  **Do NOT use when:**
+  - Order has already been processed, shipped, or delivered
+  - Trying to exchange for completely different products
+  - Order has already been modified once
+  - User not authenticated or doesn't own the order`,
+  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
   handler: async (
@@ -25,45 +106,19 @@ export const modifyPendingOrderItems: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    // Check authentication
-    if (!state?.values?.authenticated || !state?.values?.currentUserId) {
-      const errorMsg = "You don't have permission to modify this order. Please authenticate first.";
-      if (callback) {
-        await callback({
-          text: errorMsg,
-          source: message.content.source,
-        });
-      }
-      return {
-        success: false,
-        text: errorMsg,
-        error: errorMsg,
-      };
-    }
+    // Compose state with RECENT_MESSAGES and ACTION_STATE for context
+    state = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
 
     const retailData: RetailData = state?.values?.retailData || getRetailData();
-    const currentUserId = state.values.currentUserId;
 
-    // Use LLM to extract parameters with XML format
-    const extractionPrompt = `Extract the parameters from the user message for a function that modifies items in a pending order to new items of the same product type.
+    // Add userMessage to state values for template
+    state.values.userMessage = message.content.text;
 
-User message: "${message.content.text}"
-
-The function requires these parameters:
-- order_id: The order ID with # prefix (e.g., #W0000000)
-- item_ids: Comma-separated list of item IDs to modify (e.g., "1008292230,1008292231")
-- new_item_ids: Comma-separated list of new item IDs to replace with (same count as item_ids)
-- payment_method_id: Payment method ID for price difference (e.g., gift_card_1234567, credit_card_1234)
-
-Respond with ONLY the extracted parameters in this XML format:
-<response>
-  <order_id>extracted order ID with # prefix</order_id>
-  <item_ids>comma-separated item IDs to modify</item_ids>
-  <new_item_ids>comma-separated new item IDs</new_item_ids>
-  <payment_method_id>payment method ID</payment_method_id>
-</response>
-
-If any parameter cannot be found, use empty string for that parameter.`;
+    // Use composePromptFromState with our template
+    const extractionPrompt = composePromptFromState({
+      state,
+      template: extractionTemplate,
+    });
 
     try {
       // Use small model for parameter extraction
@@ -73,6 +128,23 @@ If any parameter cannot be found, use empty string for that parameter.`;
 
       // Parse XML response using parseKeyValueXml
       const parsedParams = parseKeyValueXml(extractionResult);
+
+      const currentUserId = parsedParams?.current_user_id?.trim() || '';
+
+      if (!currentUserId) {
+        const errorMsg = `To proceed with modifying the order items, I need to confirm your account. Please provide your email or your name and ZIP code so I can log you in.`;
+        if (callback) {
+          await callback({
+            text: errorMsg,
+            source: message.content.source,
+          });
+        }
+        return {
+          success: false,
+          text: errorMsg,
+          error: 'Missing current_user_id',
+        };
+      }
 
       const orderId = parsedParams?.order_id?.trim();
       const itemIdsStr = parsedParams?.item_ids?.trim() || '';
@@ -134,7 +206,7 @@ If any parameter cannot be found, use empty string for that parameter.`;
       // Check if user owns the order
       if (order.user_id !== currentUserId) {
         const errorMsg =
-          "You don't have permission to modify this order. Please authenticate first.";
+          "You don't have permission to modify this order. You can only modify orders that belong to you.";
         if (callback) {
           await callback({
             text: errorMsg,
@@ -318,22 +390,24 @@ If any parameter cannot be found, use empty string for that parameter.`;
       updatedRetailData.orders[orderId] = order as Order;
       updatedRetailData.users[order.user_id] = user;
 
-      // Return JSON of the order like Python implementation
-      const successMsg = JSON.stringify(order);
+      // Return formatted JSON of the modified order
+      const responseText = JSON.stringify(order, null, 2);
 
       if (callback) {
         await callback({
-          text: successMsg,
+          text: responseText,
           source: message.content.source,
         });
       }
 
       return {
         success: true,
-        text: successMsg,
+        text: responseText,
         values: {
           ...state?.values,
           retailData: updatedRetailData,
+          lastModifiedOrderId: orderId,
+          modificationApplied: true,
         },
         data: order,
       };

@@ -7,15 +7,87 @@ import type {
   Memory,
   State,
 } from '@elizaos/core';
-import { ModelType, parseKeyValueXml } from '@elizaos/core';
+import { ModelType, parseKeyValueXml, composePromptFromState } from '@elizaos/core';
 import { getRetailData } from '../../data/retail/mockData';
 import { RetailData, Address, Order } from '../../types/retail';
 
+// Template for extracting address modification parameters
+const extractionTemplate = `Extract the address modification parameters from the user's message and conversation context.
+
+{{recentMessages}}
+
+Current user message: "{{userMessage}}"
+
+The function requires these parameters:
+- order_id: The order ID with # prefix (e.g., #W0000000)
+- address1: New street address line 1
+- address2: New street address line 2 (optional - if not found, use empty string)
+- city: New city
+- state: New state code (e.g., CA, NY)
+- zip: New 5-digit zip code
+- country: New country (optional - if not found, use "USA")
+- current_user_id: The unique internal user ID (if the user is clearly logged in and referenced), otherwise leave it blank.
+
+Based on the conversation context, extract the address change request. The user should be providing a new shipping address for their pending order.
+
+Respond with ONLY the extracted parameters in this XML format:
+<response>
+  <order_id>extracted order ID with # prefix</order_id>
+  <address1>extracted street address line 1</address1>
+  <address2>extracted street address line 2 or empty string</address2>
+  <city>extracted city</city>
+  <state>extracted state code</state>
+  <zip>extracted zip code</zip>
+  <country>extracted country or USA if not specified</country>
+  <current_user_id>user_abc123</current_user_id>
+</response>
+
+If any required parameter cannot be found, use empty string for that parameter.`;
+
 export const modifyPendingOrderAddress: Action = {
   name: 'MODIFY_PENDING_ORDER_ADDRESS',
-  description:
-    'Modify the shipping address of a pending order. The order must be in pending status to be modified.',
-  validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
+  similes: ['modify_pending_order_address', 'change_shipping_address', 'update_delivery_address'],
+  description: `Modify the shipping address of a pending order.
+  
+  **Required Parameters:**
+  - order_id (string): The order ID with '#' prefix (e.g., #W0000000)
+  - address1 (string): Primary street address line
+  - city (string): City name
+  - state (string): State code (e.g., CA, NY, TX)
+  - zip (string): 5-digit postal code
+  
+  **Optional Parameters:**
+  - address2 (string): Secondary address line (apt, suite, etc.) - defaults to empty string
+  - country (string): Country code - defaults to "USA"
+  
+  **Returns:**
+  A JSON object containing the complete updated order with:
+  - order_id: The order identifier
+  - user_id: Customer's user ID
+  - address: Updated shipping address
+  - items: Array of items in the order
+  - status: Current order status (must be "pending" to modify)
+  - payment_history: Payment transaction details
+  
+  **Action Prerequisites:**
+  - User must be authenticated (currentUserId in state)
+  - Order must exist and be in "pending" status
+  - User must own the order (user_id matches currentUserId)
+  
+  **Security Note:**
+  The agent should explain the address modification details and ask for explicit user confirmation (yes/no) before proceeding.
+  
+  **When to use:**
+  - Customer wants to change shipping address before order ships
+  - Customer made a mistake in their address
+  - Customer wants to ship to a different location
+  - Only works for orders with status "pending"
+  
+  **Do NOT use when:**
+  - Order has already been processed, shipped, or delivered
+  - User has not been authenticated
+  - Trying to modify someone else's order`,
+  validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     return true;
   },
   handler: async (
@@ -25,50 +97,19 @@ export const modifyPendingOrderAddress: Action = {
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    // Check authentication
-    if (!state?.values?.authenticated || !state?.values?.currentUserId) {
-      const errorMsg = "You don't have permission to modify this order. Please authenticate first.";
-      if (callback) {
-        await callback({
-          text: errorMsg,
-          source: message.content.source,
-        });
-      }
-      return {
-        success: false,
-        text: errorMsg,
-        error: errorMsg,
-      };
-    }
+    // Compose state with RECENT_MESSAGES to get conversation context
+    state = await runtime.composeState(message, ['RECENT_MESSAGES']);
 
     const retailData: RetailData = state?.values?.retailData || getRetailData();
 
-    // Use LLM to extract parameters with XML format
-    const extractionPrompt = `Extract the parameters from the user message for a function that modifies the shipping address of a pending order.
+    // Add userMessage to state values for template
+    state.values.userMessage = message.content.text;
 
-User message: "${message.content.text}"
-
-The function requires these parameters:
-- order_id: The order ID with # prefix (e.g., #W0000000)
-- address1: New street address line 1
-- address2: New street address line 2 (optional - if not found, use empty string)
-- city: New city
-- state: New state code (e.g., CA, NY)
-- zip: New 5-digit zip code
-- country: New country (optional - if not found, use empty string)
-
-Respond with ONLY the extracted parameters in this XML format:
-<response>
-  <order_id>extracted order ID with # prefix</order_id>
-  <address1>extracted street address line 1</address1>
-  <address2>extracted street address line 2</address2>
-  <city>extracted city</city>
-  <state>extracted state code</state>
-  <zip>extracted zip code</zip>
-  <country>extracted country</country>
-</response>
-
-If any parameter cannot be found, use empty string for that parameter.`;
+    // Use composePromptFromState with our template
+    const extractionPrompt = composePromptFromState({
+      state,
+      template: extractionTemplate,
+    });
 
     try {
       // Use small model for parameter extraction
@@ -78,6 +119,23 @@ If any parameter cannot be found, use empty string for that parameter.`;
 
       // Parse XML response using parseKeyValueXml
       const parsedParams = parseKeyValueXml(extractionResult);
+
+      const currentUserId = parsedParams?.current_user_id?.trim() || '';
+
+      if (!currentUserId) {
+        const errorMsg = `To proceed with modifying the order address, I need to confirm your account. Please provide your email or your name and ZIP code so I can log you in.`;
+        if (callback) {
+          await callback({
+            text: errorMsg,
+            source: message.content.source,
+          });
+        }
+        return {
+          success: false,
+          text: errorMsg,
+          error: 'Missing current_user_id',
+        };
+      }
 
       const orderId = parsedParams?.order_id?.trim();
       const address1 = parsedParams?.address1?.trim();
@@ -131,9 +189,9 @@ If any parameter cannot be found, use empty string for that parameter.`;
       }
 
       // Check if user owns the order
-      if (order.user_id !== state.values.currentUserId) {
+      if (order.user_id !== currentUserId) {
         const errorMsg =
-          "You don't have permission to modify this order. Please authenticate first.";
+          "You don't have permission to modify this order. You can only modify orders that belong to you.";
         if (callback) {
           await callback({
             text: errorMsg,
@@ -170,22 +228,23 @@ If any parameter cannot be found, use empty string for that parameter.`;
       const updatedRetailData = { ...retailData };
       updatedRetailData.orders[orderId] = order as Order;
 
-      // Return the modified order as JSON string to match Python implementation
-      const successMsg = JSON.stringify(order);
+      // Return the modified order as JSON string
+      const responseText = JSON.stringify(order, null, 2);
 
       if (callback) {
         await callback({
-          text: successMsg,
+          text: responseText,
           source: message.content.source,
         });
       }
 
       return {
         success: true,
-        text: successMsg,
+        text: responseText,
         values: {
           ...state?.values,
           retailData: updatedRetailData,
+          lastModifiedOrderId: orderId,
         },
         data: order,
       };
