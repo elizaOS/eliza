@@ -336,9 +336,8 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
+  // Set up timeout monitoring
   const useMultiStep = runtime.getSetting('USE_MULTI_STEP');
-
-  // Timeout setup (shared)
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timeout | undefined = undefined;
 
@@ -418,18 +417,22 @@ const messageReceivedHandler = async ({
 
         // First, save the incoming message
         runtime.logger.debug('[Bootstrap] Saving message to memory and embeddings');
+        // Check if memory already exists (it might have been created by MessageBusService)
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
           if (existingMemory) {
+            // Still add embedding if needed
             runtime.logger.debug('[Bootstrap] Memory already exists, skipping creation');
             await runtime.addEmbeddingToMemory(message);
           } else {
+            // Create memory if it doesn't exist
             await Promise.all([
               runtime.addEmbeddingToMemory(message),
               runtime.createMemory(message, 'messages'),
             ]);
           }
         } else {
+          // No ID, create new memory
           await Promise.all([
             runtime.addEmbeddingToMemory(message),
             runtime.createMemory(message, 'messages'),
