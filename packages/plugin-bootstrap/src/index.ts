@@ -766,7 +766,6 @@ type StrategyResult = {
 };
 
 async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
-  // Single-shot unique logic (was inside handleSingleShotResponse -> shouldRespond branch)
   state = await runtime.composeState(message, ['ACTIONS']);
 
   if (!state.values?.actionNames) {
@@ -861,7 +860,6 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
 }
 
 async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
-  // Multi-step unique logic (was inside handleMultiStepResponse -> shouldRespond branch)
   const traceActionResult: any[] = [];
   let continueLoop = true;
   let accumulatedState: any = state;
