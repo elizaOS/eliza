@@ -37,8 +37,8 @@ import {
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
-// import * as actions from './actions/index.ts';
-// import * as evaluators from './evaluators/index.ts';
+import * as actions from './actions/index.ts';
+import * as evaluators from './evaluators/index.ts';
 import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
@@ -1711,41 +1711,41 @@ export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
   actions: [
-    // actions.replyAction,
-    // actions.followRoomAction,
-    // actions.unfollowRoomAction,
-    // actions.ignoreAction,
-    // actions.noneAction,
-    // actions.muteRoomAction,
-    // actions.unmuteRoomAction,
-    // actions.sendMessageAction,
-    // actions.updateEntityAction,
-    // actions.choiceAction,
-    // actions.updateRoleAction,
-    // actions.updateSettingsAction,
-    // actions.generateImageAction,
+    actions.replyAction,
+    actions.followRoomAction,
+    actions.unfollowRoomAction,
+    actions.ignoreAction,
+    actions.noneAction,
+    actions.muteRoomAction,
+    actions.unmuteRoomAction,
+    actions.sendMessageAction,
+    actions.updateEntityAction,
+    actions.choiceAction,
+    actions.updateRoleAction,
+    actions.updateSettingsAction,
+    actions.generateImageAction,
   ],
   // this is jank, these events are not valid
   events: events as any as PluginEvents,
-  // evaluators: [evaluators.reflectionEvaluator],
+  evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    // providers.evaluatorsProvider,
+    providers.evaluatorsProvider,
     providers.anxietyProvider,
-    // providers.timeProvider,
-    // providers.entitiesProvider,
-    // providers.relationshipsProvider,
-    // providers.choiceProvider,
-    // providers.factsProvider,
-    // providers.roleProvider,
-    // providers.settingsProvider,
-    // providers.capabilitiesProvider,
-    // providers.attachmentsProvider,
+    providers.timeProvider,
+    providers.entitiesProvider,
+    providers.relationshipsProvider,
+    providers.choiceProvider,
+    providers.factsProvider,
+    providers.roleProvider,
+    providers.settingsProvider,
+    providers.capabilitiesProvider,
+    providers.attachmentsProvider,
     providers.providersProvider,
     providers.actionsProvider,
     providers.actionStateProvider,
     providers.characterProvider,
     providers.recentMessagesProvider,
-    // providers.worldProvider,
+    providers.worldProvider,
   ],
   services: [TaskService],
 };
