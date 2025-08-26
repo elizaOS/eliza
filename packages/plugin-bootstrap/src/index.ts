@@ -1599,7 +1599,7 @@ const events = {
           `[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`
         );
       } catch (error: any) {
-        payload.runtime.logger.error(`[Bootstrap] Error handling user left: ${error.message}`);
+        payload.runtime.logger.error('[Bootstrap] Error handling user left:', error instanceof Error ? error.message : String(error));
       }
     },
   ],

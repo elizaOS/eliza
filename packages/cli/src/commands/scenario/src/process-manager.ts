@@ -134,7 +134,7 @@ export class ProcessManager {
     await Promise.allSettled(terminationPromises);
 
     // Final cleanup - force kill any remaining processes
-    for (const [runId, processInfo] of this.processes.entries()) {
+    for (const [_, processInfo] of this.processes.entries()) {
       if (this.isProcessRunning(processInfo.pid)) {
         console.log(`🔧 [ProcessManager] Force killing remaining process ${processInfo.pid}`);
         try {

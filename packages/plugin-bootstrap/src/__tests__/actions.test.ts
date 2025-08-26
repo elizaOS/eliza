@@ -56,7 +56,7 @@ describe('Reply Action', () => {
     const coreModule = await import('@elizaos/core');
 
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
         message: 'Hello there! How can I help you today?',
         thought: 'Responding to the user greeting.',

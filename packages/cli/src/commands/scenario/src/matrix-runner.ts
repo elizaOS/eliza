@@ -11,8 +11,8 @@ import {
   MatrixConfigRuntime,
   MatrixAxisRuntime,
   MatrixExecutionContext,
-  CombinationResult,
-  MatrixExecutionResult,
+  // CombinationResult, // unused
+  // MatrixExecutionResult, // unused
 } from './matrix-types';
 
 /**
@@ -229,7 +229,7 @@ export function filterCombinations(
  */
 export function validateCombinations(
   combinations: MatrixCombination[],
-  baseScenario: any
+  _baseScenario: any
 ): { valid: boolean; invalidCombinations: string[]; errors: string[] } {
   // This will be fully implemented when integrated with the parameter override system
   // For now, we'll do basic validation

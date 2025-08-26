@@ -14,11 +14,11 @@ const upload = multer({
     fileSize: MAX_FILE_SIZE,
     files: 1,
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type'), false);
+      cb(new Error('Invalid file type'));
     }
   },
 });

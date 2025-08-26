@@ -20,7 +20,10 @@ export function createAgentWorldsRouter(agents: Map<UUID, IAgentRuntime>): expre
       const worlds = await runtime.getAllWorlds();
       sendSuccess(res, { worlds });
     } catch (error) {
-      logger.error('[WORLDS LIST] Error retrieving worlds:', error);
+      logger.error(
+        '[WORLDS LIST] Error retrieving worlds:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -58,7 +61,10 @@ export function createAgentWorldsRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       sendSuccess(res, { world }, 201);
     } catch (error) {
-      logger.error('[WORLD CREATE] Error creating world:', error);
+      logger.error(
+        '[WORLD CREATE] Error creating world:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -122,7 +128,10 @@ export function createAgentWorldsRouter(agents: Map<UUID, IAgentRuntime>): expre
       const refreshedWorld = (await runtime.getAllWorlds()).find((w) => w.id === worldId);
       sendSuccess(res, { world: refreshedWorld });
     } catch (error) {
-      logger.error('[WORLD UPDATE] Error updating world:', error);
+      logger.error(
+        '[WORLD UPDATE] Error updating world:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

@@ -1,5 +1,4 @@
 import { getEnvFileService } from '@/src/services/env-file.service';
-import { logger } from '@elizaos/core';
 
 /**
  * Retrieves the absolute path to the `.env` environment file.

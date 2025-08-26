@@ -8,7 +8,7 @@
  * Required by ticket #5787 - Data Aggregation Logic section.
  */
 
-import { ScenarioRunResult, TrajectoryStep } from '../../scenario/src/schema';
+import { ScenarioRunResult } from '../../scenario/src/schema';
 import { MatrixConfig } from '../../scenario/src/matrix-schema';
 import { ReportData, ReportSummaryStats, CommonTrajectory } from './report-schema';
 
@@ -304,7 +304,7 @@ export class AnalysisEngine {
     ).length;
 
     const commonTrajectories: CommonTrajectory[] = Array.from(trajectoryPatterns.entries())
-      .map(([sequenceKey, pattern]) => ({
+      .map(([_, pattern]) => ({
         sequence: pattern.sequence,
         count: pattern.count,
         average_duration: pattern.totalDuration / pattern.count,

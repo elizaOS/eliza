@@ -152,7 +152,6 @@ export class EnvFileService {
       if (preserveComments) {
         // Preserve existing comments
         const existingEntries = await this.readWithComments();
-        const existingKeys = new Set(existingEntries.map((e) => e.key));
 
         // Write existing entries with their comments
         for (const entry of existingEntries) {

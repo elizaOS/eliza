@@ -1,18 +1,4 @@
 {
   "files": [],
-  "references": [
-    {
-      "path": "./tsconfig.app.json"
-    },
-    {
-      "path": "./tsconfig.node.json"
-    }
-  ],
-  "compilerOptions": {
-    "lib": ["es2019", "dom"],
-    "baseUrl": "./",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
 }

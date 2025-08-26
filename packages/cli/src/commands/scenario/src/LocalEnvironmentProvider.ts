@@ -13,21 +13,21 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
-  private runtime: AgentRuntime | null = null;
+  // private runtime: AgentRuntime | null = null; // unused
   private serverPort: number | null = null;
   private trajectoryReconstructor: TrajectoryReconstructor | null = null;
 
-  constructor(server?: AgentServer, agentId?: UUID, runtime?: AgentRuntime, serverPort?: number) {
+  constructor(server?: AgentServer, agentId?: UUID, _runtime?: AgentRuntime, serverPort?: number) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
-    this.runtime = runtime ?? null;
+    // this.runtime = _runtime ?? null; // unused property
     this.serverPort = serverPort ?? null;
-    this.trajectoryReconstructor = runtime ? new TrajectoryReconstructor(runtime) : null;
+    this.trajectoryReconstructor = _runtime ? new TrajectoryReconstructor(_runtime) : null;
 
     console.log(`🔧 [DEBUG] LocalEnvironmentProvider CONSTRUCTOR:`);
     console.log(`🔧 [DEBUG]   - Server: ${server ? 'present' : 'null'}`);
     console.log(`🔧 [DEBUG]   - Agent ID: ${agentId}`);
-    console.log(`🔧 [DEBUG]   - Runtime: ${runtime ? 'present' : 'null'}`);
+    console.log(`🔧 [DEBUG]   - Runtime: ${_runtime ? 'present' : 'null'}`);
     console.log(`🔧 [DEBUG]   - Server Port: ${serverPort}`);
   }
 
@@ -157,7 +157,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             break;
           default:
             // For other languages, try the -c flag pattern
-            execCommand = step.lang;
+            execCommand = step.lang || 'bash';
             execArgs = ['-c', step.code];
             break;
         }

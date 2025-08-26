@@ -339,7 +339,10 @@ export const myPlugin = {
           try {
             testModule = await import(pathToFileURL(moduleImportPath).href);
           } catch (importError) {
-            safeLogger.error(`Failed to import test file ${fileName}:`, importError);
+            safeLogger.error(
+              `Failed to import test file ${fileName}:`,
+              importError instanceof Error ? importError.message : String(importError)
+            );
             safeLogger.info(
               `Make sure your e2e tests are properly compiled with 'npm run build' or 'bun run build'`
             );
@@ -382,12 +385,18 @@ export const myPlugin = {
           // Run the test suite
           await this.runTestSuite(testSuite);
         } catch (error) {
-          safeLogger.error(`Error running tests from ${testFile}:`, error);
+          safeLogger.error(
+            `Error running tests from ${testFile}:`,
+            error instanceof Error ? error.message : String(error)
+          );
           this.stats.failed++;
         }
       }
     } catch (error) {
-      safeLogger.error(`Error running e2e tests:`, error);
+      safeLogger.error(
+        `Error running e2e tests:`,
+        error instanceof Error ? error.message : String(error)
+      );
     }
   }
 
