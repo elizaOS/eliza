@@ -339,8 +339,6 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
-  // Hardcoded setup to simplify testing
-
   const useMultiStep = runtime.getSetting('USE_MULTI_STEP');
 
   // Timeout setup (shared)
