@@ -186,9 +186,7 @@ These are the actions or data provider calls that have already been used in this
 <output>
 <response>
   <thought>
-    Clearly explain your reasoning for the next step and how it helps resolve the user's request. 
-    If calling an action or provider, mention the relevant parameters you are passing.  
-    Example: "To proceed, I need to call ACTION_NAME with parameters { 'key': 'value' } to gather the necessary data."
+    Clearly explain your reasoning for the next step and how it helps resolve the user's request.
   </thought>
   <nextStepType>action | provider | finish</nextStepType>
   <nextStepName>(Required only if nextStepType is action or provider)</nextStepName>
