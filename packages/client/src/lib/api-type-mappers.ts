@@ -121,17 +121,28 @@ export function mapApiChannelsToClient(apiChannels: ApiMessageChannel[]): Client
 
 // Map API Message to UiMessage
 export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMessage {
+  // Ensure attachments are properly typed as Media[]
+  const attachments = apiMessage.metadata?.attachments?.map((att: any) => ({
+    id: att.id || crypto.randomUUID(),
+    url: att.url,
+    title: att.title || att.name,
+    source: att.source,
+    description: att.description,
+    text: att.text,
+    contentType: att.contentType || att.type,
+  })) || undefined;
+
   return {
     id: apiMessage.id as UUID,
     text: apiMessage.content,
     name: apiMessage.metadata?.authorDisplayName || apiMessage.metadata?.agentName || 'Unknown',
     senderId: apiMessage.authorId as UUID,
-    isAgent: apiMessage.metadata?.isAgent || false,
+    isAgent: Boolean(apiMessage.metadata?.isAgent) || false,
     createdAt: apiDateToTimestamp(apiMessage.createdAt),
     channelId: apiMessage.channelId as UUID,
     serverId: serverId || (apiMessage.metadata?.serverId as UUID),
     prompt: apiMessage.metadata?.prompt,
-    attachments: apiMessage.metadata?.attachments,
+    attachments,
     thought: apiMessage.metadata?.thought,
     actions: apiMessage.metadata?.actions,
   };

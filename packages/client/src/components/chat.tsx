@@ -1218,7 +1218,9 @@ export default function Chat({
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
-                                    channel.metadata?.createdAt ||
+                                    (typeof channel.metadata?.createdAt === 'string' || typeof channel.metadata?.createdAt === 'number'
+                                      ? channel.metadata.createdAt
+                                      : null) ||
                                       channel.updatedAt ||
                                       channel.createdAt
                                   ).fromNow()}

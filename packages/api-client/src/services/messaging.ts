@@ -296,11 +296,11 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Add new user if not already present
     if (!currentParticipants.includes(userId)) {
-      const updatedParticipants = [...currentParticipants, userId];
+      const updatedParticipants: UUID[] = [...currentParticipants, userId];
       return this.updateChannel(channelId, {
         participantCentralUserIds: updatedParticipants,
       });
@@ -318,10 +318,10 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Add new users that aren't already present
-    const newParticipants = [...currentParticipants];
+    const newParticipants: UUID[] = [...currentParticipants];
     for (const userId of userIds) {
       if (!newParticipants.includes(userId)) {
         newParticipants.push(userId);
@@ -342,10 +342,10 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Remove user from participants
-    const updatedParticipants = currentParticipants.filter((id: string) => id !== userId);
+    const updatedParticipants: UUID[] = currentParticipants.filter((id) => id !== userId);
 
     return this.updateChannel(channelId, {
       participantCentralUserIds: updatedParticipants,

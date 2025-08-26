@@ -86,10 +86,10 @@ export class SocketIORouter {
 
     socket.emit(
       'connection_established',
-      JSON.stringify({
+      {
         message: 'Connected to Eliza Socket.IO server',
         socketId: socket.id,
-      })
+      }
     );
   }
 
@@ -386,10 +386,10 @@ export class SocketIORouter {
       // Also send back to the sender with the server-assigned ID
       socket.emit(
         'messageBroadcast',
-        JSON.stringify({
+        {
           ...messageBroadcast,
           clientMessageId: payload.messageId,
-        })
+        }
       );
 
       socket.emit('messageAck', {
@@ -412,9 +412,9 @@ export class SocketIORouter {
     logger.error(`[SocketIO ${socket.id}] Sending error to client: ${errorMessage}`);
     socket.emit(
       'messageError',
-      JSON.stringify({
+      {
         error: errorMessage,
-      })
+      }
     );
   }
 
@@ -423,10 +423,10 @@ export class SocketIORouter {
     logger.info(`[SocketIO ${socket.id}] Client subscribed to log stream`);
     socket.emit(
       'log_subscription_confirmed',
-      JSON.stringify({
+      {
         subscribed: true,
         message: 'Successfully subscribed to log stream',
-      })
+      }
     );
   }
 
@@ -435,10 +435,10 @@ export class SocketIORouter {
     logger.info(`[SocketIO ${socket.id}] Client unsubscribed from log stream`);
     socket.emit(
       'log_subscription_confirmed',
-      JSON.stringify({
+      {
         subscribed: false,
         message: 'Successfully unsubscribed from log stream',
-      })
+      }
     );
   }
 
@@ -449,19 +449,19 @@ export class SocketIORouter {
       logger.info(`[SocketIO ${socket.id}] Updated log filters:`, JSON.stringify(filters));
       socket.emit(
         'log_filters_updated',
-        JSON.stringify({
+        {
           success: true,
           filters: this.logStreamConnections.get(socket.id),
-        })
+        }
       );
     } else {
       logger.warn(`[SocketIO ${socket.id}] Cannot update filters: not subscribed to log stream`);
       socket.emit(
         'log_filters_updated',
-        JSON.stringify({
+        {
           success: false,
           error: 'Not subscribed to log stream',
-        })
+        }
       );
     }
   }

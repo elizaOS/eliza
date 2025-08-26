@@ -1,5 +1,6 @@
 import {
   ChannelType,
+  ContentType,
   EventType,
   Service,
   createUniqueUuid,
@@ -11,6 +12,7 @@ import {
   type Plugin,
   type UUID,
 } from '@elizaos/core';
+import type { MessageMetadata } from '@elizaos/api-client';
 import internalMessageBus from '../bus'; // Import the bus
 
 // This interface defines the structure of messages coming from the server
@@ -21,12 +23,12 @@ export interface MessageServiceMessage {
   author_id: UUID; // UUID of a central user identity
   author_display_name?: string; // Display name from central user identity
   content: string;
-  raw_message?: any;
+  raw_message?: unknown;
   source_id?: string; // original platform message ID
   source_type?: string;
   in_reply_to_message_id?: UUID;
   created_at: number;
-  metadata?: any;
+  metadata?: MessageMetadata;
 }
 
 export class MessageBusService extends Service {
@@ -331,7 +333,7 @@ export class MessageBusService extends Service {
         channelId: message.channel_id,
         serverId: message.server_id,
         source: message.source_type || 'central-bus',
-        type: message.metadata?.channelType || ChannelType.GROUP,
+        type: (message.metadata?.channelType as ChannelType) || ChannelType.GROUP,
         metadata: {
           ...(message.metadata?.channelMetadata || {}),
         },
@@ -377,7 +379,12 @@ export class MessageBusService extends Service {
     const messageContent: Content = {
       text: message.content,
       source: message.source_type || 'central-bus',
-      attachments: message.metadata?.attachments,
+      attachments: message.metadata?.attachments?.map((att) => ({
+        id: att.id,
+        url: att.url,
+        title: att.name,
+        contentType: att.type as ContentType | undefined,
+      })),
       inReplyTo: message.in_reply_to_message_id
         ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
         : undefined,
@@ -404,7 +411,7 @@ export class MessageBusService extends Service {
         source: message.source_type || 'central-bus',
         sourceId: message.id,
         raw: {
-          ...message.raw_message,
+          ...(typeof message.raw_message === 'object' && message.raw_message !== null ? message.raw_message : {}),
           senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
           senderId: message.author_id,
         },
@@ -554,11 +561,11 @@ export class MessageBusService extends Service {
         // Emit MESSAGE_DELETED event with the existing memory
         await this.runtime.emitEvent(
           EventType.MESSAGE_DELETED,
-          JSON.stringify({
+          {
             runtime: this.runtime,
             message: existingMemory,
             source: 'message-bus-service',
-          })
+          }
         );
 
         logger.debug(
@@ -599,13 +606,13 @@ export class MessageBusService extends Service {
       // Emit CHANNEL_CLEARED event to bootstrap which will handle bulk deletion
       await this.runtime.emitEvent(
         EventType.CHANNEL_CLEARED,
-        JSON.stringify({
+        {
           runtime: this.runtime,
           source: 'message-bus-service',
           roomId: agentRoomId,
           channelId: data.channelId,
           memoryCount: memories.length,
-        })
+        }
       );
 
       logger.info(
