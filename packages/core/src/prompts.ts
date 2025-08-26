@@ -162,6 +162,74 @@ Respond using XML format like this:
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;
 
-export const multiStepDecisionTemplate = ``;
+export const multiStepDecisionTemplate = `<task>
+Determine the next step the assistant should take in this conversation to help the user reach their goal.
+</task>
 
-export const multiStepSummaryTemplate = ``;
+{{recentMessages}}
+
+# Two-Step Workflow
+- **Step 1: Gather or Execute**  
+  If any data is missing or a backend step needs to be executed (e.g. calling an action to exchange items or retrieve info), call the appropriate action/provider.
+
+- **Step 2: Finish**  
+  If nothing more is required and the task is truly complete, return \`FINISH\` Do not return \`REPLY\` in any case.
+
+{{actionsWithDescriptions}}
+
+{{providersWithDescriptions}}
+
+These are the actions or data provider calls that have already been used in this run. Use this to avoid redundancy and guide your next move.
+
+{{actionResults}}
+
+<output>
+<response>
+  <thought>
+    Clearly explain your reasoning for the next step and how it helps resolve the user's request. 
+    If calling an action or provider, mention the relevant parameters you are passing.  
+    Example: "To proceed, I need to call ACTION_NAME with parameters { 'key': 'value' } to gather the necessary data."
+  </thought>
+  <nextStepType>action | provider | finish</nextStepType>
+  <nextStepName>(Required only if nextStepType is action or provider)</nextStepName>
+</response>
+</output>`;
+
+export const multiStepSummaryTemplate = `<task>
+Summarize what the assistant has done so far and provide a final response to the user based on the completed steps.
+</task>
+
+# Context Information
+{{bio}}
+
+---
+
+{{system}}
+
+---
+
+{{messageDirections}}
+
+# Conversation Summary
+Below is the user’s original request and conversation so far:
+{{recentMessages}}
+
+# Execution Trace
+Here are the actions taken by the assistant to fulfill the request:
+{{actionResults}}
+
+# Assistant’s Last Reasoning Step
+{{recentMessage}}
+
+# Instructions
+
+ - Review the execution trace and last reasoning step carefully
+
+ - Your final output MUST be in this XML format:
+<output>
+<response>
+  <thought>Your thought here</thought>
+  <text>Your final message to the user</text>
+</response>
+</output>
+`;
