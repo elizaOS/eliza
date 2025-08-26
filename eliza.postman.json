@@ -2,7 +2,7 @@
   "info": {
     "name": "Eliza AI Framework API Collection",
     "description": "Complete Postman collection for the Eliza AI Framework REST API endpoints. Updated to match actual API implementation.",
-    "version": "1.0.19",
+    "version": "1.4.2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -98,8 +98,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/ping",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "ping"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "ping"
+              ]
             },
             "description": "Health check ping endpoint"
           }
@@ -111,8 +117,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/hello",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "hello"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "hello"
+              ]
             },
             "description": "Hello endpoint"
           }
@@ -124,8 +136,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "status"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "status"
+              ]
             },
             "description": "Get server status information"
           }
@@ -137,8 +155,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "health"
+              ]
             },
             "description": "Detailed health check"
           }
@@ -150,8 +174,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/stop",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "stop"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "stop"
+              ]
             },
             "description": "Stop the server"
           }
@@ -163,8 +193,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/logs?limit=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "logs"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -191,8 +227,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/server/logs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "logs"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "logs"
+              ]
             },
             "description": "Submit log entries to server"
           }
@@ -213,8 +255,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/server/logs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "logs"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "logs"
+              ]
             },
             "description": "Get server logs using POST method with query parameters in body"
           }
@@ -226,8 +274,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/logs",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "logs"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "logs"
+              ]
             },
             "description": "Clear all server logs"
           }
@@ -239,8 +293,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/server/servers",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "server", "servers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "server",
+                "servers"
+              ]
             },
             "description": "Get server debug information"
           }
@@ -257,8 +317,13 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents"
+              ]
             },
             "description": "Get a list of all agents with minimal details"
           }
@@ -270,8 +335,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Get specific agent details by ID"
           }
@@ -292,8 +363,13 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents"
+              ]
             },
             "description": "Create a new agent"
           }
@@ -314,8 +390,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Update an existing agent (partial update)"
           }
@@ -336,8 +418,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Update an existing agent (full replacement)"
           }
@@ -349,8 +437,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Delete an agent"
           }
@@ -362,8 +456,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/start",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "start"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "start"
+              ]
             },
             "description": "Start an existing agent"
           }
@@ -375,8 +476,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/stop",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "stop"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "stop"
+              ]
             },
             "description": "Stop a running agent"
           }
@@ -388,8 +496,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/panels",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "panels"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "panels"
+              ]
             },
             "description": "Get agent panels configuration"
           }
@@ -401,8 +516,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs?roomId={{roomId}}&type=info&count=50&offset=0&excludeTypes=debug,trace",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "logs"
+              ],
               "query": [
                 {
                   "key": "roomId",
@@ -441,8 +563,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/logs/{{logId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "logs", "{{logId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "logs",
+                "{{logId}}"
+              ]
             },
             "description": "Delete a specific agent log entry"
           }
@@ -454,8 +584,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/worlds",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "worlds"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "worlds"
+              ]
             },
             "description": "Get all available worlds"
           }
@@ -476,8 +612,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/worlds",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "worlds"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "worlds"
+              ]
             },
             "description": "Create a new world for an agent"
           }
@@ -498,8 +641,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/worlds/{{worldId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "worlds", "{{worldId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "worlds",
+                "{{worldId}}"
+              ]
             },
             "description": "Update an agent's world"
           }
@@ -511,8 +662,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/agents/{{agentId}}/worlds/{{worldId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "agents", "{{agentId}}", "worlds", "{{worldId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}",
+                "worlds",
+                "{{worldId}}"
+              ]
             },
             "description": "Delete an agent's world"
           }
@@ -538,8 +697,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/submit",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "submit"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "submit"
+              ]
             },
             "description": "Submit a message from an agent or system (already processed messages)"
           }
@@ -560,8 +725,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/complete",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "complete"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "complete"
+              ]
             },
             "description": "Notify that message processing is complete"
           }
@@ -582,8 +753,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/ingest-external",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "ingest-external"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "ingest-external"
+              ]
             },
             "description": "Ingest a message from an external source for agent processing"
           }
@@ -595,8 +772,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-servers",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-servers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-servers"
+              ]
             },
             "description": "Get all central messaging servers"
           }
@@ -608,8 +791,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers"
+              ]
             },
             "description": "Get all messaging servers"
           }
@@ -621,8 +810,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}"
+              ]
             },
             "description": "Get details of a specific server"
           }
@@ -643,8 +839,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers"
+              ]
             },
             "description": "Create a new messaging server"
           }
@@ -665,8 +867,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}",
+                "agents"
+              ]
             },
             "description": "Add an agent to a messaging server"
           }
@@ -678,8 +888,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}", "agents", "{{agentId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}",
+                "agents",
+                "{{agentId}}"
+              ]
             },
             "description": "Remove an agent from a messaging server"
           }
@@ -691,8 +910,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}",
+                "agents"
+              ]
             },
             "description": "Get all agents for a server"
           }
@@ -704,8 +931,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/agents/{{agentId}}/servers",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "agents", "{{agentId}}", "servers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "agents",
+                "{{agentId}}",
+                "servers"
+              ]
             },
             "description": "Get all servers for an agent"
           }
@@ -726,8 +961,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}"
+              ]
             },
             "description": "Update server details"
           }
@@ -739,8 +981,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/servers/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "servers", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "servers",
+                "{{serverId}}"
+              ]
             },
             "description": "Delete a messaging server"
           }
@@ -766,8 +1015,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/messages",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "messages"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "messages"
+              ]
             },
             "description": "Create a new message in a channel"
           }
@@ -779,8 +1036,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/messages?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "messages"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "messages"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -798,8 +1063,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-servers/{{serverId}}/channels",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-servers", "{{serverId}}", "channels"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-servers",
+                "{{serverId}}",
+                "channels"
+              ]
             },
             "description": "Get all channels for a server"
           }
@@ -820,8 +1093,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/channels",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "channels"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "channels"
+              ]
             },
             "description": "Create a regular channel"
           }
@@ -833,8 +1112,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/dm-channel?userId1=user1&userId2=user2",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "dm-channel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "dm-channel"
+              ],
               "query": [
                 {
                   "key": "userId1",
@@ -865,8 +1150,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels"
+              ]
             },
             "description": "Create a central channel"
           }
@@ -878,8 +1169,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/details",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "details"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "details"
+              ]
             },
             "description": "Get detailed channel information"
           }
@@ -891,8 +1190,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/participants",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "participants"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "participants"
+              ]
             },
             "description": "Get channel participants"
           }
@@ -904,7 +1211,9 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/messages/{{messageId}}",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "messaging",
@@ -924,8 +1233,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/messages",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "messages"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "messages"
+              ]
             },
             "description": "Clear all messages from a channel"
           }
@@ -946,8 +1263,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "agents"
+              ]
             },
             "description": "Add an agent to a channel"
           }
@@ -959,7 +1284,9 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents/{{agentId}}",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "messaging",
@@ -979,8 +1306,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}/agents",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}", "agents"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}",
+                "agents"
+              ]
             },
             "description": "List all agents in a channel"
           }
@@ -1001,8 +1336,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}"
+              ]
             },
             "description": "Update channel information"
           }
@@ -1014,8 +1356,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/messaging/central-channels/{{channelId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "central-channels", "{{channelId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "central-channels",
+                "{{channelId}}"
+              ]
             },
             "description": "Delete a channel"
           }
@@ -1036,8 +1385,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/group-channels",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "group-channels"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "group-channels"
+              ]
             },
             "description": "Create a group channel (legacy endpoint)"
           }
@@ -1054,8 +1409,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}/memories?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}", "memories"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms",
+                "{{roomId}}",
+                "memories"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -1073,8 +1437,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories?limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "memories"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "memories"
+              ],
               "query": [
                 {
                   "key": "limit",
@@ -1101,8 +1472,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "memories"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "memories"
+              ]
             },
             "description": "Create a new memory for an agent"
           }
@@ -1123,8 +1501,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories/{{memoryId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "memories", "{{memoryId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "memories",
+                "{{memoryId}}"
+              ]
             },
             "description": "Update a specific memory"
           }
@@ -1136,8 +1522,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories/{{memoryId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "memories", "{{memoryId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "memories",
+                "{{memoryId}}"
+              ]
             },
             "description": "Delete a specific memory"
           }
@@ -1149,8 +1543,17 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/memories/all/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "memories", "all", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "memories",
+                "all",
+                "{{roomId}}"
+              ]
             },
             "description": "Delete all memories for a specific room"
           }
@@ -1162,8 +1565,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "groups", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "groups",
+                "{{serverId}}"
+              ]
             },
             "description": "Get memory group details for a server"
           }
@@ -1184,8 +1594,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "groups", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "groups",
+                "{{serverId}}"
+              ]
             },
             "description": "Create a memory group for a server"
           }
@@ -1206,8 +1623,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "groups", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "groups",
+                "{{serverId}}"
+              ]
             },
             "description": "Update memory group for a server"
           }
@@ -1219,8 +1643,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "groups", "{{serverId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "groups",
+                "{{serverId}}"
+              ]
             },
             "description": "Delete a memory group"
           }
@@ -1232,8 +1663,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/groups/{{serverId}}/memories",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "groups", "{{serverId}}", "memories"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "groups",
+                "{{serverId}}",
+                "memories"
+              ]
             },
             "description": "Clear all memories from a group"
           }
@@ -1254,8 +1693,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms"
+              ]
             },
             "description": "Create a new room for an agent"
           }
@@ -1267,8 +1713,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms"
+              ]
             },
             "description": "Get all rooms for an agent"
           }
@@ -1280,8 +1733,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms",
+                "{{roomId}}"
+              ]
             },
             "description": "Get details of a specific room"
           }
@@ -1302,8 +1763,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms",
+                "{{roomId}}"
+              ]
             },
             "description": "Update room details"
           }
@@ -1315,8 +1784,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/memory/{{agentId}}/rooms/{{roomId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "memory", "{{agentId}}", "rooms", "{{roomId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "{{agentId}}",
+                "rooms",
+                "{{roomId}}"
+              ]
             },
             "description": "Delete a specific room"
           }
@@ -1342,8 +1819,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/audio-messages/synthesize",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "audio-messages", "synthesize"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "audio-messages",
+                "synthesize"
+              ]
             },
             "description": "Synthesize text to audio message"
           }
@@ -1364,8 +1849,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/speech/generate",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "speech", "generate"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "speech",
+                "generate"
+              ]
             },
             "description": "Generate speech from text"
           }
@@ -1397,8 +1890,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/speech/conversation",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "speech", "conversation"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "speech",
+                "conversation"
+              ]
             },
             "description": "Process audio for conversation"
           }
@@ -1425,8 +1926,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/audio-messages",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "audio-messages"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "audio-messages"
+              ]
             },
             "description": "Process an audio message"
           }
@@ -1453,8 +1961,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/transcribe",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "transcribe"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "transcribe"
+              ]
             },
             "description": "Transcribe audio to text"
           }
@@ -1481,8 +1996,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/audio/{{agentId}}/process",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audio", "{{agentId}}", "process"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audio",
+                "{{agentId}}",
+                "process"
+              ]
             },
             "description": "Process audio file"
           }
@@ -1514,8 +2036,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/media/agents/{{agentId}}/upload-media",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "media", "agents", "{{agentId}}", "upload-media"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "media",
+                "agents",
+                "{{agentId}}",
+                "upload-media"
+              ]
             },
             "description": "Upload media file for an agent"
           }
@@ -1542,8 +2072,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/messaging/channels/{{channelId}}/upload-media",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "messaging", "channels", "{{channelId}}", "upload-media"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messaging",
+                "channels",
+                "{{channelId}}",
+                "upload-media"
+              ]
             },
             "description": "Upload media file for a channel"
           }
@@ -1560,8 +2098,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/system/env/local",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "system", "env", "local"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "env",
+                "local"
+              ]
             },
             "description": "Get local environment configuration"
           }
@@ -1582,8 +2127,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/system/env/local",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "system", "env", "local"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "system",
+                "env",
+                "local"
+              ]
             },
             "description": "Update local environment configuration"
           }
@@ -1600,8 +2152,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/media/uploads/{{agentId}}/filename.jpg",
-              "host": ["{{baseUrl}}"],
-              "path": ["media", "uploads", "{{agentId}}", "filename.jpg"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "media",
+                "uploads",
+                "{{agentId}}",
+                "filename.jpg"
+              ]
             },
             "description": "Serve uploaded agent media files"
           }
@@ -1613,8 +2172,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/media/generated/{{agentId}}/filename.jpg",
-              "host": ["{{baseUrl}}"],
-              "path": ["media", "generated", "{{agentId}}", "filename.jpg"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "media",
+                "generated",
+                "{{agentId}}",
+                "filename.jpg"
+              ]
             },
             "description": "Serve generated agent files"
           }
@@ -1626,8 +2192,16 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/media/uploads/channels/{{channelId}}/filename.jpg",
-              "host": ["{{baseUrl}}"],
-              "path": ["media", "uploads", "channels", "{{channelId}}", "filename.jpg"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "media",
+                "uploads",
+                "channels",
+                "{{channelId}}",
+                "filename.jpg"
+              ]
             },
             "description": "Serve uploaded channel media files"
           }
