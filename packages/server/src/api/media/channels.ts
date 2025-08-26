@@ -24,7 +24,7 @@ const upload = multer({
     if (isAllowed) {
       cb(null, true);
     } else {
-      cb(null, false);
+      cb(new Error(`Invalid file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
     }
   },
 });

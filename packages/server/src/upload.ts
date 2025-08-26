@@ -53,7 +53,7 @@ export const agentAudioUpload = () =>
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(null, false);
+        cb(new Error(`Invalid audio file type. Only ${ALLOWED_AUDIO_MIME_TYPES.join(', ')} are allowed`));
       }
     },
   });
@@ -73,7 +73,7 @@ export const agentMediaUpload = () =>
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(null, false);
+        cb(new Error(`Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
       }
     },
   });
@@ -94,7 +94,7 @@ export const channelUpload = () =>
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(null, false);
+        cb(new Error(`Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
       }
     },
   });
