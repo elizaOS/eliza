@@ -330,9 +330,6 @@ export function shouldBypassShouldRespond(
  * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
  * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
  */
-
-// --- REFACTORED: Consolidated handler with all the shared scaffolding ---
-
 const messageReceivedHandler = async ({
   runtime,
   message,
@@ -350,26 +347,31 @@ const messageReceivedHandler = async ({
       `[Bootstrap] Message received from ${message.entityId} in room ${message.roomId}`
     );
 
-    // --- responseId bookkeeping (shared) ---
+    // Generate a new response ID
     const responseId = v4();
+    // Get or create the agent-specific map
     if (!latestResponseIds.has(runtime.agentId)) {
       latestResponseIds.set(runtime.agentId, new Map<string, string>());
     }
     const agentResponses = latestResponseIds.get(runtime.agentId);
     if (!agentResponses) throw new Error('Agent responses map not found');
 
+    // Log when we're updating the response ID
     const previousResponseId = agentResponses.get(message.roomId);
     if (previousResponseId) {
       logger.warn(
         `[Bootstrap] Updating response ID for room ${message.roomId} from ${previousResponseId} to ${responseId} - this may discard in-progress responses`
       );
     }
+
+    // Set this as the latest response ID for this agent+room
     agentResponses.set(message.roomId, responseId);
 
-    // --- Run tracking (shared) ---
+    // Use runtime's run tracking for this message processing
     const runId = runtime.startRun();
     const startTime = Date.now();
 
+    // Emit run started event
     await runtime.emitEvent(EventType.RUN_STARTED, {
       runtime,
       runId,
@@ -379,6 +381,8 @@ const messageReceivedHandler = async ({
       startTime,
       status: 'started',
       source: 'messageHandler',
+      // this shouldn't be a standard
+      // but we need to expose content somewhere
       metadata: message.content,
     });
 
@@ -403,7 +407,6 @@ const messageReceivedHandler = async ({
 
     const processingPromise = (async () => {
       try {
-        // --- shared: ignore self ---
         if (message.entityId === runtime.agentId) {
           runtime.logger.debug(`[Bootstrap] Skipping message from self (${runtime.agentId})`);
           throw new Error('Message is from the agent itself');
@@ -413,7 +416,7 @@ const messageReceivedHandler = async ({
           `[Bootstrap] Processing message: ${truncateToCompleteSentence(message.content.text || '', 50)}...`
         );
 
-        // --- shared: persist message & embeddings ---
+        // First, save the incoming message
         runtime.logger.debug('[Bootstrap] Saving message to memory and embeddings');
         if (message.id) {
           const existingMemory = await runtime.getMemoryById(message.id);
@@ -433,14 +436,19 @@ const messageReceivedHandler = async ({
           ]);
         }
 
-        // --- shared: default LLM off check ---
         const agentUserState = await runtime.getParticipantUserState(
           message.roomId,
           runtime.agentId
         );
+
+        // default LLM to off
         const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'));
         if (defLllmOff && agentUserState === null) {
           runtime.logger.debug('bootstrap - LLM is off by default');
+          // allow some other subsystem to handle this event
+          // maybe emit an event
+
+          // Emit run ended event on successful completion
           await runtime.emitEvent(EventType.RUN_ENDED, {
             runtime,
             runId,
@@ -456,12 +464,12 @@ const messageReceivedHandler = async ({
           return;
         }
 
-        // --- shared: muted check ---
         if (
           agentUserState === 'MUTED' &&
           !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
         ) {
           runtime.logger.debug(`[Bootstrap] Ignoring muted room ${message.roomId}`);
+          // Emit run ended event on successful completion
           await runtime.emitEvent(EventType.RUN_ENDED, {
             runtime,
             runId,
@@ -477,13 +485,13 @@ const messageReceivedHandler = async ({
           return;
         }
 
-        // --- shared: initial state & shouldRespond gate ---
         let state = await runtime.composeState(
           message,
           ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
           true
         );
 
+        // Skip shouldRespond check for DM and VOICE_DM channels
         const room = await runtime.getRoom(message.roomId);
         const shouldSkipShouldRespond = shouldBypassShouldRespond(
           runtime,
@@ -491,7 +499,6 @@ const messageReceivedHandler = async ({
           message.content.source
         );
 
-        // attachments
         if (message.content.attachments && message.content.attachments.length > 0) {
           message.content.attachments = await processAttachments(
             message.content.attachments,
@@ -503,6 +510,8 @@ const messageReceivedHandler = async ({
         }
 
         let shouldRespond = true;
+
+        // Handle shouldRespond
         if (!shouldSkipShouldRespond) {
           const shouldRespondPrompt = composePromptFromState({
             state,
@@ -516,13 +525,20 @@ const messageReceivedHandler = async ({
           const response = await runtime.useModel(ModelType.TEXT_SMALL, {
             prompt: shouldRespondPrompt,
           });
+          
           runtime.logger.debug(
             `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`
           );
+          runtime.logger.debug(`[Bootstrap] Response type: ${typeof response}`);
+
+          // Try to preprocess response by removing code blocks markers if present
+          // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
           const responseObject = parseKeyValueXml(response);
           runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
 
+          // If an action is provided, the agent intends to respond in some way
+          // Only exclude explicit non-response actions
           const nonResponseActions = ['IGNORE', 'NONE'];
           shouldRespond =
             responseObject?.action &&
@@ -534,7 +550,10 @@ const messageReceivedHandler = async ({
           shouldRespond = true;
         }
 
-        // --- shared: strategy dispatch & centralized completion ---
+        // I don't think we need these right now
+        //runtime.logger.debug('shouldRespond is', shouldRespond);
+        //runtime.logger.debug('shouldSkipShouldRespond', shouldSkipShouldRespond);
+
         let responseContent: Content | null = null;
         let responseMessages: Memory[] = [];
 
@@ -560,22 +579,22 @@ const messageReceivedHandler = async ({
             responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
           }
 
-          // If providers were used, refresh state with those providers (shared)
           if (responseContent?.providers?.length && responseContent.providers.length > 0) {
             state = await runtime.composeState(message, responseContent.providers || []);
           }
 
-          // Send response based on mode (shared)
           if (responseContent) {
             const mode = useMultiStep ? 'simple' : (result.mode ?? ('actions' as StrategyMode));
 
             if (mode === 'simple') {
+              // Log provider usage for simple responses
               if (responseContent.providers && responseContent.providers.length > 0) {
                 runtime.logger.debug(
                   { providers: responseContent.providers },
                   '[Bootstrap] Simple response used providers'
                 );
               }
+              // without actions there can't be more than one message
               await callback(responseContent);
             } else if (mode === 'actions') {
               await runtime.processActions(message, responseMessages, state, async (content) => {
@@ -586,13 +605,20 @@ const messageReceivedHandler = async ({
             }
           }
         } else {
-          // IGNORE branch (shared)
+          // Handle the case where the agent decided not to respond
+          runtime.logger.debug(
+            '[Bootstrap] Agent decided not to respond (shouldRespond is false).'
+          );
+
+          // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
+          // helpful for swarms
           const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
             );
+            // Emit run ended event on successful completion
             await runtime.emitEvent(EventType.RUN_ENDED, {
               runtime,
               runId,
@@ -605,13 +631,14 @@ const messageReceivedHandler = async ({
               duration: Date.now() - startTime,
               source: 'messageHandler',
             });
-            return;
+            return; // Stop processing if a newer message took over
           }
 
           if (!message.id) {
             runtime.logger.error(
               '[Bootstrap] Message ID is missing, cannot create ignore response.'
             );
+            // Emit run ended event on successful completion
             await runtime.emitEvent(EventType.RUN_ENDED, {
               runtime,
               runId,
@@ -627,6 +654,7 @@ const messageReceivedHandler = async ({
             return;
           }
 
+          // Construct a minimal content object indicating ignore, include a generic thought
           const ignoreContent: Content = {
             thought: 'Agent decided not to respond to this message.',
             actions: ['IGNORE'],
@@ -634,8 +662,10 @@ const messageReceivedHandler = async ({
             inReplyTo: createUniqueUuid(runtime, message.id),
           };
 
+          // Call the callback directly with the ignore content
           await callback(ignoreContent);
 
+          // Also save this ignore action/thought to memory
           const ignoreMemory: Memory = {
             id: asUUID(v4()),
             entityId: runtime.agentId,
@@ -648,15 +678,17 @@ const messageReceivedHandler = async ({
           runtime.logger.debug('[Bootstrap] Saved ignore response to memory', {
             memoryId: ignoreMemory.id,
           });
+
+          // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
+          // await runtime.evaluate(message, state, shouldRespond, callback, []);
         }
 
-        // Cleanup the response ID (shared)
+        // Clean up the response ID since we handled it
         agentResponses.delete(message.roomId);
         if (agentResponses.size === 0) {
           latestResponseIds.delete(runtime.agentId);
         }
 
-        // Evaluation (shared)
         await runtime.evaluate(
           message,
           state,
@@ -671,7 +703,7 @@ const messageReceivedHandler = async ({
           responseMessages
         );
 
-        // --- shared: final RUN_ENDED + metadata ---
+        // ok who are they
         let entityName = 'noname';
         if (message.metadata && 'entityName' in message.metadata) {
           entityName = (message.metadata as any).entityName;
@@ -683,23 +715,32 @@ const messageReceivedHandler = async ({
           const roomDatas = await runtime.getRoomsByIds([message.roomId]);
           if (roomDatas?.length) {
             const roomData = roomDatas[0];
-            if (roomData.name) roomName = roomData.name;
+            if (roomData.name) {
+              // server/guild name?
+              roomName = roomData.name;
+            }
+            // how do I get worldName
             if (roomData.worldId) {
               const worldData = await runtime.getWorld(roomData.worldId);
-              if (worldData) roomName = worldData.name + '-' + roomName;
+              if (worldData) {
+                roomName = worldData.name + '-' + roomName;
+              }
             }
           }
         }
 
         const date = new Date();
+
+        // get available actions
         const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
           (a: any) => a.name
         ) || [-1];
 
+        // generate data of interest
         const logData = {
           at: date.toString(),
           timestamp: parseInt('' + date.getTime() / 1000),
-          messageId: message.id,
+          messageId: message.id, // can extract roomId or whatever
           userEntityId: message.entityId,
           input: message.content.text,
           thought: responseContent?.thought,
@@ -709,12 +750,14 @@ const messageReceivedHandler = async ({
           providers: responseContent?.providers,
           irt: responseContent?.inReplyTo,
           output: responseContent?.text,
+          // to strip out
           entityName,
           source: message.content.source,
           channelType: message.content.channelType,
           roomName,
         };
 
+        // Emit run ended event on successful completion
         await runtime.emitEvent(EventType.RUN_ENDED, {
           runtime,
           runId,
@@ -732,6 +775,7 @@ const messageReceivedHandler = async ({
         });
       } catch (error: any) {
         console.error('error is', error);
+        // Emit run ended event with error
         await runtime.emitEvent(EventType.RUN_ENDED, {
           runtime,
           runId,
@@ -786,9 +830,11 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
 
     runtime.logger.debug({ response }, '[Bootstrap] *** Raw LLM Response ***');
 
+    // Attempt to parse the XML response
     const parsedXml = parseKeyValueXml(response);
     runtime.logger.debug({ parsedXml }, '[Bootstrap] *** Parsed XML Content ***');
 
+    // Map parsed XML to Content type, handling potential missing fields
     if (parsedXml) {
       responseContent = {
         ...parsedXml,
@@ -815,21 +861,40 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
     return { responseContent: null, responseMessages: [], state, mode: 'none' };
   }
 
-  // IGNORE/REPLY ambiguity handling
+  // --- LLM IGNORE/REPLY ambiguity handling ---
+  // Sometimes the LLM outputs actions like ["REPLY", "IGNORE"], which breaks isSimple detection
+  // and triggers unnecessary large LLM calls. We clarify intent here:
+  // - If IGNORE is present with other actions:
+  //    - If text is empty, we assume the LLM intended to IGNORE and drop all other actions.
+  //    - If text is present, we assume the LLM intended to REPLY and remove IGNORE from actions.
+  // This ensures consistent, clear behavior and preserves reply speed optimizations.
   if (responseContent.actions && responseContent.actions.length > 1) {
+    // filter out all NONE actions, there's nothing to be done with them
+    // oh but there is a none action in bootstrap
+    //responseContent.actions = responseContent.actions.filter(a => a !== 'NONE')
+
+    // Helper function to safely check if an action is IGNORE
     const isIgnore = (a: unknown) => typeof a === 'string' && a.toUpperCase() === 'IGNORE';
+
+    // Check if any action is IGNORE
     const hasIgnore = responseContent.actions.some(isIgnore);
 
     if (hasIgnore) {
       if (!responseContent.text || responseContent.text.trim() === '') {
+        // No text, truly meant to IGNORE
         responseContent.actions = ['IGNORE'];
       } else {
+        // Text present, LLM intended to reply, remove IGNORE
         const filtered = responseContent.actions.filter((a) => !isIgnore(a));
+        // Ensure we don't end up with an empty actions array when text is present
+        // If all actions were IGNORE, default to REPLY
         responseContent.actions = filtered.length ? filtered : ['REPLY'];
       }
     }
   }
 
+  // Automatically determine if response is simple based on providers and actions
+  // Simple = REPLY action with no providers used
   const isSimple =
     responseContent.actions?.length === 1 &&
     typeof responseContent.actions[0] === 'string' &&
@@ -866,18 +931,14 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
 
-    console.log('### accumulatedState.data.actionResults', accumulatedState.data.actionResults);
-
     const prompt = composePromptFromState({
       state: accumulatedState,
       template: runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
     });
-    console.log('[@@@ MultiStep Prompt @@@]', prompt);
-
+    
     const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
     const parsedStep = parseKeyValueXml(stepResultRaw);
-    console.log('### Iterative Step Decision', { parsedStep });
-
+    
     const { thought, nextStepName, nextStepType } = parsedStep || {};
 
     const stepContent = {
