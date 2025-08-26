@@ -465,7 +465,7 @@ export async function updateFile(
 
     return false;
   } catch (error) {
-    logger.error(`Error updating file: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error('Error updating file:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }

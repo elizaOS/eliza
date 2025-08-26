@@ -613,10 +613,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
       } catch (error) {
         logger.error(
-          `Error creating entities: ${error instanceof Error ? error.message : String(error)}, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`
+          `Error creating entities, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`,
+          error instanceof Error ? error.message : String(error)
         );
-        // trace the error
-        logger.trace(error instanceof Error ? error.message : String(error));
+        // trace the full error with stack
+        if (error instanceof Error && error.stack) {
+          logger.trace('Stack trace:', error.stack);
+        }
         return false;
       }
     });

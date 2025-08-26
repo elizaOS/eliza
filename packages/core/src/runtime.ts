@@ -149,7 +149,7 @@ export class AgentRuntime implements IAgentRuntime {
       opts.character?.id ??
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
-    this.character = opts.character!;
+    this.character = opts.character as Character;
     const logLevel = process.env.LOG_LEVEL || 'info';
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured

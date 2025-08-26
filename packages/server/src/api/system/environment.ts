@@ -94,9 +94,12 @@ export function createEnvironmentRouter(): express.Router {
       });
     } catch (error) {
       logger.error(
-        `[ENVS GET] Error retrieving local envs`,
+        `[ENVS GET] Error retrieving local envs:`,
         error instanceof Error ? error.message : String(error)
       );
+      if (error instanceof Error && error.stack) {
+        logger.trace('Stack trace:', error.stack);
+      }
       res.status(500).json({
         success: false,
         error: {

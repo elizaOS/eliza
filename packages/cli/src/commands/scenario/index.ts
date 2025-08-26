@@ -400,8 +400,7 @@ export const scenario = new Command()
             }
           }
         } catch (error) {
-          logger.error('An error occurred during scenario execution:');
-          logger.error(error instanceof Error ? error.message : String(error));
+          logger.error('An error occurred during scenario execution:', error instanceof Error ? error.message : String(error));
 
           // Record error in data aggregator if available (Ticket #5786)
           if (dataAggregator) {
@@ -858,8 +857,7 @@ export const scenario = new Command()
               process.exit(failedRuns === 0 ? 0 : 1);
             }
           } catch (error) {
-            logger.error('❌ An error occurred during matrix analysis:');
-            logger.error(error instanceof Error ? error.message : String(error));
+            logger.error('❌ An error occurred during matrix analysis:', error instanceof Error ? error.message : String(error));
             if (options.verbose && error instanceof Error && error.stack) {
               logger.error(`Stack trace: ${error.stack}`);
             }
