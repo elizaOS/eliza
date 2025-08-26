@@ -1,0 +1,60 @@
+name: "Basic Multi-Turn Conversation Test"
+description: "Tests basic multi-turn conversation capabilities with user simulation"
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+
+environment:
+  type: local
+
+run:
+  - name: "Simple customer support conversation"
+    input: "Hi, I need help with something"
+    
+    conversation:
+      max_turns: 4
+      user_simulator:
+        persona: "polite customer with a billing question"
+        objective: "find out why charged twice this month"
+        temperature: 0.6
+        style: "friendly and patient"
+        constraints:
+          - "Be polite and cooperative"
+          - "Provide details when asked"
+          - "Express gratitude for help"
+      
+      termination_conditions:
+        - type: "user_expresses_satisfaction"
+          keywords: ["thank you", "that helps", "resolved", "great"]
+        - type: "agent_provides_solution"
+          keywords: ["solution", "try this", "here's how"]
+      
+      turn_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent respond helpfully and professionally?"
+          expected: "yes"
+      
+      final_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent successfully help resolve the billing issue?"
+          expected: "yes"
+          capabilities:
+            - "Understood the customer's billing concern"
+            - "Asked appropriate follow-up questions"
+            - "Provided helpful information or solutions"
+            - "Maintained a professional and helpful tone"
+        - type: "conversation_length"
+          min_turns: 2
+          max_turns: 6
+          optimal_turns: 3
+        - type: "user_satisfaction"
+          satisfaction_threshold: 0.7
+
+    # Traditional single evaluations still supported for backward compatibility
+    evaluations:
+      - type: "string_contains"
+        value: "help"
+
+judgment:
+  strategy: all_pass

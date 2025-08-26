@@ -1,0 +1,135 @@
+name: "Advanced Customer Support Multi-Turn Test"
+description: "Comprehensive test of customer support conversation with frustrated customer persona"
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+
+environment:
+  type: local
+
+setup:
+  mocks:
+    - service: "knowledge_base"
+      method: "search"
+      when:
+        input:
+          query: "billing dispute"
+      response:
+        articles:
+          - title: "How to Handle Billing Disputes"
+            solution: "Review the charge details and check for duplicate transactions"
+          - title: "Refund Process"
+            solution: "Refunds take 3-5 business days to process"
+    - service: "customer_database"
+      method: "lookup"
+      when:
+        input:
+          customer_id: "CUST123"
+      response:
+        customer:
+          name: "Sarah Johnson"
+          account_status: "active"
+          recent_charges: [
+            { amount: 29.99, date: "2024-01-15", description: "Monthly subscription" },
+            { amount: 29.99, date: "2024-01-15", description: "Monthly subscription" }
+          ]
+
+run:
+  - name: "Frustrated customer billing dispute conversation"
+    input: "I'm really angry about being charged twice this month! This is unacceptable!"
+    
+    conversation:
+      max_turns: 6
+      timeout_per_turn_ms: 25000
+      total_timeout_ms: 180000
+      
+      user_simulator:
+        model_type: "TEXT_LARGE"
+        temperature: 0.8
+        max_tokens: 250
+        persona: "frustrated customer named Sarah who discovered duplicate billing charges"
+        objective: "get the duplicate charge refunded and ensure it doesn't happen again"
+        style: "initially angry and impatient, becomes more cooperative if treated with empathy"
+        constraints:
+          - "Start with expressing strong frustration about duplicate charges"
+          - "Mention you've been a loyal customer for 2 years"
+          - "Don't accept vague promises - want specific actions and timelines"
+          - "Become more helpful and provide details when agent shows empathy"
+          - "Express appreciation if agent provides clear resolution steps"
+        emotional_state: "angry and frustrated about billing error"
+        knowledge_level: "intermediate"
+      
+      termination_conditions:
+        - type: "user_expresses_satisfaction"
+          description: "Customer expresses satisfaction with resolution"
+          keywords: ["thank you", "that helps", "appreciate", "resolved", "satisfied"]
+        - type: "agent_provides_solution"
+          description: "Agent provides clear resolution steps"
+          keywords: ["refund", "process the refund", "credit your account", "resolve this"]
+        - type: "escalation_needed"
+          description: "Agent escalates to supervisor"
+          keywords: ["escalate", "supervisor", "manager", "specialist"]
+        - type: "custom_condition"
+          description: "Customer's issue appears to be fully addressed"
+          llm_judge:
+            prompt: "Based on this conversation, has the customer's billing dispute been adequately addressed with specific resolution steps?"
+            threshold: 0.8
+      
+      turn_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent respond with appropriate empathy and professionalism to the customer's emotional state?"
+          expected: "yes"
+          temperature: 0.1
+        - type: "llm_judge"
+          prompt: "Did the agent ask relevant questions to understand the billing issue better?"
+          expected: "yes"
+        - type: "trajectory_contains_action"
+          action: "SEARCH_KNOWLEDGE_BASE"
+      
+      final_evaluations:
+        - type: "llm_judge"
+          prompt: "Was the customer's billing dispute resolved satisfactorily with clear next steps?"
+          expected: "yes"
+          capabilities:
+            - "Acknowledged customer's frustration with empathy"
+            - "Investigated the duplicate billing charges"
+            - "Provided specific resolution steps and timeline"
+            - "Maintained professional tone despite customer's initial anger"
+            - "Offered additional assurances to prevent future issues"
+        - type: "conversation_length"
+          min_turns: 3
+          max_turns: 8
+          optimal_turns: 5
+          target_range: [4, 6]
+        - type: "conversation_flow"
+          required_patterns:
+            - "empathy_then_solution"
+            - "problem_then_solution"
+            - "clarification_cycle"
+          flow_quality_threshold: 0.8
+        - type: "user_satisfaction"
+          satisfaction_threshold: 0.7
+          measurement_method: "llm_judge"
+          indicators:
+            positive: ["thank you", "appreciate", "helpful", "resolved", "satisfied"]
+            negative: ["frustrated", "angry", "unacceptable", "disappointed"]
+        - type: "context_retention"
+          test_memory_of: ["Sarah", "billing dispute", "duplicate charges", "loyal customer"]
+          retention_turns: 4
+          memory_accuracy_threshold: 0.8
+      
+      debug_options:
+        log_user_simulation: true
+        log_turn_decisions: true
+        export_full_transcript: true
+
+    # Traditional evaluations for backward compatibility
+    evaluations:
+      - type: "string_contains"
+        value: "billing"
+      - type: "regex_match"
+        pattern: "\\b(refund|credit|resolve)\\b"
+
+judgment:
+  strategy: all_pass

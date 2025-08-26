@@ -3,6 +3,12 @@ import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema } from './schema';
 import { z } from 'zod';
 import type { ObjectGenerationParams } from '@elizaos/core';
+import { 
+  ConversationLengthEvaluator,
+  ConversationFlowEvaluator, 
+  UserSatisfactionEvaluator,
+  ContextRetentionEvaluator 
+} from './ConversationEvaluators';
 
 export interface EvaluationResult {
   success: boolean;
@@ -28,6 +34,12 @@ export class EvaluationEngine {
     this.register('trajectory_contains_action', new TrajectoryContainsActionEvaluator());
     this.register('llm_judge', new LLMJudgeEvaluator());
     this.register('execution_time', new ExecutionTimeEvaluator());
+    
+    // NEW: Register conversation evaluators
+    this.register('conversation_length', new ConversationLengthEvaluator());
+    this.register('conversation_flow', new ConversationFlowEvaluator());
+    this.register('user_satisfaction', new UserSatisfactionEvaluator());
+    this.register('context_retention', new ContextRetentionEvaluator());
   }
 
   private register(type: string, evaluator: Evaluator) {
