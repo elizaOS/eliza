@@ -15,6 +15,8 @@ import {
   ServerCreateParams,
   ServerSyncParams,
   ChannelUpdateParams,
+  ChannelMetadata,
+  MessageMetadata,
 } from '../types/messaging';
 import { PaginationParams } from '../types/base';
 
@@ -23,7 +25,7 @@ interface ChannelCreatePayload {
   name: string;
   type: ChannelType;
   server_id: UUID;
-  metadata?: Record<string, any>;
+  metadata?: ChannelMetadata;
 }
 
 interface GroupChannelCreatePayload {
@@ -31,7 +33,7 @@ interface GroupChannelCreatePayload {
   server_id: UUID;
   participantCentralUserIds: UUID[];
   type?: ChannelType;
-  metadata?: Record<string, any>;
+  metadata?: ChannelMetadata;
 }
 
 interface DmChannelQuery {
@@ -96,7 +98,7 @@ export class MessagingService extends BaseApiClient {
       participantCentralUserIds: params.participantIds,
       // If caller intended DM, allow type override
       ...(typeFromMeta ? { type: typeFromMeta } : {}),
-      ...(Object.keys(meta).length ? { metadata: meta as Record<string, any> } : {}),
+      ...(Object.keys(meta).length ? { metadata: meta as ChannelMetadata } : {}),
     };
 
     return this.post<MessageChannel>('/api/messaging/central-channels', payload);
@@ -173,7 +175,7 @@ export class MessagingService extends BaseApiClient {
   async postMessage(
     channelId: UUID,
     content: string,
-    metadata?: Record<string, any>
+    metadata?: MessageMetadata
   ): Promise<Message> {
     return this.post<Message>(`/api/messaging/central-channels/${channelId}/messages`, {
       content,

@@ -16,7 +16,7 @@ const upload = multer({
     fileSize: MAX_FILE_SIZE,
     files: 1,
   },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     // Check if mimetype is in the allowed list
     const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some(
       (allowed) => allowed === file.mimetype
