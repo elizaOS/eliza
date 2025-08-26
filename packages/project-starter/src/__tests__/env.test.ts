@@ -8,7 +8,7 @@ describe('Environment Setup', () => {
       'package.json',
       'tsconfig.json',
       'tsconfig.build.json',
-      'tsup.config.ts',
+      'build.ts',
       'bunfig.toml',
     ];
 
@@ -69,14 +69,14 @@ describe('Environment Setup', () => {
     expect(tsconfig.compilerOptions).toHaveProperty('esModuleInterop');
   });
 
-  it('should have a valid tsup.config.ts for building', () => {
-    const tsupConfigPath = path.join(process.cwd(), 'tsup.config.ts');
-    expect(fs.existsSync(tsupConfigPath)).toBe(true);
+  it('should have a valid build.ts for building', () => {
+    const buildScriptPath = path.join(process.cwd(), 'build.ts');
+    expect(fs.existsSync(buildScriptPath)).toBe(true);
 
-    const tsupConfig = fs.readFileSync(tsupConfigPath, 'utf8');
-    expect(tsupConfig).toContain('defineConfig');
-    expect(tsupConfig).toContain('entry:');
-    expect(tsupConfig).toContain('src/index.ts');
+    const buildScript = fs.readFileSync(buildScriptPath, 'utf8');
+    expect(buildScript).toContain('createBuildRunner');
+    expect(buildScript).toContain('entrypoints:');
+    expect(buildScript).toContain('src/index.ts');
   });
 
   it('should have a valid README.md file', () => {

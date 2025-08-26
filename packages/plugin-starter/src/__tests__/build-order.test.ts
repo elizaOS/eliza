@@ -8,7 +8,7 @@ describe('Build Order Integration Test', () => {
   const rootDir = path.resolve(__dirname, '../..');
   const distDir = path.join(rootDir, 'dist');
   let viteBuildDir: string;
-  const tsupBuildMarker = path.join(distDir, 'index.js'); // TSup creates this
+  const buildMarker = path.join(distDir, 'index.js'); // Build system creates this
 
   beforeAll(async () => {
     // Get the actual vite build directory from config
@@ -28,7 +28,7 @@ describe('Build Order Integration Test', () => {
     }
   });
 
-  it('should ensure vite build outputs persist after tsup build', async () => {
+  it('should ensure vite build outputs persist after build.ts build', async () => {
     // Run the full build process
     await $`cd ${rootDir} && bun run build`;
 
@@ -44,7 +44,7 @@ describe('Build Order Integration Test', () => {
     // Should have vite assets directory
     expect(distFiles.includes('assets')).toBe(true);
 
-    // Should have tsup outputs (JS and d.ts files)
+    // Should have build.ts outputs (JS and d.ts files)
     expect(distFiles.some((file) => file === 'index.js')).toBe(true);
     expect(distFiles.some((file) => file === 'index.d.ts')).toBe(true);
   }, 30000); // 30 second timeout for build process

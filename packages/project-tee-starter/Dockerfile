@@ -19,7 +19,7 @@ RUN npm install -g bun@1.2.5 turbo@2.3.3
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-COPY bunfig.toml index.html package.json postcss.config.js tailwind.config.js tsconfig.json tsconfig.build.json tsup.config.ts vite.config.ts ./
+COPY bunfig.toml index.html package.json postcss.config.js tailwind.config.js tsconfig.json tsconfig.build.json build.ts vite.config.ts ./
 COPY src ./src
 COPY assets ./assets
 COPY scripts ./scripts
@@ -53,7 +53,7 @@ COPY --from=builder /app/postcss.config.js ./postcss.config.js
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/tsconfig.build.json ./
-COPY --from=builder /app/tsup.config.ts ./
+COPY --from=builder /app/build.ts ./
 COPY --from=builder /app/tailwind.config.js ./tailwind.config.js
 COPY --from=builder /app/vite.config.ts ./vite.config.ts
 COPY --from=builder /app/node_modules ./node_modules

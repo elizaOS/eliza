@@ -62,7 +62,7 @@ EOF
   
   # Verify plugin structure
   assert_file_exist "package.json"
-  assert_file_exist "tsup.config.ts"
+  assert_file_exist "build.ts"
   assert_file_exist "src/index.ts"
   assert_file_contain "package.json" "@elizaos/plugin-my-plugin"
   

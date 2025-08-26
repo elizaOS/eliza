@@ -202,7 +202,7 @@ Create **ALL** required config files:
 
 - tsconfig.json (Step 4.2)
 - tsconfig.build.json (Step 4.3)
-- tsup.config.ts (Step 4.1)
+- build.ts (Step 4.1)
 
 ### 2.4 Initial Build Validation (migration-guide.md Step 5)
 

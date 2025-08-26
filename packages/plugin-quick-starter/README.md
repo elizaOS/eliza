@@ -27,7 +27,7 @@ plugin-quick-starter/
 │   └── index.ts            # Plugin export
 ├── scripts/
 │   └── install-test-deps.js # Test dependency installer
-├── tsup.config.ts          # Build configuration
+├── build.ts                # Build configuration
 ├── tsconfig.json           # TypeScript config
 ├── package.json            # Minimal dependencies
 └── README.md               # This file

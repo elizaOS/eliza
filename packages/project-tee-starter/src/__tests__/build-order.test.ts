@@ -8,7 +8,7 @@ describe('Build Order Integration Test', () => {
   const rootDir = path.resolve(__dirname, '..', '..');
   const distDir = path.join(rootDir, 'dist');
   let viteBuildDir: string;
-  const tsupBuildMarker = path.join(distDir, 'index.js'); // TSup creates this
+  const buildMarker = path.join(distDir, 'index.js'); // Build system creates this
 
   beforeAll(async () => {
     // Get the actual vite build directory from config
@@ -28,13 +28,13 @@ describe('Build Order Integration Test', () => {
     }
   });
 
-  it('should ensure vite build outputs persist after tsup build', async () => {
+  it('should ensure vite build outputs persist after build.ts build', async () => {
     // Run the full build process
     await $`cd ${rootDir} && bun run build`;
 
-    // Check that both vite and tsup outputs exist
+    // Check that both vite and build.ts outputs exist
     expect(fs.existsSync(viteBuildDir)).toBe(true);
-    expect(fs.existsSync(tsupBuildMarker)).toBe(true);
+    expect(fs.existsSync(buildMarker)).toBe(true);
 
     // Check vite built frontend files
     console.log('viteBuildDir:', viteBuildDir);
@@ -49,10 +49,10 @@ describe('Build Order Integration Test', () => {
     // Should have assets directory (CSS/JS files are in assets/)
     expect(frontendFiles.includes('assets')).toBe(true);
 
-    // Verify tsup also produced its expected outputs
+    // Verify build.ts also produced its expected outputs
     const distFiles = fs.readdirSync(distDir);
 
-    // Should have tsup outputs (index.js)
+    // Should have build.ts outputs (index.js)
     expect(distFiles.some((file) => file === 'index.js')).toBe(true);
 
     // Should still have vite build directory
