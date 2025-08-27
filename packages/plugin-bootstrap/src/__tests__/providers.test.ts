@@ -322,8 +322,8 @@ describe('Providers Provider', () => {
     expect(result).toBeDefined();
     expect(result.text).toContain('No dynamic providers are currently available');
     expect(result.data).toBeDefined();
-    expect(result.data.dynamicProviders).toHaveLength(0);
-    expect(result.data.allProviders).toHaveLength(0);
+    expect(result.data?.dynamicProviders).toHaveLength(0);
+    expect(result.data?.allProviders).toHaveLength(0);
   });
 });
 
