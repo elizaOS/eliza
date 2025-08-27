@@ -152,13 +152,13 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
 export function mapApiLogToClient(apiLog: ApiAgentLog): AgentLog {
   return {
     id: apiLog.id,
-    type: apiLog.metadata?.type || apiLog.level,
-    timestamp: apiDateToTimestamp(apiLog.timestamp),
+    type: apiLog?.type || apiLog.body?.modelType,
+    timestamp: apiLog.timestamp ? apiDateToTimestamp(apiLog.timestamp) : undefined,
     message: apiLog.message,
-    details: apiLog.metadata?.details,
-    roomId: apiLog.metadata?.roomId,
-    body: apiLog.metadata?.body,
-    createdAt: apiDateToTimestamp(apiLog.timestamp),
+    details: apiLog.details,
+    roomId: apiLog.roomId,
+    body: apiLog.body,
+    createdAt: apiLog.createdAt ? apiDateToTimestamp(apiLog.createdAt) : undefined,
   };
 }
 
