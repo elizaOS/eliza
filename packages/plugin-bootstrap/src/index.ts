@@ -34,6 +34,7 @@ import {
   getLocalServerUrl,
   multiStepDecisionTemplate,
   multiStepSummaryTemplate,
+  type State,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -58,6 +59,26 @@ type MediaData = {
   data: Buffer;
   mediaType: string;
 };
+
+/**
+ * Multi-step workflow execution result
+ */
+interface MultiStepActionResult {
+  data: { actionName: string };
+  success: boolean;
+  text?: string;
+  error?: string | Error;
+}
+
+/**
+ * Multi-step workflow state
+ */
+interface MultiStepState extends State {
+  data: {
+    actionResults: MultiStepActionResult[];
+    [key: string]: any;
+  };
+}
 
 const latestResponseIds = new Map<string, Map<string, string>>();
 
@@ -932,13 +953,15 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
 }
 
 async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
-  const traceActionResult: any[] = [];
-  let accumulatedState: any = state;
+  const traceActionResult: MultiStepActionResult[] = [];
+  let accumulatedState: MultiStepState = state;
   const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
   let iterationCount = 0;
 
   while (iterationCount < maxIterations) {
     iterationCount++;
+    runtime.logger.debug(`[MultiStep] Starting iteration ${iterationCount}/${maxIterations}`);
+
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
 
@@ -950,9 +973,21 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
     const parsedStep = parseKeyValueXml(stepResultRaw);
 
-    const { thought, providers = [], action, isFinish } = parsedStep || {};
+    if (!parsedStep) {
+      runtime.logger.warn(`[MultiStep] Failed to parse step result at iteration ${iterationCount}`);
+      traceActionResult.push({
+        data: { actionName: 'parse_error' },
+        success: false,
+        error: 'Failed to parse step result',
+      });
+      break;
+    }
 
-    if (!parsedStep || isFinish === 'true') {
+    const { thought, providers = [], action, isFinish } = parsedStep;
+
+    // Check for completion condition
+    if (isFinish === 'true' || isFinish === true) {
+      runtime.logger.info(`[MultiStep] Task marked as complete at iteration ${iterationCount}`);
       await callback({
         text: '',
         thought: thought ?? '',
@@ -960,11 +995,39 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
       break;
     }
 
+    // Validate that we have something to do in this step
+    if ((!providers || providers.length === 0) && !action) {
+      runtime.logger.warn(
+        `[MultiStep] No providers or action specified at iteration ${iterationCount}, forcing completion`
+      );
+      break;
+    }
+
     try {
       for (const providerName of providers) {
         const provider = runtime.providers.find((p: any) => p.name === providerName);
-        const providerResult = await provider?.get(runtime, message, state);
-        const success = !!providerResult?.text;
+        if (!provider) {
+          runtime.logger.warn(`[MultiStep] Provider not found: ${providerName}`);
+          traceActionResult.push({
+            data: { actionName: providerName },
+            success: false,
+            error: `Provider not found: ${providerName}`,
+          });
+          continue;
+        }
+
+        const providerResult = await provider.get(runtime, message, state);
+        if (!providerResult) {
+          runtime.logger.warn(`[MultiStep] Provider returned no result: ${providerName}`);
+          traceActionResult.push({
+            data: { actionName: providerName },
+            success: false,
+            error: `Provider returned no result`,
+          });
+          continue;
+        }
+
+        const success = !!providerResult.text;
 
         traceActionResult.push({
           data: { actionName: providerName },
@@ -1006,7 +1069,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
         const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
         const actionResults = cachedState?.values?.actionResults || [];
-        const result = actionResults[0];
+        const result = actionResults.length > 0 ? actionResults[0] : null;
         const success = result?.success ?? false;
 
         traceActionResult.push({
@@ -1021,7 +1084,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
       traceActionResult.push({
         data: { actionName: action || 'unknown' },
         success: false,
-        error: err,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   }
@@ -1271,9 +1334,6 @@ const postGeneratedHandler = async ({
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
-
-    console.log('prompt is', prompt);
-    console.log('response is', response);
 
     // Parse XML
     const parsedXml = parseKeyValueXml(response);
