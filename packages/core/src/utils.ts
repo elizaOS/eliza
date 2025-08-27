@@ -6,7 +6,7 @@ import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 
 import logger from './logger';
-import { getEnv } from './environment';
+import { getEnv } from './utils/environment';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID, ContentType } from './types';
 

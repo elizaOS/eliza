@@ -8,7 +8,7 @@ import {
   getBooleanEnv,
   getNumberEnv,
   initBrowserEnvironment,
-} from '../environment';
+} from '../utils/environment';
 
 describe('Environment Abstraction', () => {
   let originalProcess: any;

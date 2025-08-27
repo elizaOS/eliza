@@ -1,5 +1,5 @@
 import { Sentry } from './sentry/instrument';
-import { getEnv as getEnvironmentVar, getBooleanEnv } from './environment';
+import { getEnv as getEnvironmentVar, getBooleanEnv } from './utils/environment';
 // Type-only imports - stripped at build time, safe for browser
 import type { LoggerOptions as PinoLoggerOptions } from 'pino';
 import type { PrettyOptions as BasePrettyOptions } from 'pino-pretty';

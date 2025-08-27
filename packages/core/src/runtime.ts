@@ -7,7 +7,8 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
-import { getEnv, getNumberEnv } from './environment';
+import { getEnv, getNumberEnv } from './utils/environment';
+import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
@@ -1802,7 +1803,7 @@ export class AgentRuntime implements IAgentRuntime {
       params === undefined ||
       typeof params !== 'object' ||
       Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+      BufferUtils.isBuffer(params)
     ) {
       paramsWithRuntime = params;
     } else {

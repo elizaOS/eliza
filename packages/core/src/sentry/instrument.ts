@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/browser';
-import { getEnv, getBooleanEnv, getNumberEnv } from '../environment';
+import { getEnv, getBooleanEnv, getNumberEnv } from '../utils/environment';
 
 const dsn =
   getEnv('SENTRY_DSN') ||
