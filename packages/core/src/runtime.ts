@@ -1913,7 +1913,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
       try {
         let paramsWithRuntime = { runtime: this }
-        if (typeof(params) === 'object') {
+        if (typeof(params) === 'object' && params) {
           paramsWithRuntime = {...params, ...paramsWithRuntime }
         }
         await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
