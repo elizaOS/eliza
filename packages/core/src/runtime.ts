@@ -121,8 +121,8 @@ export class AgentRuntime implements IAgentRuntime {
   private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
-  private initResolver;
+  public initPromise: Promise<void>;
+  private initResolver!: () => void;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -1800,7 +1800,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Log input parameters (keep debug log if useful)
     this.logger.debug(
       `[useModel] ${modelKey} input: ` +
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+      JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
     let paramsWithRuntime: any;
     if (
@@ -1839,9 +1839,8 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
-              response.length
-            } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
+          } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -1875,9 +1874,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -1913,8 +1912,8 @@ export class AgentRuntime implements IAgentRuntime {
       }
       try {
         let paramsWithRuntime = { runtime: this }
-        if (typeof(params) === 'object' && params) {
-          paramsWithRuntime = {...params, ...paramsWithRuntime }
+        if (typeof (params) === 'object' && params) {
+          paramsWithRuntime = { ...params, ...paramsWithRuntime }
         }
         await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
       } catch (error) {
