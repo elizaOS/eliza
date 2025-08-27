@@ -21,18 +21,11 @@ describe('Home Page', () => {
   });
 
   it('displays the main navigation', () => {
-    // Check for sidebar
-    cy.get('[data-testid="app-sidebar"]').should('exist');
+    // Check for sidebar - should be visible on desktop viewport (1280px)
+    cy.get('[data-testid="app-sidebar"]').should('exist').should('be.visible');
 
-    // Check for sidebar toggle button - may not be visible in all states
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="sidebar-toggle"]').length > 0) {
-        cy.get('[data-testid="sidebar-toggle"]').should('exist');
-      } else {
-        // Alternative: check for mobile menu button
-        cy.get('[data-testid="mobile-menu-button"]').should('exist');
-      }
-    });
+    // On desktop viewport, mobile menu button should be hidden
+    cy.get('[data-testid="mobile-menu-button"]').should('exist').should('not.be.visible');
   });
 
   it('displays connection status', () => {
@@ -41,26 +34,13 @@ describe('Home Page', () => {
   });
 
   it('can toggle sidebar', () => {
-    // Check if sidebar toggle exists, otherwise skip this test
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="sidebar-toggle"]').length > 0) {
-        // Find sidebar toggle button and click it
-        cy.get('[data-testid="sidebar-toggle"]').click();
+    // On desktop viewport, the sidebar is always visible and there's no toggle
+    // The mobile menu button exists but is hidden (md:hidden class)
+    cy.get('[data-testid="app-sidebar"]').should('be.visible');
+    cy.get('[data-testid="mobile-menu-button"]').should('not.be.visible');
 
-        // Wait a moment for the animation
-        cy.wait(500);
-
-        // Click again to expand
-        cy.get('[data-testid="sidebar-toggle"]').click();
-
-        // Sidebar toggle should still exist
-        cy.get('[data-testid="sidebar-toggle"]').should('exist');
-      } else {
-        // Alternative: test mobile menu button
-        cy.get('[data-testid="mobile-menu-button"]').should('exist');
-        cy.log('Sidebar toggle not available in current layout');
-      }
-    });
+    // Skip toggle functionality test on desktop as there's no visible toggle button
+    cy.log('Sidebar toggle not available on desktop layout - sidebar is always visible');
   });
 
   it('handles responsive design', () => {

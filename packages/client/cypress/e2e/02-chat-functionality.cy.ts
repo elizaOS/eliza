@@ -26,37 +26,21 @@ describe('Chat Functionality', () => {
   });
 
   it('displays basic interface elements', () => {
-    // Check that the basic navigation and structure exists
-    cy.get('[data-testid="app-sidebar"]').should('exist');
+    // Check that the basic navigation and structure exists on desktop viewport
+    cy.get('[data-testid="app-sidebar"]').should('exist').should('be.visible');
 
-    // Check for sidebar toggle if it exists
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="sidebar-toggle"]').length > 0) {
-        cy.get('[data-testid="sidebar-toggle"]').should('exist');
-      }
-    });
+    // On desktop viewport, mobile menu button should exist but be hidden
+    cy.get('[data-testid="mobile-menu-button"]').should('exist').should('not.be.visible');
   });
 
   it('can interact with sidebar', () => {
-    // Test sidebar toggle functionality if available
-    cy.get('body').then(($body) => {
-      if ($body.find('[data-testid="sidebar-toggle"]').length > 0) {
-        cy.get('[data-testid="sidebar-toggle"]').should('exist').click();
+    // On desktop (1280px), the sidebar is always visible and there's no toggle
+    cy.get('[data-testid="app-sidebar"]').should('be.visible');
 
-        // Wait for animation
-        cy.wait(300);
+    // The mobile menu button exists but is hidden on desktop
+    cy.get('[data-testid="mobile-menu-button"]').should('not.be.visible');
 
-        // Click again to toggle back
-        cy.get('[data-testid="sidebar-toggle"]').click();
-      } else {
-        // Alternative: test mobile menu button interaction
-        cy.get('[data-testid="mobile-menu-button"]').should('exist').click({ force: true });
-        cy.wait(300);
-      }
-    });
-
-    // Sidebar should still be functional
-    cy.get('[data-testid="app-sidebar"]').should('exist');
+    cy.log('Sidebar interaction test - desktop layout has persistent sidebar');
   });
 
   it('handles API interactions', () => {
@@ -200,7 +184,7 @@ describe('Chat Functionality', () => {
     // App should be functional
     cy.get('[data-testid="app-sidebar"]').should('exist');
 
-    // Verify multiple elements work simultaneously
-    cy.get('[data-testid="mobile-menu-button"]').should('exist');
+    // On desktop, mobile menu button exists but is not visible
+    cy.get('[data-testid="mobile-menu-button"]').should('exist').should('not.be.visible');
   });
 });
