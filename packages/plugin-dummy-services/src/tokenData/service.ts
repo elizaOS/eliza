@@ -2,15 +2,27 @@ import { IAgentRuntime, Service, logger } from '@elizaos/core';
 
 // Define token data types locally since they're not in core
 export interface TokenData {
+  id?: string;
   symbol: string;
   name: string;
   address: string;
+  chain?: string;
   decimals: number;
   totalSupply: string;
+  price?: number;
   priceUsd: number;
   marketCapUsd: number;
+  marketCapUSD?: number;
   volume24hUsd: number;
+  volume24hUSD?: number;
   priceChange24h: number;
+  priceChange24hPercent?: number;
+  logoURI?: string;
+  liquidity?: number;
+  holders?: number;
+  sourceProvider?: string;
+  lastUpdatedAt?: Date;
+  raw?: any;
 }
 
 /**
@@ -118,8 +130,8 @@ export class DummyTokenDataService extends Service {
     };
   }
 
-  async getTrendingTokens(chain: string = 'solana', limit: number = 10): Promise<any[]> {
-    const tokens = [];
+  async getTrendingTokens(chain: string = 'solana', limit: number = 10): Promise<TokenData[]> {
+    const tokens: TokenData[] = [];
     for (let i = 0; i < limit; i++) {
       const symbol = `TREND${i + 1}`;
       tokens.push({
@@ -151,9 +163,9 @@ export class DummyTokenDataService extends Service {
     return tokens;
   }
 
-  async searchTokens(query: string, chain: string = 'solana', limit: number = 5): Promise<any[]> {
+  async searchTokens(query: string, chain: string = 'solana', limit: number = 5): Promise<TokenData[]> {
     const upperQuery = query.toUpperCase();
-    const tokens = [];
+    const tokens: TokenData[] = [];
 
     // Return the requested number of tokens
     for (let i = 0; i < limit; i++) {
@@ -187,7 +199,7 @@ export class DummyTokenDataService extends Service {
     return tokens;
   }
 
-  async getTokensByAddresses(addresses: string[], chain: string = 'solana'): Promise<any[]> {
+  async getTokensByAddresses(addresses: string[], chain: string = 'solana'): Promise<TokenData[]> {
     return addresses.map((address, index) => {
       // Generate symbol from address
       const symbol = address.length > 6 ? address.substring(2, 6).toUpperCase() : address.toUpperCase();
