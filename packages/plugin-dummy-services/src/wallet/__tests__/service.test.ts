@@ -48,7 +48,7 @@ describe('DummyWalletService', () => {
     it('should set portfolio holding for non-quote asset', async () => {
       await service.setPortfolioHolding('SOL', 5, 100);
       const balance = await service.getBalance('SOL');
-      expect(balance).toBe(BigInt(5));
+      expect(balance).toBe(BigInt(5 * 1e6)); // 5 SOL scaled by 6 decimals
     });
 
     it('should convert to addFunds for quote asset', async () => {
@@ -98,7 +98,7 @@ describe('DummyWalletService', () => {
 
       const portfolio = await service.getPortfolio();
 
-      expect(portfolio.totalValueUsd).toBeCloseTo(10000.000003, 2); // 10000 USDC + small amounts
+      expect(portfolio.totalValueUsd).toBe(12200); // 10000 USDC + 200 SOL + 2000 ETH
       expect(portfolio.assets.length).toBe(3);
     });
 

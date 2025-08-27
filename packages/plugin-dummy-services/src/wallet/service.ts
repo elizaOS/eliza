@@ -20,6 +20,8 @@ export class DummyWalletService extends Service {
 
   capabilityDescription = 'Dummy wallet service for testing';
   private balances: Map<string, bigint> = new Map();
+  private prices: Map<string, number> = new Map();
+  private decimals: Map<string, number> = new Map();
   private quoteAsset = 'USDC';
 
   constructor(runtime: IAgentRuntime) {
@@ -35,11 +37,15 @@ export class DummyWalletService extends Service {
   async start(): Promise<void> {
     // Initialize with default USDC balance
     this.balances.set('USDC', BigInt(10000 * 1e6)); // 10,000 USDC with 6 decimals
+    this.prices.set('USDC', 1); // USDC always has price 1
+    this.decimals.set('USDC', 6);
     console.log('[DummyWalletService] started.');
   }
 
   async stop(): Promise<void> {
     this.balances.clear();
+    this.prices.clear();
+    this.decimals.clear();
     console.log('[DummyWalletService] stopped.');
   }
 
@@ -52,18 +58,30 @@ export class DummyWalletService extends Service {
     this.balances.set(asset, currentBalance + BigInt(amount));
   }
 
-  setPortfolioHolding(asset: string, amount: number, price?: number): void {
+  setPortfolioHolding(asset: string, amount: number, price: number = 1): void {
     if (asset === this.quoteAsset) {
       this.addFunds(asset, amount);
+      this.prices.set(asset, 1); // USDC always has price 1
+      this.decimals.set(asset, 6);
     } else {
-      this.balances.set(asset, BigInt(amount));
+      // For non-quote assets, we need to handle the amount properly
+      // If amount represents the actual quantity, we store it with appropriate decimals
+      const decimals = 6; // Default to 6 decimals for dummy tokens
+      const scaledAmount = Math.floor(amount * Math.pow(10, decimals));
+      this.balances.set(asset, BigInt(scaledAmount));
+      this.prices.set(asset, price);
+      this.decimals.set(asset, decimals);
     }
   }
 
   resetWallet(initialCash: number = 10000, quoteAsset: string = 'USDC'): void {
     this.balances.clear();
+    this.prices.clear();
+    this.decimals.clear();
     this.quoteAsset = quoteAsset;
     this.balances.set(quoteAsset, BigInt(initialCash * 1e6));
+    this.prices.set(quoteAsset, 1); // Quote asset always has price 1
+    this.decimals.set(quoteAsset, 6);
   }
 
   async transferSol(from: string, to: string, amount: number): Promise<string> {
@@ -81,7 +99,13 @@ export class DummyWalletService extends Service {
     let totalValueUsd = 0;
 
     for (const [asset, balance] of this.balances.entries()) {
-      const valueUsd = Number(balance) / 1e6; // Simplified: assume 6 decimals and 1:1 USD value
+      const price = this.prices.get(asset) || 1;
+      const decimals = this.decimals.get(asset) || 6;
+      const divisor = Math.pow(10, decimals);
+
+      // Calculate actual quantity and value
+      const quantity = Number(balance) / divisor;
+      const valueUsd = quantity * price;
       totalValueUsd += valueUsd;
 
       assets.push({
@@ -90,12 +114,12 @@ export class DummyWalletService extends Service {
         balance: Number(balance),
         valueUsd,
         value: valueUsd,
-        amount: Number(balance) / 1e6,
-        quantity: Number(balance) / 1e6,
-        price: 1, // Dummy price
-        averagePrice: 1, // Dummy average price
+        amount: quantity,
+        quantity,
+        price,
+        averagePrice: price, // Use current price as average for dummy service
         allocation: 0, // Will be calculated below
-        decimals: 6, // Assume 6 decimals for all dummy tokens
+        decimals,
       });
     }
 
