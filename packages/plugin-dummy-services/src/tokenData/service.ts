@@ -21,8 +21,11 @@ export class DummyTokenDataService extends Service {
   // Use a custom service type since TOKEN_DATA isn't in ServiceType enum
   static readonly serviceType = 'token_data';
 
-  private serviceName = 'DummyTokenDataService';
   capabilityDescription = 'Dummy token data service for testing';
+
+  get serviceName(): string {
+    return 'dummy-token-data';
+  }
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -84,31 +87,136 @@ export class DummyTokenDataService extends Service {
     }));
   }
 
-  async searchTokens(query: string): Promise<TokenData[]> {
-    return [
-      {
-        symbol: query.toUpperCase(),
-        name: `${query} Token`,
-        address: '0xdummy1',
+  async getTokenDetails(address: string, chain: string = 'solana'): Promise<any | null> {
+    // Generate a consistent symbol from address (first 4 chars after prefix)
+    const symbol = address.startsWith('So') ? address.substring(2, 6) : address.substring(0, 4).toUpperCase();
+
+    return {
+      id: `${chain}:${address}`,
+      symbol,
+      name: `Dummy Token ${symbol}`,
+      address,
+      chain,
+      decimals: 18,
+      totalSupply: '1000000000',
+      price: 1.23 + Math.random() * 10,
+      priceUsd: 1.23 + Math.random() * 10,
+      marketCapUsd: 1230000000 + Math.random() * 1000000000,
+      marketCapUSD: 1230000000 + Math.random() * 1000000000,
+      volume24hUsd: 45600000 + Math.random() * 50000000,
+      volume24hUSD: 45600000 + Math.random() * 50000000,
+      priceChange24h: -10 + Math.random() * 20,
+      priceChange24hPercent: -10 + Math.random() * 20,
+      logoURI: 'https://via.placeholder.com/150',
+      liquidity: 5000000 + Math.random() * 5000000,
+      holders: Math.floor(1000 + Math.random() * 9000),
+      sourceProvider: 'dummy',
+      lastUpdatedAt: new Date(),
+      raw: {
+        dummyData: true,
+      },
+    };
+  }
+
+  async getTrendingTokens(chain: string = 'solana', limit: number = 10): Promise<any[]> {
+    const tokens = [];
+    for (let i = 0; i < limit; i++) {
+      const symbol = `TREND${i + 1}`;
+      tokens.push({
+        id: `${chain}:0xtrending${i}`,
+        symbol,
+        name: `Trending Token ${i + 1}`,
+        address: `0xtrending${i}`,
+        chain,
         decimals: 18,
         totalSupply: '1000000000',
-        priceUsd: 1.23,
-        marketCapUsd: 1230000000,
-        volume24hUsd: 45600000,
-        priceChange24h: 5.67,
-      },
-      {
-        symbol: `${query.toUpperCase()}2`,
-        name: `${query} Token 2`,
-        address: '0xdummy2',
+        price: 1 + Math.random() * 100,
+        priceUsd: 1 + Math.random() * 100,
+        marketCapUsd: 1000000 + Math.random() * 1000000000,
+        marketCapUSD: 1000000 + Math.random() * 1000000000,
+        volume24hUsd: 100000 + Math.random() * 10000000,
+        volume24hUSD: 100000 + Math.random() * 10000000,
+        priceChange24h: -50 + Math.random() * 100,
+        priceChange24hPercent: -10 + Math.random() * 20,
+        logoURI: 'https://via.placeholder.com/150',
+        liquidity: 1000000 + Math.random() * 9000000,
+        holders: Math.floor(500 + Math.random() * 9500),
+        sourceProvider: 'dummy',
+        lastUpdatedAt: new Date(),
+        raw: {
+          dummyData: true,
+        },
+      });
+    }
+    return tokens;
+  }
+
+  async searchTokens(query: string, chain: string = 'solana', limit: number = 5): Promise<any[]> {
+    const upperQuery = query.toUpperCase();
+    const tokens = [];
+
+    // Return the requested number of tokens
+    for (let i = 0; i < limit; i++) {
+      const symbol = upperQuery; // All tokens should have the same symbol for search
+      tokens.push({
+        id: `${chain}:0xsearch${i}`,
+        symbol,
+        name: `Dummy Token ${upperQuery}`,
+        address: `0xsearch${i}`,
+        chain,
         decimals: 18,
-        totalSupply: '2000000000',
-        priceUsd: 2.46,
-        marketCapUsd: 4920000000,
-        volume24hUsd: 91200000,
-        priceChange24h: -3.21,
-      },
-    ];
+        totalSupply: '1000000000',
+        price: 1.23 * (i + 1),
+        priceUsd: 1.23 * (i + 1),
+        marketCapUsd: 1230000000 * (i + 1),
+        marketCapUSD: 1230000000 * (i + 1),
+        volume24hUsd: 45600000 * (i + 1),
+        volume24hUSD: 45600000 * (i + 1),
+        priceChange24h: 5.67 * (i % 2 === 0 ? 1 : -1),
+        priceChange24hPercent: 5.67 * (i % 2 === 0 ? 1 : -1),
+        logoURI: 'https://via.placeholder.com/150',
+        liquidity: 1000000 + Math.random() * 9000000,
+        holders: Math.floor(500 + Math.random() * 9500),
+        sourceProvider: 'dummy',
+        lastUpdatedAt: new Date(),
+        raw: {
+          dummyData: true,
+        },
+      });
+    }
+    return tokens;
+  }
+
+  async getTokensByAddresses(addresses: string[], chain: string = 'solana'): Promise<any[]> {
+    return addresses.map((address, index) => {
+      // Generate symbol from address
+      const symbol = address.length > 6 ? address.substring(2, 6).toUpperCase() : address.toUpperCase();
+      return {
+        id: `${chain}:${address}`,
+        symbol,
+        name: `Dummy Token ${symbol}`,
+        address,
+        chain,
+        decimals: 18,
+        totalSupply: '1000000000',
+        price: 1.23 * (index + 1),
+        priceUsd: 1.23 * (index + 1),
+        marketCapUsd: 1230000000 * (index + 1),
+        marketCapUSD: 1230000000 * (index + 1),
+        volume24hUsd: 45600000 * (index + 1),
+        volume24hUSD: 45600000 * (index + 1),
+        priceChange24h: 5.67 * (index % 2 === 0 ? 1 : -1),
+        priceChange24hPercent: 5.67 * (index % 2 === 0 ? 1 : -1),
+        logoURI: 'https://via.placeholder.com/150',
+        liquidity: 1000000 + Math.random() * 9000000,
+        holders: Math.floor(500 + Math.random() * 9500),
+        sourceProvider: 'dummy',
+        lastUpdatedAt: new Date(),
+        raw: {
+          dummyData: true,
+        },
+      };
+    });
   }
 
   getDexName(): string {
