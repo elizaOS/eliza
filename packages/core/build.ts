@@ -48,7 +48,7 @@ const sharedConfig = {
 async function buildNode() {
   console.log('🔨 Building for Node.js...');
   const startTime = Date.now();
-  
+
   const runNode = createBuildRunner({
     ...sharedConfig,
     buildOptions: {
@@ -64,7 +64,7 @@ async function buildNode() {
   });
 
   await runNode();
-  
+
   const duration = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`✅ Node.js build complete in ${duration}s`);
 }
@@ -75,7 +75,7 @@ async function buildNode() {
 async function buildBrowser() {
   console.log('🌐 Building for Browser...');
   const startTime = Date.now();
-  
+
   const runBrowser = createBuildRunner({
     ...sharedConfig,
     buildOptions: {
@@ -97,23 +97,23 @@ async function buildBrowser() {
               path: 'crypto-browserify',
               external: true,
             }));
-            
+
             build.onResolve({ filter: /^stream$/ }, () => ({
               path: 'stream-browserify',
               external: true,
             }));
-            
+
             build.onResolve({ filter: /^buffer$/ }, () => ({
               path: 'buffer',
               external: true,
             }));
-            
+
             // Stub out Node-only modules
             build.onResolve({ filter: /^fs$/ }, () => ({
               path: 'browserfs',
               external: true,
             }));
-            
+
             build.onResolve({ filter: /^path$/ }, () => ({
               path: 'path-browserify',
               external: true,
@@ -125,7 +125,7 @@ async function buildBrowser() {
   });
 
   await runBrowser();
-  
+
   const duration = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log(`✅ Browser build complete in ${duration}s`);
 }
@@ -146,10 +146,10 @@ async function buildAll() {
 
     const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
     console.log(`\n🎉 All builds complete in ${totalDuration}s`);
-    
+
     // Create index files that point to the correct build
     await createIndexFiles();
-    
+
   } catch (error) {
     console.error('\n❌ Build failed:', error);
     process.exit(1);
@@ -161,7 +161,7 @@ async function buildAll() {
  */
 async function createIndexFiles() {
   const fs = await import('node:fs/promises');
-  
+
   // Create main index.js that uses conditional exports
   const mainIndex = `/**
  * Main entry point for @elizaos/core
@@ -170,16 +170,30 @@ async function createIndexFiles() {
 
 // This file is not used directly - package.json conditional exports handle the routing
 // See package.json "exports" field for the actual entry points
-export * from './node/index.js';
+export * from './node/index.node.js';
 `;
 
   await fs.writeFile('dist/index.js', mainIndex);
-  
-  // Create index.d.ts that points to the type definitions
-  const typeIndex = `export * from './node/index';`;
+
+  // Create a simple index.d.ts that re-exports from the source
+  // This approach avoids the complexity of generating declarations from compiled output
+  const typeIndex = `// Type definitions for @elizaos/core
+// Re-export all types from the source modules
+
+export * from '../src/index';
+`;
+
   await fs.writeFile('dist/index.d.ts', typeIndex);
-  
-  console.log('📝 Created index files for module resolution');
+
+  // Also ensure the package.json "types" field can resolve correctly
+  // by creating fallback declaration files
+  await fs.mkdir('dist/node', { recursive: true });
+  await fs.mkdir('dist/browser', { recursive: true });
+
+  await fs.writeFile('dist/node/index.d.ts', `export * from '../../src/index.node';`);
+  await fs.writeFile('dist/browser/index.d.ts', `export * from '../../src/index.browser';`);
+
+  console.log('📝 Created index files and type definitions for module resolution');
 }
 
 // Execute the build
