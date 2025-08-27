@@ -123,6 +123,8 @@ export class AgentRuntime implements IAgentRuntime {
   private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
+  public initPromise;
+  private initResolver;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -153,6 +155,10 @@ export class AgentRuntime implements IAgentRuntime {
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
     const logLevel = getEnv('LOG_LEVEL', 'info');
+
+    this.initPromise = new Promise(resolve => {
+      this.initResolver = resolve
+    })
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = createLogger({
@@ -443,6 +449,7 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
+    this.initResolver() // resolve initPromise
   }
 
   async runPluginMigrations(): Promise<void> {
@@ -1907,7 +1914,11 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       try {
-        await Promise.all(eventHandlers.map((handler) => handler(params)));
+        let paramsWithRuntime = { runtime: this }
+        if (typeof(params) === 'object' && params) {
+          paramsWithRuntime = {...params, ...paramsWithRuntime }
+        }
+        await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
       } catch (error) {
         this.logger.error(`Error during emitEvent for ${eventName} (handler execution): ${error}`);
         // throw error; // Re-throw if necessary
