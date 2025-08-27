@@ -20,7 +20,12 @@ function ensureEnvLoaded(): RuntimeSettings {
     envSettings = process.env as RuntimeSettings;
     envLoaded = true;
   }
-  return envSettings!;
+
+  if (!envSettings) {
+    throw new Error('Failed to load environment settings');
+  }
+
+  return envSettings;
 }
 
 /**
