@@ -1912,7 +1912,11 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       try {
-        await Promise.all(eventHandlers.map((handler) => handler({...params, runtime: this })));
+        let paramsWithRuntime = { runtime: this }
+        if (typeof(params) === 'object') {
+          paramsWithRuntime = {...params, ...paramsWithRuntime }
+        }
+        await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
       } catch (error) {
         this.logger.error(`Error during emitEvent for ${eventName} (handler execution): ${error}`);
         // throw error; // Re-throw if necessary
