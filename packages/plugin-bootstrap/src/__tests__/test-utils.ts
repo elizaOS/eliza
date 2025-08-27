@@ -288,6 +288,12 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     startRun: mock().mockReturnValue('test-run-id' as UUID),
     endRun: mock().mockReturnValue(undefined),
     getCurrentRunId: mock().mockReturnValue('test-run-id' as UUID),
+
+    // State cache for multi-step functionality
+    stateCache: {
+      get: mock().mockReturnValue(null),
+      set: mock().mockReturnValue(undefined),
+    },
   };
 
   // Merge with overrides
@@ -452,6 +458,12 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
   getEntity: ReturnType<typeof mock>;
   getWorldSettings: ReturnType<typeof mock>;
   findWorldsForOwner: ReturnType<typeof mock>;
+
+  // State cache for multi-step functionality
+  stateCache: {
+    get: ReturnType<typeof mock>;
+    set: ReturnType<typeof mock>;
+  };
 
   // File, PDF, and Image service methods
   uploadFile: ReturnType<typeof mock>;
