@@ -77,7 +77,7 @@ export class DummyWalletService extends Service {
   }
 
   getPortfolio(): any {
-    const assets = [];
+    const assets: any[] = [];
     let totalValueUsd = 0;
 
     for (const [asset, balance] of this.balances.entries()) {

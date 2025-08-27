@@ -11,11 +11,7 @@ import type {
   WorldSettings,
 } from './types';
 
-/**
- * Creates a new Setting object based on provided config settings.
- * @param {Omit<Setting, "value">} configSetting - The configuration settings for the new Setting object.
- * @returns {Setting} - The newly created Setting object.
- */
+
 /**
  * Creates a Setting object from a configSetting object by omitting the 'value' property.
  *

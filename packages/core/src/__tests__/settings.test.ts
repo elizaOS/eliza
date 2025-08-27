@@ -96,12 +96,12 @@ describe('settings utilities', () => {
         usageDescription: '',
         value: null,
         required: true,
-        validation: null,
+        validation: undefined,
         public: false,
         secret: false,
         dependsOn: [],
-        onSetAction: null,
-        visibleIf: null,
+        onSetAction: undefined,
+        visibleIf: undefined,
       });
     });
 
