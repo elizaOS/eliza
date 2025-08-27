@@ -6,15 +6,31 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bun": "./dist/index.js",
+  "browser": "dist/browser/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "bun": "./dist/index.js",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "import": "./dist/browser/index.js",
+        "default": "./dist/browser/index.js"
+      },
+      "node": {
+        "import": "./dist/node/index.js",
+        "default": "./dist/node/index.js"
+      },
+      "bun": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js",
+      "default": "./dist/node/index.js"
+    },
+    "./browser": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/browser/index.js",
+      "default": "./dist/browser/index.js"
     }
   },
   "files": [
@@ -22,6 +38,8 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
+    "build:node": "bun run build.ts --target node",
+    "build:browser": "bun run build.ts --target browser",
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "build:docs": "cd docs && bun run build",
