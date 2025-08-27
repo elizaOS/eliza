@@ -933,12 +933,11 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
 
 async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
   const traceActionResult: any[] = [];
-  let continueLoop = true;
   let accumulatedState: any = state;
   const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
   let iterationCount = 0;
 
-  while (continueLoop && iterationCount < maxIterations) {
+  while (iterationCount < maxIterations) {
     iterationCount++;
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
@@ -954,7 +953,6 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     const { thought, providers = [], action, isFinish } = parsedStep || {};
 
     if (!parsedStep || isFinish === 'true') {
-      continueLoop = false;
       await callback({
         text: '',
         thought: thought ?? '',
