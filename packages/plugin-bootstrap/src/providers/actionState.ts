@@ -98,6 +98,8 @@ export const actionStateProvider: Provider = {
         .join('\n\n');
 
       resultsText = addHeader('# Previous Action Results', formattedResults);
+    } else {
+      resultsText = 'No previous action results available.';
     }
 
     // Format working memory
