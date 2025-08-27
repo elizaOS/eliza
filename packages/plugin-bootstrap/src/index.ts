@@ -534,7 +534,7 @@ const messageReceivedHandler = async ({
           const response = await runtime.useModel(ModelType.TEXT_SMALL, {
             prompt: shouldRespondPrompt,
           });
-          
+
           runtime.logger.debug(
             `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`
           );
@@ -593,7 +593,7 @@ const messageReceivedHandler = async ({
           }
 
           if (responseContent) {
-            const mode = useMultiStep ? 'simple' : (result.mode ?? ('actions' as StrategyMode));
+            const mode = result.mode ?? ('actions' as StrategyMode);
 
             if (mode === 'simple') {
               // Log provider usage for simple responses
@@ -935,8 +935,11 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
   const traceActionResult: any[] = [];
   let continueLoop = true;
   let accumulatedState: any = state;
-  
-  while (continueLoop) {
+  const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
+  let iterationCount = 0;
+
+  while (continueLoop && iterationCount < maxIterations) {
+    iterationCount++;
     accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
     accumulatedState.data.actionResults = traceActionResult;
 
@@ -944,10 +947,10 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
       state: accumulatedState,
       template: runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
     });
-    
+
     const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
     const parsedStep = parseKeyValueXml(stepResultRaw);
-    
+
     const { thought, providers = [], action, isFinish } = parsedStep || {};
 
     if (!parsedStep || isFinish === 'true') {
@@ -964,21 +967,21 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
         const provider = runtime.providers.find((p: any) => p.name === providerName);
         const providerResult = await provider?.get(runtime, message, state);
         const success = !!providerResult?.text;
-  
+
         traceActionResult.push({
           data: { actionName: providerName },
           success,
           text: success ? providerResult.text : undefined,
           error: success ? undefined : providerResult?.error,
         });
-  
+
         await callback({
           text: `🔎 Provider executed: ${providerName}`,
           actions: [providerName],
           thought: thought ?? '',
         });
       }
-  
+
       if (action) {
         const actionContent = {
           text: `🔎 Executing action: ${action}`,
@@ -1002,12 +1005,12 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
             return [];
           }
         );
-  
+
         const cachedState = runtime.stateCache.get(`${message.id}_action_results`);
         const actionResults = cachedState?.values?.actionResults || [];
         const result = actionResults[0];
         const success = result?.success ?? false;
-  
+
         traceActionResult.push({
           data: { actionName: action },
           success,
@@ -1015,7 +1018,6 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           error: success ? undefined : result?.text,
         });
       }
-  
     } catch (err) {
       runtime.logger.error({ err }, '[MultiStep] Error executing step');
       traceActionResult.push({
@@ -1024,6 +1026,12 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
         error: err,
       });
     }
+  }
+
+  if (iterationCount >= maxIterations) {
+    runtime.logger.warn(
+      `[MultiStep] Reached maximum iterations (${maxIterations}), forcing completion`
+    );
   }
 
   accumulatedState = await runtime.composeState(message, ['RECENT_MESSAGES', 'ACTION_STATE']);
@@ -1746,7 +1754,10 @@ const events = {
           `[Bootstrap] User ${payload.entityId} left world ${payload.worldId}`
         );
       } catch (error: any) {
-        payload.runtime.logger.error('[Bootstrap] Error handling user left:', error instanceof Error ? error.message : String(error));
+        payload.runtime.logger.error(
+          '[Bootstrap] Error handling user left:',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     },
   ],
