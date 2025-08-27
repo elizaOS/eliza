@@ -1,0 +1,23 @@
+{
+    "name": "@elizaos/plugin-firecrawl",
+    "version": "1.0.0",
+    "description": "Web scraping plugin for Vision.io using Firecrawl API",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsc --watch",
+        "test": "bun test"
+    },
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@prisma/client": "^5.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.0.0"
+    },
+    "peerDependencies": {
+        "@elizaos/core": "workspace:*"
+    }
+}

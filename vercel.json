@@ -1,0 +1,19 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "packages/eliza-app/src/index.ts",
+            "use": "@vercel/node"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/(.*)",
+            "dest": "/packages/eliza-app/src/index.ts"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/packages/eliza-app/src/index.ts"
+        }
+    ]
+}

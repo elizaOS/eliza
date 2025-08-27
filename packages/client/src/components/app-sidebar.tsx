@@ -648,7 +648,7 @@ export function AppSidebar({
             <FooterLink to="/settings" Icon={Cog} label="Settings" />
             <ConnectionStatus />
           </SidebarMenu>
-          
+
           {/* Firecrawl Button */}
           <div className="px-2 py-2">
             <FirecrawlButton />
