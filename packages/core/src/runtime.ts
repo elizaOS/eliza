@@ -7,6 +7,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
+import { getEnv, getNumberEnv } from './environment';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
@@ -150,7 +151,7 @@ export class AgentRuntime implements IAgentRuntime {
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
-    const logLevel = process.env.LOG_LEVEL || 'info';
+    const logLevel = getEnv('LOG_LEVEL', 'info');
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = createLogger({
@@ -182,8 +183,8 @@ export class AgentRuntime implements IAgentRuntime {
     // Set max working memory entries from settings or environment
     if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
       this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
-    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
-      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else {
+      this.maxWorkingMemoryEntries = getNumberEnv('MAX_WORKING_MEMORY_ENTRIES', 50) as number;
     }
   }
 

@@ -6,6 +6,7 @@ import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 
 import logger from './logger';
+import { getEnv } from './environment';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID, ContentType } from './types';
 
@@ -847,6 +848,6 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
 };
 
 export function getLocalServerUrl(path: string): string {
-  const port = process.env.SERVER_PORT || '3000';
+  const port = getEnv('SERVER_PORT', '3000');
   return `http://localhost:${port}${path}`;
 }

@@ -1,4 +1,5 @@
 import { Sentry } from './sentry/instrument';
+import { getEnv as getEnvironmentVar, getBooleanEnv } from './environment';
 // Type-only imports - stripped at build time, safe for browser
 import type { LoggerOptions as PinoLoggerOptions } from 'pino';
 import type { PrettyOptions as BasePrettyOptions } from 'pino-pretty';
@@ -70,10 +71,8 @@ function hasProcess(): boolean {
  * Gets an environment variable value if process.env is available
  */
 function getProcessEnv(key: string): string | undefined {
-  if (hasProcess() && process.env) {
-    return process.env[key];
-  }
-  return undefined;
+  // Use the new environment abstraction which handles browser/node differences
+  return getEnvironmentVar(key);
 }
 
 // Create a namespace-like object for convenience and backward compatibility

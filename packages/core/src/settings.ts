@@ -1,6 +1,7 @@
 // @ts-ignore
 import crypto from 'crypto-browserify';
 import { createUniqueUuid } from './entities';
+import { getEnv } from './environment';
 import { logger } from './logger';
 import type {
   Character,
@@ -44,13 +45,10 @@ export function createSettingFromConfig(configSetting: Omit<Setting, 'value'>): 
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
-  const secretSalt =
-    (typeof process !== 'undefined'
-      ? process.env.SECRET_SALT
-      : (import.meta as any).env.SECRET_SALT) || 'secretsalt';
+  const secretSalt = getEnv('SECRET_SALT', 'secretsalt');
 
-  if (!secretSalt) {
-    logger.error('SECRET_SALT is not set');
+  if (!secretSalt || secretSalt === 'secretsalt') {
+    logger.error('SECRET_SALT is not set or using default value');
   }
 
   const salt = secretSalt;

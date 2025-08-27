@@ -7,6 +7,9 @@ export * from './utils';
 // Export schemas
 export * from './schemas/character';
 
+// Export environment utilities
+export * from './environment';
+
 // Then all other exports
 export * from './actions';
 export * from './database';
