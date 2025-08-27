@@ -1,19 +1,20 @@
 {
     "version": 2,
+    "buildCommand": "cd packages/eliza-app && npm install && npm run build",
     "builds": [
         {
-            "src": "packages/eliza-app/src/index.ts",
+            "src": "packages/eliza-app/dist/index.js",
             "use": "@vercel/node"
         }
     ],
     "routes": [
         {
             "src": "/api/(.*)",
-            "dest": "/packages/eliza-app/src/index.ts"
+            "dest": "/packages/eliza-app/dist/index.js"
         },
         {
             "src": "/(.*)",
-            "dest": "/packages/eliza-app/src/index.ts"
+            "dest": "/packages/eliza-app/dist/index.js"
         }
     ]
 }
