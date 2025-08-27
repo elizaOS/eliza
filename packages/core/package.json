@@ -6,31 +6,31 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "browser": "dist/browser/index.js",
+  "browser": "dist/browser/index.browser.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
-        "import": "./dist/browser/index.js",
-        "default": "./dist/browser/index.js"
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "import": "./dist/node/index.js",
-        "default": "./dist/node/index.js"
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
       },
-      "bun": "./dist/node/index.js",
-      "default": "./dist/node/index.js"
+      "bun": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
     },
     "./node": {
       "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.js",
-      "default": "./dist/node/index.js"
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
     },
     "./browser": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/browser/index.js",
-      "default": "./dist/browser/index.js"
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
     }
   },
   "files": [

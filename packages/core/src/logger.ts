@@ -191,7 +191,7 @@ function loadPinoSync(): PinoModule | null {
     if (typeof require !== 'function') {
       return null;
     }
-    
+
     // Dynamic require to prevent bundler from following the dependency
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const moduleName = 'pino';
@@ -227,7 +227,7 @@ function loadPinoPrettySync(): PinoPrettyModule | null {
     if (typeof require !== 'function') {
       return null;
     }
-    
+
     // Dynamic require to prevent bundler from following the dependency
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const moduleName = 'pino-pretty';
@@ -509,11 +509,11 @@ function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
     const consoleObj = getConsole();
 
     if (!consoleObj) {
-      return () => {}; // No-op if console doesn't exist
+      return () => { }; // No-op if console doesn't exist
     }
 
     // Fallback to console.log if specific methods don't exist
-    const fallback = consoleObj.log ? consoleObj.log.bind(consoleObj) : () => {};
+    const fallback = consoleObj.log ? consoleObj.log.bind(consoleObj) : () => { };
 
     switch (logLevel) {
       case 'trace':
@@ -615,9 +615,9 @@ function createBrowserLogger(options: BrowserLoggerOptions = {}): Logger {
   // Create log methods using a helper function to reduce repetition
   const createLogMethod =
     (level: string): LogFn =>
-    (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
-      formatMessage(level, obj, msg, ...args);
-    };
+      (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]) => {
+        formatMessage(level, obj, msg, ...args);
+      };
 
   const clear = (): void => {
     // Check if inMemoryDestination.clear exists before calling it
@@ -872,18 +872,18 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   if (isNode) {
     try {
       const Pino = loadPinoSync();
-      
+
       // If Pino is not available (e.g., in browser builds), fall back to browser logger
       if (!Pino) {
         const opts: BrowserLoggerOptions = { level: effectiveLogLevel, base };
         return createBrowserLogger(opts);
       }
-      
+
       const opts: PinoOptions = { ...options } as PinoOptions;
       opts.base = base;
 
       // Create in-memory destination with optional pretty printing
-      let stream = null;
+      let stream: DestinationStream | null = null;
       if (!raw) {
         const pretty = loadPinoPrettySync();
         if (pretty) {
