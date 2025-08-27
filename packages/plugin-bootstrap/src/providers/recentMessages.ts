@@ -205,8 +205,8 @@ export const recentMessagesProvider: Provider = {
       let recentMessage = 'No recent message available.';
 
       if (dialogueMessages.length > 0) {
-        // Get the most recent dialogue message
-        const mostRecentMessage = dialogueMessages.sort(
+        // Get the most recent dialogue message (create a copy to avoid mutating original array)
+        const mostRecentMessage = [...dialogueMessages].sort(
           (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
         )[0];
 
