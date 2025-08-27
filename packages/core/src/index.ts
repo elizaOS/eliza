@@ -37,8 +37,12 @@ export * from './search';
 export * from './sentry/instrument';
 
 // Environment detection utilities
-export const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
-export const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+export const isBrowser = typeof globalThis !== 'undefined' && 
+  typeof (globalThis as any).window !== 'undefined' && 
+  typeof (globalThis as any).document !== 'undefined';
+export const isNode = typeof process !== 'undefined' && 
+  typeof process.versions !== 'undefined' && 
+  typeof process.versions.node !== 'undefined';
 
 // Re-export server health with a conditional stub for browser environments
 export * from './utils/server-health';

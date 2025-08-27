@@ -1,5 +1,5 @@
 import { Sentry } from './sentry/instrument';
-import { getEnv as getEnvironmentVar, getBooleanEnv } from './utils/environment';
+import { getEnv as getEnvironmentVar } from './utils/environment';
 // Type-only imports - stripped at build time, safe for browser
 import type { LoggerOptions as PinoLoggerOptions } from 'pino';
 import type { PrettyOptions as BasePrettyOptions } from 'pino-pretty';
@@ -26,8 +26,8 @@ function getEnvironment(): { isBrowser: boolean; isNode: boolean } {
 
   const isBrowser =
     typeof globalThis !== 'undefined' &&
-    typeof globalThis.window !== 'undefined' &&
-    typeof globalThis.document !== 'undefined';
+    typeof (globalThis as any).window !== 'undefined' &&
+    typeof (globalThis as any).document !== 'undefined';
 
   const isNode =
     typeof process !== 'undefined' &&
@@ -158,6 +158,13 @@ const moduleCache: ModuleCache = {};
 // Module Loaders
 // ============================================================================
 /**
+ * Check if we're in a browser environment
+ */
+function isBrowser(): boolean {
+  return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+}
+
+/**
  * Load Pino module synchronously using require()
  *
  * TECHNICAL DEBT: This function uses require() instead of ES module imports
@@ -167,21 +174,33 @@ const moduleCache: ModuleCache = {};
  * 2. Ensure all environments support top-level await
  * 3. Update build toolchain to handle async module loading
  *
- * @returns The loaded Pino module
- * @throws Error if Pino cannot be loaded
+ * @returns The loaded Pino module or null in browser environments
  */
-function loadPinoSync(): PinoModule {
+function loadPinoSync(): PinoModule | null {
+  // Don't load Pino in browser environments
+  if (isBrowser()) {
+    return null;
+  }
+
   if (moduleCache.pino) {
     return moduleCache.pino;
   }
 
   try {
+    // Check if require is available (Node.js environment)
+    if (typeof require !== 'function') {
+      return null;
+    }
+    
+    // Dynamic require to prevent bundler from following the dependency
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const module = require('pino');
+    const moduleName = 'pino';
+    const module = require(moduleName);
     moduleCache.pino = module as PinoModule;
     return module as PinoModule;
   } catch (error) {
-    throw new Error(`Failed to load Pino: ${(error as Error).message}`);
+    // In browser or when Pino is not available, return null
+    return null;
   }
 }
 
@@ -194,13 +213,25 @@ function loadPinoSync(): PinoModule {
  * @returns The loaded Pino-Pretty module or null if not available
  */
 function loadPinoPrettySync(): PinoPrettyModule | null {
+  // Don't load Pino-Pretty in browser environments
+  if (isBrowser()) {
+    return null;
+  }
+
   if (moduleCache.pinoPretty) {
     return moduleCache.pinoPretty;
   }
 
   try {
+    // Check if require is available (Node.js environment)
+    if (typeof require !== 'function') {
+      return null;
+    }
+    
+    // Dynamic require to prevent bundler from following the dependency
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const module = require('pino-pretty');
+    const moduleName = 'pino-pretty';
+    const module = require(moduleName);
     moduleCache.pinoPretty = module as PinoPrettyModule;
     return module as PinoPrettyModule;
   } catch (error) {
@@ -837,10 +868,17 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     return createBrowserLogger(opts);
   }
 
-  // Node.js environment: use Pino
+  // Node.js environment: use Pino (if available)
   if (isNode) {
     try {
       const Pino = loadPinoSync();
+      
+      // If Pino is not available (e.g., in browser builds), fall back to browser logger
+      if (!Pino) {
+        const opts: BrowserLoggerOptions = { level: effectiveLogLevel, base };
+        return createBrowserLogger(opts);
+      }
+      
       const opts: PinoOptions = { ...options } as PinoOptions;
       opts.base = base;
 

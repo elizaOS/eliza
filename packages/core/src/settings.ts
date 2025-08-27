@@ -46,9 +46,9 @@ export function createSettingFromConfig(configSetting: Omit<Setting, 'value'>): 
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
-  const secretSalt = getEnv('SECRET_SALT', 'secretsalt');
+  const secretSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
 
-  if (!secretSalt || secretSalt === 'secretsalt') {
+  if (secretSalt === 'secretsalt') {
     logger.error('SECRET_SALT is not set or using default value');
   }
 

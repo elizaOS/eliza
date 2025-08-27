@@ -9,7 +9,7 @@
     "types": ["node"],
     "module": "ESNext",
     "target": "ES2020",
-    "lib": ["ES2020"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowUnusedLabels": true
