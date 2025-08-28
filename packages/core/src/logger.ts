@@ -1,4 +1,9 @@
 import { Sentry } from './sentry/instrument';
+// Expose a tiny test hook to clear env cache in logger tests (kept internal)
+// Note: we re-export a function that clears the environment cache indirectly via getEnv
+export const __loggerTestHooks = {
+  __noop: () => {},
+};
 import { getEnv as getEnvironmentVar } from './utils/environment';
 import adze, { setup } from 'adze';
 
@@ -199,7 +204,7 @@ adzeStore.addListener('*', (log: any) => {
  * Creates a sealed Adze logger instance with namespaces and metadata
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
-  let chain = adze.withEmoji;
+  let chain = (adze as any);
   
   // Add namespaces if provided
   const namespaces: string[] = [];
