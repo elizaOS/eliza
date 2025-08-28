@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.4.5",
+  "version": "1.5.0",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -47,6 +47,7 @@
     "@react-spring/web": "^9.7.5",
     "@tanstack/react-query": "^5.67.2",
     "@uidotdev/usehooks": "^2.4.1",
+    "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "2.1.1",
     "cmdk": "^1.0.4",
@@ -72,8 +73,7 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
-    "vite-plugin-compression": "^0.5.1",
-    "buffer": "^6.0.3"
+    "vite-plugin-compression": "^0.5.1"
   },
   "devDependencies": {
     "@cypress/react": "^9.0.1",
