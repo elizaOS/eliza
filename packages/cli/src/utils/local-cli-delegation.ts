@@ -131,7 +131,10 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 
     // Handle process errors
     childProcess.on('error', (error) => {
-      logger.error(`Failed to start local CLI:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to start local CLI:`,
+        error instanceof Error ? error.message : String(error)
+      );
       reject(error);
     });
 

@@ -2,10 +2,7 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
-    "lib": [
-      "ESNext",
-      "dom"
-    ],
+    "lib": ["ESNext", "dom"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -26,8 +23,5 @@
     "allowArbitraryExtensions": true,
     "baseUrl": "."
   },
-  "include": [
-    "src/**/*.ts",
-    "lp_manager_code/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "lp_manager_code/**/*.ts"]
 }

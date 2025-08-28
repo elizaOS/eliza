@@ -7,6 +7,8 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
+import { getEnv, getNumberEnv } from './utils/environment';
+import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
@@ -121,8 +123,8 @@ export class AgentRuntime implements IAgentRuntime {
   private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise: Promise<void>;
-  private initResolver!: () => void;
+  public initPromise;
+  private initResolver: ((value?: unknown) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -152,11 +154,11 @@ export class AgentRuntime implements IAgentRuntime {
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
-    const logLevel = process.env.LOG_LEVEL || 'info';
+    const logLevel = getEnv('LOG_LEVEL', 'info');
 
-    this.initPromise = new Promise(resolve => {
-      this.initResolver = resolve
-    })
+    this.initPromise = new Promise((resolve) => {
+      this.initResolver = resolve;
+    });
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = createLogger({
@@ -188,8 +190,8 @@ export class AgentRuntime implements IAgentRuntime {
     // Set max working memory entries from settings or environment
     if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
       this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
-    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
-      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else {
+      this.maxWorkingMemoryEntries = getNumberEnv('MAX_WORKING_MEMORY_ENTRIES', 50) as number;
     }
   }
 
@@ -347,7 +349,7 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.warn('Agent already initialized');
       return;
     }
-    const pluginRegistrationPromises = [];
+    const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
     // The runtime now accepts a pre-resolved, ordered list of plugins.
@@ -447,7 +449,9 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
-    this.initResolver() // resolve initPromise
+    if (this.initResolver) {
+      this.initResolver(); // resolve initPromise
+    }
   }
 
   async runPluginMigrations(): Promise<void> {
@@ -1800,7 +1804,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Log input parameters (keep debug log if useful)
     this.logger.debug(
       `[useModel] ${modelKey} input: ` +
-      JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
     let paramsWithRuntime: any;
     if (
@@ -1808,7 +1812,7 @@ export class AgentRuntime implements IAgentRuntime {
       params === undefined ||
       typeof params !== 'object' ||
       Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+      BufferUtils.isBuffer(params)
     ) {
       paramsWithRuntime = params;
     } else {
@@ -1830,17 +1834,24 @@ export class AgentRuntime implements IAgentRuntime {
         };
       }
     }
-    const startTime = performance.now();
+    const startTime =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
     try {
       const response = await model(this, paramsWithRuntime);
-      const elapsedTime = performance.now() - startTime;
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
 
       // Log timing / response (keep debug log if useful)
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
-          } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
+              response.length
+            } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -1874,9 +1885,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -1911,9 +1922,9 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       try {
-        let paramsWithRuntime = { runtime: this }
-        if (typeof (params) === 'object' && params) {
-          paramsWithRuntime = { ...params, ...paramsWithRuntime }
+        let paramsWithRuntime = { runtime: this };
+        if (typeof params === 'object' && params) {
+          paramsWithRuntime = { ...params, ...paramsWithRuntime };
         }
         await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
       } catch (error) {

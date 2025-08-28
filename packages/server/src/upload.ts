@@ -9,8 +9,6 @@ import {
   ALLOWED_MEDIA_MIME_TYPES,
 } from './api/shared/constants.js';
 
-
-
 // Helper function to generate secure filename
 export function generateSecureFilename(originalName: string): string {
   const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -47,13 +45,15 @@ export const agentAudioUpload = () =>
     },
     fileFilter: (_req, file, cb) => {
       // Check if mimetype is in the allowed list
-      const isAllowed = ALLOWED_AUDIO_MIME_TYPES.some(
-        (allowed) => allowed === file.mimetype
-      );
+      const isAllowed = ALLOWED_AUDIO_MIME_TYPES.some((allowed) => allowed === file.mimetype);
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error(`Invalid audio file type. Only ${ALLOWED_AUDIO_MIME_TYPES.join(', ')} are allowed`));
+        cb(
+          new Error(
+            `Invalid audio file type. Only ${ALLOWED_AUDIO_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });
@@ -67,13 +67,15 @@ export const agentMediaUpload = () =>
     },
     fileFilter: (_req, file, cb) => {
       // Check if mimetype is in the allowed list
-      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some(
-        (allowed) => allowed === file.mimetype
-      );
+      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error(`Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
+        cb(
+          new Error(
+            `Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });
@@ -88,13 +90,15 @@ export const channelUpload = () =>
     },
     fileFilter: (_req, file, cb) => {
       // Check if mimetype is in the allowed list
-      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some(
-        (allowed) => allowed === file.mimetype
-      );
+      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
       if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error(`Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
+        cb(
+          new Error(
+            `Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });

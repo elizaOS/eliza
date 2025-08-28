@@ -18,7 +18,7 @@ export interface ChannelMetadata {
   description?: string;
   topic?: string;
   participants?: string[];
-  participantCentralUserIds?: UUID[];  // Used by messaging service
+  participantCentralUserIds?: UUID[]; // Used by messaging service
   isPrivate?: boolean;
   sessionId?: string;
   agentId?: string;
@@ -59,7 +59,7 @@ export interface MessageMetadata {
   priority?: 'low' | 'normal' | 'high';
   tags?: string[];
   context?: Record<string, string | number | boolean>;
-  
+
   // Server and channel related metadata
   serverName?: string;
   channelName?: string;
@@ -68,7 +68,7 @@ export interface MessageMetadata {
   channelMetadata?: Record<string, unknown>;
   isDm?: boolean;
   agent_id?: UUID;
-  
+
   // Allow additional properties
   [key: string]: unknown;
 }

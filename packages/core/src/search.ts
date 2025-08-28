@@ -1191,10 +1191,7 @@ export class BM25 {
       return;
     }
     // Use the typed array's reduce method for type safety and performance
-    const totalLength = this.documentLengths.reduce(
-      (sum, len) => sum + len,
-      0
-    );
+    const totalLength = this.documentLengths.reduce((sum, len) => sum + len, 0);
     this.averageDocLength = totalLength / this.documentLengths.length;
   }
 

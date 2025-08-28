@@ -8,15 +8,15 @@ describe('Home Page', () => {
         source: 'test',
         timestamp: new Date().toISOString(),
         environment: 'test',
-        uptime: 1000
-      }
+        uptime: 1000,
+      },
     }).as('getServerVersion');
 
     cy.intercept('GET', '/api/agents', {
       statusCode: 200,
       body: {
-        agents: []
-      }
+        agents: [],
+      },
     }).as('getAgents');
 
     // Visit the home page before each test
@@ -71,7 +71,9 @@ describe('Home Page', () => {
         cy.get('[data-testid="connection-status"]').should('exist');
       } else {
         // Look for alternative connection indicators
-        cy.get('[data-testid*="connection"], [data-testid*="status"], .connection, .status').should('exist');
+        cy.get('[data-testid*="connection"], [data-testid*="status"], .connection, .status').should(
+          'exist'
+        );
         cy.log('connection-status not found, but alternative connection element exists');
       }
     });

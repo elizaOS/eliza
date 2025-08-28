@@ -8,11 +8,7 @@ import type {
   AgentStatus as CoreAgentStatus,
   ChannelType as CoreChannelType,
 } from '@elizaos/core';
-import type {
-  ServerMetadata,
-  ChannelMetadata,
-  MessageMetadata,
-} from '@elizaos/api-client';
+import type { ServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 
 /**
  * Interface representing an attachment.
