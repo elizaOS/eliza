@@ -4,6 +4,6 @@
  */
 
 import './polyfills';
-import './main';
+import('./main');
 
 export {};
