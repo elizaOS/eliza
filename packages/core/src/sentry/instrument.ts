@@ -41,6 +41,9 @@ export function initializeSentry(dsn?: string): void {
   }
 
   console.log('[SENTRY] Initializing with DSN:', effectiveDsn.substring(0, 20) + '...');
+  
+  const traceFilter = process.env.SENTRY_TRACE_FILTER === 'false' ? 'all traces' : 'AI-only traces';
+  console.log('[SENTRY] Trace filtering:', traceFilter, '+ all errors');
 
   try {
     Sentry.init({
@@ -49,9 +52,9 @@ export function initializeSentry(dsn?: string): void {
       tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE ?? '') || 1.0,
       sendDefaultPii: process.env.SENTRY_SEND_DEFAULT_PII === 'true',
 
-      // Filter out noise traces - only keep AI-related traces
+      // Configurable trace filtering (errors are always captured)
       beforeSendTransaction(transaction) {
-        // Skip Sentry's own internal traces
+        // Always skip Sentry's own internal traces
         if (
           transaction.transaction?.includes('/envelope/') ||
           transaction.transaction?.includes('sentry')
@@ -59,7 +62,12 @@ export function initializeSentry(dsn?: string): void {
           return null;
         }
 
-        // Only keep AI-related traces
+        // SENTRY_TRACE_FILTER=false: Capture all traces
+        if (process.env.SENTRY_TRACE_FILTER === 'false') {
+          return transaction;
+        }
+
+        // Default SENTRY_TRACE_FILTER=ai-only: Only AI-related traces
         const keepTrace =
           transaction.transaction?.includes('generateText') ||
           transaction.transaction?.includes('ai.') ||
