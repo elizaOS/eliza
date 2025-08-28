@@ -124,7 +124,7 @@ export class AgentRuntime implements IAgentRuntime {
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
   public initPromise;
-  private initResolver;
+  private initResolver: ((value?: unknown) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -349,7 +349,7 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.warn('Agent already initialized');
       return;
     }
-    const pluginRegistrationPromises = [];
+    const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
     // The runtime now accepts a pre-resolved, ordered list of plugins.
@@ -449,7 +449,9 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
-    this.initResolver() // resolve initPromise
+    if (this.initResolver) {
+      this.initResolver(); // resolve initPromise
+    }
   }
 
   async runPluginMigrations(): Promise<void> {
