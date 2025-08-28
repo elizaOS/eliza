@@ -1,11 +1,9 @@
 /**
  * Entry point that ensures polyfills are loaded before anything else
+ * Use static imports so Vite HMR can properly track the graph.
  */
 
-// Critical: Load polyfills synchronously before any other imports
 import './polyfills';
-
-// Now that polyfills are loaded, import and start the main app
-import('./main');
+import './main';
 
 export {};

@@ -12,6 +12,30 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    strictPort: true,
+    host: true,
+    // Reduce watcher pressure to avoid EMFILE on large workspaces
+    watch: {
+      ignored: [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/.turbo/**',
+        '**/dist/**',
+        '**/coverage/**',
+        'cypress/screenshots/**',
+        'cypress/videos/**',
+      ],
+      usePolling: true,
+      interval: 150,
+    },
+    // Restrict file serving and watching outside the client and core source
+    fs: {
+      strict: true,
+      allow: [
+        path.resolve(__dirname, './'),
+        path.resolve(__dirname, '../core/src'),
+      ],
+    },
     proxy: {
       '/api': 'http://localhost:3000',
       '/socket.io': {
@@ -23,6 +47,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Use core source during dev to avoid requiring a build step
+      '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
       // Prevent node Sentry code from entering the browser bundle
       '@sentry/node': path.resolve(__dirname, './src/mocks/empty-module.ts'),
       '@sentry/node-core': path.resolve(__dirname, './src/mocks/empty-module.ts'),
@@ -52,7 +78,8 @@ export default defineConfig({
   },
   define: {
     // Define globals for browser compatibility
-    'process.env': {},
+    'process.env': JSON.stringify({}),
+    'process.browser': true,
     global: 'globalThis',
   },
 });
