@@ -292,9 +292,25 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Invoke Adze method with error capture
    */
   const invoke = (method: string, ...args: unknown[]): void => {
+    // Ensure Sentry sees the semantic level name (e.g., 'fatal')
     captureIfError(method, args);
+
+    // Map Eliza methods to correct Adze invocations
+    let adzeMethod = method;
+    let adzeArgs = args;
+
+    // Normalize special cases
+    if (method === 'fatal') {
+      // Adze uses 'alert' for fatal-level logging
+      adzeMethod = 'alert';
+    } else if (method === 'progress') {
+      // Use Adze custom level for progress
+      adzeMethod = 'custom';
+      adzeArgs = ['progress', ...args];
+    }
+
     try {
-      (sealed as any)[method](...args);
+      (sealed as any)[adzeMethod](...adzeArgs);
     } catch (error) {
       // Fallback to console if Adze fails
       console.log(`[${method.toUpperCase()}]`, ...args);
@@ -326,9 +342,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const info: LogFn = (obj, msg, ...args) => invoke('info', ...adaptArgs(obj, msg, ...args));
   const warn: LogFn = (obj, msg, ...args) => invoke('warn', ...adaptArgs(obj, msg, ...args));
   const error: LogFn = (obj, msg, ...args) => invoke('error', ...adaptArgs(obj, msg, ...args));
-  const fatal: LogFn = (obj, msg, ...args) => invoke('custom', 'fatal', ...adaptArgs(obj, msg, ...args));
+  const fatal: LogFn = (obj, msg, ...args) => invoke('fatal', ...adaptArgs(obj, msg, ...args));
   const success: LogFn = (obj, msg, ...args) => invoke('success', ...adaptArgs(obj, msg, ...args));
-  const progress: LogFn = (obj, msg, ...args) => invoke('custom', 'progress', ...adaptArgs(obj, msg, ...args));
+  const progress: LogFn = (obj, msg, ...args) => invoke('progress', ...adaptArgs(obj, msg, ...args));
   const logFn: LogFn = (obj, msg, ...args) => invoke('log', ...adaptArgs(obj, msg, ...args));
 
   /**
