@@ -56,5 +56,3 @@ describe('environment utils', () => {
     expect(getEnv(key)).toBe('b');
   });
 });
-
-

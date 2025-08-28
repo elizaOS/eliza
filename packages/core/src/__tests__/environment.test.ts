@@ -20,7 +20,7 @@ describe('Environment Abstraction', () => {
     originalProcess = (global as any).process;
     originalWindow = (global as any).window;
     originalGlobalThis = (global as any).globalThis;
-    
+
     // Clear environment cache
     getEnvironment().clearCache();
   });
@@ -32,19 +32,19 @@ describe('Environment Abstraction', () => {
     } else {
       delete (global as any).process;
     }
-    
+
     if (originalWindow !== undefined) {
       (global as any).window = originalWindow;
     } else {
       delete (global as any).window;
     }
-    
+
     if (originalGlobalThis !== undefined) {
       (global as any).globalThis = originalGlobalThis;
     } else {
       delete (global as any).globalThis;
     }
-    
+
     // Clear cache after each test
     getEnvironment().clearCache();
   });
@@ -60,9 +60,9 @@ describe('Environment Abstraction', () => {
       // Mock browser environment
       delete (global as any).process;
       (global as any).window = {
-        document: {}
+        document: {},
       };
-      
+
       // Need to recreate the environment instance since detection happens on construction
       const { Environment } = require('../environment');
       const env = new Environment();
@@ -87,19 +87,19 @@ describe('Environment Abstraction', () => {
       process.env.CACHE_TEST = 'initial';
       const value1 = getEnv('CACHE_TEST');
       expect(value1).toBe('initial');
-      
+
       // Change the actual env var
       process.env.CACHE_TEST = 'changed';
-      
+
       // Should still get cached value
       const value2 = getEnv('CACHE_TEST');
       expect(value2).toBe('initial');
-      
+
       // Clear cache and get new value
       getEnvironment().clearCache();
       const value3 = getEnv('CACHE_TEST');
       expect(value3).toBe('changed');
-      
+
       delete process.env.CACHE_TEST;
     });
   });
@@ -117,7 +117,7 @@ describe('Environment Abstraction', () => {
       const value = getEnv('NUMBER_VAR');
       expect(value).toBe('123');
       delete process.env.NUMBER_VAR;
-      
+
       setEnv('BOOL_VAR', true);
       const value2 = getEnv('BOOL_VAR');
       expect(value2).toBe('true');
@@ -140,23 +140,23 @@ describe('Environment Abstraction', () => {
   describe('getBooleanEnv', () => {
     it('should parse true values correctly', () => {
       const trueValues = ['true', '1', 'yes', 'on'];
-      
-      trueValues.forEach(value => {
+
+      trueValues.forEach((value) => {
         process.env.BOOL_TEST = value;
         expect(getBooleanEnv('BOOL_TEST')).toBe(true);
       });
-      
+
       delete process.env.BOOL_TEST;
     });
 
     it('should parse false values correctly', () => {
       const falseValues = ['false', '0', 'no', 'off', 'anything', ''];
-      
-      falseValues.forEach(value => {
+
+      falseValues.forEach((value) => {
         process.env.BOOL_TEST = value;
         expect(getBooleanEnv('BOOL_TEST')).toBe(false);
       });
-      
+
       delete process.env.BOOL_TEST;
     });
 
@@ -170,13 +170,13 @@ describe('Environment Abstraction', () => {
     it('should parse valid numbers', () => {
       process.env.NUM_TEST = '42';
       expect(getNumberEnv('NUM_TEST')).toBe(42);
-      
+
       process.env.NUM_TEST = '3.14';
       expect(getNumberEnv('NUM_TEST')).toBe(3.14);
-      
+
       process.env.NUM_TEST = '-100';
       expect(getNumberEnv('NUM_TEST')).toBe(-100);
-      
+
       delete process.env.NUM_TEST;
     });
 
@@ -188,7 +188,7 @@ describe('Environment Abstraction', () => {
 
     it('should return default value when not set or invalid', () => {
       expect(getNumberEnv('NOT_SET', 100)).toBe(100);
-      
+
       process.env.INVALID_NUM = 'abc';
       expect(getNumberEnv('INVALID_NUM', 200)).toBe(200);
       delete process.env.INVALID_NUM;
@@ -200,17 +200,17 @@ describe('Environment Abstraction', () => {
       // Mock browser environment
       delete (global as any).process;
       (global as any).window = { document: {} };
-      
+
       const { Environment, initBrowserEnvironment: init } = require('../environment');
       const env = new Environment();
-      
+
       // Initialize with config
       init({
         API_KEY: 'test-key',
         DEBUG: true,
         MAX_RETRIES: 3,
       });
-      
+
       // Check values were set
       expect(env.get('API_KEY')).toBe('test-key');
       expect(env.get('DEBUG')).toBe('true');
@@ -224,12 +224,12 @@ describe('Environment Abstraction', () => {
         document: {},
         ENV: {
           PRESET_VAR: 'preset_value',
-        }
+        },
       };
-      
+
       const { Environment } = require('../environment');
       const env = new Environment();
-      
+
       expect(env.get('PRESET_VAR')).toBe('preset_value');
     });
 
@@ -240,12 +240,12 @@ describe('Environment Abstraction', () => {
       (global as any).globalThis = {
         __ENV__: {
           GLOBAL_VAR: 'global_value',
-        }
+        },
       };
-      
+
       const { Environment } = require('../environment');
       const env = new Environment();
-      
+
       expect(env.get('GLOBAL_VAR')).toBe('global_value');
     });
   });
@@ -262,11 +262,11 @@ describe('Environment Abstraction', () => {
     it('should return all environment variables', () => {
       process.env.TEST1 = 'value1';
       process.env.TEST2 = 'value2';
-      
+
       const allVars = getEnvironment().getAll();
       expect(allVars.TEST1).toBe('value1');
       expect(allVars.TEST2).toBe('value2');
-      
+
       delete process.env.TEST1;
       delete process.env.TEST2;
     });

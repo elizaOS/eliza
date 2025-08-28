@@ -93,7 +93,12 @@ export class DummyLpService extends Service {
     tokenBMint: string;
     tokenAAmountLamports: string;
     slippageBps: number;
-  }): Promise<{ success: boolean; transactionId?: string; lpTokensReceived?: any; error?: string }> {
+  }): Promise<{
+    success: boolean;
+    transactionId?: string;
+    lpTokensReceived?: any;
+    error?: string;
+  }> {
     return {
       success: true,
       transactionId: `dummy-tx-${Date.now()}`,
@@ -110,7 +115,12 @@ export class DummyLpService extends Service {
     lpTokenMint: string;
     lpTokenAmountLamports: string;
     slippageBps: number;
-  }): Promise<{ success: boolean; transactionId?: string; tokensReceived?: any[]; error?: string }> {
+  }): Promise<{
+    success: boolean;
+    transactionId?: string;
+    tokensReceived?: any[];
+    error?: string;
+  }> {
     return {
       success: true,
       transactionId: `dummy-tx-${Date.now()}`,

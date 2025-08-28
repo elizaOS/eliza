@@ -21,11 +21,7 @@ export interface EnvironmentConfig {
  */
 export function detectEnvironment(): RuntimeEnvironment {
   // Check for Node.js
-  if (
-    typeof process !== 'undefined' &&
-    process.versions &&
-    process.versions.node
-  ) {
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
     return 'node';
   }
 
@@ -46,34 +42,36 @@ export function detectEnvironment(): RuntimeEnvironment {
  */
 class BrowserEnvironmentStore {
   private store: EnvironmentConfig = {};
-  
+
   constructor() {
     // Load from window.ENV if available (common pattern for browser apps)
-    if (typeof globalThis !== 'undefined' && 
-        (globalThis as any).window && 
-        (globalThis as any).window.ENV) {
+    if (
+      typeof globalThis !== 'undefined' &&
+      (globalThis as any).window &&
+      (globalThis as any).window.ENV
+    ) {
       this.store = { ...(globalThis as any).window.ENV };
     }
-    
+
     // Also check for __ENV__ (another common pattern)
     if (typeof globalThis !== 'undefined' && (globalThis as any).__ENV__) {
       this.store = { ...this.store, ...(globalThis as any).__ENV__ };
     }
   }
-  
+
   get(key: string): string | undefined {
     const value = this.store[key];
     return value !== undefined ? String(value) : undefined;
   }
-  
+
   set(key: string, value: string | boolean | number): void {
     this.store[key] = value;
   }
-  
+
   has(key: string): boolean {
     return key in this.store;
   }
-  
+
   getAll(): EnvironmentConfig {
     return { ...this.store };
   }
@@ -86,36 +84,36 @@ class Environment {
   private runtime: RuntimeEnvironment;
   private browserStore?: BrowserEnvironmentStore;
   private cache: Map<string, string | undefined> = new Map();
-  
+
   constructor() {
     this.runtime = detectEnvironment();
-    
+
     if (this.runtime === 'browser') {
       this.browserStore = new BrowserEnvironmentStore();
     }
   }
-  
+
   /**
    * Get the current runtime environment
    */
   getRuntime(): RuntimeEnvironment {
     return this.runtime;
   }
-  
+
   /**
    * Check if running in Node.js
    */
   isNode(): boolean {
     return this.runtime === 'node';
   }
-  
-    /**
+
+  /**
    * Check if running in browser
    */
   isBrowser(): boolean {
     return this.runtime === 'browser';
   }
-  
+
   /**
    * Get an environment variable
    */
@@ -125,9 +123,9 @@ class Environment {
       const cached = this.cache.get(key);
       return cached === undefined && defaultValue !== undefined ? defaultValue : cached;
     }
-    
+
     let value: string | undefined;
-    
+
     switch (this.runtime) {
       case 'node':
         // In Node.js, use process.env
@@ -135,40 +133,40 @@ class Environment {
           value = process.env[key];
         }
         break;
-        
+
       case 'browser':
         // In browser, use our store
         if (this.browserStore) {
           value = this.browserStore.get(key);
         }
         break;
-        
+
       default:
         value = undefined;
     }
-    
+
     // Cache the result
     this.cache.set(key, value);
-    
+
     return value === undefined && defaultValue !== undefined ? defaultValue : value;
   }
-  
+
   /**
    * Set an environment variable (mainly for browser/testing)
    */
   set(key: string, value: string | boolean | number): void {
     const stringValue = String(value);
-    
+
     // Clear cache
     this.cache.delete(key);
-    
+
     switch (this.runtime) {
       case 'node':
         if (typeof process !== 'undefined' && process.env) {
           process.env[key] = stringValue;
         }
         break;
-        
+
       case 'browser':
         if (this.browserStore) {
           this.browserStore.set(key, value);
@@ -176,7 +174,7 @@ class Environment {
         break;
     }
   }
-  
+
   /**
    * Check if an environment variable exists
    */
@@ -184,7 +182,7 @@ class Environment {
     const value = this.get(key);
     return value !== undefined;
   }
-  
+
   /**
    * Get all environment variables (filtered for safety)
    */
@@ -195,45 +193,45 @@ class Environment {
           return { ...process.env };
         }
         break;
-        
+
       case 'browser':
         if (this.browserStore) {
           return this.browserStore.getAll();
         }
         break;
     }
-    
+
     return {};
   }
-  
+
   /**
    * Get a boolean environment variable
    */
   getBoolean(key: string, defaultValue = false): boolean {
     const value = this.get(key);
-    
+
     if (value === undefined) {
       return defaultValue;
     }
-    
+
     // Common truthy values
     return ['true', '1', 'yes', 'on'].includes(value.toLowerCase());
   }
-  
+
   /**
    * Get a number environment variable
    */
   getNumber(key: string, defaultValue?: number): number | undefined {
     const value = this.get(key);
-    
+
     if (value === undefined) {
       return defaultValue;
     }
-    
+
     const parsed = Number(value);
     return isNaN(parsed) ? defaultValue : parsed;
   }
-  
+
   /**
    * Clear the cache (useful for testing)
    */

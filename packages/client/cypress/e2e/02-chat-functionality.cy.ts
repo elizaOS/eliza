@@ -8,15 +8,15 @@ describe('Chat Functionality', () => {
         source: 'test',
         timestamp: new Date().toISOString(),
         environment: 'test',
-        uptime: 1000
-      }
+        uptime: 1000,
+      },
     }).as('getServerVersion');
 
     cy.intercept('GET', '/api/agents', {
       statusCode: 200,
       body: {
-        agents: []
-      }
+        agents: [],
+      },
     }).as('getAgents');
 
     // Visit the home page first

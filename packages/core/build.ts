@@ -7,7 +7,7 @@ import { createBuildRunner } from '../../build-utils';
 import { existsSync, mkdirSync } from 'node:fs';
 
 // Ensure dist directories exist
-['dist', 'dist/node', 'dist/browser'].forEach(dir => {
+['dist', 'dist/node', 'dist/browser'].forEach((dir) => {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -104,17 +104,13 @@ async function buildAll() {
 
   try {
     // Build in parallel for speed
-    await Promise.all([
-      buildNode(),
-      buildBrowser(),
-    ]);
+    await Promise.all([buildNode(), buildBrowser()]);
 
     const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
     console.log(`\n🎉 All builds complete in ${totalDuration}s`);
 
     // Create index files that point to the correct build
     await createIndexFiles();
-
   } catch (error) {
     console.error('\n❌ Build failed:', error);
     process.exit(1);

@@ -8,12 +8,9 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig(({ mode, command }) => {
   const isDev = mode === 'development';
   const isBuild = command === 'build';
-  
+
   return {
-    plugins: [
-      tailwindcss() as unknown as PluginOption,
-      react() as unknown as PluginOption,
-    ],
+    plugins: [tailwindcss() as unknown as PluginOption, react() as unknown as PluginOption],
     server: {
       port: 5173,
       strictPort: true,
@@ -44,9 +41,11 @@ export default defineConfig(({ mode, command }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         // In dev mode, use source. In build/production, let Node resolution handle it
-        ...(isDev ? {
-          '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
-        } : {}),
+        ...(isDev
+          ? {
+              '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
+            }
+          : {}),
         // Prevent node Sentry code from entering the browser bundle
         '@sentry/node': path.resolve(__dirname, './src/mocks/empty-module.ts'),
         '@sentry/node-core': path.resolve(__dirname, './src/mocks/empty-module.ts'),
@@ -59,12 +58,7 @@ export default defineConfig(({ mode, command }) => {
         },
       },
       entries: ['./src/entry.tsx'],
-      include: [
-        'buffer',
-        'process',
-        '@elizaos/core',
-        '@elizaos/api-client',
-      ],
+      include: ['buffer', 'process', '@elizaos/core', '@elizaos/api-client'],
     },
     build: {
       target: 'esnext',

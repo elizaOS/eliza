@@ -69,12 +69,12 @@ describe('stringToUuid SHA-1 implementation', () => {
     const uuid = stringToUuid('test');
     // Check format
     expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    
+
     // Check variant bits (should be 10xxxxxx in the 9th byte)
     const parts = uuid.split('-');
     const variantByte = parseInt(parts[3].substring(0, 2), 16);
     expect(variantByte & 0xc0).toBe(0x80); // 10xxxxxx pattern
-    
+
     // Check version nibble (should be 0 for custom)
     const versionNibble = parseInt(parts[2][0], 16);
     expect(versionNibble).toBe(0);

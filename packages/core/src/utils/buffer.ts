@@ -2,7 +2,7 @@
  * Browser and Node.js compatible buffer abstraction
  * This module provides a unified interface for buffer operations
  * that works in both browser and Node.js environments.
- * 
+ *
  * In browsers, we use Uint8Array as a Buffer replacement.
  * In Node.js, we use the native Buffer.
  */
@@ -33,11 +33,11 @@ export function fromHex(hex: string): BufferLike {
   // Browser implementation using Uint8Array
   const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '');
   const bytes = new Uint8Array(cleanHex.length / 2);
-  
+
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
   }
-  
+
   return bytes;
 }
 
@@ -47,7 +47,10 @@ export function fromHex(hex: string): BufferLike {
  * @param encoding - The encoding to use (default: 'utf8')
  * @returns A BufferLike object
  */
-export function fromString(str: string, encoding: 'utf8' | 'utf-8' | 'base64' = 'utf8'): BufferLike {
+export function fromString(
+  str: string,
+  encoding: 'utf8' | 'utf-8' | 'base64' = 'utf8'
+): BufferLike {
   if (hasNativeBuffer()) {
     // Use native Buffer in Node.js
     const enc = encoding === 'utf-8' ? 'utf8' : encoding;
@@ -97,7 +100,10 @@ export function toHex(buffer: BufferLike): string {
  * @param encoding - The encoding to use (default: 'utf8')
  * @returns A string
  */
-export function toString(buffer: BufferLike, encoding: 'utf8' | 'utf-8' | 'base64' | 'hex' = 'utf8'): string {
+export function toString(
+  buffer: BufferLike,
+  encoding: 'utf8' | 'utf-8' | 'base64' | 'hex' = 'utf8'
+): string {
   if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
     // Use native Buffer method in Node.js
     const enc = encoding === 'utf-8' ? 'utf8' : encoding;
@@ -134,11 +140,13 @@ export function isBuffer(obj: any): obj is BufferLike {
   if (hasNativeBuffer() && Buffer.isBuffer(obj)) {
     return true;
   }
-  
+
   // Check for Uint8Array or similar typed arrays
-  return obj instanceof Uint8Array ||
-         obj instanceof ArrayBuffer ||
-         (obj && typeof obj === 'object' && 'buffer' in obj && obj.buffer instanceof ArrayBuffer);
+  return (
+    obj instanceof Uint8Array ||
+    obj instanceof ArrayBuffer ||
+    (obj && typeof obj === 'object' && 'buffer' in obj && obj.buffer instanceof ArrayBuffer)
+  );
 }
 
 /**
@@ -150,7 +158,7 @@ export function alloc(size: number): BufferLike {
   if (hasNativeBuffer()) {
     return Buffer.alloc(size);
   }
-  
+
   return new Uint8Array(size);
 }
 
@@ -163,7 +171,7 @@ export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
   if (hasNativeBuffer()) {
     return Buffer.from(bytes);
   }
-  
+
   return new Uint8Array(bytes);
 }
 
@@ -173,7 +181,7 @@ export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
  * @returns A new BufferLike object
  */
 export function concat(buffers: BufferLike[]): BufferLike {
-  if (hasNativeBuffer() && buffers.every(b => Buffer.isBuffer(b))) {
+  if (hasNativeBuffer() && buffers.every((b) => Buffer.isBuffer(b))) {
     return Buffer.concat(buffers as Buffer[]);
   }
 
@@ -186,13 +194,13 @@ export function concat(buffers: BufferLike[]): BufferLike {
   // Create result buffer
   const result = new Uint8Array(totalLength);
   let offset = 0;
-  
+
   for (const buffer of buffers) {
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     result.set(bytes, offset);
     offset += bytes.length;
   }
-  
+
   return result;
 }
 
@@ -207,7 +215,7 @@ export function slice(buffer: BufferLike, start: number, end?: number): BufferLi
   if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
     return buffer.slice(start, end);
   }
-  
+
   const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   return bytes.slice(start, end);
 }
@@ -262,7 +270,7 @@ export function randomBytes(size: number): BufferLike {
 
   // Browser implementation using crypto.getRandomValues
   const bytes = new Uint8Array(size);
-  
+
   if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
     globalThis.crypto.getRandomValues(bytes);
   } else {
@@ -271,7 +279,7 @@ export function randomBytes(size: number): BufferLike {
       bytes[i] = Math.floor(Math.random() * 256);
     }
   }
-  
+
   return bytes;
 }
 

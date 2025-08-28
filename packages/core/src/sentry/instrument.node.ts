@@ -55,5 +55,3 @@ export const Sentry = {
 };
 
 export type { SentryNodeModule };
-
-

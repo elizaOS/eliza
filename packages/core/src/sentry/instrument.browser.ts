@@ -63,5 +63,3 @@ export const Sentry = {
 };
 
 export type { SentryBrowserModule };
-
-

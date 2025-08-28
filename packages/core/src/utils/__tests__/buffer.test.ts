@@ -78,5 +78,3 @@ describe('buffer utils', () => {
     expect(byteLength(r)).toBe(16);
   });
 });
-
-

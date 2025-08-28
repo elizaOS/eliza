@@ -1,6 +1,6 @@
 /**
  * Main entry point for @elizaos/core
- * 
+ *
  * This is the default export that includes all modules.
  * The build system creates separate bundles for Node.js and browser environments.
  * Package.json conditional exports handle the routing to the correct build.
@@ -37,11 +37,13 @@ export * from './search';
 export * from './sentry/instrument';
 
 // Environment detection utilities
-export const isBrowser = typeof globalThis !== 'undefined' && 
-  typeof (globalThis as any).window !== 'undefined' && 
+export const isBrowser =
+  typeof globalThis !== 'undefined' &&
+  typeof (globalThis as any).window !== 'undefined' &&
   typeof (globalThis as any).document !== 'undefined';
-export const isNode = typeof process !== 'undefined' && 
-  typeof process.versions !== 'undefined' && 
+export const isNode =
+  typeof process !== 'undefined' &&
+  typeof process.versions !== 'undefined' &&
   typeof process.versions.node !== 'undefined';
 
 // Re-export server health with a conditional stub for browser environments

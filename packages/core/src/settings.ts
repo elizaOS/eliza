@@ -13,7 +13,6 @@ import type {
   WorldSettings,
 } from './types';
 
-
 /**
  * Creates a Setting object from a configSetting object by omitting the 'value' property.
  *

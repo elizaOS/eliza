@@ -101,7 +101,9 @@ export class DummyTokenDataService extends Service {
 
   async getTokenDetails(address: string, chain: string = 'solana'): Promise<any | null> {
     // Generate a consistent symbol from address (first 4 chars after prefix)
-    const symbol = address.startsWith('So') ? address.substring(2, 6) : address.substring(0, 4).toUpperCase();
+    const symbol = address.startsWith('So')
+      ? address.substring(2, 6)
+      : address.substring(0, 4).toUpperCase();
 
     return {
       id: `${chain}:${address}`,
@@ -163,7 +165,11 @@ export class DummyTokenDataService extends Service {
     return tokens;
   }
 
-  async searchTokens(query: string, chain: string = 'solana', limit: number = 5): Promise<TokenData[]> {
+  async searchTokens(
+    query: string,
+    chain: string = 'solana',
+    limit: number = 5
+  ): Promise<TokenData[]> {
     const upperQuery = query.toUpperCase();
     const tokens: TokenData[] = [];
 
@@ -202,7 +208,8 @@ export class DummyTokenDataService extends Service {
   async getTokensByAddresses(addresses: string[], chain: string = 'solana'): Promise<TokenData[]> {
     return addresses.map((address, index) => {
       // Generate symbol from address
-      const symbol = address.length > 6 ? address.substring(2, 6).toUpperCase() : address.toUpperCase();
+      const symbol =
+        address.length > 6 ? address.substring(2, 6).toUpperCase() : address.toUpperCase();
       return {
         id: `${chain}:${address}`,
         symbol,

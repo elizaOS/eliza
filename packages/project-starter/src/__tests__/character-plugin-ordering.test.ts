@@ -319,6 +319,4 @@ describe('Project Starter Character Plugin Ordering', () => {
       expect(hasOtherAiProviders).toBe(true);
     });
   });
-
-
 });

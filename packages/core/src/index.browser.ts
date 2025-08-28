@@ -1,6 +1,6 @@
 /**
  * Browser-specific entry point for @elizaos/core
- * 
+ *
  * This file exports only browser-compatible modules and provides
  * stubs or alternatives for Node.js-specific functionality.
  */

@@ -65,7 +65,7 @@ describe('Buffer Abstraction', () => {
       const buffer = fromString(text);
       const base64 = toString(buffer, 'base64');
       expect(base64).toBe('SGVsbG8gV29ybGQ=');
-      
+
       const decoded = fromString(base64, 'base64');
       expect(toString(decoded)).toBe(text);
     });
@@ -140,7 +140,7 @@ describe('Buffer Abstraction', () => {
     it('should create zero-filled buffer of specified size', () => {
       const buffer = alloc(10);
       expect(buffer.length).toBe(10);
-      
+
       // Check all bytes are zero
       for (let i = 0; i < buffer.length; i++) {
         expect(buffer[i]).toBe(0);
@@ -259,7 +259,7 @@ describe('Buffer Abstraction', () => {
     it('should generate different values on each call', () => {
       const buf1 = randomBytes(16);
       const buf2 = randomBytes(16);
-      
+
       // It's extremely unlikely these will be equal
       expect(equals(buf1, buf2)).toBe(false);
     });
@@ -312,7 +312,7 @@ describe('Buffer Abstraction', () => {
       } else {
         delete (global as any).Buffer;
       }
-      
+
       if (originalCrypto !== undefined) {
         (global as any).crypto = originalCrypto;
       }
@@ -321,7 +321,7 @@ describe('Buffer Abstraction', () => {
     it('should work without native Buffer', () => {
       // Temporarily remove Buffer
       delete (global as any).Buffer;
-      
+
       // Force module re-evaluation would be needed here
       // For now, just test that functions work
       const buffer = fromString('Test without Buffer');
@@ -340,7 +340,7 @@ describe('Buffer Abstraction', () => {
       };
 
       (global as any).crypto = {
-        getRandomValues: mockGetRandomValues
+        getRandomValues: mockGetRandomValues,
       };
 
       const buffer = randomBytes(5);

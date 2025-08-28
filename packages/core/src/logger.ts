@@ -143,11 +143,13 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       logs.length = 0;
     },
     recentLogs(): string {
-      return logs.map(entry => {
-        const timestamp = showTimestamps ? new Date(entry.time).toISOString() : '';
-        return `${timestamp} ${entry.msg}`.trim();
-      }).join('\n');
-    }
+      return logs
+        .map((entry) => {
+          const timestamp = showTimestamps ? new Date(entry.time).toISOString() : '';
+          return `${timestamp} ${entry.msg}`.trim();
+        })
+        .join('\n');
+    },
   };
 }
 
@@ -172,7 +174,7 @@ function mapToAdzeActiveLevel(level: string): string {
 const adzeStore = setup({
   activeLevel: mapToAdzeActiveLevel(effectiveLogLevel) as any,
   format: raw ? 'json' : 'pretty',
-  timestampFormatter: showTimestamps ? undefined : (() => ''),
+  timestampFormatter: showTimestamps ? undefined : () => '',
   withEmoji: false,
 });
 
@@ -183,8 +185,8 @@ adzeStore.addListener('*', (log: any) => {
     const msg = Array.isArray(d?.message)
       ? d.message.map((m: unknown) => (typeof m === 'string' ? m : safeStringify(m))).join(' ')
       : typeof d?.message === 'string'
-      ? d.message
-      : '';
+        ? d.message
+        : '';
     const entry: LogEntry = {
       time: Date.now(),
       level: typeof d?.level === 'number' ? d.level : undefined,
@@ -204,8 +206,8 @@ adzeStore.addListener('*', (log: any) => {
  * Creates a sealed Adze logger instance with namespaces and metadata
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
-  let chain = (adze as any);
-  
+  let chain = adze as any;
+
   // Add namespaces if provided
   const namespaces: string[] = [];
   if (typeof base.namespace === 'string') namespaces.push(base.namespace);
@@ -213,12 +215,12 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   if (namespaces.length > 0) {
     chain = chain.ns(...namespaces);
   }
-  
+
   // Add metadata (excluding namespace properties)
   const metaBase = { ...base };
   delete (metaBase as any).namespace;
   delete (metaBase as any).namespaces;
-  
+
   return chain.meta(metaBase).seal();
 }
 
@@ -241,7 +243,7 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
     if ('maxMemoryLogs' in bindings && typeof bindings.maxMemoryLogs === 'number') {
       maxMemoryLogs = bindings.maxMemoryLogs;
     }
-    
+
     // Extract base bindings (excluding special properties)
     const { level: _, maxMemoryLogs: __, ...rest } = bindings;
     base = rest;
@@ -280,7 +282,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
           }
         }
         // Create error from message if no Error object found
-        const message = args.map(a => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
+        const message = args.map((a) => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
         if (message) {
           Sentry.captureException(new Error(message));
         }
@@ -320,14 +322,20 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   /**
    * Adapt ElizaOS logger API arguments to Adze format
    */
-  const adaptArgs = (obj: Record<string, unknown> | string | Error, msg?: string, ...args: unknown[]): unknown[] => {
+  const adaptArgs = (
+    obj: Record<string, unknown> | string | Error,
+    msg?: string,
+    ...args: unknown[]
+  ): unknown[] => {
     // String first argument
     if (typeof obj === 'string') {
       return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
     }
     // Error object
     if (obj instanceof Error) {
-      return msg !== undefined ? [obj.message, { error: obj }, msg, ...args] : [obj.message, { error: obj }, ...args];
+      return msg !== undefined
+        ? [obj.message, { error: obj }, msg, ...args]
+        : [obj.message, { error: obj }, ...args];
     }
     // Object (context) - put message first if provided
     if (msg !== undefined) {
@@ -344,7 +352,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const error: LogFn = (obj, msg, ...args) => invoke('error', ...adaptArgs(obj, msg, ...args));
   const fatal: LogFn = (obj, msg, ...args) => invoke('fatal', ...adaptArgs(obj, msg, ...args));
   const success: LogFn = (obj, msg, ...args) => invoke('success', ...adaptArgs(obj, msg, ...args));
-  const progress: LogFn = (obj, msg, ...args) => invoke('progress', ...adaptArgs(obj, msg, ...args));
+  const progress: LogFn = (obj, msg, ...args) =>
+    invoke('progress', ...adaptArgs(obj, msg, ...args));
   const logFn: LogFn = (obj, msg, ...args) => invoke('log', ...adaptArgs(obj, msg, ...args));
 
   /**

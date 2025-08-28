@@ -35,7 +35,8 @@ export const providersProvider: Provider = {
     });
 
     // Create the header text
-    const headerText = '# Providers\n\nThese providers are available for the agent to select and use:';
+    const headerText =
+      '# Providers\n\nThese providers are available for the agent to select and use:';
 
     const dynamicSection =
       dynamicDescriptions.length > 0
