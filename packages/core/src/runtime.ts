@@ -128,6 +128,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Track current action execution context
     actionName: string;
     actionId: UUID;
+    messageId?: UUID; // Store message ID for updates
     prompts: Array<{
       modelType: string;
       prompt: string;
@@ -773,6 +774,53 @@ export class AgentRuntime implements IAgentRuntime {
             prompts: [],
           };
 
+          // === STEP 1: Simple action start message in central_messages ===
+          try {
+            this.logger.debug(`Storing action start message for: ${action.name}`);
+            
+            // Get the correct central channelId from the room
+            const room = await this.getRoom(message.roomId);
+            const centralChannelId = room?.channelId;
+            
+            if (!centralChannelId) {
+              this.logger.warn(`Cannot store action start message: no central channelId found for roomId ${message.roomId}`);
+              // Continue with action execution even if we can't store the message
+            } else {
+              const actionStartMessage = {
+                channelId: centralChannelId,
+                authorId: this.agentId,
+                content: `🔄 Executing action: ${action.name}`,
+                rawMessage: {
+                  text: `🔄 Executing action: ${action.name}`,
+                  actions: [action.name],
+                  actionStatus: 'executing',
+                  actionId: actionId,
+                  runId: runId
+                },
+                sourceType: 'action',
+                metadata: {
+                  type: 'action_lifecycle',
+                  actionName: action.name,
+                  actionId: actionId,
+                  runId: runId,
+                  status: 'executing'
+                }
+              };
+
+              const storedMessage = await (this.adapter as any).createMessage(actionStartMessage);
+              
+              // Store the message ID for later updates
+              if (storedMessage && storedMessage.id) {
+                this.currentActionContext.messageId = storedMessage.id as UUID;
+                this.logger.info(`Action start message stored with ID: ${storedMessage.id}`);
+              }
+            }
+            
+          } catch (error) {
+            this.logger.error('Failed to store action start message:', String(error));
+            // Don't fail the action execution if message storage fails
+          }
+
           // Create action context with plan information
           const actionContext: ActionContext = {
             previousResults: actionResults,
@@ -921,6 +969,47 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
+          // === Update action message with completion status ===
+          try {
+            if (this.currentActionContext?.messageId) {
+              const isSuccess = actionResult?.success !== false;
+              const statusIcon = isSuccess ? '✅' : '❌';
+              const statusText = isSuccess ? 'completed' : 'failed';
+              
+              const actionUpdateMessage = {
+                content: `${statusIcon} Action ${action.name} ${statusText}`,
+                rawMessage: {
+                  text: `${statusIcon} Action ${action.name} ${statusText}`,
+                  actions: [action.name],
+                  actionStatus: statusText,
+                  actionId: actionId,
+                  runId: runId,
+                  actionResult: isLegacyReturn ? { legacy: result } : actionResult,
+                  ...(actionResult?.text && { resultText: actionResult.text })
+                },
+                metadata: {
+                  type: 'action_lifecycle',
+                  actionName: action.name,
+                  actionId: actionId,
+                  runId: runId,
+                  status: statusText,
+                  success: isSuccess,
+                  ...(actionResult && { hasResult: true })
+                }
+              };
+
+              await (this.adapter as any).updateMessage(
+                this.currentActionContext.messageId,
+                actionUpdateMessage
+              );
+              
+              this.logger.info(`Action message updated to ${statusText} status for ID: ${this.currentActionContext.messageId}`);
+            }
+          } catch (error) {
+            this.logger.error('Failed to update action completion message:', String(error));
+            // Don't fail the action execution if message update fails
+          }
+
           this.logger.debug(
             `Action ${action.name} completed`,
             JSON.stringify({
@@ -1014,6 +1103,49 @@ export class AgentRuntime implements IAgentRuntime {
             },
           };
           await this.createMemory(actionMemory, 'messages');
+
+          // === Update action message with failure status ===
+          try {
+            const actionContext = this.currentActionContext as {
+              actionName: string;
+              actionId: UUID;
+              prompts: any[];
+              messageId?: UUID;
+            } | undefined;
+            if (actionContext && actionContext.messageId) {
+              const actionFailureMessage = {
+                content: `❌ Action ${action.name} failed`,
+                rawMessage: {
+                  text: `❌ Action ${action.name} failed`,
+                  actions: [action.name],
+                  actionStatus: 'failed',
+                  actionId: actionContext.actionId,
+                  runId: runId,
+                  error: errorMessage,
+                  errorDetails: error instanceof Error ? error.message : String(error)
+                },
+                metadata: {
+                  type: 'action_lifecycle',
+                  actionName: action.name,
+                  actionId: actionContext.actionId,
+                  runId: runId,
+                  status: 'failed',
+                  success: false,
+                  error: true
+                }
+              };
+
+              await (this.adapter as any).updateMessage(
+                actionContext.messageId,
+                actionFailureMessage
+              );
+              
+              this.logger.info(`Action message updated to failed status for ID: ${actionContext.messageId}`);
+            }
+          } catch (updateError) {
+            this.logger.error('Failed to update action failure message:', String(updateError));
+            // Don't fail the error handling if message update fails
+          }
 
           // Decide whether to continue or abort
           // For now, only abort on critical errors
