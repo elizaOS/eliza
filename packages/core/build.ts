@@ -16,7 +16,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 // Browser-specific externals (these should be provided by the host environment)
 const browserExternals = [
   // These will be loaded via CDN or bundled by the consuming app
-  '@solana/web3.js',
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
   '@sentry/node', // Ensure node SDK is never bundled into the browser build
@@ -26,7 +25,6 @@ const browserExternals = [
 const nodeExternals = [
   'dotenv',
   'sharp',
-  '@solana/web3.js',
   'zod',
   '@hapi/shot',
   'crypto-browserify',
