@@ -3034,6 +3034,36 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     });
   }
 
+  async updateMessage(
+    messageId: UUID,
+    updates: {
+      content?: string;
+      rawMessage?: any;
+      metadata?: any;
+    }
+  ): Promise<void> {
+    return this.withDatabase(async () => {
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+      
+      if (updates.content !== undefined) {
+        updateData.content = updates.content;
+      }
+      if (updates.rawMessage !== undefined) {
+        updateData.rawMessage = updates.rawMessage;
+      }
+      if (updates.metadata !== undefined) {
+        updateData.metadata = updates.metadata;
+      }
+
+      await this.db
+        .update(messageTable)
+        .set(updateData)
+        .where(eq(messageTable.id, messageId));
+    });
+  }
+
   /**
    * Gets messages for a channel
    */
