@@ -1834,10 +1834,16 @@ export class AgentRuntime implements IAgentRuntime {
         };
       }
     }
-    const startTime = performance.now();
+    const startTime =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
     try {
       const response = await model(this, paramsWithRuntime);
-      const elapsedTime = performance.now() - startTime;
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
 
       // Log timing / response (keep debug log if useful)
       this.logger.debug(
