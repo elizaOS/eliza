@@ -108,15 +108,7 @@ async function buildBrowser() {
             }));
 
             // Stub out Node-only modules
-            build.onResolve({ filter: /^fs$/ }, () => ({
-              path: 'browserfs',
-              external: true,
-            }));
-
-            build.onResolve({ filter: /^path$/ }, () => ({
-              path: 'path-browserify',
-              external: true,
-            }));
+            // Removed fs and path browser shims; not required by core browser build
           },
         },
       ],
