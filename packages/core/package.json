@@ -55,7 +55,7 @@
     "typescript": "5.8.3"
   },
   "dependencies": {
-    "@sentry/browser": "^9.22.0",
+    "@sentry/node": "^9.37.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "dotenv": "16.5.0",
