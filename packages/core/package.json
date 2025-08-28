@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@sentry/browser": "^9.22.0",
+    "adze": "^2.2.5",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "dotenv": "16.5.0",
@@ -70,8 +71,6 @@
     "js-sha1": "0.7.0",
     "langchain": "^0.3.15",
     "pdfjs-dist": "^5.2.133",
-    "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
     "stream-browserify": "^3.0.0",
     "unique-names-generator": "4.7.1",
     "uuid": "11.1.0",
