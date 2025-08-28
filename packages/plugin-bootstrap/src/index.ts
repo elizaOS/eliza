@@ -68,6 +68,7 @@ interface MultiStepActionResult {
   success: boolean;
   text?: string;
   error?: string | Error;
+  values?: Record<string, any>;
 }
 
 /**
@@ -1076,6 +1077,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           data: { actionName: action },
           success,
           text: result?.text,
+          values: result.values,
           error: success ? undefined : result?.text,
         });
       }
