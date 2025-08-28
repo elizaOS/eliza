@@ -1077,7 +1077,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           data: { actionName: action },
           success,
           text: result?.text,
-          values: result.values,
+          values: result?.values,
           error: success ? undefined : result?.text,
         });
       }
