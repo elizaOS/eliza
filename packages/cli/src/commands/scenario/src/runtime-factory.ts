@@ -10,12 +10,23 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
-// --- Start of Pre-emptive Environment Loading ---
-loadEnvironmentVariables();
+// Lazy initialization of environment settings
+let envSettings: RuntimeSettings | null = null;
+let envLoaded = false;
 
-// Get the loaded environment settings
-const envSettings = process.env as RuntimeSettings;
-// --- End of Pre-emptive Environment Loading ---
+function ensureEnvLoaded(): RuntimeSettings {
+  if (!envLoaded) {
+    loadEnvironmentVariables();
+    envSettings = process.env as RuntimeSettings;
+    envLoaded = true;
+  }
+
+  if (!envSettings) {
+    throw new Error('Failed to load environment settings');
+  }
+
+  return envSettings;
+}
 
 /**
  * Find an available port in the given range
@@ -182,7 +193,7 @@ export async function createScenarioAgent(
     plugins: pluginNames,
     settings: {
       secrets: {
-        ...envSettings,
+        ...ensureEnvLoaded(),
       },
     },
     // Always respond: set system prompt and template to ensure reply
