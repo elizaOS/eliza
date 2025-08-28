@@ -86,29 +86,8 @@ async function buildBrowser() {
       sourcemap: true,
       minify: true, // Minify for browser to reduce bundle size
       generateDts: false, // Use the same .d.ts files from Node build
-      // Additional browser-specific options
-      plugins: [
-        {
-          name: 'browser-compat',
-          setup(build) {
-            // Replace Node.js specific modules with browser-compatible versions
-            build.onResolve({ filter: /^crypto$/ }, () => ({
-              path: 'crypto-browserify',
-              external: true,
-            }));
-
-            build.onResolve({ filter: /^stream$/ }, () => ({
-              path: 'stream-browserify',
-              external: true,
-            }));
-
-            build.onResolve({ filter: /^buffer$/ }, () => ({
-              path: 'buffer',
-              external: true,
-            }));
-          },
-        },
-      ],
+      // No additional browser resolver plugins; avoid pulling large node-polyfill trees
+      plugins: [],
     },
   });
 
