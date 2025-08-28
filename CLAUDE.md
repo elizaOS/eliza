@@ -253,7 +253,7 @@ The `elizaos test` command runs tests for ElizaOS projects and plugins:
 elizaos test [path]           # Run all tests (component + e2e)
 elizaos test -t component     # Run only component tests
 elizaos test -t e2e          # Run only e2e tests
-elizaos test --name "test"   # Filter tests by name
+elizaos test --name "test"   # Filter tests by name (case sensitive)
 elizaos test --skip-build    # Skip building before tests
 ```
 
