@@ -70,7 +70,10 @@ export function createAgentLogsRouter(agents: Map<UUID, IAgentRuntime>): express
 
       sendSuccess(res, filteredLogs);
     } catch (error) {
-      logger.error(`[AGENT LOGS] Error retrieving logs for agent ${agentId}:`, error);
+      logger.error(
+        `[AGENT LOGS] Error retrieving logs for agent ${agentId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -98,7 +101,10 @@ export function createAgentLogsRouter(agents: Map<UUID, IAgentRuntime>): express
       await runtime.deleteLog(logId);
       res.status(204).send();
     } catch (error) {
-      logger.error(`[LOG DELETE] Error deleting log ${logId} for agent ${agentId}:`, error);
+      logger.error(
+        `[LOG DELETE] Error deleting log ${logId} for agent ${agentId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

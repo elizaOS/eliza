@@ -1,6 +1,7 @@
 import type { IAgentRuntime } from '@elizaos/core';
 import {
   logger,
+  customLevels,
   SOCKET_MESSAGE_TYPE,
   validateUuid,
   ChannelType,
@@ -72,7 +73,10 @@ export class SocketIORouter {
     socket.on('update_log_filters', (filters) => this.handleLogFilterUpdate(socket, filters));
     socket.on('disconnect', () => this.handleDisconnect(socket));
     socket.on('error', (error) => {
-      logger.error(`[SocketIO] Socket error for ${socket.id}: ${error.message}`, error);
+      logger.error(
+        `[SocketIO] Socket error for ${socket.id}: ${error.message}`,
+        error instanceof Error ? error.message : String(error)
+      );
     });
 
     if (process.env.NODE_ENV === 'development') {
@@ -428,7 +432,7 @@ export class SocketIORouter {
     const existingFilters = this.logStreamConnections.get(socket.id);
     if (existingFilters !== undefined) {
       this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
-      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, filters);
+      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, JSON.stringify(filters));
       socket.emit('log_filters_updated', {
         success: true,
         filters: this.logStreamConnections.get(socket.id),
@@ -453,9 +457,10 @@ export class SocketIORouter {
           shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
         }
         if (filters.level && filters.level !== 'all') {
+          // Use logger levels directly from @elizaos/core
           const numericLevel =
             typeof filters.level === 'string'
-              ? logger.levels.values[filters.level.toLowerCase()] || 70
+              ? customLevels[filters.level.toLowerCase()] || 70
               : filters.level;
           shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
         }

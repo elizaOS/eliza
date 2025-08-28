@@ -277,7 +277,10 @@ export const updateEntityAction: Action = {
           throw new Error('Invalid response format - missing source or data');
         }
       } catch (error: any) {
-        logger.error(`Failed to parse component data: ${error.message}`);
+        logger.error(
+          'Failed to parse component data:',
+          error instanceof Error ? error.message : String(error)
+        );
         await callback({
           text: "I couldn't properly understand the component information. Please try again with more specific information.",
           actions: ['UPDATE_ENTITY_ERROR'],

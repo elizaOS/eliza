@@ -144,7 +144,10 @@ export function createConversationRouter(agents: Map<UUID, IAgentRuntime>): expr
         `[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`
       );
     } catch (error) {
-      logger.error('[SPEECH CONVERSATION] Error processing conversation:', error);
+      logger.error(
+        '[SPEECH CONVERSATION] Error processing conversation:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

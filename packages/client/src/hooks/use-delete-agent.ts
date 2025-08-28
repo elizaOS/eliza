@@ -34,12 +34,23 @@ export function useDeleteAgent(targetAgentData: Agent) {
       }, 8000);
 
       const elizaClient = createElizaClient();
+
+      // Ensure we have a valid ID
+      if (!targetAgentData.id) {
+        throw new Error('Agent ID is required for deletion');
+      }
+
       const response = await elizaClient.agents.deleteAgent(targetAgentData.id);
       responseReceived = true;
 
-      clearTimeout(navigationTimer);
+      if (navigationTimer) {
+        clearTimeout(navigationTimer);
+      }
 
-      if (response?.partial) {
+      // Check if response indicates partial completion (need to verify actual API response type)
+      const isPartial = (response as any)?.partial;
+
+      if (isPartial) {
         toast({
           title: 'Processing',
           description: 'Deletion is still in progress and will complete in the background.',
@@ -53,12 +64,15 @@ export function useDeleteAgent(targetAgentData: Agent) {
 
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/');
-    } catch (deleteError) {
+    } catch (deleteError: any) {
       responseReceived = true;
-      clearTimeout(navigationTimer);
+
+      if (navigationTimer) {
+        clearTimeout(navigationTimer);
+      }
 
       const errorMessage = deleteError?.message ?? 'Failed to delete agent';
-      const statusCode = deleteError?.statusCode;
+      const statusCode = deleteError?.statusCode || deleteError?.response?.status;
 
       if (
         statusCode === 409 ||

@@ -8,7 +8,6 @@ import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import * as os from 'os';
 import { runBunCommand } from './run-bun';
-import { type Subprocess } from 'bun';
 
 // Configuration
 const MAX_BUILD_ITERATIONS = 5;
@@ -107,7 +106,10 @@ export class PluginCreator {
           await this.activeClaudeProcess;
           logger.info('Terminated active Claude Code process');
         } catch (error) {
-          logger.error('Failed to terminate Claude Code process:', error);
+          logger.error(
+            'Failed to terminate Claude Code process:',
+            error instanceof Error ? error.message : String(error)
+          );
         }
       }
 
@@ -117,7 +119,7 @@ export class PluginCreator {
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
     process.on('uncaughtException', async (error) => {
-      logger.error('Uncaught exception:', error);
+      logger.error('Uncaught exception:', error instanceof Error ? error.message : String(error));
       await cleanup();
     });
   }
@@ -198,7 +200,10 @@ export class PluginCreator {
       };
     } catch (error) {
       spinner.fail('Plugin creation failed');
-      logger.error('Error creating plugin:', error);
+      logger.error(
+        'Error creating plugin:',
+        error instanceof Error ? error.message : String(error)
+      );
 
       return {
         success: false,
@@ -888,11 +893,17 @@ Make all necessary changes to fix the issues and ensure the plugin builds and al
           this.activeClaudeProcess = null;
           logger.warn('🛑 Claude Code process terminated due to timeout');
         } catch (killError) {
-          logger.error('Failed to kill timed-out process:', killError);
+          logger.error(
+            'Failed to kill timed-out process:',
+            killError instanceof Error ? killError.message : String(killError)
+          );
         }
       }
 
-      logger.error('❌ Claude Code execution failed:', error);
+      logger.error(
+        '❌ Claude Code execution failed:',
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   }
@@ -1024,7 +1035,10 @@ If ANY of the CRITICAL requirements fail, the plugin is NOT production ready.`;
       }
       throw new Error('No JSON found in response');
     } catch (error) {
-      logger.error('Failed to parse validation response:', error);
+      logger.error(
+        'Failed to parse validation response:',
+        error instanceof Error ? error.message : String(error)
+      );
       return {
         production_ready: false,
         revision_instructions: 'Failed to parse validation response. Please review manually.',

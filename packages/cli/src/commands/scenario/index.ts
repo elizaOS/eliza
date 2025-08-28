@@ -134,7 +134,7 @@ export const scenario = new Command()
           }
 
           // Sanitize scenario name for filename
-          const scenarioNameSafe = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
+          // const scenarioNameSafe = scenario.name.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase(); // unused variable
 
           // Parse and validate plugins if specified
           if (scenario.plugins && scenario.plugins.length > 0) {
@@ -373,17 +373,17 @@ export const scenario = new Command()
 
               // Build the centralized result
               const roomId = agentId; // Use agentId as roomId for single runs
-              const allEvaluations = scenario.run.flatMap((step) => step.evaluations || []);
               const combinedExecutionResult = {
                 exitCode: finalStatus ? 0 : 1,
                 stdout: results.map((r) => r.stdout).join('\n'),
                 stderr: results.map((r) => r.stderr).join('\n'),
                 durationMs: endTime - startTime,
+                files: {}, // Add required files property
               };
 
               const scenarioRunResult = await dataAggregator.buildResult(
                 roomId,
-                allEvaluations,
+                allEvaluationResults as any[], // Use actual evaluation results, not the definitions
                 combinedExecutionResult
               );
 
@@ -400,8 +400,10 @@ export const scenario = new Command()
             }
           }
         } catch (error) {
-          logger.error('An error occurred during scenario execution:');
-          logger.error(error instanceof Error ? error.message : String(error));
+          logger.error(
+            'An error occurred during scenario execution:',
+            error instanceof Error ? error.message : String(error)
+          );
 
           // Record error in data aggregator if available (Ticket #5786)
           if (dataAggregator) {
@@ -415,6 +417,7 @@ export const scenario = new Command()
                 stdout: '',
                 stderr: error instanceof Error ? error.message : String(error),
                 durationMs: 0,
+                files: {}, // Add required files property
               });
 
               const errorFilename = `run-${failedResult.run_id}.json`;
@@ -485,13 +488,16 @@ export const scenario = new Command()
             await import('./src/matrix-schema');
           const {
             generateMatrixCombinations,
-            createExecutionContext,
+            // createExecutionContext, // unused
             filterCombinations,
             calculateExecutionStats,
             formatDuration,
           } = await import('./src/matrix-runner');
-          const { validateMatrixParameterPaths, combinationToOverrides, applyParameterOverrides } =
-            await import('./src/parameter-override');
+          const {
+            validateMatrixParameterPaths,
+            combinationToOverrides,
+            // applyParameterOverrides // unused
+          } = await import('./src/parameter-override');
 
           const logger = elizaLogger || console;
           logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
@@ -678,7 +684,7 @@ export const scenario = new Command()
                 try {
                   const firstCombination = combinations[0];
                   const overrides = combinationToOverrides(firstCombination.parameters);
-                  const modifiedScenario = applyParameterOverrides(baseScenario, overrides);
+                  // const modifiedScenario = applyParameterOverrides(baseScenario, overrides); // unused
 
                   logger.info(`   📋 Example: ${firstCombination.id}`);
                   logger.info(
@@ -758,12 +764,12 @@ export const scenario = new Command()
               );
 
               // Create execution context for future use
-              const executionContext = createExecutionContext(matrixConfig, filteredCombinations, {
-                parallelism: parseInt(options.parallel, 10),
-                dryRun: false,
-                filter: options.filter,
-                verbose: options.verbose,
-              });
+              // const executionContext = createExecutionContext(matrixConfig, filteredCombinations, {
+              //   parallelism: parseInt(options.parallel, 10),
+              //   dryRun: false,
+              //   filter: options.filter,
+              //   verbose: options.verbose,
+              // });
 
               logger.info('\n✅ Matrix Ready for Execution:');
               logger.info('   🎯 Matrix configuration: ✅ Valid');
@@ -799,7 +805,7 @@ export const scenario = new Command()
                 continueOnFailure: true,
                 runTimeout: 300000, // 5 minutes per run
                 verbose: options.verbose,
-                onProgress: (message, eventType, data) => {
+                onProgress: (message, eventType, _data) => {
                   if (
                     options.verbose ||
                     eventType === 'MATRIX_STARTED' ||
@@ -854,8 +860,10 @@ export const scenario = new Command()
               process.exit(failedRuns === 0 ? 0 : 1);
             }
           } catch (error) {
-            logger.error('❌ An error occurred during matrix analysis:');
-            logger.error(error instanceof Error ? error.message : String(error));
+            logger.error(
+              '❌ An error occurred during matrix analysis:',
+              error instanceof Error ? error.message : String(error)
+            );
             if (options.verbose && error instanceof Error && error.stack) {
               logger.error(`Stack trace: ${error.stack}`);
             }

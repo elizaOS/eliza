@@ -24,13 +24,13 @@ export function getProjectType(testPath?: string): DirectoryInfo {
  * 2. Matching file names (without extension)
  *
  * For best results, use the specific test suite name you want to run.
- * The filter is applied case-insensitively for better user experience.
+ * The filter preserves case sensitivity to match bun's test filtering behavior.
  */
 export function processFilterName(name?: string): string | undefined {
   if (!name) return undefined;
 
-  // Handle common filter formats (case-insensitive)
-  let baseName = name.toLowerCase();
+  // Handle common filter formats (preserve case for bun's case-sensitive matching)
+  let baseName = name;
 
   if (
     baseName.endsWith('.test.ts') ||

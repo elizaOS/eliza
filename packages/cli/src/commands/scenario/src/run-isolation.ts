@@ -334,9 +334,9 @@ export function estimateRunDiskSpace(baseScenario: any): number {
  * @param estimatedSpace - Estimated space required in bytes
  * @returns True if there's sufficient space
  */
-export async function checkDiskSpace(outputDir: string, estimatedSpace: number): Promise<boolean> {
+export async function checkDiskSpace(outputDir: string, _estimatedSpace: number): Promise<boolean> {
   try {
-    const stats = await fs.stat(outputDir);
+    await fs.stat(outputDir);
     // This is a simplified check - in a real implementation you'd check available disk space
     // For now, we'll assume there's enough space if the directory exists
     return true;

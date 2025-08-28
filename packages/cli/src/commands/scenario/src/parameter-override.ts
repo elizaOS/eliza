@@ -7,13 +7,8 @@
  * Core implementation for ticket #5780.
  */
 
-import {
-  parseParameterPath,
-  isValidPathSyntax,
-  normalizeParameterPath,
-  ParameterPath,
-} from './path-parser';
-import { deepClone, hasCircularReference, deepCloneWithLimit } from './deep-clone';
+import { parseParameterPath } from './path-parser';
+import { deepClone } from './deep-clone';
 
 // Re-export functions from modules for backward compatibility
 export {

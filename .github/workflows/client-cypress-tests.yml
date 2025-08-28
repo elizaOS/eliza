@@ -64,9 +64,13 @@ jobs:
       - name: Run Cypress Component Tests
         working-directory: packages/client
         run: |
+          # Update dependencies first to ensure compatibility
+          bun install
+          # Run component tests
           bun run test:component
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI: true
 
   # E2E tests (needs server)
   cypress-e2e:

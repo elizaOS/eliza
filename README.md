@@ -130,7 +130,7 @@ elizaos env list            # Show all environment variables
 elizaos env reset           # Reset to default .env.example
 
 # Testing options
-elizaos test --name "my-test"    # Run specific tests
+elizaos test --name "my-test"    # Run specific tests (case sensitive)
 elizaos test e2e                 # Run end-to-end tests only
 elizaos test component           # Run component tests only
 

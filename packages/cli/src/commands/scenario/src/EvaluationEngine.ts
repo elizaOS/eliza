@@ -149,7 +149,7 @@ class ExecutionTimeEvaluator implements Evaluator {
 export class TrajectoryContainsActionEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
-    runResult: ExecutionResult,
+    _runResult: ExecutionResult,
     runtime: AgentRuntime
   ): Promise<EvaluationResult> {
     if (params.type !== 'trajectory_contains_action')
@@ -252,11 +252,11 @@ Do not use any other field names. Use only the exact field names specified above
 
     try {
       // Check if the picked model is available; if not, return gracefully
-      const availableModels = (runtime as any).models;
-      const modelKeys =
-        availableModels && typeof availableModels.keys === 'function'
-          ? Array.from(availableModels.keys())
-          : Object.keys(availableModels || {});
+      // const availableModels = (runtime as any).models; // unused
+      // const modelKeys =
+      //   availableModels && typeof availableModels.keys === 'function'
+      //     ? Array.from(availableModels.keys())
+      //     : Object.keys(availableModels || {});
       const modelHandler = (runtime as any).getModel(modelType);
       if (!modelHandler) {
         return {
@@ -266,10 +266,10 @@ Do not use any other field names. Use only the exact field names specified above
       }
 
       // Check if OpenAI plugin is loaded
-      const openaiService = runtime.getService('openai');
+      // const openaiService = runtime.getService('openai');
 
       // Check all loaded services
-      const allServices = (runtime as any).services;
+      // const allServices = (runtime as any).services;
 
       // Do not include runtime here; runtime.useModel will inject it
       const objectParams: Omit<ObjectGenerationParams, 'runtime'> = {
@@ -294,7 +294,7 @@ Do not use any other field names. Use only the exact field names specified above
 
       return {
         success,
-        message: `LLM judgment: ${parsedResponse.judgment} (confidence: ${parsedResponse.confidence}). Expected: "${expected}". Result: ${success}`,
+        message: `LLM judgment: ${(parsedResponse as any).judgment} (confidence: ${(parsedResponse as any).confidence}). Expected: "${expected}". Result: ${success}`,
       };
     } catch (error: any) {
       const msg = error?.message || String(error);

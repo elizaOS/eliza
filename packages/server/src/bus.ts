@@ -17,7 +17,7 @@
  * unintended multiple executions of the same handler.
  */
 class InternalMessageBus extends EventTarget {
-  private maxListeners: number = 50;
+  private _maxListeners: number = 50; // Kept for API compatibility, see setMaxListeners()
   private handlers = new Map<string, Map<(data: unknown) => void, EventListener>>();
 
   emit(event: string, data: unknown): boolean {
@@ -68,8 +68,12 @@ class InternalMessageBus extends EventTarget {
     }
   }
 
+  getMaxListeners(): number {
+    return this._maxListeners;
+  }
+
   setMaxListeners(n: number) {
-    this.maxListeners = n;
+    this._maxListeners = n;
     // EventTarget doesn't have a built-in max listeners concept,
     // but we keep this for API compatibility
   }
@@ -79,7 +83,7 @@ class InternalMessageBus extends EventTarget {
       // Remove all listeners for a specific event
       const eventHandlers = this.handlers.get(event);
       if (eventHandlers) {
-        for (const [handler, wrappedHandler] of eventHandlers) {
+        for (const [_handler, wrappedHandler] of eventHandlers) {
           this.removeEventListener(event, wrappedHandler);
         }
         this.handlers.delete(event);
@@ -87,7 +91,7 @@ class InternalMessageBus extends EventTarget {
     } else {
       // Remove all listeners for all events
       for (const [eventName, eventHandlers] of this.handlers) {
-        for (const [handler, wrappedHandler] of eventHandlers) {
+        for (const [_handler, wrappedHandler] of eventHandlers) {
           this.removeEventListener(eventName, wrappedHandler);
         }
       }

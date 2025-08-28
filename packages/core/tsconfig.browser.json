@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/browser",
+    "rootDir": "./src",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "types": [],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "target": "ES2020",
+    "moduleResolution": "bundler",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/__tests__/**",
+    "src/test_resources/**",
+    "src/utils/server-health.ts"
+  ]
+}

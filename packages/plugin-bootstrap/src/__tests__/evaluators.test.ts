@@ -54,7 +54,7 @@ describe('Reflection Evaluator', () => {
 
   it('should call the model with the correct prompt', async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
         thought: 'I am doing well in this conversation.',
         facts: {
@@ -146,7 +146,7 @@ describe('Reflection Evaluator', () => {
 
   it('should store new facts and relationships', async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
         thought: 'I am doing well in this conversation.',
         facts: {
@@ -295,7 +295,7 @@ describe('Reflection Evaluator', () => {
 
   it('should filter out invalid facts', async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
         thought: 'Some of these facts are invalid',
         facts: {

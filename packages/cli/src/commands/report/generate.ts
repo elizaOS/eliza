@@ -35,8 +35,9 @@ function transformMatrixRunResultToScenarioRunResult(
   let finalResponse = '';
 
   // Handle successful runs with scenarioResult
-  if (matrixResult.scenarioResult && matrixResult.scenarioResult.executionResults) {
-    const firstExecutionResult = matrixResult.scenarioResult.executionResults[0];
+  const scenarioResult = matrixResult.scenarioResult as any;
+  if (scenarioResult && scenarioResult.executionResults) {
+    const firstExecutionResult = scenarioResult.executionResults[0];
     if (firstExecutionResult) {
       // Extract trajectory
       if (firstExecutionResult.trajectory) {
@@ -55,9 +56,9 @@ function transformMatrixRunResultToScenarioRunResult(
   }
 
   // Extract evaluations from scenarioResult
-  if (matrixResult.scenarioResult && matrixResult.scenarioResult.evaluations) {
+  if (scenarioResult && scenarioResult.evaluations) {
     // Keep enhanced evaluation results in their original format - ScenarioRunResult expects EnhancedEvaluationResult[]
-    evaluations = matrixResult.scenarioResult.evaluations.filter((evaluation: any) => {
+    evaluations = scenarioResult.evaluations.filter((evaluation: any) => {
       // Only include evaluations that have the expected enhanced format
       return (
         evaluation &&

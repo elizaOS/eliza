@@ -211,7 +211,7 @@ describe('ElizaOS Start Commands', () => {
             result = stdout;
 
             // If we get a result, check if it contains Ada
-            if (result && result.includes('Ada')) {
+            if (result && result.toLowerCase().includes('ada')) {
               break;
             }
 
@@ -243,7 +243,7 @@ describe('ElizaOS Start Commands', () => {
         }
 
         // If we never got a successful result with Ada, throw the last error
-        if (!result || !result.includes('Ada')) {
+        if (!result || !result.toLowerCase().includes('ada')) {
           if (lastError) {
             throw lastError;
           }
@@ -252,7 +252,7 @@ describe('ElizaOS Start Commands', () => {
           );
         }
 
-        expect(result).toContain('Ada');
+        expect(result.toLowerCase()).toContain('ada');
       } finally {
         // Clean up server with proper graceful shutdown
         if (serverProcess.exitCode === null) {

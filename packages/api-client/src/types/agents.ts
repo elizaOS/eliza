@@ -45,12 +45,25 @@ export interface AgentPanel {
 }
 
 export interface AgentLog {
-  id: UUID;
-  agentId: UUID;
-  level: 'debug' | 'info' | 'warn' | 'error';
-  message: string;
-  timestamp: Date;
-  metadata?: Record<string, any>;
+  id?: UUID;
+  type?: string;
+  timestamp?: number;
+  message?: string;
+  details?: string;
+  roomId?: UUID;
+  body?: {
+    modelType?: string;
+    modelKey?: string;
+    params?: any;
+    response?: any;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  createdAt?: number;
+  [key: string]: any;
 }
 
 export interface AgentLogsParams extends PaginationParams {

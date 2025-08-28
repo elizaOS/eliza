@@ -9,10 +9,9 @@
  */
 
 import { promises as fs } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import {
   createIsolatedEnvironment,
-  cleanupIsolatedEnvironment,
   writeTemporaryScenario,
   IsolationContext,
 } from './run-isolation';
@@ -21,7 +20,7 @@ import { createResourceMonitor, ResourceMonitor, ResourceAlert } from './resourc
 import { generateRunFilename } from './file-naming-utils';
 import { processManager } from './process-manager';
 import { MatrixCombination } from './matrix-types';
-import { applyParameterOverrides } from './parameter-override';
+// import { applyParameterOverrides } from './parameter-override'; // unused
 import { MatrixConfig } from './matrix-schema';
 import { IAgentRuntime, UUID } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
@@ -195,7 +194,7 @@ export async function executeMatrixRuns(
   await fs.mkdir(outputDir, { recursive: true });
 
   // Initialize progress tracking
-  const totalRuns = combinations.length * config.runs_per_combination;
+  // const totalRuns = combinations.length * config.runs_per_combination; // unused
   const progressTracker = createProgressTracker({
     totalCombinations: combinations.length,
     runsPerCombination: config.runs_per_combination,
@@ -242,7 +241,7 @@ export async function executeMatrixRuns(
       console.log('🔧 [DEBUG] JSON parsing failed, attempting YAML import');
       const yaml = await import('js-yaml');
       console.log('🔧 [DEBUG] YAML import successful, parsing content');
-      baseScenario = yaml.load(baseScenarioContent);
+      baseScenario = yaml.load(baseScenarioContent) as Scenario;
       console.log('🔧 [DEBUG] YAML parsing successful');
     }
 
@@ -258,7 +257,7 @@ export async function executeMatrixRuns(
     const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap']; // Always include core plugins
     const scenarioPlugins = Array.isArray(baseScenario.plugins)
       ? baseScenario.plugins
-          .filter((p: { enabled?: boolean }) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+          .filter((p: any) => typeof p === 'string' || p.enabled !== false) // Only include enabled plugins (default to true if not specified)
           .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
       : [];
     const finalPlugins = Array.from(
@@ -558,7 +557,7 @@ async function executeIndividualRun(
   baseScenario: Scenario,
   outputDir: string,
   progressTracker: ProgressTracker,
-  resourceMonitor: ResourceMonitor,
+  _resourceMonitor: ResourceMonitor,
   timeout: number,
   sharedServer?: { server: AgentServer; port: number }, // Optional shared server for matrix testing
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
@@ -649,7 +648,7 @@ async function executeIndividualRun(
       const metrics = {
         memoryUsage: resourcesAfter.memoryUsage - resourcesBefore.memoryUsage,
         diskUsage: await calculateRunDiskUsage(context.tempDir),
-        tokenCount: scenarioResult.tokenCount || 0,
+        tokenCount: (scenarioResult as any).tokenCount || 0,
         cpuUsage: resourcesAfter.cpuUsage,
       };
 
@@ -774,7 +773,7 @@ async function executeScenarioWithTimeout(
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
       const {
         createScenarioServerAndAgent,
-        createScenarioServer,
+        // createScenarioServer, // unused
         createScenarioAgent,
         shutdownScenarioServer,
       } = await import('./runtime-factory');
@@ -852,7 +851,7 @@ async function executeScenarioWithTimeout(
         }
 
         console.log(`🔧 [DEBUG] Creating LocalEnvironmentProvider with port: ${port}`);
-        const provider = new LocalEnvironmentProvider(server, agentId, runtime, port);
+        const provider = new LocalEnvironmentProvider(server, agentId, runtime as any, port);
 
         onProgress(0.5, 'Setting up scenario environment...');
 
@@ -868,7 +867,7 @@ async function executeScenarioWithTimeout(
 
         // Run evaluations for each run step (similar to regular scenario runner)
         const { EvaluationEngine } = await import('./EvaluationEngine');
-        const evaluationEngine = new EvaluationEngine(runtime);
+        const evaluationEngine = new EvaluationEngine(runtime as any);
 
         const evaluationResults = [];
         if (scenario.run && Array.isArray(scenario.run)) {
@@ -945,7 +944,7 @@ async function executeScenarioWithTimeout(
         };
 
         clearTimeout(timeoutHandle);
-        resolve(result);
+        resolve(result as any);
       } finally {
         // Restore original environment
         process.env = originalEnv;
@@ -1085,6 +1084,7 @@ async function calculateRunDiskUsage(tempDir: string): Promise<number> {
       scenarioPath: '',
       dbPath: '',
       logPath: '',
+      cleanup: async () => {},
     };
     const resources = await monitorIsolatedResources(context);
     return resources.diskUsage;
@@ -1145,7 +1145,7 @@ function createCombinationSummary(
  * Generates comprehensive execution summary.
  */
 async function generateExecutionSummary(
-  config: MatrixConfig,
+  _config: MatrixConfig,
   combinations: MatrixCombination[],
   results: MatrixRunResult[],
   startTime: Date,

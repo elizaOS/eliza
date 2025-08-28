@@ -275,7 +275,10 @@ export async function loadProject(dir: string): Promise<Project> {
           pluginModule: completePlugin,
         };
       } catch (error) {
-        logger.error('Error extracting plugin from module:', error);
+        logger.error(
+          'Error extracting plugin from module:',
+          error instanceof Error ? error.message : String(error)
+        );
         throw error;
       }
     }

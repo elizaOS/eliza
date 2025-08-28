@@ -44,7 +44,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
   const participantsIds: UUID[] = participants && Array.isArray(participants) ? participants : [];
 
   const groupAgents = participantsIds
-    ? allAgents.filter((agent) => participantsIds.includes(agent.id))
+    ? allAgents.filter((agent) => agent.id && participantsIds.includes(agent.id))
     : [];
 
   const handleSettings = () => {
@@ -70,11 +70,13 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
               <Avatar className="bg-[#282829] h-16 w-16 flex-shrink-0 rounded-[3px] relative overflow-hidden">
                 {groupAgents && groupAgents.length > 0 ? (
                   <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full p-1">
-                    {groupAgents.slice(0, 3).map((agent) =>
-                      agent.settings?.avatar ? (
+                    {groupAgents.slice(0, 3).map((agent) => {
+                      const avatarUrl =
+                        typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : null;
+                      return avatarUrl ? (
                         <img
                           key={agent.id}
-                          src={agent.settings.avatar}
+                          src={avatarUrl}
                           alt={agent.name}
                           className="object-cover w-full h-full rounded-[3px]"
                         />
@@ -85,8 +87,8 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                         >
                           {formatAgentName(agent.name)}
                         </div>
-                      )
-                    )}
+                      );
+                    })}
                     {groupAgents.length > 3 ? (
                       <div className="flex items-center justify-center bg-[#3F3F3F] text-xs font-medium w-full h-full rounded-[3px]">
                         +{groupAgents.length - 3}

@@ -5,8 +5,7 @@
     "outDir": "dist",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "declaration": true,
-    "emitDeclarationOnly": true
+    "declaration": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/__tests__/**/*.ts", "__tests__/**/*.ts"],
   "exclude": [

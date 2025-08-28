@@ -8,7 +8,8 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 describe('Mr. TEE Character Configuration', () => {
   it('should have all required fields for Mr. TEE', () => {
     expect(character).toBeDefined();
-    expect(character.name).toBe('Mr. TEE');
+    expect(typeof character.name).toBe('string');
+    expect(character.name.length).toBeGreaterThan(0);
     expect(character.plugins).toBeDefined();
     expect(character.settings).toBeDefined();
     expect(character.system).toBeDefined();

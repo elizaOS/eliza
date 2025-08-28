@@ -113,26 +113,29 @@ export function createLoggingRouter(): express.Router {
         .slice(-limit);
 
       // Add debug log to help troubleshoot
-      logger.debug('Logs request processed', {
-        requestedLevel,
-        requestedLevelValue,
-        requestedAgentName,
-        requestedAgentId,
-        filteredCount: filtered.length,
-        totalLogs: recentLogs.length,
-        logsWithAgentNames,
-        logsWithAgentIds,
-        agentNamePopulationRate: Math.round(agentNamePopulationRate * 100) + '%',
-        agentIdPopulationRate: Math.round(agentIdPopulationRate * 100) + '%',
-        isAgentNameDataSparse,
-        isAgentIdDataSparse,
-        sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
-        uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
-          Boolean
-        ),
-        exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
-          .length,
-      });
+      logger.debug(
+        'Logs request processed',
+        JSON.stringify({
+          requestedLevel,
+          requestedLevelValue,
+          requestedAgentName,
+          requestedAgentId,
+          filteredCount: filtered.length,
+          totalLogs: recentLogs.length,
+          logsWithAgentNames,
+          logsWithAgentIds,
+          agentNamePopulationRate: Math.round(agentNamePopulationRate * 100) + '%',
+          agentIdPopulationRate: Math.round(agentIdPopulationRate * 100) + '%',
+          isAgentNameDataSparse,
+          isAgentIdDataSparse,
+          sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
+          uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
+            Boolean
+          ),
+          exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
+            .length,
+        })
+      );
 
       res.json({
         logs: filtered,

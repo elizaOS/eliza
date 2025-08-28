@@ -1134,7 +1134,7 @@ export function createSessionsRouter(
       // try {
       //   await serverInstance.deleteChannel(session.channelId);
       // } catch (error) {
-      //   logger.warn(`Failed to delete channel for session ${sessionId}:`, error);
+      //   logger.warn(`Failed to delete channel for session ${sessionId}:`, error instanceof Error ? error.message : String(error));
       // }
 
       logger.info(`[Sessions API] Deleted session ${sessionId}`);

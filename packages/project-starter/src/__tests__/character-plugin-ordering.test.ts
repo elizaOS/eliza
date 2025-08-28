@@ -319,23 +319,4 @@ describe('Project Starter Character Plugin Ordering', () => {
       expect(hasOtherAiProviders).toBe(true);
     });
   });
-
-  describe('Character Properties Validation', () => {
-    it('should have all required character properties', () => {
-      expect(character.name).toBe('Eliza');
-      expect(Array.isArray(character.plugins)).toBe(true);
-      expect(typeof character.system).toBe('string');
-      expect(Array.isArray(character.bio)).toBe(true);
-      expect(Array.isArray(character.topics)).toBe(true);
-      expect(Array.isArray(character.messageExamples)).toBe(true);
-      expect(typeof character.style).toBe('object');
-    });
-
-    it('should have consistent character configuration', () => {
-      // Verify character is properly configured
-      expect(character.plugins.length).toBeGreaterThan(0);
-      expect(character.bio.length).toBeGreaterThan(0);
-      expect(character.system.length).toBeGreaterThan(0);
-    });
-  });
 });

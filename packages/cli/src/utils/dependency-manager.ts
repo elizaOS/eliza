@@ -220,7 +220,10 @@ export async function ensurePackageJson(cwd: string = process.cwd()): Promise<bo
     logger.info('Created package.json for ElizaOS project (bun ready)');
     return true;
   } catch (error) {
-    logger.warn('Could not create package.json:', error);
+    logger.warn(
+      'Could not create package.json:',
+      error instanceof Error ? error.message : String(error)
+    );
     return false;
   }
 }

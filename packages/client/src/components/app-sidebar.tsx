@@ -38,7 +38,7 @@ import {
 import { useDeleteChannel } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
-import { Book, Cog, Plus, TerminalIcon, Trash2 } from 'lucide-react'; // Added Hash for channels
+import { Book, Cog, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 import {

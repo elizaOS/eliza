@@ -10,12 +10,23 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
-// --- Start of Pre-emptive Environment Loading ---
-loadEnvironmentVariables();
+// Lazy initialization of environment settings
+let envSettings: RuntimeSettings | null = null;
+let envLoaded = false;
 
-// Get the loaded environment settings
-const envSettings = process.env as RuntimeSettings;
-// --- End of Pre-emptive Environment Loading ---
+function ensureEnvLoaded(): RuntimeSettings {
+  if (!envLoaded) {
+    loadEnvironmentVariables();
+    envSettings = process.env as RuntimeSettings;
+    envLoaded = true;
+  }
+
+  if (!envSettings) {
+    throw new Error('Failed to load environment settings');
+  }
+
+  return envSettings;
+}
 
 /**
  * Find an available port in the given range
@@ -120,7 +131,7 @@ export async function createScenarioServer(
         createdServer = true;
 
         // Register the server process for cleanup
-        const serverPid = server.server?.pid || process.pid;
+        const serverPid = (server as any).server?.pid || process.pid;
         const runId = `agent-server-${port}`;
         processManager.registerProcess(runId, serverPid, 'agent-server', port);
         console.log(
@@ -182,7 +193,7 @@ export async function createScenarioAgent(
     plugins: pluginNames,
     settings: {
       secrets: {
-        ...envSettings,
+        ...ensureEnvLoaded(),
       },
     },
     // Always respond: set system prompt and template to ensure reply
@@ -249,11 +260,9 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     }
 
     // Unregister from process manager
-    const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
-    processManager.unregisterProcess(serverPid);
-    console.log(
-      `🔧 [DEBUG] [ProcessManager] Unregistered AgentServer process ${serverPid} for port ${port}`
-    );
+    const runId = `agent-server-${port}`;
+    processManager.unregisterProcess(runId);
+    console.log(`🔧 [DEBUG] [ProcessManager] Unregistered AgentServer for port ${port}`);
   } catch (error) {
     console.log(`🔧 [DEBUG] Error shutting down AgentServer on port ${port}:`, error);
 
@@ -261,7 +270,8 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     const serverPid = (server as { server?: { pid?: number } })?.server?.pid || process.pid;
     if (processManager.isProcessRunning(serverPid)) {
       console.log(`🔧 [DEBUG] Force terminating AgentServer process ${serverPid}...`);
-      processManager.terminateProcess(serverPid);
+      const runId = `agent-server-${port}`;
+      processManager.terminateProcess(runId);
     }
   }
 }
@@ -378,7 +388,7 @@ export async function askAgentViaApi(
     // Poll for response at regular intervals instead of waiting full timeout
     const pollInterval = 100; // Check every 100ms
 
-    const checkForResponse = async (): Promise<{ response: string; roomId: UUID }> => {
+    const checkForResponse = async (): Promise<{ response: string; roomId: UUID } | null> => {
       console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
       const messages = await client.messaging.getChannelMessages(channel.id, { limit: 20 });
       console.log(

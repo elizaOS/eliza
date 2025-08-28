@@ -1,20 +1,19 @@
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "target": "ES2021",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "lib": ["ES2021.String"],
-    "forceConsistentCasingInFileNames": true,
-    "allowSyntheticDefaultImports": true,
+    "outDir": "./dist/node",
     "rootDir": "./src",
-    "outDir": "./dist",
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "noEmit": false,
+    "declarationMap": true,
     "sourceMap": true,
-    "typeRoots": ["./node_modules/@types"]
+    "types": ["node"],
+    "module": "ESNext",
+    "target": "ES2020",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/__tests__/**"]
 }

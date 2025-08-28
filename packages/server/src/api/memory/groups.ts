@@ -67,7 +67,10 @@ export function createGroupMemoryRouter(
           type: ChannelType.API,
         });
       } catch (error) {
-        logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+        logger.error(
+          `[ROOM CREATE] Error creating room for agent ${agentId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         errors.push({
           agentId,
           code:
@@ -114,7 +117,10 @@ export function createGroupMemoryRouter(
       await db.deleteRoomsByWorldId(worldId);
       res.status(204).send();
     } catch (error) {
-      logger.error('[GROUP DELETE] Error deleting group:', error);
+      logger.error(
+        '[GROUP DELETE] Error deleting group:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -145,7 +151,10 @@ export function createGroupMemoryRouter(
 
       res.status(204).send();
     } catch (error) {
-      logger.error('[GROUP MEMORIES DELETE] Error clearing memories:', error);
+      logger.error(
+        '[GROUP MEMORIES DELETE] Error clearing memories:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

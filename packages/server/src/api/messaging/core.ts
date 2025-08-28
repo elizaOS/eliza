@@ -87,7 +87,10 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
       res.status(201).json({ success: true, data: createdMessage });
     } catch (error) {
-      logger.error('[Messages Router /submit] Error submitting agent message:', error);
+      logger.error(
+        '[Messages Router /submit] Error submitting agent message:',
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({ success: false, error: 'Failed to submit agent message' });
     }
   });
@@ -113,7 +116,10 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
       res.status(200).json({ success: true, message: 'Completion event emitted' });
     } catch (error) {
-      logger.error('[Messages Router /notify-complete] Error notifying message complete:', error);
+      logger.error(
+        '[Messages Router /notify-complete] Error notifying message complete:',
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({ success: false, error: 'Failed to notify message completion' });
     }
   });
@@ -188,7 +194,10 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         data: { messageId: createdRootMessage.id },
       });
     } catch (error) {
-      logger.error('[Messages Router /ingest-external] Error ingesting external message:', error);
+      logger.error(
+        '[Messages Router /ingest-external] Error ingesting external message:',
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({ success: false, error: 'Failed to ingest message' });
     }
   });

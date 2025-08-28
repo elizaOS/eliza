@@ -7,7 +7,7 @@ import type { IAgentRuntime, ServiceTypeName } from './types';
  */
 export class ServiceBuilder<TService extends Service = Service> {
   protected serviceType: ServiceTypeName | string;
-  protected startFn: (runtime: IAgentRuntime) => Promise<TService>;
+  protected startFn!: (runtime: IAgentRuntime) => Promise<TService>;
   protected stopFn?: () => Promise<void>;
   protected description: string;
 

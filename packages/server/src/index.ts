@@ -575,9 +575,9 @@ export class AgentServer {
       );
 
       // Add specific middleware to handle portal assets
-      this.app.use((req, res, next) => {
+      this.app.use((_req, res, next) => {
         // Automatically detect and handle static assets based on file extension
-        const ext = extname(req.path).toLowerCase();
+        const ext = extname(_req.path).toLowerCase();
 
         // Set correct content type based on file extension
         if (ext === '.js' || ext === '.mjs') {
@@ -796,11 +796,11 @@ export class AgentServer {
       );
 
       // Add a catch-all route for API 404s
-      this.app.use((req, res, next) => {
+      this.app.use((_req, res, next) => {
         // Check if this is an API route that wasn't handled
-        if (req.path.startsWith('/api/')) {
+        if (_req.path.startsWith('/api/')) {
           // worms are going to hitting it all the time, use a reverse proxy if you need this type of logging
-          //logger.warn(`API 404: ${req.method} ${req.path}`);
+          //logger.warn(`API 404: ${_req.method} ${_req.path}`);
           res.status(404).json({
             success: false,
             error: {

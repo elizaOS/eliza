@@ -9,14 +9,8 @@
 
 import { AgentRuntime, ModelType } from '@elizaos/core';
 import { ExecutionResult } from './providers';
-import {
-  Evaluation as EvaluationSchema,
-  EnhancedEvaluationResult,
-  LLMJudgeResult,
-  CapabilityCheck,
-  EvaluationSchema as EvaluationZodSchema,
-} from './schema';
-import { EvaluationResult, Evaluator } from './EvaluationEngine'; // Import existing types
+import { Evaluation as EvaluationSchema, EnhancedEvaluationResult } from './schema';
+import { Evaluator } from './EvaluationEngine'; // Import existing types
 import { z } from 'zod';
 import type { ObjectGenerationParams } from '@elizaos/core';
 
@@ -276,7 +270,7 @@ class EnhancedExecutionTimeEvaluator implements EnhancedEvaluator {
 class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
   async evaluateEnhanced(
     params: EvaluationSchema,
-    runResult: ExecutionResult,
+    _runResult: ExecutionResult,
     runtime: AgentRuntime
   ): Promise<EnhancedEvaluationResult> {
     if (params.type !== 'trajectory_contains_action') throw new Error('Mismatched evaluator');
@@ -293,9 +287,7 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
       });
 
       // Filter for action_result memories
-      const actionResults = actionMemories.filter(
-        (mem) => mem?.type === 'messages' && mem.content?.type === 'action_result'
-      );
+      const actionResults = actionMemories.filter((mem) => mem.content?.type === 'action_result');
 
       // Normalize function to compare action names robustly
       const normalize = (name: string | undefined): string =>
@@ -304,10 +296,12 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
 
       // Find matching action
       const matchingAction = actionResults.find(
-        (mem) => normalize(mem.content?.actionName ?? '') === target
+        (mem) => normalize((mem.content as any)?.actionName ?? '') === target
       );
 
-      const allActionNames = actionResults.map((mem) => mem.content?.actionName || 'unknown');
+      const allActionNames = actionResults.map(
+        (mem) => (mem.content as any)?.actionName || 'unknown'
+      );
 
       if (!matchingAction) {
         return {
@@ -376,7 +370,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
-    let modelType: ModelType =
+    let modelType: (typeof ModelType)[keyof typeof ModelType] =
       candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Enhanced structured prompt for qualitative analysis with dynamic capabilities
@@ -587,7 +581,7 @@ Provide your assessment as a structured JSON response with detailed reasoning fo
     };
   }
 
-  private validateStructuredResponse(response: any, schema: any): any {
+  private validateStructuredResponse(response: any, _schema: any): any {
     if (typeof response === 'string') {
       response = JSON.parse(response);
     }

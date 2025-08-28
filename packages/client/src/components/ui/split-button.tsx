@@ -46,7 +46,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [menuWidth, setMenuWidth] = React.useState<number>();
 
-    React.useImperativeHandle(ref, () => containerRef.current, []);
+    React.useImperativeHandle(ref, () => containerRef.current!, []);
 
     React.useLayoutEffect(() => {
       if (containerRef.current) {

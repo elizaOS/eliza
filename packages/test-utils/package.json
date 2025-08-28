@@ -35,8 +35,7 @@
     "dist",
     "README.md",
     ".npmignore",
-    "package.json",
-    "tsup.config.ts"
+    "package.json"
   ],
   "dependencies": {
     "@elizaos/core": "1.4.5",
@@ -45,11 +44,11 @@
   "devDependencies": {
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "scripts": {
-    "build": "tsc --noEmit && tsup",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "prettier --write ./src",
     "test": "bun test",
     "format": "prettier --write ./src",

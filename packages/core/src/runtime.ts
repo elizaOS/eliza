@@ -7,6 +7,8 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
+import { getEnv, getNumberEnv } from './utils/environment';
+import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
@@ -121,6 +123,8 @@ export class AgentRuntime implements IAgentRuntime {
   private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
+  public initPromise;
+  private initResolver: ((value?: unknown) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -149,8 +153,12 @@ export class AgentRuntime implements IAgentRuntime {
       opts.character?.id ??
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
-    this.character = opts.character;
-    const logLevel = process.env.LOG_LEVEL || 'info';
+    this.character = opts.character as Character;
+    const logLevel = getEnv('LOG_LEVEL', 'info');
+
+    this.initPromise = new Promise((resolve) => {
+      this.initResolver = resolve;
+    });
 
     // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.logger = createLogger({
@@ -182,8 +190,8 @@ export class AgentRuntime implements IAgentRuntime {
     // Set max working memory entries from settings or environment
     if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
       this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
-    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
-      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else {
+      this.maxWorkingMemoryEntries = getNumberEnv('MAX_WORKING_MEMORY_ENTRIES', 50) as number;
     }
   }
 
@@ -341,7 +349,7 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.warn('Agent already initialized');
       return;
     }
-    const pluginRegistrationPromises = [];
+    const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
     // The runtime now accepts a pre-resolved, ordered list of plugins.
@@ -384,7 +392,7 @@ export class AgentRuntime implements IAgentRuntime {
           id: this.agentId,
           names: [this.character.name],
           metadata: {},
-          agentId: existingAgent.id,
+          agentId: existingAgent.id!,
         });
         if (!created) {
           const errorMsg = `Failed to create entity for agent ${this.agentId}`;
@@ -441,6 +449,9 @@ export class AgentRuntime implements IAgentRuntime {
       await this.registerService(service);
     }
     this.isInitialized = true;
+    if (this.initResolver) {
+      this.initResolver(); // resolve initPromise
+    }
   }
 
   async runPluginMigrations(): Promise<void> {
@@ -464,7 +475,10 @@ export class AgentRuntime implements IAgentRuntime {
             this.logger.info(`Successfully migrated plugin: ${p.name}`);
           }
         } catch (error) {
-          this.logger.error(`Failed to migrate plugin ${p.name}:`, error);
+          this.logger.error(
+            error instanceof Error ? error : new Error(String(error)),
+            `Failed to migrate plugin ${p.name}`
+          );
           // Decide if you want to throw or continue
         }
       }
@@ -497,7 +511,10 @@ export class AgentRuntime implements IAgentRuntime {
     const value =
       this.character.secrets?.[key] ||
       this.character.settings?.[key] ||
-      this.character.settings?.secrets?.[key] ||
+      (typeof this.character.settings === 'object' &&
+        this.character.settings !== null &&
+        'secrets' in this.character.settings &&
+        (this.character.settings as Record<string, any>).secrets?.[key]) ||
       this.settings[key];
     const decryptedValue = decryptSecret(value, getSalt());
     if (decryptedValue === 'true') return true;
@@ -808,8 +825,8 @@ export class AgentRuntime implements IAgentRuntime {
             ) {
               // Ensure success field exists with default true
               actionResult = {
-                success: true, // Default to true if not specified
                 ...result,
+                success: 'success' in result ? result.success : true, // Default to true if not specified
               } as ActionResult;
             } else {
               actionResult = {
@@ -908,13 +925,16 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
-          this.logger.debug(`Action ${action.name} completed`, {
-            isLegacyReturn,
-            result: isLegacyReturn ? result : undefined,
-            hasValues: actionResult ? !!actionResult.values : false,
-            hasData: actionResult ? !!actionResult.data : false,
-            hasText: actionResult ? !!actionResult.text : false,
-          });
+          this.logger.debug(
+            `Action ${action.name} completed`,
+            JSON.stringify({
+              isLegacyReturn,
+              result: isLegacyReturn ? result : undefined,
+              hasValues: actionResult ? !!actionResult.values : false,
+              hasData: actionResult ? !!actionResult.data : false,
+              hasText: actionResult ? !!actionResult.text : false,
+            })
+          );
 
           // log to database with collected prompts
           await this.adapter.log({
@@ -1067,7 +1087,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   // highly SQL optimized queries
-  async ensureConnections(entities, rooms, source, world): Promise<void> {
+  async ensureConnections(
+    entities: any[],
+    rooms: any[],
+    source: string,
+    world: any
+  ): Promise<void> {
     // guards
     if (!entities) {
       console.trace();
@@ -1086,18 +1111,18 @@ export class AgentRuntime implements IAgentRuntime {
     const firstRoom = rooms[0];
 
     // Helper function for chunking arrays
-    const chunkArray = (arr, size) =>
-      arr.reduce((chunks, item, i) => {
+    const chunkArray = (arr: any[], size: number) =>
+      arr.reduce((chunks: any[][], item: any, i: number) => {
         if (i % size === 0) chunks.push([]);
         chunks[chunks.length - 1].push(item);
         return chunks;
       }, []);
 
     // Step 1: Create all rooms FIRST (before adding any participants)
-    const roomIds = rooms.map((r) => r.id);
+    const roomIds = rooms.map((r: any) => r.id);
     const roomExistsCheck = await this.getRoomsByIds(roomIds);
-    const roomsIdExists = roomExistsCheck.map((r) => r.id);
-    const roomsToCreate = roomIds.filter((id) => !roomsIdExists.includes(id));
+    const roomsIdExists = roomExistsCheck?.map((r: any) => r.id);
+    const roomsToCreate = roomIds.filter((id: any) => !roomsIdExists?.includes(id));
 
     const rf = {
       worldId: world.id,
@@ -1113,16 +1138,16 @@ export class AgentRuntime implements IAgentRuntime {
         'rooms'
       );
       const roomObjsToCreate = rooms
-        .filter((r) => roomsToCreate.includes(r.id))
-        .map((r) => ({ ...r, ...rf }));
+        .filter((r: any) => roomsToCreate.includes(r.id))
+        .map((r: any) => ({ ...r, ...rf }));
       await this.createRooms(roomObjsToCreate);
     }
 
     // Step 2: Create all entities
-    const entityIds = entities.map((e) => e.id);
+    const entityIds = entities.map((e: any) => e.id);
     const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-    const entitiesToUpdate = entityExistsCheck.map((e) => e.id);
-    const entitiesToCreate = entities.filter((e) => !entitiesToUpdate.includes(e.id));
+    const entitiesToUpdate = entityExistsCheck?.map((e: any) => e.id);
+    const entitiesToCreate = entities.filter((e: any) => !entitiesToUpdate?.includes(e.id));
 
     const r = {
       roomId: firstRoom.id,
@@ -1146,7 +1171,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         agentId: this.agentId,
       };
-      const entitiesToCreateWFields = entitiesToCreate.map((e) => ({ ...e, ...ef }));
+      const entitiesToCreateWFields = entitiesToCreate.map((e: any) => ({ ...e, ...ef }));
       // pglite doesn't like over 10k records
       const batches = chunkArray(entitiesToCreateWFields, 5000);
       for (const batch of batches) {
@@ -1161,7 +1186,9 @@ export class AgentRuntime implements IAgentRuntime {
     // Add all entities to the first room
     const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
     const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
-    const missingIdsInRoom = entityIds.filter((id) => !entityIdsInFirstRoomFiltered.includes(id));
+    const missingIdsInRoom = entityIds.filter(
+      (id: any) => !entityIdsInFirstRoomFiltered.includes(id)
+    );
 
     if (missingIdsInRoom.length) {
       this.logger.debug(
@@ -1208,9 +1235,9 @@ export class AgentRuntime implements IAgentRuntime {
     metadata?: Record<string, any>;
   }) {
     if (!worldId && serverId) {
-      worldId = createUniqueUuid(this.agentId + serverId, serverId);
+      worldId = createUniqueUuid(this, serverId);
     }
-    const names = [name, userName].filter(Boolean);
+    const names = [name, userName].filter(Boolean) as string[];
     const entityMetadata = {
       [source!]: {
         id: userId,
@@ -1271,9 +1298,9 @@ export class AgentRuntime implements IAgentRuntime {
       });
       await this.ensureRoomExists({
         id: roomId,
-        name: name,
-        source,
-        type,
+        name: name || 'default',
+        source: source || 'default',
+        type: type || ChannelType.DM,
         channelId,
         serverId,
         worldId,
@@ -1359,12 +1386,15 @@ export class AgentRuntime implements IAgentRuntime {
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     const world = await this.getWorld(id);
     if (!world) {
-      this.logger.debug('Creating world:', {
-        id,
-        name,
-        serverId,
-        agentId: this.agentId,
-      });
+      this.logger.debug(
+        'Creating world:',
+        JSON.stringify({
+          id,
+          name,
+          serverId,
+          agentId: this.agentId,
+        })
+      );
       await this.adapter.createWorld({
         id,
         name,
@@ -1407,7 +1437,8 @@ export class AgentRuntime implements IAgentRuntime {
       data: {},
       text: '',
     } as State;
-    const cachedState = skipCache ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
+    const cachedState =
+      skipCache || !message.id ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
     const providerNames = new Set<string>();
     if (filterList && filterList.length > 0) {
       filterList.forEach((name) => providerNames.add(name));
@@ -1478,7 +1509,9 @@ export class AgentRuntime implements IAgentRuntime {
       },
       text: providersText,
     } as State;
-    this.stateCache.set(message.id, newState);
+    if (message.id) {
+      this.stateCache.set(message.id, newState);
+    }
     return newState;
   }
 
@@ -1604,7 +1637,7 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(`Failed to create resolver for service ${serviceType}`);
     }
     this.servicePromiseHandles.set(serviceType, resolver);
-    return this.servicePromises.get(serviceType);
+    return this.servicePromises.get(serviceType)!;
   }
 
   /// returns a promise that's resolved once this service is loaded
@@ -1640,7 +1673,7 @@ export class AgentRuntime implements IAgentRuntime {
       if ((b.priority || 0) !== (a.priority || 0)) {
         return (b.priority || 0) - (a.priority || 0);
       }
-      return a.registrationOrder - b.registrationOrder;
+      return (a.registrationOrder || 0) - (b.registrationOrder || 0);
     });
   }
 
@@ -1779,7 +1812,7 @@ export class AgentRuntime implements IAgentRuntime {
       params === undefined ||
       typeof params !== 'object' ||
       Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+      BufferUtils.isBuffer(params)
     ) {
       paramsWithRuntime = params;
     } else {
@@ -1801,10 +1834,16 @@ export class AgentRuntime implements IAgentRuntime {
         };
       }
     }
-    const startTime = performance.now();
+    const startTime =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
     try {
       const response = await model(this, paramsWithRuntime);
-      const elapsedTime = performance.now() - startTime;
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
 
       // Log timing / response (keep debug log if useful)
       this.logger.debug(
@@ -1883,9 +1922,13 @@ export class AgentRuntime implements IAgentRuntime {
         continue;
       }
       try {
-        await Promise.all(eventHandlers.map((handler) => handler(params)));
+        let paramsWithRuntime = { runtime: this };
+        if (typeof params === 'object' && params) {
+          paramsWithRuntime = { ...params, ...paramsWithRuntime };
+        }
+        await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
       } catch (error) {
-        this.logger.error(`Error during emitEvent for ${eventName} (handler execution):`, error);
+        this.logger.error(`Error during emitEvent for ${eventName} (handler execution): ${error}`);
         // throw error; // Re-throw if necessary
       }
     }
@@ -1922,8 +1965,7 @@ export class AgentRuntime implements IAgentRuntime {
       );
     } catch (error) {
       this.logger.debug(
-        `[AgentRuntime][${this.character.name}] Error in ensureEmbeddingDimension:`,
-        error
+        `[AgentRuntime][${this.character.name}] Error in ensureEmbeddingDimension: ${error}`
       );
       throw error;
     }
@@ -2131,7 +2173,7 @@ export class AgentRuntime implements IAgentRuntime {
         allMemories.push(...memories);
       } catch (error) {
         // Continue with other tables if one fails
-        this.logger.debug(`Failed to get memories from table ${tableName}:`, error);
+        this.logger.debug(`Failed to get memories from table ${tableName}: ${error}`);
       }
     }
 
@@ -2215,7 +2257,9 @@ export class AgentRuntime implements IAgentRuntime {
     this.logger.info(`Clearing all memories for agent ${this.character.name} (${this.agentId})`);
 
     const allMemories = await this.getAllMemories();
-    const memoryIds = allMemories.map((memory) => memory.id);
+    const memoryIds = allMemories
+      .map((memory) => memory.id)
+      .filter((id): id is UUID => id !== undefined);
 
     if (memoryIds.length === 0) {
       this.logger.info('No memories found to delete');
@@ -2282,7 +2326,7 @@ export class AgentRuntime implements IAgentRuntime {
         worldId,
       },
     ]);
-    if (!res.length) return null;
+    if (!res.length) throw new Error('Failed to create room');
     return res[0];
   }
 

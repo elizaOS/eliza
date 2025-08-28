@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 
 /**
@@ -62,7 +61,14 @@ function getLocalCliPath(): string | null {
  * Similar to server-manager.ts environment setup
  */
 function setupLocalEnvironment(): Record<string, string> {
-  const env = { ...process.env };
+  const env: Record<string, string> = {};
+
+  // Filter out undefined values from process.env
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
 
   // Add local node_modules to NODE_PATH for proper module resolution
   const localModulesPath = path.join(process.cwd(), 'node_modules');
@@ -125,7 +131,10 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 
     // Handle process errors
     childProcess.on('error', (error) => {
-      logger.error({ message: error.message }, `Failed to start local CLI:`);
+      logger.error(
+        `Failed to start local CLI:`,
+        error instanceof Error ? error.message : String(error)
+      );
       reject(error);
     });
 
@@ -239,7 +248,10 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
     await delegateToLocalCli(localCliPath);
     return true;
   } catch (error) {
-    logger.error('Error during local CLI delegation:', error);
+    logger.error(
+      'Error during local CLI delegation:',
+      error instanceof Error ? error.message : String(error)
+    );
     logger.info('Falling back to global CLI installation');
     return false;
   }

@@ -11,12 +11,7 @@ const mockEnv = {
   LOG_DIAGNOSTIC: '',
 };
 
-// Mock pino-pretty
-mock.module('pino-pretty', () => ({
-  default: mock(() => ({
-    write: mock(),
-  })),
-}));
+// No external logger transport to mock; Adze is used internally
 
 describe('Logger', () => {
   let originalEnv: NodeJS.ProcessEnv;

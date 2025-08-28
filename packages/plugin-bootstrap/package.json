@@ -22,8 +22,7 @@
     "dist",
     "scripts",
     "package.json",
-    "LICENSE",
-    "tsup.config.ts"
+    "LICENSE"
   ],
   "dependencies": {
     "@elizaos/core": "1.4.5",
@@ -34,12 +33,12 @@
     "@types/bun": "^1.2.16",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
+    "typescript": "5.8.2",
     "zod": "^3.22.4"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",

@@ -202,6 +202,25 @@ export const recentMessagesProvider: Provider = {
         };
       }
 
+      let recentMessage = 'No recent message available.';
+
+      if (dialogueMessages.length > 0) {
+        // Get the most recent dialogue message (create a copy to avoid mutating original array)
+        const mostRecentMessage = [...dialogueMessages].sort(
+          (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+        )[0];
+
+        // Format just this single message to get the internal thought
+        const formattedSingleMessage = formatMessages({
+          messages: [mostRecentMessage],
+          entities: entitiesData,
+        });
+
+        if (formattedSingleMessage) {
+          recentMessage = formattedSingleMessage;
+        }
+      }
+
       const metaData = message.metadata as CustomMetadata;
       const senderName =
         entitiesData.find((entity: Entity) => entity.id === message.entityId)?.names[0] ||
@@ -333,6 +352,7 @@ export const recentMessagesProvider: Provider = {
         recentPostInteractions,
         recentInteractions: isPostFormat ? recentPostInteractions : recentMessageInteractions,
         recentActionResults: actionResultsText,
+        recentMessage,
       };
 
       // Combine all text sections

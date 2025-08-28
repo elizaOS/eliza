@@ -1,11 +1,12 @@
 import type { UUID, ChannelType } from '@elizaos/core';
+import type { ServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 
 export interface MessageServer {
   id: UUID; // global serverId
   name: string;
   sourceType: string; // e.g., 'eliza_native', 'discord_guild'
   sourceId?: string; // original platform ID if applicable
-  metadata?: Record<string, any>;
+  metadata?: ServerMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,7 +19,7 @@ export interface MessageChannel {
   sourceType?: string;
   sourceId?: string;
   topic?: string;
-  metadata?: Record<string, any>;
+  metadata?: ChannelMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,13 +29,13 @@ export interface CentralRootMessage {
   channelId: UUID; // FK to MessageChannel.id
   authorId: UUID; // Identifier for the author (could be an agent's runtime.agentId or a dedicated central user ID)
   content: string;
-  rawMessage?: any;
+  rawMessage?: unknown;
   inReplyToRootMessageId?: UUID; // FK to CentralRootMessage.id (self-reference)
   sourceType?: string;
   sourceId?: string; // Original message ID from the source platform
   createdAt: Date;
   updatedAt: Date;
-  metadata?: Record<string, any>;
+  metadata?: MessageMetadata;
 }
 
 // This is what goes on the internal bus and often what APIs might return for a "full" message
@@ -45,12 +46,12 @@ export interface MessageServiceStructure {
   author_id: UUID;
   author_display_name?: string;
   content: string;
-  raw_message?: any;
+  raw_message?: unknown;
   source_id?: string;
   source_type?: string;
   in_reply_to_message_id?: UUID;
   created_at: number; // timestamp ms
-  metadata?: any;
+  metadata?: MessageMetadata;
 }
 
 // Re-export session types

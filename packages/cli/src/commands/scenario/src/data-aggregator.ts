@@ -6,7 +6,7 @@
  * validated ScenarioRunResult object for serialization.
  */
 
-import { type IAgentRuntime } from '@elizaos/core';
+import { type IAgentRuntime, type UUID } from '@elizaos/core';
 import { TrajectoryReconstructor, type TrajectoryStep } from './TrajectoryReconstructor';
 import { EvaluationEngine } from './EvaluationEngine';
 import {
@@ -104,7 +104,7 @@ export class RunDataAggregator {
   public async buildResult(
     roomId: string,
     evaluations: EnhancedEvaluationResult[],
-    executionResult: ExecutionResult
+    _executionResult: ExecutionResult
   ): Promise<ScenarioRunResult> {
     if (!this.runId || !this.combinationId || !this.parameters || !this.startTime) {
       throw new Error('Run not started. Call startRun() first.');
@@ -116,7 +116,7 @@ export class RunDataAggregator {
     let trajectory: TrajectoryStep[] = [];
     if (!this.error) {
       try {
-        trajectory = await this.trajectoryReconstructor.getLatestTrajectory(roomId);
+        trajectory = await this.trajectoryReconstructor.getLatestTrajectory(roomId as UUID);
         this.runtime.logger.debug(
           `[RunDataAggregator] Collected ${trajectory.length} trajectory steps`
         );
@@ -131,20 +131,11 @@ export class RunDataAggregator {
     // Collect evaluation results (only if no error occurred)
     let evaluationResults: EnhancedEvaluationResult[] = [];
     if (!this.error && evaluations.length > 0) {
-      try {
-        evaluationResults = await this.evaluationEngine.runEnhancedEvaluations(
-          evaluations,
-          executionResult
-        );
-        this.runtime.logger.debug(
-          `[RunDataAggregator] Collected ${evaluationResults.length} evaluation results`
-        );
-      } catch (evaluationError) {
-        this.runtime.logger.warn(
-          `[RunDataAggregator] Failed to collect evaluations: ${evaluationError}`
-        );
-        // Don't fail the entire result building process due to evaluation issues
-      }
+      // Evaluations are already in the enhanced format, just use them directly
+      evaluationResults = evaluations;
+      this.runtime.logger.debug(
+        `[RunDataAggregator] Collected ${evaluationResults.length} evaluation results`
+      );
     }
 
     // Ensure required metrics are present

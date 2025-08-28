@@ -1,18 +1,48 @@
-import { IAgentRuntime } from '@elizaos/core';
-import {
-  IVideoService,
-  VideoInfo,
-  VideoFormat,
-  VideoDownloadOptions,
-  VideoProcessingOptions,
-} from '@elizaos/core';
+import { IAgentRuntime, Service, ServiceType, logger } from '@elizaos/core';
+
+// Define video-specific types locally since they're not in core
+export interface VideoInfo {
+  title: string;
+  duration: number;
+  resolution: {
+    width: number;
+    height: number;
+  };
+  format: string;
+  size: number;
+  fps: number;
+  codec: string;
+}
+
+export interface VideoFormat {
+  format: string;
+  resolution: string;
+  size: number;
+  url?: string;
+}
+
+export interface VideoDownloadOptions {
+  format?: string;
+  quality?: 'highest' | 'lowest' | 'medium';
+  audioOnly?: boolean;
+}
+
+export interface VideoProcessingOptions {
+  startTime?: number;
+  endTime?: number;
+  outputFormat?: string;
+  resolution?: string;
+  fps?: number;
+}
 
 /**
  * Dummy video service for testing purposes
- * Provides mock implementations of video processing operations
+ * Provides mock implementations of video operations
  */
-export class DummyVideoService extends IVideoService {
-  static override readonly serviceType = IVideoService.serviceType;
+export class DummyVideoService extends Service {
+  static readonly serviceType = ServiceType.VIDEO;
+
+  capabilityDescription = 'Dummy video service for testing';
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -25,159 +55,92 @@ export class DummyVideoService extends IVideoService {
   }
 
   async initialize(): Promise<void> {
-    this.runtime.logger.info('DummyVideoService initialized');
+    logger.info('DummyVideoService initialized');
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger.info('DummyVideoService stopped');
+    logger.info('DummyVideoService stopped');
   }
 
   async getVideoInfo(url: string): Promise<VideoInfo> {
-    this.runtime.logger.debug(`Getting video info for ${url}`);
+    logger.debug(`Getting video info for: ${url}`);
 
     return {
-      title: 'Mock Video Title',
-      duration: 300, // 5 minutes in seconds
-      url,
-      thumbnail: 'https://example.com/thumbnail.jpg',
-      description: 'This is a mock video description for testing purposes.',
-      uploader: 'DummyUploader',
-      viewCount: 12345,
-      uploadDate: new Date('2024-01-01'),
-      formats: [
-        {
-          formatId: 'mp4-720p',
-          url: 'https://example.com/video-720p.mp4',
-          extension: 'mp4',
-          quality: '720p',
-          fileSize: 50000000, // 50MB
-          videoCodec: 'h264',
-          audioCodec: 'aac',
-          resolution: '1280x720',
-          fps: 30,
-          bitrate: 1000000,
-        },
-        {
-          formatId: 'mp4-1080p',
-          url: 'https://example.com/video-1080p.mp4',
-          extension: 'mp4',
-          quality: '1080p',
-          fileSize: 100000000, // 100MB
-          videoCodec: 'h264',
-          audioCodec: 'aac',
-          resolution: '1920x1080',
-          fps: 30,
-          bitrate: 2000000,
-        },
-      ],
+      title: 'Dummy Video Title',
+      duration: 300, // 5 minutes
+      resolution: {
+        width: 1920,
+        height: 1080,
+      },
+      format: 'mp4',
+      size: 50000000, // 50MB
+      fps: 30,
+      codec: 'h264',
     };
   }
 
-  async downloadVideo(url: string, options?: VideoDownloadOptions): Promise<string> {
-    this.runtime.logger.debug(`Downloading video from ${url}`);
+  async downloadVideo(url: string, options?: VideoDownloadOptions): Promise<Buffer> {
+    logger.debug(`Downloading video from: ${url}`, JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Download options:', options);
-    }
+    // Return dummy video buffer
+    const dummyVideo = Buffer.from(`dummy-video-${options?.format || 'mp4'}`);
 
-    // Mock download - return a fake file path
-    const filename = `mock-video-${Date.now()}.mp4`;
-    const outputPath = options?.outputPath || `/tmp/${filename}`;
+    logger.debug(`Downloaded video: ${dummyVideo.length} bytes`);
 
-    // Simulate some download processing
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    return outputPath;
+    return dummyVideo;
   }
 
-  async extractAudio(videoPath: string, outputPath?: string): Promise<string> {
-    this.runtime.logger.debug(`Extracting audio from ${videoPath}`);
+  async extractAudio(videoBuffer: Buffer): Promise<Buffer> {
+    logger.debug(`Extracting audio from video (${videoBuffer.length} bytes)`);
 
-    const audioPath = outputPath || videoPath.replace(/\.[^/.]+$/, '') + '.mp3';
-
-    // Simulate audio extraction
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    return audioPath;
+    // Return dummy audio buffer
+    return Buffer.from('dummy-audio-from-video');
   }
 
-  async getThumbnail(videoPath: string, timestamp?: number): Promise<string> {
-    this.runtime.logger.debug(`Generating thumbnail for ${videoPath} at ${timestamp || 0}s`);
+  async extractFrames(videoBuffer: Buffer, timestamps: number[]): Promise<Buffer[]> {
+    logger.debug(`Extracting ${timestamps.length} frames from video`);
 
-    const thumbnailPath = videoPath.replace(/\.[^/.]+$/, '') + `_${timestamp || 0}s.jpg`;
-
-    // Simulate thumbnail generation
-    await new Promise((resolve) => setTimeout(resolve, 30));
-
-    return thumbnailPath;
+    // Return dummy frame buffers
+    return timestamps.map((ts, index) => Buffer.from(`dummy-frame-${index}-at-${ts}s`));
   }
 
-  async convertVideo(
-    videoPath: string,
-    outputPath: string,
-    options?: VideoProcessingOptions
-  ): Promise<string> {
-    this.runtime.logger.debug(`Converting video from ${videoPath} to ${outputPath}`);
+  async processVideo(videoBuffer: Buffer, options: VideoProcessingOptions): Promise<Buffer> {
+    logger.debug('Processing video', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Conversion options:', options);
-    }
+    // Return dummy processed video buffer
+    const processedVideo = Buffer.from(`dummy-processed-video-${options.outputFormat || 'mp4'}`);
 
-    // Simulate video conversion
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    logger.debug(`Processed video: ${processedVideo.length} bytes`);
 
-    return outputPath;
+    return processedVideo;
   }
 
   async getAvailableFormats(url: string): Promise<VideoFormat[]> {
-    this.runtime.logger.debug(`Getting available formats for ${url}`);
+    logger.debug(`Getting available formats for: ${url}`);
 
     return [
       {
-        formatId: 'mp4-360p',
-        url: 'https://example.com/video-360p.mp4',
-        extension: 'mp4',
-        quality: '360p',
-        fileSize: 15000000, // 15MB
-        videoCodec: 'h264',
-        audioCodec: 'aac',
-        resolution: '640x360',
-        fps: 30,
-        bitrate: 500000,
-      },
-      {
-        formatId: 'mp4-720p',
-        url: 'https://example.com/video-720p.mp4',
-        extension: 'mp4',
-        quality: '720p',
-        fileSize: 50000000, // 50MB
-        videoCodec: 'h264',
-        audioCodec: 'aac',
-        resolution: '1280x720',
-        fps: 30,
-        bitrate: 1000000,
-      },
-      {
-        formatId: 'mp4-1080p',
-        url: 'https://example.com/video-1080p.mp4',
-        extension: 'mp4',
-        quality: '1080p',
-        fileSize: 100000000, // 100MB
-        videoCodec: 'h264',
-        audioCodec: 'aac',
+        format: 'mp4',
         resolution: '1920x1080',
-        fps: 30,
-        bitrate: 2000000,
+        size: 50000000,
+        url: `${url}?format=1080p`,
       },
       {
-        formatId: 'audio-only',
-        url: 'https://example.com/audio.mp3',
-        extension: 'mp3',
-        quality: 'audio',
-        fileSize: 5000000, // 5MB
-        audioCodec: 'mp3',
-        bitrate: 128000,
+        format: 'mp4',
+        resolution: '1280x720',
+        size: 25000000,
+        url: `${url}?format=720p`,
+      },
+      {
+        format: 'mp4',
+        resolution: '640x480',
+        size: 10000000,
+        url: `${url}?format=480p`,
       },
     ];
+  }
+
+  getDexName(): string {
+    return 'dummy-video';
   }
 }
