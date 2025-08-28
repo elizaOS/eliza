@@ -106,9 +106,6 @@ async function buildBrowser() {
               path: 'buffer',
               external: true,
             }));
-
-            // Stub out Node-only modules
-            // Removed fs and path browser shims; not required by core browser build
           },
         },
       ],
@@ -166,12 +163,12 @@ export * from './node/index.node.js';
 
   await fs.writeFile('dist/index.js', mainIndex);
 
-  // Create a simple index.d.ts that re-exports from the source
-  // This approach avoids the complexity of generating declarations from compiled output
+  // Create a simple index.d.ts that re-exports from the built node types by default
+  // This aligns the root types with the default runtime entry (node/bun)
   const typeIndex = `// Type definitions for @elizaos/core
-// Re-export all types from the source modules
+// Re-export all types from the built Node entry by default
 
-export * from '../src/index';
+export * from './node/index';
 `;
 
   await fs.writeFile('dist/index.d.ts', typeIndex);
