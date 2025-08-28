@@ -29,8 +29,6 @@ const nodeExternals = [
   '@solana/web3.js',
   'zod',
   '@hapi/shot',
-  'pino',
-  'pino-pretty',
   'crypto-browserify',
   '@sentry/browser',
 ];
