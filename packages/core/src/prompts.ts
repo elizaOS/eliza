@@ -169,7 +169,9 @@ In each step, decide:
 
 1. **Which providers (if any)** should be called to gather necessary data.
 2. **Which action (if any)** should be executed after providers return.
-3. Whether the task is now complete — if so, mark it as finished.
+3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
+
+⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action like. Wait for the action to complete before deciding the task is finished.
 
 You can select **multiple providers** and at most **one action** per step.
 

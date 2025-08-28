@@ -2,7 +2,11 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "src",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -12,7 +16,6 @@
     "forceConsistentCasingInFileNames": true,
     "strictFunctionTypes": false,
     "useUnknownInCatchVariables": false,
-    "allowImportingTsExtensions": true,
     "declaration": true,
     "resolveJsonModule": true,
     "allowJs": true,
@@ -23,10 +26,23 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["../../core/src"],
-      "@elizaos/core/*": ["../../core/src/*"]
+      "@elizaos/core": [
+        "../../core/src"
+      ],
+      "@elizaos/core/*": [
+        "../../core/src/*"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["dist", "node_modules", "src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/__tests__/**/*",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

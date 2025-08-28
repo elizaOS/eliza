@@ -14,12 +14,12 @@ describe('DummyWalletService', () => {
   describe('initialization', () => {
     it('should initialize with default USDC balance', async () => {
       const balance = await service.getBalance('USDC');
-      expect(balance).toBe(10000);
+      expect(balance).toBe(BigInt(10000 * 1e6));
     });
 
     it('should have empty balances for other assets', async () => {
       const solBalance = await service.getBalance('SOL');
-      expect(solBalance).toBe(0);
+      expect(solBalance).toBe(BigInt(0));
     });
   });
 
@@ -27,20 +27,20 @@ describe('DummyWalletService', () => {
     it('should add funds to an existing balance', async () => {
       await service.addFunds('USDC', 500);
       const balance = await service.getBalance('USDC');
-      expect(balance).toBe(10500);
+      expect(balance).toBe(BigInt(10000 * 1e6 + 500));
     });
 
     it('should create a new balance for a new asset', async () => {
       await service.addFunds('SOL', 10);
       const balance = await service.getBalance('SOL');
-      expect(balance).toBe(10);
+      expect(balance).toBe(BigInt(10));
     });
 
     it('should handle multiple additions', async () => {
       await service.addFunds('SOL', 5);
       await service.addFunds('SOL', 3);
       const balance = await service.getBalance('SOL');
-      expect(balance).toBe(8);
+      expect(balance).toBe(BigInt(8));
     });
   });
 
@@ -48,14 +48,14 @@ describe('DummyWalletService', () => {
     it('should set portfolio holding for non-quote asset', async () => {
       await service.setPortfolioHolding('SOL', 5, 100);
       const balance = await service.getBalance('SOL');
-      expect(balance).toBe(5);
+      expect(balance).toBe(BigInt(5 * 1e6)); // 5 SOL scaled by 6 decimals
     });
 
     it('should convert to addFunds for quote asset', async () => {
       // Setting portfolio holding for USDC should add the value
       await service.setPortfolioHolding('USDC', 100, 1);
       const balance = await service.getBalance('USDC');
-      expect(balance).toBe(10100); // 10000 initial + 100
+      expect(balance).toBe(BigInt(10000 * 1e6 + 100)); // 10000 initial + 100
     });
   });
 
@@ -67,8 +67,8 @@ describe('DummyWalletService', () => {
       const usdcBalance = await service.getBalance('USDC');
       const solBalance = await service.getBalance('SOL');
 
-      expect(usdcBalance).toBe(5000);
-      expect(solBalance).toBe(0);
+      expect(usdcBalance).toBe(BigInt(5000 * 1e6));
+      expect(solBalance).toBe(BigInt(0));
     });
 
     it('should support different quote assets', async () => {
@@ -77,8 +77,8 @@ describe('DummyWalletService', () => {
       const usdtBalance = await service.getBalance('USDT');
       const usdcBalance = await service.getBalance('USDC');
 
-      expect(usdtBalance).toBe(2000);
-      expect(usdcBalance).toBe(0);
+      expect(usdtBalance).toBe(BigInt(2000 * 1e6));
+      expect(usdcBalance).toBe(BigInt(0));
     });
   });
 
@@ -120,17 +120,17 @@ describe('DummyWalletService', () => {
 
   describe('transferSol', () => {
     it('should transfer SOL when sufficient balance exists', async () => {
-      await service.addFunds('SOL', 5);
+      await service.addFunds('SOL', 2e9); // Add 2 SOL in lamports
 
-      const txHash = await service.transferSol('from-address', 'to-address', 2e9); // 2 SOL in lamports
+      const txHash = await service.transferSol('from-address', 'to-address', 1e9); // Transfer 1 SOL in lamports
 
       expect(txHash).toMatch(/^dummy-tx-/);
       const balance = await service.getBalance('SOL');
-      expect(balance).toBe(3); // 5 - 2 = 3
+      expect(balance).toBe(BigInt(1e9)); // 2e9 - 1e9 = 1e9
     });
 
     it('should throw error when insufficient balance', async () => {
-      await service.addFunds('SOL', 1);
+      await service.addFunds('SOL', 1e9); // Add 1 SOL in lamports
 
       await expect(service.transferSol('from-address', 'to-address', 2e9)).rejects.toThrow(
         'Insufficient SOL balance'
@@ -150,7 +150,7 @@ describe('DummyWalletService', () => {
       expect(instance).toBeInstanceOf(DummyWalletService);
 
       const balance = await instance.getBalance('USDC');
-      expect(balance).toBe(10000);
+      expect(balance).toBe(BigInt(10000 * 1e6));
     });
   });
 
