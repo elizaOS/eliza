@@ -61,6 +61,7 @@
   },
   "dependencies": {
     "@sentry/browser": "^9.22.0",
+    "@sentry/node": "^10.7.0",
     "adze": "^2.2.5",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",

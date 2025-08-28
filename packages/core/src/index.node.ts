@@ -31,8 +31,8 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-// Export Sentry instrumentation
-export * from './sentry/instrument';
+// Export Sentry instrumentation (node version)
+export * from './sentry/instrument.node';
 
 // Node-specific exports
 export const isBrowser = false;

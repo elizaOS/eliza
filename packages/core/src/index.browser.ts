@@ -32,7 +32,7 @@ export * from './services';
 export * from './search';
 
 // Export Sentry instrumentation (browser version)
-export * from './sentry/instrument';
+export * from './sentry/instrument.browser';
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;

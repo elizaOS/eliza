@@ -47,6 +47,13 @@ export default defineConfig({
       process: 'process/browser',
       util: 'util',
       events: 'events',
+      // Prevent node Sentry code from entering the browser bundle
+      '@sentry/node': path.resolve(__dirname, './src/mocks/empty-module.ts'),
+      '@sentry/node-core': path.resolve(__dirname, './src/mocks/empty-module.ts'),
+      'node:util': path.resolve(__dirname, './src/mocks/empty-module.ts'),
+      'diagnostics_channel': path.resolve(__dirname, './src/mocks/empty-module.ts'),
+      'node:diagnostics_channel': path.resolve(__dirname, './src/mocks/empty-module.ts'),
+      'worker_threads': path.resolve(__dirname, './src/mocks/empty-module.ts'),
       // Fallback mock for rare usages
       'node:module': path.resolve(__dirname, './src/mocks/node-module.ts'),
       module: path.resolve(__dirname, './src/mocks/node-module.ts'),

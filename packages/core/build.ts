@@ -19,6 +19,7 @@ const browserExternals = [
   '@solana/web3.js',
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
+  '@sentry/node', // Ensure node SDK is never bundled into the browser build
 ];
 
 // Node-specific externals (native modules and node-specific packages)
