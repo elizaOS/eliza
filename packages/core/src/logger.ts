@@ -168,7 +168,7 @@ const adzeStore = setup({
   activeLevel: mapToAdzeActiveLevel(effectiveLogLevel) as any,
   format: raw ? 'json' : 'pretty',
   timestampFormatter: showTimestamps ? undefined : (() => ''),
-  withEmoji: !raw,
+  withEmoji: false,
 });
 
 // Mirror Adze output to in-memory storage
