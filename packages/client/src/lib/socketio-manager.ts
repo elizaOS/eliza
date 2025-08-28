@@ -79,6 +79,7 @@ class EventAdapter {
     // Initialize common events
     this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
     this.events.messageComplete = Evt.create<MessageCompleteData>();
+    this.events.messageUpdated = Evt.create<{ messageId: string; channelId: string }>();
     this.events.controlMessage = Evt.create<ControlMessageData>();
     this.events.messageDeleted = Evt.create<MessageDeletedData>();
     this.events.channelCleared = Evt.create<ChannelClearedData>();
@@ -157,6 +158,10 @@ export class SocketIOManager extends EventAdapter {
 
   public get evtMessageComplete() {
     return this._getEvt('messageComplete') as Evt<MessageCompleteData>;
+  }
+
+  public get evtMessageUpdated() {
+    return this._getEvt('messageUpdated') as Evt<{ messageId: string; channelId: string }>;
   }
 
   public get evtControlMessage() {
@@ -314,6 +319,28 @@ export class SocketIOManager extends EventAdapter {
 
     this.socket.on('messageComplete', (data) => {
       this.emit('messageComplete', data);
+    });
+
+    // Listen for message update events (for single updating messages)
+    this.socket.on('messageUpdated', (data) => {
+      clientLogger.info(`[SocketIO] Message update received:`, data);
+      
+      // Check if this is for one of our active channels
+      const channelId = data.channelId;
+      if (channelId && this.activeChannelIds.has(channelId)) {
+        clientLogger.info(`[SocketIO] Handling message update for active channel ${channelId}`);
+        
+        // Emit the message update event
+        this.emit('messageUpdated', {
+          messageId: data.messageId,
+          channelId: data.channelId
+        });
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received message update for inactive channel ${channelId}, active channels:`,
+          Array.from(this.activeChannelIds)
+        );
+      }
     });
 
     // Listen for control messages

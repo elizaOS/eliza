@@ -878,6 +878,18 @@ export class AgentServer {
       // Initialize Socket.io, passing the AgentServer instance
       this.socketIO = setupSocketIO(this.server, this.agents, this);
 
+      // Listen for action message updates to emit WebSocket events
+      internalMessageBus.on('action_message_updated', (data: any) => {
+        if (this.socketIO && data.channelId && data.messageId) {
+          // Emit a custom event to trigger frontend query invalidation
+          this.socketIO.to(data.channelId).emit('messageUpdated', {
+            messageId: data.messageId,
+            channelId: data.channelId
+          });
+          logger.info(`Emitted messageUpdated WebSocket event for message ${data.messageId} in channel ${data.channelId}`);
+        }
+      });
+
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
       logger.error({ error }, 'Failed to complete server initialization:');

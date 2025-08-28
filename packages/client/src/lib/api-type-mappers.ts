@@ -132,6 +132,16 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     contentType: att.contentType || att.type,
   })) || undefined;
 
+  // Extract action fields from rawMessage (now consistent for both executing and completed actions)
+  const rawMessage = apiMessage.rawMessage as any;
+  
+  const actionStatus = rawMessage?.actionStatus;
+  const actionId = rawMessage?.actionId;
+  const actionResult = rawMessage?.actionResult;
+  const runId = rawMessage?.runId;
+  const error = rawMessage?.error;
+  const resultText = rawMessage?.resultText;
+
   return {
     id: apiMessage.id as UUID,
     text: apiMessage.content,
@@ -144,7 +154,16 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     prompt: apiMessage.metadata?.prompt,
     attachments,
     thought: apiMessage.metadata?.thought,
-    actions: apiMessage.metadata?.actions,
+    actions: apiMessage.metadata?.actions || rawMessage?.actions,
+    // Extract action-related fields from both rawMessage and metadata
+    ...(actionStatus && {
+      actionStatus,
+      actionId,
+      actionResult,
+      runId,
+      error,
+      resultText,
+    }),
   };
 }
 

@@ -2,6 +2,7 @@ import CopyButton from '@/components/copy-button';
 import DeleteButton from '@/components/delete-button';
 import RetryButton from '@/components/retry-button';
 import MediaContent from '@/components/media-content';
+import { ActionTool } from './ActionTool';
 import ProfileOverlay from '@/components/profile-overlay';
 import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -146,6 +147,9 @@ export function MessageContent({
   agentAvatarMap?: Record<UUID, string | null>;
   chatType?: ChannelType;
 }) {
+  // Check if this is an action lifecycle message (has actionStatus)
+  const isActionLifecycle = !!(message as any).actionStatus;
+
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -153,51 +157,67 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        <div>
-          {(() => {
-            if (!message.text) return null;
+        {isActionLifecycle ? (
+          // Render ActionTool for action lifecycle messages
+          <ActionTool
+            actionData={{
+              actionName: (message as any).actions?.[0] || 'unknown',
+              actionStatus: (message as any).actionStatus || 'pending',
+              actionId: (message as any).actionId || `${message.id}-action`,
+              actionResult: (message as any).actionResult,
+              runId: (message as any).runId || `run-${message.id}`,
+              error: (message as any).error,
+              input: (message as any).input || {},
+              metadata: (message as any).metadata,
+            }}
+          />
+        ) : (
+          <div>
+            {(() => {
+              if (!message.text) return null;
 
-            const mediaInfos = parseMediaFromText(message.text);
-            const attachmentUrls = new Set(
-              message.attachments?.map((att) => att.url).filter(Boolean) || []
-            );
-            const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
-            const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
+              const mediaInfos = parseMediaFromText(message.text);
+              const attachmentUrls = new Set(
+                message.attachments?.map((att) => att.url).filter(Boolean) || []
+              );
+              const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
+              const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
 
-            return (
-              <div className="space-y-3">
-                {textWithoutUrls.trim() && (
-                  <div>
-                    {isUser ? (
-                      <Markdown className="prose-sm max-w-none" variant="user">
-                        {textWithoutUrls}
-                      </Markdown>
-                    ) : (
-                      <AnimatedMarkdown
-                        className="prose-sm max-w-none"
-                        variant="agent"
-                        shouldAnimate={shouldAnimate}
-                        messageId={message.id}
-                      >
-                        {textWithoutUrls}
-                      </AnimatedMarkdown>
-                    )}
-                  </div>
-                )}
+              return (
+                <div className="space-y-3">
+                  {textWithoutUrls.trim() && (
+                    <div>
+                      {isUser ? (
+                        <Markdown className="prose-sm max-w-none" variant="user">
+                          {textWithoutUrls}
+                        </Markdown>
+                      ) : (
+                        <AnimatedMarkdown
+                          className="prose-sm max-w-none"
+                          variant="agent"
+                          shouldAnimate={shouldAnimate}
+                          messageId={message.id}
+                        >
+                          {textWithoutUrls}
+                        </AnimatedMarkdown>
+                      )}
+                    </div>
+                  )}
 
-                {uniqueMediaInfos.length > 0 && (
-                  <div className="space-y-2">
-                    {uniqueMediaInfos.map((media, index) => (
-                      <div key={`${media.url}-${index}`}>
-                        <MediaContent url={media.url} title="Shared media" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+                  {uniqueMediaInfos.length > 0 && (
+                    <div className="space-y-2">
+                      {uniqueMediaInfos.map((media, index) => (
+                        <div key={`${media.url}-${index}`}>
+                          <MediaContent url={media.url} title="Shared media" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {message.attachments
           ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
@@ -358,6 +378,7 @@ export default function Chat({
     updateMessage,
     removeMessage,
     clearMessages,
+    refetchMessages,
   } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
 
   // Get agents in the current group
@@ -797,6 +818,13 @@ export default function Chat({
       clearMessages();
     },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
+    onMessageInvalidation: (data: { messageId: string; channelId: string }) => {
+      // Trigger message refetch to see updated content
+      if (data.channelId === finalChannelIdForHooks) {
+        refetchMessages();
+        console.log(`Refetched messages for channel ${data.channelId} due to message ${data.messageId} update`);
+      }
+    },
   });
 
   const {

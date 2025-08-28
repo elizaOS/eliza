@@ -60,6 +60,13 @@ export class MessageBusService extends Service {
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new MessageBusService(runtime);
     await service.connectToMessageBus();
+    
+    // Register runtime event handler for action message updates
+    runtime.registerEvent('actionMessageUpdated', async (data: any) => {
+      // Emit to internal message bus so server can handle WebSocket emission
+      internalMessageBus.emit('action_message_updated', data);
+    });
+    
     return service;
   }
 
@@ -510,8 +517,8 @@ export class MessageBusService extends Service {
           'messages'
         );
 
-        // Send response to central bus
-        await this.sendAgentResponseToBus(
+        // Send response to central bus and capture message ID
+        const messageId = await this.sendAgentResponseToBus(
           agentRoomId,
           agentWorldId,
           responseContent,
@@ -519,9 +526,9 @@ export class MessageBusService extends Service {
           message
         );
 
+        // Return the message ID so runtime can use it for updates
         // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
-        // So, we return an empty array here as this callback's primary job is to ferry the response externally.
-        return [];
+        return messageId ? [{ id: messageId } as Memory] : [];
       };
 
       await this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
@@ -632,7 +639,7 @@ export class MessageBusService extends Service {
     content: Content,
     inReplyToAgentMemoryId?: UUID,
     originalMessage?: MessageServiceMessage
-  ) {
+  ): Promise<string | null> {
     try {
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
@@ -644,7 +651,7 @@ export class MessageBusService extends Service {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Cannot map agent room/world to central IDs for response. AgentRoomID: ${agentRoomId}, AgentWorldID: ${agentWorldId}. Room or World object missing, or channelId/serverId not found on them.`
         );
-        return;
+        return null;
       }
 
       // If agent decides to IGNORE or has no valid text, notify completion and skip sending response
@@ -655,7 +662,7 @@ export class MessageBusService extends Service {
         logger.info(
           `[${this.runtime.character.name}] MessageBusService: Skipping response (reason: ${content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text'})`
         );
-        return;
+        return null;
       }
 
       // Resolve reply-to message ID from agent memory metadata
@@ -710,12 +717,18 @@ export class MessageBusService extends Service {
         logger.error(
           `[${this.runtime.character.name}] MessageBusService: Error sending response to central server: ${response.status} ${await response.text()}`
         );
+        return null;
+      } else {
+        // Parse response to get the created message ID
+        const result = await response.json();
+        return result.data?.id || null;
       }
     } catch (error) {
       logger.error(
         `[${this.runtime.character.name}] MessageBusService: Error sending agent response to bus:`,
         error instanceof Error ? error.message : String(error)
       );
+      return null;
     }
   }
 

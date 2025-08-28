@@ -25,6 +25,7 @@ interface UseSocketChatProps {
   onDeleteMessage: (messageId: string) => void;
   onClearMessages: () => void;
   onInputDisabledChange: (disabled: boolean) => void;
+  onMessageInvalidation?: (data: { messageId: string; channelId: string }) => void;
 }
 
 export function useSocketChat({
@@ -39,6 +40,7 @@ export function useSocketChat({
   onDeleteMessage,
   onClearMessages,
   onInputDisabledChange,
+  onMessageInvalidation,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
   const animatedMessageIdRef = useRef<string | null>(null);
@@ -233,6 +235,14 @@ export function useSocketChat({
       (d: ChannelDeletedData) => (d.channelId || d.roomId) === channelId,
       handleChannelDeleted
     );
+    const messageUpdateSub = socketIOManager.evtMessageUpdated.attach(
+      (d: { messageId: string; channelId: string }) => d.channelId === channelId,
+      (data) => {
+        if (onMessageInvalidation) {
+          onMessageInvalidation(data);
+        }
+      }
+    );
 
     return () => {
       if (channelId) {
@@ -248,7 +258,7 @@ export function useSocketChat({
           );
         }
       }
-      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub]);
+      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub, messageUpdateSub]);
     };
 
     function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {

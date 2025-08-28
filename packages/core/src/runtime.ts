@@ -609,7 +609,7 @@ export class AgentRuntime implements IAgentRuntime {
       currentStep: number;
       steps: Array<{
         action: string;
-        status: 'pending' | 'completed' | 'failed';
+        status: 'pending' | 'completed' | 'error';
         result?: ActionResult;
         error?: string;
       }>;
@@ -726,7 +726,7 @@ export class AgentRuntime implements IAgentRuntime {
           // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-              status: 'failed',
+              status: 'error',
               error: errorMsg,
             });
           }
@@ -755,7 +755,7 @@ export class AgentRuntime implements IAgentRuntime {
           // Update plan with error immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-              status: 'failed',
+              status: 'error',
               error: 'No handler',
             });
           }
@@ -774,14 +774,13 @@ export class AgentRuntime implements IAgentRuntime {
             prompts: [],
           };
 
-          // === STEP 1: Simple action start message in central_messages ===
+          // === Create action start message using adapter.createMessage ===
           try {
-            this.logger.debug(`Storing action start message for: ${action.name}`);
+            this.logger.debug(`Creating action start message for: ${action.name}`);
             
-            // Get the correct central channelId from the room
             const room = await this.getRoom(message.roomId);
             const centralChannelId = room?.channelId;
-            
+
             if (!centralChannelId) {
               this.logger.warn(`Cannot store action start message: no central channelId found for roomId ${message.roomId}`);
               // Continue with action execution even if we can't store the message
@@ -813,12 +812,17 @@ export class AgentRuntime implements IAgentRuntime {
               if (storedMessage && storedMessage.id) {
                 this.currentActionContext.messageId = storedMessage.id as UUID;
                 this.logger.info(`Action start message stored with ID: ${storedMessage.id}`);
+
+                // Emit event to trigger frontend query invalidation
+                await this.emitEvent('actionMessageUpdated', {
+                  messageId: storedMessage.id,
+                  channelId: centralChannelId
+                });
               }
             }
-            
           } catch (error) {
-            this.logger.error('Failed to store action start message:', String(error));
-            // Don't fail the action execution if message storage fails
+            this.logger.error('Failed to create action start message:', String(error));
+            // Don't fail the action execution if message creation fails
           }
 
           // Create action context with plan information
@@ -1002,6 +1006,13 @@ export class AgentRuntime implements IAgentRuntime {
                 this.currentActionContext.messageId,
                 actionUpdateMessage
               );
+
+              // Emit event to trigger frontend query invalidation
+              const room = await this.getRoom(message.roomId);
+              await this.emitEvent('actionMessageUpdated', {
+                messageId: this.currentActionContext.messageId,
+                channelId: room?.channelId
+              });
               
               this.logger.info(`Action message updated to ${statusText} status for ID: ${this.currentActionContext.messageId}`);
             }
@@ -1054,7 +1065,7 @@ export class AgentRuntime implements IAgentRuntime {
           // Update plan with error using immutable pattern
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-              status: 'failed',
+              status: 'error',
               error: errorMessage,
             });
           }
@@ -1139,6 +1150,13 @@ export class AgentRuntime implements IAgentRuntime {
                 actionContext.messageId,
                 actionFailureMessage
               );
+
+              // Emit event to trigger frontend query invalidation
+              const room = await this.getRoom(message.roomId);
+              await this.emitEvent('actionMessageUpdated', {
+                messageId: actionContext.messageId,
+                channelId: room?.channelId
+              });
               
               this.logger.info(`Action message updated to failed status for ID: ${actionContext.messageId}`);
             }

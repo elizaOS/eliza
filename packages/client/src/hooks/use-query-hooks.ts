@@ -325,6 +325,7 @@ export function useChannelMessages(
   updateMessage: (messageId: UUID, updates: Partial<UiMessage>) => void;
   removeMessage: (messageId: UUID) => void;
   clearMessages: () => void;
+  refetchMessages: () => Promise<void>; // Refetch messages from server
 } {
   const currentClientCentralId = getEntityId(); // Central ID of the currently logged-in user
 
@@ -524,6 +525,34 @@ export function useChannelMessages(
     setHasMoreMessages(true);
   }, []);
 
+  // Add method to refetch messages (for real-time updates)
+  const refetchMessages = useCallback(async () => {
+    if (!channelId) return;
+    
+    clientLogger.info(`[useChannelMessages] Refetching messages for channel ${channelId}`);
+    
+    try {
+      const response = await elizaClient.messaging.getChannelMessages(channelId, {
+        limit: 30,
+        before: undefined, // Get latest messages
+      });
+
+      const newUiMessages = response.messages.map((msg) =>
+        mapApiMessageToUi(msg, initialServerId || msg.metadata?.serverId)
+      );
+
+      setMessages(newUiMessages.sort((a, b) => a.createdAt - b.createdAt));
+      
+      if (newUiMessages.length > 0) {
+        const oldestFetched = Math.min(...newUiMessages.map((m) => m.createdAt));
+        setOldestMessageTimestamp(oldestFetched);
+      }
+      setHasMoreMessages(newUiMessages.length >= 30);
+    } catch (err) {
+      clientLogger.error(`Failed to refetch messages for channel ${channelId}:`, err);
+    }
+  }, [channelId, initialServerId]);
+
   // This hook now manages its own state for messages
   // To integrate with React Query for caching of initial load or background updates:
   // One could use useInfiniteQuery, but given the manual state management already here for append/prepend,
@@ -542,6 +571,7 @@ export function useChannelMessages(
     updateMessage,
     removeMessage,
     clearMessages,
+    refetchMessages,
   };
 }
 
