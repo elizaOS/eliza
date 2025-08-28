@@ -167,6 +167,47 @@ NODE_ENV=development elizaos start      # Development mode with extra logging
 - Use `elizaos test` frequently to catch issues early
 - Keep your `.env` file secure and never commit it to version control
 
+#### Sentry Monitoring & AI Telemetry
+
+ElizaOS includes built-in Sentry integration for error tracking and AI telemetry. This helps you monitor your agents in production and debug AI model interactions:
+
+```bash
+# Enable Sentry monitoring
+SENTRY_DSN=your_sentry_dsn_here
+
+# Configure trace filtering (optional)
+SENTRY_TRACE_FILTER=ai-only     # Default: AI traces + errors only
+SENTRY_TRACE_FILTER=false       # Capture all traces + errors
+
+# Additional Sentry configuration (optional)
+SENTRY_ENVIRONMENT=production    # Set environment (default: NODE_ENV)
+SENTRY_TRACES_SAMPLE_RATE=0.1    # Sample rate for traces (default: 1.0)
+SENTRY_LOGGING=false             # Disable Sentry entirely
+```
+
+**AI Telemetry Features:**
+- **AI Model Traces**: Automatically captures traces from plugin-openai and plugin-anthropic
+- **Input/Output Recording**: Records AI prompts and responses for debugging
+- **Performance Monitoring**: Tracks AI call duration and success rates
+- **Error Capture**: All exceptions and crashes automatically reported
+- **Smart Filtering**: Focuses on AI-related traces by default, filters out noise
+
+**Note:** AI telemetry is currently supported for the official plugin-openai and plugin-anthropic plugins, which have been configured with the `experimental_telemetry` flag for Vercel AI SDK compatibility.
+
+**Important:** To enable AI telemetry for specific providers, you must also set:
+
+```bash
+# For OpenAI telemetry
+OPENAI_EXPERIMENTAL_TELEMETRY=true
+
+# For Anthropic telemetry
+ANTHROPIC_EXPERIMENTAL_TELEMETRY=true
+
+# Or both together
+OPENAI_EXPERIMENTAL_TELEMETRY=true
+ANTHROPIC_EXPERIMENTAL_TELEMETRY=true
+```
+
 #### Available Commands Reference
 
 **All CLI Commands:**
