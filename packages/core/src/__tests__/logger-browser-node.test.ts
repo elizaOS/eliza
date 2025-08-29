@@ -1,8 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import { createLogger } from '../logger';
-
-// Import envDetector to clear cache between tests
-import { envDetector } from '../logger';
+import { getEnvironment } from '../utils/environment';
 
 /**
  * Test type definitions
@@ -46,7 +44,7 @@ describe('Logger - Cross-Environment Tests', () => {
     globalThis.document = originalDocument as unknown as typeof globalThis.document;
     mock.restore();
     // Clear environment cache for next test
-    envDetector.clearCache();
+    getEnvironment().clearCache();
   });
 
   describe('Environment Detection', () => {
@@ -105,7 +103,7 @@ describe('Logger - Cross-Environment Tests', () => {
   describe('BrowserLogger Class', () => {
     beforeEach(() => {
       // Clear environment cache to ensure proper detection
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Mock browser environment
       globalThis.window = {
@@ -124,7 +122,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = globalThis.window.console as Console;
 
       // Clear cache again after setting up environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
     });
 
     it('should create BrowserLogger instance with all required methods', async () => {
@@ -235,7 +233,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = mockConsole as unknown as Console;
 
       // Clear cache to detect browser environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Create logger with warn level, force browser type for testing
       const browserLogger = createLogger({ level: 'warn', __forceType: 'browser' });
@@ -284,7 +282,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = mockConsole as unknown as Console;
 
       // Clear cache to detect browser environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Force browser type for testing
       const parentLogger = createLogger({ parent: 'main', __forceType: 'browser' });
@@ -298,7 +296,7 @@ describe('Logger - Cross-Environment Tests', () => {
   describe('Node.js Logger (Adze backend in Node)', () => {
     beforeEach(() => {
       // Clear environment cache
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Restore Node.js environment
       globalThis.process =
@@ -313,7 +311,7 @@ describe('Logger - Cross-Environment Tests', () => {
       // No need to mock transports; logger uses Adze in both environments
 
       // Clear cache again after environment setup
-      envDetector.clearCache();
+      getEnvironment().clearCache();
     });
 
     it('should provide logger API in Node.js environment', () => {

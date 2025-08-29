@@ -58,7 +58,7 @@ describe('buffer utils', () => {
     expect(toHex(c)).toBe('aabbcc');
 
     const s = slice(c, 1, 3);
-    expect(toHex(s)).toBe('bb');
+    expect(toHex(s)).toBe('bbcc');
   });
 
   it('checks equality and buffer detection', () => {
