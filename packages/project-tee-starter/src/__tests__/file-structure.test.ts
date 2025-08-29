@@ -124,7 +124,7 @@ describe('Project Structure Validation', () => {
 
       // Check that build.ts exists and contains proper configuration
       const buildScript = fs.readFileSync(path.join(rootDir, 'build.ts'), 'utf8');
-      expect(buildScript).toContain('createBuildRunner');
+      expect(buildScript).toContain('Bun.build');
       expect(buildScript).toContain('entrypoints');
     });
   });

@@ -30,6 +30,7 @@ import type {
 
 import * as entities from '../entities';
 import * as logger_module from '../logger';
+import { getEnvironment } from '../utils/environment';
 
 // Remove global module mocks - they interfere with other tests
 
@@ -59,6 +60,8 @@ describe('settings utilities', () => {
 
     // Mock process.env
     process.env.SECRET_SALT = 'test-salt-value';
+    // Clear environment cache after setting env var
+    getEnvironment().clearCache();
 
     mockRuntime = {
       agentId: 'agent-123' as any,
@@ -77,6 +80,8 @@ describe('settings utilities', () => {
 
   afterEach(() => {
     mock.restore();
+    delete process.env.SECRET_SALT;
+    getEnvironment().clearCache(); // Clear cache after cleanup
   });
 
   describe('createSettingFromConfig', () => {
@@ -165,6 +170,7 @@ describe('settings utilities', () => {
 
     it('should use default salt when env variable is not set', () => {
       delete process.env.SECRET_SALT;
+      getEnvironment().clearCache(); // Clear cache after deleting env var
       const salt = getSalt();
       expect(salt).toBe('secretsalt');
     });

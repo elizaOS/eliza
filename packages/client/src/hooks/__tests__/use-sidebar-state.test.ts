@@ -1,6 +1,13 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { useSidebarState } from '../use-sidebar-state';
+
+// Mock clientLogger
+mock.module('../../lib/logger', () => ({
+  default: {
+    error: mock(),
+  },
+}));
 
 describe('useSidebarState', () => {
   beforeEach(() => {

@@ -77,7 +77,7 @@ describe('Environment Setup', () => {
     expect(fs.existsSync(buildScriptPath)).toBe(true);
 
     const buildScript = fs.readFileSync(buildScriptPath, 'utf8');
-    expect(buildScript).toContain('createBuildRunner');
+    expect(buildScript).toContain('Bun.build');
     expect(buildScript).toContain('entrypoints');
     expect(buildScript).toContain('src/index.ts');
   });
