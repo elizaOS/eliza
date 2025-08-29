@@ -3,15 +3,15 @@
 
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { ConversationManager } from '../ConversationManager';
-import type { 
-  ConversationConfig
+import type {
+    ConversationConfig
 } from '../conversation-types';
 
 describe('ConversationManager', () => {
-      let mockRuntime: any;
-  let mockServer: any;
-  let mockTrajectoryReconstructor: any;
-  let conversationManager: ConversationManager;
+    let mockRuntime: any;
+    let mockServer: any;
+    let mockTrajectoryReconstructor: any;
+    let conversationManager: ConversationManager;
     let basicConfig: ConversationConfig;
 
     beforeEach(() => {
@@ -35,19 +35,19 @@ describe('ConversationManager', () => {
         // Mock TrajectoryReconstructor
         mockTrajectoryReconstructor = {
             _mockTrajectories: new Map(),
-            getLatestTrajectory: async function(roomId: string) {
-                        return this._mockTrajectories.get(roomId) || [
-          {
-            type: 'thought' as const,
-            content: 'I should help the user with their request',
-            timestamp: new Date().toISOString()
-          },
-          {
-            type: 'action' as const,
-            content: 'SEARCH_KNOWLEDGE',
-            timestamp: new Date(Date.now() + 100).toISOString()
-          }
-        ];
+            getLatestTrajectory: async function (roomId: string) {
+                return this._mockTrajectories.get(roomId) || [
+                    {
+                        type: 'thought' as const,
+                        content: 'I should help the user with their request',
+                        timestamp: new Date().toISOString()
+                    },
+                    {
+                        type: 'action' as const,
+                        content: 'SEARCH_KNOWLEDGE',
+                        timestamp: new Date(Date.now() + 100).toISOString()
+                    }
+                ];
             },
             setMockTrajectory: function (roomId: string, trajectory: any[]) {
                 this._mockTrajectories.set(roomId, trajectory);
@@ -86,15 +86,7 @@ describe('ConversationManager', () => {
             }
         };
 
-            // Mock askAgentViaApi function globally
-    const originalModule = require('../runtime-factory');
-    originalModule.askAgentViaApi = async (server: any, _agentId: any, input: string, _timeout: number, _port: number) => {
-      const mockResponse = server._mockApiResponses?.get('latest') || { 
-        response: `Agent response to: ${input}`, 
-        roomId: 'mock-room-123' 
-      };
-      return mockResponse;
-    };
+        // We'll use the actual askAgentViaApi function for integration testing
     });
 
     describe('Initialization', () => {
@@ -492,9 +484,9 @@ describe('ConversationManager', () => {
 
                 // Should not reach here
                 expect(false).toBe(true);
-                  } catch (error: any) {
-        expect(error.message).toContain('Conversation execution failed');
-      } finally {
+            } catch (error: any) {
+                expect(error.message).toContain('Conversation execution failed');
+            } finally {
                 // Restore original
                 require('../runtime-factory').askAgentViaApi = originalAskAgent;
             }
@@ -520,9 +512,9 @@ describe('ConversationManager', () => {
 
                 // Should not reach here
                 expect(false).toBe(true);
-                  } catch (error: any) {
-        expect(error.message).toContain('Conversation execution failed');
-      }
+            } catch (error: any) {
+                expect(error.message).toContain('Conversation execution failed');
+            }
         });
 
         it('should handle trajectory reconstruction failures gracefully', async () => {
@@ -586,10 +578,10 @@ describe('ConversationManager', () => {
         });
 
         it('should include trajectory data in conversation results', async () => {
-                  const mockTrajectory = [
-        { type: 'thought' as const, content: 'User needs help', timestamp: new Date().toISOString() },
-        { type: 'action' as const, content: 'SEARCH', timestamp: new Date(Date.now() + 100).toISOString() }
-      ];
+            const mockTrajectory = [
+                { type: 'thought' as const, content: 'User needs help', timestamp: new Date().toISOString() },
+                { type: 'action' as const, content: 'SEARCH', timestamp: new Date(Date.now() + 100).toISOString() }
+            ];
 
             mockServer.setMockApiResponse('Response with trajectory');
             mockRuntime._setMockResponse('User response');
