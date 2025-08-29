@@ -77,7 +77,7 @@ async function getRecentInteractions(
   roomId: UUID,
   relationships: Relationship[]
 ): Promise<{ entity: Entity; interactions: Memory[]; count: number }[]> {
-  const results = [];
+  const results: Array<{ entity: Entity; interactions: Memory[]; count: number }> = [];
 
   // Get recent messages from the room - just for context
   const recentMessages = await runtime.getMemories({

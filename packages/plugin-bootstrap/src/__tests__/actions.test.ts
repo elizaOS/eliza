@@ -22,9 +22,9 @@ import {
 
 // Spy on commonly used methods for logging
 beforeEach(() => {
-  spyOn(logger, 'error').mockImplementation(() => { });
-  spyOn(logger, 'warn').mockImplementation(() => { });
-  spyOn(logger, 'debug').mockImplementation(() => { });
+  spyOn(logger, 'error').mockImplementation(() => {});
+  spyOn(logger, 'warn').mockImplementation(() => {});
+  spyOn(logger, 'debug').mockImplementation(() => {});
 });
 
 describe('Reply Action', () => {
@@ -757,7 +757,9 @@ describe('Generate Image Action', () => {
     mockRuntime.useModel = mock().mockImplementation((modelType, params) => {
       if (modelType === ModelType.TEXT_LARGE) {
         // Return XML with <prompt>
-        return Promise.resolve(`<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>`);
+        return Promise.resolve(
+          `<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>`
+        );
       }
       if (modelType === ModelType.IMAGE) {
         return Promise.resolve([{ url: 'https://example.com/image.png' }]);
@@ -794,7 +796,9 @@ describe('Generate Image Action', () => {
 
   it('should handle errors in generate image action gracefully', async () => {
     // Mock useModel to fail during image generation
-    mockRuntime.useModel = mock().mockRejectedValue(new Error('Image generation service unavailable'));
+    mockRuntime.useModel = mock().mockRejectedValue(
+      new Error('Image generation service unavailable')
+    );
 
     const result = await generateImageAction.handler(
       mockRuntime as IAgentRuntime,

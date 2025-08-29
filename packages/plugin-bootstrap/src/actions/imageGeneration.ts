@@ -76,10 +76,13 @@ export const generateImageAction = {
       });
 
       if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
-        logger.error('generateImageAction: Image generation failed - no valid response received', {
-          imageResponse,
-          imagePrompt,
-        });
+        logger.error(
+          {
+            imageResponse,
+            imagePrompt,
+          },
+          'generateImageAction: Image generation failed - no valid response received'
+        );
         return {
           text: 'Image generation failed',
           values: {
@@ -131,10 +134,13 @@ export const generateImageAction = {
       };
     } catch (error) {
       const err = error as Error;
-      logger.error('generateImageAction: Exception during image generation', {
-        message: err.message,
-        stack: err.stack,
-      });
+      logger.error(
+        {
+          message: err.message,
+          stack: err.stack,
+        },
+        'generateImageAction: Exception during image generation'
+      );
       return {
         text: 'Image generation failed',
         values: {

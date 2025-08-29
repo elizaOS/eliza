@@ -1,9 +1,5 @@
 import type { UUID, ChannelType } from '@elizaos/core';
-import type {
-  ServerMetadata,
-  ChannelMetadata,
-  MessageMetadata,
-} from '@elizaos/api-client';
+import type { ServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 
 export interface MessageServer {
   id: UUID; // global serverId
