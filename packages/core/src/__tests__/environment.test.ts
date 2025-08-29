@@ -60,7 +60,7 @@ describe('Environment Abstraction', () => {
       // Save original values
       const originalProcess = (global as any).process;
       const originalWindow = (global as any).window;
-      
+
       // Mock browser environment
       delete (global as any).process;
       (global as any).window = {
@@ -71,7 +71,7 @@ describe('Environment Abstraction', () => {
       // Test detection directly
       const detectedEnv = detectEnvironment();
       expect(detectedEnv).toBe('browser');
-      
+
       // Restore original values
       (global as any).process = originalProcess;
       (global as any).window = originalWindow;

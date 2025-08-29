@@ -27,7 +27,7 @@ function hasNativeBuffer(): boolean {
 export function fromHex(hex: string): BufferLike {
   // Clean the hex string to remove non-hex characters
   const cleanHex = hex.replace(/[^0-9a-fA-F]/g, '');
-  
+
   if (hasNativeBuffer()) {
     // Use native Buffer in Node.js
     return Buffer.from(cleanHex, 'hex');
@@ -142,7 +142,7 @@ export function isBuffer(obj: any): obj is BufferLike {
   if (!obj) {
     return false;
   }
-  
+
   if (hasNativeBuffer() && Buffer.isBuffer(obj)) {
     return true;
   }
@@ -151,8 +151,10 @@ export function isBuffer(obj: any): obj is BufferLike {
   return (
     obj instanceof Uint8Array ||
     obj instanceof ArrayBuffer ||
-    (typeof obj === 'object' && obj.buffer instanceof ArrayBuffer && 
-     typeof obj.byteLength === 'number' && !Array.isArray(obj))
+    (typeof obj === 'object' &&
+      obj.buffer instanceof ArrayBuffer &&
+      typeof obj.byteLength === 'number' &&
+      !Array.isArray(obj))
   );
 }
 

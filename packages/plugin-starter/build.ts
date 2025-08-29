@@ -31,13 +31,7 @@ async function build() {
       format: 'esm',
       sourcemap: true,
       minify: false,
-      external: [
-        'dotenv',
-        'node:*',
-        '@elizaos/core',
-        '@elizaos/cli',
-        'zod',
-      ],
+      external: ['dotenv', 'node:*', '@elizaos/core', '@elizaos/cli', 'zod'],
       naming: {
         entry: '[dir]/[name].[ext]',
       },
@@ -72,11 +66,13 @@ async function build() {
 }
 
 // Execute the build
-build().then((success) => {
-  if (!success) {
+build()
+  .then((success) => {
+    if (!success) {
+      process.exit(1);
+    }
+  })
+  .catch((error) => {
+    console.error('Build script error:', error);
     process.exit(1);
-  }
-}).catch((error) => {
-  console.error('Build script error:', error);
-  process.exit(1);
-});
+  });

@@ -294,19 +294,25 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   }
 
   // Check if we should force browser behavior (for testing)
-  const forceBrowser = typeof bindings === 'object' && bindings && '__forceType' in bindings && bindings.__forceType === 'browser';
+  const forceBrowser =
+    typeof bindings === 'object' &&
+    bindings &&
+    '__forceType' in bindings &&
+    bindings.__forceType === 'browser';
 
   // If forcing browser mode, create a simple console-based logger
   if (forceBrowser) {
-    const levelStr = typeof level === 'number' ? 'info' : (level || effectiveLogLevel);
+    const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
     const currentLevel = levelStr.toLowerCase();
 
     const formatArgs = (...args: unknown[]): string => {
-      return args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg instanceof Error) return arg.message;
-        return safeStringify(arg);
-      }).join(' ');
+      return args
+        .map((arg) => {
+          if (typeof arg === 'string') return arg;
+          if (arg instanceof Error) return arg.message;
+          return safeStringify(arg);
+        })
+        .join(' ');
     };
 
     const logToConsole = (method: string, ...args: unknown[]): void => {
@@ -315,12 +321,19 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       }
 
       const message = formatArgs(...args);
-      const consoleMethod = method === 'fatal' ? 'error' : 
-                           method === 'trace' || method === 'verbose' ? 'debug' :
-                           method === 'success' || method === 'progress' ? 'info' :
-                           method === 'log' ? 'log' :
-                           (console as any)[method] ? method : 'log';
-      
+      const consoleMethod =
+        method === 'fatal'
+          ? 'error'
+          : method === 'trace' || method === 'verbose'
+            ? 'debug'
+            : method === 'success' || method === 'progress'
+              ? 'info'
+              : method === 'log'
+                ? 'log'
+                : (console as any)[method]
+                  ? method
+                  : 'log';
+
       if (typeof (console as any)[consoleMethod] === 'function') {
         (console as any)[consoleMethod](message);
       }
@@ -335,9 +348,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
       }
       if (obj instanceof Error) {
-        return msg !== undefined
-          ? [obj.message, msg, ...args]
-          : [obj.message, ...args];
+        return msg !== undefined ? [obj.message, msg, ...args] : [obj.message, ...args];
       }
       if (msg !== undefined) {
         return [msg, obj, ...args];
@@ -356,14 +367,17 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       success: (obj, msg, ...args) => logToConsole('success', ...adaptArgs(obj, msg, ...args)),
       progress: (obj, msg, ...args) => logToConsole('progress', ...adaptArgs(obj, msg, ...args)),
       log: (obj, msg, ...args) => logToConsole('log', ...adaptArgs(obj, msg, ...args)),
-      clear: () => { if (typeof console.clear === 'function') console.clear(); },
-      child: (childBindings: Record<string, unknown>) => createLogger({ level: currentLevel, ...base, ...childBindings, __forceType: 'browser' })
+      clear: () => {
+        if (typeof console.clear === 'function') console.clear();
+      },
+      child: (childBindings: Record<string, unknown>) =>
+        createLogger({ level: currentLevel, ...base, ...childBindings, __forceType: 'browser' }),
     };
   }
 
   // Create sealed Adze instance with configuration
   const sealed = sealAdze(base);
-  const levelStr = typeof level === 'number' ? 'info' : (level || effectiveLogLevel);
+  const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
 
   /**

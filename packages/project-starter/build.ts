@@ -77,11 +77,13 @@ async function build() {
 }
 
 // Execute the build
-build().then((success) => {
-  if (!success) {
+build()
+  .then((success) => {
+    if (!success) {
+      process.exit(1);
+    }
+  })
+  .catch((error) => {
+    console.error('Build script error:', error);
     process.exit(1);
-  }
-}).catch((error) => {
-  console.error('Build script error:', error);
-  process.exit(1);
-});
+  });
