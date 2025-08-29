@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/test-utils",
   "description": "Utilities and objects for unit testing",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -38,7 +38,7 @@
     "package.json"
   ],
   "dependencies": {
-    "@elizaos/core": "1.5.0",
+    "@elizaos/core": "1.5.1",
     "zod": "3.24.2"
   },
   "devDependencies": {
@@ -64,5 +64,5 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
   },
-  "gitHead": "412a6befe5a8ca2aacb99b7ba712520289dd2171"
+  "gitHead": "e2da2b5640a11e8b8dd7b4aef51d8d5cddf29895"
 }
