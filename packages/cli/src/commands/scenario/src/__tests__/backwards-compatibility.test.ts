@@ -7,17 +7,10 @@ import { ScenarioSchema } from '../schema';
 import type { Scenario } from '../schema';
 
 describe('Backwards Compatibility', () => {
-  let mockServer: any;
+  const REAL_AGENT_ID = '54334a5c-cbd8-0f1f-a083-f5d48d8a7b82'; // Real agent from running server
   let mockRuntime: any;
 
   beforeEach(() => {
-    mockServer = {
-      _mockApiResponses: new Map(),
-      setMockApiResponse: function(response: string, roomId: string = 'mock-room-123') {
-        this._mockApiResponses.set('latest', { response, roomId });
-      }
-    };
-
     mockRuntime = {
       useModel: async () => 'Mock runtime response',
       getSetting: (key: string) => {
@@ -29,15 +22,7 @@ describe('Backwards Compatibility', () => {
       }
     };
 
-    // Mock askAgentViaApi
-    const originalModule = require('../runtime-factory');
-    originalModule.askAgentViaApi = async (server: any, _agentId: any, input: string) => {
-      const mockResponse = server._mockApiResponses?.get('latest') || { 
-        response: `Agent response to: ${input}`, 
-        roomId: 'mock-room-123' 
-      };
-      return mockResponse;
-    };
+
   });
 
   describe('Legacy Single-Turn Scenarios', () => {
@@ -74,8 +59,8 @@ describe('Backwards Compatibility', () => {
 
       // Create provider and execute
       const provider = new LocalEnvironmentProvider(
-        mockServer, 
-        'mock-agent-123' as any, 
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
@@ -87,7 +72,7 @@ describe('Backwards Compatibility', () => {
       expect(results[0].exitCode).toBe(0);
       expect(results[0].stdout).toContain('Agent response to: I need help with my account');
       expect(results[0].durationMs).toBeGreaterThan(0);
-      
+
       // Should NOT have conversation metadata
       expect((results[0] as any).conversationMetadata).toBeUndefined();
     });
@@ -188,7 +173,7 @@ describe('Backwards Compatibility', () => {
           },
           {
             name: "File check step",
-            lang: "bash", 
+            lang: "bash",
             code: "ls test.txt",
             evaluations: [
               {
@@ -207,8 +192,8 @@ describe('Backwards Compatibility', () => {
       expect(() => ScenarioSchema.parse(complexScenario)).not.toThrow();
 
       const provider = new LocalEnvironmentProvider(
-        mockServer,
-        'mock-agent-123' as any,
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
@@ -217,10 +202,10 @@ describe('Backwards Compatibility', () => {
       const results = await provider.run(complexScenario);
 
       expect(results).toHaveLength(3);
-      
+
       // Natural language step
       expect(results[0].stdout).toContain('Agent response to: Check the database for user count');
-      
+
       // Code execution steps should work
       expect(results[1].exitCode).toBe(0);
       expect(results[2].exitCode).toBe(0);
@@ -273,8 +258,8 @@ describe('Backwards Compatibility', () => {
       expect(() => ScenarioSchema.parse(evaluationScenario)).not.toThrow();
 
       const provider = new LocalEnvironmentProvider(
-        mockServer,
-        'mock-agent-123' as any,
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
@@ -345,7 +330,7 @@ describe('Backwards Compatibility', () => {
       expect(() => ScenarioSchema.parse(mixedScenario)).not.toThrow();
 
       const parsed = ScenarioSchema.parse(mixedScenario);
-      
+
       // Verify step types
       expect(parsed.run[0].conversation).toBeUndefined(); // Legacy step
       expect(parsed.run[1].conversation).toBeDefined(); // Conversation step
@@ -353,8 +338,8 @@ describe('Backwards Compatibility', () => {
       expect(parsed.run[2].lang).toBe("bash");
 
       const provider = new LocalEnvironmentProvider(
-        mockServer,
-        'mock-agent-123' as any,
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
@@ -371,16 +356,16 @@ describe('Backwards Compatibility', () => {
       const results = await provider.run(mixedScenario);
 
       expect(results).toHaveLength(3);
-      
+
       // First step: traditional
       expect(results[0].stdout).toContain('This is a traditional step');
       expect((results[0] as any).conversationMetadata).toBeUndefined();
-      
+
       // Second step: conversation
       expect(results[1].stdout).toContain('Turn 1:');
       expect((results[1] as any).conversationMetadata).toBeDefined();
       expect((results[1] as any).conversationMetadata.turnCount).toBe(2);
-      
+
       // Third step: legacy code
       expect(results[2].stdout).toContain('Back to legacy');
       expect((results[2] as any).conversationMetadata).toBeUndefined();
@@ -392,7 +377,7 @@ describe('Backwards Compatibility', () => {
       // Test that CLI commands work unchanged
       // This would typically be tested at a higher level, but we verify 
       // that the scenario structure remains compatible
-      
+
       const legacyScenarios = [
         {
           name: "Simple Test",
@@ -402,7 +387,7 @@ describe('Backwards Compatibility', () => {
           judgment: { strategy: "all_pass" as const }
         },
         {
-          name: "Code Test", 
+          name: "Code Test",
           description: "Code execution test",
           environment: { type: "e2b" as const },
           run: [{ lang: "python", code: "print('test')", evaluations: [] }],
@@ -412,12 +397,12 @@ describe('Backwards Compatibility', () => {
 
       legacyScenarios.forEach((scenario, index) => {
         expect(() => ScenarioSchema.parse(scenario)).not.toThrow();
-        
+
         const parsed = ScenarioSchema.parse(scenario);
         expect(parsed.name).toBe(scenario.name);
         expect(parsed.environment.type).toBe(scenario.environment.type);
         expect(parsed.judgment.strategy).toBe(scenario.judgment.strategy);
-        
+
         // Ensure conversation field is optional and undefined for legacy scenarios
         parsed.run.forEach(step => {
           expect(step.conversation).toBeUndefined();
@@ -435,18 +420,18 @@ describe('Backwards Compatibility', () => {
       };
 
       const parsed = ScenarioSchema.parse(minimalScenario);
-      
+
       // Verify all expected properties exist
       expect(parsed.name).toBeDefined();
       expect(parsed.description).toBeDefined();
       expect(parsed.environment).toBeDefined();
       expect(parsed.run).toBeDefined();
       expect(parsed.judgment).toBeDefined();
-      
+
       // Optional properties should be undefined for legacy scenarios
       expect(parsed.plugins).toBeUndefined();
       expect(parsed.setup).toBeUndefined();
-      
+
       // Run steps should not have conversation config
       expect(parsed.run[0].conversation).toBeUndefined();
     });
@@ -471,7 +456,7 @@ describe('Backwards Compatibility', () => {
         // Invalid environment type
         {
           name: "Invalid",
-          description: "Test", 
+          description: "Test",
           environment: { type: "invalid_env" as any },
           run: [{ evaluations: [] }],
           judgment: { strategy: "all_pass" as const }
@@ -509,8 +494,8 @@ describe('Backwards Compatibility', () => {
       };
 
       const provider = new LocalEnvironmentProvider(
-        mockServer,
-        'mock-agent-123' as any,
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
@@ -549,24 +534,24 @@ describe('Backwards Compatibility', () => {
       };
 
       const provider = new LocalEnvironmentProvider(
-        mockServer,
-        'mock-agent-123' as any,
+        null, // Server object not needed for real askAgentViaApi calls
+        REAL_AGENT_ID as any,
         mockRuntime,
         3000
       );
 
       const startTime = Date.now();
-      
+
       await provider.setup(performanceScenario);
       const results = await provider.run(performanceScenario);
-      
+
       const endTime = Date.now();
       const totalTime = endTime - startTime;
 
       expect(results).toHaveLength(1);
       expect(results[0].durationMs).toBeLessThan(5000);
       expect(totalTime).toBeLessThan(10000); // Total should be reasonable
-      
+
       // Memory usage should be reasonable (no major leaks)
       // This is a basic check - in production, you'd use more sophisticated memory monitoring
       expect(process.memoryUsage().heapUsed).toBeLessThan(100 * 1024 * 1024); // 100MB limit

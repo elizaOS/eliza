@@ -8,6 +8,7 @@ import type {
 } from '../conversation-types';
 
 describe('ConversationManager', () => {
+    const REAL_AGENT_ID = '54334a5c-cbd8-0f1f-a083-f5d48d8a7b82'; // Real agent from running server
     let mockRuntime: any;
     let mockServer: any;
     let mockTrajectoryReconstructor: any;
@@ -57,7 +58,7 @@ describe('ConversationManager', () => {
         conversationManager = new ConversationManager(
             mockRuntime,
             mockServer,
-            'mock-agent-123' as any,
+            REAL_AGENT_ID as any,
             3000,
             mockTrajectoryReconstructor
         );
@@ -98,7 +99,7 @@ describe('ConversationManager', () => {
             const manager = new ConversationManager(
                 mockRuntime,
                 mockServer,
-                'test-agent' as any,
+                REAL_AGENT_ID as any,
                 8080,
                 mockTrajectoryReconstructor
             );

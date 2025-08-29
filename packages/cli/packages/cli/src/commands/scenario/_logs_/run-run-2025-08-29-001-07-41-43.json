@@ -1,0 +1,15 @@
+{
+  "run_id": "run-2025-08-29-001-07-41-43",
+  "matrix_combination_id": "single-1756478500457-6zg96m",
+  "parameters": {
+    "scenario.file": "src/commands/scenario/examples/basic-conversation.scenario.yaml"
+  },
+  "metrics": {
+    "execution_time_seconds": 0,
+    "llm_calls": 0,
+    "total_tokens": 0
+  },
+  "evaluations": [],
+  "trajectory": [],
+  "error": "Conversation execution failed: Timeout waiting for agent response"
+}
