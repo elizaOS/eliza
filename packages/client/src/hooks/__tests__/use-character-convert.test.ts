@@ -4,7 +4,7 @@ import { useConvertCharacter } from '../use-character-convert';
 // Mock the usePlugins hook
 const mockUsePlugins = mock();
 
-mock.module('@/hooks/use-plugins', () => ({
+mock.module('../use-plugins', () => ({
   usePlugins: mockUsePlugins,
 }));
 
