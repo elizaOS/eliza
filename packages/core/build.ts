@@ -136,23 +136,16 @@ export * from './node/index.node.js';
 
   await fs.writeFile('dist/index.js', mainIndex);
 
-  // Create a simple index.d.ts that re-exports from the built node types by default
-  // This aligns the root types with the default runtime entry (node/bun)
+  // Create a simple index.d.ts that re-exports from the actual generated types
+  // The types directory contains the real TypeScript declarations
   const typeIndex = `// Type definitions for @elizaos/core
-// Re-export all types from the built Node entry by default
+// Re-export all types from the generated types directory
 
-export * from './node/index';
+export * from './types/index';
 `;
 
   await fs.writeFile('dist/index.d.ts', typeIndex);
 
-  // Also ensure the package.json "types" field can resolve correctly
-  // by creating fallback declaration files
-  await fs.mkdir('dist/node', { recursive: true });
-  await fs.mkdir('dist/browser', { recursive: true });
-
-  await fs.writeFile('dist/node/index.d.ts', `export * from '../../src/index.node';`);
-  await fs.writeFile('dist/browser/index.d.ts', `export * from '../../src/index.browser';`);
 
   console.log('📝 Created index files and type definitions for module resolution');
 }
