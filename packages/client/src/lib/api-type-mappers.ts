@@ -122,15 +122,16 @@ export function mapApiChannelsToClient(apiChannels: ApiMessageChannel[]): Client
 // Map API Message to UiMessage
 export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMessage {
   // Ensure attachments are properly typed as Media[]
-  const attachments = apiMessage.metadata?.attachments?.map((att: any) => ({
-    id: att.id || crypto.randomUUID(),
-    url: att.url,
-    title: att.title || att.name,
-    source: att.source,
-    description: att.description,
-    text: att.text,
-    contentType: att.contentType || att.type,
-  })) || undefined;
+  const attachments =
+    apiMessage.metadata?.attachments?.map((att: any) => ({
+      id: att.id || crypto.randomUUID(),
+      url: att.url,
+      title: att.title || att.name,
+      source: att.source,
+      description: att.description,
+      text: att.text,
+      contentType: att.contentType || att.type,
+    })) || undefined;
 
   return {
     id: apiMessage.id as UUID,
@@ -152,13 +153,13 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
 export function mapApiLogToClient(apiLog: ApiAgentLog): AgentLog {
   return {
     id: apiLog.id,
-    type: apiLog.metadata?.type || apiLog.level,
-    timestamp: apiDateToTimestamp(apiLog.timestamp),
+    type: apiLog?.type || apiLog.body?.modelType,
+    timestamp: apiLog.timestamp ? apiDateToTimestamp(apiLog.timestamp) : undefined,
     message: apiLog.message,
-    details: apiLog.metadata?.details,
-    roomId: apiLog.metadata?.roomId,
-    body: apiLog.metadata?.body,
-    createdAt: apiDateToTimestamp(apiLog.timestamp),
+    details: apiLog.details,
+    roomId: apiLog.roomId,
+    body: apiLog.body,
+    createdAt: apiLog.createdAt ? apiDateToTimestamp(apiLog.createdAt) : undefined,
   };
 }
 

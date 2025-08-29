@@ -411,7 +411,9 @@ export class MessageBusService extends Service {
         source: message.source_type || 'central-bus',
         sourceId: message.id,
         raw: {
-          ...(typeof message.raw_message === 'object' && message.raw_message !== null ? message.raw_message : {}),
+          ...(typeof message.raw_message === 'object' && message.raw_message !== null
+            ? message.raw_message
+            : {}),
           senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
           senderId: message.author_id,
         },
@@ -559,14 +561,11 @@ export class MessageBusService extends Service {
 
       if (existingMemory) {
         // Emit MESSAGE_DELETED event with the existing memory
-        await this.runtime.emitEvent(
-          EventType.MESSAGE_DELETED,
-          {
-            runtime: this.runtime,
-            message: existingMemory,
-            source: 'message-bus-service',
-          }
-        );
+        await this.runtime.emitEvent(EventType.MESSAGE_DELETED, {
+          runtime: this.runtime,
+          message: existingMemory,
+          source: 'message-bus-service',
+        });
 
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
@@ -604,16 +603,13 @@ export class MessageBusService extends Service {
       );
 
       // Emit CHANNEL_CLEARED event to bootstrap which will handle bulk deletion
-      await this.runtime.emitEvent(
-        EventType.CHANNEL_CLEARED,
-        {
-          runtime: this.runtime,
-          source: 'message-bus-service',
-          roomId: agentRoomId,
-          channelId: data.channelId,
-          memoryCount: memories.length,
-        }
-      );
+      await this.runtime.emitEvent(EventType.CHANNEL_CLEARED, {
+        runtime: this.runtime,
+        source: 'message-bus-service',
+        roomId: agentRoomId,
+        channelId: data.channelId,
+        memoryCount: memories.length,
+      });
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`

@@ -18,8 +18,6 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
-
-
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Configure multer for channel uploads
@@ -32,9 +30,7 @@ const channelUploadMiddleware = multer({
   },
   fileFilter: (_req, file, cb) => {
     // Check if mimetype is in the allowed list
-    const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some(
-      (allowed) => allowed === file.mimetype
-    );
+    const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
     if (isAllowed) {
       cb(null, true);
     } else {

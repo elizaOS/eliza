@@ -35,6 +35,21 @@ The `@elizaos/core` package provides a robust foundation for building AI agents 
     bun run build
     ```
 
+## Browser and Node.js Compatibility
+
+The `@elizaos/core` package features a dual build system that provides optimized builds for both Node.js and browser environments:
+
+- **Node.js Build**: Full API surface with all features including server utilities
+- **Browser Build**: Optimized, minified build with browser-safe APIs and polyfills
+
+The correct build is automatically selected based on your environment through package.json conditional exports. For browser usage, ensure you have the necessary polyfills installed:
+
+```bash
+npm install buffer crypto-browserify stream-browserify events
+```
+
+For more details on the dual build system, see [BUILD_SYSTEM.md](./BUILD_SYSTEM.md).
+
 ## Configuration
 
 The following environment variables are used by `@elizaos/core`. Configure them in a `.env` file at your project root.

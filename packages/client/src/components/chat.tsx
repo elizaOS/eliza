@@ -314,7 +314,7 @@ export default function Chat({
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
-    targetAgentData || ({} as Agent)  // Provide safe default if undefined
+    targetAgentData || ({} as Agent) // Provide safe default if undefined
   );
 
   // Use the new hooks for DM channel management
@@ -1237,7 +1237,8 @@ export default function Chat({
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
-                                    (typeof channel.metadata?.createdAt === 'string' || typeof channel.metadata?.createdAt === 'number'
+                                    (typeof channel.metadata?.createdAt === 'string' ||
+                                    typeof channel.metadata?.createdAt === 'number'
                                       ? channel.metadata.createdAt
                                       : null) ||
                                       channel.updatedAt ||

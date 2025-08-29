@@ -156,9 +156,9 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 
   const timer = getTimer();
   const { cp } = await import('node:fs/promises');
-  
+
   console.log(`Copying ${assets.length} asset(s)...`);
-  
+
   let successCount = 0;
   let failedAssets: Array<{ asset: { from: string; to: string }; error: string }> = [];
 
@@ -176,27 +176,29 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`  ✗ Failed to copy ${asset.from} to ${asset.to}: ${errorMessage}`);
-      
+
       // Check for specific error types
       if (errorMessage.includes('EACCES') || errorMessage.includes('EPERM')) {
         console.error(`    Permission denied. Try running with elevated privileges.`);
       } else if (errorMessage.includes('ENOSPC')) {
         console.error(`    Insufficient disk space.`);
       }
-      
+
       failedAssets.push({ asset, error: errorMessage });
     }
   }
-  
+
   const totalTime = timer.elapsed();
-  
+
   if (failedAssets.length === 0) {
     console.log(`✓ All assets copied successfully in ${totalTime}ms`);
   } else if (successCount > 0) {
     console.warn(`⚠ Copied ${successCount}/${assets.length} assets in ${totalTime}ms`);
-    console.warn(`  Failed assets: ${failedAssets.map(f => f.asset.from).join(', ')}`);
+    console.warn(`  Failed assets: ${failedAssets.map((f) => f.asset.from).join(', ')}`);
   } else {
-    throw new Error(`Failed to copy all assets. Errors: ${failedAssets.map(f => `${f.asset.from}: ${f.error}`).join('; ')}`);
+    throw new Error(
+      `Failed to copy all assets. Errors: ${failedAssets.map((f) => `${f.asset.from}: ${f.error}`).join('; ')}`
+    );
   }
 }
 
@@ -243,7 +245,7 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
   }
 
   let lastError: unknown;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       await rm(outdir, { recursive: true, force: true });
@@ -252,7 +254,7 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
     } catch (error: unknown) {
       lastError = error;
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       // Check for specific error types
       if (errorMessage.includes('EACCES') || errorMessage.includes('EPERM')) {
         console.error(`✗ Permission denied while cleaning ${outdir}`);
@@ -266,9 +268,11 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
         // Resource busy or too many open files - these might be temporary
         if (attempt < maxRetries) {
           const waitTime = attempt * 500; // Exponential backoff: 500ms, 1000ms, 1500ms
-          console.warn(`⚠ Failed to clean ${outdir} (attempt ${attempt}/${maxRetries}): ${errorMessage}`);
+          console.warn(
+            `⚠ Failed to clean ${outdir} (attempt ${attempt}/${maxRetries}): ${errorMessage}`
+          );
           console.warn(`  Retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
       } else {
         // Unknown error
@@ -277,7 +281,7 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
       }
     }
   }
-  
+
   // If we've exhausted all retries
   const finalError = lastError instanceof Error ? lastError : new Error(String(lastError));
   console.error(`✗ Failed to clean ${outdir} after ${maxRetries} attempts`);
@@ -296,24 +300,24 @@ export function watchFiles(
   } = {}
 ): () => void {
   const { extensions = ['.ts', '.js', '.tsx', '.jsx'], debounceMs = 100 } = options;
-  
+
   let debounceTimer: NodeJS.Timeout | null = null;
   let watcher: FSWatcher | null = null;
   let isCleanedUp = false;
-  
+
   console.log(`📁 Watching ${directory} for changes...`);
   console.log('💡 Press Ctrl+C to stop\n');
-  
+
   // Cleanup function to close watcher and clear timers
   const cleanup = () => {
     if (isCleanedUp) return;
     isCleanedUp = true;
-    
+
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
-    
+
     if (watcher) {
       try {
         watcher.close();
@@ -323,18 +327,18 @@ export function watchFiles(
       watcher = null;
     }
   };
-  
+
   try {
     // Create the watcher with proper error handling
     watcher = watch(directory, { recursive: true }, (eventType, filename) => {
       if (isCleanedUp) return;
-      
-      if (filename && extensions.some(ext => filename.endsWith(ext))) {
+
+      if (filename && extensions.some((ext) => filename.endsWith(ext))) {
         // Debounce to avoid multiple rapid rebuilds
         if (debounceTimer) {
           clearTimeout(debounceTimer);
         }
-        
+
         debounceTimer = setTimeout(() => {
           if (!isCleanedUp) {
             console.log(`\n📝 File changed: ${filename}`);
@@ -343,20 +347,22 @@ export function watchFiles(
         }, debounceMs);
       }
     });
-    
+
     // Handle watcher errors
     if (watcher && typeof watcher.on === 'function') {
       watcher.on('error', (error: Error) => {
         console.error('Watch error:', error.message);
         if (error.message.includes('EMFILE')) {
-          console.error('Too many open files. Consider increasing your system limits or reducing the watch scope.');
+          console.error(
+            'Too many open files. Consider increasing your system limits or reducing the watch scope.'
+          );
         }
       });
     }
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Failed to start file watcher: ${errorMessage}`);
-    
+
     if (errorMessage.includes('EMFILE')) {
       console.error('\n⚠️  Too many open files error detected!');
       console.error('Try one of these solutions:');
@@ -364,28 +370,28 @@ export function watchFiles(
       console.error('  2. Close other applications using file watchers');
       console.error('  3. Reduce the scope of watched directories');
     }
-    
+
     throw error;
   }
-  
+
   // Register cleanup handlers only once per watcher
   const handleExit = () => {
     cleanup();
     console.log('\n\n👋 Stopping watch mode...');
     process.exit(0);
   };
-  
+
   // Remove any existing handlers to avoid duplicates
   process.removeAllListeners('SIGINT');
   process.removeAllListeners('SIGTERM');
-  
+
   // Add new handlers
   process.once('SIGINT', handleExit);
   process.once('SIGTERM', handleExit);
-  
+
   // Also cleanup on normal exit
   process.once('exit', cleanup);
-  
+
   // Return cleanup function for manual cleanup
   return cleanup;
 }
@@ -405,7 +411,7 @@ export interface BuildRunnerOptions {
 export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boolean }) {
   const { packageName, buildOptions, isRebuild = false, onBuildComplete } = options;
   const totalTimer = getTimer();
-  
+
   // Clear console and show timestamp for rebuilds
   if (isRebuild) {
     console.clear();
@@ -437,7 +443,9 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
 
     const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
     const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-    console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`);
+    console.log(
+      `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
+    );
 
     // Generate TypeScript declarations if requested
     if (buildOptions.generateDts) {
@@ -451,7 +459,7 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
 
     console.log(`\n✅ ${packageName} build complete!`);
     console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
-    
+
     onBuildComplete?.(true);
     return true;
   } catch (error) {
@@ -467,23 +475,23 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
 export function createBuildRunner(options: BuildRunnerOptions) {
   const isWatchMode = process.argv.includes('--watch');
   let cleanupWatcher: (() => void) | null = null;
-  
+
   async function build(isRebuild = false) {
     return runBuild({
       ...options,
       isRebuild,
     });
   }
-  
+
   async function startWatchMode() {
     console.log('👀 Starting watch mode...\n');
-    
+
     // Initial build
     const buildSuccess = await build(false);
-    
+
     if (buildSuccess) {
       const srcDir = join(process.cwd(), 'src');
-      
+
       try {
         // Store the cleanup function returned by watchFiles
         // The watcher stays active throughout the entire session
@@ -498,7 +506,7 @@ export function createBuildRunner(options: BuildRunnerOptions) {
       }
     }
   }
-  
+
   // Ensure cleanup on process exit
   const cleanup = () => {
     if (cleanupWatcher) {
@@ -506,11 +514,11 @@ export function createBuildRunner(options: BuildRunnerOptions) {
       cleanupWatcher = null;
     }
   };
-  
+
   process.once('beforeExit', cleanup);
   process.once('SIGUSR1', cleanup);
   process.once('SIGUSR2', cleanup);
-  
+
   // Return the main function to run
   return async function run() {
     if (isWatchMode) {
