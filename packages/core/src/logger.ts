@@ -210,7 +210,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'alert',
     level: 0,
     style: 'font-size: 12px; color: #ff0000;',
-    terminalStyle: ['bgRed' as const, 'white' as const, 'bold' as const], // White text on red background - CRITICAL visibility
+    terminalStyle: ['bgRed' as const, 'white' as const, 'bold' as const], // Critical - keep background
     method: 'error' as any,
     emoji: '', // Visual scanning help
   },
@@ -218,7 +218,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'error',
     level: 1,
     style: 'font-size: 12px; color: #ff0000;',
-    terminalStyle: ['red' as const, 'bold' as const], // Bold red for errors
+    terminalStyle: ['bgRed' as const, 'whiteBright' as const, 'bold' as const], // Loud and bright - white on red
     method: 'error' as any,
     emoji: '',
   },
@@ -226,7 +226,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'warn',
     level: 2,
     style: 'font-size: 12px; color: #ffaa00;',
-    terminalStyle: ['yellow' as const, 'bold' as const], // Bold yellow for better visibility
+    terminalStyle: ['bgYellow' as const, 'black' as const, 'bold' as const], // Bright but less than error - black on yellow
     method: 'warn' as any,
     emoji: '',
   },
@@ -234,7 +234,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'info',
     level: 3,
     style: 'font-size: 12px; color: #0099ff;',
-    terminalStyle: ['blue' as const, 'bold' as const], // Blue instead of cyan (better readability)
+    terminalStyle: ['cyan' as const], // Minimal - just cyan text, no background
     method: 'info' as any,
     emoji: '',
   },
@@ -242,7 +242,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'fail',
     level: 4,
     style: 'font-size: 12px; color: #ff6600;',
-    terminalStyle: ['red' as const, 'underline' as const], // Red with underline for distinction
+    terminalStyle: ['red' as const, 'underline' as const], // Red underlined text, no background
     method: 'error' as any,
     emoji: '',
   },
@@ -250,7 +250,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'success',
     level: 5,
     style: 'font-size: 12px; color: #00cc00;',
-    terminalStyle: ['green' as const, 'bold' as const], // Bold green for success
+    terminalStyle: ['green' as const], // Minimal - just green text
     method: 'log' as any,
     emoji: '',
   },
@@ -258,7 +258,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'log',
     level: 6,
     style: 'font-size: 12px; color: #888888;',
-    terminalStyle: ['dim' as const], // Dimmed for regular logs (less visual noise)
+    terminalStyle: ['white' as const], // Minimal - just white text
     method: 'log' as any,
     emoji: '',
   },
@@ -266,7 +266,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'debug',
     level: 7,
     style: 'font-size: 12px; color: #9b59b6;',
-    terminalStyle: ['magenta' as const], // Remove bold for less important debug
+    terminalStyle: ['gray' as const, 'dim' as const], // Dark and subtle since off by default
     method: 'debug' as any,
     emoji: '',
   },
@@ -274,7 +274,7 @@ const customLevelConfig: Record<string, any> = {
     levelName: 'verbose',
     level: 8,
     style: 'font-size: 12px; color: #666666;',
-    terminalStyle: ['dim' as const, 'italic' as const], // Very subtle for verbose
+    terminalStyle: ['gray' as const, 'dim' as const, 'italic' as const], // Very subtle
     method: 'debug' as any,
     emoji: '',
   },
