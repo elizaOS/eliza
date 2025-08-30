@@ -12,14 +12,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
+        "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
       "node": {
+        "types": "./dist/node/index.d.ts",
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
-      "bun": "./dist/node/index.node.js",
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
       "default": "./dist/node/index.node.js"
     },
     "./node": {
@@ -34,7 +39,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "bun run build.ts",
