@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/api-client",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.js",
@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "1.5.1"
+    "@elizaos/core": "1.5.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -29,5 +29,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "e2da2b5640a11e8b8dd7b4aef51d8d5cddf29895"
+  "gitHead": "78ec4978065a95e4102d270417ac2b3f4dd96e9f"
 }
