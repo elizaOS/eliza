@@ -118,43 +118,43 @@ async function buildAll() {
 }
 
 /**
- * Generate TypeScript declarations for all entry points  
+ * Generate TypeScript declarations for all entry points
  */
 async function generateTypeScriptDeclarations() {
   const fs = await import('node:fs/promises');
-  
+
   console.log('📝 Setting up TypeScript declarations...');
   const startTime = Date.now();
 
   try {
     // Since we're including src in the package, we can reference the TypeScript files directly
     // This ensures types work in the monorepo and when published to NPM
-    
+
     // Ensure dist directories exist
     await fs.mkdir('dist/node', { recursive: true });
     await fs.mkdir('dist/browser', { recursive: true });
-    
+
     // Create the main index.d.ts that re-exports from the src folder
     const mainTypeIndex = `// Type definitions for @elizaos/core
 // Re-exports all types from the Node.js entry point
 export * from '../src/index.node';
 `;
     await fs.writeFile('dist/index.d.ts', mainTypeIndex);
-    
+
     // For dist/node/index.d.ts - export from the source
     const nodeIndexDts = `// Type definitions for @elizaos/core (Node.js)
 // Re-exports all types from the Node.js source entry point
 export * from '../../src/index.node';
 `;
     await fs.writeFile('dist/node/index.d.ts', nodeIndexDts);
-    
+
     // For dist/browser/index.d.ts - export from the source
     const browserIndexDts = `// Type definitions for @elizaos/core (Browser)
 // Re-exports all types from the Browser source entry point
 export * from '../../src/index.browser';
 `;
     await fs.writeFile('dist/browser/index.d.ts', browserIndexDts);
-    
+
     // Create main index.js for fallback (JavaScript runtime entry)
     const mainIndex = `// Main entry point for @elizaos/core
 // This file is not used directly - package.json conditional exports handle the routing
@@ -162,7 +162,7 @@ export * from '../../src/index.browser';
 export * from './node/index.node.js';
 `;
     await fs.writeFile('dist/index.js', mainIndex);
-    
+
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`✅ TypeScript declarations setup in ${duration}s`);
     console.log('   Note: Types are exported directly from the included src folder');
