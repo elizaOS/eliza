@@ -1,0 +1,66 @@
+name: "Legacy Compatibility Test"
+description: "Ensures existing single-turn scenarios work unchanged with new conversation system"
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+
+environment:
+  type: local
+
+setup:
+  mocks:
+    - service: "user_service"
+      method: "authenticate"
+      when:
+        input:
+          username: "testuser"
+      response:
+        success: true
+        user_id: "user123"
+  virtual_fs:
+    "config.json": '{"setting": "value"}'
+
+run:
+  # Traditional single-turn steps should work exactly as before
+  - name: "Single-turn authentication test"
+    input: "Please authenticate user testuser"
+    evaluations:
+      - type: "string_contains"
+        value: "authenticate"
+      - type: "llm_judge"
+        prompt: "Did the agent handle authentication correctly?"
+        expected: "yes"
+        temperature: 0.1
+
+  - name: "Code execution test"
+    lang: "python"
+    code: |
+      import json
+      with open('config.json', 'r') as f:
+          config = json.load(f)
+      print(f"Config setting: {config['setting']}")
+    evaluations:
+      - type: "string_contains"
+        value: "Config setting: value"
+      - type: "execution_time"
+        max_duration_ms: 5000
+
+  - name: "File system test"
+    lang: "bash"
+    code: "ls config.json && cat config.json"
+    evaluations:
+      - type: "file_exists"
+        path: "config.json"
+      - type: "regex_match"
+        pattern: '"setting":\\s*"value"'
+
+  - name: "Another single-turn interaction"
+    input: "What is the status of user123?"
+    evaluations:
+      - type: "string_contains"
+        value: "user123"
+      - type: "trajectory_contains_action"
+        action: "LOOKUP_USER"
+
+judgment:
+  strategy: all_pass

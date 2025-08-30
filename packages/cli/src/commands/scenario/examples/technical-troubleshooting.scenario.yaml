@@ -1,0 +1,106 @@
+name: "Technical Troubleshooting Multi-Turn Test"
+description: "Tests agent's ability to guide non-technical user through WiFi troubleshooting"
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+
+environment:
+  type: local
+
+setup:
+  mocks:
+    - service: "diagnostic_service"
+      method: "check_connectivity"
+      when:
+        input:
+          device_type: "laptop"
+      response:
+        status: "disconnected"
+        signal_strength: "weak"
+        suggestions: ["restart_router", "check_cables", "update_drivers"]
+
+run:
+  - name: "WiFi troubleshooting conversation"
+    input: "My internet stopped working and I don't know what to do"
+    
+    conversation:
+      max_turns: 8
+      timeout_per_turn_ms: 30000
+      
+      user_simulator:
+        model_type: "TEXT_LARGE"
+        temperature: 0.7
+        max_tokens: 200
+        persona: "non-technical home user who is confused by technical jargon"
+        objective: "get internet working again for work-from-home needs"
+        style: "polite but easily confused by technical terms, needs simple step-by-step instructions"
+        constraints:
+          - "Express confusion when given technical jargon"
+          - "Ask for clarification on technical steps"
+          - "Only provide information when asked specific questions"
+          - "Describe results in simple, non-technical language"
+          - "Show appreciation for clear, simple explanations"
+          - "Mention you need internet for work urgently"
+        emotional_state: "worried about work impact but patient"
+        knowledge_level: "beginner"
+      
+      termination_conditions:
+        - type: "user_expresses_satisfaction"
+          keywords: ["working", "connected", "fixed", "thank you"]
+        - type: "agent_provides_solution"
+          keywords: ["try this", "follow these steps", "this should fix"]
+        - type: "escalation_needed"
+          keywords: ["technician", "need help", "too complicated"]
+        - type: "custom_condition"
+          llm_judge:
+            prompt: "Has the WiFi issue been resolved or is the user ready to try a clear solution?"
+            threshold: 0.8
+      
+      turn_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent use language appropriate for a non-technical user?"
+          expected: "yes"
+        - type: "llm_judge"
+          prompt: "Did the agent ask systematic diagnostic questions?"
+          expected: "yes"
+        - type: "trajectory_contains_action"
+          action: "ASK_DIAGNOSTIC_QUESTION"
+      
+      final_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent successfully diagnose and provide clear steps to resolve the WiFi issue?"
+          expected: "yes"
+          capabilities:
+            - "Asked systematic diagnostic questions in simple language"
+            - "Provided step-by-step instructions appropriate for beginner"
+            - "Avoided technical jargon or explained it clearly"
+            - "Verified user understanding at each step"
+            - "Identified likely root cause of connectivity issue"
+            - "Gave clear next steps the user can follow"
+        - type: "conversation_length"
+          min_turns: 4
+          max_turns: 10
+          optimal_turns: 6
+        - type: "conversation_flow"
+          required_patterns:
+            - "question_then_answer"
+            - "problem_then_solution"
+            - "clarification_cycle"
+          flow_quality_threshold: 0.7
+        - type: "user_satisfaction"
+          satisfaction_threshold: 0.75
+          measurement_method: "llm_judge"
+        - type: "context_retention"
+          test_memory_of: ["WiFi issue", "work from home", "non-technical user"]
+          retention_turns: 5
+          memory_accuracy_threshold: 0.8
+
+    evaluations:
+      - type: "string_contains"
+        value: "internet"
+      - type: "trajectory_contains_action"
+        action: "PROVIDE_SOLUTION"
+
+judgment:
+  strategy: all_pass

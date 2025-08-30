@@ -1,0 +1,19 @@
+name: "Simple Agent Communication Test"
+description: "Tests basic agent communication without conversation features"
+
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+
+environment:
+  type: local
+
+run:
+  - name: "Simple message test"
+    input: "Hello, can you hear me?"
+    evaluations:
+      - type: "string_contains"
+        value: "hello"
+
+judgment:
+  strategy: all_pass
