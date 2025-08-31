@@ -126,7 +126,7 @@ jobs:
         run: bun install -g bats
 
       - name: Run CLI TypeScript tests
-        run: cross-env bun test tests/commands/
+        run: cross-env ELIZA_FORCE_LOCAL_CLI=1 bun test tests/commands/
         working-directory: packages/cli
         env:
           ELIZA_TEST_MODE: true

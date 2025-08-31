@@ -157,6 +157,13 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
  * @returns true if in test or CI environment, false otherwise
  */
 function isTestOrCiEnvironment(): boolean {
+  // Allow explicit override to force local CLI even in CI/tests
+  if (
+    process.env.ELIZA_FORCE_LOCAL_CLI === 'true' ||
+    process.env.ELIZA_FORCE_LOCAL_CLI === '1'
+  ) {
+    return false;
+  }
   // Check for common test and CI environment indicators
   const testAndCiIndicators = [
     process.env.NODE_ENV === 'test',
