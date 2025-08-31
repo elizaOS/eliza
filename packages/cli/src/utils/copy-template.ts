@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import { logger } from '@elizaos/core';
 import { isQuietMode } from './spinner-utils';
 
@@ -106,6 +107,33 @@ function getPackageName(templateType: string): string {
 }
 
 /**
+ * Helper to find global node_modules paths for various package managers
+ */
+function getGlobalNodeModulesPaths(): string[] {
+  const paths = [];
+  
+  // Bun global install location
+  if (process.env.BUN_INSTALL) {
+    paths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules'));
+  }
+  
+  // NPM global paths
+  if (process.env.PREFIX) {
+    paths.push(path.join(process.env.PREFIX, 'lib/node_modules'));
+  }
+  
+  // Common locations
+  paths.push(
+    path.join(os.homedir(), '.bun/install/global/node_modules'),
+    path.join(os.homedir(), '.npm/global/node_modules'),
+    '/usr/local/lib/node_modules',
+    '/usr/lib/node_modules'
+  );
+  
+  return paths;
+}
+
+/**
  * Copy a project or plugin template to target directory
  */
 export async function copyTemplate(
@@ -116,24 +144,18 @@ export async function copyTemplate(
 
   // Try multiple locations to find templates, handling different runtime environments
   const possibleTemplatePaths = [
-    // 1. Direct path from source directory (for tests and development)
+    // 1. Direct path from source directory (for development and monorepo)
     path.resolve(__dirname, '../../templates', packageName),
-    // 2. Production: templates bundled with the CLI dist
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'dist',
-      'templates',
-      packageName
+    // 2. Relative to dist (for built package)
+    path.resolve(__dirname, '../templates', packageName),
+    // 3. For NPM global install - check known global locations
+    ...getGlobalNodeModulesPaths().map(p => 
+      path.join(p, '@elizaos/cli/dist/templates', packageName)
     ),
-    // 3. Development/Test: templates in the CLI package root
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'templates',
-      packageName
-    ),
-    // 4. Fallback: relative to current module (for built dist)
+    // 4. Local node_modules (when used as dependency)
+    path.resolve(process.cwd(), 'node_modules/@elizaos/cli/dist/templates', packageName),
+    // 5. Additional fallbacks for various installation methods
     path.resolve(__dirname, '..', 'templates', packageName),
-    // 5. Additional fallback: relative to dist directory
     path.resolve(__dirname, '..', '..', 'templates', packageName),
   ];
 
@@ -166,14 +188,30 @@ export async function copyTemplate(
   const packageJsonPath = path.join(targetDir, 'package.json');
 
   try {
-    // Get the CLI package version for dependency updates
-    const cliPackageJsonPath = path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'package.json'
-    );
+    // Get the CLI package version for dependency updates - try multiple locations
+    let cliPackageVersion = 'latest';
+    const possiblePackageJsonPaths = [
+      path.resolve(__dirname, '../../package.json'),
+      path.resolve(__dirname, '../package.json'),
+      ...getGlobalNodeModulesPaths().map(p => 
+        path.join(p, '@elizaos/cli/package.json')
+      ),
+      path.resolve(process.cwd(), 'node_modules/@elizaos/cli/package.json'),
+    ];
 
-    const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
-    const cliPackageVersion = cliPackageJson.version;
+    for (const possiblePath of possiblePackageJsonPaths) {
+      if (existsSync(possiblePath)) {
+        try {
+          const packageJson = JSON.parse(await fs.readFile(possiblePath, 'utf8'));
+          if (packageJson.name === '@elizaos/cli' && packageJson.version) {
+            cliPackageVersion = packageJson.version;
+            break;
+          }
+        } catch (error) {
+          // Continue to next path
+        }
+      }
+    }
 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 

@@ -5,6 +5,13 @@
 
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+// Read version from package.json
+const packageJsonPath = path.resolve(process.cwd(), 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+const cliVersion = packageJson.version;
 
 // Custom pre-build step to copy templates
 async function preBuild() {
@@ -35,14 +42,19 @@ const run = createBuildRunner({
     minify: false,
     isCli: true,
     generateDts: true,
+    // Embed CLI version as environment variable
+    define: {
+      'process.env.ELIZAOS_CLI_VERSION': JSON.stringify(cliVersion),
+    },
     // Assets will be copied after build via onBuildComplete
   },
   onBuildComplete: async (success) => {
     if (success) {
-      // Copy templates and migration guides to dist
+      // Copy templates, migration guides, and package.json to dist
       console.log('\nCopying assets...');
       await copyAssets([
         { from: './templates', to: './dist/templates' },
+        { from: './package.json', to: './dist/package.json' }, // Include package.json in dist
         { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
       ]);
     }

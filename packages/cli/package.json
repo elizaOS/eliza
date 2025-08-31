@@ -22,6 +22,7 @@
     "dist",
     "dist/**/.gitignore",
     "dist/**/.npmignore",
+    "dist/package.json",
     "templates",
     "templates/**/.gitignore",
     "templates/**/.npmignore"

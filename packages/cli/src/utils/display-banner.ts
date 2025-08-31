@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
 
@@ -12,44 +13,94 @@ export function isRunningFromNodeModules(): boolean {
   return __filename.includes('node_modules');
 }
 
+/**
+ * Helper to find global node_modules paths for various package managers
+ */
+function getGlobalNodeModulesPaths(): string[] {
+  const paths = [];
+  
+  // Bun global install location
+  if (process.env.BUN_INSTALL) {
+    paths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules'));
+  }
+  
+  // NPM global paths
+  if (process.env.PREFIX) {
+    paths.push(path.join(process.env.PREFIX, 'lib/node_modules'));
+  }
+  
+  // Common locations
+  paths.push(
+    path.join(os.homedir(), '.bun/install/global/node_modules'),
+    path.join(os.homedir(), '.npm/global/node_modules'),
+    '/usr/local/lib/node_modules',
+    '/usr/lib/node_modules'
+  );
+  
+  return paths;
+}
+
 // Function to get the package version
 // --- Utility: Get local CLI version from package.json ---
 export function getVersion(): string {
-  // Check if we're in the monorepo context
+  // Try multiple strategies to get version
+  
+  // 1. Check if we're in monorepo
   const userEnv = UserEnvironment.getInstance();
   const monorepoRoot = userEnv.findMonorepoRoot(process.cwd());
-
   if (monorepoRoot) {
-    // We're in the monorepo, return 'monorepo' as version
     return 'monorepo';
   }
-
-  // Check if running from node_modules (proper installation)
+  
+  // 2. Check if running from local development (not in node_modules)
   if (!isRunningFromNodeModules()) {
-    // Running from local dist or development build, not properly installed
     return 'monorepo';
   }
-
-  // For ESM modules we need to use import.meta.url instead of __dirname
+  
+  // 3. Try environment variable (set during build)
+  if (process.env.ELIZAOS_CLI_VERSION) {
+    return process.env.ELIZAOS_CLI_VERSION;
+  }
+  
+  // 4. Try to find package.json in various locations
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
-
-  // Find package.json relative to the current file
-  const packageJsonPath = path.resolve(__dirname, '../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!existsSync(packageJsonPath)) {
-    console.error(`Warning: package.json not found at ${packageJsonPath}`);
-  } else {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-      version = packageJson.version || '0.0.0';
-    } catch (error) {
-      console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
+  
+  const possiblePaths = [
+    path.resolve(__dirname, '../package.json'),
+    path.resolve(__dirname, '../../package.json'),
+    // For NPM global install
+    path.resolve(__dirname, '../../../package.json'),
+  ];
+  
+  // Also check global node_modules paths
+  const globalPaths = getGlobalNodeModulesPaths();
+  for (const globalPath of globalPaths) {
+    possiblePaths.push(path.join(globalPath, '@elizaos/cli/package.json'));
+    possiblePaths.push(path.join(globalPath, '@elizaos/cli/dist/package.json'));
+  }
+  
+  for (const packageJsonPath of possiblePaths) {
+    if (existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+        if (packageJson.name === '@elizaos/cli' && packageJson.version) {
+          return packageJson.version;
+        }
+      } catch (error) {
+        // Continue to next path - don't log errors as this is expected
+      }
     }
   }
-  return version;
+  
+  // 5. Fallback - extract from path if possible
+  const match = __dirname.match(/@elizaos[\/\\]cli[\/\\](.+?)[\/\\]/);
+  if (match && match[1] && match[1].match(/^\d+\.\d+\.\d+/)) {
+    return match[1];
+  }
+  
+  // Return 'unknown' instead of crashing or showing warnings
+  return 'unknown';
 }
 
 // --- Utility: Get install tag based on CLI version ---
