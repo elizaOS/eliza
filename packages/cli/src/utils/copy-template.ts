@@ -114,31 +114,20 @@ export async function copyTemplate(
 ) {
   const packageName = getPackageName(templateType);
 
+  // Resolve the CLI package root based on the current file location to avoid bundler inlining absolute build paths
+  const cliPackageRoot = path.resolve(__dirname, '..', '..');
+
   // Try multiple locations to find templates, handling different runtime environments
   const possibleTemplatePaths: string[] = [
-    // 1. Direct path from source directory (for tests and development)
+    // 1) When running from TS source (ts-node/vitest): ../../templates
     path.resolve(__dirname, '../../templates', packageName),
-    // 4. Fallback: relative to current module (for built dist)
+    // 2) When running from built dist: ../templates
     path.resolve(__dirname, '..', 'templates', packageName),
-    // 5. Additional fallback: relative to dist directory
-    path.resolve(__dirname, '..', '..', 'templates', packageName),
+    // 3) Package root templates
+    path.resolve(cliPackageRoot, 'templates', packageName),
+    // 4) Package root dist/templates (published package layout)
+    path.resolve(cliPackageRoot, 'dist', 'templates', packageName),
   ];
-
-  // Try to resolve @elizaos/cli package location safely
-  try {
-    const cliPackageDir = path.dirname(require.resolve('@elizaos/cli/package.json'));
-    // 2. Production: templates bundled with the CLI dist
-    possibleTemplatePaths.push(
-      path.resolve(cliPackageDir, 'dist', 'templates', packageName)
-    );
-    // 3. Development/Test: templates in the CLI package root
-    possibleTemplatePaths.push(
-      path.resolve(cliPackageDir, 'templates', packageName)
-    );
-  } catch (error) {
-    // If require.resolve fails, log debug info but continue with other paths
-    logger.debug(`Could not resolve @elizaos/cli package location: ${error instanceof Error ? error.message : String(error)}`);
-  }
 
   let templateDir: string | null = null;
   for (const possiblePath of possibleTemplatePaths) {
@@ -169,17 +158,18 @@ export async function copyTemplate(
   const packageJsonPath = path.join(targetDir, 'package.json');
 
   try {
-    // Get the CLI package version for dependency updates
-    let cliPackageJsonPath: string;
-    try {
-      cliPackageJsonPath = path.resolve(
-        path.dirname(require.resolve('@elizaos/cli/package.json')),
-        'package.json'
-      );
-    } catch (resolveError) {
-      // Fallback: try to find package.json relative to current module
-      cliPackageJsonPath = path.resolve(__dirname, '../package.json');
-      logger.debug(`Could not resolve @elizaos/cli package.json, using fallback: ${cliPackageJsonPath}`);
+    // Get the CLI package version for dependency updates without using require.resolve
+    // Prefer package.json at the CLI package root derived from __dirname
+    const candidatePackageJsonPaths: string[] = [
+      // Running from built dist: ../../package.json
+      path.resolve(__dirname, '..', '..', 'package.json'),
+      // Running from TS source: ../../package.json (same relative depth)
+      path.resolve(__dirname, '..', '..', 'package.json'),
+    ];
+
+    const cliPackageJsonPath = candidatePackageJsonPaths.find((p) => existsSync(p));
+    if (!cliPackageJsonPath) {
+      throw new Error('Unable to locate @elizaos/cli package.json relative to runtime');
     }
 
     const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
