@@ -95,7 +95,7 @@ export class UserEnvironment {
     try {
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
-      
+
       // Check environment variable first (set during build)
       if (process.env.ELIZAOS_CLI_VERSION) {
         return {
@@ -104,31 +104,45 @@ export class UserEnvironment {
           path: process.argv[1] || '',
         };
       }
-      
+
       // Try multiple locations to find package.json
       const possiblePaths = [
         path.resolve(__dirname, '../package.json'),
         path.resolve(__dirname, '../../package.json'),
         path.resolve(__dirname, '../../../package.json'),
       ];
-      
+
       // Also check global node_modules paths
       if (process.env.BUN_INSTALL) {
-        possiblePaths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules/@elizaos/cli/package.json'));
-        possiblePaths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules/@elizaos/cli/dist/package.json'));
+        possiblePaths.push(
+          path.join(
+            process.env.BUN_INSTALL,
+            'install/global/node_modules/@elizaos/cli/package.json'
+          )
+        );
+        possiblePaths.push(
+          path.join(
+            process.env.BUN_INSTALL,
+            'install/global/node_modules/@elizaos/cli/dist/package.json'
+          )
+        );
       }
       if (process.env.PREFIX) {
-        possiblePaths.push(path.join(process.env.PREFIX, 'lib/node_modules/@elizaos/cli/package.json'));
-        possiblePaths.push(path.join(process.env.PREFIX, 'lib/node_modules/@elizaos/cli/dist/package.json'));
+        possiblePaths.push(
+          path.join(process.env.PREFIX, 'lib/node_modules/@elizaos/cli/package.json')
+        );
+        possiblePaths.push(
+          path.join(process.env.PREFIX, 'lib/node_modules/@elizaos/cli/dist/package.json')
+        );
       }
-      
+
       // Try to find package.json
       for (const packageJsonPath of possiblePaths) {
         if (existsSync(packageJsonPath)) {
           try {
             const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
             const packageJson = JSON.parse(packageJsonContent);
-            
+
             if (packageJson.name === '@elizaos/cli') {
               return {
                 version: packageJson.version || 'unknown',
@@ -141,7 +155,7 @@ export class UserEnvironment {
           }
         }
       }
-      
+
       // Fallback values if package.json not found
       return {
         version: 'unknown',

@@ -111,17 +111,17 @@ function getPackageName(templateType: string): string {
  */
 function getGlobalNodeModulesPaths(): string[] {
   const paths = [];
-  
+
   // Bun global install location
   if (process.env.BUN_INSTALL) {
     paths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules'));
   }
-  
+
   // NPM global paths
   if (process.env.PREFIX) {
     paths.push(path.join(process.env.PREFIX, 'lib/node_modules'));
   }
-  
+
   // Common locations
   paths.push(
     path.join(os.homedir(), '.bun/install/global/node_modules'),
@@ -129,7 +129,7 @@ function getGlobalNodeModulesPaths(): string[] {
     '/usr/local/lib/node_modules',
     '/usr/lib/node_modules'
   );
-  
+
   return paths;
 }
 
@@ -149,7 +149,7 @@ export async function copyTemplate(
     // 2. Relative to dist (for built package)
     path.resolve(__dirname, '../templates', packageName),
     // 3. For NPM global install - check known global locations
-    ...getGlobalNodeModulesPaths().map(p => 
+    ...getGlobalNodeModulesPaths().map((p) =>
       path.join(p, '@elizaos/cli/dist/templates', packageName)
     ),
     // 4. Local node_modules (when used as dependency)
@@ -193,9 +193,7 @@ export async function copyTemplate(
     const possiblePackageJsonPaths = [
       path.resolve(__dirname, '../../package.json'),
       path.resolve(__dirname, '../package.json'),
-      ...getGlobalNodeModulesPaths().map(p => 
-        path.join(p, '@elizaos/cli/package.json')
-      ),
+      ...getGlobalNodeModulesPaths().map((p) => path.join(p, '@elizaos/cli/package.json')),
       path.resolve(process.cwd(), 'node_modules/@elizaos/cli/package.json'),
     ];
 

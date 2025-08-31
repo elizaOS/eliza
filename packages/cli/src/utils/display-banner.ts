@@ -18,17 +18,17 @@ export function isRunningFromNodeModules(): boolean {
  */
 function getGlobalNodeModulesPaths(): string[] {
   const paths = [];
-  
+
   // Bun global install location
   if (process.env.BUN_INSTALL) {
     paths.push(path.join(process.env.BUN_INSTALL, 'install/global/node_modules'));
   }
-  
+
   // NPM global paths
   if (process.env.PREFIX) {
     paths.push(path.join(process.env.PREFIX, 'lib/node_modules'));
   }
-  
+
   // Common locations
   paths.push(
     path.join(os.homedir(), '.bun/install/global/node_modules'),
@@ -36,7 +36,7 @@ function getGlobalNodeModulesPaths(): string[] {
     '/usr/local/lib/node_modules',
     '/usr/lib/node_modules'
   );
-  
+
   return paths;
 }
 
@@ -44,42 +44,42 @@ function getGlobalNodeModulesPaths(): string[] {
 // --- Utility: Get local CLI version from package.json ---
 export function getVersion(): string {
   // Try multiple strategies to get version
-  
+
   // 1. Check if we're in monorepo
   const userEnv = UserEnvironment.getInstance();
   const monorepoRoot = userEnv.findMonorepoRoot(process.cwd());
   if (monorepoRoot) {
     return 'monorepo';
   }
-  
+
   // 2. Check if running from local development (not in node_modules)
   if (!isRunningFromNodeModules()) {
     return 'monorepo';
   }
-  
+
   // 3. Try environment variable (set during build)
   if (process.env.ELIZAOS_CLI_VERSION) {
     return process.env.ELIZAOS_CLI_VERSION;
   }
-  
+
   // 4. Try to find package.json in various locations
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
-  
+
   const possiblePaths = [
     path.resolve(__dirname, '../package.json'),
     path.resolve(__dirname, '../../package.json'),
     // For NPM global install
     path.resolve(__dirname, '../../../package.json'),
   ];
-  
+
   // Also check global node_modules paths
   const globalPaths = getGlobalNodeModulesPaths();
   for (const globalPath of globalPaths) {
     possiblePaths.push(path.join(globalPath, '@elizaos/cli/package.json'));
     possiblePaths.push(path.join(globalPath, '@elizaos/cli/dist/package.json'));
   }
-  
+
   for (const packageJsonPath of possiblePaths) {
     if (existsSync(packageJsonPath)) {
       try {
@@ -92,13 +92,13 @@ export function getVersion(): string {
       }
     }
   }
-  
+
   // 5. Fallback - extract from path if possible
   const match = __dirname.match(/@elizaos[\/\\]cli[\/\\](.+?)[\/\\]/);
   if (match && match[1] && match[1].match(/^\d+\.\d+\.\d+/)) {
     return match[1];
   }
-  
+
   // Return 'unknown' instead of crashing or showing warnings
   return 'unknown';
 }
