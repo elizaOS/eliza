@@ -1,3 +1,5 @@
+// Default settings implementation now targets the browser polyfill for browser builds.
+// Node builds import from settings.node.ts instead via index.node.ts
 // @ts-ignore
 import crypto from 'crypto-browserify';
 import { createUniqueUuid } from './entities';

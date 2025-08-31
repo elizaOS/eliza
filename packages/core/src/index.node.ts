@@ -27,7 +27,7 @@ export * from './logger';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
-export * from './settings';
+export * from './settings.node';
 export * from './services';
 export * from './search';
 
