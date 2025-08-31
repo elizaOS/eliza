@@ -104,7 +104,7 @@ async function attemptInstallation(
       // Do not fail installation solely due to verification problems; warn and proceed.
       logger.warn(
         `Proceeding despite verification failure for ${installResult.installedIdentifier}. ` +
-          `The plugin may still work; ensure it is properly configured.`
+        `The plugin may still work; ensure it is properly configured.`
       );
       return true;
     }

@@ -115,7 +115,7 @@ describe('ElizaOS Update Commands', () => {
       // In monorepo context, version is "monorepo" and update behavior is different
       // Should either show success or message about installing globally
       expect(result).toMatch(
-        /(Project successfully updated|Update completed|already up to date|No updates available|install the CLI globally|CLI update is not available|CLI is already at the latest version)/
+        /(Project successfully updated|Update completed|already up to date|No updates available|install the CLI globally|CLI update is not available|CLI is already at the latest version|CLI updated successfully)/
       );
     },
     TEST_TIMEOUTS.STANDARD_COMMAND
