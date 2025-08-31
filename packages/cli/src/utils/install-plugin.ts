@@ -99,7 +99,16 @@ async function attemptInstallation(
     logger.debug(
       `Installation successful for ${installResult.installedIdentifier}, verifying import...`
     );
-    return await verifyPluginImport(installResult.installedIdentifier, context);
+    const verified = await verifyPluginImport(installResult.installedIdentifier, context);
+    if (!verified) {
+      // Do not fail installation solely due to verification problems; warn and proceed.
+      logger.warn(
+        `Proceeding despite verification failure for ${installResult.installedIdentifier}. ` +
+          `The plugin may still work; ensure it is properly configured.`
+      );
+      return true;
+    }
+    return true;
   } catch (installError) {
     // Catch any unexpected errors during the process
     logger.warn(
@@ -219,7 +228,11 @@ export async function installPlugin(
           result.installedIdentifier || info.npm.repo,
           'from npm with potential GitHub fallback'
         );
-        return importSuccess;
+        if (!importSuccess) {
+          logger.warn(
+            `Proceeding despite verification failure for ${result.installedIdentifier || info.npm.repo}.`
+          );
+        }
       }
       return true;
     }
@@ -233,7 +246,11 @@ export async function installPlugin(
           result.installedIdentifier || key,
           'from npm registry with potential GitHub fallback'
         );
-        return importSuccess;
+        if (!importSuccess) {
+          logger.warn(
+            `Proceeding despite verification failure for ${result.installedIdentifier || key}.`
+          );
+        }
       }
       return true;
     }
@@ -242,7 +259,7 @@ export async function installPlugin(
   // If both npm approaches failed, try direct GitHub installation as final fallback
   if (info.git?.repo && cliDir) {
     const spec = `github:${info.git.repo}${githubVersion ? `#${githubVersion}` : ''}`;
-    return await attemptInstallation(spec, '', cliDir, 'in CLI directory', skipVerification);
+    return await attemptInstallation(spec, '', cliDir, 'in CLI directory', true);
   }
 
   logger.error(`Failed to install plugin ${packageName}`);
