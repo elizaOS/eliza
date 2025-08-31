@@ -115,27 +115,30 @@ export async function copyTemplate(
   const packageName = getPackageName(templateType);
 
   // Try multiple locations to find templates, handling different runtime environments
-  const possibleTemplatePaths = [
+  const possibleTemplatePaths: string[] = [
     // 1. Direct path from source directory (for tests and development)
     path.resolve(__dirname, '../../templates', packageName),
-    // 2. Production: templates bundled with the CLI dist
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'dist',
-      'templates',
-      packageName
-    ),
-    // 3. Development/Test: templates in the CLI package root
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'templates',
-      packageName
-    ),
     // 4. Fallback: relative to current module (for built dist)
     path.resolve(__dirname, '..', 'templates', packageName),
     // 5. Additional fallback: relative to dist directory
     path.resolve(__dirname, '..', '..', 'templates', packageName),
   ];
+
+  // Try to resolve @elizaos/cli package location safely
+  try {
+    const cliPackageDir = path.dirname(require.resolve('@elizaos/cli/package.json'));
+    // 2. Production: templates bundled with the CLI dist
+    possibleTemplatePaths.push(
+      path.resolve(cliPackageDir, 'dist', 'templates', packageName)
+    );
+    // 3. Development/Test: templates in the CLI package root
+    possibleTemplatePaths.push(
+      path.resolve(cliPackageDir, 'templates', packageName)
+    );
+  } catch (error) {
+    // If require.resolve fails, log debug info but continue with other paths
+    logger.debug(`Could not resolve @elizaos/cli package location: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   let templateDir: string | null = null;
   for (const possiblePath of possibleTemplatePaths) {
@@ -167,10 +170,17 @@ export async function copyTemplate(
 
   try {
     // Get the CLI package version for dependency updates
-    const cliPackageJsonPath = path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'package.json'
-    );
+    let cliPackageJsonPath: string;
+    try {
+      cliPackageJsonPath = path.resolve(
+        path.dirname(require.resolve('@elizaos/cli/package.json')),
+        'package.json'
+      );
+    } catch (resolveError) {
+      // Fallback: try to find package.json relative to current module
+      cliPackageJsonPath = path.resolve(__dirname, '../package.json');
+      logger.debug(`Could not resolve @elizaos/cli package.json, using fallback: ${cliPackageJsonPath}`);
+    }
 
     const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
     const cliPackageVersion = cliPackageJson.version;
