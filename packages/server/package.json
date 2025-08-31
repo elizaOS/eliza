@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.5.2",
+  "version": "1.5.4",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -51,10 +51,10 @@
     "which": "^4.0.0",
     "ws": "^8.18.0"
   },
-  "gitHead": "78ec4978065a95e4102d270417ac2b3f4dd96e9f",
+  "gitHead": "c637cc11764de58cf555456a3435d53f6d5466ce",
   "dependencies": {
-    "@elizaos/core": "1.5.2",
-    "@elizaos/plugin-sql": "1.5.2",
+    "@elizaos/core": "1.5.4",
+    "@elizaos/plugin-sql": "1.5.4",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",
