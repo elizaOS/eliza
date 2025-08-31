@@ -195,6 +195,80 @@ export async function copyTemplate(
       }
     }
 
+    // When running tests, force templates to depend on local workspace packages
+    // to avoid pulling old npm versions which may reference browser polyfills.
+    if (process.env.ELIZA_TEST_MODE) {
+      packageJson.dependencies = packageJson.dependencies || {};
+      packageJson.devDependencies = packageJson.devDependencies || {};
+
+      // Resolve repo root robustly (ascend until we find packages/core)
+      function findRepoRoot(startDir: string): string | null {
+        let current = startDir;
+        for (let i = 0; i < 6; i++) {
+          const candidate = path.resolve(current, '..');
+          const corePkg = path.join(candidate, 'packages', 'core', 'package.json');
+          if (existsSync(corePkg)) return candidate;
+          current = candidate;
+        }
+        return null;
+      }
+
+      const repoRoot = findRepoRoot(__dirname) || path.resolve(__dirname, '..', '..', '..', '..');
+
+      const localCorePath = path.join(repoRoot, 'packages', 'core');
+      // We only link @elizaos/core locally. Other packages remain from npm registry.
+
+      // Helper to set dep in either dependencies or devDependencies
+      function setLocalDep(pkgName: string, filePath: string) {
+        const fileSpec = `file:${filePath}`;
+
+        if (packageJson.dependencies && pkgName in packageJson.dependencies) {
+          packageJson.dependencies[pkgName] = fileSpec;
+        }
+        if (packageJson.devDependencies && pkgName in packageJson.devDependencies) {
+          packageJson.devDependencies[pkgName] = fileSpec;
+        }
+        // Deduplicate if present in both: prefer dependencies
+        if (
+          packageJson.dependencies &&
+          packageJson.devDependencies &&
+          pkgName in packageJson.dependencies &&
+          pkgName in packageJson.devDependencies
+        ) {
+          delete packageJson.devDependencies[pkgName];
+        }
+      }
+
+      // First, eliminate any lingering workspace:* specs that break non-workspace installs
+      const scrubSpecs = (deps: Record<string, string> | undefined) => {
+        if (!deps) return;
+        for (const [name, ver] of Object.entries(deps)) {
+          if (name.startsWith('@elizaos/') && ver.startsWith('workspace')) {
+            deps[name] = 'latest';
+          }
+        }
+      };
+      scrubSpecs(packageJson.dependencies);
+      scrubSpecs(packageJson.devDependencies);
+
+      // Apply local file: link ONLY for @elizaos/core to use the freshly built dist
+      if (existsSync(path.join(localCorePath, 'package.json'))) {
+        setLocalDep('@elizaos/core', localCorePath);
+      }
+
+      // Do NOT link other @elizaos packages locally to avoid bringing workspace:* specs into the ephemeral project
+      // Leave @elizaos/server, @elizaos/plugin-sql, @elizaos/plugin-bootstrap, @elizaos/api-client resolved from npm registry
+
+      // In test mode, ensure the project does NOT install @elizaos/cli locally to avoid
+      // nested @elizaos/core inside @elizaos/cli/node_modules overriding our local link.
+      if (packageJson.dependencies && packageJson.dependencies['@elizaos/cli']) {
+        delete packageJson.dependencies['@elizaos/cli'];
+      }
+      if (packageJson.devDependencies && packageJson.devDependencies['@elizaos/cli']) {
+        delete packageJson.devDependencies['@elizaos/cli'];
+      }
+    }
+
     if (packageJson.devDependencies) {
       for (const depName of Object.keys(packageJson.devDependencies)) {
         if (depName.startsWith('@elizaos/')) {
