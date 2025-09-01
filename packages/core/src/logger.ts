@@ -46,6 +46,7 @@ export interface LoggerBindings extends Record<string, unknown> {
   namespace?: string;
   namespaces?: string[];
   maxMemoryLogs?: number;
+  __forceType?: 'browser' | 'node'; // For testing - forces specific environment behavior
 }
 
 /**
@@ -69,6 +70,32 @@ interface InMemoryDestination {
 // ============================================================================
 // Utility Functions
 // ============================================================================
+
+/**
+ * Log level priorities for filtering
+ */
+const LOG_LEVEL_PRIORITY: Record<string, number> = {
+  trace: 10,
+  verbose: 10,
+  debug: 20,
+  info: 30,
+  log: 30,
+  warn: 40,
+  error: 50,
+  fatal: 60,
+  alert: 60,
+  success: 30,
+  progress: 30,
+};
+
+/**
+ * Check if a message should be logged based on current level
+ */
+function shouldLog(messageLevel: string, currentLevel: string): boolean {
+  const messagePriority = LOG_LEVEL_PRIORITY[messageLevel.toLowerCase()] || 30;
+  const currentPriority = LOG_LEVEL_PRIORITY[currentLevel.toLowerCase()] || 30;
+  return messagePriority >= currentPriority;
+}
 
 /**
  * Safe JSON stringify that handles circular references
@@ -163,8 +190,9 @@ const globalInMemoryDestination = createInMemoryDestination();
 /**
  * Maps ElizaOS log levels to Adze log levels
  */
-function mapToAdzeActiveLevel(level: string): string {
-  const normalized = level.toLowerCase();
+function mapToAdzeActiveLevel(level: string | number): string {
+  const levelStr = typeof level === 'number' ? 'info' : level;
+  const normalized = levelStr.toLowerCase();
   if (normalized === 'trace') return 'verbose';
   if (normalized === 'fatal') return 'alert';
   return normalized;
@@ -265,9 +293,92 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     globalInMemoryDestination.clear();
   }
 
+  // Check if we should force browser behavior (for testing)
+  const forceBrowser =
+    typeof bindings === 'object' &&
+    bindings &&
+    '__forceType' in bindings &&
+    bindings.__forceType === 'browser';
+
+  // If forcing browser mode, create a simple console-based logger
+  if (forceBrowser) {
+    const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
+    const currentLevel = levelStr.toLowerCase();
+
+    const formatArgs = (...args: unknown[]): string => {
+      return args
+        .map((arg) => {
+          if (typeof arg === 'string') return arg;
+          if (arg instanceof Error) return arg.message;
+          return safeStringify(arg);
+        })
+        .join(' ');
+    };
+
+    const logToConsole = (method: string, ...args: unknown[]): void => {
+      if (!shouldLog(method, currentLevel)) {
+        return;
+      }
+
+      const message = formatArgs(...args);
+      const consoleMethod =
+        method === 'fatal'
+          ? 'error'
+          : method === 'trace' || method === 'verbose'
+            ? 'debug'
+            : method === 'success' || method === 'progress'
+              ? 'info'
+              : method === 'log'
+                ? 'log'
+                : (console as any)[method]
+                  ? method
+                  : 'log';
+
+      if (typeof (console as any)[consoleMethod] === 'function') {
+        (console as any)[consoleMethod](message);
+      }
+    };
+
+    const adaptArgs = (
+      obj: Record<string, unknown> | string | Error,
+      msg?: string,
+      ...args: unknown[]
+    ): unknown[] => {
+      if (typeof obj === 'string') {
+        return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
+      }
+      if (obj instanceof Error) {
+        return msg !== undefined ? [obj.message, msg, ...args] : [obj.message, ...args];
+      }
+      if (msg !== undefined) {
+        return [msg, obj, ...args];
+      }
+      return [obj, ...args];
+    };
+
+    return {
+      level: currentLevel,
+      trace: (obj, msg, ...args) => logToConsole('trace', ...adaptArgs(obj, msg, ...args)),
+      debug: (obj, msg, ...args) => logToConsole('debug', ...adaptArgs(obj, msg, ...args)),
+      info: (obj, msg, ...args) => logToConsole('info', ...adaptArgs(obj, msg, ...args)),
+      warn: (obj, msg, ...args) => logToConsole('warn', ...adaptArgs(obj, msg, ...args)),
+      error: (obj, msg, ...args) => logToConsole('error', ...adaptArgs(obj, msg, ...args)),
+      fatal: (obj, msg, ...args) => logToConsole('fatal', ...adaptArgs(obj, msg, ...args)),
+      success: (obj, msg, ...args) => logToConsole('success', ...adaptArgs(obj, msg, ...args)),
+      progress: (obj, msg, ...args) => logToConsole('progress', ...adaptArgs(obj, msg, ...args)),
+      log: (obj, msg, ...args) => logToConsole('log', ...adaptArgs(obj, msg, ...args)),
+      clear: () => {
+        if (typeof console.clear === 'function') console.clear();
+      },
+      child: (childBindings: Record<string, unknown>) =>
+        createLogger({ level: currentLevel, ...base, ...childBindings, __forceType: 'browser' }),
+    };
+  }
+
   // Create sealed Adze instance with configuration
   const sealed = sealAdze(base);
-  const currentLevel = (level || effectiveLogLevel).toLowerCase();
+  const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
+  const currentLevel = levelStr.toLowerCase();
 
   /**
    * Capture errors to Sentry if configured
@@ -294,6 +405,11 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Invoke Adze method with error capture
    */
   const invoke = (method: string, ...args: unknown[]): void => {
+    // Check if this log level should be output
+    if (!shouldLog(method, currentLevel)) {
+      return;
+    }
+
     // Ensure Sentry sees the semantic level name (e.g., 'fatal')
     captureIfError(method, args);
 
