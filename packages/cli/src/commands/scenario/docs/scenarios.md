@@ -181,3 +181,234 @@ By supporting both single-turn and conversational scenarios, we can:
 2.  **Test Real-world Usage**: Conversational scenarios better reflect how users actually interact with agents in production environments.
 3.  **Establish a Robust Foundation**: The core components—CLI runner, declarative YAML structure, mocking engine, user simulator, and context-aware evaluators—create a solid foundation that can be extended to support increasingly sophisticated interaction patterns as agent capabilities evolve.
 4.  **Enable Iterative Improvement**: Turn-based evaluation provides granular feedback that helps identify specific areas for agent improvement, leading to more targeted development efforts.
+5.  **Support Complex Testing**: Multi-turn conversations reveal agent behaviors impossible to detect with single interactions, such as context retention, conversation flow management, and adaptive response strategies.
+
+---
+
+## Advanced Use Cases and Patterns
+
+### Multi-Agent Conversations
+
+For complex scenarios involving multiple agents:
+
+```yaml
+name: "Multi-Agent Collaboration"
+run:
+  - name: "Sales and Support Handoff"
+    input: "I want to upgrade my plan but I'm having billing issues"
+    
+    conversation:
+      max_turns: 10
+      agents:
+        - role: "sales"
+          priority: 0.6
+          expertise: ["pricing", "upgrades", "plans"]
+        - role: "support"
+          priority: 0.4
+          expertise: ["billing", "account_issues", "technical_problems"]
+      
+      user_simulator:
+        persona: "existing customer with mixed sales and support needs"
+        objective: "upgrade plan after resolving billing issue"
+      
+      final_evaluations:
+        - type: "agent_collaboration"
+          prompt: "Did agents coordinate effectively?"
+        - type: "handoff_quality"
+          required_elements: ["context_transfer", "seamless_transition"]
+```
+
+### Emotional Intelligence Testing
+
+```yaml
+name: "Emotional Intelligence Assessment"
+run:
+  - input: "I'm really stressed about this deadline and your software crashed"
+    
+    conversation:
+      max_turns: 5
+      user_simulator:
+        persona: "highly stressed professional facing work deadline"
+        emotional_state: "anxiety, frustration, urgency"
+        objectives:
+          - primary: "get software working immediately"
+          - secondary: "feel heard and supported"
+        
+        emotional_progression:
+          - turn: 1
+            state: "high stress, frustrated"
+          - turn: 2-3
+            state: "cautiously hopeful if agent shows empathy"
+          - turn: 4-5
+            state: "grateful if problem resolved, still stressed about deadline"
+      
+      final_evaluations:
+        - type: "emotional_intelligence"
+          criteria:
+            - "acknowledged user's emotional state"
+            - "showed appropriate empathy"
+            - "prioritized urgent problem solving"
+            - "avoided dismissive language"
+        - type: "stress_level_change"
+          expected_direction: "decrease"
+          measurement_method: "sentiment_analysis"
+```
+
+### Knowledge Transfer Testing
+
+```yaml
+name: "Complex Knowledge Transfer"
+run:
+  - input: "Can you explain how machine learning works? I'm not very technical"
+    
+    conversation:
+      max_turns: 12
+      user_simulator:
+        persona: "curious non-technical professional"
+        learning_style: "needs analogies and concrete examples"
+        knowledge_level: "beginner"
+        constraints:
+          - "Ask clarifying questions when confused"
+          - "Request simpler explanations for complex terms"
+          - "Give feedback on understanding level"
+          - "Ask for practical applications"
+      
+      turn_evaluations:
+        - type: "explanation_clarity"
+          prompt: "Was the explanation appropriate for a beginner?"
+        - type: "analogy_usage"
+          prompt: "Did the agent use helpful analogies or examples?"
+      
+      final_evaluations:
+        - type: "knowledge_transfer_success"
+          assessment_method: "comprehension_questions"
+          passing_score: 0.7
+        - type: "teaching_quality"
+          capabilities:
+            - "Adapted language to user's level"
+            - "Used concrete examples and analogies"
+            - "Checked understanding regularly"
+            - "Built concepts progressively"
+            - "Encouraged questions"
+```
+
+### Implementation Patterns
+
+#### Service Desk Scenario Pattern
+
+```yaml
+name: "Service Desk Multi-Turn Pattern"
+setup:
+  mocks:
+    - service: "knowledge_base"
+      method: "search"
+      when:
+        input:
+          query: "login issues"
+      response:
+        articles:
+          - title: "Common Login Problems"
+            solution: "Clear browser cache and cookies"
+          - title: "Password Reset Guide"
+            solution: "Use forgot password link"
+
+run:
+  - input: "I can't log into my account"
+    conversation:
+      max_turns: 5
+      user_simulator:
+        persona: "business user who needs to access account for work"
+        objective: "regain access to account quickly"
+        constraints:
+          - "Provide details when asked"
+          - "Express urgency about work deadline"
+          - "Follow technical instructions carefully"
+      
+      final_evaluations:
+        - type: "problem_resolution"
+          success_indicators: ["logged in", "access restored", "working now"]
+```
+
+#### Escalation Handling Pattern
+
+```yaml
+name: "Escalation Decision Pattern"
+run:
+  - input: "I've been trying to fix this for hours and nothing works!"
+    conversation:
+      max_turns: 6
+      user_simulator:
+        persona: "frustrated user who has tried basic solutions"
+        objective: "get advanced help or escalation"
+        constraints:
+          - "Mention previous attempts at solutions"
+          - "Express increasing frustration if basic solutions offered"
+          - "Accept escalation if offered"
+      
+      termination_conditions:
+        - type: "agent_escalates"
+          keywords: ["specialist", "escalate", "supervisor", "advanced support"]
+        - type: "advanced_solution_provided"
+          description: "Agent provides non-standard solution"
+      
+      final_evaluations:
+        - type: "escalation_decision"
+          prompt: "Did the agent appropriately escalate or provide advanced solution?"
+          expected: "yes"
+```
+
+---
+
+## System Architecture & Integration
+
+### **API Compatibility**
+
+The conversation system uses existing ElizaOS infrastructure:
+
+- **No API Changes**: Uses existing `askAgentViaApi` endpoints
+- **Trajectory Reconstruction**: Leverages existing trajectory tracking  
+- **Database Compatibility**: Works with existing memory and state systems
+- **Plugin Support**: Full compatibility with all existing plugins
+
+### **Architecture Extensions**
+
+The dynamic prompting system extends ElizaOS scenarios without breaking changes:
+
+```mermaid
+graph TD
+    A[Scenario YAML] --> B[Extended ScenarioSchema]
+    B --> C[ConversationDetector]
+    C --> D{Single/Multi-turn?}
+    D -->|Single| E[Current Flow]
+    D -->|Multi| F[ConversationManager]
+    F --> G[UserSimulator]
+    F --> H[TurnExecutor]
+    H --> I[askAgentViaApi]
+    I --> J[Agent Response]
+    J --> K[TurnEvaluator]
+    K --> L{Continue?}
+    L -->|Yes| G
+    L -->|No| M[ConversationEvaluator]
+    M --> N[Results]
+```
+
+**Key Design Principles:**
+1. **Non-Breaking Changes**: All existing scenarios continue to work unchanged
+2. **Incremental Adoption**: Teams can add conversation features gradually  
+3. **Infrastructure Reuse**: Leverages existing APIs, evaluation system, trajectory reconstruction
+4. **Extensible Framework**: Easy to add new user simulation strategies and evaluation types
+
+### **Risk Mitigation**
+
+**Technical Risks - All Addressed:**
+- **LLM API failures**: Retry logic and fallback mechanisms implemented
+- **Infinite loops**: Hard limits and termination conditions enforced
+- **Memory leaks**: Resource management and cleanup implemented
+- **Performance impact**: Optimized execution within reasonable time limits
+
+**Integration Risks - All Mitigated:**
+- **Breaking changes**: 100% backward compatibility maintained
+- **Provider compatibility**: Seamless integration with existing providers
+- **Evaluation conflicts**: New evaluators properly isolated and registered
+
+This comprehensive conversation system enables sophisticated agent testing while maintaining full backward compatibility with existing ElizaOS scenarios.

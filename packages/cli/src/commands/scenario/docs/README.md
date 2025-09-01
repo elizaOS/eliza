@@ -58,13 +58,13 @@ For production use with globally installed CLI:
 
 ```bash
 # Run a single scenario
-elizaos scenario run <scenario-file>
+elizaos scenario run <scenario-file> [options]
 
-# Run matrix testing with parameter combinations
-elizaos scenario matrix <matrix-config>
+# Run matrix testing with parameter combinations  
+elizaos scenario matrix <matrix-config> [options]
 
 # Generate comprehensive reports
-elizaos report generate <input-directory>
+elizaos report generate <input-directory> [options]
 ```
 
 #### **Local Development Commands**
@@ -73,14 +73,29 @@ For local development and testing:
 
 ```bash
 # Run a single scenario
-bun packages/cli/dist/index.js scenario run <scenario-file>
+bun packages/cli/dist/index.js scenario run <scenario-file> [options]
 
 # Run matrix testing with parameter combinations
-bun packages/cli/dist/index.js scenario matrix <matrix-config>
+bun packages/cli/dist/index.js scenario matrix <matrix-config> [options]
 
 # Generate comprehensive reports
-bun packages/cli/dist/index.js report generate <input-directory>
+bun packages/cli/dist/index.js report generate <input-directory> [options]
 ```
+
+#### **Command Options**
+
+**Scenario Run Options:**
+- `--live` - Run in live mode, ignoring mocks (default: false)
+
+**Matrix Options:**
+- `--dry-run` - Show matrix analysis without executing tests
+- `--parallel <number>` - Maximum parallel test runs (default: 1)
+- `--filter <pattern>` - Filter parameter combinations by pattern
+- `--verbose` - Show detailed progress information
+
+**Report Options:**
+- `--output-path <path>` - Path where report files will be saved
+- `--format <format>` - Output format: "json", "html", "pdf", or "all" (default: "all")
 
 > **Note**: Local commands require running from the project root directory and building the CLI first with `bun run build` in the `packages/cli` directory.
 
@@ -668,9 +683,13 @@ judgment:
 The scenario system now supports sophisticated multi-turn conversations with:
 
 - **User Simulator**: AI-powered user that maintains personas, objectives, and behavioral constraints
-- **Dynamic Responses**: Context-aware responses that adapt to conversation flow
+- **Dynamic Responses**: Context-aware responses that adapt to conversation flow  
 - **Intelligent Termination**: Natural conversation endings based on satisfaction or solution detection
 - **Turn-based Evaluation**: Real-time assessment of each conversation turn
+- **Persona Consistency**: Maintains character traits and objectives across turns
+- **Context Retention**: Remembers conversation history and builds upon it
+- **Emotional Intelligence**: Handles emotional states and progression
+- **Flexible Termination**: Multiple termination strategies including LLM-based decisions
 
 ### **Conversation Configuration Options**
 
@@ -715,20 +734,23 @@ conversation:
 #### **Conversation-Specific Evaluators:**
 
 - **`conversation_length`**: Validates conversation turn count
-  - Parameters: `min_turns`, `max_turns`, `optimal_turns`
+  - Parameters: `min_turns`, `max_turns`, `optimal_turns`, `target_range`
+- **`conversation_flow`**: Detects required conversation patterns
+  - Parameters: `required_patterns`, `flow_quality_threshold`
+  - Patterns: `question_then_answer`, `problem_then_solution`, `clarification_cycle`, `empathy_then_solution`, `escalation_pattern`
 - **`user_satisfaction`**: Measures user satisfaction level
-  - Parameters: `satisfaction_threshold`
-- **`turn_quality`**: Assesses individual turn quality
-  - Parameters: `quality_threshold`
-- **`objective_completion`**: Checks if user objective was achieved
-  - Parameters: `completion_threshold`
+  - Parameters: `satisfaction_threshold`, `indicators`, `measurement_method`
+  - Methods: `keyword_analysis`, `sentiment_analysis`, `llm_judge`
+- **`context_retention`**: Tests agent memory across turns
+  - Parameters: `test_memory_of`, `retention_turns`, `memory_accuracy_threshold`
 
 #### **Enhanced Core Evaluators:**
 
 - **`llm_judge`**: Now supports `capabilities` parameter for detailed assessment
-  - Enhanced Parameters: `prompt`, `expected`, `capabilities`
+  - Enhanced Parameters: `prompt`, `expected`, `capabilities`, `json_schema`, `model_type`, `temperature`
 - **Turn Evaluations**: All existing evaluators can now run per-turn
 - **Final Evaluations**: Separate evaluation set for conversation completion
+- **Multi-level Assessment**: Turn-level, flow-level, and outcome-level evaluations
 
 ## Implementation Details
 
@@ -799,6 +821,103 @@ When adding new scenarios:
 3. Include comprehensive descriptions
 4. Add to this documentation
 
+## 📋 **Best Practices**
+
+### **Conversation Design Principles**
+
+#### **Start Simple**
+```yaml
+# Begin with basic 2-3 turn conversations
+conversation:
+  max_turns: 3
+  user_simulator:
+    persona: "straightforward user with simple goal"
+    objective: "basic problem resolution"
+```
+
+#### **Gradual Complexity**
+```yaml
+# Build up to complex multi-persona scenarios
+conversation:
+  max_turns: 8
+  user_simulator:
+    persona: "complex user with evolving needs"
+    emotional_state: "initially frustrated, becomes cooperative"
+    constraints:
+      - "Start with complaints"
+      - "Become helpful when shown empathy"
+```
+
+### **User Simulator Best Practices**
+
+#### **Persona Consistency**
+```yaml
+user_simulator:
+  persona: "experienced developer who values efficiency"
+  style: "direct, technical, impatient with basic explanations"
+  knowledge_level: "expert"
+  constraints:
+    - "Use technical terminology correctly"
+    - "Skip basic explanations"
+    - "Ask detailed implementation questions"
+```
+
+#### **Realistic Objectives**
+```yaml
+user_simulator:
+  # Good: Specific, measurable objective
+  objective: "configure SSL certificate for production deployment"
+  
+  # Avoid: Vague objective
+  # objective: "get help with website"
+```
+
+### **Performance Considerations**
+
+#### **Resource Management**
+```yaml
+conversation:
+  max_turns: 6              # Reasonable limit to prevent infinite loops
+  timeout_per_turn_ms: 30000  # 30 second timeout per turn
+  total_timeout_ms: 300000    # 5 minute total conversation timeout
+```
+
+#### **LLM Usage Optimization**
+```yaml
+user_simulator:
+  model_type: "TEXT_LARGE"   # Use appropriate model size
+  temperature: 0.7           # Balance creativity and consistency
+  max_tokens: 150           # Limit response length
+```
+
+### **Matrix Testing with Conversations**
+
+```yaml
+name: "Conversation Matrix Testing"
+base_scenario: "customer-support.scenario.yaml"
+runs_per_combination: 2
+
+matrix:
+  # Test different user personas
+  - parameter: "run[0].conversation.user_simulator.persona"
+    values:
+      - "frustrated customer"
+      - "confused beginner"  
+      - "experienced power user"
+      - "non-native English speaker"
+  
+  # Test different conversation lengths
+  - parameter: "run[0].conversation.max_turns"
+    values: [3, 5, 8]
+  
+  # Test different termination conditions
+  - parameter: "run[0].conversation.termination_conditions[0].type"
+    values:
+      - "user_expresses_satisfaction"
+      - "agent_provides_solution"
+      - "escalation_needed"
+```
+
 ## 📚 **References & Epic Information**
 
 ### **Epic #5781: Scenario Matrix Runner and Reporting System**
@@ -811,6 +930,7 @@ This comprehensive system was implemented through Epic [#5781](https://github.co
 - **Enhanced Evaluations**: Structured evaluation results with detailed metrics
 - **Resource Monitoring**: Memory, CPU, and disk usage tracking
 - **Progress Tracking**: Real-time execution progress updates
+- **Dynamic Prompting**: Multi-turn conversations with user simulation
 
 ### **Original Implementation References**
 
