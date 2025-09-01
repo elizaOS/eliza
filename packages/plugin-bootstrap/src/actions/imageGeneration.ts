@@ -115,11 +115,31 @@ export const generateImageAction = {
         text: imagePrompt,
       };
 
+      // Determine file extension from URL or default to png
+      const getFileExtension = (url: string): string => {
+        try {
+          const urlPath = new URL(url).pathname;
+          const extension = urlPath.split('.').pop()?.toLowerCase();
+          // Common image extensions
+          if (extension && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(extension)) {
+            return extension;
+          }
+          // Extension not in allowed list, fall through to default
+        } catch (e) {
+          // URL parsing failed (malformed URL), fall back to png
+        }
+        return 'png'; // Default fallback for invalid/unknown extensions
+      };
+
+      const extension = getFileExtension(imageUrl);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fileName = `Generated_Image_${timestamp}.${extension}`;
+
       await callback(responseContent, [
         {
           id: v4(),
           attachment: imageUrl,
-          name: 'Generated_Image.png',
+          name: fileName,
           contentType: ContentType.IMAGE,
         },
       ]); 
