@@ -133,7 +133,11 @@ export const dkgInsert: Action = {
                 {
                     public: memoryKnowledgeGraph,
                 },
-                { epochsNum: 12 },
+                {
+                    epochsNum: 12,
+                    minimumNumberOfFinalizationConfirmations: 3,
+                    minimumNumberOfNodeReplications: 1,
+                },
             );
 
             elizaLogger.log("======================== ASSET CREATED");
