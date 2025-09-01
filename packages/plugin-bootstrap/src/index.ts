@@ -628,10 +628,10 @@ const messageReceivedHandler = async ({
               // without actions there can't be more than one message
               await callback(responseContent);
             } else if (mode === 'actions') {
-              await runtime.processActions(message, responseMessages, state, async (content) => {
-                runtime.logger.debug({ content }, 'action callback');
+              await runtime.processActions(message, responseMessages, state, async (content, files) => {
+                runtime.logger.debug({ content, files }, 'action callback');
                 responseContent!.actionCallbacks = content;
-                return callback(content);
+                return callback(content, files);
               });
             }
           }

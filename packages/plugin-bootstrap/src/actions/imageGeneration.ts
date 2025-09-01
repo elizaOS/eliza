@@ -115,7 +115,14 @@ export const generateImageAction = {
         text: imagePrompt,
       };
 
-      await callback(responseContent);
+      await callback(responseContent, [
+        {
+          id: v4(),
+          attachment: imageUrl,
+          name: 'Generated_Image.png',
+          contentType: ContentType.IMAGE,
+        },
+      ]); 
 
       return {
         text: 'Generated image',
