@@ -69,7 +69,7 @@
         "@anthropic-ai/sdk": "^0.54.0",
         "@clack/prompts": "^0.11.0",
         "@elizaos/api-client": "workspace:*",
-        "@elizaos/core": "^1.4.2",
+        "@elizaos/core": "workspace:*",
         "@elizaos/plugin-bootstrap": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/server": "workspace:*",

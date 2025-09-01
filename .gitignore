@@ -184,3 +184,4 @@ tsconfig.tsbuildinfo
 
 test-data/
 standalone.ts
+.cursor/commands
