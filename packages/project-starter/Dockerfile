@@ -51,21 +51,7 @@ RUN mkdir -p /home/node/.bun && chown -R node:node /home/node/.bun
 USER node
 
 
-# Environment variables that should be provided at runtime
-ARG POSTGRES_URL
-ARG LOG_LEVEL
-ARG OPENAI_API_KEY
-ARG ANTHROPIC_API_KEY
-ARG SOLANA_PRIVATE_KEY
-ARG SOLANA_PUBLIC_KEY
-ARG BIRDEYE_API_KEY
-ARG INVESTMENT_MANAGER_DISCORD_APPLICATION_ID
-ARG INVESTMENT_MANAGER_DISCORD_API_TOKEN
-ARG SMTP_HOST
-ARG SMTP_PORT=587
-ARG SMTP_USERNAME
-ARG SMTP_PASSWORD
-ARG SMTP_FROM
+# Environment variables should be provided at runtime (e.g., via docker-compose.yaml)
 
 # Expose port (adjust if needed based on your application)
 EXPOSE 3000
