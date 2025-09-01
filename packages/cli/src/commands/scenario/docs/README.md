@@ -90,6 +90,8 @@ bun packages/cli/dist/index.js report generate <input-directory>
 
 #### 1. Single Scenario Tests
 
+**Basic Single-Turn Tests:**
+
 **Production Commands:**
 
 ```bash
@@ -101,6 +103,9 @@ elizaos scenario run packages/cli/src/commands/scenario/examples/action-tracking
 
 # Run evaluation test
 elizaos scenario run packages/cli/src/commands/scenario/examples/evaluation-test.scenario.yaml
+
+# Run basic conversation test
+elizaos scenario run packages/cli/src/commands/scenario/examples/basic-conversation.scenario.yaml
 ```
 
 **Local Development Commands:**
@@ -114,6 +119,9 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 
 # Run evaluation test
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/evaluation-test.scenario.yaml
+
+# Run basic conversation test
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/basic-conversation.scenario.yaml
 ```
 
 #### 2. E2B Sandboxed Tests
@@ -210,7 +218,31 @@ bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenari
 bun packages/cli/dist/index.js scenario matrix packages/cli/src/commands/scenario/examples/simple-test.matrix.yaml
 ```
 
-#### 6. Other Test Types
+#### 6. Conversation Tests (NEW!)
+
+**Production Commands:**
+
+```bash
+# Run basic conversation test
+elizaos scenario run packages/cli/src/commands/scenario/examples/basic-conversation.scenario.yaml
+
+# Run advanced conversation scenarios
+elizaos scenario run packages/cli/src/commands/scenario/examples/customer-support.scenario.yaml
+elizaos scenario run packages/cli/src/commands/scenario/examples/technical-interview.scenario.yaml
+```
+
+**Local Development Commands:**
+
+```bash
+# Run basic conversation test
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/basic-conversation.scenario.yaml
+
+# Run advanced conversation scenarios
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/customer-support.scenario.yaml
+bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/technical-interview.scenario.yaml
+```
+
+#### 7. Other Test Types
 
 **Production Commands:**
 
@@ -472,6 +504,8 @@ bun packages/cli/dist/index.js report generate packages/cli/src/commands/scenari
 
 ## Scenario File Structure
 
+### Single-Turn Scenario
+
 ```yaml
 name: 'Test Name'
 description: 'Test Description'
@@ -483,17 +517,75 @@ mocks:
   - service: 'ServiceName'
     method: 'methodName'
     response: {}
-evaluators:
-  - type: 'action-tracking'
-    config: {}
-  - type: 'llm-judge'
-    config: {}
-steps:
+run:
   - input: 'User input'
-    expected: 'Expected response'
+evaluations:
+  - type: 'string_contains'
+    value: 'expected text'
+  - type: 'llm_judge'
+    prompt: 'Evaluation question'
+    expected: 'Expected answer'
+judgment:
+  strategy: 'all_pass'
 ```
 
-### Example Scenario
+### Conversation Scenario (NEW!)
+
+```yaml
+name: 'Conversation Test Name'
+description: 'Test Description'
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+environment:
+  type: 'local' # or "e2b"
+run:
+  - name: "Conversation Name"
+    input: 'Initial user message'
+    
+    conversation:
+      max_turns: 4
+      user_simulator:
+        persona: 'Description of simulated user'
+        objective: 'What the user wants to achieve'
+        temperature: 0.6
+        style: 'Communication style'
+        constraints:
+          - 'Behavioral constraint 1'
+          - 'Behavioral constraint 2'
+      
+      termination_conditions:
+        - type: 'user_expresses_satisfaction'
+          keywords: ['thank you', 'resolved', 'perfect']
+        - type: 'agent_provides_solution'
+          keywords: ['follow these steps', 'issue resolved']
+      
+      turn_evaluations:
+        - type: 'llm_judge'
+          prompt: 'Per-turn evaluation question'
+          expected: 'yes'
+      
+      final_evaluations:
+        - type: 'llm_judge'
+          prompt: 'Overall conversation evaluation'
+          expected: 'yes'
+          capabilities:
+            - 'Capability 1'
+            - 'Capability 2'
+        - type: 'conversation_length'
+          min_turns: 2
+          max_turns: 6
+          optimal_turns: 3
+    
+    # Traditional evaluations still supported
+    evaluations:
+      - type: 'string_contains'
+        value: 'help'
+judgment:
+  strategy: 'all_pass'
+```
+
+### Example Single-Turn Scenario
 
 ```yaml
 name: 'Simple File Creation Test'
@@ -508,14 +600,135 @@ mocks:
     response:
       success: true
       path: '/tmp/test/example.txt'
-evaluators:
-  - type: 'action-tracking'
-    config:
-      requiredActions: ['createFile']
-steps:
+run:
   - input: 'Create a file called example.txt'
-    expected: "I'll create that file for you"
+evaluations:
+  - type: 'file_exists'
+    path: '/tmp/test/example.txt'
+  - type: 'llm_judge'
+    prompt: 'Did the agent successfully create the file?'
+    expected: 'yes'
+judgment:
+  strategy: 'all_pass'
 ```
+
+### Example Conversation Scenario
+
+```yaml
+name: 'Customer Support Conversation'
+description: 'Tests multi-turn customer support capabilities'
+plugins:
+  - "@elizaos/plugin-bootstrap"
+  - "@elizaos/plugin-openai"
+environment:
+  type: 'local'
+run:
+  - name: "Billing Support"
+    input: "Hi, I need help with my billing"
+    
+    conversation:
+      max_turns: 4
+      user_simulator:
+        persona: "customer with a billing question"
+        objective: "find out why charged twice this month"
+        temperature: 0.6
+        style: "polite and patient"
+        constraints:
+          - "Be polite and cooperative"
+          - "Provide details when asked"
+          - "Express gratitude for help"
+      
+      termination_conditions:
+        - type: "user_expresses_satisfaction"
+          keywords: ["thank you", "resolved", "perfect"]
+        - type: "agent_provides_solution"
+          keywords: ["follow these steps", "issue resolved"]
+      
+      turn_evaluations:
+        - type: "llm_judge"
+          prompt: "Did the agent respond helpfully and professionally?"
+          expected: "yes"
+      
+      final_evaluations:
+        - type: "llm_judge"
+          prompt: "Was the billing issue successfully resolved?"
+          expected: "yes"
+          capabilities:
+            - "Understood the customer's billing concern"
+            - "Asked appropriate follow-up questions"
+            - "Provided helpful solutions"
+judgment:
+  strategy: 'all_pass'
+```
+
+## 🗣️ **Conversation Features (NEW!)**
+
+### **Dynamic Prompting & User Simulation**
+
+The scenario system now supports sophisticated multi-turn conversations with:
+
+- **User Simulator**: AI-powered user that maintains personas, objectives, and behavioral constraints
+- **Dynamic Responses**: Context-aware responses that adapt to conversation flow
+- **Intelligent Termination**: Natural conversation endings based on satisfaction or solution detection
+- **Turn-based Evaluation**: Real-time assessment of each conversation turn
+
+### **Conversation Configuration Options**
+
+```yaml
+conversation:
+  max_turns: 6                    # Maximum conversation length
+  user_simulator:
+    persona: "customer support"    # Character description
+    objective: "resolve billing"   # What user wants to achieve
+    temperature: 0.6              # Response creativity (0.0-1.0)
+    style: "professional"         # Communication style
+    constraints:                  # Behavioral rules
+      - "Be polite and patient"
+      - "Provide details when asked"
+  
+  termination_conditions:         # When to end conversation
+    - type: "user_expresses_satisfaction"
+      keywords: ["thank you", "resolved"]
+    - type: "agent_provides_solution"
+      keywords: ["follow these steps"]
+  
+  turn_evaluations:              # Evaluate each turn
+    - type: "llm_judge"
+      prompt: "Was this response helpful?"
+      expected: "yes"
+  
+  final_evaluations:             # Evaluate overall conversation
+    - type: "llm_judge"
+      prompt: "Was the issue resolved?"
+      expected: "yes"
+      capabilities:
+        - "Understood the problem"
+        - "Provided solutions"
+    - type: "conversation_length"
+      min_turns: 2
+      max_turns: 8
+      optimal_turns: 4
+```
+
+### **New Evaluation Types**
+
+#### **Conversation-Specific Evaluators:**
+
+- **`conversation_length`**: Validates conversation turn count
+  - Parameters: `min_turns`, `max_turns`, `optimal_turns`
+- **`user_satisfaction`**: Measures user satisfaction level
+  - Parameters: `satisfaction_threshold`
+- **`turn_quality`**: Assesses individual turn quality
+  - Parameters: `quality_threshold`
+- **`objective_completion`**: Checks if user objective was achieved
+  - Parameters: `completion_threshold`
+
+#### **Enhanced Core Evaluators:**
+
+- **`llm_judge`**: Now supports `capabilities` parameter for detailed assessment
+  - Enhanced Parameters: `prompt`, `expected`, `capabilities`
+- **Turn Evaluations**: All existing evaluators can now run per-turn
+- **Final Evaluations**: Separate evaluation set for conversation completion
 
 ## Implementation Details
 
@@ -541,6 +754,9 @@ The scenario system is built on several key components:
    - Action tracking
    - Response validation
    - Trajectory analysis
+   - Conversation evaluation
+   - Turn-based assessment
+   - User simulation
 
 5. **Final Judgment** ([#5579](https://github.com/elizaOS/eliza/issues/5579))
    - LLM-based judgment

@@ -44,12 +44,6 @@ run:
             - "Asked appropriate follow-up questions"
             - "Provided helpful information or solutions"
             - "Maintained a professional and helpful tone"
-        # - type: "conversation_length"
-        #   min_turns: 2
-        #   max_turns: 6
-        #   optimal_turns: 3
-        # - type: "user_satisfaction"
-        #   satisfaction_threshold: 0.7
 
     # Traditional single evaluations still supported for backward compatibility
     evaluations:
