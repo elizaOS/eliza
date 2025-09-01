@@ -278,6 +278,10 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
     const actionName = params.action;
 
     try {
+      // Wait for action memories to be written to database (prevents race condition)
+      console.log(`🔧 [EnhancedTrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Get action memories from database
       const actionMemories = await runtime.getMemories({
         tableName: 'messages',

@@ -161,6 +161,7 @@ export const scenario = new Command()
           const defaultPlugins = [
             '@elizaos/plugin-sql',
             '@elizaos/plugin-bootstrap',
+            '@elizaos/plugin-openai',
           ];
           // Ensure PGLite uses isolated directory per scenario run when not overridden
           if (!process.env.PGLITE_DATA_DIR) {

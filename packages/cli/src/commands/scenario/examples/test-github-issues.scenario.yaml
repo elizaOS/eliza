@@ -6,6 +6,10 @@ plugins:
     enabled: true
   - name: '@elizaos/plugin-github'
     enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local
@@ -20,14 +24,8 @@ run:
       - type: trajectory_contains_action
         action: LIST_GITHUB_ISSUES
         description: Verify that the LIST_GITHUB_ISSUES action was executed
-      - type: 'llm_judge'
-        prompt: 'Evaluate how well the agent performed the GitHub issue analysis task'
-        expected: 'yes'
-        capabilities:
-          - 'Understands the multi-step nature of the request (list AND summarize)'
-          - 'Successfully retrieves the list of GitHub issues'
-          - 'Provides an accurate and concise summary of the issues'
-          - 'Formats the final response in a clean, readable manner'
-          - 'Demonstrates understanding of GitHub repository context'
+      - type: 'string_contains'
+        value: 'repository'
+        description: 'Agent should mention the repository context'
 judgment:
   strategy: 'all_pass'

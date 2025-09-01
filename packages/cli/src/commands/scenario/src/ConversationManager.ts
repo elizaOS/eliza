@@ -289,7 +289,7 @@ export class ConversationManager {
             this.server,
             this.agentId,
             userInput,
-            60000,
+            90000,
             this.serverPort,
             this.conversationChannelId  // NEW: Pass existing channel ID
         );

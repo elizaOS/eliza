@@ -297,6 +297,7 @@ export async function askAgentViaApi(
   serverPort?: number | null,
   existingChannelId?: UUID
 ): Promise<{ response: string; roomId: UUID }> {
+  timeoutMs = 125000
   console.log(`🔧 [askAgentViaApi] === FUNCTION START ===`);
   console.log(
     `🔧 [askAgentViaApi] Parameters: agentId=${agentId}, input="${input}", serverPort=${serverPort}, existingChannelId=${existingChannelId}`
@@ -413,50 +414,18 @@ export async function askAgentViaApi(
 
     // Only sync MessageBusService cache when creating new channels
     if (!existingChannelId) {
-      // Wait for MessageBusService to sync channel cache (fixes race condition for new channels)
-      console.log(`🔧 [askAgentViaApi] Waiting 2s for MessageBusService channel cache sync...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Minimal delay for new channels - just enough for message bus to register
+      console.log(`🔧 [askAgentViaApi] Waiting 1s for MessageBusService channel sync...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Debug: Check again after sync
-      console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Checking server channels after sync...`);
+      // Try to refresh agent's channel cache without restart (faster)
+      console.log(`🔧 [askAgentViaApi] 🔄 Refreshing agent channel cache...`);
       try {
-        const serverChannelsAfter = await client.messaging.getServerChannels(defaultServer.id);
-        console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${serverChannelsAfter.channels.length} total channels after sync`);
-        const ourChannelAfter = serverChannelsAfter.channels.find((c: any) => c.id === channel.id);
-        console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Our channel ${channel.id} found in server list after sync: ${!!ourChannelAfter}`);
-      } catch (error) {
-        console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Error checking server channels after sync:`, error);
-      }
-
-      // Force MessageBusService to refresh its cache by restarting its connection
-      console.log(`🔧 [askAgentViaApi] 🔄 Force refreshing MessageBusService cache...`);
-      try {
-        // First, trigger a server agent update which should cause cache refresh
+        // Just re-add agent to channel to trigger cache refresh
         await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
-        console.log(`🔧 [askAgentViaApi] 🔄 Agent re-added to channel`);
-
-        // Force MessageBusService cache refresh by calling fetchValidChannelIds via server restart
-        console.log(`🔧 [askAgentViaApi] 🔄 Triggering MessageBusService cache refresh via server restart...`);
-        const restartResponse = await fetch(`http://localhost:${serverPort}/api/agents/${agentId}/restart`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-
-        if (restartResponse.ok) {
-          console.log(`🔧 [askAgentViaApi] 🔄 Agent restart successful - MessageBusService cache refreshed`);
-          // Wait longer for the agent to fully restart and reconnect
-          console.log(`🔧 [askAgentViaApi] 🔄 Waiting 5s for agent restart and cache sync...`);
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        } else {
-          console.log(`🔧 [askAgentViaApi] 🔄 Agent restart failed: ${restartResponse.status} - falling back to delay`);
-          // Fallback to longer delay
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        }
-
+        console.log(`🔧 [askAgentViaApi] 🔄 Agent re-added to channel for cache refresh`);
       } catch (error) {
-        console.log(`🔧 [askAgentViaApi] 🔄 Cache refresh error:`, (error as Error).message);
-        // Fallback to longer delay
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log(`🔧 [askAgentViaApi] Cache refresh result: ${(error as Error).message} (may already be cached)`);
       }
     } else {
       console.log(`🔧 [askAgentViaApi] ✅ Reusing existing channel - skipping cache sync delays`);

@@ -1,19 +1,24 @@
-name: "Simple Agent Communication Test"
-description: "Tests basic agent communication without conversation features"
+name: 'Simple Test'
+description: 'Basic single-turn test to verify agent responds'
 
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
 
 environment:
   type: local
 
 run:
-  - name: "Simple message test"
-    input: "Hello, can you hear me?"
+  - name: 'Simple greeting'
+    input: 'Hello'
     evaluations:
-      - type: "string_contains"
-        value: "hello"
+      - type: 'string_contains'
+        value: 'hello'
+        description: 'Agent should respond with some form of greeting'
 
 judgment:
-  strategy: all_pass
+  strategy: 'all_pass'

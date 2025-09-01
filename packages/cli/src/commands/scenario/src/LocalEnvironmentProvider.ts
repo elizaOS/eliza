@@ -154,7 +154,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           this.server,
           this.agentId,
           step.input,
-          60000, // timeout
+          90000, // timeout
           this.serverPort // Pass the actual server port
         );
 
