@@ -11,7 +11,7 @@ import { ConversationTurn, SimulationContext, UserSimulatorConfig } from './conv
 export class UserSimulator {
   private runtime: AgentRuntime;
   private config: UserSimulatorConfig;
-  
+
   constructor(runtime: AgentRuntime, config: UserSimulatorConfig) {
     this.runtime = runtime;
     this.config = config;
@@ -31,19 +31,26 @@ export class UserSimulator {
   ): Promise<string> {
     const prompt = this.buildSimulationPrompt(
       conversationHistory,
-      latestAgentResponse, 
+      latestAgentResponse,
       context
     );
 
     try {
+      console.log(`👤 [UserSimulator] Calling LLM with model: ${this.config.model_type || ModelType.TEXT_LARGE}`);
+      console.log(`👤 [UserSimulator] Prompt length: ${prompt.length}`);
+      console.log(`👤 [UserSimulator] Prompt preview: ${prompt.substring(0, 200)}...`);
+
       const response = await this.runtime.useModel(
-        this.config.model_type as any || ModelType.TEXT_LARGE,
+        ModelType.TEXT_SMALL,
         {
-          messages: [{ role: 'user', content: prompt }],
-          temperature: this.config.temperature,
-          maxTokens: this.config.max_tokens,
+          prompt: prompt,
+          temperature: this.config.temperature || 0.8,
         }
       );
+
+      console.log(`👤 [UserSimulator] Raw LLM response: "${response}"`);
+      console.log(`👤 [UserSimulator] Response type: ${typeof response}`);
+      console.log(`👤 [UserSimulator] Response length: ${response?.length || 0}`);
 
       // Log simulation for debugging
       if (context.debugOptions?.log_user_simulation) {
@@ -54,10 +61,26 @@ export class UserSimulator {
 
       // Clean up the response (remove any meta-commentary)
       const cleanedResponse = this.cleanResponse(response);
+      console.log(`👤 [UserSimulator] Cleaned response: "${cleanedResponse}"`);
+
+      // Ensure we never return an empty string
+      if (!cleanedResponse || cleanedResponse.trim() === '') {
+        console.log(`👤 [UserSimulator] ⚠️ Empty response detected, using fallback`);
+        return this.generateFallbackResponse(latestAgentResponse, context);
+      }
+
       return cleanedResponse;
 
     } catch (error) {
       console.error(`❌ [UserSimulator] Failed to generate response:`, error);
+      console.error(`❌ [UserSimulator] Error details:`, {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        promptLength: prompt.length,
+        modelType: this.config.model_type || 'TEXT_LARGE',
+        temperature: this.config.temperature || 0.8,
+        maxTokens: this.config.max_tokens || 200
+      });
       // Fallback to a simple response based on persona
       return this.generateFallbackResponse(latestAgentResponse, context);
     }
@@ -73,56 +96,35 @@ export class UserSimulator {
     context: SimulationContext
   ): string {
     const { persona, objective, style, constraints, emotional_state, knowledge_level } = this.config;
-    
-    let prompt = `You are simulating a user in a conversation with an AI agent. You must stay in character throughout the conversation.
 
-**Your Character Profile:**
-- **Persona:** ${persona}
-- **Primary Objective:** ${objective}
-- **Communication Style:** ${style || 'natural and conversational'}
-- **Knowledge Level:** ${knowledge_level}`;
+    // Simplified prompt structure to avoid LLM confusion
+    let prompt = `Roleplay as a user with this profile:
+Persona: ${persona}
+Goal: ${objective}
+Style: ${style || 'natural'}
+Knowledge: ${knowledge_level}`;
 
     if (emotional_state) {
-      prompt += `\n- **Emotional State:** ${emotional_state}`;
+      prompt += `\nMood: ${emotional_state}`;
     }
 
     if (constraints.length > 0) {
-      prompt += `\n\n**Behavioral Constraints (you must follow these):**`;
-      constraints.forEach(constraint => {
-        prompt += `\n- ${constraint}`;
-      });
+      prompt += `\nConstraints: ${constraints.join(', ')}`;
     }
 
-    prompt += `\n\n**Conversation Context:**
-- This is turn ${context.turnNumber} of a maximum conversation
-- Your goal is to ${objective}
-- Stay consistent with your persona and objectives`;
-
-    // Add conversation history (limit to recent turns to manage token usage)
-    const recentHistory = history.slice(-3); // Only include last 3 turns
+    // Add recent conversation context (limit to 2 turns to reduce complexity)
+    const recentHistory = history.slice(-2);
     if (recentHistory.length > 0) {
-      prompt += `\n\n**Recent Conversation History:**`;
+      prompt += `\n\nRecent conversation:`;
       recentHistory.forEach((turn, i) => {
         const turnNum = history.length - recentHistory.length + i + 1;
-        prompt += `\nTurn ${turnNum}:`;
-        prompt += `\n  User: ${turn.userInput}`;
-        prompt += `\n  Agent: ${turn.agentResponse}`;
+        prompt += `\nTurn ${turnNum}: User: "${turn.userInput}" Agent: "${turn.agentResponse}"`;
       });
     }
 
-    prompt += `\n\n**Agent's Latest Response:**
-${agentResponse}
+    prompt += `\n\nAgent just said: "${agentResponse}"
 
-**Instructions:**
-1. Respond as the user persona described above
-2. Keep your response realistic and natural (20-200 words)
-3. Stay true to your personality, objectives, and constraints
-4. Consider your knowledge level when asking questions or providing information
-5. Progress toward your objective while maintaining realistic conversation flow
-6. Do NOT break character or provide meta-commentary
-7. Respond only with what the user would actually say
-
-**Your Response (as the user):**`;
+Respond as the user (20-100 words, natural conversation):`;
 
     return prompt;
   }
@@ -134,21 +136,21 @@ ${agentResponse}
   private cleanResponse(response: string): string {
     // Remove common meta-commentary patterns
     let cleaned = response.trim();
-    
+
     // Remove "As a [persona]..." prefixes
     cleaned = cleaned.replace(/^As a [^,]+,?\s*/i, '');
-    
+
     // Remove "The user would say:" or similar prefixes
     cleaned = cleaned.replace(/^(The user (would )?say|User response|Response):\s*/i, '');
-    
+
     // Remove quotes if the entire response is quoted
     if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
       cleaned = cleaned.slice(1, -1);
     }
-    
+
     // Remove excessive whitespace
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    
+
     return cleaned;
   }
 
@@ -158,25 +160,25 @@ ${agentResponse}
    */
   private generateFallbackResponse(agentResponse: string, context: SimulationContext): string {
     const { persona, objective } = this.config;
-    
+
     // Simple fallback responses based on persona type
     if (persona.toLowerCase().includes('frustrated') || persona.toLowerCase().includes('angry')) {
       return "I'm still not getting the help I need. Can you please provide a clearer solution?";
     }
-    
+
     if (persona.toLowerCase().includes('confused') || persona.toLowerCase().includes('beginner')) {
       return "I'm not sure I understand. Could you explain that differently?";
     }
-    
+
     if (persona.toLowerCase().includes('technical') || persona.toLowerCase().includes('expert')) {
       return "Can you provide more specific technical details?";
     }
-    
+
     // Default fallback
     if (context.turnNumber === 1) {
       return `I need help with ${objective}. Can you assist me?`;
     }
-    
+
     return "Could you help me understand what I should do next?";
   }
 

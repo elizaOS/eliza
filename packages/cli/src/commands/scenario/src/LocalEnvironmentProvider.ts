@@ -14,7 +14,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
-  // private runtime: AgentRuntime | null = null; // unused
+  private runtime: AgentRuntime | null = null; // FIXED: needed for ConversationManager
   private serverPort: number | null = null;
   private trajectoryReconstructor: TrajectoryReconstructor | null = null;
   private conversationManager: ConversationManager | null = null;
@@ -22,7 +22,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   constructor(server?: AgentServer, agentId?: UUID, _runtime?: AgentRuntime, serverPort?: number) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
-    // this.runtime = _runtime ?? null; // unused property
+    this.runtime = _runtime ?? null; // FIXED: needed for ConversationManager
     this.serverPort = serverPort ?? null;
     this.trajectoryReconstructor = _runtime ? new TrajectoryReconstructor(_runtime) : null;
 
@@ -113,7 +113,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         }
 
         console.log(`🗣️  [LocalEnvironmentProvider] Executing conversation step: ${step.name || 'unnamed'}`);
-        
+
         const conversationResult = await this.conversationManager.executeConversation(
           step.input || 'Hello, I need help.',
           step.conversation
@@ -154,7 +154,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           this.server,
           this.agentId,
           step.input,
-          30000, // timeout
+          60000, // timeout
           this.serverPort // Pass the actual server port
         );
 

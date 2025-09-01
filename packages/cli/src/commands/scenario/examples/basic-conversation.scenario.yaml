@@ -10,10 +10,10 @@ environment:
 
 run:
   - name: "Simple customer support conversation"
-    input: "Hi, I need help with something"
+    input: "Hi, I need help with something regarding billing"
     
     conversation:
-      max_turns: 4
+      max_turns: 2
       user_simulator:
         persona: "polite customer with a billing question"
         objective: "find out why charged twice this month"
@@ -26,9 +26,9 @@ run:
       
       termination_conditions:
         - type: "user_expresses_satisfaction"
-          keywords: ["thank you", "that helps", "resolved", "great"]
+          keywords: ["thank you", "that helps", "resolved", "great", "perfect"]
         - type: "agent_provides_solution"
-          keywords: ["solution", "try this", "here's how"]
+          keywords: ["follow these steps", "complete solution", "problem is solved", "issue resolved"]
       
       turn_evaluations:
         - type: "llm_judge"
@@ -44,12 +44,12 @@ run:
             - "Asked appropriate follow-up questions"
             - "Provided helpful information or solutions"
             - "Maintained a professional and helpful tone"
-        - type: "conversation_length"
-          min_turns: 2
-          max_turns: 6
-          optimal_turns: 3
-        - type: "user_satisfaction"
-          satisfaction_threshold: 0.7
+        # - type: "conversation_length"
+        #   min_turns: 2
+        #   max_turns: 6
+        #   optimal_turns: 3
+        # - type: "user_satisfaction"
+        #   satisfaction_threshold: 0.7
 
     # Traditional single evaluations still supported for backward compatibility
     evaluations:

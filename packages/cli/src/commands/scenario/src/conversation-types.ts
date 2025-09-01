@@ -4,7 +4,7 @@
 import { UUID } from '@elizaos/core';
 import { ExecutionResult } from './providers';
 import { TrajectoryStep } from './TrajectoryReconstructor';
-import { EvaluationResult } from './EvaluationEngine';
+import { EnhancedEvaluationResult } from './schema';
 
 /**
  * Configuration for the user simulator component
@@ -25,8 +25,8 @@ export interface UserSimulatorConfig {
  * Conditions that can terminate a conversation early
  */
 export interface TerminationCondition {
-  type: 'max_turns_reached' | 'user_expresses_satisfaction' | 'agent_provides_solution' | 
-        'conversation_stuck' | 'escalation_needed' | 'goal_achieved' | 'custom_condition';
+  type: 'max_turns_reached' | 'user_expresses_satisfaction' | 'agent_provides_solution' |
+  'conversation_stuck' | 'escalation_needed' | 'goal_achieved' | 'custom_condition';
   description?: string;
   keywords?: string[];
   llm_judge?: {
@@ -64,7 +64,7 @@ export interface ConversationTurn {
   trajectory: TrajectoryStep[];
   duration: number;
   executionResult: ExecutionResult;
-  turnEvaluations: EvaluationResult[];
+  turnEvaluations: EnhancedEvaluationResult[];
 }
 
 /**
@@ -75,7 +75,7 @@ export interface ConversationResult {
   totalDuration: number;
   terminatedEarly: boolean;
   terminationReason: string | null;
-  finalEvaluations: EvaluationResult[];
+  finalEvaluations: EnhancedEvaluationResult[];
   conversationTranscript: string;
   success: boolean;
 }
@@ -100,7 +100,7 @@ export interface ConversationExecutionResult extends ExecutionResult {
     turnCount: number;
     terminatedEarly: boolean;
     terminationReason: string | null;
-    finalEvaluations: EvaluationResult[];
+    finalEvaluations: EnhancedEvaluationResult[];
   };
 }
 

@@ -3,11 +3,11 @@ import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema } from './schema';
 import { z } from 'zod';
 import type { ObjectGenerationParams } from '@elizaos/core';
-import { 
+import {
   ConversationLengthEvaluator,
-  ConversationFlowEvaluator, 
+  ConversationFlowEvaluator,
   UserSatisfactionEvaluator,
-  ContextRetentionEvaluator 
+  ContextRetentionEvaluator
 } from './ConversationEvaluators';
 
 export interface EvaluationResult {
@@ -34,7 +34,7 @@ export class EvaluationEngine {
     this.register('trajectory_contains_action', new TrajectoryContainsActionEvaluator());
     this.register('llm_judge', new LLMJudgeEvaluator());
     this.register('execution_time', new ExecutionTimeEvaluator());
-    
+
     // NEW: Register conversation evaluators
     this.register('conversation_length', new ConversationLengthEvaluator());
     this.register('conversation_flow', new ConversationFlowEvaluator());
@@ -239,8 +239,7 @@ class LLMJudgeEvaluator implements Evaluator {
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
-    let modelType =
-      candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
+    let modelType = ModelType.TEXT_LARGE;
 
     // Create a simple, clear prompt for object generation
     const fullPrompt = `
@@ -269,7 +268,7 @@ Do not use any other field names. Use only the exact field names specified above
       //   availableModels && typeof availableModels.keys === 'function'
       //     ? Array.from(availableModels.keys())
       //     : Object.keys(availableModels || {});
-      const modelHandler = (runtime as any).getModel(modelType);
+      const modelHandler = runtime.getModel(modelType);
       if (!modelHandler) {
         return {
           success: false,

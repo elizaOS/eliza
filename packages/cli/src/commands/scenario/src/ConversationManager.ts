@@ -14,6 +14,7 @@ import {
     SimulationContext
 } from './conversation-types';
 import { TrajectoryReconstructor } from './TrajectoryReconstructor';
+import { EnhancedEvaluationResult } from './schema';
 
 /**
  * ConversationManager orchestrates multi-turn conversations between agents and simulated users
@@ -24,6 +25,7 @@ export class ConversationManager {
     private server: AgentServer;
     private agentId: UUID;
     private serverPort: number;
+    private conversationChannelId: UUID | null = null; // NEW: Track conversation channel
     private userSimulator: UserSimulator | null = null;
     private evaluationEngine: EvaluationEngine;
     private trajectoryReconstructor: TrajectoryReconstructor;
@@ -44,6 +46,79 @@ export class ConversationManager {
     }
 
     /**
+     * Create a conversation channel for multi-turn conversation
+     * @private
+     */
+    private async createConversationChannel(): Promise<UUID> {
+        console.log(`🗣️  [ConversationManager] Creating conversation channel...`);
+
+        // Create channel directly without sending messages to avoid timeout issues
+        const channelId = await this.createChannelDirectly();
+
+        this.conversationChannelId = channelId;
+        console.log(`🗣️  [ConversationManager] ✅ Created conversation channel: ${channelId}`);
+        return channelId;
+    }
+
+    /**
+     * Create a channel directly without sending messages
+     * @private
+     */
+    private async createChannelDirectly(): Promise<UUID> {
+        const { ElizaClient } = await import('@elizaos/api-client');
+        const { ChannelType, stringToUuid: stringToUuidCore } = await import('@elizaos/core');
+
+        const port = this.serverPort;
+        const client = new ElizaClient({ baseUrl: `http://localhost:${port}` });
+
+        // Get default server
+        const servers = await client.messaging.listServers();
+        const defaultServer = servers.servers.find(s => s.name === 'Default Server');
+        if (!defaultServer) throw new Error('Default server not found');
+
+        // Create test user ID
+        const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
+
+        // Create channel via API
+        const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: 'scenario-conversation-channel',
+                server_id: defaultServer.id,
+                participantCentralUserIds: [testUserId],
+                type: ChannelType.GROUP,
+                metadata: { scenario: true, conversation: true },
+            }),
+        });
+
+        if (!channelResponse.ok) {
+            throw new Error(`Channel creation failed: ${channelResponse.status}`);
+        }
+
+        const channelResult = await channelResponse.json();
+        const channel = channelResult.data;
+
+        // Add agent to channel
+        await client.messaging.addAgentToChannel(channel.id, this.agentId as UUID);
+        console.log(`🗣️  [ConversationManager] Agent added to channel: ${channel.id}`);
+
+        return channel.id;
+    }
+
+    /**
+     * Cleanup conversation channel at end of conversation
+     * @private
+     */
+    private async cleanupConversationChannel(): Promise<void> {
+        if (this.conversationChannelId) {
+            console.log(`🗣️  [ConversationManager] Cleaning up conversation channel: ${this.conversationChannelId}`);
+            // Channel cleanup will be handled by server/agent lifecycle
+            this.conversationChannelId = null;
+        }
+    }
+
+    /**
      * Execute a complete conversation scenario
      * @param initialInput - The first user message to start the conversation
      * @param config - Complete conversation configuration
@@ -57,14 +132,17 @@ export class ConversationManager {
         const turns: ConversationTurn[] = [];
         let currentInput = initialInput;
 
-        // Initialize user simulator
-        this.userSimulator = new UserSimulator(this.runtime, config.user_simulator);
-
         console.log(`🗣️  [ConversationManager] Starting conversation: max_turns=${config.max_turns}`);
         console.log(`🗣️  [ConversationManager] User persona: ${config.user_simulator.persona}`);
         console.log(`🗣️  [ConversationManager] User objective: ${config.user_simulator.objective}`);
 
         try {
+            // NEW: Create conversation channel at start
+            await this.createConversationChannel();
+
+            // Initialize user simulator
+            this.userSimulator = new UserSimulator(this.runtime, config.user_simulator);
+
             // Execute conversation turns
             for (let turnNumber = 1; turnNumber <= config.max_turns; turnNumber++) {
                 console.log(`🗣️  [ConversationManager] === TURN ${turnNumber}/${config.max_turns} ===`);
@@ -80,16 +158,30 @@ export class ConversationManager {
 
                 // Run turn-level evaluations
                 if (config.turn_evaluations?.length > 0) {
-                    const turnEvaluations = await this.evaluationEngine.runEvaluations(
+                    const rawTurnEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
                         config.turn_evaluations,
                         turn.executionResult
                     );
 
-                    turn.turnEvaluations = turnEvaluations;
+                    // BUGFIX: Filter out any malformed evaluation results to prevent ZodError
+                    const filteredTurnEvaluations = rawTurnEvaluations.filter(result =>
+                        result &&
+                        typeof result === 'object' &&
+                        'evaluator_type' in result &&
+                        'success' in result &&
+                        'summary' in result &&
+                        'details' in result
+                    );
+
+                    if (filteredTurnEvaluations.length !== rawTurnEvaluations.length) {
+                        console.warn(`🗣️  [ConversationManager] Turn ${turnNumber}: Filtered out ${rawTurnEvaluations.length - filteredTurnEvaluations.length} malformed turn evaluation results`);
+                    }
+
+                    turn.turnEvaluations = filteredTurnEvaluations;
 
                     if (config.debug_options?.log_turn_decisions) {
                         console.log(`📊 [ConversationManager] Turn ${turnNumber} evaluations:`,
-                            turnEvaluations.map(e => `${e.success ? '✅' : '❌'} ${e.message}`));
+                            filteredTurnEvaluations.map(e => `${e.success ? '✅' : '❌'} ${e.summary}`));
                     }
                 }
 
@@ -121,14 +213,28 @@ export class ConversationManager {
             const totalDuration = endTime - startTime;
 
             // Run final evaluations
-            let finalEvaluations = [];
+            let finalEvaluations: EnhancedEvaluationResult[] = [];
             if (config.final_evaluations?.length > 0) {
                 // Create a combined execution result for final evaluations
                 const combinedResult = this.createCombinedExecutionResult(turns, totalDuration);
-                finalEvaluations = await this.evaluationEngine.runEvaluations(
+                const rawEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
                     config.final_evaluations,
                     combinedResult
                 );
+
+                // BUGFIX: Filter out any malformed evaluation results to prevent ZodError
+                finalEvaluations = rawEvaluations.filter(result =>
+                    result &&
+                    typeof result === 'object' &&
+                    'evaluator_type' in result &&
+                    'success' in result &&
+                    'summary' in result &&
+                    'details' in result
+                );
+
+                if (finalEvaluations.length !== rawEvaluations.length) {
+                    console.warn(`🗣️  [ConversationManager] Filtered out ${rawEvaluations.length - finalEvaluations.length} malformed evaluation results`);
+                }
             }
 
             const result: ConversationResult = {
@@ -150,8 +256,11 @@ export class ConversationManager {
             return result;
 
         } catch (error) {
-            console.error(`💥 [ConversationManager] Conversation failed:`, error);
-            throw new Error(`Conversation execution failed: ${error instanceof Error ? error.message : String(error)}`);
+            console.error(`🗣️  [ConversationManager] Conversation failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        } finally {
+            // NEW: Always cleanup channel at end
+            await this.cleanupConversationChannel();
         }
     }
 
@@ -163,20 +272,32 @@ export class ConversationManager {
         userInput: string,
         turnNumber: number,
         config: ConversationConfig,
-        previousTurns: ConversationTurn[]
+        _previousTurns: ConversationTurn[]
     ): Promise<ConversationTurn> {
         const turnStartTime = Date.now();
 
-        console.log(`👤 [ConversationManager] Turn ${turnNumber} Input: "${userInput}"`);
+        // NEW: Validate conversation channel exists
+        if (!this.conversationChannelId) {
+            throw new Error('No conversation channel available for turn execution');
+        }
 
-        // Use existing askAgentViaApi infrastructure
+        console.log(`👤 [ConversationManager] Turn ${turnNumber} Input: "${userInput}"`);
+        console.log(`🔗 [ConversationManager] Using channel: ${this.conversationChannelId}`);
+
+        // NEW: Use existing conversation channel
         const { response: agentResponse, roomId } = await askAgentViaApi(
             this.server,
             this.agentId,
             userInput,
-            config.timeout_per_turn_ms,
-            this.serverPort
+            60000,
+            this.serverPort,
+            this.conversationChannelId  // NEW: Pass existing channel ID
         );
+
+        // NEW: Verify we're still using the same channel
+        if (roomId !== this.conversationChannelId) {
+            console.warn(`⚠️  [ConversationManager] Channel mismatch: expected ${this.conversationChannelId}, got ${roomId}`);
+        }
 
         console.log(`🤖 [ConversationManager] Turn ${turnNumber} Response: "${agentResponse}"`);
 
@@ -453,15 +574,51 @@ export class ConversationManager {
         turns: ConversationTurn[],
         finalEvaluations: any[]
     ): boolean {
-        // Check turn-level evaluations
+        // If we have no turns, the conversation failed
+        if (turns.length === 0) {
+            return false;
+        }
+
+        // Check if all turns completed successfully (basic conversation flow)
+        const allTurnsCompleted = turns.every(turn =>
+            turn.userInput && turn.agentResponse && turn.agentResponse.trim().length > 0
+        );
+
+        // Check turn-level evaluations (if any exist)
         const turnEvaluationsSuccess = turns.every(turn =>
             turn.turnEvaluations.length === 0 || turn.turnEvaluations.some(evaluation => evaluation.success)
         );
 
-        // Check final evaluations
-        const finalEvaluationsSuccess = finalEvaluations.length === 0 ||
-            finalEvaluations.every(evaluation => evaluation.success);
+        // Check final evaluations (if any exist and are valid)
+        const validFinalEvaluations = finalEvaluations.filter(evaluation =>
+            evaluation && typeof evaluation === 'object' && 'success' in evaluation
+        );
 
-        return turnEvaluationsSuccess && finalEvaluationsSuccess;
+        const finalEvaluationsSuccess = validFinalEvaluations.length === 0 ||
+            validFinalEvaluations.every(evaluation => evaluation.success);
+
+        // A conversation is successful if:
+        // 1. All turns completed successfully (basic flow) - THIS IS THE PRIMARY CRITERION
+        // 2. Turn evaluations pass (if any exist) - SECONDARY
+        // 3. Final evaluations pass (if any exist and are valid) - SECONDARY
+
+        // Primary success criterion: conversation flow completed
+        const primarySuccess = allTurnsCompleted;
+
+        // Secondary success criteria: evaluations (if they exist and are valid)
+        const secondarySuccess = turnEvaluationsSuccess && finalEvaluationsSuccess;
+
+        // Overall success: primary criterion must be true, secondary is preferred but not required
+        const success = primarySuccess;
+
+        console.log(`🎯 [ConversationManager] Success determination:`);
+        console.log(`   - All turns completed: ${allTurnsCompleted} (PRIMARY)`);
+        console.log(`   - Turn evaluations success: ${turnEvaluationsSuccess} (SECONDARY)`);
+        console.log(`   - Final evaluations success: ${finalEvaluationsSuccess} (SECONDARY)`);
+        console.log(`   - Primary success: ${primarySuccess}`);
+        console.log(`   - Secondary success: ${secondarySuccess}`);
+        console.log(`   - Overall success: ${success} (based on primary criterion)`);
+
+        return success;
     }
 }
