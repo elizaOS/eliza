@@ -1,33 +1,59 @@
-import { IAgentRuntime } from '@elizaos/core';
-import {
-  IWebSearchService,
-  SearchOptions,
-  SearchResult,
-  SearchResponse,
-  NewsSearchOptions,
-  ImageSearchOptions,
-  VideoSearchOptions,
-} from '@elizaos/core';
+import { IAgentRuntime, Service, ServiceType, logger } from '@elizaos/core';
+
+// Define web-search-specific types locally since they're not in core
+export interface SearchOptions {
+  query: string;
+  limit?: number;
+  offset?: number;
+  language?: string;
+  region?: string;
+  safeSearch?: boolean;
+}
+
+export interface SearchResult {
+  title: string;
+  url: string;
+  description: string;
+  displayUrl?: string;
+  source?: string;
+  publishedDate?: Date;
+  relevanceScore?: number;
+  snippet?: string;
+  thumbnail?: string;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  totalResults?: number;
+  nextOffset?: number;
+}
+
+export interface NewsSearchOptions extends SearchOptions {
+  sortBy?: 'relevance' | 'date';
+  from?: Date;
+  to?: Date;
+  category?: string;
+}
+
+export interface ImageSearchOptions extends SearchOptions {
+  size?: 'small' | 'medium' | 'large';
+  type?: 'photo' | 'clipart' | 'gif' | 'transparent';
+  color?: string;
+}
+
+export interface VideoSearchOptions extends SearchOptions {
+  duration?: 'short' | 'medium' | 'long';
+  resolution?: 'sd' | 'hd';
+}
 
 /**
  * Dummy web search service for testing purposes
  * Provides mock implementations of web search operations
  */
-export class DummyWebSearchService extends IWebSearchService {
-  static override readonly serviceType = IWebSearchService.serviceType;
+export class DummyWebSearchService extends Service {
+  static readonly serviceType = ServiceType.WEB_SEARCH;
 
-  private trendingSearches = [
-    'artificial intelligence',
-    'machine learning',
-    'blockchain technology',
-    'climate change',
-    'space exploration',
-    'quantum computing',
-    'renewable energy',
-    'cybersecurity',
-    'biotechnology',
-    'autonomous vehicles',
-  ];
+  capabilityDescription = 'Dummy web search service for testing';
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -40,243 +66,171 @@ export class DummyWebSearchService extends IWebSearchService {
   }
 
   async initialize(): Promise<void> {
-    this.runtime.logger.info('DummyWebSearchService initialized');
+    logger.info('DummyWebSearchService initialized');
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger.info('DummyWebSearchService stopped');
+    logger.info('DummyWebSearchService stopped');
   }
 
-  async search(query: string, options?: SearchOptions): Promise<SearchResponse> {
-    this.runtime.logger.debug(`Searching for: "${query}"`);
+  async search(options: SearchOptions): Promise<SearchResponse> {
+    logger.debug('Performing web search', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Search options:', options);
+    const limit = options.limit || 10;
+    const results: SearchResult[] = [];
+
+    logger.debug(`Generating ${limit} dummy search results for: ${options.query}`);
+
+    for (let i = 0; i < limit; i++) {
+      results.push({
+        title: `Result ${i + 1}: ${options.query}`,
+        url: `https://example.com/result-${i}`,
+        description: `This is dummy search result ${i + 1} for query: ${options.query}. Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+        displayUrl: `example.com/result-${i}`,
+        source: 'DummySearch',
+        relevanceScore: 0.9 - i * 0.05,
+        snippet: `Dummy snippet for search result ${i + 1}`,
+      });
     }
 
-    // Mock search results
-    const results: SearchResult[] = [
-      {
-        title: `${query} - Comprehensive Guide`,
-        url: `https://example.com/guide/${query.replace(/\s+/g, '-')}`,
-        description: `A comprehensive guide about ${query}. This mock result provides detailed information and explanations about the topic.`,
-        displayUrl: 'example.com',
-        thumbnail: 'https://example.com/thumbnail1.jpg',
-        publishedDate: new Date('2024-01-15'),
-        source: 'Example Guide',
-        relevanceScore: 0.95,
-        snippet: `Learn everything about ${query} with this detailed guide...`,
-      },
-      {
-        title: `${query} - Latest News and Updates`,
-        url: `https://news.example.com/latest/${query.replace(/\s+/g, '-')}`,
-        description: `Stay updated with the latest news about ${query}. Recent developments, trends, and insights.`,
-        displayUrl: 'news.example.com',
-        thumbnail: 'https://news.example.com/thumbnail2.jpg',
-        publishedDate: new Date('2024-01-10'),
-        source: 'Example News',
-        relevanceScore: 0.88,
-        snippet: `Breaking news about ${query}: Recent developments show...`,
-      },
-      {
-        title: `${query} - Wikipedia`,
-        url: `https://en.wikipedia.org/wiki/${query.replace(/\s+/g, '_')}`,
-        description: `Wikipedia article about ${query}. Comprehensive information from the free encyclopedia.`,
-        displayUrl: 'en.wikipedia.org',
-        publishedDate: new Date('2023-12-01'),
-        source: 'Wikipedia',
-        relevanceScore: 0.82,
-        snippet: `${query} is a topic that encompasses various aspects...`,
-      },
-    ];
-
     return {
-      query,
       results,
-      totalResults: 156789,
-      searchTime: 0.42,
-      suggestions: [
-        `${query} tutorial`,
-        `${query} examples`,
-        `${query} best practices`,
-        `${query} 2024`,
-      ],
-      relatedSearches: [
-        `what is ${query}`,
-        `how to ${query}`,
-        `${query} vs alternatives`,
-        `${query} benefits`,
-      ],
+      totalResults: 1000,
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
-  async searchNews(query: string, options?: NewsSearchOptions): Promise<SearchResponse> {
-    this.runtime.logger.debug(`Searching news for: "${query}"`);
+  async searchNews(options: NewsSearchOptions): Promise<SearchResponse> {
+    logger.debug('Performing news search', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('News search options:', options);
+    const limit = options.limit || 10;
+    const results: SearchResult[] = [];
+
+    logger.debug(`Generating ${limit} dummy news results for: ${options.query}`);
+
+    for (let i = 0; i < limit; i++) {
+      results.push({
+        title: `News: ${options.query} - Article ${i + 1}`,
+        url: `https://news.example.com/article-${i}`,
+        description: `Breaking News ${i + 1}: ${options.query}. This is a dummy news article content that discusses the latest developments.`,
+        displayUrl: `news.example.com/article-${i}`,
+        source: 'DummyNews',
+        publishedDate: new Date(Date.now() - i * 86400000),
+        relevanceScore: 0.95 - i * 0.05,
+        snippet: `Latest news about ${options.query}`,
+      });
     }
 
-    // Mock news results
-    const results: SearchResult[] = [
-      {
-        title: `Breaking: ${query} Makes Headlines`,
-        url: `https://news.example.com/breaking/${query.replace(/\s+/g, '-')}`,
-        description: `Latest breaking news about ${query}. Important developments that are making headlines today.`,
-        displayUrl: 'news.example.com',
-        thumbnail: 'https://news.example.com/breaking.jpg',
-        publishedDate: new Date(Date.now() - 3600000), // 1 hour ago
-        source: 'Example News',
-        relevanceScore: 0.93,
-      },
-      {
-        title: `${query}: Analysis and Commentary`,
-        url: `https://analysis.example.com/commentary/${query.replace(/\s+/g, '-')}`,
-        description: `Expert analysis and commentary on ${query}. In-depth perspectives from industry leaders.`,
-        displayUrl: 'analysis.example.com',
-        thumbnail: 'https://analysis.example.com/analysis.jpg',
-        publishedDate: new Date(Date.now() - 7200000), // 2 hours ago
-        source: 'Example Analysis',
-        relevanceScore: 0.87,
-      },
-    ];
-
     return {
-      query,
       results,
-      totalResults: 12345,
-      searchTime: 0.28,
-      suggestions: [`${query} news`, `${query} headlines`, `${query} updates`],
+      totalResults: 500,
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
-  async searchImages(query: string, options?: ImageSearchOptions): Promise<SearchResponse> {
-    this.runtime.logger.debug(`Searching images for: "${query}"`);
+  async searchImages(options: ImageSearchOptions): Promise<SearchResponse> {
+    logger.debug('Performing image search', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Image search options:', options);
+    const limit = options.limit || 10;
+    const results: SearchResult[] = [];
+
+    logger.debug(`Generating ${limit} dummy image results for: ${options.query}`);
+
+    for (let i = 0; i < limit; i++) {
+      results.push({
+        title: `Image: ${options.query} - ${i + 1}`,
+        url: `https://images.example.com/img-${i}.jpg`,
+        description: `A ${options.size || 'medium'} image related to ${options.query}`,
+        displayUrl: `images.example.com/img-${i}.jpg`,
+        source: 'DummyImages',
+        thumbnail: `https://images.example.com/thumb-${i}.jpg`,
+        relevanceScore: 0.85 - i * 0.05,
+        snippet: `Image ${i + 1} related to: ${options.query}`,
+      });
     }
 
-    // Mock image results
-    const results: SearchResult[] = Array.from({ length: 12 }, (_, i) => ({
-      title: `${query} Image ${i + 1}`,
-      url: `https://images.example.com/${query.replace(/\s+/g, '-')}-${i + 1}.jpg`,
-      description: `High-quality image of ${query}. Perfect for various uses and applications.`,
-      displayUrl: 'images.example.com',
-      thumbnail: `https://images.example.com/thumb/${query.replace(/\s+/g, '-')}-${i + 1}.jpg`,
-      source: 'Example Images',
-      relevanceScore: 0.9 - i * 0.05,
-    }));
-
     return {
-      query,
       results,
-      totalResults: 45678,
-      searchTime: 0.35,
+      totalResults: 10000,
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
-  async searchVideos(query: string, options?: VideoSearchOptions): Promise<SearchResponse> {
-    this.runtime.logger.debug(`Searching videos for: "${query}"`);
+  async searchVideos(options: VideoSearchOptions): Promise<SearchResponse> {
+    logger.debug('Performing video search', JSON.stringify(options));
 
-    if (options) {
-      this.runtime.logger.debug('Video search options:', options);
+    const limit = options.limit || 10;
+    const results: SearchResult[] = [];
+
+    logger.debug(`Generating ${limit} dummy video results for: ${options.query}`);
+
+    for (let i = 0; i < limit; i++) {
+      results.push({
+        title: `Video: ${options.query} - Part ${i + 1}`,
+        url: `https://videos.example.com/video-${i}`,
+        description: `A ${options.duration || 'medium'} length video about ${options.query}. This video demonstrates various aspects of the search query.`,
+        displayUrl: `videos.example.com/video-${i}`,
+        source: 'DummyVideos',
+        thumbnail: `https://videos.example.com/thumb-${i}.jpg`,
+        publishedDate: new Date(Date.now() - i * 86400000),
+        relevanceScore: 0.88 - i * 0.05,
+        snippet: `Video ${i + 1}: ${options.query}`,
+      });
     }
 
-    // Mock video results
-    const results: SearchResult[] = [
-      {
-        title: `${query} - Complete Tutorial`,
-        url: `https://video.example.com/tutorial/${query.replace(/\s+/g, '-')}`,
-        description: `Complete tutorial about ${query}. Step-by-step guide with examples and demonstrations.`,
-        displayUrl: 'video.example.com',
-        thumbnail: `https://video.example.com/thumb/tutorial-${query.replace(/\s+/g, '-')}.jpg`,
-        publishedDate: new Date('2024-01-05'),
-        source: 'Example Video',
-        relevanceScore: 0.91,
-      },
-      {
-        title: `${query} Explained in 5 Minutes`,
-        url: `https://video.example.com/quick/${query.replace(/\s+/g, '-')}`,
-        description: `Quick explanation of ${query} in just 5 minutes. Perfect for beginners and quick reference.`,
-        displayUrl: 'video.example.com',
-        thumbnail: `https://video.example.com/thumb/quick-${query.replace(/\s+/g, '-')}.jpg`,
-        publishedDate: new Date('2024-01-03'),
-        source: 'Example Video',
-        relevanceScore: 0.86,
-      },
-    ];
-
     return {
-      query,
       results,
-      totalResults: 8765,
-      searchTime: 0.31,
+      totalResults: 5000,
+      nextOffset: (options.offset || 0) + limit,
     };
   }
 
-  async getSuggestions(query: string): Promise<string[]> {
-    this.runtime.logger.debug(`Getting suggestions for: "${query}"`);
+  async autocomplete(query: string): Promise<string[]> {
+    logger.debug(`Getting autocomplete suggestions for: ${query}`);
 
-    // Mock suggestions based on query
-    const suggestions = [
+    return [
       `${query} tutorial`,
-      `${query} guide`,
       `${query} examples`,
+      `${query} documentation`,
       `${query} best practices`,
-      `${query} vs alternatives`,
-      `how to ${query}`,
-      `what is ${query}`,
-      `${query} 2024`,
+      `${query} guide`,
+      `${query} tips`,
+      `${query} tricks`,
+      `${query} how to`,
     ];
-
-    return suggestions;
   }
 
   async getTrendingSearches(region?: string): Promise<string[]> {
-    this.runtime.logger.debug(`Getting trending searches for region: ${region || 'global'}`);
+    logger.debug(`Getting trending searches for region: ${region || 'global'}`);
 
-    // Return shuffled trending searches
-    return [...this.trendingSearches].sort(() => Math.random() - 0.5);
+    return [
+      'artificial intelligence',
+      'machine learning',
+      'blockchain technology',
+      'climate change',
+      'renewable energy',
+      'space exploration',
+      'quantum computing',
+      'cybersecurity',
+    ];
   }
 
-  async getPageInfo(url: string): Promise<{
-    title: string;
-    description: string;
-    content: string;
-    metadata: Record<string, string>;
-    images: string[];
-    links: string[];
-  }> {
-    this.runtime.logger.debug(`Getting page info for: ${url}`);
+  async getRelatedSearches(query: string): Promise<string[]> {
+    logger.debug(`Getting related searches for: ${query}`);
 
-    // Mock page information
-    const domain = new URL(url).hostname;
+    return [
+      `${query} alternatives`,
+      `${query} vs competitors`,
+      `${query} pricing`,
+      `${query} reviews`,
+      `best ${query}`,
+      `${query} comparison`,
+      `${query} features`,
+      `${query} benefits`,
+    ];
+  }
 
-    return {
-      title: `Mock Page Title - ${domain}`,
-      description: `This is a mock page description for ${url}. It provides detailed information about the page content.`,
-      content: `Mock page content from ${url}.\n\nThis is a comprehensive analysis of the page including:\n- Main content sections\n- Important information\n- Key topics covered\n- Related resources\n\nThe page provides valuable insights and information for users interested in the topic.`,
-      metadata: {
-        'og:title': `Mock Page Title - ${domain}`,
-        'og:description': `Mock page description for ${url}`,
-        'og:type': 'website',
-        'og:url': url,
-        'og:image': `${url}/og-image.jpg`,
-        'twitter:card': 'summary_large_image',
-        'twitter:title': `Mock Page Title - ${domain}`,
-        'twitter:description': `Mock page description for ${url}`,
-        author: 'Mock Author',
-        keywords: 'mock, page, content, analysis',
-      },
-      images: [`${url}/image1.jpg`, `${url}/image2.jpg`, `${url}/banner.jpg`],
-      links: [
-        `${url}/page1`,
-        `${url}/page2`,
-        `${url}/contact`,
-        `${url}/about`,
-        'https://external-link.com',
-      ],
-    };
+  getDexName(): string {
+    return 'dummy-web-search';
   }
 }

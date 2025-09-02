@@ -37,8 +37,7 @@
     "README.md",
     ".npmignore",
     ".gitignore",
-    "package.json",
-    "tsup.config.ts"
+    "package.json"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -56,13 +55,12 @@
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "tailwindcss-animate": "^1.0.7",
-    "tsup": "8.5.0",
     "typescript": "5.8.2"
   },
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
-    "build": "tsc --noEmit && vite build && tsup",
+    "build": "bun run build.ts",
     "lint": "prettier --write ./src",
     "postinstall": "node -e \"const fs=require('fs');const path=require('path');const zodPath=path.join('node_modules','zod');if(fs.existsSync(zodPath)){fs.writeFileSync(path.join(zodPath,'v3.js'),'module.exports=require(\\\"./lib/index.js\\\");');fs.writeFileSync(path.join(zodPath,'v3.d.ts'),'export * from \\\"./lib/index\\\";');}\" || true",
     "test:component": "bun run test:install && bun test",
@@ -72,7 +70,8 @@
     "test": "bun run test:install && bun run test:component && bun run test:e2e",
     "test:install": "node scripts/install-test-deps.js",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {
     "access": "public"

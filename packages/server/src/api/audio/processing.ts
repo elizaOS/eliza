@@ -1,9 +1,6 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { cleanupUploadedFile } from '../shared/file-utils.js';
 import { sendError, sendSuccess } from '../shared/response-utils.js';
 import { agentAudioUpload, validateAudioFile } from '../shared/uploads/index.js';
@@ -20,40 +17,7 @@ interface AudioRequest extends express.Request {
 /**
  * Securely validates a file path to prevent path traversal attacks
  */
-function validateSecureFilePath(filePath: string): string {
-  if (!filePath) {
-    throw new Error('File path is required');
-  }
-
-  // Normalize and resolve the path to handle any ".." or other path issues
-  const normalizedPath = path.normalize(filePath);
-  const resolvedPath = path.resolve(normalizedPath);
-
-  // Additional security checks
-  if (normalizedPath.includes('..')) {
-    throw new Error('Path traversal attempt detected');
-  }
-
-  // Ensure the file is within system temp directory or upload directory
-  const systemTemp = path.resolve(os.tmpdir());
-  const projectUpload = path.resolve(process.cwd(), '.eliza', 'data', 'uploads');
-
-  if (!resolvedPath.startsWith(systemTemp) && !resolvedPath.startsWith(projectUpload)) {
-    throw new Error('File path outside allowed directories');
-  }
-
-  // Check if file exists and is readable
-  try {
-    const stats = fs.statSync(resolvedPath);
-    if (!stats.isFile()) {
-      throw new Error('Path does not point to a file');
-    }
-  } catch (error) {
-    throw new Error(`File access error: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  return normalizedPath;
-}
+// Removed unused _validateSecureFilePath function
 
 /**
  * Audio processing functionality - upload and transcription
@@ -112,7 +76,10 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       cleanupUploadedFile(audioFile);
       sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });
     } catch (error) {
-      logger.error('[AUDIO MESSAGE] Error processing audio:', error);
+      logger.error(
+        '[AUDIO MESSAGE] Error processing audio:',
+        error instanceof Error ? error.message : String(error)
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,
@@ -178,7 +145,10 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       logger.success('[TRANSCRIPTION] Successfully transcribed audio');
       sendSuccess(res, { text: transcription });
     } catch (error) {
-      logger.error('[TRANSCRIPTION] Error transcribing audio:', error);
+      logger.error(
+        '[TRANSCRIPTION] Error transcribing audio:',
+        error instanceof Error ? error.message : String(error)
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,

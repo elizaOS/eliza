@@ -95,7 +95,10 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
       return JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     }
   } catch (error) {
-    logger.debug(`Failed to read package.json for '${repository}':`, error);
+    logger.debug(
+      `Failed to read package.json for '${repository}':`,
+      error instanceof Error ? error.message : String(error)
+    );
   }
   return null;
 }

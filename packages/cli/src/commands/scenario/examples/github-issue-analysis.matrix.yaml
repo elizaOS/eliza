@@ -1,0 +1,11 @@
+# matrix.scenario.yaml
+name: 'GitHub Issue Action Chaining Analysis'
+description: 'Tests the reliability of listing GitHub issues under various LLM and prompt configurations.'
+base_scenario: 'test-github-issues.scenario.yaml'
+runs_per_combination: 1
+matrix:
+  - parameter: 'run[0].input'
+    values:
+      - 'List open issues for elizaOS/eliza'
+      - 'Find current issues for the elizaos/eliza repo'
+      - "Show me what's open in the elizaOS/eliza GitHub."

@@ -1,0 +1,13 @@
+name: 'Natural Language Agent Interaction Test'
+description: 'Test agent interaction using natural language input'
+environment:
+  type: e2b
+run:
+  - input: 'Hello! Can you tell me what you can help me with?'
+    evaluations:
+      - type: 'string_contains'
+        value: 'help'
+      - type: 'string_contains'
+        value: 'assist'
+judgment:
+  strategy: any_pass

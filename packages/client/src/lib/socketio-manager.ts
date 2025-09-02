@@ -248,19 +248,37 @@ export class SocketIOManager extends EventAdapter {
       this.emit('unauthorized', reason);
     });
 
-    this.socket.on('messageBroadcast', (data: MessageBroadcastData) => {
+    this.socket.on('messageBroadcast', (raw: any) => {
+      // Server sends objects to others and JSON strings back to the sender.
+      const data: MessageBroadcastData =
+        typeof raw === 'string'
+          ? (() => {
+              try {
+                return JSON.parse(raw);
+              } catch (e) {
+                clientLogger.warn(
+                  '[SocketIO] Failed to parse string messageBroadcast payload:',
+                  raw
+                );
+                return {} as any;
+              }
+            })()
+          : (raw as MessageBroadcastData);
+
       clientLogger.info(`[SocketIO] Message broadcast received:`, data);
 
       // Log the full data structure to understand formats
+      const isObj = data && typeof data === 'object';
+      const keys = isObj ? Object.keys(data as any) : [];
       clientLogger.debug('[SocketIO] Message broadcast data structure:', {
-        keys: Object.keys(data),
-        senderId: data.senderId,
-        senderNameType: typeof data.senderName,
-        textType: typeof data.text,
-        textLength: data.text ? data.text.length : 0,
-        hasThought: 'thought' in data,
-        hasActions: 'actions' in data,
-        additionalKeys: Object.keys(data).filter(
+        keys,
+        senderId: (data as any).senderId,
+        senderNameType: typeof (data as any).senderName,
+        textType: typeof (data as any).text,
+        textLength: (data as any).text ? (data as any).text.length : 0,
+        hasThought: isObj && 'thought' in (data as any),
+        hasActions: isObj && 'actions' in (data as any),
+        additionalKeys: keys.filter(
           (k) =>
             ![
               'senderId',
@@ -276,15 +294,15 @@ export class SocketIOManager extends EventAdapter {
       });
 
       // Check if this is a message for one of our active channels
-      const channelId = data.channelId || data.roomId; // Handle both new and old message format
+      const channelId = (data as any).channelId || (data as any).roomId; // Handle both new and old message format
       if (channelId && this.activeChannelIds.has(channelId)) {
         clientLogger.info(`[SocketIO] Handling message for active channel ${channelId}`);
         // Post the message to the event for UI updates
         this.emit('messageBroadcast', {
-          ...data,
+          ...(data as any),
           channelId: channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
-          name: data.senderName, // Required for ContentWithUser compatibility in some older UI parts
+          name: (data as any).senderName, // Required for ContentWithUser compatibility
         });
       } else {
         clientLogger.warn(

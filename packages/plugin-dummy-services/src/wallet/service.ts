@@ -1,161 +1,141 @@
-import { AgentRuntime, IWalletService, ServiceType, WalletPortfolio } from '@elizaos/core';
+import { IAgentRuntime, Service } from '@elizaos/core';
 
-const DEFAULT_QUOTE_ASSET = 'USDC'; // Default asset for cash
-const DEFAULT_TRANSACTION_FEE_FIXED = 0.1; // Example fixed fee in quote asset
-
-interface DummyPositionLot {
-  price: number;
-  quantity: number;
-  timestamp: number;
+// Define wallet-specific types locally since they're not in core
+export interface WalletPortfolio {
+  totalValueUsd: number;
+  assets: Array<{
+    symbol: string;
+    balance: number;
+    valueUsd: number;
+  }>;
 }
 
-interface DummyAssetDetail {
-  quantity: number;
-  averagePrice: number; // Average price of current holdings
-  lots: DummyPositionLot[]; // For FIFO P&L on sell
-}
+/**
+ * Dummy wallet service for testing purposes
+ * Provides mock implementations of wallet operations
+ */
+export class DummyWalletService extends Service {
+  // Use a custom service type since WALLET isn't in ServiceType enum
+  static readonly serviceType = 'wallet';
 
-export class DummyWalletService extends IWalletService {
-  public static override readonly serviceType = ServiceType.WALLET;
+  capabilityDescription = 'Dummy wallet service for testing';
+  private balances: Map<string, bigint> = new Map();
+  private prices: Map<string, number> = new Map();
+  private decimals: Map<string, number> = new Map();
+  private quoteAsset = 'USDC';
 
-  private balances: Map<string, number>; // assetSymbolOrAddress -> quantity
-  private positions: Map<string, DummyAssetDetail>; // assetSymbolOrAddress -> details for owned non-quote assets
-  private quoteAssetSymbol: string;
-
-  constructor(runtime: AgentRuntime) {
+  constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.balances = new Map<string, number>();
-    this.positions = new Map<string, DummyAssetDetail>();
-    this.quoteAssetSymbol = DEFAULT_QUOTE_ASSET;
-    this.resetWallet(10000, DEFAULT_QUOTE_ASSET); // Initialize with some default cash
-  }
-  async transferSol(from: any, to: any, lamports: number): Promise<string> {
-    // This is a dummy implementation - no real transfer happens
-    console.log(
-      `[${DummyWalletService.serviceType}] Mock transfer: ${lamports} lamports from ${from} to ${to}`
-    );
-
-    // For dummy wallet, we just simulate the transfer
-    const solSymbol = 'SOL';
-    const solAmount = lamports / 1e9; // Convert lamports to SOL
-
-    const currentBalance = this.balances.get(solSymbol) || 0;
-    if (currentBalance < solAmount) {
-      throw new Error(`Insufficient SOL balance. Have ${currentBalance}, need ${solAmount}`);
-    }
-
-    // Deduct from balance
-    this.balances.set(solSymbol, currentBalance - solAmount);
-
-    // Return a dummy transaction signature
-    return `dummy-tx-${Date.now()}-${Math.random().toString(36).substring(7)}`;
   }
 
-  public static async start(runtime: AgentRuntime): Promise<DummyWalletService> {
-    console.log(`[${DummyWalletService.serviceType}] static start called - creating instance.`);
-    const instance = new DummyWalletService(runtime);
-    // No further async init in instance.start() currently needed for this simple map-based wallet
-    return instance;
+  static async start(runtime: IAgentRuntime): Promise<DummyWalletService> {
+    const service = new DummyWalletService(runtime);
+    await service.start();
+    return service;
   }
 
-  public async start(): Promise<void> {
-    console.log(
-      `[${DummyWalletService.serviceType}] instance start called. Initialized with ${this.balances.get(this.quoteAssetSymbol)} ${this.quoteAssetSymbol}.`
-    );
+  async start(): Promise<void> {
+    // Initialize with default USDC balance
+    this.balances.set('USDC', BigInt(10000 * 1e6)); // 10,000 USDC with 6 decimals
+    this.prices.set('USDC', 1); // USDC always has price 1
+    this.decimals.set('USDC', 6);
+    console.log('[DummyWalletService] started.');
   }
 
-  public async stop(): Promise<void> {
-    console.log(`[${DummyWalletService.serviceType}] instance stop called. Balances reset.`);
+  async stop(): Promise<void> {
     this.balances.clear();
-    this.positions.clear();
+    this.prices.clear();
+    this.decimals.clear();
+    console.log('[DummyWalletService] stopped.');
   }
 
-  async addFunds(
-    assetSymbolOrAddress: string,
-    amount: number,
-    _walletAddress?: string
-  ): Promise<void> {
-    const currentBalance = this.balances.get(assetSymbolOrAddress) || 0;
-    this.balances.set(assetSymbolOrAddress, currentBalance + amount);
-    console.log(
-      `[${DummyWalletService.serviceType}] Added ${amount} ${assetSymbolOrAddress}. New balance: ${this.balances.get(assetSymbolOrAddress)}`
-    );
+  async getBalance(asset: string): Promise<bigint> {
+    return this.balances.get(asset) || BigInt(0);
   }
 
-  async setPortfolioHolding(
-    assetSymbolOrAddress: string,
-    quantity: number,
-    averagePrice: number,
-    _walletAddress?: string
-  ): Promise<void> {
-    if (assetSymbolOrAddress === this.quoteAssetSymbol) {
-      console.warn(
-        `[${DummyWalletService.serviceType}] Cannot set portfolio holding for quote asset directly, use addFunds.`
-      );
-      return this.addFunds(assetSymbolOrAddress, quantity * averagePrice); // Assuming quantity is amount of quote to add
+  addFunds(asset: string, amount: number): void {
+    const currentBalance = this.balances.get(asset) || BigInt(0);
+    this.balances.set(asset, currentBalance + BigInt(amount));
+  }
+
+  setPortfolioHolding(asset: string, amount: number, price: number = 1): void {
+    if (asset === this.quoteAsset) {
+      this.addFunds(asset, amount);
+      this.prices.set(asset, 1); // USDC always has price 1
+      this.decimals.set(asset, 6);
+    } else {
+      // For non-quote assets, we need to handle the amount properly
+      // If amount represents the actual quantity, we store it with appropriate decimals
+      const decimals = 6; // Default to 6 decimals for dummy tokens
+      const scaledAmount = Math.floor(amount * Math.pow(10, decimals));
+      this.balances.set(asset, BigInt(scaledAmount));
+      this.prices.set(asset, price);
+      this.decimals.set(asset, decimals);
     }
-    this.balances.set(assetSymbolOrAddress, quantity);
-    this.positions.set(assetSymbolOrAddress, {
-      quantity: quantity,
-      averagePrice: averagePrice,
-      lots: [{ price: averagePrice, quantity: quantity, timestamp: Date.now() }], // Create a single lot for simplicity
-    });
-    console.log(
-      `[${DummyWalletService.serviceType}] Set holding for ${assetSymbolOrAddress}: ${quantity} @ ${averagePrice}`
-    );
   }
 
-  async resetWallet(
-    initialCashAmount: number,
-    cashAssetSymbol: string = DEFAULT_QUOTE_ASSET,
-    _walletAddress?: string
-  ): Promise<void> {
+  resetWallet(initialCash: number = 10000, quoteAsset: string = 'USDC'): void {
     this.balances.clear();
-    this.positions.clear();
-    this.quoteAssetSymbol = cashAssetSymbol;
-    this.balances.set(this.quoteAssetSymbol, initialCashAmount);
-    console.log(
-      `[${DummyWalletService.serviceType}] Wallet reset. Cash: ${initialCashAmount} ${this.quoteAssetSymbol}`
-    );
+    this.prices.clear();
+    this.decimals.clear();
+    this.quoteAsset = quoteAsset;
+    this.balances.set(quoteAsset, BigInt(initialCash * 1e6));
+    this.prices.set(quoteAsset, 1); // Quote asset always has price 1
+    this.decimals.set(quoteAsset, 6);
   }
 
-  async getBalance(assetSymbolOrAddress: string, _walletAddress?: string): Promise<number> {
-    return this.balances.get(assetSymbolOrAddress) || 0;
+  async transferSol(from: string, to: string, amount: number): Promise<string> {
+    const amountBigInt = BigInt(amount);
+    const solBalance = this.balances.get('SOL') || BigInt(0);
+    if (solBalance < amountBigInt) {
+      throw new Error(`Insufficient SOL balance`);
+    }
+    this.balances.set('SOL', solBalance - amountBigInt);
+    return `dummy-tx-${Date.now()}`;
   }
 
-  async getPortfolio(_walletAddress?: string): Promise<WalletPortfolio> {
+  getPortfolio(): any {
     const assets: any[] = [];
     let totalValueUsd = 0;
 
-    for (const [symbol, balance] of this.balances) {
-      const positionDetail = this.positions.get(symbol);
-      const isQuoteAsset = symbol === this.quoteAssetSymbol;
-      const averagePrice = positionDetail?.averagePrice || (isQuoteAsset ? 1 : 0);
-      const value = isQuoteAsset
-        ? balance
-        : positionDetail
-          ? balance * positionDetail.averagePrice
-          : 0;
+    for (const [asset, balance] of this.balances.entries()) {
+      const price = this.prices.get(asset) || 1;
+      const decimals = this.decimals.get(asset) || 6;
+      const divisor = Math.pow(10, decimals);
 
-      // WalletAsset structure
+      // Calculate actual quantity and value
+      const quantity = Number(balance) / divisor;
+      const valueUsd = quantity * price;
+      totalValueUsd += valueUsd;
+
       assets.push({
-        address: symbol, // Using symbol as address for dummy wallet
-        symbol,
-        balance: balance.toString(),
-        decimals: isQuoteAsset ? 6 : 9, // Default decimals
-        quantity: balance,
-        averagePrice,
-        currentPrice: undefined,
-        value,
-        assetAddress: symbol,
+        symbol: asset,
+        address: `dummy-${asset.toLowerCase()}-address`,
+        balance: Number(balance),
+        valueUsd,
+        value: valueUsd,
+        amount: quantity,
+        quantity,
+        price,
+        averagePrice: price, // Use current price as average for dummy service
+        allocation: 0, // Will be calculated below
+        decimals,
       });
+    }
 
-      totalValueUsd += value;
+    // Calculate allocations
+    for (const asset of assets) {
+      asset.allocation = totalValueUsd > 0 ? (asset.valueUsd / totalValueUsd) * 100 : 0;
     }
 
     return {
       totalValueUsd,
       assets,
+      timestamp: Date.now(),
     };
+  }
+
+  get serviceName(): string {
+    return 'dummy-wallet';
   }
 }

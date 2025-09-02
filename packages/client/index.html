@@ -8,6 +8,17 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- Minimal early Buffer/global/process bootstrap to avoid race before entry polyfills -->
+    <script type="module">
+      import { Buffer as B } from 'buffer';
+      if (typeof globalThis.Buffer === 'undefined') globalThis.Buffer = B;
+      if (typeof globalThis.global === 'undefined') globalThis.global = globalThis;
+      if (typeof globalThis.process === 'undefined') {
+        globalThis.process = { env: {} };
+      } else if (!globalThis.process.env) {
+        globalThis.process.env = {};
+      }
+    </script>
+    <script type="module" src="/src/entry.tsx"></script>
   </body>
 </html>

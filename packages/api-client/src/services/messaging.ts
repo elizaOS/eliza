@@ -1,4 +1,4 @@
-import { UUID } from '@elizaos/core';
+import { UUID, ChannelType } from '@elizaos/core';
 import { BaseApiClient } from '../lib/base-client';
 import {
   Message,
@@ -15,8 +15,32 @@ import {
   ServerCreateParams,
   ServerSyncParams,
   ChannelUpdateParams,
+  ChannelMetadata,
+  MessageMetadata,
 } from '../types/messaging';
 import { PaginationParams } from '../types/base';
+
+// Internal payload interfaces for API requests
+interface ChannelCreatePayload {
+  name: string;
+  type: ChannelType;
+  server_id: UUID;
+  metadata?: ChannelMetadata;
+}
+
+interface GroupChannelCreatePayload {
+  name: string;
+  server_id: UUID;
+  participantCentralUserIds: UUID[];
+  type?: ChannelType;
+  metadata?: ChannelMetadata;
+}
+
+interface DmChannelQuery {
+  currentUserId: UUID;
+  targetUserId: UUID;
+  dmServerId: UUID;
+}
 
 export class MessagingService extends BaseApiClient {
   /**
@@ -44,21 +68,75 @@ export class MessagingService extends BaseApiClient {
    * Create a new channel
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/central-channels', params);
+    // Server expects: { name, type, server_id, metadata }
+    const payload: ChannelCreatePayload = {
+      name: params.name,
+      type: params.type,
+      server_id: params.serverId || ('00000000-0000-0000-0000-000000000000' as UUID),
+      metadata: params.metadata,
+    };
+    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
   }
 
   /**
    * Create a group channel
    */
   async createGroupChannel(params: GroupChannelCreateParams): Promise<MessageChannel> {
-    return this.post<MessageChannel>('/api/messaging/central-channels', params);
+    // Server expects: { name, server_id, participantCentralUserIds, type?, metadata? }
+    // The client currently provides participantIds and may include server_id/type in metadata.
+    const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+
+    // Extract and clean metadata - handle legacy fields that might be in metadata
+    let cleanedMetadata: ChannelMetadata | undefined;
+    let serverIdFromMeta: UUID | undefined;
+    let typeFromMeta: ChannelType | undefined;
+
+    if (params.metadata) {
+      // Create a new metadata object without the hoisted fields
+      const metadataCopy: ChannelMetadata = { ...params.metadata };
+
+      // Extract hoisted fields safely using bracket notation (ChannelMetadata allows [key: string]: unknown)
+      if ('server_id' in metadataCopy) {
+        serverIdFromMeta = metadataCopy['server_id'] as UUID | undefined;
+        delete metadataCopy['server_id'];
+      }
+
+      if ('type' in metadataCopy) {
+        typeFromMeta = metadataCopy['type'] as ChannelType | undefined;
+        delete metadataCopy['type'];
+      }
+
+      // Only include metadata if there are remaining properties
+      if (Object.keys(metadataCopy).length > 0) {
+        cleanedMetadata = metadataCopy;
+      }
+    }
+
+    const payload: GroupChannelCreatePayload = {
+      name: params.name,
+      server_id: serverIdFromMeta || DEFAULT_SERVER_ID,
+      participantCentralUserIds: params.participantIds,
+      // If caller intended DM, allow type override
+      ...(typeFromMeta ? { type: typeFromMeta } : {}),
+      ...(cleanedMetadata ? { metadata: cleanedMetadata } : {}),
+    };
+
+    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
   }
 
   /**
    * Find or create a DM channel
    */
   async getOrCreateDmChannel(params: DmChannelParams): Promise<MessageChannel> {
-    return this.get<MessageChannel>('/api/messaging/dm-channel', { params });
+    // Map participantIds -> { currentUserId, targetUserId }
+    const [userA, userB] = params.participantIds;
+    // Arbitrarily treat the first as current and second as target; callers pass [current, target]
+    const query: DmChannelQuery = {
+      currentUserId: userA,
+      targetUserId: userB,
+      dmServerId: '00000000-0000-0000-0000-000000000000' as UUID,
+    };
+    return this.get<MessageChannel>('/api/messaging/dm-channel', { params: query });
   }
 
   /**
@@ -117,7 +195,7 @@ export class MessagingService extends BaseApiClient {
   async postMessage(
     channelId: UUID,
     content: string,
-    metadata?: Record<string, any>
+    metadata?: MessageMetadata
   ): Promise<Message> {
     return this.post<Message>(`/api/messaging/central-channels/${channelId}/messages`, {
       content,
@@ -240,11 +318,11 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Add new user if not already present
     if (!currentParticipants.includes(userId)) {
-      const updatedParticipants = [...currentParticipants, userId];
+      const updatedParticipants: UUID[] = [...currentParticipants, userId];
       return this.updateChannel(channelId, {
         participantCentralUserIds: updatedParticipants,
       });
@@ -262,10 +340,10 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Add new users that aren't already present
-    const newParticipants = [...currentParticipants];
+    const newParticipants: UUID[] = [...currentParticipants];
     for (const userId of userIds) {
       if (!newParticipants.includes(userId)) {
         newParticipants.push(userId);
@@ -286,10 +364,10 @@ export class MessagingService extends BaseApiClient {
   ): Promise<{ success: boolean; data: MessageChannel }> {
     // First get current participants
     const channel = await this.getChannelDetails(channelId);
-    const currentParticipants = channel.metadata?.participantCentralUserIds || [];
+    const currentParticipants: UUID[] = channel.metadata?.participantCentralUserIds || [];
 
     // Remove user from participants
-    const updatedParticipants = currentParticipants.filter((id) => id !== userId);
+    const updatedParticipants: UUID[] = currentParticipants.filter((id) => id !== userId);
 
     return this.updateChannel(channelId, {
       participantCentralUserIds: updatedParticipants,

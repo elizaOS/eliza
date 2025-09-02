@@ -42,7 +42,8 @@
     "typescript": "^5.8.2"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
