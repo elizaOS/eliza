@@ -22,9 +22,6 @@ services:
   elizaos:
     image: ${DOCKER_IMAGE}
     container_name: elizaos
-    volumes:
-      - /var/run/tappd.sock:/var/run/tappd.sock
-      - /var/run/dstack.sock:/var/run/dstack.sock
     environment:
       # Core AI providers (at least one required)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -39,17 +36,14 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       
-      # TEE Configuration (required for TEE projects)
-      - TEE_MODE=${TEE_MODE:-PRODUCTION}
-      - TEE_VENDOR=${TEE_VENDOR:-phala}
-      - WALLET_SECRET_SALT=${WALLET_SECRET_SALT}
-      
       # Optional: Add these based on your plugins
       # Discord
       - DISCORD_APPLICATION_ID=${DISCORD_APPLICATION_ID:-}
       - DISCORD_API_TOKEN=${DISCORD_API_TOKEN:-}
       
       # Solana
+      - SOLANA_PRIVATE_KEY=${SOLANA_PRIVATE_KEY:-}
+      - SOLANA_PUBLIC_KEY=${SOLANA_PUBLIC_KEY:-}
       - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
       
       # EVM
@@ -74,6 +68,6 @@ services:
 networks:
   eliza-network:
     driver: bridge
-
 volumes:
   postgres-data:
+
