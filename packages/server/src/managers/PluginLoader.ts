@@ -113,6 +113,17 @@ export class PluginLoader {
         if (this.isValidPluginShape(potentialPlugin)) {
           return potentialPlugin as Plugin;
         }
+        // Try factory functions that return a Plugin
+        if (typeof potentialPlugin === 'function' && potentialPlugin.length === 0) {
+          try {
+            const produced = potentialPlugin();
+            if (this.isValidPluginShape(produced)) {
+              return produced as Plugin;
+            }
+          } catch (err) {
+            logger.debug(`Factory export threw for ${pluginName}: ${err}`);
+          }
+        }
       }
 
       logger.warn(`Could not find a valid plugin export in ${pluginName}.`);
