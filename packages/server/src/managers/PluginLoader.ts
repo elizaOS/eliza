@@ -22,6 +22,61 @@ export class PluginLoader {
   }
 
   /**
+   * Validate a plugin's structure
+   */
+  validatePlugin(plugin: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    if (!plugin) {
+      errors.push('Plugin is null or undefined');
+      return { isValid: false, errors };
+    }
+    
+    if (!plugin.name) {
+      errors.push('Plugin must have a name');
+    }
+    
+    if (plugin.actions) {
+      if (!Array.isArray(plugin.actions)) {
+        errors.push('Plugin actions must be an array');
+      } else {
+        // Check if actions contain non-objects
+        const invalidActions = plugin.actions.filter((a: any) => typeof a !== 'object' || !a);
+        if (invalidActions.length > 0) {
+          errors.push('Plugin actions must be an array of action objects');
+        }
+      }
+    }
+    
+    if (plugin.services) {
+      if (!Array.isArray(plugin.services)) {
+        errors.push('Plugin services must be an array');
+      } else {
+        // Check if services contain non-objects/non-constructors
+        const invalidServices = plugin.services.filter((s: any) => 
+          typeof s !== 'function' && (typeof s !== 'object' || !s)
+        );
+        if (invalidServices.length > 0) {
+          errors.push('Plugin services must be an array of service classes or objects');
+        }
+      }
+    }
+    
+    if (plugin.providers && !Array.isArray(plugin.providers)) {
+      errors.push('Plugin providers must be an array');
+    }
+    
+    if (plugin.evaluators && !Array.isArray(plugin.evaluators)) {
+      errors.push('Plugin evaluators must be an array');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
    * Load and prepare a plugin for use
    */
   async loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
@@ -123,18 +178,4 @@ export class PluginLoader {
     return finalPlugins;
   }
 
-  /**
-   * Validate a plugin object
-   */
-  validatePlugin(plugin: any): { isValid: boolean; error?: string; plugin?: Plugin } {
-    if (!plugin) {
-      return { isValid: false, error: 'Plugin is null or undefined' };
-    }
-
-    if (!this.isValidPluginShape(plugin)) {
-      return { isValid: false, error: 'Plugin does not have valid shape' };
-    }
-
-    return { isValid: true, plugin };
-  }
 }
