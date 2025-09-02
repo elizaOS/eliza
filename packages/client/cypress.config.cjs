@@ -41,7 +41,7 @@ module.exports = defineConfig({
   // Global Configuration
   projectId: 'elizaos-client',
   chromeWebSecurity: false,
-  redirectionLimit: 50, // Increase redirect limit for E2E tests
+  redirectionLimit: 100, // Increase redirect limit for E2E tests with infinite redirect issue
   retries: {
     runMode: 2,
     openMode: 0,

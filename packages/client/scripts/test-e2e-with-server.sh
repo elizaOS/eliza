@@ -20,10 +20,8 @@ trap cleanup EXIT
 # Start the backend API server (elizaos) in the background
 echo -e "${YELLOW}Starting backend server...${NC}"
 API_PORT=${API_PORT:-3000}
-# Use a deterministic local data dir for PGLite
-DB_DIR="${PGLITE_DATA_DIR:-$(pwd)/.e2e-db}"
-mkdir -p "$DB_DIR"
-export PGLITE_DATA_DIR="$DB_DIR"
+# Use in-memory PGLite database for E2E tests to avoid file system issues
+export PGLITE_DATA_DIR="memory://"
 export ELIZA_NONINTERACTIVE=true
 export LOG_LEVEL=${LOG_LEVEL:-error}
 
