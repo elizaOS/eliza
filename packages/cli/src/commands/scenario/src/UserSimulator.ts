@@ -41,7 +41,7 @@ export class UserSimulator {
       console.log(`👤 [UserSimulator] Prompt preview: ${prompt.substring(0, 200)}...`);
 
       const response = await this.runtime.useModel(
-        ModelType.TEXT_SMALL,
+        this.config.model_type || ModelType.TEXT_LARGE,
         {
           prompt: prompt,
           temperature: this.config.temperature || 0.8,

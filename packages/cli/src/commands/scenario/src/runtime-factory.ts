@@ -297,7 +297,6 @@ export async function askAgentViaApi(
   serverPort?: number | null,
   existingChannelId?: UUID
 ): Promise<{ response: string; roomId: UUID }> {
-  timeoutMs = 125000
   console.log(`🔧 [askAgentViaApi] === FUNCTION START ===`);
   console.log(
     `🔧 [askAgentViaApi] Parameters: agentId=${agentId}, input="${input}", serverPort=${serverPort}, existingChannelId=${existingChannelId}`
