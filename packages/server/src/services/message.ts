@@ -715,6 +715,165 @@ export class MessageBusService extends Service {
     }
   }
 
+  async notifyActionStart(
+    agentRoomId: UUID,
+    agentWorldId: UUID,
+    content: Content,
+    messageId: UUID,
+    inReplyToAgentMemoryId?: UUID,
+    originalMessage?: MessageServiceMessage
+  ) {
+    try {
+      const room = await this.runtime.getRoom(agentRoomId);
+      const world = await this.runtime.getWorld(agentWorldId);
+
+      const channelId = room?.channelId as UUID;
+      const serverId  = world?.serverId  as UUID;
+
+      if (!channelId || !serverId) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: Cannot map room/world -> central IDs. room=${agentRoomId}, world=${agentWorldId}`
+        );
+        return;
+      }
+
+      // Resolve central reply-to id from agent memory (optional)
+      let centralInReplyToRootMessageId: UUID | undefined;
+      if (inReplyToAgentMemoryId) {
+        const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
+        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+      }
+
+      const payloadToServer = {
+        messageId, // passed straight through
+        channel_id: channelId,
+        server_id: serverId,
+        author_id: this.runtime.agentId,
+        content: content.text,
+        in_reply_to_message_id: centralInReplyToRootMessageId,
+        source_type: 'agent_action',
+        raw_message: {
+          text: content.text,
+          thought: content.thought,
+          actions: content.actions,
+          ...content,
+        },
+        metadata: {
+          agent_id: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          attachments: content.attachments,
+          channelType: originalMessage?.metadata?.channelType || room?.type,
+          isDm:
+            originalMessage?.metadata?.isDm ||
+            (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
+        },
+      };
+
+      const baseUrl   = this.getCentralMessageServerUrl();
+      const submitUrl = new URL('/api/messaging/action', baseUrl).toString();
+
+      logger.info(
+        `[${this.runtime.character.name}] -> POST ${submitUrl} payload: ${JSON.stringify(payloadToServer)}`
+      );
+
+      const response = await fetch(submitUrl, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(payloadToServer),
+      });
+
+      if (!response.ok) {
+        logger.error(
+          `[${this.runtime.character.name}] POST /action failed: ${response.status} ${await response.text()}`
+        );
+      }
+      return response;
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] notifyActionStart error:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  async notifyActionUpdate(
+    agentRoomId: UUID,
+    agentWorldId: UUID,
+    content: Content,
+    messageId: UUID,
+    inReplyToAgentMemoryId?: UUID,
+    originalMessage?: MessageServiceMessage
+  ) {
+    try {
+      const room = await this.runtime.getRoom(agentRoomId);
+      const world = await this.runtime.getWorld(agentWorldId);
+
+      const channelId = room?.channelId as UUID;
+      const serverId  = world?.serverId  as UUID;
+
+      if (!channelId || !serverId) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: Cannot map room/world -> central IDs. room=${agentRoomId}, world=${agentWorldId}`
+        );
+        return;
+      }
+
+      // Optional: keep reply-to behavior consistent
+      let centralInReplyToRootMessageId: UUID | undefined;
+      if (inReplyToAgentMemoryId) {
+        const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
+        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+      }
+
+      const patchPayload = {
+        // fields server’s PATCH /action/:id supports
+        content: content.text,
+        raw_message: {
+          text: content.text,
+          thought: content.thought,
+          actions: content.actions,
+          ...content,
+        },
+        source_type: 'agent_action',
+        in_reply_to_message_id: centralInReplyToRootMessageId,
+        metadata: {
+          agent_id: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          attachments: content.attachments,
+          channelType: originalMessage?.metadata?.channelType || room?.type,
+          isDm:
+            originalMessage?.metadata?.isDm ||
+            (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
+        },
+      };
+
+      const baseUrl   = this.getCentralMessageServerUrl();
+      const patchUrl  = new URL(`/api/messaging/action/${messageId}`, baseUrl).toString();
+
+      logger.info(
+        `[${this.runtime.character.name}] -> PATCH ${patchUrl} payload: ${JSON.stringify(patchPayload)}`
+      );
+
+      const response = await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(patchPayload),
+      });
+
+      if (!response.ok) {
+        logger.error(
+          `[${this.runtime.character.name}] PATCH /action/${messageId} failed: ${response.status} ${await response.text()}`
+        );
+      }
+      return response;
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] notifyActionUpdate error:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
   private async notifyMessageComplete(channelId?: UUID, serverId?: UUID) {
     if (!channelId || !serverId) return;
 

@@ -799,13 +799,41 @@ export class AgentRuntime implements IAgentRuntime {
             };
           }
 
+          try {
+            this.logger.debug(`Creating action start message for: ${action.name}`);
+            await this.emitEvent(EventType.ACTION_STARTED, {
+              messageId: actionId,
+              roomId: message.roomId,
+              world: message.worldId,
+              content: {
+                text: `Executing action: ${action.name}`,
+                actions: [action.name],
+                actionStatus: 'executing',
+                actionId: actionId,
+                runId: runId,
+                type: 'agent_action',
+                thought: actionPlan?.thought,
+              },
+            });
+            
+          } catch (error) {
+            this.logger.error('Failed to create action start message:', String(error));
+          }
+          
+          let storedCallbackData: { content: Content, files?: any }[] = [];
+
+          const storageCallback = async (response: Content, files?: any) => {
+            storedCallbackData.push({ content: response, files });
+            return [];
+          };
+
           // Execute action with context
           const result = await action.handler(
             this,
             message,
             accumulatedState,
             options,
-            callback,
+            storageCallback,
             responses
           );
 
@@ -893,6 +921,38 @@ export class AgentRuntime implements IAgentRuntime {
             }
           }
 
+          try {
+            const isSuccess = actionResult?.success !== false;
+            const statusText = isSuccess ? 'completed' : 'failed';
+
+            await this.emitEvent(EventType.ACTION_COMPLETED, {
+              messageId: actionId,
+              roomId: message.roomId,
+              world: message.worldId,
+              content: {
+                text: `Action ${action.name} ${statusText}`,
+                actions: [action.name],
+                actionStatus: statusText,
+                actionId: actionId,
+                type: 'agent_action',
+                actionResult: actionResult
+              },
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `Failed to emit ACTION_COMPLETED event for action ${action.name} (${actionId}): ${errorMessage}`
+            );
+            // Don't re-throw as this shouldn't block action execution completion,
+            // but ensure the error is visible for debugging
+          }
+
+          if (callback) {
+            for (const data of storedCallbackData) {
+              await callback(data.content, data.files);
+            }
+          }
+         
           // Store action result as memory
           const actionMemory: Memory = {
             id: actionId,
@@ -925,6 +985,7 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
+          
           this.logger.debug(
             `Action ${action.name} completed`,
             JSON.stringify({
