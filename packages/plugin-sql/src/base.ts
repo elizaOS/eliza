@@ -2999,6 +2999,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     sourceId?: string;
     metadata?: any;
     inReplyToRootMessageId?: UUID;
+    messageId?: UUID;
   }): Promise<{
     id: UUID;
     channelId: UUID;
@@ -3013,7 +3014,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     updatedAt: Date;
   }> {
     return this.withDatabase(async () => {
-      const newId = v4() as UUID;
+      const newId = data.messageId || v4() as UUID;
       const now = new Date();
       const messageToInsert = {
         id: newId,
@@ -3031,6 +3032,77 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
       await this.db.insert(messageTable).values(messageToInsert);
       return messageToInsert;
+    });
+  }
+
+  async getMessageById(id: UUID): Promise<{
+    id: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: any;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: any;
+    inReplyToRootMessageId?: UUID;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    return this.withDatabase(async () => {
+      const rows = await this.db.select().from(messageTable).where(eq(messageTable.id, id)).limit(1);
+      return rows?.[0] ?? null;
+    });
+  }
+  
+  // NEW: partial update
+  async updateMessage(
+    id: UUID,
+    patch: {
+      content?: string;
+      rawMessage?: any;
+      sourceType?: string;
+      sourceId?: string;
+      metadata?: any;
+      inReplyToRootMessageId?: UUID;
+    }
+  ): Promise<{
+    id: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: any;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: any;
+    inReplyToRootMessageId?: UUID;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    return this.withDatabase(async () => {
+      const existing = await this.getMessageById(id);
+      if (!existing) return null;
+  
+      const updatedAt = new Date();
+      const next = {
+        content: patch.content ?? existing.content,
+        rawMessage: patch.rawMessage ?? existing.rawMessage,
+        sourceType: patch.sourceType ?? existing.sourceType,
+        sourceId: patch.sourceId ?? existing.sourceId,
+        metadata: patch.metadata ?? existing.metadata,
+        inReplyToRootMessageId: patch.inReplyToRootMessageId ?? existing.inReplyToRootMessageId,
+        updatedAt,
+      };
+  
+      await this.db
+        .update(messageTable)
+        .set(next)
+        .where(eq(messageTable.id, id));
+  
+      // Return merged object
+      return {
+        ...existing,
+        ...next,
+      };
     });
   }
 
