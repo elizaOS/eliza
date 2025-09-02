@@ -166,14 +166,19 @@ export async function copyTemplate(
   const packageJsonPath = path.join(targetDir, 'package.json');
 
   try {
-    // Get the CLI package version for dependency updates
-    const cliPackageJsonPath = path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'package.json'
-    );
-
-    const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
-    const cliPackageVersion = cliPackageJson.version;
+    // Get the CLI package version from the embedded version file
+    let cliPackageVersion = 'latest'; // Default fallback
+    
+    try {
+      // Try to import the generated version file
+      const versionModule = await import('../version.js').catch(() => null);
+      if (versionModule && versionModule.CLI_VERSION) {
+        cliPackageVersion = versionModule.CLI_VERSION;
+      }
+    } catch {
+      // If version file doesn't exist (e.g., during development), use 'latest'
+      logger.debug('Version file not found, using "latest" for dependencies');
+    }
 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 

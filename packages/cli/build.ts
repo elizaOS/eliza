@@ -6,12 +6,20 @@
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
 
-// Custom pre-build step to copy templates
+// Custom pre-build step to copy templates and generate version
 async function preBuild() {
+  // Generate version file first
+  console.log('\nGenerating version file...');
+  let start = performance.now();
+  await $`bun run src/scripts/generate-version.ts`;
+  let elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  console.log(`✓ Version file generated (${elapsed}s)`);
+
+  // Copy templates
   console.log('\nCopying templates...');
-  const start = performance.now();
+  start = performance.now();
   await $`bun run src/scripts/copy-templates.ts`;
-  const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  elapsed = ((performance.now() - start) / 1000).toFixed(2);
   console.log(`✓ Templates copied (${elapsed}s)`);
 }
 
