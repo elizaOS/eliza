@@ -818,6 +818,13 @@ export class AgentRuntime implements IAgentRuntime {
           } catch (error) {
             this.logger.error('Failed to create action start message:', String(error));
           }
+          
+          let storedCallbackData: { content: Content, files?: any }[] = [];
+
+          const storageCallback = async (response: Content, files?: any) => {
+            storedCallbackData.push({ content: response, files });
+            return [];
+          };
 
           // Execute action with context
           const result = await action.handler(
@@ -825,7 +832,7 @@ export class AgentRuntime implements IAgentRuntime {
             message,
             accumulatedState,
             options,
-            callback,
+            storageCallback,
             responses
           );
 
@@ -938,6 +945,12 @@ export class AgentRuntime implements IAgentRuntime {
             // but ensure the error is visible for debugging
           }
 
+          if (callback) {
+            for (const data of storedCallbackData) {
+              await callback(data.content, data.files);
+            }
+          }
+         
           // Store action result as memory
           const actionMemory: Memory = {
             id: actionId,
