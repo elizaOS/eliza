@@ -128,7 +128,8 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
   const outputData: Record<string, unknown> = {};
   if (rawMessage.text) outputData.result = rawMessage.text;
   if (actionStatus) outputData.status = actionStatus;
-  if (rawMessage.runId) outputData.runId = rawMessage.runId;
+  if (rawMessage.thought) outputData.thought = rawMessage.thought;
+  if (rawMessage.actionResult) outputData.actionResult = rawMessage.actionResult;
   
   // Handle error cases
   const isError = actionStatus === 'failed' || actionStatus === 'error';

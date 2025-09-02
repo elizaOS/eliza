@@ -806,12 +806,13 @@ export class AgentRuntime implements IAgentRuntime {
               roomId: message.roomId,
               world: message.worldId,
               content: {
-                text: `🔄 Executing action: ${action.name}`,
+                text: `Executing action: ${action.name}`,
                 actions: [action.name],
                 actionStatus: 'executing',
                 actionId: actionId,
                 runId: runId,
                 type: 'agent_action',
+                thought: actionPlan?.thought,
               },
             });
             
@@ -934,6 +935,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
+                actionResult: actionResult
               },
             });
           } catch (error) {
