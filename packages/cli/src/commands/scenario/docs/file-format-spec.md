@@ -404,6 +404,243 @@ plugins:
       rateLimitDelay: 1000
 ```
 
+## CLI Commands and Options
+
+### Scenario Execution
+```bash
+# Production commands
+elizaos scenario run <scenario-file> [options]
+elizaos scenario matrix <matrix-config> [options]
+
+# Local development commands  
+bun packages/cli/dist/index.js scenario run <scenario-file> [options]
+bun packages/cli/dist/index.js scenario matrix <matrix-config> [options]
+```
+
+### Scenario Run Options
+- `--live` - Run in live mode, ignoring all mocks and using real services (default: false)
+
+### Matrix Run Options
+- `--dry-run` - Show matrix analysis without executing tests (default: false)
+- `--parallel <number>` - Maximum number of parallel test runs (default: "1")
+- `--filter <pattern>` - Filter parameter combinations by pattern matching
+- `--verbose` - Show detailed progress information (default: false)
+
+## Output Files and Logging
+
+### Automatic File Generation
+The scenario system automatically creates organized output files:
+
+```
+packages/cli/src/commands/scenario/_logs_/
+├── run-001-step-0-execution.json      # Individual step execution results
+├── run-001-step-0-evaluation.json     # Individual step evaluation results  
+├── run-001.json                       # Centralized scenario result
+├── matrix-001/                        # Matrix execution results folder
+│   ├── combination-1-run-1.json      # Individual matrix run results
+│   └── summary.json                   # Matrix execution summary
+└── run-2025-08-17_16-43-39/          # Generated report folder
+    ├── README.md                      # Auto-generated summary
+    ├── report.json                    # Raw data & analysis
+    ├── report.html                    # Interactive web report
+    └── report.pdf                     # Print-ready report
+```
+
+### Environment Variables
+- `PGLITE_DATA_DIR` - Automatically set to isolated directory per scenario run
+  - Format: `test-data/scenario-{timestamp}-{randomId}`
+  - Ensures database isolation between runs
+
+## Default Plugin Behavior
+
+### Automatically Included Plugins
+The system automatically includes these plugins if not specified:
+- `@elizaos/plugin-sql` - Database operations
+- `@elizaos/plugin-bootstrap` - Core functionality  
+- `@elizaos/plugin-openai` - LLM operations
+
+### Plugin Format Options
+```yaml
+plugins:
+  # Simple string format
+  - "@elizaos/plugin-bootstrap"
+  
+  # Object format with configuration
+  - name: "@elizaos/plugin-github"
+    enabled: true
+    version: "1.0.0"
+    config:
+      apiKey: "your-api-key"
+      rateLimitDelay: 1000
+  
+  # Object format with enabled/disabled control
+  - name: "@elizaos/plugin-sql"
+    enabled: false  # Exclude this plugin from run
+```
+
+## Enhanced Evaluation System
+
+### Evaluation Result Structure
+The system uses enhanced evaluation results with structured output:
+
+```json
+{
+  "evaluator_type": "string_contains",
+  "success": true,
+  "summary": "Text found in agent response",
+  "details": {
+    "search_term": "expected text",
+    "found_at_position": 45,
+    "context": "...surrounding text..."
+  },
+  "execution_time_ms": 150,
+  "metadata": {
+    "evaluator_version": "1.0.0"
+  }
+}
+```
+
+### Fallback Behavior
+- Tries enhanced evaluations first (structured output)
+- Falls back to legacy evaluations if enhanced format fails
+- Maintains backward compatibility with existing scenarios
+
+### Evaluation Requirements by Runtime
+**With Runtime Available:**
+- All evaluation types supported
+- `llm_judge`, `trajectory_contains_action`, complex evaluators
+- Enhanced structured output format
+- Access to agent trajectory and memory
+
+**Without Runtime (Basic Mode):**
+- Limited to simple evaluators: `string_contains`, `regex_match`
+- Legacy boolean output format
+- No access to agent internals or LLM services
+
+## Matrix Execution Features
+
+### Resource Management
+- Automatic process cleanup on shutdown/error
+- Graceful handling of SIGINT/SIGTERM signals  
+- Resource monitoring with warnings for high CPU/memory usage
+- Configurable timeouts and parallel execution limits
+
+### Progress Tracking
+Matrix execution provides real-time progress updates:
+- Combination start/completion notifications
+- Success rate tracking per combination
+- Resource usage alerts and recommendations
+- Execution time estimates (optimistic/realistic/pessimistic)
+
+### Parameter Path Validation
+Matrix configurations automatically validate parameter paths:
+- Ensures all parameter paths exist in base scenario
+- Supports deep nested paths with array indices
+- Provides clear error messages for invalid paths
+
+## Live vs Test Mode
+
+### Test Mode (Default)
+- Uses all configured mocks
+- Runs in isolated environment  
+- Database seeded with test data
+- Deterministic and repeatable results
+
+### Live Mode (`--live` flag)
+- Ignores all mock configurations
+- Connects to real external services
+- Uses production databases and APIs
+- Suitable for integration testing and real workflows
+
+## Error Handling and Recovery
+
+### Automatic Error Recording
+- All errors recorded in centralized data aggregator
+- Failed runs generate error result files
+- Process cleanup on unexpected failures
+- Graceful degradation when services unavailable
+
+### Mock System Cleanup
+- Mocks automatically reverted after execution
+- Clean state restoration even on failures
+- No persistent changes to system state
+
+## Schema Validation and Error Messages
+
+### Scenario File Validation
+The system performs comprehensive validation using Zod schemas:
+
+```yaml
+# This will fail validation:
+name: 123                    # Error: name must be string
+environment: "wrong"         # Error: environment must be object
+run: "not-array"            # Error: run must be array
+
+# Error output includes:
+# - Field path (e.g., "environment.type")
+# - Expected vs actual type
+# - Descriptive error messages
+```
+
+### Matrix Configuration Validation
+Matrix files undergo multi-level validation:
+
+1. **Structure Validation**: YAML syntax and schema compliance
+2. **Base Scenario Validation**: Referenced scenario file must be valid
+3. **Parameter Path Validation**: All parameter paths must exist in base scenario
+4. **Value Type Validation**: Parameter values must match expected types
+
+### Common Validation Errors
+
+#### Scenario Files
+```
+❌ name: Required
+❌ environment.type: Invalid enum value, expected "local" or "e2b"
+❌ run: Required, must be array with at least 1 element
+❌ judgment.strategy: Invalid enum value, expected "all_pass" or "any_pass"
+```
+
+#### Matrix Files
+```
+❌ base_scenario: Required
+❌ matrix: Must contain at least 1 axis
+❌ matrix[0].parameter: Required
+❌ matrix[0].values: Must contain at least 1 element
+❌ runs_per_combination: Must be greater than or equal to 1
+```
+
+#### Parameter Path Errors
+```
+❌ Parameter path "nonexistent.field" not found in base scenario
+❌ Parameter path "run[99].input" array index out of bounds
+❌ Parameter path "character.llm.invalid" object property does not exist
+```
+
+## Advanced Configuration Features
+
+### Automatic Resource Management
+- **Database Isolation**: Each run gets unique PGLite directory
+- **Process Cleanup**: Automatic cleanup of child processes on exit
+- **Signal Handling**: Graceful shutdown on CTRL+C (SIGINT) and SIGTERM
+- **Memory Management**: Configurable limits and monitoring
+
+### Plugin System Integration
+```yaml
+# Plugin validation includes:
+# - Plugin availability check
+# - Dependency resolution
+# - Version compatibility
+# - Configuration validation
+```
+
+### Trajectory and Data Collection
+The system automatically tracks:
+- **Agent Cognitive Process**: Step-by-step decision making
+- **LLM Interactions**: Prompts, responses, and token usage
+- **Action Execution**: Sequence and timing of agent actions
+- **Performance Metrics**: Execution time, resource usage
+- **Error Context**: Stack traces and failure points
+
 ## Best Practices
 
 1. Use descriptive names and descriptions
@@ -416,3 +653,7 @@ plugins:
 8. Always include required plugins (`@elizaos/plugin-bootstrap` is usually needed)
 9. Use mocks for deterministic testing, live mode for integration testing
 10. Test both success and failure scenarios
+11. Use `--dry-run` for matrix validation before full execution
+12. Monitor resource usage for large matrix tests
+13. Use filtering to reduce matrix scope during development
+14. Check output logs for detailed execution analysis
