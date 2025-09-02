@@ -133,6 +133,8 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
       contentType: att.contentType || att.type,
     })) || undefined;
 
+  const messageType = apiMessage.sourceType;
+  const rawMessage = apiMessage.rawMessage;
   return {
     id: apiMessage.id as UUID,
     text: apiMessage.content,
@@ -146,6 +148,8 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     attachments,
     thought: apiMessage.metadata?.thought,
     actions: apiMessage.metadata?.actions,
+    type: messageType,
+    rawMessage: rawMessage
   };
 }
 

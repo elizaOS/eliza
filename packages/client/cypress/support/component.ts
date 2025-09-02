@@ -20,7 +20,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 // Import polyfills
 import { Buffer } from 'buffer';
 // @ts-ignore
-import process from 'process/browser';
+import process from 'process';
 
 // Mock environment variables to prevent errors
 (globalThis as any).process = process;
