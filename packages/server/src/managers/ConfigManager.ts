@@ -63,34 +63,12 @@ export class ConfigManager {
    */
   async loadLocalEnvSecrets(): Promise<Record<string, string> | null> {
     const envPath = this.findEnvFile();
-    if (!envPath) {
-      return null;
-    }
-
+    if (!envPath) return null;
+    
     try {
-      const envContent = fs.readFileSync(envPath, 'utf-8');
-      const envVars: Record<string, string> = {};
-
-      // Parse .env file content
-      const lines = envContent.split('\n');
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine && !trimmedLine.startsWith('#')) {
-          const [key, ...valueParts] = trimmedLine.split('=');
-          if (key) {
-            let value = valueParts.join('=');
-            // Remove quotes if present
-            if ((value.startsWith('"') && value.endsWith('"')) ||
-                (value.startsWith("'") && value.endsWith("'"))) {
-              value = value.slice(1, -1);
-            }
-            envVars[key.trim()] = value;
-          }
-        }
-      }
-
-      return envVars;
-    } catch (error) {
+      const buf = fs.readFileSync(envPath);
+      return dotenv.parse(buf);
+    } catch {
       return null;
     }
   }
