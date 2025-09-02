@@ -132,7 +132,7 @@ export async function runE2eTests(
       }
       
       if (!project.isPlugin && (!project.agents || project.agents.length === 0)) {
-        throw new Error('No agents found in project configuration');
+        logger.warn('No agents found in project configuration; falling back to default Eliza character for tests.');
       }
 
       logger.info(`Found ${project.agents?.length || 0} agents`);
