@@ -1,5 +1,4 @@
-import { Character, RuntimeSettings, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
-import { loadEnvironmentVariables } from './env-loader';
+import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
@@ -10,23 +9,8 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
-// Lazy initialization of environment settings
-let envSettings: RuntimeSettings | null = null;
-let envLoaded = false;
-
-function ensureEnvLoaded(): RuntimeSettings {
-  if (!envLoaded) {
-    loadEnvironmentVariables();
-    envSettings = process.env as RuntimeSettings;
-    envLoaded = true;
-  }
-
-  if (!envSettings) {
-    throw new Error('Failed to load environment settings');
-  }
-
-  return envSettings;
-}
+// Note: Environment loading is now handled by ConfigManager.setDefaultSecretsFromEnv
+// which properly filters and manages secrets instead of exposing all env vars
 
 /**
  * Find an available port in the given range
@@ -210,9 +194,8 @@ export async function createScenarioAgent(
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
-      secrets: {
-        ...ensureEnvLoaded(),
-      },
+      // Let ConfigManager populate minimal, file-scoped secrets.
+      secrets: {},
     },
     // Always respond: set system prompt and template to ensure reply
     system:
