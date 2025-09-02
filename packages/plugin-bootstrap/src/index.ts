@@ -1063,7 +1063,6 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           ],
           state,
           async () => {
-            await callback(actionContent);
             return [];
           }
         );
