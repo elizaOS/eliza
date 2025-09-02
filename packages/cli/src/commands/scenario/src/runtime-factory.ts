@@ -466,7 +466,7 @@ export async function askAgentViaApi(
     );
 
     // Poll for response at regular intervals instead of waiting full timeout
-    const pollInterval = 1000; // Check every 100ms
+    const pollInterval = 1000; // Check every 1000ms (1 second)
 
     const checkForResponse = async (): Promise<{ response: string; roomId: UUID } | null> => {
       console.log(`🔧 [askAgentViaApi] About to call getChannelMessages...`);
