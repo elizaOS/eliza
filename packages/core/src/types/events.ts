@@ -2,7 +2,7 @@ import type { HandlerCallback } from './components';
 import type { Entity, Room, World } from './environment';
 import type { Memory } from './memory';
 import type { ModelTypeName } from './model';
-import type { Metadata, UUID } from './primitives';
+import type { Content, Metadata, UUID } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -152,11 +152,10 @@ export interface RunEventPayload extends EventPayload {
  * Action event payload type
  */
 export interface ActionEventPayload extends EventPayload {
-  actionId: UUID;
-  actionName: string;
-  startTime?: number;
-  completed?: boolean;
-  error?: Error;
+  roomId: UUID,
+  world: UUID,
+  content: Content,
+  messageId?: UUID,
 }
 
 /**

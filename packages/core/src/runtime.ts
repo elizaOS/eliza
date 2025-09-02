@@ -799,6 +799,26 @@ export class AgentRuntime implements IAgentRuntime {
             };
           }
 
+          try {
+            this.logger.debug(`Creating action start message for: ${action.name}`);
+            await this.emitEvent(EventType.ACTION_STARTED, {
+              messageId: actionId,
+              roomId: message.roomId,
+              world: message.worldId,
+              content: {
+                text: `🔄 Executing action: ${action.name}`,
+                actions: [action.name],
+                actionStatus: 'executing',
+                actionId: actionId,
+                runId: runId,
+                type: 'agent_action',
+              },
+            });
+            
+          } catch (error) {
+            this.logger.error('Failed to create action start message:', String(error));
+          }
+
           // Execute action with context
           const result = await action.handler(
             this,
@@ -893,6 +913,26 @@ export class AgentRuntime implements IAgentRuntime {
             }
           }
 
+          try {
+            const isSuccess = actionResult?.success !== false;
+            const statusText = isSuccess ? 'completed' : 'failed';
+
+            await this.emitEvent(EventType.ACTION_COMPLETED, {
+              messageId: actionId,
+              roomId: message.roomId,
+              world: message.worldId,
+              content: {
+                text: `Action ${action.name} ${statusText}`,
+                actions: [action.name],
+                actionStatus: statusText,
+                actionId: actionId,
+                type: 'agent_action',
+              },
+            });
+          } catch (error) {
+            
+          }
+
           // Store action result as memory
           const actionMemory: Memory = {
             id: actionId,
@@ -925,6 +965,7 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
+          
           this.logger.debug(
             `Action ${action.name} completed`,
             JSON.stringify({

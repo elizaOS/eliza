@@ -1824,14 +1824,37 @@ const events = {
 
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
-      logger.debug(`[Bootstrap] Action started: ${payload.actionName} (${payload.actionId})`);
+      try {
+        const messageBusService = payload.runtime.getService('message-bus-service') as any;
+        if (messageBusService) {
+          messageBusService.notifyActionStart(
+            payload.roomId,
+            payload.world,
+            payload.content,
+            payload.messageId,
+          )
+        }
+      } catch (error) {
+        logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      }
     },
   ],
 
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
-      const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
-      logger.debug(`[Bootstrap] Action ${status}: ${payload.actionName} (${payload.actionId})`);
+      try {
+        const messageBusService = payload.runtime.getService('message-bus-service') as any;
+        if (messageBusService) {
+          messageBusService.notifyActionUpdate(
+            payload.roomId,
+            payload.world,
+            payload.content,
+            payload.messageId,
+          )
+        }
+      } catch (error) {
+        logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      }
     },
   ],
 
