@@ -1,0 +1,64 @@
+name: NPM Alpha Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  alpha-release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23.5.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.2'
+
+      - name: Install Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Test
+        run: bun test
+        continue-on-error: true
+
+      - name: Configure Git & NPM
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish Alpha
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx lerna publish prerelease \
+            --preid alpha \
+            --dist-tag alpha \
+            --no-private \
+            --force-publish \
+            --yes \
+            --create-release github
