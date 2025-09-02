@@ -4,6 +4,10 @@ description: 'Demonstrates the new capabilities feature for LLM Judge evaluator 
 plugins:
   - name: '@elizaos/plugin-bootstrap'
     enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
   - name: '@elizaos/plugin-github'
     enabled: true
 

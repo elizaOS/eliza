@@ -4,6 +4,10 @@ description: "Test agent's ability to handle emotional conversations and provide
 plugins:
   - "@elizaos/plugin-bootstrap"
   - "@elizaos/plugin-openai"
+  - "@elizaos/plugin-sql"
+  - "@elizaos/plugin-dummy-services"
+  - "@elizaos/plugin-quick-starter"
+  - "@elizaos/plugin-starter"
 
 environment:
   type: local

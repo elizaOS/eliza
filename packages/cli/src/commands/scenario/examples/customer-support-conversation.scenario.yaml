@@ -2,8 +2,12 @@ name: "Advanced Customer Support Multi-Turn Test"
 description: "Comprehensive test of customer support conversation with frustrated customer persona"
 
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local

@@ -2,8 +2,12 @@ name: "Knowledge Transfer Effectiveness Test"
 description: "Test agent's ability to teach complex concepts through multi-turn conversation"
 
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local

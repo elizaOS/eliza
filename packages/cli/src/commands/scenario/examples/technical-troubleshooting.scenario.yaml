@@ -2,8 +2,12 @@ name: "Technical Troubleshooting Multi-Turn Test"
 description: "Tests agent's ability to guide non-technical user through WiFi troubleshooting"
 
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local
