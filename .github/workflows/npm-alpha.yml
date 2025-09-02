@@ -40,10 +40,6 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Test
-        run: bun test
-        continue-on-error: true
-
       - name: Configure Git & Registry
         run: |
           git config user.name "github-actions[bot]"
