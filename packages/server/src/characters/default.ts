@@ -7,8 +7,8 @@ import type { Character } from '@elizaos/core';
 const baseCharacter: Character = {
   name: 'Eliza',
   plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
-  secrets: {},
   settings: {
+    secrets: {},
     avatar: 'https://elizaos.github.io/eliza-avatars/Eliza/portrait.png',
   },
   system:
