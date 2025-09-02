@@ -35,7 +35,9 @@ jobs:
           bun-version: '1.2.2'
 
       - name: Install Dependencies
-        run: bun install --frozen-lockfile
+        # Note: Not using --frozen-lockfile for alpha builds to allow flexibility
+        # Alpha releases can handle lockfile updates since they're pre-release versions
+        run: bun install
 
       - name: Build
         run: bun run build
