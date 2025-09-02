@@ -43,7 +43,7 @@ const run = createBuildRunner({
       console.log('\nCopying assets...');
       await copyAssets([
         { from: './templates', to: './dist/templates' },
-        { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
+        // Migration guides are embedded in the CLI code itself, no need to copy external files
       ]);
     }
   },
