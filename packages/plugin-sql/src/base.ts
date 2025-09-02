@@ -3054,7 +3054,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     });
   }
   
-  // NEW: partial update
   async updateMessage(
     id: UUID,
     patch: {
