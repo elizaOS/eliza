@@ -798,26 +798,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
     );
 
     // Custom scrollbar styles for input containers - visible scrollbar like Railway
-    const scrollbarContainerClass = `
-      overflow-x-auto 
-      overflow-y-hidden
-      [&::-webkit-scrollbar]:h-2
-      [&::-webkit-scrollbar]:block
-      [&::-webkit-scrollbar]:visible
-      [&::-webkit-scrollbar-track]:bg-gray-100
-      [&::-webkit-scrollbar-track]:dark:bg-gray-800
-      [&::-webkit-scrollbar-track]:rounded-full
-      [&::-webkit-scrollbar-thumb]:bg-gray-400
-      [&::-webkit-scrollbar-thumb]:dark:bg-gray-600
-      [&::-webkit-scrollbar-thumb]:rounded-full
-      [&::-webkit-scrollbar-thumb]:hover:bg-gray-500
-      [&::-webkit-scrollbar-thumb]:dark:hover:bg-gray-500
-      [scrollbar-width:thin]
-      [scrollbar-color:theme(colors.gray.400)_theme(colors.gray.100)]
-      dark:[scrollbar-color:theme(colors.gray.600)_theme(colors.gray.800)]
-    `
-      .replace(/\s+/g, ' ')
-      .trim();
+    const scrollbarContainerClass = 'scrollbar-visible';
 
     return (
       <div className="w-full h-full flex flex-col">
