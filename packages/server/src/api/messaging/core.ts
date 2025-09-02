@@ -163,6 +163,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           actions: raw_message?.actions,
           attachments: metadata?.attachments,
           updatedAt: new Date(savedMessage.updatedAt).getTime(),
+          rawMessage: raw_message
         });
       }
 
@@ -229,6 +230,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           actions: raw_message?.actions,
           attachments: metadata?.attachments,
           updatedAt: new Date(updated.updatedAt).getTime(),
+          rawMessage: raw_message
         });
       }
 
