@@ -930,7 +930,12 @@ export class AgentRuntime implements IAgentRuntime {
               },
             });
           } catch (error) {
-            
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(
+              `Failed to emit ACTION_COMPLETED event for action ${action.name} (${actionId}): ${errorMessage}`
+            );
+            // Don't re-throw as this shouldn't block action execution completion,
+            // but ensure the error is visible for debugging
           }
 
           // Store action result as memory
