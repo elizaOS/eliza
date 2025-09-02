@@ -11,13 +11,10 @@ matrix:
       - "frustrated customer who had a bad experience"
       - "confused beginner who needs simple explanations"
       - "experienced power user who wants quick solutions"
-      - "non-native English speaker who speaks slowly"
-      - "elderly user who is not comfortable with technology"
-      - "busy professional who is impatient but polite"
 
   # Test different conversation lengths
   - parameter: "run[0].conversation.max_turns"
-    values: [3, 5, 8]
+    values: [3, 4]
 
   # Test different user objectives
   - parameter: "run[0].conversation.user_simulator.objective"
@@ -25,16 +22,13 @@ matrix:
       - "resolve account login issue quickly"
       - "understand how to use a new feature"
       - "get refund for unwanted charge"
-      - "report a technical bug"
-      - "learn about available service options"
 
   # Test different termination conditions
   - parameter: "run[0].conversation.termination_conditions[0].type"
     values:
       - "user_expresses_satisfaction"
-      - "agent_provides_solution"
       - "escalation_needed"
 
-  # Test different satisfaction thresholds
-  - parameter: "run[0].conversation.final_evaluations[0].satisfaction_threshold"
-    values: [0.6, 0.7, 0.8]
+  # Test different user simulator temperatures
+  - parameter: "run[0].conversation.user_simulator.temperature"
+    values: [0.3, 0.9]

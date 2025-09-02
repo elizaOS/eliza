@@ -2,12 +2,12 @@ name: "Emotional Intelligence Assessment"
 description: "Test agent's ability to handle emotional conversations and provide empathetic responses"
 
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
-  - "@elizaos/plugin-sql"
-  - "@elizaos/plugin-dummy-services"
-  - "@elizaos/plugin-quick-starter"
-  - "@elizaos/plugin-starter"
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local
