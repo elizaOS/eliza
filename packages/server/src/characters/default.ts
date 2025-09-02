@@ -217,12 +217,12 @@ const baseCharacter: Character = {
 };
 
 /**
- * Returns the Eliza character with plugins ordered by priority based on environment variables.
+ * Returns the default Eliza character with plugins ordered by priority based on environment variables.
  * This should be called after environment variables are loaded.
  *
  * @returns {Character} The Eliza character with appropriate plugins for the current environment
  */
-export function getElizaCharacter(): Character {
+export function getDefaultCharacter(): Character {
   const plugins = [
     // Core plugins first
     '@elizaos/plugin-sql',
@@ -248,8 +248,13 @@ export function getElizaCharacter(): Character {
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
 
-    // Always include Ollama as universal fallback (last in order)
-    '@elizaos/plugin-ollama',
+    // Only include Ollama as fallback if no other LLM providers are configured
+    ...(!process.env.ANTHROPIC_API_KEY?.trim() &&
+    !process.env.OPENROUTER_API_KEY?.trim() &&
+    !process.env.OPENAI_API_KEY?.trim() &&
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
+      ? ['@elizaos/plugin-ollama']
+      : []),
   ];
 
   return {
@@ -261,6 +266,6 @@ export function getElizaCharacter(): Character {
 /**
  * Legacy export for backward compatibility.
  * Note: This will include all plugins regardless of environment variables.
- * Use getElizaCharacter() for environment-aware plugin loading.
+ * Use getDefaultCharacter() for environment-aware plugin loading.
  */
 export const character: Character = baseCharacter;

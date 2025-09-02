@@ -1455,3 +1455,12 @@ export {
 
 // Export types
 export * from './types';
+
+// Export ElizaOS orchestration class
+export { ElizaOS } from './orchestration/ElizaOS';
+export type { ElizaOSConfig } from './orchestration/ElizaOS';
+
+// Export managers for advanced usage
+export { AgentManager } from './managers/AgentManager';
+export { PluginLoader } from './managers/PluginLoader';
+export { ConfigManager } from './managers/ConfigManager';

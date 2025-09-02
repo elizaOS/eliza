@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -35,16 +35,17 @@ import {
 describe('Local CLI Delegation', () => {
   let originalEnv: NodeJS.ProcessEnv;
   let originalArgv: string[];
-  let originalCwd: string;
-  let mockProcess: any;
+  let originalCwd: typeof process.cwd;
+  let originalExit: typeof process.exit;
 
   beforeEach(() => {
-    // Save original environment
+    // Save original environment and process methods
     originalEnv = { ...process.env };
     originalArgv = [...process.argv];
-    originalCwd = process.cwd();
+    originalCwd = process.cwd;
+    originalExit = process.exit;
 
-    // Reset mocks
+    // Reset all mocks
     mockSpawn.mockReset();
     mockExistsSync.mockReset();
     mockLogger.info.mockReset();
@@ -52,13 +53,10 @@ describe('Local CLI Delegation', () => {
     mockLogger.error.mockReset();
 
     // Mock process.cwd
-    jest.spyOn(process, 'cwd').mockReturnValue('/test/project');
+    process.cwd = mock(() => '/test/project');
 
-    // Mock process.exit
-    mockProcess = {
-      exit: mock(),
-    };
-    jest.spyOn(process, 'exit').mockImplementation(mockProcess.exit);
+    // Mock process.exit - just track calls, don't throw
+    process.exit = mock(() => {}) as any;
 
     // Clear test environment variables
     delete process.env.NODE_ENV;
@@ -67,15 +65,25 @@ describe('Local CLI Delegation', () => {
     delete process.env.VITEST;
     delete process.env.JEST_WORKER_ID;
     delete process.env.npm_lifecycle_event;
+    delete process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION;
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    delete process.env.GITLAB_CI;
   });
 
   afterEach(() => {
-    // Restore original environment
+    // Restore original environment completely
     process.env = originalEnv;
     process.argv = originalArgv;
+    process.cwd = originalCwd;
+    process.exit = originalExit;
 
-    // Restore mocks
-    jest.restoreAllMocks();
+    // Clear any module cache that might affect other tests
+    mockSpawn.mockClear();
+    mockExistsSync.mockClear();
+    mockLogger.info.mockClear();
+    mockLogger.debug.mockClear();
+    mockLogger.error.mockClear();
   });
 
   describe('Test Environment Detection', () => {
@@ -459,7 +467,7 @@ describe('Local CLI Delegation', () => {
       expect(result).toBe(false);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Error during local CLI delegation:',
-        testError
+        testError.message
       );
       expect(mockLogger.info).toHaveBeenCalledWith('Falling back to global CLI installation');
     });
@@ -486,7 +494,7 @@ describe('Local CLI Delegation', () => {
         expect(error).toBe(testError);
       }
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Failed to start local CLI: Process error');
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to start local CLI:', 'Process error');
     });
   });
 
@@ -544,7 +552,7 @@ describe('Local CLI Delegation', () => {
 
       await tryDelegateToLocalCli();
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(42);
+      expect(process.exit).toHaveBeenCalledWith(42);
     });
 
     it('should exit with appropriate code when killed by signal', async () => {
@@ -564,7 +572,7 @@ describe('Local CLI Delegation', () => {
 
       await tryDelegateToLocalCli();
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(143);
+      expect(process.exit).toHaveBeenCalledWith(143);
     });
 
     it('should exit with 130 for SIGINT', async () => {
@@ -584,7 +592,7 @@ describe('Local CLI Delegation', () => {
 
       await tryDelegateToLocalCli();
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(130);
+      expect(process.exit).toHaveBeenCalledWith(130);
     });
 
     it('should exit with 1 for unknown signal', async () => {
@@ -604,7 +612,7 @@ describe('Local CLI Delegation', () => {
 
       await tryDelegateToLocalCli();
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(1);
+      expect(process.exit).toHaveBeenCalledWith(1);
     });
   });
 });

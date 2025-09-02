@@ -1,6 +1,6 @@
 import { PluginReference } from './schema';
-import { loadAndPreparePlugin } from '../../start/utils/plugin-utils';
 import { Plugin } from '@elizaos/core';
+import { getModuleLoader } from '@/src/utils/module-loader';
 
 export interface ParsedPlugin {
   name: string;
@@ -19,13 +19,9 @@ export interface PluginValidationResult {
 }
 
 /**
- * Parse and validate plugin references from scenario configuration
+ * Parse plugin references from scenario configuration
  */
-export class PluginParser {
-  /**
-   * Parse plugin references from scenario configuration
-   */
-  static parsePlugins(pluginReferences: PluginReference[] | undefined): ParsedPlugin[] {
+function parsePlugins(pluginReferences: PluginReference[] | undefined): ParsedPlugin[] {
     if (!pluginReferences || pluginReferences.length === 0) {
       return [];
     }
@@ -49,10 +45,10 @@ export class PluginParser {
     });
   }
 
-  /**
-   * Validate parsed plugins dynamically
-   */
-  static async validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidationResult> {
+/**
+ * Validate parsed plugins dynamically
+ */
+async function validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidationResult> {
     const result: PluginValidationResult = {
       valid: true,
       plugins: [],
@@ -78,7 +74,7 @@ export class PluginParser {
       seenPlugins.add(plugin.name);
 
       // Validate plugin name format
-      if (!this.isValidPluginName(plugin.name)) {
+      if (!isValidPluginName(plugin.name)) {
         result.errors.push(
           `Invalid plugin name '${plugin.name}'. Expected format: @elizaos/plugin-*`
         );
@@ -88,7 +84,10 @@ export class PluginParser {
 
       // Dynamically load and validate plugin
       try {
-        const loadedPlugin = await loadAndPreparePlugin(plugin.name);
+        const moduleLoader = getModuleLoader();
+        const { PluginLoader } = await moduleLoader.load('@elizaos/server');
+        const loader = new PluginLoader();
+        const loadedPlugin = await loader.loadAndPreparePlugin(plugin.name);
         if (loadedPlugin) {
           plugin.loadedPlugin = loadedPlugin;
           result.plugins.push(plugin);
@@ -106,14 +105,14 @@ export class PluginParser {
       }
 
       // Validate version if provided
-      if (plugin.version && !this.isValidVersion(plugin.version)) {
+      if (plugin.version && !isValidVersion(plugin.version)) {
         result.errors.push(`Invalid version '${plugin.version}' for plugin '${plugin.name}'`);
         result.valid = false;
         continue;
       }
 
       // Validate config if provided
-      if (plugin.config && !this.isValidConfig(plugin.config)) {
+      if (plugin.config && !isValidConfig(plugin.config)) {
         result.errors.push(`Invalid configuration for plugin '${plugin.name}'`);
         result.valid = false;
         continue;
@@ -123,42 +122,42 @@ export class PluginParser {
     return result;
   }
 
-  /**
-   * Parse and validate plugins from scenario configuration
-   */
-  static async parseAndValidate(
-    pluginReferences: PluginReference[] | undefined
-  ): Promise<PluginValidationResult> {
-    const parsedPlugins = this.parsePlugins(pluginReferences);
-    return await this.validatePlugins(parsedPlugins);
-  }
+/**
+ * Parse and validate plugins from scenario configuration
+ */
+export async function parseAndValidate(
+  pluginReferences: PluginReference[] | undefined
+): Promise<PluginValidationResult> {
+  const parsedPlugins = parsePlugins(pluginReferences);
+  return await validatePlugins(parsedPlugins);
+}
 
-  /**
-   * Check if plugin name follows valid format
-   */
-  private static isValidPluginName(name: string): boolean {
+/**
+ * Check if plugin name follows valid format
+ */
+function isValidPluginName(name: string): boolean {
     return /^@elizaos\/plugin-[a-zA-Z0-9-]+$/.test(name);
   }
 
-  /**
-   * Validate version string
-   */
-  private static isValidVersion(version: string): boolean {
+/**
+ * Validate version string
+ */
+function isValidVersion(version: string): boolean {
     return /^\d+\.\d+\.\d+$/.test(version);
   }
 
-  /**
-   * Validate plugin configuration object
-   */
-  private static isValidConfig(config: Record<string, any>): boolean {
+/**
+ * Validate plugin configuration object
+ */
+function isValidConfig(config: Record<string, any>): boolean {
     // Basic validation - config should be an object
     return typeof config === 'object' && config !== null && !Array.isArray(config);
   }
 
-  /**
-   * Generate plugin loading summary
-   */
-  static generateSummary(result: PluginValidationResult): string {
+/**
+ * Generate plugin loading summary
+ */
+export function generateSummary(result: PluginValidationResult): string {
     const lines: string[] = [];
 
     lines.push(`Plugin Loading Summary:`);
@@ -176,14 +175,13 @@ export class PluginParser {
 
     if (result.errors.length > 0) {
       lines.push(`  Errors:`);
-      result.errors.forEach((error) => lines.push(`    - ${error}`));
+      result.errors.forEach((error) => { lines.push(`    - ${error}`); });
     }
 
     if (result.warnings.length > 0) {
       lines.push(`  Warnings:`);
-      result.warnings.forEach((warning) => lines.push(`    - ${warning}`));
+      result.warnings.forEach((warning) => { lines.push(`    - ${warning}`); });
     }
 
     return lines.join('\n');
   }
-}

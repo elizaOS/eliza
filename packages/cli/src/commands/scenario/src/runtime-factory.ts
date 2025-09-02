@@ -1,6 +1,6 @@
 import { Character, RuntimeSettings, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
 import { loadEnvironmentVariables } from './env-loader';
-import { setDefaultSecretsFromEnv } from '../../start';
+import { getModuleLoader } from '@/src/utils/module-loader';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
@@ -129,11 +129,18 @@ export async function createScenarioServer(
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
         await server.initialize({ dataDir: uniqueDataDir });
-        const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
-          '../../start/actions/agent-start'
-        );
-        server.startAgent = (character) => serverStartAgent(character, server!);
-        server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
+        
+        // Use AgentManager for agent management with more control
+        const moduleLoader = getModuleLoader();
+        const { AgentManager } = await moduleLoader.load('@elizaos/server');
+        const agentManager = new AgentManager(server);
+        
+        server.startAgent = async (character) => {
+          return agentManager.startAgent(character);
+        };
+        server.stopAgent = async (runtime) => {
+          await agentManager.stopAgent(runtime);
+        };
         await server.start(port);
         createdServer = true;
 
@@ -219,7 +226,12 @@ export async function createScenarioAgent(
     },
   };
 
-  await setDefaultSecretsFromEnv(character);
+  // Use ConfigManager from server to set default secrets
+  const moduleLoader = getModuleLoader();
+  const { ConfigManager } = await moduleLoader.load('@elizaos/server');
+  const configManager = new ConfigManager();
+  await configManager.setDefaultSecretsFromEnv(character);
+  
   // Pass raw character; encryption is handled inside startAgent
   const runtime = await server.startAgent(character);
   const agentId = runtime.character.id as UUID;
