@@ -58,7 +58,9 @@ export class ElizaOS {
    * Start ElizaOS with configured characters or default
    */
   async start(): Promise<void> {
-    await this.initialize();
+    if (!this.server.isInitialized) {
+      await this.initialize();
+    }
 
     const port = this.config.port ?? Number.parseInt(process.env.SERVER_PORT ?? '3000', 10);
     await this.server.start(port);
