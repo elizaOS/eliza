@@ -5,13 +5,23 @@
 
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 
-// Custom pre-build step to copy templates
+// Custom pre-build step to copy templates and generate version
 async function preBuild() {
+  // Generate version file first
+  console.log('\nGenerating version file...');
+  let start = performance.now();
+  await $`bun run src/scripts/generate-version.ts`;
+  let elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  console.log(`✓ Version file generated (${elapsed}s)`);
+
+  // Copy templates
   console.log('\nCopying templates...');
-  const start = performance.now();
+  start = performance.now();
   await $`bun run src/scripts/copy-templates.ts`;
-  const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  elapsed = ((performance.now() - start) / 1000).toFixed(2);
   console.log(`✓ Templates copied (${elapsed}s)`);
 }
 
@@ -45,6 +55,20 @@ const run = createBuildRunner({
         { from: './templates', to: './dist/templates' },
         // Migration guides are embedded in the CLI code itself, no need to copy external files
       ]);
+      
+      // Copy the generated version file to dist
+      const versionSrcPath = './src/version.ts';
+      const versionDistPath = './dist/version.js';
+      if (existsSync(versionSrcPath)) {
+        // Read the TypeScript version file
+        const versionContent = await fs.readFile(versionSrcPath, 'utf-8');
+        // Convert to JavaScript by removing TypeScript-specific syntax (simple conversion)
+        const jsContent = versionContent
+          .replace(/export const (\w+): string = /g, 'export const $1 = ')
+          .replace(/export default {/, 'export default {');
+        await fs.writeFile(versionDistPath, jsContent);
+        console.log('✓ Version file copied to dist');
+      }
     }
   },
 });
