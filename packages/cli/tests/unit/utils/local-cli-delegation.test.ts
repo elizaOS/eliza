@@ -35,8 +35,8 @@ function createMockSubprocess(exitCode: number = 0, signal: NodeJS.Signals | nul
     stdout: null as any,
     stderr: null as any,
     stdio: [] as any,
-    exitCode: null as number | null,
-    signalCode: signal, // Set the signal code if provided
+    exitCode: exitCode as number | null,
+    signalCode: signal,
     pid: 12345,
     killed: false,
     ref() {},
@@ -46,16 +46,14 @@ function createMockSubprocess(exitCode: number = 0, signal: NodeJS.Signals | nul
       ? Promise.reject(error) 
       : new Promise<number>((resolve) => {
           setTimeout(() => {
-            // Set properties before resolving
-            mockProcess.exitCode = exitCode;
             resolve(exitCode);
           }, 10);
         }),
     
     // Kill method
     kill: mock((sig?: NodeJS.Signals) => {
-      mockProcess.killed = true;
-      mockProcess.signalCode = sig || 'SIGTERM';
+      // Cannot modify readonly properties - they're already set correctly
+      return true;
     }),
   } as unknown as Subprocess;
   
