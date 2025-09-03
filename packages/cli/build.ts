@@ -5,6 +5,8 @@
 
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 
 // Custom pre-build step to copy templates and generate version
 async function preBuild() {
@@ -53,6 +55,28 @@ const run = createBuildRunner({
         { from: './templates', to: './dist/templates' },
         // Migration guides are embedded in the CLI code itself, no need to copy external files
       ]);
+
+      // Ensure the version file is properly copied to dist
+      const versionSrcPath = './src/version.ts';
+      const versionDistPath = './dist/version.js';
+      if (existsSync(versionSrcPath)) {
+        // Read the TypeScript version file
+        const versionContent = await fs.readFile(versionSrcPath, 'utf-8');
+        // Convert to JavaScript by removing TypeScript-specific syntax
+        const jsContent = versionContent
+          .replace(/export const (\w+): string = /g, 'export const $1 = ')
+          .replace(/export default {/, 'export default {');
+        await fs.writeFile(versionDistPath, jsContent);
+        console.log('✓ Version file copied to dist/version.js');
+      } else {
+        console.warn('⚠️  Version file not found at src/version.ts - generating fallback');
+        // Generate a fallback version file if the source doesn't exist
+        const fallbackContent = `export const CLI_VERSION = '0.0.0';
+export const CLI_NAME = '@elizaos/cli';
+export const CLI_DESCRIPTION = 'elizaOS CLI';
+export default { version: '0.0.0', name: '@elizaos/cli', description: 'elizaOS CLI' };`;
+        await fs.writeFile(versionDistPath, fallbackContent);
+      }
     }
   },
 });

@@ -628,11 +628,16 @@ const messageReceivedHandler = async ({
               // without actions there can't be more than one message
               await callback(responseContent);
             } else if (mode === 'actions') {
-              await runtime.processActions(message, responseMessages, state, async (content, files) => {
-                runtime.logger.debug({ content, files }, 'action callback');
-                responseContent!.actionCallbacks = content;
-                return callback(content, files);
-              });
+              await runtime.processActions(
+                message,
+                responseMessages,
+                state,
+                async (content, files) => {
+                  runtime.logger.debug({ content, files }, 'action callback');
+                  responseContent!.actionCallbacks = content;
+                  return callback(content, files);
+                }
+              );
             }
           }
         } else {
@@ -1826,12 +1831,12 @@ const events = {
       try {
         const messageBusService = payload.runtime.getService('message-bus-service') as any;
         if (messageBusService) {
-          messageBusService.notifyActionStart(
+          await messageBusService.notifyActionStart(
             payload.roomId,
             payload.world,
             payload.content,
-            payload.messageId,
-          )
+            payload.messageId
+          );
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
@@ -1844,12 +1849,12 @@ const events = {
       try {
         const messageBusService = payload.runtime.getService('message-bus-service') as any;
         if (messageBusService) {
-          messageBusService.notifyActionUpdate(
+          await messageBusService.notifyActionUpdate(
             payload.roomId,
             payload.world,
             payload.content,
-            payload.messageId,
-          )
+            payload.messageId
+          );
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);

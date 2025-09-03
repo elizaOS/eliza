@@ -6,49 +6,81 @@ import { fileURLToPath } from 'node:url';
 import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
 
+// Import the version module - this will be bundled at build time
+// Using dynamic import within the function to avoid top-level await
+let cachedVersion: string | null = null;
+
 // Helper function to check if running from node_modules
 export function isRunningFromNodeModules(): boolean {
   const __filename = fileURLToPath(import.meta.url);
-  return __filename.includes('node_modules');
+  // Check for both node_modules and .bun paths (for global bun installs)
+  return __filename.includes('node_modules') || __filename.includes('/.bun/');
 }
 
 // Function to get the package version
 // --- Utility: Get local CLI version from embedded version file ---
 export function getVersion(): string {
-  // Check if we're in the monorepo context
+  // Check if we're in the monorepo context based on the CLI's location, not the current working directory
+  const __filename = fileURLToPath(import.meta.url);
   const userEnv = UserEnvironment.getInstance();
-  const monorepoRoot = userEnv.findMonorepoRoot(process.cwd());
+  const monorepoRoot = userEnv.findMonorepoRoot(__filename);
 
-  if (monorepoRoot) {
-    // We're in the monorepo, return 'monorepo' as version
+  if (monorepoRoot && !isRunningFromNodeModules()) {
+    // We're running from within the monorepo source (not from a global install)
     return 'monorepo';
   }
 
-  // Check if running from node_modules (proper installation)
+  // Check if running from node_modules or .bun (proper installation)
   if (!isRunningFromNodeModules()) {
-    // Running from local dist or development build, not properly installed
-    return 'monorepo';
+    // Running from local dist or development build, but not in monorepo
+    // This shouldn't normally happen, but let's try to get the version anyway
   }
 
-  // Try to load the embedded version file first (generated at build time)
+  // Return cached version if we have it
+  if (cachedVersion) {
+    return cachedVersion;
+  }
+
+  // Try to load the version synchronously using require-like pattern
   try {
-    // Try to import the generated version file
-    // Use a synchronous approach for this utility function
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const versionFilePath = path.resolve(__dirname, '../version.js');
-    
-    if (existsSync(versionFilePath)) {
-      // Read and parse the version file manually to avoid async import in sync function
-      const versionFileContent = readFileSync(versionFilePath, 'utf-8');
-      // Extract the CLI_VERSION from the file content using regex
-      const versionMatch = versionFileContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
-      if (versionMatch && versionMatch[1]) {
-        return versionMatch[1];
+
+    // Try multiple possible locations for version.js
+    const possiblePaths = [
+      path.resolve(__dirname, '../version.js'), // Standard location in development
+      path.resolve(__dirname, 'version.js'), // Same directory (for bundled dist)
+      path.resolve(__dirname, './version.js'), // Alternative same directory
+    ];
+
+    // Special handling for when everything is bundled into index.js
+    if (__filename.endsWith('index.js')) {
+      const distDir = path.dirname(__filename);
+      possiblePaths.unshift(path.resolve(distDir, 'version.js'));
+    }
+
+    for (const versionPath of possiblePaths) {
+      if (existsSync(versionPath)) {
+        // Read the version file and extract the version
+        const versionContent = readFileSync(versionPath, 'utf-8');
+
+        // Try to extract CLI_VERSION constant
+        const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
+        if (versionMatch && versionMatch[1]) {
+          cachedVersion = versionMatch[1];
+          return cachedVersion;
+        }
+
+        // Try to extract from default export
+        const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
+        if (defaultMatch && defaultMatch[1]) {
+          cachedVersion = defaultMatch[1];
+          return cachedVersion;
+        }
       }
     }
   } catch (error) {
-    // Silent fallthrough to fallback
+    // Silent fallback
   }
 
   // Final fallback version

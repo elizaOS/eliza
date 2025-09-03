@@ -15,7 +15,7 @@ jobs:
       contents: write
       packages: write
       id-token: write
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,21 +32,41 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.2.2'
+          bun-version: '1.2.21'
 
       - name: Install Dependencies
         # Note: Not using --frozen-lockfile for alpha builds to allow flexibility
         # Alpha releases can handle lockfile updates since they're pre-release versions
         run: bun install
 
-      - name: Build
-        run: bun run build
-
       - name: Configure Git & Registry
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
+
+      - name: Version Alpha Packages
+        run: |
+          # Use GitHub run number for stable, ascending version numbers
+          # This ensures versions sort correctly: 1.5.5-alpha.1234 < 1.5.5-alpha.1235
+          echo "GitHub run number: ${{ github.run_number }}"
+          echo "GitHub run attempt: ${{ github.run_attempt }}"
+          
+          # Create a unique, sortable preid using run number
+          # If this is a retry (run_attempt > 1), append it
+          if [ "${{ github.run_attempt }}" -gt "1" ]; then
+            PREID="alpha.${{ github.run_number }}.${{ github.run_attempt }}"
+          else
+            PREID="alpha.${{ github.run_number }}"
+          fi
+          
+          echo "Prerelease ID: $PREID"
+          
+          # Version all packages with the calculated preid
+          npx lerna version prerelease --preid "$PREID" --no-push --no-git-tag-version --yes
+
+      - name: Build
+        run: bun run build
 
       - name: Publish Alpha
         env:

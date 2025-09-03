@@ -152,10 +152,10 @@ export interface RunEventPayload extends EventPayload {
  * Action event payload type
  */
 export interface ActionEventPayload extends EventPayload {
-  roomId: UUID,
-  world: UUID,
-  content: Content,
-  messageId?: UUID,
+  roomId: UUID;
+  world: UUID;
+  content: Content;
+  messageId?: UUID;
 }
 
 /**

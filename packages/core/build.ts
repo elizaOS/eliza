@@ -19,6 +19,7 @@ const browserExternals = [
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
   '@sentry/node', // Ensure node SDK is never bundled into the browser build
+  'crypto-browserify',
 ];
 
 // Node-specific externals (native modules and node-specific packages)
@@ -27,7 +28,6 @@ const nodeExternals = [
   'sharp',
   'zod',
   '@hapi/shot',
-  'crypto-browserify',
   '@sentry/browser',
 ];
 
@@ -131,10 +131,10 @@ async function generateTypeScriptDeclarations() {
     // Generate real TypeScript declarations using tsc
     console.log('   Compiling TypeScript declarations...');
     await $`tsc --project tsconfig.declarations.json`;
-    
+
     // TypeScript has generated all the .d.ts files in dist/
     // Now we need to create the conditional export entry points
-    
+
     // Ensure directories exist
     await fs.mkdir('dist/node', { recursive: true });
     await fs.mkdir('dist/browser', { recursive: true });
