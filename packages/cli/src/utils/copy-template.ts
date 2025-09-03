@@ -162,6 +162,7 @@ export async function copyTemplate(
 
     try {
       // Try to import the generated version file
+      // @ts-ignore - This file is generated at build time
       const versionModule = await import('../version.js').catch(() => null);
       if (versionModule && versionModule.CLI_VERSION) {
         cliPackageVersion = versionModule.CLI_VERSION;
@@ -186,7 +187,7 @@ export async function copyTemplate(
           if (!isQuietMode()) {
             logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
           }
-          packageJson.dependencies[depName] = 'latest';
+          packageJson.dependencies[depName] = cliPackageVersion;
         }
       }
     }
@@ -197,7 +198,7 @@ export async function copyTemplate(
           if (!isQuietMode()) {
             logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
           }
-          packageJson.devDependencies[depName] = 'latest';
+          packageJson.devDependencies[depName] = cliPackageVersion;
         }
       }
     }
