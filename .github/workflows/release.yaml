@@ -62,9 +62,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build packages
-        run: bun run build
-
       # Determine release type and version
       - name: Determine release type
         id: release_type
@@ -148,6 +145,12 @@ jobs:
           git push origin HEAD --follow-tags
           
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      # Build packages with correct version numbers
+      - name: Build packages
+        run: |
+          echo "Building packages with version v${{ steps.commit.outputs.version }}..."
+          bun run build
 
       # Publish to NPM
       - name: Publish to NPM
