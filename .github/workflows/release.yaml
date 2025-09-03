@@ -114,6 +114,8 @@ jobs:
         id: version
         run: |
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
+          CURRENT_VERSION=$(node -p "require('./lerna.json').version")
+          echo "Current version: ${CURRENT_VERSION}"
 
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # For production releases from GitHub release
@@ -135,14 +137,56 @@ jobs:
               --no-git-tag-version \
               --no-push
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
-            # Beta prerelease
-            bunx lerna version prerelease \
-              --preid beta \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push
+            # Beta prerelease - handle transition from alpha or existing beta
+            # Check if we're transitioning from alpha to beta
+            if [[ "${CURRENT_VERSION}" == *"-alpha."* ]]; then
+              # Transitioning from alpha to beta
+              # First check if a beta version already exists
+              BASE_VERSION=$(echo "${CURRENT_VERSION}" | sed 's/-alpha\..*//')
+              EXISTING_BETA_TAGS=$(git tag -l "v${BASE_VERSION}-beta.*" | sort -V | tail -n 1)
+              
+              if [[ -n "${EXISTING_BETA_TAGS}" ]]; then
+                # Beta version already exists, get the latest beta number
+                LATEST_BETA_VERSION=${EXISTING_BETA_TAGS#v}
+                echo "Found existing beta version: ${LATEST_BETA_VERSION}"
+                echo "Continuing from existing beta version..."
+                
+                # Set to the existing beta version first
+                bunx lerna version ${LATEST_BETA_VERSION} \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+                
+                # Then bump to the next beta
+                bunx lerna version prerelease \
+                  --preid beta \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              else
+                # No existing beta, start at beta.0
+                bunx lerna version prerelease \
+                  --preid beta \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              fi
+            else
+              # Already on beta or another prerelease, just bump
+              bunx lerna version prerelease \
+                --preid beta \
+                --force-publish \
+                --yes \
+                --no-private \
+                --no-git-tag-version \
+                --no-push
+            fi
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
             # Manual production release
             bunx lerna version patch \
