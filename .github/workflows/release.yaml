@@ -254,10 +254,9 @@ jobs:
                 --no-git-tag-version \
                 --no-push
             else
-              # On stable version in main? Start patch beta
-              NEXT_VERSION=$(bump_version "$BASE_VERSION" "patch")
-              echo "Starting patch beta cycle: ${NEXT_VERSION}-beta.0"
-              bunx lerna version "${NEXT_VERSION}-beta.0" \
+              # On stable version in main? Add beta prerelease to current version
+              echo "Adding beta prerelease to stable version: ${BASE_VERSION}-beta.0"
+              bunx lerna version "${BASE_VERSION}-beta.0" \
                 --force-publish \
                 --yes \
                 --no-private \
@@ -489,10 +488,10 @@ jobs:
         run: |
           echo "📤 Syncing production release back to develop branch..."
           
-          # Helper function
-          bump_minor_version() {
+          # Helper function for patch bump (more conservative for manual releases)
+          bump_patch_version() {
             IFS='.' read -r major minor patch <<< "$1"
-            echo "${major}.$((minor + 1)).0"
+            echo "${major}.${minor}.$((patch + 1))"
           }
           
           # Get the released version
@@ -522,7 +521,8 @@ jobs:
           
           # If develop is behind or equal to release, bump it
           if [[ "$DEVELOP_BASE" == "$BASE_VERSION" ]] || [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
-            NEXT_VERSION=$(bump_minor_version "$BASE_VERSION")
+            # Use patch bump for next version (you control minor/major via manual releases)
+            NEXT_VERSION=$(bump_patch_version "$BASE_VERSION")
             NEXT_ALPHA="${NEXT_VERSION}-alpha.0"
             
             echo "Develop needs update: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
