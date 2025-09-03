@@ -63,10 +63,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # If triggered by a release, we're in detached HEAD state
-          # Create a temporary branch for Lerna to work with
+          # Create a temporary branch that matches Lerna's allowBranch pattern
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "Creating temporary branch from release tag..."
-            git checkout -b temp-release-branch
+            echo "Creating temporary release branch from tag..."
+            git checkout -b release/production-${{ github.sha }}
           fi
 
       - name: Setup Node
@@ -126,7 +126,8 @@ jobs:
               --yes \
               --no-private \
               --no-git-tag-version \
-              --no-push
+              --no-push \
+              --allow-branch release/*
           elif [[ "${RELEASE_TYPE}" == "alpha" ]]; then
             # Alpha prerelease
             bunx lerna version prerelease \
