@@ -42,11 +42,16 @@ describe('ElizaOS Agent Commands', () => {
 
     // Verify elizaos command is available
     try {
-      bunExecSync('elizaos --version', { encoding: 'utf8', timeout: 5000 });
+      const result = bunExecSync('elizaos --version', { 
+        encoding: 'utf8', 
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND 
+      });
+      console.log(`[DEBUG] elizaos version: ${result.trim()}`);
     } catch (error) {
       console.error(
         '[ERROR] elizaos command not available. Run "bun link" in the CLI package first.'
       );
+      console.error('[ERROR] Error details:', error);
       throw new Error('elizaos command not available');
     }
 
@@ -165,7 +170,7 @@ describe('ElizaOS Agent Commands', () => {
         throw serverError;
       }
 
-      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
+      await waitForServerReady(parseInt(testServerPort, 10), TEST_TIMEOUTS.SERVER_STARTUP);
       console.log('[DEBUG] Server is ready!');
     } catch (error) {
       console.error('[ERROR] Server failed to start:', error);
