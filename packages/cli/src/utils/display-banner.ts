@@ -20,19 +20,20 @@ export function isRunningFromNodeModules(): boolean {
 // Function to get the package version
 // --- Utility: Get local CLI version from embedded version file ---
 export function getVersion(): string {
-  // Check if we're in the monorepo context
+  // Check if we're in the monorepo context based on the CLI's location, not the current working directory
+  const __filename = fileURLToPath(import.meta.url);
   const userEnv = UserEnvironment.getInstance();
-  const monorepoRoot = userEnv.findMonorepoRoot(process.cwd());
+  const monorepoRoot = userEnv.findMonorepoRoot(__filename);
 
-  if (monorepoRoot) {
-    // We're in the monorepo, return 'monorepo' as version
+  if (monorepoRoot && !isRunningFromNodeModules()) {
+    // We're running from within the monorepo source (not from a global install)
     return 'monorepo';
   }
 
-  // Check if running from node_modules (proper installation)
+  // Check if running from node_modules or .bun (proper installation)
   if (!isRunningFromNodeModules()) {
-    // Running from local dist or development build, not properly installed
-    return 'monorepo';
+    // Running from local dist or development build, but not in monorepo
+    // This shouldn't normally happen, but let's try to get the version anyway
   }
 
   // Return cached version if we have it
@@ -44,24 +45,38 @@ export function getVersion(): string {
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const versionPath = path.resolve(__dirname, '../version.js');
     
-    if (existsSync(versionPath)) {
-      // Read the version file and extract the version
-      const versionContent = readFileSync(versionPath, 'utf-8');
-      
-      // Try to extract CLI_VERSION constant
-      const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
-      if (versionMatch && versionMatch[1]) {
-        cachedVersion = versionMatch[1];
-        return cachedVersion;
-      }
-      
-      // Try to extract from default export
-      const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
-      if (defaultMatch && defaultMatch[1]) {
-        cachedVersion = defaultMatch[1];
-        return cachedVersion;
+    // Try multiple possible locations for version.js
+    const possiblePaths = [
+      path.resolve(__dirname, '../version.js'),      // Standard location in development
+      path.resolve(__dirname, 'version.js'),         // Same directory (for bundled dist)
+      path.resolve(__dirname, './version.js'),       // Alternative same directory
+    ];
+    
+    // Special handling for when everything is bundled into index.js
+    if (__filename.endsWith('index.js')) {
+      const distDir = path.dirname(__filename);
+      possiblePaths.unshift(path.resolve(distDir, 'version.js'));
+    }
+    
+    for (const versionPath of possiblePaths) {
+      if (existsSync(versionPath)) {
+        // Read the version file and extract the version
+        const versionContent = readFileSync(versionPath, 'utf-8');
+        
+        // Try to extract CLI_VERSION constant
+        const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
+        if (versionMatch && versionMatch[1]) {
+          cachedVersion = versionMatch[1];
+          return cachedVersion;
+        }
+        
+        // Try to extract from default export
+        const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
+        if (defaultMatch && defaultMatch[1]) {
+          cachedVersion = defaultMatch[1];
+          return cachedVersion;
+        }
       }
     }
   } catch (error) {
