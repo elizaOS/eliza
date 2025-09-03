@@ -38,17 +38,17 @@
     "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
     "prepare": "husky"
   },
-  "packageManager": "bun@1.2.15",
+  "packageManager": "bun@1.2.21",
   "workspaces": [
     "packages/*",
     "plugin-specification/*"
   ],
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.2.21",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.3",
     "@types/uuid": "^10.0.0",
-    "bun": "^1.2.15",
+    "bun": "^1.2.21",
     "husky": "^9.1.7",
     "lerna": "8.1.4",
     "turbo": "^2.5.5",

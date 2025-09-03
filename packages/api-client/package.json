@@ -18,7 +18,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "^1.2.21",
     "@types/node": "latest",
     "eslint": "^8.57.0",
     "typescript": "^5.7.2"
