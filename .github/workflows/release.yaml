@@ -299,36 +299,44 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       # Handle failure - create issue if the workflow failed
+      - name: Create issue content file
+        if: failure() && steps.version.outputs.version
+        run: |
+          cat > /tmp/issue-content.md << 'EOF'
+          The release workflow failed for version v${{ steps.version.outputs.version }}.
+          
+          **Details:**
+          - Release Type: ${{ steps.release_type.outputs.type }}
+          - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Triggered By: ${{ github.event_name }}
+          - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
+          - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
+          
+          **Recovery Steps:**
+          
+          If git operations succeeded but NPM publish failed:
+          - The version is already in git
+          - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
+          - Or re-run this workflow (it will skip git operations if no changes)
+          
+          If git operations failed:
+          - No packages were published to NPM (safe state)
+          - Fix the git issue (permissions, network, etc.)
+          - Re-run the workflow
+          
+          **Action Required:**
+          - Check the workflow logs for the specific failure point
+          - Follow the appropriate recovery steps above
+          EOF
+
       - name: Create failure issue
         if: failure() && steps.version.outputs.version
-        uses: actions/create-issue@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: peter-evans/create-issue-from-file@v5
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           title: "Release Failed: v${{ steps.version.outputs.version }}"
-          body: |
-            The release workflow failed for version v${{ steps.version.outputs.version }}.
-            
-            **Details:**
-            - Release Type: ${{ steps.release_type.outputs.type }}
-            - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            - Triggered By: ${{ github.event_name }}
-            - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
-            - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
-            
-            **Recovery Steps:**
-            
-            If git operations succeeded but NPM publish failed:
-            - The version is already in git
-            - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
-            - Or re-run this workflow (it will skip git operations if no changes)
-            
-            If git operations failed:
-            - No packages were published to NPM (safe state)
-            - Fix the git issue (permissions, network, etc.)
-            - Re-run the workflow
-            
-            **Action Required:**
-            - Check the workflow logs for the specific failure point
-            - Follow the appropriate recovery steps above
-          labels: bug, release-failure
+          content-filepath: /tmp/issue-content.md
+          labels: |
+            bug
+            release
+            automated issue
