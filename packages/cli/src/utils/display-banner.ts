@@ -13,7 +13,8 @@ let cachedVersion: string | null = null;
 // Helper function to check if running from node_modules
 export function isRunningFromNodeModules(): boolean {
   const __filename = fileURLToPath(import.meta.url);
-  return __filename.includes('node_modules');
+  // Check for both node_modules and .bun paths (for global bun installs)
+  return __filename.includes('node_modules') || __filename.includes('/.bun/');
 }
 
 // Function to get the package version
