@@ -1,0 +1,118 @@
+name: Alpha CLI Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: alpha-cli-tests-${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ELIZA_NONINTERACTIVE: true
+
+on:
+  workflow_run:
+    workflows: ["NPM Alpha Release"]
+    types:
+      - completed
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  test:
+    # Only run if the NPM Alpha Release workflow succeeded (or manual trigger)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45 # Prevent job timeout from killing processes prematurely
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.15
+
+      - name: Mention Bun version
+        run: bun --version
+
+      - name: Debug Bun Setup
+        shell: bash
+        run: |
+          echo "PATH: $PATH"
+          echo "which bun: $(which bun 2>/dev/null || echo 'which not found')"
+          echo "command -v bun: $(command -v bun 2>/dev/null || echo 'command not found')"
+          if command -v bun &> /dev/null; then
+            BUN_PATH=$(which bun 2>/dev/null || command -v bun)
+            echo "Bun found at: $BUN_PATH"
+            ls -la "$BUN_PATH" 2>/dev/null || echo "Failed to ls bun"
+            file "$BUN_PATH" 2>/dev/null || echo "Failed to get bun file info"
+          else
+            echo "Bun not found in PATH"
+          fi
+
+      - name: Install @elizaos/cli from npm (alpha tag)
+        shell: bash
+        run: |
+          echo "Installing @elizaos/cli@alpha globally..."
+          bun install -g @elizaos/cli@alpha
+
+      - name: Verify elizaos installation
+        shell: bash
+        run: |
+          echo "Verifying @elizaos/cli package is available..."
+          bun pm ls -g | grep "@elizaos/cli" || echo "@elizaos/cli not found in global links"
+
+          echo "Verifying elizaos command is available..."
+          which elizaos || echo "elizaos not found in PATH"
+          elizaos --version || echo "Failed to run elizaos --version"
+
+      - name: Verify CLI installation
+        shell: bash
+        run: |
+          echo "Checking CLI installation..."
+          elizaos --version || echo "Failed to run elizaos --version"
+
+      - name: Clean eliza projects cache
+        shell: bash
+        run: rm -rf ~/.eliza/projects
+
+      - name: Create .env file for tests
+        shell: bash
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Install cross-env globally
+        run: bun install -g cross-env
+
+      - name: Install BATS on macOS
+        if: matrix.os == 'macos-latest'
+        run: bun install -g bats
+
+      - name: Create shim so tests hit global alpha CLI
+        shell: bash
+        run: |
+          mkdir -p packages/cli/dist
+          cat > packages/cli/dist/index.js <<'EOF'
+          #!/usr/bin/env bun
+          const args = process.argv.slice(2);
+          const proc = Bun.spawnSync(['elizaos', ...args], {
+            stdin: 'inherit',
+            stdout: 'inherit',
+            stderr: 'inherit',
+          });
+          process.exit(typeof proc.exitCode === 'number' ? proc.exitCode : 1);
+          EOF
+          chmod +x packages/cli/dist/index.js
+
+      - name: Run CLI TypeScript tests
+        run: cross-env bun test tests/commands/
+        working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true
