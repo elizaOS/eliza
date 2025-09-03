@@ -7,8 +7,8 @@ name: NPM Release
 #
 # Version Management:
 # - Uses lerna version and publish commands with consistent patterns
-# - Single commit for all version changes
-# - Proper tag creation and pushing
+# - Publishes to NPM first, then commits version changes
+# - Prevents infinite loops with [skip ci] in commit messages
 
 on:
   push:
@@ -31,6 +31,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip if commit message contains [skip ci]
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
+    
     permissions:
       contents: write
       packages: write
@@ -73,19 +76,24 @@ jobs:
             VERSION="${{ github.event.release.tag_name }}"
             VERSION="${VERSION#v}"
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_release_event=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "type=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
             echo "dist_tag=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "type=alpha" >> $GITHUB_OUTPUT
             echo "dist_tag=alpha" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "type=beta" >> $GITHUB_OUTPUT
             echo "dist_tag=beta" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
           fi
 
       # Version Management
       - name: Version packages
+        id: version
         run: |
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
           
@@ -97,7 +105,8 @@ jobs:
               --force-publish \
               --yes \
               --no-private \
-              --no-git-tag-version
+              --no-git-tag-version \
+              --no-push
           elif [[ "${RELEASE_TYPE}" == "alpha" ]]; then
             # Alpha prerelease
             bunx lerna version prerelease \
@@ -105,7 +114,8 @@ jobs:
               --force-publish \
               --yes \
               --no-private \
-              --no-git-tag-version
+              --no-git-tag-version \
+              --no-push
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
             # Beta prerelease
             bunx lerna version prerelease \
@@ -113,46 +123,34 @@ jobs:
               --force-publish \
               --yes \
               --no-private \
-              --no-git-tag-version
+              --no-git-tag-version \
+              --no-push
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
             # Manual production release
             bunx lerna version patch \
               --force-publish \
               --yes \
               --no-private \
-              --no-git-tag-version
+              --no-git-tag-version \
+              --no-push
           fi
+          
+          # Get the new version
+          VERSION=$(node -p "require('./lerna.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       # Update lockfile after version changes
       - name: Update lockfile
         run: |
           bun install --no-frozen-lockfile
-          
-      # Commit version changes
-      - name: Commit version changes
-        id: commit
-        run: |
-          VERSION=$(node -p "require('./lerna.json').version")
-          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
-          
-          git add -A
-          git commit -m "chore: release v${VERSION} (${RELEASE_TYPE})" || echo "No changes to commit"
-          
-          # Create and push tag
-          git tag "v${VERSION}"
-          
-          # Push changes and tags to repository
-          git push origin HEAD --follow-tags
-          
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       # Build packages with correct version numbers
       - name: Build packages
         run: |
-          echo "Building packages with version v${{ steps.commit.outputs.version }}..."
+          echo "Building packages with version v${{ steps.version.outputs.version }}..."
           bun run build
 
-      # Publish to NPM
+      # Publish to NPM FIRST (before git operations)
       - name: Publish to NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -168,20 +166,43 @@ jobs:
             --force-publish \
             --yes \
             --no-verify-access
+          
+          echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
-      # Create GitHub Release for alpha/beta
+      # Only commit and push AFTER successful NPM publish
+      - name: Commit and push version changes
+        id: commit
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
+          
+          # Stage all changes
+          git add -A
+          
+          # Commit with [skip ci] to prevent infinite loop
+          git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]" || echo "No changes to commit"
+          
+          # Only create tag if NOT from a GitHub release (tag already exists)
+          if [[ "${{ steps.release_type.outputs.is_release_event }}" != "true" ]]; then
+            git tag "v${VERSION}" || echo "Tag already exists"
+          fi
+          
+          # Push changes and tags
+          git push origin HEAD --follow-tags || echo "Push failed - may be protected branch"
+
+      # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest'
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.commit.outputs.version }}
-          name: v${{ steps.commit.outputs.version }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
             
-            Version: `v${{ steps.commit.outputs.version }}`
+            Version: `v${{ steps.version.outputs.version }}`
             
             Install with:
             ```bash
@@ -191,10 +212,11 @@ jobs:
           prerelease: true
 
       - name: Summary
+        if: always()
         run: |
           echo "# 📦 Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: v${{ steps.commit.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Type**: ${{ steps.release_type.outputs.type }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Dist Tag**: ${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
@@ -204,3 +226,25 @@ jobs:
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # Handle failure - create issue if publish failed
+      - name: Create failure issue
+        if: failure() && steps.version.outputs.version
+        uses: actions/create-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          title: "Release Failed: v${{ steps.version.outputs.version }}"
+          body: |
+            The release workflow failed for version v${{ steps.version.outputs.version }}.
+            
+            **Details:**
+            - Release Type: ${{ steps.release_type.outputs.type }}
+            - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Triggered By: ${{ github.event_name }}
+            
+            **Action Required:**
+            - Check the workflow logs for the failure reason
+            - If NPM publish failed but git was not updated, the version is safe to retry
+            - If git was updated but NPM failed, manual intervention may be needed
+          labels: bug, release-failure
