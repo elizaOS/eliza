@@ -169,12 +169,12 @@ jobs:
       # Create GitHub Release for alpha/beta
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest'
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.commit.outputs.version }}
-          release_name: v${{ steps.commit.outputs.version }}
+          name: v${{ steps.commit.outputs.version }}
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
             
