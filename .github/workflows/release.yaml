@@ -16,6 +16,16 @@ on:
     branches:
       - develop # Triggers alpha releases
       - main    # Triggers beta releases
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/**/*.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.dockerignore'
+      - '**/*.example'
+      - '.vscode/**'
+      - '.devcontainer/**'
   release:
     types: [created] # Triggers production releases
   workflow_dispatch:
@@ -261,7 +271,7 @@ jobs:
             
             Install with:
             ```bash
-            npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
+            bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
             ```
           draft: false
           prerelease: true
@@ -285,7 +295,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Installation" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       # Handle failure - create issue if the workflow failed
