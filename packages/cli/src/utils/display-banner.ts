@@ -6,10 +6,15 @@ import { fileURLToPath } from 'node:url';
 import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
 
+// Import the version module - this will be bundled at build time
+// Using dynamic import within the function to avoid top-level await
+let cachedVersion: string | null = null;
+
 // Helper function to check if running from node_modules
 export function isRunningFromNodeModules(): boolean {
   const __filename = fileURLToPath(import.meta.url);
-  return __filename.includes('node_modules');
+  // Check for both node_modules and .bun paths (for global bun installs)
+  return __filename.includes('node_modules') || __filename.includes('/.bun/');
 }
 
 // Function to get the package version
@@ -30,25 +35,37 @@ export function getVersion(): string {
     return 'monorepo';
   }
 
-  // Try to load the embedded version file first (generated at build time)
+  // Return cached version if we have it
+  if (cachedVersion) {
+    return cachedVersion;
+  }
+
+  // Try to load the version synchronously using require-like pattern
   try {
-    // Try to import the generated version file
-    // Use a synchronous approach for this utility function
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const versionFilePath = path.resolve(__dirname, '../version.js');
+    const versionPath = path.resolve(__dirname, '../version.js');
     
-    if (existsSync(versionFilePath)) {
-      // Read and parse the version file manually to avoid async import in sync function
-      const versionFileContent = readFileSync(versionFilePath, 'utf-8');
-      // Extract the CLI_VERSION from the file content using regex
-      const versionMatch = versionFileContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
+    if (existsSync(versionPath)) {
+      // Read the version file and extract the version
+      const versionContent = readFileSync(versionPath, 'utf-8');
+      
+      // Try to extract CLI_VERSION constant
+      const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
       if (versionMatch && versionMatch[1]) {
-        return versionMatch[1];
+        cachedVersion = versionMatch[1];
+        return cachedVersion;
+      }
+      
+      // Try to extract from default export
+      const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
+      if (defaultMatch && defaultMatch[1]) {
+        cachedVersion = defaultMatch[1];
+        return cachedVersion;
       }
     }
   } catch (error) {
-    // Silent fallthrough to fallback
+    // Silent fallback
   }
 
   // Final fallback version

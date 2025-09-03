@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.4.3-alpha.2",
+  "version": "1.4.3-alpha.5",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -20,11 +20,10 @@
   },
   "files": [
     "dist",
-    "dist/**/.gitignore",
-    "dist/**/.npmignore",
+    "dist/**/*",
+    "dist/version.js",
     "templates",
-    "templates/**/.gitignore",
-    "templates/**/.npmignore"
+    "templates/**/*"
   ],
   "keywords": [],
   "type": "module",
