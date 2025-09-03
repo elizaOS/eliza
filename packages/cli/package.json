@@ -59,7 +59,7 @@
     "test:scenarios": "for f in src/commands/scenario/examples/*.scenario.yaml; do echo \"=== $f ===\"; bun dist/index.js scenario run \"$f\" || echo \"FAIL $f\"; echo; done | cat"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.17",
+    "@types/bun": "^1.2.21",
     "@types/express": "^5.0.2",
     "@types/fs-extra": "^11.0.1",
     "@types/helmet": "^4.0.0",
@@ -84,7 +84,7 @@
     "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
-    "bun": "^1.2.17",
+    "bun": "^1.2.21",
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",

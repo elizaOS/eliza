@@ -1,8 +1,8 @@
-name: Eliza CLI Tests
+name: Alpha CLI Tests
 
 # Cancel previous runs for the same PR/branch
 concurrency:
-  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: alpha-cli-tests-${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -12,19 +12,16 @@ env:
   ELIZA_NONINTERACTIVE: true
 
 on:
-  push:
-    branches:
-      - 'main'
-      - 'develop'
-  pull_request:
-    branches:
-      - 'main'
-      - 'develop'
+  workflow_run:
+    workflows: ["NPM Alpha Release"]
+    types:
+      - completed
+  workflow_dispatch:  # Allow manual trigger for testing
 
 jobs:
   test:
-    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    # Only run if the NPM Alpha Release workflow succeeded (or manual trigger)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45 # Prevent job timeout from killing processes prematurely
     strategy:
@@ -59,54 +56,27 @@ jobs:
             echo "Bun not found in PATH"
           fi
 
-      - name: Install dependencies
-        run: bun install
-
-      - name: Build all packages
-        run: bun run build
-
-      - name: Link packages globally
-        run: |
-          # Link core package first (everything depends on it)
-          cd packages/core
-          bun link
-          cd ../..
-          echo "Linked @elizaos/core package globally"
-
-          # Link server package (CLI depends on it)
-          cd packages/server
-          bun link
-          cd ../..
-          echo "Linked @elizaos/server package globally"
-
-          # Link CLI package
-          cd packages/cli
-          bun link
-          cd ../..
-          echo "Linked elizaos command globally"
-
-      - name: Verify package links
+      - name: Install @elizaos/cli from npm (alpha tag)
         shell: bash
         run: |
-          echo "Verifying @elizaos/server package is available..."
-          bun pm ls -g | grep "@elizaos/server" || echo "@elizaos/server not found in global links"
+          echo "Installing @elizaos/cli@alpha globally..."
+          bun install -g @elizaos/cli@alpha
+
+      - name: Verify elizaos installation
+        shell: bash
+        run: |
+          echo "Verifying @elizaos/cli package is available..."
+          bun pm ls -g | grep "@elizaos/cli" || echo "@elizaos/cli not found in global links"
 
           echo "Verifying elizaos command is available..."
           which elizaos || echo "elizaos not found in PATH"
           elizaos --version || echo "Failed to run elizaos --version"
 
-      - name: Verify CLI build artifacts
+      - name: Verify CLI installation
         shell: bash
         run: |
-          echo "Checking CLI build artifacts..."
-          echo "CLI dist contents:"
-          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
-          echo ""
-          echo "CLI templates in dist:"
-          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
-          echo ""
-          echo "CLI executable:"
-          test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
+          echo "Checking CLI installation..."
+          elizaos --version || echo "Failed to run elizaos --version"
 
       - name: Clean eliza projects cache
         shell: bash
@@ -124,6 +94,22 @@ jobs:
       - name: Install BATS on macOS
         if: matrix.os == 'macos-latest'
         run: bun install -g bats
+
+      - name: Create shim so tests hit global alpha CLI
+        shell: bash
+        run: |
+          mkdir -p packages/cli/dist
+          cat > packages/cli/dist/index.js <<'EOF'
+          #!/usr/bin/env bun
+          const args = process.argv.slice(2);
+          const proc = Bun.spawnSync(['elizaos', ...args], {
+            stdin: 'inherit',
+            stdout: 'inherit',
+            stderr: 'inherit',
+          });
+          process.exit(typeof proc.exitCode === 'number' ? proc.exitCode : 1);
+          EOF
+          chmod +x packages/cli/dist/index.js
 
       - name: Run CLI TypeScript tests
         run: cross-env bun test tests/commands/
