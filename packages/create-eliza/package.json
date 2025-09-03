@@ -1,9 +1,8 @@
 {
   "name": "create-eliza",
-  "version": "1.4.2",
+  "version": "1.5.5-alpha.6",
   "description": "Initialize an Eliza project",
   "type": "module",
-
   "publishConfig": {
     "access": "public"
   },

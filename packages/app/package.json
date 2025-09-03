@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.4.2",
-
+  "version": "1.5.5-alpha.6",
   "type": "module",
   "scripts": {
     "start": "tauri dev",

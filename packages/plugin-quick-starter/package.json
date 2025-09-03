@@ -1,9 +1,8 @@
 {
   "name": "@elizaos/plugin-quick-starter",
   "description": "Quick backend-only plugin template for ElizaOS",
-  "version": "1.4.2",
+  "version": "1.5.5-alpha.6",
   "type": "module",
-
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
