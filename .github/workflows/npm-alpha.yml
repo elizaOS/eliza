@@ -64,7 +64,6 @@ jobs:
           echo "New alpha version: v${NEW_VERSION}"
           
           # Update bun.lock to reflect version changes
-          # NO frozen-lockfile - we WANT it to update with new versions
           echo "Updating bun.lock with new versions..."
           bun install
           
