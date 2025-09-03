@@ -5,13 +5,23 @@
 
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 
-// Custom pre-build step to copy templates
+// Custom pre-build step to copy templates and generate version
 async function preBuild() {
+  // Generate version file first
+  console.log('\nGenerating version file...');
+  let start = performance.now();
+  await $`bun run src/scripts/generate-version.ts`;
+  let elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  console.log(`✓ Version file generated (${elapsed}s)`);
+
+  // Copy templates
   console.log('\nCopying templates...');
-  const start = performance.now();
+  start = performance.now();
   await $`bun run src/scripts/copy-templates.ts`;
-  const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+  elapsed = ((performance.now() - start) / 1000).toFixed(2);
   console.log(`✓ Templates copied (${elapsed}s)`);
 }
 
@@ -43,8 +53,30 @@ const run = createBuildRunner({
       console.log('\nCopying assets...');
       await copyAssets([
         { from: './templates', to: './dist/templates' },
-        { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
+        // Migration guides are embedded in the CLI code itself, no need to copy external files
       ]);
+
+      // Ensure the version file is properly copied to dist
+      const versionSrcPath = './src/version.ts';
+      const versionDistPath = './dist/version.js';
+      if (existsSync(versionSrcPath)) {
+        // Read the TypeScript version file
+        const versionContent = await fs.readFile(versionSrcPath, 'utf-8');
+        // Convert to JavaScript by removing TypeScript-specific syntax
+        const jsContent = versionContent
+          .replace(/export const (\w+): string = /g, 'export const $1 = ')
+          .replace(/export default {/, 'export default {');
+        await fs.writeFile(versionDistPath, jsContent);
+        console.log('✓ Version file copied to dist/version.js');
+      } else {
+        console.warn('⚠️  Version file not found at src/version.ts - generating fallback');
+        // Generate a fallback version file if the source doesn't exist
+        const fallbackContent = `export const CLI_VERSION = '0.0.0';
+export const CLI_NAME = '@elizaos/cli';
+export const CLI_DESCRIPTION = 'elizaOS CLI';
+export default { version: '0.0.0', name: '@elizaos/cli', description: 'elizaOS CLI' };`;
+        await fs.writeFile(versionDistPath, fallbackContent);
+      }
     }
   },
 });

@@ -16,6 +16,7 @@ import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SplitButton } from '@/components/ui/split-button';
+import { Tool, type ToolPart } from '@/components/actionTool';
 import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
@@ -90,6 +91,60 @@ moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
+// Helper function to convert action message to ToolPart format
+const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
+  const rawMessage = message.rawMessage as any; // Type assertion to access raw message properties
+
+  // Map actionStatus to ToolPart state
+  const mapActionStatusToState = (status: string): ToolPart['state'] => {
+    switch (status) {
+      case 'pending':
+      case 'executing':
+      case 'running':
+        return 'input-streaming';
+      case 'completed':
+      case 'success':
+        return 'output-available';
+      case 'failed':
+      case 'error':
+        return 'output-error';
+      default:
+        return 'input-available';
+    }
+  };
+
+  // Get the primary action name (first action or fallback to message type)
+  const actionName = rawMessage.actions?.[0] || rawMessage.action || 'ACTION';
+  const actionStatus = rawMessage.actionStatus || 'completed';
+  const actionId = rawMessage.actionId;
+
+  // Create input data from available action properties
+  const inputData: Record<string, unknown> = {};
+  if (rawMessage.actions) inputData.actions = rawMessage.actions;
+  if (rawMessage.action) inputData.action = rawMessage.action;
+  if (rawMessage.thought) inputData.thought = rawMessage.thought;
+
+  // Create output data based on status and content
+  const outputData: Record<string, unknown> = {};
+  if (rawMessage.text) outputData.result = rawMessage.text;
+  if (actionStatus) outputData.status = actionStatus;
+  if (rawMessage.thought) outputData.thought = rawMessage.thought;
+  if (rawMessage.actionResult) outputData.actionResult = rawMessage.actionResult;
+
+  // Handle error cases
+  const isError = actionStatus === 'failed' || actionStatus === 'error';
+  const errorText = isError ? rawMessage.text || 'Action failed' : undefined;
+
+  return {
+    type: actionName,
+    state: mapActionStatusToState(actionStatus),
+    toolCallId: actionId,
+    input: Object.keys(inputData).length > 0 ? inputData : undefined,
+    output: Object.keys(outputData).length > 0 ? outputData : undefined,
+    errorText,
+  };
+};
+
 interface UnifiedChatViewProps {
   chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
@@ -146,6 +201,7 @@ export function MessageContent({
   agentAvatarMap?: Record<UUID, string | null>;
   chatType?: ChannelType;
 }) {
+  const isActionMessage = message.type === 'agent_action' || message.source === 'agent_action';
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -153,51 +209,59 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        <div>
-          {(() => {
-            if (!message.text) return null;
+        {isActionMessage ? (
+          <Tool
+            toolPart={convertActionMessageToToolPart(message)}
+            defaultOpen={false}
+            className="max-w-none"
+          />
+        ) : (
+          <div>
+            {(() => {
+              if (!message.text) return null;
 
-            const mediaInfos = parseMediaFromText(message.text);
-            const attachmentUrls = new Set(
-              message.attachments?.map((att) => att.url).filter(Boolean) || []
-            );
-            const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
-            const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
+              const mediaInfos = parseMediaFromText(message.text);
+              const attachmentUrls = new Set(
+                message.attachments?.map((att) => att.url).filter(Boolean) || []
+              );
+              const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
+              const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
 
-            return (
-              <div className="space-y-3">
-                {textWithoutUrls.trim() && (
-                  <div>
-                    {isUser ? (
-                      <Markdown className="prose-sm max-w-none" variant="user">
-                        {textWithoutUrls}
-                      </Markdown>
-                    ) : (
-                      <AnimatedMarkdown
-                        className="prose-sm max-w-none"
-                        variant="agent"
-                        shouldAnimate={shouldAnimate}
-                        messageId={message.id}
-                      >
-                        {textWithoutUrls}
-                      </AnimatedMarkdown>
-                    )}
-                  </div>
-                )}
+              return (
+                <div className="space-y-3">
+                  {textWithoutUrls.trim() && (
+                    <div>
+                      {isUser ? (
+                        <Markdown className="prose-sm max-w-none" variant="user">
+                          {textWithoutUrls}
+                        </Markdown>
+                      ) : (
+                        <AnimatedMarkdown
+                          className="prose-sm max-w-none"
+                          variant="agent"
+                          shouldAnimate={shouldAnimate}
+                          messageId={message.id}
+                        >
+                          {textWithoutUrls}
+                        </AnimatedMarkdown>
+                      )}
+                    </div>
+                  )}
 
-                {uniqueMediaInfos.length > 0 && (
-                  <div className="space-y-2">
-                    {uniqueMediaInfos.map((media, index) => (
-                      <div key={`${media.url}-${index}`}>
-                        <MediaContent url={media.url} title="Shared media" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+                  {uniqueMediaInfos.length > 0 && (
+                    <div className="space-y-2">
+                      {uniqueMediaInfos.map((media, index) => (
+                        <div key={`${media.url}-${index}`}>
+                          <MediaContent url={media.url} title="Shared media" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {message.attachments
           ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')

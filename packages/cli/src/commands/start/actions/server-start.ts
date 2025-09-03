@@ -81,7 +81,8 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
   server.jsonToCharacter = jsonToCharacter;
 
   const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-  const serverPort = await findNextAvailablePort(desiredPort);
+  const serverHost = process.env.SERVER_HOST || '0.0.0.0';
+  const serverPort = await findNextAvailablePort(desiredPort, serverHost);
   if (serverPort !== desiredPort) {
     logger.warn({ desiredPort, serverPort }, 'Port is in use, using alternate port');
   }

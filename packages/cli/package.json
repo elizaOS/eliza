@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.4.2",
+  "version": "1.5.5-alpha.10",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -20,11 +20,10 @@
   },
   "files": [
     "dist",
-    "dist/**/.gitignore",
-    "dist/**/.npmignore",
+    "dist/**/*",
+    "dist/version.js",
     "templates",
-    "templates/**/.gitignore",
-    "templates/**/.npmignore"
+    "templates/**/*"
   ],
   "keywords": [],
   "type": "module",
@@ -60,7 +59,7 @@
     "test:scenarios": "for f in src/commands/scenario/examples/*.scenario.yaml; do echo \"=== $f ===\"; bun dist/index.js scenario run \"$f\" || echo \"FAIL $f\"; echo; done | cat"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.17",
+    "@types/bun": "^1.2.21",
     "@types/express": "^5.0.2",
     "@types/fs-extra": "^11.0.1",
     "@types/helmet": "^4.0.0",
@@ -82,10 +81,10 @@
     "@clack/prompts": "^0.11.0",
     "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
-    "@elizaos/plugin-bootstrap": "workspace:*",
-    "bun": "^1.2.17",
+    "bun": "^1.2.21",
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",

@@ -1225,6 +1225,20 @@ export class AgentServer {
     return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
   }
 
+  async updateMessage(
+    messageId: UUID,
+    patch: {
+      content?: string;
+      rawMessage?: any;
+      sourceType?: string;
+      sourceId?: string;
+      metadata?: any;
+      inReplyToRootMessageId?: UUID;
+    }
+  ): Promise<CentralRootMessage | null> {
+    return (this.database as any).updateMessage(messageId, patch);
+  }
+
   // Optional: Method to remove a participant
   async removeParticipantFromChannel(): Promise<void> {
     // Since we don't have a direct method for this, we'll need to handle it at the channel level

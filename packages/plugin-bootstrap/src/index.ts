@@ -628,11 +628,16 @@ const messageReceivedHandler = async ({
               // without actions there can't be more than one message
               await callback(responseContent);
             } else if (mode === 'actions') {
-              await runtime.processActions(message, responseMessages, state, async (content, files) => {
-                runtime.logger.debug({ content, files }, 'action callback');
-                responseContent!.actionCallbacks = content;
-                return callback(content, files);
-              });
+              await runtime.processActions(
+                message,
+                responseMessages,
+                state,
+                async (content, files) => {
+                  runtime.logger.debug({ content, files }, 'action callback');
+                  responseContent!.actionCallbacks = content;
+                  return callback(content, files);
+                }
+              );
             }
           }
         } else {
@@ -1063,7 +1068,6 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           ],
           state,
           async () => {
-            await callback(actionContent);
             return [];
           }
         );
@@ -1824,14 +1828,37 @@ const events = {
 
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
-      logger.debug(`[Bootstrap] Action started: ${payload.actionName} (${payload.actionId})`);
+      try {
+        const messageBusService = payload.runtime.getService('message-bus-service') as any;
+        if (messageBusService) {
+          await messageBusService.notifyActionStart(
+            payload.roomId,
+            payload.world,
+            payload.content,
+            payload.messageId
+          );
+        }
+      } catch (error) {
+        logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      }
     },
   ],
 
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
-      const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
-      logger.debug(`[Bootstrap] Action ${status}: ${payload.actionName} (${payload.actionId})`);
+      try {
+        const messageBusService = payload.runtime.getService('message-bus-service') as any;
+        if (messageBusService) {
+          await messageBusService.notifyActionUpdate(
+            payload.roomId,
+            payload.world,
+            payload.content,
+            payload.messageId
+          );
+        }
+      } catch (error) {
+        logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      }
     },
   ],
 

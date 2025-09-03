@@ -118,23 +118,14 @@ export async function copyTemplate(
   const possibleTemplatePaths = [
     // 1. Direct path from source directory (for tests and development)
     path.resolve(__dirname, '../../templates', packageName),
-    // 2. Production: templates bundled with the CLI dist
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'dist',
-      'templates',
-      packageName
-    ),
-    // 3. Development/Test: templates in the CLI package root
-    path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'templates',
-      packageName
-    ),
-    // 4. Fallback: relative to current module (for built dist)
-    path.resolve(__dirname, '..', 'templates', packageName),
-    // 5. Additional fallback: relative to dist directory
-    path.resolve(__dirname, '..', '..', 'templates', packageName),
+    // 2. Production: when running from dist, templates are at the same level
+    path.resolve(__dirname, '../templates', packageName),
+    // 3. Alternative production path (if utils is nested in dist)
+    path.resolve(__dirname, '../../templates', packageName),
+    // 4. Development: templates at package root
+    path.resolve(__dirname, '../../../templates', packageName),
+    // 5. Fallback for various directory structures
+    path.resolve(__dirname, 'templates', packageName),
   ];
 
   let templateDir: string | null = null;
@@ -166,14 +157,20 @@ export async function copyTemplate(
   const packageJsonPath = path.join(targetDir, 'package.json');
 
   try {
-    // Get the CLI package version for dependency updates
-    const cliPackageJsonPath = path.resolve(
-      path.dirname(require.resolve('@elizaos/cli/package.json')),
-      'package.json'
-    );
+    // Get the CLI package version from the embedded version file
+    let cliPackageVersion = 'latest'; // Default fallback
 
-    const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf8'));
-    const cliPackageVersion = cliPackageJson.version;
+    try {
+      // Try to import the generated version file
+      // @ts-ignore - This file is generated at build time
+      const versionModule = await import('../version.js').catch(() => null);
+      if (versionModule && versionModule.CLI_VERSION) {
+        cliPackageVersion = versionModule.CLI_VERSION;
+      }
+    } catch {
+      // If version file doesn't exist (e.g., during development), use 'latest'
+      logger.debug('Version file not found, using "latest" for dependencies');
+    }
 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
 
@@ -190,7 +187,7 @@ export async function copyTemplate(
           if (!isQuietMode()) {
             logger.info(`Setting ${depName} to use version ${cliPackageVersion}`);
           }
-          packageJson.dependencies[depName] = 'latest';
+          packageJson.dependencies[depName] = cliPackageVersion;
         }
       }
     }
@@ -201,7 +198,7 @@ export async function copyTemplate(
           if (!isQuietMode()) {
             logger.info(`Setting dev dependency ${depName} to use version ${cliPackageVersion}`);
           }
-          packageJson.devDependencies[depName] = 'latest';
+          packageJson.devDependencies[depName] = cliPackageVersion;
         }
       }
     }

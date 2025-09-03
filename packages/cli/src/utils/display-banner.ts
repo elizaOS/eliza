@@ -6,50 +6,85 @@ import { fileURLToPath } from 'node:url';
 import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
 
+// Import the version module - this will be bundled at build time
+// Using dynamic import within the function to avoid top-level await
+let cachedVersion: string | null = null;
+
 // Helper function to check if running from node_modules
 export function isRunningFromNodeModules(): boolean {
   const __filename = fileURLToPath(import.meta.url);
-  return __filename.includes('node_modules');
+  // Check for both node_modules and .bun paths (for global bun installs)
+  return __filename.includes('node_modules') || __filename.includes('/.bun/');
 }
 
 // Function to get the package version
-// --- Utility: Get local CLI version from package.json ---
+// --- Utility: Get local CLI version from embedded version file ---
 export function getVersion(): string {
-  // Check if we're in the monorepo context
-  const userEnv = UserEnvironment.getInstance();
-  const monorepoRoot = userEnv.findMonorepoRoot(process.cwd());
-
-  if (monorepoRoot) {
-    // We're in the monorepo, return 'monorepo' as version
-    return 'monorepo';
-  }
-
-  // Check if running from node_modules (proper installation)
-  if (!isRunningFromNodeModules()) {
-    // Running from local dist or development build, not properly installed
-    return 'monorepo';
-  }
-
-  // For ESM modules we need to use import.meta.url instead of __dirname
+  // Check if we're in the monorepo context based on the CLI's location, not the current working directory
   const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
+  const userEnv = UserEnvironment.getInstance();
+  const monorepoRoot = userEnv.findMonorepoRoot(__filename);
 
-  // Find package.json relative to the current file
-  const packageJsonPath = path.resolve(__dirname, '../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!existsSync(packageJsonPath)) {
-    console.error(`Warning: package.json not found at ${packageJsonPath}`);
-  } else {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-      version = packageJson.version || '0.0.0';
-    } catch (error) {
-      console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
-    }
+  if (monorepoRoot && !isRunningFromNodeModules()) {
+    // We're running from within the monorepo source (not from a global install)
+    return 'monorepo';
   }
-  return version;
+
+  // Check if running from node_modules or .bun (proper installation)
+  if (!isRunningFromNodeModules()) {
+    // Running from local dist or development build, but not in monorepo
+    // This shouldn't normally happen, but let's try to get the version anyway
+  }
+
+  // Return cached version if we have it
+  if (cachedVersion) {
+    return cachedVersion;
+  }
+
+  // Try to load the version synchronously using require-like pattern
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+
+    // Try multiple possible locations for version.js
+    const possiblePaths = [
+      path.resolve(__dirname, '../version.js'), // Standard location in development
+      path.resolve(__dirname, 'version.js'), // Same directory (for bundled dist)
+      path.resolve(__dirname, './version.js'), // Alternative same directory
+    ];
+
+    // Special handling for when everything is bundled into index.js
+    if (__filename.endsWith('index.js')) {
+      const distDir = path.dirname(__filename);
+      possiblePaths.unshift(path.resolve(distDir, 'version.js'));
+    }
+
+    for (const versionPath of possiblePaths) {
+      if (existsSync(versionPath)) {
+        // Read the version file and extract the version
+        const versionContent = readFileSync(versionPath, 'utf-8');
+
+        // Try to extract CLI_VERSION constant
+        const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
+        if (versionMatch && versionMatch[1]) {
+          cachedVersion = versionMatch[1];
+          return cachedVersion;
+        }
+
+        // Try to extract from default export
+        const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
+        if (defaultMatch && defaultMatch[1]) {
+          cachedVersion = defaultMatch[1];
+          return cachedVersion;
+        }
+      }
+    }
+  } catch (error) {
+    // Silent fallback
+  }
+
+  // Final fallback version
+  return '0.0.0';
 }
 
 // --- Utility: Get install tag based on CLI version ---
