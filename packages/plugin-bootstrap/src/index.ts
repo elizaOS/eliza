@@ -1826,7 +1826,7 @@ const events = {
       try {
         const messageBusService = payload.runtime.getService('message-bus-service') as any;
         if (messageBusService) {
-          messageBusService.notifyActionStart(
+          await messageBusService.notifyActionStart(
             payload.roomId,
             payload.world,
             payload.content,
@@ -1844,7 +1844,7 @@ const events = {
       try {
         const messageBusService = payload.runtime.getService('message-bus-service') as any;
         if (messageBusService) {
-          messageBusService.notifyActionUpdate(
+          await messageBusService.notifyActionUpdate(
             payload.roomId,
             payload.world,
             payload.content,
