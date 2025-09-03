@@ -61,6 +61,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # If triggered by a release, we're in detached HEAD state
+          # Create a temporary branch for Lerna to work with
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "Creating temporary branch from release tag..."
+            git checkout -b temp-release-branch
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -202,17 +209,37 @@ jobs:
       - name: Push to git
         if: steps.commit.outputs.has_changes == 'true'
         run: |
-          # Attempt to push changes and tags
-          if ! git push origin HEAD --follow-tags; then
-            echo "❌ Error: Failed to push to git repository"
-            echo "This could be due to:"
-            echo "  - Protected branch restrictions"
-            echo "  - Network issues"
-            echo "  - Permission problems"
-            echo ""
-            echo "The version has been updated locally but not published."
-            echo "Manual intervention required to resolve the git push issue."
-            exit 1
+          # Determine target branch for push
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            # For GitHub releases, push to main branch
+            TARGET_BRANCH="main"
+            echo "Pushing changes to main branch..."
+            
+            # Push the changes to main branch
+            if ! git push origin HEAD:${TARGET_BRANCH} --follow-tags; then
+              echo "❌ Error: Failed to push to git repository"
+              echo "This could be due to:"
+              echo "  - Protected branch restrictions"
+              echo "  - Network issues"
+              echo "  - Permission problems"
+              echo ""
+              echo "The version has been updated locally but not published."
+              echo "Manual intervention required to resolve the git push issue."
+              exit 1
+            fi
+          else
+            # For other triggers, push to current branch
+            if ! git push origin HEAD --follow-tags; then
+              echo "❌ Error: Failed to push to git repository"
+              echo "This could be due to:"
+              echo "  - Protected branch restrictions"
+              echo "  - Network issues"
+              echo "  - Permission problems"
+              echo ""
+              echo "The version has been updated locally but not published."
+              echo "Manual intervention required to resolve the git push issue."
+              exit 1
+            fi
           fi
           
           echo "✅ Successfully pushed version changes and tags to git"
