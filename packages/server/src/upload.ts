@@ -43,11 +43,17 @@ export const agentAudioUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype as any)) {
+    fileFilter: (_req, file, cb) => {
+      // Check if mimetype is in the allowed list
+      const isAllowed = ALLOWED_AUDIO_MIME_TYPES.some((allowed) => allowed === file.mimetype);
+      if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid audio file type'), false);
+        cb(
+          new Error(
+            `Invalid audio file type. Only ${ALLOWED_AUDIO_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });
@@ -59,11 +65,17 @@ export const agentMediaUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+    fileFilter: (_req, file, cb) => {
+      // Check if mimetype is in the allowed list
+      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
+      if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid media file type'), false);
+        cb(
+          new Error(
+            `Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });
@@ -76,11 +88,17 @@ export const channelUpload = () =>
       fileSize: MAX_FILE_SIZE,
       files: 1,
     },
-    fileFilter: (req, file, cb) => {
-      if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+    fileFilter: (_req, file, cb) => {
+      // Check if mimetype is in the allowed list
+      const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
+      if (isAllowed) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid file type'), false);
+        cb(
+          new Error(
+            `Invalid media file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`
+          )
+        );
       }
     },
   });
@@ -100,11 +118,11 @@ export const upload = genericUpload;
 
 // File validation functions using multer file type
 export function validateAudioFile(file: Express.Multer.File): boolean {
-  return ALLOWED_AUDIO_MIME_TYPES.includes(file.mimetype as any);
+  return ALLOWED_AUDIO_MIME_TYPES.some((allowed) => allowed === file.mimetype);
 }
 
 export function validateMediaFile(file: Express.Multer.File): boolean {
-  return ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any);
+  return ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
 }
 
 // Process and save uploaded file to final destination
@@ -131,7 +149,10 @@ export async function processUploadedFile(
 
     return { filename, path: finalPath, url };
   } catch (error) {
-    logger.error('[UPLOAD] Error processing uploaded file:', error);
+    logger.error(
+      '[UPLOAD] Error processing uploaded file:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }

@@ -133,7 +133,12 @@ describe('MessagingService', () => {
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
         '/api/messaging/central-channels',
-        mockParams
+        {
+          name: mockParams.name,
+          type: mockParams.type,
+          server_id: mockParams.serverId,
+          metadata: mockParams.metadata,
+        }
       );
       expect(result).toEqual(mockResponse);
     });
@@ -154,7 +159,12 @@ describe('MessagingService', () => {
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
         '/api/messaging/central-channels',
-        mockParams
+        {
+          name: mockParams.name,
+          server_id: '00000000-0000-0000-0000-000000000000',
+          participantCentralUserIds: mockParams.participantIds,
+          type: 'group', // Extracted from metadata
+        }
       );
       expect(result).toEqual(mockResponse);
     });
@@ -172,7 +182,11 @@ describe('MessagingService', () => {
       const result = await messagingService.getOrCreateDmChannel(mockParams);
 
       expect((messagingService as any).get).toHaveBeenCalledWith('/api/messaging/dm-channel', {
-        params: mockParams,
+        params: {
+          currentUserId: mockParams.participantIds[0],
+          targetUserId: mockParams.participantIds[1],
+          dmServerId: '00000000-0000-0000-0000-000000000000',
+        },
       });
       expect(result).toEqual(mockResponse);
     });

@@ -49,7 +49,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
-      logger.error('[MEMORIES GET] Error retrieving memories for room:', error);
+      logger.error(
+        '[MEMORIES GET] Error retrieving memories for room:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -114,7 +117,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
           }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
-      logger.error(`[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`, error);
+      logger.error(
+        `[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -181,7 +187,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       logger.success(`[MEMORY UPDATE] Successfully updated memory ${memoryId}`);
       sendSuccess(res, { id: memoryId, message: 'Memory updated successfully' });
     } catch (error) {
-      logger.error(`[MEMORY UPDATE] Error updating memory ${memoryId}:`, error);
+      logger.error(
+        `[MEMORY UPDATE] Error updating memory ${memoryId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -211,7 +220,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       sendSuccess(res, { deleted, message: 'All agent memories cleared successfully' });
     } catch (error) {
-      logger.error('[DELETE ALL AGENT MEMORIES] Error deleting all agent memories:', error);
+      logger.error(
+        '[DELETE ALL AGENT MEMORIES] Error deleting all agent memories:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -246,7 +258,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       res.status(204).send();
     } catch (error) {
-      logger.error('[DELETE ALL MEMORIES] Error deleting all memories:', error);
+      logger.error(
+        '[DELETE ALL MEMORIES] Error deleting all memories:',
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,
@@ -277,7 +292,10 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
 
       sendSuccess(res, { message: 'Memory deleted successfully' });
     } catch (error) {
-      logger.error(`[DELETE MEMORY] Error deleting memory ${req.params.memoryId}:`, error);
+      logger.error(
+        `[DELETE MEMORY] Error deleting memory ${req.params.memoryId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

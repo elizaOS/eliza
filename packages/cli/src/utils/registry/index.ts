@@ -523,7 +523,10 @@ export async function getPluginMetadata(pluginName: string): Promise<PluginMetad
 
     return metadata;
   } catch (error) {
-    logger.error('Failed to fetch plugin metadata:', error);
+    logger.error(
+      'Failed to fetch plugin metadata:',
+      error instanceof Error ? error.message : String(error)
+    );
     return null;
   }
 }

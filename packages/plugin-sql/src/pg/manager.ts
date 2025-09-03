@@ -30,7 +30,9 @@ export class PostgresConnectionManager {
       await client.query('SELECT 1');
       return true;
     } catch (error) {
-      logger.error('Failed to connect to the database:', error);
+      logger.error(
+        `Failed to connect to the database: ${error instanceof Error ? error.message : String(error)}`
+      );
       return false;
     } finally {
       if (client) {

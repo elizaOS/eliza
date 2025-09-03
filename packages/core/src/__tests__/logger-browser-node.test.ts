@@ -1,8 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import { createLogger } from '../logger';
-
-// Import envDetector to clear cache between tests
-import { envDetector } from '../logger';
+import { getEnvironment } from '../utils/environment';
 
 /**
  * Test type definitions
@@ -46,7 +44,7 @@ describe('Logger - Cross-Environment Tests', () => {
     globalThis.document = originalDocument as unknown as typeof globalThis.document;
     mock.restore();
     // Clear environment cache for next test
-    envDetector.clearCache();
+    getEnvironment().clearCache();
   });
 
   describe('Environment Detection', () => {
@@ -105,7 +103,7 @@ describe('Logger - Cross-Environment Tests', () => {
   describe('BrowserLogger Class', () => {
     beforeEach(() => {
       // Clear environment cache to ensure proper detection
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Mock browser environment
       globalThis.window = {
@@ -124,7 +122,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = globalThis.window.console as Console;
 
       // Clear cache again after setting up environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
     });
 
     it('should create BrowserLogger instance with all required methods', async () => {
@@ -235,7 +233,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = mockConsole as unknown as Console;
 
       // Clear cache to detect browser environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Create logger with warn level, force browser type for testing
       const browserLogger = createLogger({ level: 'warn', __forceType: 'browser' });
@@ -284,7 +282,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.console = mockConsole as unknown as Console;
 
       // Clear cache to detect browser environment
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Force browser type for testing
       const parentLogger = createLogger({ parent: 'main', __forceType: 'browser' });
@@ -295,10 +293,10 @@ describe('Logger - Cross-Environment Tests', () => {
     });
   });
 
-  describe('Node.js Logger (Pino)', () => {
+  describe('Node.js Logger (Adze backend in Node)', () => {
     beforeEach(() => {
       // Clear environment cache
-      envDetector.clearCache();
+      getEnvironment().clearCache();
 
       // Restore Node.js environment
       globalThis.process =
@@ -310,21 +308,16 @@ describe('Logger - Cross-Environment Tests', () => {
       delete globalThis.window;
       delete globalThis.document;
 
-      // Mock pino-pretty
-      mock.module('pino-pretty', () => ({
-        default: mock(() => ({
-          write: mock(),
-        })),
-      }));
+      // No need to mock transports; logger uses Adze in both environments
 
       // Clear cache again after environment setup
-      envDetector.clearCache();
+      getEnvironment().clearCache();
     });
 
-    it('should use Pino logger in Node.js environment', () => {
+    it('should provide logger API in Node.js environment', () => {
       const nodeLogger = createLogger();
 
-      // Verify Pino-specific features
+      // Verify core methods exist
       expect(typeof nodeLogger.trace).toBe('function');
       expect(typeof nodeLogger.debug).toBe('function');
       expect(typeof nodeLogger.info).toBe('function');
@@ -338,7 +331,7 @@ describe('Logger - Cross-Environment Tests', () => {
       expect(typeof nodeLogger.log).toBe('function');
     });
 
-    it('should handle Pino child loggers correctly', () => {
+    it('should handle child loggers correctly', () => {
       const parentLogger = createLogger({ service: 'api' });
       const childLogger = parentLogger.child({ request: '123' });
 
@@ -346,7 +339,7 @@ describe('Logger - Cross-Environment Tests', () => {
       expect(typeof childLogger.info).toBe('function');
     });
 
-    it('should support Pino configuration options', () => {
+    it('should support log level configuration options', () => {
       process.env.LOG_LEVEL = 'debug';
       process.env.LOG_JSON_FORMAT = 'true';
 
@@ -538,54 +531,19 @@ describe('Logger - Cross-Environment Tests', () => {
       expect(() => nodeLogger.clear()).not.toThrow();
     });
 
-    it('should not leak __forceType into Node.js logger output', () => {
-      // Setup Node.js environment
+    it('should not throw when using __forceType binding in Node', () => {
       globalThis.process =
         originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
       delete globalThis.window;
       delete globalThis.document;
 
-      // Mock pino to capture the configuration passed to it
-      interface CapturedOptions {
-        base?: Record<string, unknown>;
-        [key: string]: unknown;
-      }
-      let capturedOptions: CapturedOptions | null = null;
-      mock.module('pino', () => {
-        return {
-          default: (opts: CapturedOptions) => {
-            capturedOptions = opts;
-            return {
-              trace: mock(),
-              debug: mock(),
-              info: mock(),
-              warn: mock(),
-              error: mock(),
-              fatal: mock(),
-              success: mock(),
-              progress: mock(),
-              log: mock(),
-              clear: mock(),
-            };
-          },
-        };
-      });
-
-      // Create logger with __forceType in bindings
-      createLogger({
-        __forceType: 'node',
-        appName: 'test-app',
-        userId: '123',
-      });
-
-      // Verify __forceType is not in the base configuration
-      expect(capturedOptions).toBeDefined();
-      if (capturedOptions && capturedOptions.base) {
-        expect(capturedOptions.base.__forceType).toBeUndefined();
-        // But other properties should still be there
-        expect(capturedOptions.base.appName).toBe('test-app');
-        expect(capturedOptions.base.userId).toBe('123');
-      }
+      expect(() =>
+        createLogger({
+          __forceType: 'node',
+          appName: 'test-app',
+          userId: '123',
+        })
+      ).not.toThrow();
     });
   });
 

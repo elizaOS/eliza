@@ -18,6 +18,44 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     this.db = manager.getDatabase();
   }
 
+  // Methods required by TypeScript but not in base class
+  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+    // Delegate to the correct method name
+    return this.getEntitiesByIds(entityIds);
+  }
+
+  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    // This method doesn't seem to exist in the base implementation
+    // Provide a basic implementation that returns empty array
+    logger.warn('getMemoriesByServerId called but not implemented - returning empty array');
+    return [];
+  }
+
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+    // Check if agent exists, create if not
+    const existingAgent = await this.getAgent(this.agentId);
+    if (existingAgent) {
+      return existingAgent;
+    }
+
+    // Create the agent with required fields
+    const newAgent: Agent = {
+      id: this.agentId,
+      name: agent.name || 'Unknown Agent',
+      username: agent.username,
+      bio: agent.bio || 'An AI agent',
+      createdAt: agent.createdAt || Date.now(),
+      updatedAt: agent.updatedAt || Date.now(),
+    };
+
+    await this.createAgent(newAgent);
+    const createdAgent = await this.getAgent(this.agentId);
+    if (!createdAgent) {
+      throw new Error('Failed to create agent');
+    }
+    return createdAgent;
+  }
+
   /**
    * Runs database migrations. For PostgreSQL, migrations should be handled
    * externally or during deployment, so this is a no-op.

@@ -57,14 +57,13 @@
     "@vitejs/plugin-react": "^4.3.1",
     "jsdom": "^26.1.0",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.1"
   },
   "scripts": {
     "start": "elizaos start",
     "dev": "elizaos dev",
-    "build": "tsc --noEmit && vite build && tsup",
+    "build": "bun run build.ts",
     "lint": "prettier --write ./src",
     "type-check": "tsc --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
@@ -77,7 +76,8 @@
     "test:install": "node scripts/install-test-deps.js",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "check-all": "bun run type-check && bun run format:check && bun run test"
+    "check-all": "bun run type-check && bun run format:check && bun run test",
+    "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {
     "access": "public"

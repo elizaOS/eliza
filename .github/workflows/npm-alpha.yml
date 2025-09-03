@@ -1,0 +1,55 @@
+name: NPM Alpha Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  alpha-release:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23.3.0'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.2'
+
+      - name: Install Dependencies
+        # Note: Not using --frozen-lockfile for alpha builds to allow flexibility
+        # Alpha releases can handle lockfile updates since they're pre-release versions
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Configure Git & Registry
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
+
+      - name: Publish Alpha
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run release:alpha

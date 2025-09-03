@@ -8,7 +8,7 @@
  * Required by ticket #5782 - Acceptance Criterion 7.
  */
 
-import { promises as fs } from 'fs';
+// import { promises as fs } from 'fs'; // unused
 import { join } from 'path';
 
 /**

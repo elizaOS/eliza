@@ -172,17 +172,23 @@ export async function installPluginWithSpinner(
       spinner.stop(colors.yellow(`⚠ Failed to install ${packageName} (optional)`));
 
       // Log to debug for troubleshooting
-      logger.debug(`Plugin installation failed: ${packageName}`, {
-        exitCode: result.exitCode,
-        stderr: result.stderr,
-        stdout: result.stdout,
-      });
+      logger.debug(
+        `Plugin installation failed: ${packageName}`,
+        JSON.stringify({
+          exitCode: result.exitCode,
+          stderr: result.stderr,
+          stdout: result.stdout,
+        })
+      );
     }
   } catch (error) {
     // Log warning but don't throw - plugin installation is non-critical
     spinner.stop(colors.yellow(`⚠ Failed to install ${packageName} (optional)`));
 
-    logger.debug(`Plugin installation error: ${packageName}`, error);
+    logger.debug(
+      `Plugin installation error: ${packageName}`,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 }
 

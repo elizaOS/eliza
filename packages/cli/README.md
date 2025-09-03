@@ -298,7 +298,7 @@ ElizaOS employs a dual testing strategy:
   - `all`: Run both component and e2e tests (default)
 - **Options:**
   - `-p, --port <port>`: Port to listen on for e2e tests
-  - `-n, --name <n>`: Filter tests by name (matches file names or test suite names)
+  - `-n, --name <n>`: Filter tests by name (matches file names or test suite names). **Case sensitive.**
   - `--skip-build`: Skip building before running tests
 
 **E2E Test Structure:**
@@ -794,7 +794,7 @@ Projects contain agent configurations and code for building agent-based applicat
    # Run e2e tests only
    elizaos test e2e
 
-   # Test with specific options
+   # Test with specific options (--name is case sensitive)
    elizaos test --port 4000 --name specific-test
    ```
 

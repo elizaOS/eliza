@@ -607,16 +607,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return await this.db.transaction(async (tx) => {
           await tx.insert(entityTable).values(entities);
 
-          logger.debug(entities.length, 'Entities created successfully');
+          logger.debug(`${entities.length} Entities created successfully`);
 
           return true;
         });
       } catch (error) {
         logger.error(
-          `Error creating entities: ${error instanceof Error ? error.message : String(error)}, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`
+          `Error creating entities, entityId: ${entities[0].id}, (metadata?.)name: ${entities[0].metadata?.name}`,
+          error instanceof Error ? error.message : String(error)
         );
-        // trace the error
-        logger.trace(error);
+        // trace the full error with stack
+        if (error instanceof Error && error.stack) {
+          logger.trace('Stack trace:', error.stack);
+        }
         return false;
       }
     });
@@ -2034,7 +2037,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           agentId: this.agentId,
         }));
         await this.db.insert(participantTable).values(values).onConflictDoNothing().execute();
-        logger.debug(entityIds.length, 'Entities linked successfully');
+        logger.debug(`${entityIds.length} Entities linked successfully`);
         return true;
       } catch (error) {
         logger.error(
@@ -2996,6 +2999,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     sourceId?: string;
     metadata?: any;
     inReplyToRootMessageId?: UUID;
+    messageId?: UUID;
   }): Promise<{
     id: UUID;
     channelId: UUID;
@@ -3010,7 +3014,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     updatedAt: Date;
   }> {
     return this.withDatabase(async () => {
-      const newId = v4() as UUID;
+      const newId = data.messageId || (v4() as UUID);
       const now = new Date();
       const messageToInsert = {
         id: newId,
@@ -3028,6 +3032,77 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
       await this.db.insert(messageTable).values(messageToInsert);
       return messageToInsert;
+    });
+  }
+
+  async getMessageById(id: UUID): Promise<{
+    id: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: any;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: any;
+    inReplyToRootMessageId?: UUID;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    return this.withDatabase(async () => {
+      const rows = await this.db
+        .select()
+        .from(messageTable)
+        .where(eq(messageTable.id, id))
+        .limit(1);
+      return rows?.[0] ?? null;
+    });
+  }
+
+  async updateMessage(
+    id: UUID,
+    patch: {
+      content?: string;
+      rawMessage?: any;
+      sourceType?: string;
+      sourceId?: string;
+      metadata?: any;
+      inReplyToRootMessageId?: UUID;
+    }
+  ): Promise<{
+    id: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: any;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: any;
+    inReplyToRootMessageId?: UUID;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    return this.withDatabase(async () => {
+      const existing = await this.getMessageById(id);
+      if (!existing) return null;
+
+      const updatedAt = new Date();
+      const next = {
+        content: patch.content ?? existing.content,
+        rawMessage: patch.rawMessage ?? existing.rawMessage,
+        sourceType: patch.sourceType ?? existing.sourceType,
+        sourceId: patch.sourceId ?? existing.sourceId,
+        metadata: patch.metadata ?? existing.metadata,
+        inReplyToRootMessageId: patch.inReplyToRootMessageId ?? existing.inReplyToRootMessageId,
+        updatedAt,
+      };
+
+      await this.db.update(messageTable).set(next).where(eq(messageTable.id, id));
+
+      // Return merged object
+      return {
+        ...existing,
+        ...next,
+      };
     });
   }
 

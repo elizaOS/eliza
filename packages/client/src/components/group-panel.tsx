@@ -1,9 +1,9 @@
-import { ChannelType } from '@elizaos/core';
+import { ChannelType, validateUuid } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
 import { createElizaClient } from '@/lib/api-client-config';
-import { type Agent, AgentStatus, type UUID, validateUuid } from '@elizaos/core';
+import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
@@ -92,10 +92,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       const elizaClient = createElizaClient();
       return await elizaClient.messaging.createGroupChannel({
         name,
-        participantCentralUserIds: participantIds,
-        type: ChannelType.GROUP,
-        server_id: serverId,
-        metadata: { source: GROUP_CHAT_SOURCE },
+        participantIds: participantIds,
+        metadata: {
+          type: ChannelType.GROUP,
+          server_id: serverId,
+          source: GROUP_CHAT_SOURCE,
+        },
       });
     },
     onSuccess: (response) => {
@@ -210,7 +212,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     refetchOnMount: true,
     refetchOnWindowFocus: false,
     staleTime: 0, // Always fetch fresh data
-    cacheTime: 0, // Don't cache results
+    gcTime: 0, // Don't cache results
   });
 
   // Separate effect for initializing chat name when channel loads
@@ -299,7 +301,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     return allAvailableSelectableAgents.map((agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
-      icon: agent.settings?.avatar || '', // Ensure icon is always a string
+      icon: typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '', // Ensure icon is always a string
     }));
   }, [allAvailableSelectableAgents, isLoadingAgents, isErrorAgents]);
 
@@ -315,7 +317,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     const options = selectedAgents.map((agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
-      icon: agent.settings?.avatar || '',
+      icon: typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '',
     }));
 
     return options;
