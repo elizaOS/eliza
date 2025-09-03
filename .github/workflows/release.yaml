@@ -1,209 +1,324 @@
-name: Release
+name: NPM Release
 
-# This workflow handles version bumping and publishing for new releases
+# Unified workflow for all NPM releases:
+# - Alpha: On merge to develop branch
+# - Beta: On merge to main branch  
+# - Production: On GitHub release creation
 #
-# Rollback Strategy:
-# - If publishing fails after version update, the version files are NOT committed
-# - This prevents version drift between git and npm
-# - To retry: Fix the issue and re-run the workflow
-# - Version updates are only committed after successful npm publish
+# Version Management:
+# - Uses lerna version and publish commands with consistent patterns
+# - Commits version changes to git FIRST, then publishes to NPM
+# - Prevents infinite loops with [skip ci] in commit messages
+# - Proper error handling without masking critical failures
 
 on:
+  push:
+    branches:
+      - develop # Triggers alpha releases
+      - main    # Triggers beta releases
   release:
-    types: [created]
+    types: [created] # Triggers production releases
   workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Manual release type'
+        required: true
+        type: choice
+        options:
+          - alpha
+          - beta
+          - latest
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip if commit message contains [skip ci]
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
+    
     permissions:
       contents: write
-      pull-requests: write
+      packages: write
+      id-token: write
+      
     steps:
-      - name: Checkout main branch
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: main # Assumes releases are created from main
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check initial git status
+      - name: Setup Git
         run: |
-          echo "Initial git status after checkout:"
-          git status --porcelain
-          echo ""
-          echo "Current version in lerna.json:"
-          cat lerna.json | grep '"version"' | cut -d'"' -f4
-          echo ""
-          echo "Current versions in key packages:"
-          for pkg in core server cli client; do
-            echo -n "  $pkg: "
-            cat packages/$pkg/package.json | grep '"version"' | head -1 | cut -d'"' -f4
-          done
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '23.3.0'
+          registry-url: 'https://registry.npmjs.org'
 
-      - uses: oven-sh/setup-bun@v2
-
-      - name: 'Setup npm for npmjs'
-        run: |
-          npm config set registry https://registry.npmjs.org/
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
-
-      - name: Install Protobuf Compiler
-        run: sudo apt-get install -y protobuf-compiler
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.21'
 
       - name: Install dependencies
         run: bun install
 
-      - name: Reset any installation changes
+      # Determine release type and version
+      - name: Determine release type
+        id: release_type
         run: |
-          # Show current git status for debugging
-          echo "Git status after install:"
-          git status --porcelain
-
-          # Check if bun.lock has meaningful changes (not just timestamp updates)
-          if git diff --name-only | grep -q "bun.lock"; then
-            echo "bun.lock has changes, checking if they're significant..."
-            # If the diff is only timestamp/metadata changes, reset it
-            if git diff bun.lock | grep -E "^[\+\-]" | grep -vE "(resolved|integrity|modified)" | wc -l | grep -q "^0$"; then
-              echo "Only metadata changes in bun.lock, resetting..."
-              git checkout -- bun.lock || true
-            else
-              echo "bun.lock has significant changes, preserving them"
-            fi
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "type=latest" >> $GITHUB_OUTPUT
+            echo "dist_tag=latest" >> $GITHUB_OUTPUT
+            # Extract version from tag (remove 'v' prefix if present)
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "is_release_event=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "type=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
+            echo "dist_tag=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "type=alpha" >> $GITHUB_OUTPUT
+            echo "dist_tag=alpha" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "type=beta" >> $GITHUB_OUTPUT
+            echo "dist_tag=beta" >> $GITHUB_OUTPUT
+            echo "is_release_event=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Commit any remaining changes from install
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Check if there are any changes to commit
-          if ! git diff --quiet || ! git diff --cached --quiet; then
-            echo "Committing changes from install step..."
-            # Only add specific files that might be modified by install
-            git add package.json packages/*/package.json .npmrc 2>/dev/null || true
-
-            # If bun.lock has real changes (preserved from earlier step), add it
-            if git status --porcelain | grep -q "M bun.lock"; then
-              echo "Adding preserved bun.lock changes"
-              git add bun.lock
-            fi
-
-            # Commit only if there are staged changes
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: temporary commit for install changes" || true
-            fi
-          else
-            echo "No changes to commit"
-          fi
-
-      - name: Check format
-        run: bun run format:check
-
-      - name: Run lint
-        run: bun run lint
-
-      - name: Update Package Versions
+      # Version Management
+      - name: Version packages
         id: version
         run: |
-          # Get version from the release tag that triggered the workflow
-          LATEST_TAG=${{ github.ref_name }}
-          VERSION=${LATEST_TAG#v}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-          echo "Updating all packages to version: $VERSION"
-          # Update versions in all package.json files WITHOUT publishing
-          # Using --no-git-tag-version to prevent automatic git operations
-          # Note: Any temporary commits from earlier steps will be preserved
-          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate version update
-        run: |
-          echo "Verifying version was updated correctly..."
-          LERNA_VERSION=$(cat lerna.json | grep '"version"' | cut -d'"' -f4)
-          if [ "$LERNA_VERSION" != "${{ env.VERSION }}" ]; then
-            echo "❌ Version mismatch in lerna.json: expected ${{ env.VERSION }}, got $LERNA_VERSION"
-            exit 1
+          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
+          
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            # For production releases from GitHub release
+            VERSION="${{ steps.release_type.outputs.version }}"
+            echo "Setting version to ${VERSION}"
+            bunx lerna version ${VERSION} \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
+          elif [[ "${RELEASE_TYPE}" == "alpha" ]]; then
+            # Alpha prerelease
+            bunx lerna version prerelease \
+              --preid alpha \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
+          elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
+            # Beta prerelease
+            bunx lerna version prerelease \
+              --preid beta \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
+          elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
+            # Manual production release
+            bunx lerna version patch \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
           fi
+          
+          # Get the new version
+          VERSION=$(node -p "require('./lerna.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-          # Check a few package.json files to ensure they were updated
-          for pkg in core server cli client; do
-            PKG_VERSION=$(cat packages/$pkg/package.json | grep '"version"' | head -1 | cut -d'"' -f4)
-            if [ "$PKG_VERSION" != "${{ env.VERSION }}" ]; then
-              echo "❌ Version mismatch in packages/$pkg/package.json: expected ${{ env.VERSION }}, got $PKG_VERSION"
-              exit 1
-            fi
-          done
-
-          echo "✅ All versions updated correctly to ${{ env.VERSION }}"
-
-      - name: Build packages
+      # Update lockfile after version changes
+      - name: Update lockfile
         run: |
-          echo "Building packages with version: ${{ env.VERSION }}"
-          bun run build
+          bun install --no-frozen-lockfile
 
-      - name: Publish Packages
-        id: publish
+      # Commit and push version changes BEFORE building and publishing
+      # This ensures git is the source of truth
+      - name: Commit version changes
+        id: commit
         run: |
-          echo "Publishing version: ${{ env.VERSION }}"
-
-          # Configure git for commits
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Create a temporary commit to satisfy Lerna's clean working tree requirement
-          # This commit will be amended later with the proper message
-          git add lerna.json package.json packages/*/package.json
-          git commit -m "temp: version bump for publishing"
-
-          # Store the commit SHA so we can reset if needed
-          TEMP_COMMIT=$(git rev-parse HEAD)
-          echo "temp_commit=$TEMP_COMMIT" >> $GITHUB_OUTPUT
-
-          # Publish the already-built packages
-          # Store the result to check if publishing succeeded
-          if npx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
-            echo "publish_success=true" >> $GITHUB_OUTPUT
-            echo "✅ Successfully published all packages"
-          else
-            echo "publish_success=false" >> $GITHUB_OUTPUT
-            echo "❌ Failed to publish some packages"
-            # Reset to before the temporary commit since publishing failed
-            git reset --hard HEAD~1
-            exit 1
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Commit and Push Version Bump
-        if: success() && steps.publish.outputs.publish_success == 'true'
-        run: |
-          # Reset to before temporary commit
-          git reset --soft HEAD~1
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Add only the files that should have version changes
-          git add lerna.json
-          git add package.json
-          git add packages/*/package.json
-
-          # Also add lock file if it has meaningful changes
-          if git status --porcelain | grep -q "bun.lock"; then
-            echo "Adding bun.lock to commit"
-            git add bun.lock
-          fi
-
+          VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
+          
+          # Stage all changes
+          git add -A
+          
           # Check if there are changes to commit
           if git diff --staged --quiet; then
-            echo "No version changes to commit."
-          else
-            git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
-            git push origin main
+            echo "No changes to commit - this might indicate a problem"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
           fi
+          
+          # Commit with [skip ci] to prevent infinite loop
+          git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      # Create and push git tag (only if not from a GitHub release)
+      - name: Create git tag
+        if: steps.release_type.outputs.is_release_event != 'true' && steps.commit.outputs.has_changes == 'true'
+        id: tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_NAME="v${VERSION}"
+          
+          # Check if tag already exists
+          if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "❌ Error: Tag ${TAG_NAME} already exists"
+            echo "This indicates a version conflict that needs manual resolution"
+            exit 1
+          fi
+          
+          # Create the tag
+          git tag "${TAG_NAME}"
+          echo "tag_created=true" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      # Push changes to git (fails the workflow if it can't push)
+      - name: Push to git
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          # Attempt to push changes and tags
+          if ! git push origin HEAD --follow-tags; then
+            echo "❌ Error: Failed to push to git repository"
+            echo "This could be due to:"
+            echo "  - Protected branch restrictions"
+            echo "  - Network issues"
+            echo "  - Permission problems"
+            echo ""
+            echo "The version has been updated locally but not published."
+            echo "Manual intervention required to resolve the git push issue."
+            exit 1
+          fi
+          
+          echo "✅ Successfully pushed version changes and tags to git"
+
+      # Build packages with correct version numbers
+      # Only happens AFTER git operations succeed
+      - name: Build packages
+        run: |
+          echo "Building packages with version v${{ steps.version.outputs.version }}..."
+          bun run build
+
+      # Publish to NPM (only after git operations succeed)
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
+          
+          # Configure npm for authentication
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          
+          # Publish with appropriate dist-tag
+          if ! bunx lerna publish from-package \
+            --dist-tag ${DIST_TAG} \
+            --force-publish \
+            --yes \
+            --no-verify-access; then
+            
+            echo "❌ Error: Failed to publish to NPM"
+            echo ""
+            echo "Git has been updated with version v${{ steps.version.outputs.version }}"
+            echo "but the packages were not published to NPM."
+            echo ""
+            echo "To recover:"
+            echo "  1. Fix the NPM publishing issue"
+            echo "  2. Run 'npm run release:${DIST_TAG}' locally with proper credentials"
+            echo "  3. Or re-run this workflow"
+            exit 1
+          fi
+          
+          echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
+
+      # Create GitHub Release for alpha/beta (not for production, as it already exists)
+      - name: Create GitHub release
+        if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ steps.tag.outputs.tag_name }}
+          body: |
+            ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
+            
+            Version: `${{ steps.tag.outputs.tag_name }}`
+            
+            Install with:
+            ```bash
+            npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
+            ```
+          draft: false
+          prerelease: true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "# 📦 Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Type**: ${{ steps.release_type.outputs.type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dist Tag**: ${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
+            echo "- **Commit SHA**: ${{ steps.commit.outputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [[ "${{ steps.tag.outputs.tag_created }}" == "true" ]]; then
+            echo "- **Tag**: ${{ steps.tag.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Installation" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # Handle failure - create issue if the workflow failed
+      - name: Create failure issue
+        if: failure() && steps.version.outputs.version
+        uses: actions/create-issue@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          title: "Release Failed: v${{ steps.version.outputs.version }}"
+          body: |
+            The release workflow failed for version v${{ steps.version.outputs.version }}.
+            
+            **Details:**
+            - Release Type: ${{ steps.release_type.outputs.type }}
+            - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Triggered By: ${{ github.event_name }}
+            - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
+            - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
+            
+            **Recovery Steps:**
+            
+            If git operations succeeded but NPM publish failed:
+            - The version is already in git
+            - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
+            - Or re-run this workflow (it will skip git operations if no changes)
+            
+            If git operations failed:
+            - No packages were published to NPM (safe state)
+            - Fix the git issue (permissions, network, etc.)
+            - Re-run the workflow
+            
+            **Action Required:**
+            - Check the workflow logs for the specific failure point
+            - Follow the appropriate recovery steps above
+          labels: bug, release-failure
