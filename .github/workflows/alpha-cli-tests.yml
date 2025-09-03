@@ -2,7 +2,7 @@ name: Alpha CLI Tests
 
 # Cancel previous runs for the same PR/branch
 concurrency:
-  group: alpha-cli-tests-${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  group: alpha-cli-tests-${{ github.workflow }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || github.ref }}
   cancel-in-progress: true
 
 env:
