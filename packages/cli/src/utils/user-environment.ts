@@ -94,6 +94,7 @@ export class UserEnvironment {
     try {
       // Try to import the generated version file
       // This is generated at build time and avoids runtime package.json resolution
+      // @ts-ignore - This file is generated at build time
       const { CLI_VERSION, CLI_NAME } = await import('../version.js').catch(() => {
         // Fallback if version file doesn't exist (e.g., during development)
         logger.debug('[UserEnvironment] Version file not found, using fallback values');

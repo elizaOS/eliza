@@ -7,7 +7,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
-import { getEnv, getNumberEnv } from './utils/environment';
+import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
@@ -154,16 +154,14 @@ export class AgentRuntime implements IAgentRuntime {
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
-    const logLevel = getEnv('LOG_LEVEL', 'info');
 
     this.initPromise = new Promise((resolve) => {
       this.initResolver = resolve;
     });
 
-    // Create the logger with appropriate level - only show debug logs when explicitly configured
+    // Create the logger with namespace only - level is handled globally from env
     this.logger = createLogger({
-      agentName: this.character?.name,
-      logLevel: logLevel as any,
+      namespace: this.character?.name,
     });
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
