@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.4.3-alpha.3",
+  "version": "1.4.3-alpha.4",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
