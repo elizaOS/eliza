@@ -47,23 +47,31 @@ jobs:
 
       - name: Version Alpha Packages
         run: |
-          # Use GitHub run number for stable, ascending version numbers
-          # This ensures versions sort correctly: 1.5.5-alpha.1234 < 1.5.5-alpha.1235
-          echo "GitHub run number: ${{ github.run_number }}"
-          echo "GitHub run attempt: ${{ github.run_attempt }}"
+          # Classic lerna versioning with proper semantic versioning
+          # This will auto-increment the prerelease version (alpha.0, alpha.1, etc.)
+          echo "Creating alpha version with proper semantic versioning..."
           
-          # Create a unique, sortable preid using run number
-          # If this is a retry (run_attempt > 1), append it
-          if [ "${{ github.run_attempt }}" -gt "1" ]; then
-            PREID="alpha.${{ github.run_number }}.${{ github.run_attempt }}"
-          else
-            PREID="alpha.${{ github.run_number }}"
-          fi
+          # Use lerna version to bump prerelease version
+          # This will:
+          # 1. Auto-increment the prerelease number (alpha.0 -> alpha.1)
+          # 2. Create a git commit with the version changes
+          # 3. Create a git tag for the release (v1.5.5-alpha.1)
+          # 4. Update all packages to the same version with --force-publish
+          bunx lerna version prerelease --preid alpha --force-publish --yes --message "chore(release): publish alpha %s [skip ci]"
           
-          echo "Prerelease ID: $PREID"
+          # Show the new version for logging
+          NEW_VERSION=$(node -p "require('./packages/core/package.json').version")
+          echo "New alpha version: v${NEW_VERSION}"
           
-          # Version all packages with the calculated preid
-          npx lerna version prerelease --preid "$PREID" --no-push --no-git-tag-version --yes
+      - name: Push Version Changes and Tags
+        run: |
+          # Push the version commit and tags to the repository
+          # This creates a permanent record of each alpha release
+          git push origin HEAD:${GITHUB_REF#refs/heads/} --follow-tags
+          
+          # List the tags for verification
+          echo "Created and pushed tag:"
+          git describe --tags --abbrev=0
 
       - name: Build
         run: bun run build

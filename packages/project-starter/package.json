@@ -3,7 +3,7 @@
   "description": "Project starter for elizaOS",
   "version": "1.4.2",
   "type": "module",
-  "private": true,
+
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
   "types": "dist/index.d.ts",

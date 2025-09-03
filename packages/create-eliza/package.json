@@ -3,7 +3,7 @@
   "version": "1.4.2",
   "description": "Initialize an Eliza project",
   "type": "module",
-  "private": true,
+
   "publishConfig": {
     "access": "public"
   },
