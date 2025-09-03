@@ -23,7 +23,7 @@
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "lerna version --no-private --force-publish --no-push --no-git-tag-version && bun run build && bun lint && lerna publish from-package --no-private --force-publish && bun lint",
     "release:beta": "lerna publish prerelease --preid beta --dist-tag beta --no-private --force-publish --loglevel verbose",
-    "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --yes",
+    "release:alpha": "lerna publish from-package --dist-tag alpha --no-private --force-publish --yes",
     "release:alpha:dry": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --yes --dry-run",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
@@ -44,7 +44,7 @@
     "plugin-specification/*"
   ],
   "devDependencies": {
-    "@types/bun": "^1.2.21",
+    "@types/bun": "latest",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.3",
     "@types/uuid": "^10.0.0",
