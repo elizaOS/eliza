@@ -19,6 +19,7 @@ const browserExternals = [
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
   '@sentry/node', // Ensure node SDK is never bundled into the browser build
+  'crypto-browserify',
 ];
 
 // Node-specific externals (native modules and node-specific packages)
@@ -27,7 +28,6 @@ const nodeExternals = [
   'sharp',
   'zod',
   '@hapi/shot',
-  'crypto-browserify',
   '@sentry/browser',
 ];
 
