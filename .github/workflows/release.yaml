@@ -267,12 +267,25 @@ jobs:
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
             
-            Version: `${{ steps.tag.outputs.tag_name }}`
+            **Version:** `${{ steps.tag.outputs.tag_name }}`
+            **Channel:** `${{ steps.release_type.outputs.dist_tag }}`
             
-            Install with:
+            ### Quick Start
+            
+            Install the CLI globally to get started:
+            ```bash
+            bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}
+            ```
+            
+            Or add packages to your project:
             ```bash
             bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
+            bun add @elizaos/plugin-bootstrap@${{ steps.release_type.outputs.dist_tag }}
             ```
+            
+            ---
+            
+            > **Note:** This is a ${{ steps.release_type.outputs.type }} release. Production releases use the `latest` tag and are triggered by GitHub releases on tags matching `v*.*.*`.
           draft: false
           prerelease: true
 
@@ -293,7 +306,13 @@ jobs:
             echo "- **Tag**: ${{ steps.tag.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Installation" >> $GITHUB_STEP_SUMMARY
+          echo "## Quick Start" >> $GITHUB_STEP_SUMMARY
+          echo "Install the CLI globally:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Or add to your project:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
