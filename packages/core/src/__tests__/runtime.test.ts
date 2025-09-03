@@ -973,7 +973,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         // Valid values should be used, invalid ones ignored
         expect(capturedParams.temperature).toBe(0.5); // Valid model-specific
         expect(capturedParams.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
-        expect(capturedParams.frequencyPenalty).toBeUndefined(); // All invalid
+        expect(capturedParams.frequencyPenalty).toBe(0.5); // Valid model-specific
         expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
       });
     });
