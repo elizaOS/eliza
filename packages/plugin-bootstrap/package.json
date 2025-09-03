@@ -27,10 +27,10 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "bun": "^1.2.17"
+    "bun": "^1.2.21"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.16",
+    "@types/bun": "^1.2.21",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
     "typescript": "5.8.2",
