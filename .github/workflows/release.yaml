@@ -7,8 +7,9 @@ name: NPM Release
 #
 # Version Management:
 # - Uses lerna version and publish commands with consistent patterns
-# - Publishes to NPM first, then commits version changes
+# - Commits version changes to git FIRST, then publishes to NPM
 # - Prevents infinite loops with [skip ci] in commit messages
+# - Proper error handling without masking critical failures
 
 on:
   push:
@@ -144,13 +145,76 @@ jobs:
         run: |
           bun install --no-frozen-lockfile
 
+      # Commit and push version changes BEFORE building and publishing
+      # This ensures git is the source of truth
+      - name: Commit version changes
+        id: commit
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
+          
+          # Stage all changes
+          git add -A
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit - this might indicate a problem"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Commit with [skip ci] to prevent infinite loop
+          git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      # Create and push git tag (only if not from a GitHub release)
+      - name: Create git tag
+        if: steps.release_type.outputs.is_release_event != 'true' && steps.commit.outputs.has_changes == 'true'
+        id: tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG_NAME="v${VERSION}"
+          
+          # Check if tag already exists
+          if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "❌ Error: Tag ${TAG_NAME} already exists"
+            echo "This indicates a version conflict that needs manual resolution"
+            exit 1
+          fi
+          
+          # Create the tag
+          git tag "${TAG_NAME}"
+          echo "tag_created=true" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+
+      # Push changes to git (fails the workflow if it can't push)
+      - name: Push to git
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          # Attempt to push changes and tags
+          if ! git push origin HEAD --follow-tags; then
+            echo "❌ Error: Failed to push to git repository"
+            echo "This could be due to:"
+            echo "  - Protected branch restrictions"
+            echo "  - Network issues"
+            echo "  - Permission problems"
+            echo ""
+            echo "The version has been updated locally but not published."
+            echo "Manual intervention required to resolve the git push issue."
+            exit 1
+          fi
+          
+          echo "✅ Successfully pushed version changes and tags to git"
+
       # Build packages with correct version numbers
+      # Only happens AFTER git operations succeed
       - name: Build packages
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
           bun run build
 
-      # Publish to NPM FIRST (before git operations)
+      # Publish to NPM (only after git operations succeed)
       - name: Publish to NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -161,48 +225,39 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
           
           # Publish with appropriate dist-tag
-          bunx lerna publish from-package \
+          if ! bunx lerna publish from-package \
             --dist-tag ${DIST_TAG} \
             --force-publish \
             --yes \
-            --no-verify-access
+            --no-verify-access; then
+            
+            echo "❌ Error: Failed to publish to NPM"
+            echo ""
+            echo "Git has been updated with version v${{ steps.version.outputs.version }}"
+            echo "but the packages were not published to NPM."
+            echo ""
+            echo "To recover:"
+            echo "  1. Fix the NPM publishing issue"
+            echo "  2. Run 'npm run release:${DIST_TAG}' locally with proper credentials"
+            echo "  3. Or re-run this workflow"
+            exit 1
+          fi
           
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
-      # Only commit and push AFTER successful NPM publish
-      - name: Commit and push version changes
-        id: commit
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
-          
-          # Stage all changes
-          git add -A
-          
-          # Commit with [skip ci] to prevent infinite loop
-          git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]" || echo "No changes to commit"
-          
-          # Only create tag if NOT from a GitHub release (tag already exists)
-          if [[ "${{ steps.release_type.outputs.is_release_event }}" != "true" ]]; then
-            git tag "v${VERSION}" || echo "Tag already exists"
-          fi
-          
-          # Push changes and tags
-          git push origin HEAD --follow-tags || echo "Push failed - may be protected branch"
-
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
-        if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest'
+        if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ steps.tag.outputs.tag_name }}
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
             
-            Version: `v${{ steps.version.outputs.version }}`
+            Version: `${{ steps.tag.outputs.tag_name }}`
             
             Install with:
             ```bash
@@ -221,13 +276,19 @@ jobs:
           echo "- **Dist Tag**: ${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.commit.outputs.has_changes }}" == "true" ]]; then
+            echo "- **Commit SHA**: ${{ steps.commit.outputs.commit_sha }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [[ "${{ steps.tag.outputs.tag_created }}" == "true" ]]; then
+            echo "- **Tag**: ${{ steps.tag.outputs.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Installation" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
           echo "npm install @elizaos/core@${{ steps.release_type.outputs.dist_tag }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # Handle failure - create issue if publish failed
+      # Handle failure - create issue if the workflow failed
       - name: Create failure issue
         if: failure() && steps.version.outputs.version
         uses: actions/create-issue@v2
@@ -242,9 +303,22 @@ jobs:
             - Release Type: ${{ steps.release_type.outputs.type }}
             - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             - Triggered By: ${{ github.event_name }}
+            - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
+            - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
+            
+            **Recovery Steps:**
+            
+            If git operations succeeded but NPM publish failed:
+            - The version is already in git
+            - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
+            - Or re-run this workflow (it will skip git operations if no changes)
+            
+            If git operations failed:
+            - No packages were published to NPM (safe state)
+            - Fix the git issue (permissions, network, etc.)
+            - Re-run the workflow
             
             **Action Required:**
-            - Check the workflow logs for the failure reason
-            - If NPM publish failed but git was not updated, the version is safe to retry
-            - If git was updated but NPM failed, manual intervention may be needed
+            - Check the workflow logs for the specific failure point
+            - Follow the appropriate recovery steps above
           labels: bug, release-failure
