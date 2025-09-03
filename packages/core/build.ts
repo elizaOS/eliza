@@ -27,7 +27,6 @@ const nodeExternals = [
   'sharp',
   'zod',
   '@hapi/shot',
-  'crypto-browserify',
   '@sentry/browser',
 ];
 
