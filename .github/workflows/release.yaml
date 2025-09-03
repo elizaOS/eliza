@@ -2,7 +2,7 @@ name: NPM Release
 
 # Unified workflow for all NPM releases:
 # - Alpha: On merge to develop branch
-# - Beta: On merge to main branch  
+# - Beta: On merge to main branch
 # - Production: On GitHub release creation
 #
 # Version Management:
@@ -15,7 +15,7 @@ on:
   push:
     branches:
       - develop # Triggers alpha releases
-      - main    # Triggers beta releases
+      - main # Triggers beta releases
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -44,12 +44,12 @@ jobs:
     runs-on: ubuntu-latest
     # Skip if commit message contains [skip ci]
     if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
-    
+
     permissions:
       contents: write
       packages: write
       id-token: write
-      
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,6 +61,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # If triggered by a release, we're in detached HEAD state
+          # Create a temporary branch for Lerna to work with
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "Creating temporary branch from release tag..."
+            git checkout -b temp-release-branch
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,7 +114,7 @@ jobs:
         id: version
         run: |
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
-          
+
           if [[ "${{ github.event_name }}" == "release" ]]; then
             # For production releases from GitHub release
             VERSION="${{ steps.release_type.outputs.version }}"
@@ -145,7 +152,7 @@ jobs:
               --no-git-tag-version \
               --no-push
           fi
-          
+
           # Get the new version
           VERSION=$(node -p "require('./lerna.json').version")
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -162,17 +169,17 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
-          
+
           # Stage all changes
           git add -A
-          
+
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No changes to commit - this might indicate a problem"
             echo "has_changes=false" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
+
           # Commit with [skip ci] to prevent infinite loop
           git commit -m "chore: release v${VERSION} (${RELEASE_TYPE}) [skip ci]"
           echo "has_changes=true" >> $GITHUB_OUTPUT
@@ -185,14 +192,14 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TAG_NAME="v${VERSION}"
-          
+
           # Check if tag already exists
           if git rev-parse "${TAG_NAME}" >/dev/null 2>&1; then
             echo "❌ Error: Tag ${TAG_NAME} already exists"
             echo "This indicates a version conflict that needs manual resolution"
             exit 1
           fi
-          
+
           # Create the tag
           git tag "${TAG_NAME}"
           echo "tag_created=true" >> $GITHUB_OUTPUT
@@ -202,19 +209,39 @@ jobs:
       - name: Push to git
         if: steps.commit.outputs.has_changes == 'true'
         run: |
-          # Attempt to push changes and tags
-          if ! git push origin HEAD --follow-tags; then
-            echo "❌ Error: Failed to push to git repository"
-            echo "This could be due to:"
-            echo "  - Protected branch restrictions"
-            echo "  - Network issues"
-            echo "  - Permission problems"
-            echo ""
-            echo "The version has been updated locally but not published."
-            echo "Manual intervention required to resolve the git push issue."
-            exit 1
+          # Determine target branch for push
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            # For GitHub releases, push to main branch
+            TARGET_BRANCH="main"
+            echo "Pushing changes to main branch..."
+            
+            # Push the changes to main branch
+            if ! git push origin HEAD:${TARGET_BRANCH} --follow-tags; then
+              echo "❌ Error: Failed to push to git repository"
+              echo "This could be due to:"
+              echo "  - Protected branch restrictions"
+              echo "  - Network issues"
+              echo "  - Permission problems"
+              echo ""
+              echo "The version has been updated locally but not published."
+              echo "Manual intervention required to resolve the git push issue."
+              exit 1
+            fi
+          else
+            # For other triggers, push to current branch
+            if ! git push origin HEAD --follow-tags; then
+              echo "❌ Error: Failed to push to git repository"
+              echo "This could be due to:"
+              echo "  - Protected branch restrictions"
+              echo "  - Network issues"
+              echo "  - Permission problems"
+              echo ""
+              echo "The version has been updated locally but not published."
+              echo "Manual intervention required to resolve the git push issue."
+              exit 1
+            fi
           fi
-          
+
           echo "✅ Successfully pushed version changes and tags to git"
 
       # Build packages with correct version numbers
@@ -230,10 +257,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
-          
+
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-          
+
           # Publish with appropriate dist-tag
           if ! bunx lerna publish from-package \
             --dist-tag ${DIST_TAG} \
@@ -252,7 +279,7 @@ jobs:
             echo "  3. Or re-run this workflow"
             exit 1
           fi
-          
+
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
@@ -266,25 +293,25 @@ jobs:
           name: ${{ steps.tag.outputs.tag_name }}
           body: |
             ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
-            
+
             **Version:** `${{ steps.tag.outputs.tag_name }}`
             **Channel:** `${{ steps.release_type.outputs.dist_tag }}`
-            
+
             ### Quick Start
-            
+
             Install the CLI globally to get started:
             ```bash
             bun i -g @elizaos/cli@${{ steps.release_type.outputs.dist_tag }}
             ```
-            
+
             Or add packages to your project:
             ```bash
             bun add @elizaos/core@${{ steps.release_type.outputs.dist_tag }}
             bun add @elizaos/plugin-bootstrap@${{ steps.release_type.outputs.dist_tag }}
             ```
-            
+
             ---
-            
+
             > **Note:** This is a ${{ steps.release_type.outputs.type }} release. Production releases use the `latest` tag and are triggered by GitHub releases on tags matching `v*.*.*`.
           draft: false
           prerelease: true
@@ -323,26 +350,26 @@ jobs:
         run: |
           cat > /tmp/issue-content.md << 'EOF'
           The release workflow failed for version v${{ steps.version.outputs.version }}.
-          
+
           **Details:**
           - Release Type: ${{ steps.release_type.outputs.type }}
           - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           - Triggered By: ${{ github.event_name }}
           - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
           - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
-          
+
           **Recovery Steps:**
-          
+
           If git operations succeeded but NPM publish failed:
           - The version is already in git
           - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
           - Or re-run this workflow (it will skip git operations if no changes)
-          
+
           If git operations failed:
           - No packages were published to NPM (safe state)
           - Fix the git issue (permissions, network, etc.)
           - Re-run the workflow
-          
+
           **Action Required:**
           - Check the workflow logs for the specific failure point
           - Follow the appropriate recovery steps above
@@ -353,7 +380,7 @@ jobs:
         uses: peter-evans/create-issue-from-file@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Release Failed: v${{ steps.version.outputs.version }}"
+          title: 'Release Failed: v${{ steps.version.outputs.version }}'
           content-filepath: /tmp/issue-content.md
           labels: |
             bug
