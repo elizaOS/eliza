@@ -133,6 +133,7 @@ const DEFAULT_LOG_LEVEL = 'info';
 const effectiveLogLevel = getEnvironmentVar('LOG_LEVEL') || DEFAULT_LOG_LEVEL;
 
 // Custom log levels mapping (ElizaOS to Adze)
+// Note: These are for our internal shouldLog function, not Adze's levels
 export const customLevels: Record<string, number> = {
   fatal: 60,
   error: 50,
@@ -187,23 +188,104 @@ const globalInMemoryDestination = createInMemoryDestination();
 // Adze Configuration
 // ============================================================================
 
-/**
- * Maps ElizaOS log levels to Adze log levels
- */
-function mapToAdzeActiveLevel(level: string | number): string {
-  const levelStr = typeof level === 'number' ? 'info' : level;
-  const normalized = levelStr.toLowerCase();
-  if (normalized === 'trace') return 'verbose';
-  if (normalized === 'fatal') return 'alert';
-  return normalized;
-}
-
 // Configure Adze globally
+// Map ElizaOS log levels to Adze log levels
+const getAdzeActiveLevel = () => {
+  const level = effectiveLogLevel.toLowerCase();
+  if (level === 'trace') return 'verbose';
+  if (level === 'debug') return 'debug';
+  if (level === 'log') return 'log';
+  if (level === 'info') return 'info';
+  if (level === 'warn') return 'warn';
+  if (level === 'error') return 'error';
+  if (level === 'fatal') return 'alert';
+  return 'info'; // Default to info
+};
+
+const adzeActiveLevel = getAdzeActiveLevel();
+
+// Reusable custom level configuration - improved colors and emojis for better terminal readability
+const customLevelConfig: Record<string, any> = {
+  alert: {
+    levelName: 'alert',
+    level: 0,
+    style: 'font-size: 12px; color: #ff0000;',
+    terminalStyle: ['bgRed' as const, 'white' as const, 'bold' as const], // Critical - keep background
+    method: 'error' as any,
+    emoji: '', // Visual scanning help
+  },
+  error: {
+    levelName: 'error',
+    level: 1,
+    style: 'font-size: 12px; color: #ff0000;',
+    terminalStyle: ['bgRed' as const, 'whiteBright' as const, 'bold' as const], // Loud and bright - white on red
+    method: 'error' as any,
+    emoji: '',
+  },
+  warn: {
+    levelName: 'warn',
+    level: 2,
+    style: 'font-size: 12px; color: #ffaa00;',
+    terminalStyle: ['bgYellow' as const, 'black' as const, 'bold' as const], // Bright but less than error - black on yellow
+    method: 'warn' as any,
+    emoji: '',
+  },
+  info: {
+    levelName: 'info',
+    level: 3,
+    style: 'font-size: 12px; color: #0099ff;',
+    terminalStyle: ['cyan' as const], // Minimal - just cyan text, no background
+    method: 'info' as any,
+    emoji: '',
+  },
+  fail: {
+    levelName: 'fail',
+    level: 4,
+    style: 'font-size: 12px; color: #ff6600;',
+    terminalStyle: ['red' as const, 'underline' as const], // Red underlined text, no background
+    method: 'error' as any,
+    emoji: '',
+  },
+  success: {
+    levelName: 'success',
+    level: 5,
+    style: 'font-size: 12px; color: #00cc00;',
+    terminalStyle: ['green' as const], // Minimal - just green text
+    method: 'log' as any,
+    emoji: '',
+  },
+  log: {
+    levelName: 'log',
+    level: 6,
+    style: 'font-size: 12px; color: #888888;',
+    terminalStyle: ['white' as const], // Minimal - just white text
+    method: 'log' as any,
+    emoji: '',
+  },
+  debug: {
+    levelName: 'debug',
+    level: 7,
+    style: 'font-size: 12px; color: #9b59b6;',
+    terminalStyle: ['gray' as const, 'dim' as const], // Dark and subtle since off by default
+    method: 'debug' as any,
+    emoji: '',
+  },
+  verbose: {
+    levelName: 'verbose',
+    level: 8,
+    style: 'font-size: 12px; color: #666666;',
+    terminalStyle: ['gray' as const, 'dim' as const, 'italic' as const], // Very subtle
+    method: 'debug' as any,
+    emoji: '',
+  },
+};
+
 const adzeStore = setup({
-  activeLevel: mapToAdzeActiveLevel(effectiveLogLevel) as any,
+  activeLevel: adzeActiveLevel,
   format: raw ? 'json' : 'pretty',
   timestampFormatter: showTimestamps ? undefined : () => '',
   withEmoji: false,
+  levels: customLevelConfig,
 });
 
 // Mirror Adze output to in-memory storage
@@ -249,7 +331,16 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   delete (metaBase as any).namespace;
   delete (metaBase as any).namespaces;
 
-  return chain.meta(metaBase).seal();
+  // This ensures the sealed logger inherits the correct log level and styling
+  const globalConfig = {
+    activeLevel: getAdzeActiveLevel(),
+    format: raw ? 'json' : 'pretty',
+    timestampFormatter: showTimestamps ? undefined : () => '',
+    withEmoji: false,
+    levels: customLevelConfig, // Use same reusable config
+  };
+
+  return chain.meta(metaBase).seal(globalConfig);
 }
 
 /**
@@ -417,14 +508,21 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     let adzeMethod = method;
     let adzeArgs = args;
 
-    // Normalize special cases
+    // Normalize special cases - map our custom levels to Adze levels
     if (method === 'fatal') {
       // Adze uses 'alert' for fatal-level logging
       adzeMethod = 'alert';
     } else if (method === 'progress') {
-      // Use Adze custom level for progress
-      adzeMethod = 'custom';
-      adzeArgs = ['progress', ...args];
+      // Map progress to info level with a prefix
+      adzeMethod = 'info';
+      adzeArgs = ['[PROGRESS]', ...args];
+    } else if (method === 'success') {
+      // Map success to info level with a prefix
+      adzeMethod = 'info';
+      adzeArgs = ['[SUCCESS]', ...args];
+    } else if (method === 'trace') {
+      // Map trace to verbose
+      adzeMethod = 'verbose';
     }
 
     try {

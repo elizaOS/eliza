@@ -728,7 +728,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const serverId  = world?.serverId  as UUID;
+      const serverId = world?.serverId as UUID;
 
       if (!channelId || !serverId) {
         logger.error(
@@ -769,7 +769,7 @@ export class MessageBusService extends Service {
         },
       };
 
-      const baseUrl   = this.getCentralMessageServerUrl();
+      const baseUrl = this.getCentralMessageServerUrl();
       const submitUrl = new URL('/api/messaging/action', baseUrl).toString();
 
       logger.info(
@@ -809,7 +809,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const serverId  = world?.serverId  as UUID;
+      const serverId = world?.serverId as UUID;
 
       if (!channelId || !serverId) {
         logger.error(
@@ -847,8 +847,8 @@ export class MessageBusService extends Service {
         },
       };
 
-      const baseUrl   = this.getCentralMessageServerUrl();
-      const patchUrl  = new URL(`/api/messaging/action/${messageId}`, baseUrl).toString();
+      const baseUrl = this.getCentralMessageServerUrl();
+      const patchUrl = new URL(`/api/messaging/action/${messageId}`, baseUrl).toString();
 
       logger.info(
         `[${this.runtime.character.name}] -> PATCH ${patchUrl} payload: ${JSON.stringify(patchPayload)}`

@@ -7,7 +7,7 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 import { createUniqueUuid } from './entities';
-import { getEnv, getNumberEnv } from './utils/environment';
+import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
@@ -154,16 +154,14 @@ export class AgentRuntime implements IAgentRuntime {
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
-    const logLevel = getEnv('LOG_LEVEL', 'info');
 
     this.initPromise = new Promise((resolve) => {
       this.initResolver = resolve;
     });
 
-    // Create the logger with appropriate level - only show debug logs when explicitly configured
+    // Create the logger with namespace only - level is handled globally from env
     this.logger = createLogger({
-      agentName: this.character?.name,
-      logLevel: logLevel as any,
+      namespace: this.character?.name,
     });
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
@@ -815,12 +813,11 @@ export class AgentRuntime implements IAgentRuntime {
                 thought: actionPlan?.thought,
               },
             });
-            
           } catch (error) {
             this.logger.error('Failed to create action start message:', String(error));
           }
-          
-          let storedCallbackData: { content: Content, files?: any }[] = [];
+
+          let storedCallbackData: { content: Content; files?: any }[] = [];
 
           const storageCallback = async (response: Content, files?: any) => {
             storedCallbackData.push({ content: response, files });
@@ -935,7 +932,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
-                actionResult: actionResult
+                actionResult: actionResult,
               },
             });
           } catch (error) {
@@ -952,7 +949,7 @@ export class AgentRuntime implements IAgentRuntime {
               await callback(data.content, data.files);
             }
           }
-         
+
           // Store action result as memory
           const actionMemory: Memory = {
             id: actionId,
@@ -985,7 +982,6 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
-          
           this.logger.debug(
             `Action ${action.name} completed`,
             JSON.stringify({

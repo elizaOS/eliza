@@ -1,9 +1,8 @@
 {
   "name": "@elizaos/project-starter",
   "description": "Project starter for elizaOS",
-  "version": "1.4.2",
+  "version": "1.5.5-alpha.10",
   "type": "module",
-  "private": true,
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
   "types": "dist/index.d.ts",
@@ -29,9 +28,11 @@
   ],
   "dependencies": {
     "@elizaos/cli": "workspace:*",
+    "@elizaos/client": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/server": "workspace:*",
     "@tanstack/react-query": "^5.29.0",
     "clsx": "^2.1.1",
     "react": "^18.3.1",

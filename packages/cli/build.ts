@@ -55,7 +55,7 @@ const run = createBuildRunner({
         { from: './templates', to: './dist/templates' },
         // Migration guides are embedded in the CLI code itself, no need to copy external files
       ]);
-      
+
       // Ensure the version file is properly copied to dist
       const versionSrcPath = './src/version.ts';
       const versionDistPath = './dist/version.js';

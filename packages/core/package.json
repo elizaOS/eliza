@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.4.3-alpha.5",
+  "version": "1.5.5-alpha.10",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,7 @@
   "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
-    "@types/bun": "^1.2.20",
+    "@types/bun": "^1.2.21",
     "@types/node": "^24.0.3",
     "@types/uuid": "10.0.0",
     "prettier": "3.5.3",
@@ -68,6 +68,7 @@
     "@sentry/browser": "^9.22.0",
     "@sentry/node": "^10.7.0",
     "adze": "^2.2.5",
+    "crypto-browserify": "^3.12.0",
     "dotenv": "16.5.0",
     "glob": "11.0.3",
     "handlebars": "^4.7.8",

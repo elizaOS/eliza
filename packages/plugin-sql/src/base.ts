@@ -3014,7 +3014,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     updatedAt: Date;
   }> {
     return this.withDatabase(async () => {
-      const newId = data.messageId || v4() as UUID;
+      const newId = data.messageId || (v4() as UUID);
       const now = new Date();
       const messageToInsert = {
         id: newId,
@@ -3049,11 +3049,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     updatedAt: Date;
   }> {
     return this.withDatabase(async () => {
-      const rows = await this.db.select().from(messageTable).where(eq(messageTable.id, id)).limit(1);
+      const rows = await this.db
+        .select()
+        .from(messageTable)
+        .where(eq(messageTable.id, id))
+        .limit(1);
       return rows?.[0] ?? null;
     });
   }
-  
+
   async updateMessage(
     id: UUID,
     patch: {
@@ -3080,7 +3084,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       const existing = await this.getMessageById(id);
       if (!existing) return null;
-  
+
       const updatedAt = new Date();
       const next = {
         content: patch.content ?? existing.content,
@@ -3091,12 +3095,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         inReplyToRootMessageId: patch.inReplyToRootMessageId ?? existing.inReplyToRootMessageId,
         updatedAt,
       };
-  
-      await this.db
-        .update(messageTable)
-        .set(next)
-        .where(eq(messageTable.id, id));
-  
+
+      await this.db.update(messageTable).set(next).where(eq(messageTable.id, id));
+
       // Return merged object
       return {
         ...existing,
