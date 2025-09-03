@@ -483,16 +483,20 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockActionHandler).toHaveBeenCalledTimes(1);
       // Check arguments passed to the handler
       expect(mockActionHandler).toHaveBeenCalledWith(
-        runtime,
-        message,
-        expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        expect.objectContaining({
-          context: expect.objectContaining({
-            previousResults: expect.any(Array),
+        runtime, // runtime instance
+        message, // original message
+        {
+          text: 'composed state text',
+          values: {},
+          data: {}
+        }, // accumulated state
+        {
+          context: {
+            previousResults: [],
             getPreviousResult: expect.any(Function),
-          }),
-        }), // options now contains context
-        undefined, // callback
+          },
+        }, // options with context
+        expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
