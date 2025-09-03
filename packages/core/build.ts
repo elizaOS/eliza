@@ -23,13 +23,7 @@ const browserExternals = [
 ];
 
 // Node-specific externals (native modules and node-specific packages)
-const nodeExternals = [
-  'dotenv',
-  'sharp',
-  'zod',
-  '@hapi/shot',
-  '@sentry/browser',
-];
+const nodeExternals = ['dotenv', 'sharp', 'zod', '@hapi/shot', '@sentry/browser'];
 
 // Shared configuration
 const sharedConfig = {
