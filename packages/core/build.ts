@@ -28,6 +28,7 @@ const nodeExternals = [
   'zod',
   '@hapi/shot',
   '@sentry/browser',
+  'crypto-browserify', // Node.js has native crypto, don't bundle the polyfill
 ];
 
 // Shared configuration
