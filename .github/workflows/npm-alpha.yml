@@ -57,11 +57,21 @@ jobs:
           # 2. Create a git commit with the version changes
           # 3. Create a git tag for the release (v1.5.5-alpha.1)
           # 4. Update all packages to the same version with --force-publish
-          bunx lerna version prerelease --preid alpha --force-publish --yes --message "chore(release): publish alpha %s [skip ci]"
+          bunx lerna version prerelease --preid alpha --force-publish --yes --no-push --no-git-tag-version
           
           # Show the new version for logging
           NEW_VERSION=$(node -p "require('./packages/core/package.json').version")
           echo "New alpha version: v${NEW_VERSION}"
+          
+          # Update bun.lock to reflect version changes
+          # NO frozen-lockfile - we WANT it to update with new versions
+          echo "Updating bun.lock with new versions..."
+          bun install
+          
+          # Commit all version changes including bun.lock in ONE commit
+          git add -A
+          git commit -m "chore(release): publish alpha v${NEW_VERSION} [skip ci]"
+          git tag "v${NEW_VERSION}"
           
       - name: Push Version Changes and Tags
         run: |

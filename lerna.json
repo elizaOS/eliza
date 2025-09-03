@@ -6,7 +6,6 @@
   "npmClient": "bun",
   "command": {
     "publish": {
-      "conventionalCommits": true,
       "message": "chore(release): publish alpha",
       "registry": "https://registry.npmjs.org",
       "allowBranch": [
@@ -29,7 +28,6 @@
         "alpha",
         "release/*"
       ],
-      "conventionalCommits": true,
       "message": "chore(release): publish %s",
       "push": true,
       "gitTagVersion": true,
