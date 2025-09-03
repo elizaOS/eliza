@@ -45,32 +45,32 @@ export function getVersion(): string {
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    
+
     // Try multiple possible locations for version.js
     const possiblePaths = [
-      path.resolve(__dirname, '../version.js'),      // Standard location in development
-      path.resolve(__dirname, 'version.js'),         // Same directory (for bundled dist)
-      path.resolve(__dirname, './version.js'),       // Alternative same directory
+      path.resolve(__dirname, '../version.js'), // Standard location in development
+      path.resolve(__dirname, 'version.js'), // Same directory (for bundled dist)
+      path.resolve(__dirname, './version.js'), // Alternative same directory
     ];
-    
+
     // Special handling for when everything is bundled into index.js
     if (__filename.endsWith('index.js')) {
       const distDir = path.dirname(__filename);
       possiblePaths.unshift(path.resolve(distDir, 'version.js'));
     }
-    
+
     for (const versionPath of possiblePaths) {
       if (existsSync(versionPath)) {
         // Read the version file and extract the version
         const versionContent = readFileSync(versionPath, 'utf-8');
-        
+
         // Try to extract CLI_VERSION constant
         const versionMatch = versionContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
         if (versionMatch && versionMatch[1]) {
           cachedVersion = versionMatch[1];
           return cachedVersion;
         }
-        
+
         // Try to extract from default export
         const defaultMatch = versionContent.match(/version:\s*['"]([^'"]+)['"]/);
         if (defaultMatch && defaultMatch[1]) {

@@ -94,7 +94,7 @@ const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 // Helper function to convert action message to ToolPart format
 const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
   const rawMessage = message.rawMessage as any; // Type assertion to access raw message properties
-  
+
   // Map actionStatus to ToolPart state
   const mapActionStatusToState = (status: string): ToolPart['state'] => {
     switch (status) {
@@ -117,24 +117,24 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
   const actionName = rawMessage.actions?.[0] || rawMessage.action || 'ACTION';
   const actionStatus = rawMessage.actionStatus || 'completed';
   const actionId = rawMessage.actionId;
-  
+
   // Create input data from available action properties
   const inputData: Record<string, unknown> = {};
   if (rawMessage.actions) inputData.actions = rawMessage.actions;
   if (rawMessage.action) inputData.action = rawMessage.action;
   if (rawMessage.thought) inputData.thought = rawMessage.thought;
-  
+
   // Create output data based on status and content
   const outputData: Record<string, unknown> = {};
   if (rawMessage.text) outputData.result = rawMessage.text;
   if (actionStatus) outputData.status = actionStatus;
   if (rawMessage.thought) outputData.thought = rawMessage.thought;
   if (rawMessage.actionResult) outputData.actionResult = rawMessage.actionResult;
-  
+
   // Handle error cases
   const isError = actionStatus === 'failed' || actionStatus === 'error';
   const errorText = isError ? rawMessage.text || 'Action failed' : undefined;
-  
+
   return {
     type: actionName,
     state: mapActionStatusToState(actionStatus),
@@ -201,7 +201,7 @@ export function MessageContent({
   agentAvatarMap?: Record<UUID, string | null>;
   chatType?: ChannelType;
 }) {
-  const isActionMessage = message.type === "agent_action" || message.source === "agent_action";
+  const isActionMessage = message.type === 'agent_action' || message.source === 'agent_action';
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -210,8 +210,8 @@ export function MessageContent({
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
         {isActionMessage ? (
-          <Tool 
-            toolPart={convertActionMessageToToolPart(message)} 
+          <Tool
+            toolPart={convertActionMessageToToolPart(message)}
             defaultOpen={false}
             className="max-w-none"
           />

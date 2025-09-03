@@ -108,4 +108,4 @@ Cypress.on('window:before:load', (win) => {
 // TypeScript declarations are in ./commands.ts
 
 // Ensure this file is treated as a module
-export { };
+export {};

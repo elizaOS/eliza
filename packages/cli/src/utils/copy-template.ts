@@ -159,7 +159,7 @@ export async function copyTemplate(
   try {
     // Get the CLI package version from the embedded version file
     let cliPackageVersion = 'latest'; // Default fallback
-    
+
     try {
       // Try to import the generated version file
       const versionModule = await import('../version.js').catch(() => null);

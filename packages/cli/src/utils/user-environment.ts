@@ -99,7 +99,7 @@ export class UserEnvironment {
         logger.debug('[UserEnvironment] Version file not found, using fallback values');
         return {
           CLI_VERSION: '0.0.0-dev',
-          CLI_NAME: '@elizaos/cli'
+          CLI_NAME: '@elizaos/cli',
         };
       });
 

@@ -815,12 +815,11 @@ export class AgentRuntime implements IAgentRuntime {
                 thought: actionPlan?.thought,
               },
             });
-            
           } catch (error) {
             this.logger.error('Failed to create action start message:', String(error));
           }
-          
-          let storedCallbackData: { content: Content, files?: any }[] = [];
+
+          let storedCallbackData: { content: Content; files?: any }[] = [];
 
           const storageCallback = async (response: Content, files?: any) => {
             storedCallbackData.push({ content: response, files });
@@ -935,7 +934,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
-                actionResult: actionResult
+                actionResult: actionResult,
               },
             });
           } catch (error) {
@@ -952,7 +951,7 @@ export class AgentRuntime implements IAgentRuntime {
               await callback(data.content, data.files);
             }
           }
-         
+
           // Store action result as memory
           const actionMemory: Memory = {
             id: actionId,
@@ -985,7 +984,6 @@ export class AgentRuntime implements IAgentRuntime {
           };
           await this.createMemory(actionMemory, 'messages');
 
-          
           this.logger.debug(
             `Action ${action.name} completed`,
             JSON.stringify({

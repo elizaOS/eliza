@@ -131,10 +131,10 @@ async function generateTypeScriptDeclarations() {
     // Generate real TypeScript declarations using tsc
     console.log('   Compiling TypeScript declarations...');
     await $`tsc --project tsconfig.declarations.json`;
-    
+
     // TypeScript has generated all the .d.ts files in dist/
     // Now we need to create the conditional export entry points
-    
+
     // Ensure directories exist
     await fs.mkdir('dist/node', { recursive: true });
     await fs.mkdir('dist/browser', { recursive: true });

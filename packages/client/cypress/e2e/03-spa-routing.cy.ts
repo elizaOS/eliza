@@ -107,7 +107,9 @@ describe('SPA Routing', () => {
           cy.get('[data-testid="app-sidebar"]').should('be.visible');
         } else {
           // Fallback to checking for mobile menu button or any navigation
-          cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', { timeout: 15000 }).should('exist');
+          cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
+            timeout: 15000,
+          }).should('exist');
         }
       });
     });
@@ -147,7 +149,9 @@ describe('SPA Routing', () => {
         cy.get('[data-testid="app-sidebar"]').should('be.visible');
       } else {
         // Fallback to checking for mobile menu button or any navigation
-        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', { timeout: 15000 }).should('exist');
+        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
+          timeout: 15000,
+        }).should('exist');
       }
     });
   });
@@ -235,7 +239,9 @@ describe('SPA Routing', () => {
         cy.get('[data-testid="app-sidebar"]').should('be.visible');
       } else {
         // Fallback to checking for mobile menu button or any navigation
-        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', { timeout: 15000 }).should('exist');
+        cy.get('[data-testid="mobile-menu-button"], aside, nav, [role="navigation"]', {
+          timeout: 15000,
+        }).should('exist');
       }
     });
   });

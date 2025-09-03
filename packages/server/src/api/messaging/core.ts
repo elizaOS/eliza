@@ -126,7 +126,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
 
     if (in_reply_to_message_id && !validateUuid(in_reply_to_message_id)) {
-      return res.status(400).json({ success: false, error: 'Invalid in_reply_to_message_id format' });
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid in_reply_to_message_id format' });
     }
 
     if (messageId && !validateUuid(messageId)) {
@@ -163,13 +165,16 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           actions: raw_message?.actions,
           attachments: metadata?.attachments,
           updatedAt: new Date(savedMessage.updatedAt).getTime(),
-          rawMessage: raw_message
+          rawMessage: raw_message,
         });
       }
 
       return res.status(201).json({ success: true, data: savedMessage });
     } catch (error) {
-      logger.error('[POST /actions] Error creating action:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[POST /actions] Error creating action:',
+        error instanceof Error ? error.message : String(error)
+      );
       return res.status(500).json({ success: false, error: 'Failed to create action' });
     }
   });
@@ -192,7 +197,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     } = req.body ?? {};
 
     if (in_reply_to_message_id && !validateUuid(in_reply_to_message_id)) {
-      return res.status(400).json({ success: false, error: 'Invalid in_reply_to_message_id format' });
+      return res
+        .status(400)
+        .json({ success: false, error: 'Invalid in_reply_to_message_id format' });
     }
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
@@ -230,17 +237,19 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           actions: raw_message?.actions,
           attachments: metadata?.attachments,
           updatedAt: new Date(updated.updatedAt).getTime(),
-          rawMessage: raw_message
+          rawMessage: raw_message,
         });
       }
 
       return res.status(200).json({ success: true, data: updated });
     } catch (error) {
-      logger.error('[PATCH /action/:id] Error updating action:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[PATCH /action/:id] Error updating action:',
+        error instanceof Error ? error.message : String(error)
+      );
       return res.status(500).json({ success: false, error: 'Failed to update action' });
     }
   });
-
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
   (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {
