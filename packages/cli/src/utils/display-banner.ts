@@ -13,7 +13,7 @@ export function isRunningFromNodeModules(): boolean {
 }
 
 // Function to get the package version
-// --- Utility: Get local CLI version from package.json ---
+// --- Utility: Get local CLI version from embedded version file ---
 export function getVersion(): string {
   // Check if we're in the monorepo context
   const userEnv = UserEnvironment.getInstance();
@@ -30,26 +30,29 @@ export function getVersion(): string {
     return 'monorepo';
   }
 
-  // For ESM modules we need to use import.meta.url instead of __dirname
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-
-  // Find package.json relative to the current file
-  const packageJsonPath = path.resolve(__dirname, '../package.json');
-
-  // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!existsSync(packageJsonPath)) {
-    console.error(`Warning: package.json not found at ${packageJsonPath}`);
-  } else {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-      version = packageJson.version || '0.0.0';
-    } catch (error) {
-      console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
+  // Try to load the embedded version file first (generated at build time)
+  try {
+    // Try to import the generated version file
+    // Use a synchronous approach for this utility function
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const versionFilePath = path.resolve(__dirname, '../version.js');
+    
+    if (existsSync(versionFilePath)) {
+      // Read and parse the version file manually to avoid async import in sync function
+      const versionFileContent = readFileSync(versionFilePath, 'utf-8');
+      // Extract the CLI_VERSION from the file content using regex
+      const versionMatch = versionFileContent.match(/export const CLI_VERSION = ['"]([^'"]+)['"]/);
+      if (versionMatch && versionMatch[1]) {
+        return versionMatch[1];
+      }
     }
+  } catch (error) {
+    // Silent fallthrough to fallback
   }
-  return version;
+
+  // Final fallback version
+  return '0.0.0';
 }
 
 // --- Utility: Get install tag based on CLI version ---

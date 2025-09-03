@@ -215,7 +215,7 @@ elizaos tee phala cvms upgrade -c docker-compose.yaml
 ## 📚 Documentation
 
 - [Deployment Guide](./GUIDE.md) - Detailed setup instructions
-- [TEE Plugin Docs](../plugin-tee/README.md) - TEE capabilities
+- [TEE Plugin Implementation](./src/plugin.ts) - TEE capabilities
 - [ElizaOS Docs](https://elizaos.github.io/eliza/) - Framework documentation
 - [Phala Cloud Docs](https://docs.phala.network) - Phala Cloud documentation
 

@@ -65,6 +65,8 @@ export default defineConfig(({ mode, command }) => {
       sourcemap: false,
       reportCompressedSize: false,
       minify: 'esbuild',
+      chunkSizeWarningLimit: 2200, // Increase chunk size warning limit to accommodate large chunks
+      cssMinify: false, // Disable CSS minification to avoid :is() syntax errors in webkit scrollbar styles
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),

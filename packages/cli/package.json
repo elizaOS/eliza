@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.4.2",
+  "version": "1.4.3-alpha.2",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -82,9 +82,9 @@
     "@clack/prompts": "^0.11.0",
     "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
-    "@elizaos/plugin-bootstrap": "workspace:*",
     "bun": "^1.2.17",
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
