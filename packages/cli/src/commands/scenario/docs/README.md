@@ -744,6 +744,20 @@ conversation:
 - **`context_retention`**: Tests agent memory across turns
   - Parameters: `test_memory_of`, `retention_turns`, `memory_accuracy_threshold`
 
+### Usage notes
+ 
+Occassionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
+
+```bash
+# Use a specific embedding model to avoid GPT-5 embedding issues
+OPENAI_SMALL_MODEL="gpt-4o-mini"
+SMALL_MODEL="gpt-4o-mini"
+OPENAI_LARGE_MODEL="gpt-4o"
+LARGE_MODEL="gpt-4o"
+OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+
+```
+
 #### **Enhanced Core Evaluators:**
 
 - **`llm_judge`**: Now supports `capabilities` parameter for detailed assessment

@@ -255,12 +255,14 @@ export class ConversationManager {
 
             return result;
 
-        } catch (error) {
-            console.error(`🗣️  [ConversationManager] Conversation failed: ${error instanceof Error ? error.message : String(error)}`);
-            throw error;
-        } finally {
-            // NEW: Always cleanup channel at end
-            await this.cleanupConversationChannel();
+        } catch (originalError) {
+            console.error(`🗣️  [ConversationManager] Conversation failed: ${originalError instanceof Error ? originalError.message : String(originalError)}`);
+            try {
+                await this.cleanupConversationChannel();
+            } catch (cleanupError) {
+                console.error('🗑️  [ConversationManager] Cleanup failed:', cleanupError);
+            }
+            throw originalError;
         }
     }
 
