@@ -31,13 +31,13 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: 'Manual release type'
+        description: 'Manual release type (only for prerelease testing)'
         required: true
         type: choice
         options:
           - alpha
           - beta
-          - latest
+          # Note: 'latest' removed - production releases MUST be done via GitHub releases
 
 jobs:
   release:
@@ -170,31 +170,21 @@ jobs:
             PRERELEASE_TYPE=$(get_prerelease_type "$CURRENT_VERSION")
             BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
             
-            if [[ "$PRERELEASE_TYPE" == "" ]]; then
-              # Currently on a stable release, start new alpha cycle
-              NEXT_VERSION=$(bump_version "$BASE_VERSION" "minor")
-              echo "Starting new development cycle: ${NEXT_VERSION}-alpha.0"
-              bunx lerna version "${NEXT_VERSION}-alpha.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
-            elif [[ "$PRERELEASE_TYPE" == "beta" ]]; then
-              # On beta, but pushing to develop? Start next minor alpha
-              NEXT_VERSION=$(bump_version "$BASE_VERSION" "minor")
-              echo "Moving from beta to next alpha cycle: ${NEXT_VERSION}-alpha.0"
-              bunx lerna version "${NEXT_VERSION}-alpha.0" \
+            if [[ "$PRERELEASE_TYPE" == "alpha" ]]; then
+              # Already on alpha, just increment the alpha counter
+              echo "Incrementing alpha version from ${CURRENT_VERSION}..."
+              bunx lerna version prerelease \
+                --preid alpha \
                 --force-publish \
                 --yes \
                 --no-private \
                 --no-git-tag-version \
                 --no-push
             else
-              # Already on alpha, just increment
-              echo "Incrementing alpha version..."
-              bunx lerna version prerelease \
-                --preid alpha \
+              # Not on alpha (could be stable, beta, etc)
+              # Keep the SAME base version, just add/reset alpha counter
+              echo "Setting version to ${BASE_VERSION}-alpha.0"
+              bunx lerna version "${BASE_VERSION}-alpha.0" \
                 --force-publish \
                 --yes \
                 --no-private \
@@ -207,45 +197,9 @@ jobs:
             PRERELEASE_TYPE=$(get_prerelease_type "$CURRENT_VERSION")
             BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
             
-            if [[ "$PRERELEASE_TYPE" == "alpha" ]]; then
-              # Transitioning from alpha to beta
-              echo "Transitioning from alpha (${CURRENT_VERSION}) to beta..."
-              
-              # Check if beta already exists for this version
-              EXISTING_BETA=$(git tag -l "v${BASE_VERSION}-beta.*" 2>/dev/null | sort -V | tail -n 1)
-              if [[ -n "$EXISTING_BETA" ]]; then
-                # Continue from existing beta
-                BETA_VERSION=${EXISTING_BETA#v}
-                echo "Found existing beta: ${BETA_VERSION}"
-                
-                # Set to existing beta then bump
-                bunx lerna version ${BETA_VERSION} \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-                
-                bunx lerna version prerelease \
-                  --preid beta \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              else
-                # Start new beta cycle
-                echo "Starting beta cycle: ${BASE_VERSION}-beta.0"
-                bunx lerna version "${BASE_VERSION}-beta.0" \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              fi
-            elif [[ "$PRERELEASE_TYPE" == "beta" ]]; then
-              # Already on beta, increment
-              echo "Incrementing beta version..."
+            if [[ "$PRERELEASE_TYPE" == "beta" ]]; then
+              # Already on beta, just increment the beta counter
+              echo "Incrementing beta version from ${CURRENT_VERSION}..."
               bunx lerna version prerelease \
                 --preid beta \
                 --force-publish \
@@ -254,8 +208,9 @@ jobs:
                 --no-git-tag-version \
                 --no-push
             else
-              # On stable version in main? Add beta prerelease to current version
-              echo "Adding beta prerelease to stable version: ${BASE_VERSION}-beta.0"
+              # Not on beta (could be stable, alpha, etc)
+              # Keep the SAME base version, just add/reset beta counter  
+              echo "Setting version to ${BASE_VERSION}-beta.0"
               bunx lerna version "${BASE_VERSION}-beta.0" \
                 --force-publish \
                 --yes \
@@ -265,29 +220,12 @@ jobs:
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
-            echo "📦 Manual production release..."
-            PRERELEASE_TYPE=$(get_prerelease_type "$CURRENT_VERSION")
-            
-            if [[ -n "$PRERELEASE_TYPE" ]]; then
-              # Graduate from prerelease to stable
-              BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
-              echo "Graduating from ${PRERELEASE_TYPE} to stable: ${BASE_VERSION}"
-              bunx lerna version ${BASE_VERSION} \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
-            else
-              # Already stable, do patch bump
-              echo "Patch release..."
-              bunx lerna version patch \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
-            fi
+            # Manual workflow dispatch for 'latest' should NOT be used for version bumps!
+            # Version bumps should ONLY come from GitHub releases with tags
+            echo "❌ ERROR: Manual 'latest' releases are not allowed!"
+            echo "Production version changes must be done through GitHub releases."
+            echo "Please create a GitHub release with the desired version tag instead."
+            exit 1
           fi
 
           # Get the new version
@@ -488,12 +426,6 @@ jobs:
         run: |
           echo "📤 Syncing production release back to develop branch..."
           
-          # Helper function for patch bump (more conservative for manual releases)
-          bump_patch_version() {
-            IFS='.' read -r major minor patch <<< "$1"
-            echo "${major}.${minor}.$((patch + 1))"
-          }
-          
           # Get the released version
           RELEASED_VERSION="${{ steps.version.outputs.version }}"
           BASE_VERSION=$(echo "$RELEASED_VERSION" | sed 's/-.*$//')
@@ -516,21 +448,20 @@ jobs:
           
           echo "Current develop version: ${DEVELOP_VERSION}"
           
-          # Determine next version for develop
+          # Extract base versions for comparison
           DEVELOP_BASE=$(echo "$DEVELOP_VERSION" | sed 's/-.*$//')
           
-          # If develop is behind or equal to release, bump it
-          if [[ "$DEVELOP_BASE" == "$BASE_VERSION" ]] || [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
-            # Use patch bump for next version (you control minor/major via manual releases)
-            NEXT_VERSION=$(bump_patch_version "$BASE_VERSION")
-            NEXT_ALPHA="${NEXT_VERSION}-alpha.0"
+          # Compare versions - develop should match or be ahead of production
+          if [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
+            # Develop is behind - update it to match production with alpha suffix
+            NEXT_ALPHA="${BASE_VERSION}-alpha.0"
             
-            echo "Develop needs update: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
+            echo "Develop is behind: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
             
             # Create a branch for the sync
             git checkout -b auto-sync-${BASE_VERSION} origin/develop
             
-            # Update version
+            # Update version to match production base with alpha suffix
             bunx lerna version ${NEXT_ALPHA} \
               --force-publish \
               --yes \
@@ -543,7 +474,7 @@ jobs:
             
             # Commit
             git add -A
-            git commit -m "chore: bump to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
+            git commit -m "chore: sync to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
               -m "Automated version sync from production release"
             
             # Push to develop
@@ -552,8 +483,68 @@ jobs:
             else
               echo "⚠️ Could not push to develop (may be protected or already updated)"
             fi
+          elif [[ "$DEVELOP_BASE" == "$BASE_VERSION" ]]; then
+            echo "✅ Develop base version (${DEVELOP_BASE}) matches release (${BASE_VERSION})"
+            # Develop is on same base version, which is correct
+            # It will continue with its alpha.X increments
           else
             echo "✅ Develop (${DEVELOP_VERSION}) is already ahead of release (${RELEASED_VERSION})"
+            # Develop is ahead - this is fine, means a new version is being worked on
+          fi
+          
+          # Also sync main branch to match production release
+          echo "🔄 Syncing main branch to production release..."
+          
+          # Fetch latest main
+          git fetch origin main:refs/remotes/origin/main || {
+            echo "⚠️ Could not fetch main branch, skipping main sync"
+            exit 0
+          }
+          
+          # Get current main version
+          git checkout origin/main -- lerna.json 2>/dev/null || true
+          MAIN_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "unknown")
+          
+          # Restore our lerna.json
+          git checkout HEAD -- lerna.json
+          
+          echo "Current main version: ${MAIN_VERSION}"
+          
+          MAIN_BASE=$(echo "$MAIN_VERSION" | sed 's/-.*$//')
+          
+          # Main should be updated to match production with beta suffix
+          if [[ "$MAIN_BASE" != "$BASE_VERSION" ]]; then
+            NEXT_BETA="${BASE_VERSION}-beta.0"
+            
+            echo "Updating main: ${MAIN_VERSION} → ${NEXT_BETA}"
+            
+            # Create a branch for the sync
+            git checkout -b auto-sync-main-${BASE_VERSION} origin/main
+            
+            # Update version
+            bunx lerna version ${NEXT_BETA} \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
+            
+            # Update lockfile
+            bun install --no-frozen-lockfile
+            
+            # Commit
+            git add -A
+            git commit -m "chore: sync to v${NEXT_BETA} after v${BASE_VERSION} release [skip ci]" \
+              -m "Automated version sync from production release"
+            
+            # Push to main
+            if git push origin HEAD:main; then
+              echo "✅ Successfully synced main to ${NEXT_BETA}"
+            else
+              echo "⚠️ Could not push to main (may be protected or already updated)"
+            fi
+          else
+            echo "✅ Main base version (${MAIN_BASE}) already matches release (${BASE_VERSION})"
           fi
 
       # Handle failure - create issue if the workflow failed
