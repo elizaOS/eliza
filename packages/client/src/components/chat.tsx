@@ -861,6 +861,25 @@ export default function Chat({
       clearMessages();
     },
     onInputDisabledChange: (disabled: boolean) => updateChatState({ inputDisabled: disabled }),
+    onChannelCreated: (channelId: UUID, agentId?: UUID) => {
+      clientLogger.info('[Chat] Channel created event received:', { channelId, agentId });
+      
+      // Only handle if this is for the current agent (for DM channels)
+      if (chatType === ChannelType.DM && agentId === contextId) {
+        setTimeout(() => {  
+          // Invalidate the DM channels query to refresh the channel list
+          queryClient.invalidateQueries({ 
+            queryKey: ['dmChannels', agentId, currentClientEntityId] 
+          });
+
+          // Switch to the newly created channel
+          updateChatState({ currentDmChannelId: channelId });
+
+          clientLogger.info('[Chat] Switched to newly created channel:', channelId);
+        }, 3000)
+        
+      }
+    },
   });
 
   const {

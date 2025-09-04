@@ -59,6 +59,16 @@ export type ChannelDeletedData = {
   [key: string]: any;
 };
 
+// Define type for channel created events
+export type ChannelCreatedData = {
+  channelId: string;
+  agentId?: string; // For DM channels, this is the agent ID
+  channelName?: string;
+  channelType?: string;
+  createdBy?: string;
+  [key: string]: any;
+};
+
 // Define type for log stream messages
 export type LogStreamData = {
   level: number;
@@ -83,6 +93,7 @@ class EventAdapter {
     this.events.messageDeleted = Evt.create<MessageDeletedData>();
     this.events.channelCleared = Evt.create<ChannelClearedData>();
     this.events.channelDeleted = Evt.create<ChannelDeletedData>();
+    this.events.channelCreated = Evt.create<ChannelCreatedData>();
     this.events.logStream = Evt.create<LogStreamData>();
   }
 
@@ -173,6 +184,10 @@ export class SocketIOManager extends EventAdapter {
 
   public get evtChannelDeleted() {
     return this._getEvt('channelDeleted') as Evt<ChannelDeletedData>;
+  }
+
+  public get evtChannelCreated() {
+    return this._getEvt('channelCreated') as Evt<ChannelCreatedData>;
   }
 
   public get evtLogStream() {
@@ -406,6 +421,17 @@ export class SocketIOManager extends EventAdapter {
           Array.from(this.activeChannelIds)
         );
       }
+    });
+
+    // Listen for channel created events
+    this.socket.on('channelCreated', (data) => {
+      clientLogger.info(`[SocketIO] Channel created event received:`, data);
+
+      // Emit the channel created event
+      this.emit('channelCreated', {
+        ...data,
+        channelId: data.channelId,
+      });
     });
 
     this.socket.on('disconnect', (reason) => {

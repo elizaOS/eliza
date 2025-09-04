@@ -39,6 +39,7 @@ export class MessageBusService extends Service {
   private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
+  private boundHandleChannelCreated: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
 
   constructor(runtime: IAgentRuntime) {
@@ -54,6 +55,7 @@ export class MessageBusService extends Service {
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
     this.boundHandleMessageDeleted = this.handleMessageDeleted.bind(this);
     this.boundHandleChannelCleared = this.handleChannelCleared.bind(this);
+    this.boundHandleChannelCreated = this.handleChannelCreated.bind(this);
     // Don't connect here - let start() handle it
   }
 
@@ -70,12 +72,13 @@ export class MessageBusService extends Service {
 
   private async connectToMessageBus() {
     logger.info(
-      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message', 'message_deleted', and 'channel_cleared' events.`
+      `[${this.runtime.character.name}] MessageBusService: Subscribing to internal message bus for 'new_message', 'message_deleted', 'channel_cleared', and 'channel_created' events.`
     );
     internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.on('server_agent_update', this.boundHandleServerAgentUpdate);
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.on('channel_cleared', this.boundHandleChannelCleared);
+    internalMessageBus.on('channel_created', this.boundHandleChannelCreated);
 
     // Initialize by fetching servers this agent belongs to
     await this.fetchAgentServers();
@@ -622,6 +625,28 @@ export class MessageBusService extends Service {
     }
   }
 
+  private async handleChannelCreated(data: any) {
+    try {
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Received channel_created event for channel ${data.channelId}`
+      );
+      
+      // For now, just log the event. Future enhancements could include:
+      // - Notifying the agent about new channels it has access to
+      // - Updating internal channel tracking
+      // - Triggering agent-specific channel initialization logic
+      
+      logger.info(
+        `[${this.runtime.character.name}] MessageBusService: Successfully processed channel created event for ${data.channelId}`
+      );
+    } catch (error) {
+      logger.error(
+        `[${this.runtime.character.name}] MessageBusService: Error handling channel created:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
   private async sendAgentResponseToBus(
     agentRoomId: UUID,
     agentWorldId: UUID,
@@ -978,6 +1003,7 @@ export class MessageBusService extends Service {
     internalMessageBus.off('server_agent_update', this.boundHandleServerAgentUpdate);
     internalMessageBus.off('message_deleted', this.boundHandleMessageDeleted);
     internalMessageBus.off('channel_cleared', this.boundHandleChannelCleared);
+    internalMessageBus.off('channel_created', this.boundHandleChannelCreated);
   }
 }
 

@@ -7,6 +7,7 @@ import type {
   MessageDeletedData,
   ChannelClearedData,
   ChannelDeletedData,
+  ChannelCreatedData,
 } from '@/lib/socketio-manager';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
@@ -25,6 +26,7 @@ interface UseSocketChatProps {
   onDeleteMessage: (messageId: string) => void;
   onClearMessages: () => void;
   onInputDisabledChange: (disabled: boolean) => void;
+  onChannelCreated?: (channelId: UUID, agentId?: UUID) => void;
 }
 
 export function useSocketChat({
@@ -39,6 +41,7 @@ export function useSocketChat({
   onDeleteMessage,
   onClearMessages,
   onInputDisabledChange,
+  onChannelCreated,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
   const animatedMessageIdRef = useRef<string | null>(null);
@@ -210,6 +213,18 @@ export function useSocketChat({
       }
     };
 
+    const handleChannelCreated = (data: ChannelCreatedData) => {
+      // For DM channels, check if this is for the current agent
+      if (chatType === ChannelType.DM && data.agentId === contextId && onChannelCreated) {
+        clientLogger.info('[useSocketChat] Channel created for current agent:', data);
+        onChannelCreated(data.channelId as UUID, data.agentId as UUID);
+      } else if (chatType === ChannelType.GROUP && onChannelCreated) {
+        // For group channels, we might want to handle differently
+        clientLogger.info('[useSocketChat] Group channel created:', data);
+        onChannelCreated(data.channelId as UUID, data.agentId as UUID);
+      }
+    };
+
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
       (d: MessageBroadcastData) => (d.channelId || d.roomId) === channelId,
       handleMessageBroadcasting
@@ -234,6 +249,10 @@ export function useSocketChat({
       (d: ChannelDeletedData) => (d.channelId || d.roomId) === channelId,
       handleChannelDeleted
     );
+    const createdSub = socketIOManager.evtChannelCreated.attach(
+      () => true, // Listen to all channel created events, we filter in the handler
+      handleChannelCreated
+    );
 
     return () => {
       if (channelId) {
@@ -249,7 +268,7 @@ export function useSocketChat({
           );
         }
       }
-      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub]);
+      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub, createdSub]);
     };
 
     function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {

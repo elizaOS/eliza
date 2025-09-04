@@ -490,6 +490,20 @@ export function createChannelsRouter(
         participantCentralUserIds as UUID[]
       );
 
+      // Emit channel created event to SocketIO clients
+      if (serverInstance.socketIO) {
+        const eventData = {
+          channelId: newChannel.id,
+          agentId: (channelData.metadata?.forAgent || channelData.metadata?.user2) as string, // For DM channels
+          channelName: newChannel.name,
+          channelType: newChannel.type,
+          createdBy: (channelData.metadata?.created_by || 'system') as string,
+        };
+        
+        serverInstance.socketIO.sockets.emit('channelCreated', eventData);
+        logger.info(`[Messages Router] Emitted channelCreated event to SocketIO clients:`, JSON.stringify(eventData));
+      }
+
       res.status(201).json({ success: true, data: newChannel });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
