@@ -182,14 +182,47 @@ jobs:
                 --no-push
             else
               # Not on alpha (could be stable, beta, etc)
-              # Keep the SAME base version, just add/reset alpha counter
-              echo "Setting version to ${BASE_VERSION}-alpha.0"
-              bunx lerna version "${BASE_VERSION}-alpha.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              # Check if there are existing alpha tags for this base version
+              echo "Checking for existing alpha tags for base version ${BASE_VERSION}..."
+              
+              # Fetch all tags to ensure we have the complete history
+              git fetch --tags
+              
+              # Find the highest existing alpha version for this base
+              EXISTING_ALPHAS=$(git tag -l "v${BASE_VERSION}-alpha.*" 2>/dev/null | sort -V | tail -n 1)
+              
+              if [[ -n "$EXISTING_ALPHAS" ]]; then
+                # Found existing alpha tags, continue from there
+                LAST_ALPHA_VERSION=${EXISTING_ALPHAS#v}
+                echo "Found existing alpha version: ${LAST_ALPHA_VERSION}"
+                
+                # Set to the last version, then increment
+                bunx lerna version ${LAST_ALPHA_VERSION} \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+                
+                # Now increment to get the next alpha
+                echo "Incrementing from ${LAST_ALPHA_VERSION}..."
+                bunx lerna version prerelease \
+                  --preid alpha \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              else
+                # No existing alpha tags, safe to start at .0
+                echo "No existing alpha tags found, starting at ${BASE_VERSION}-alpha.0"
+                bunx lerna version "${BASE_VERSION}-alpha.0" \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              fi
             fi
             
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
@@ -209,14 +242,47 @@ jobs:
                 --no-push
             else
               # Not on beta (could be stable, alpha, etc)
-              # Keep the SAME base version, just add/reset beta counter  
-              echo "Setting version to ${BASE_VERSION}-beta.0"
-              bunx lerna version "${BASE_VERSION}-beta.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              # Check if there are existing beta tags for this base version
+              echo "Checking for existing beta tags for base version ${BASE_VERSION}..."
+              
+              # Fetch all tags to ensure we have the complete history
+              git fetch --tags
+              
+              # Find the highest existing beta version for this base
+              EXISTING_BETAS=$(git tag -l "v${BASE_VERSION}-beta.*" 2>/dev/null | sort -V | tail -n 1)
+              
+              if [[ -n "$EXISTING_BETAS" ]]; then
+                # Found existing beta tags, continue from there
+                LAST_BETA_VERSION=${EXISTING_BETAS#v}
+                echo "Found existing beta version: ${LAST_BETA_VERSION}"
+                
+                # Set to the last version, then increment
+                bunx lerna version ${LAST_BETA_VERSION} \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+                
+                # Now increment to get the next beta
+                echo "Incrementing from ${LAST_BETA_VERSION}..."
+                bunx lerna version prerelease \
+                  --preid beta \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              else
+                # No existing beta tags, safe to start at .0
+                echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
+                bunx lerna version "${BASE_VERSION}-beta.0" \
+                  --force-publish \
+                  --yes \
+                  --no-private \
+                  --no-git-tag-version \
+                  --no-push
+              fi
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
