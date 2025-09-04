@@ -77,10 +77,10 @@ describe('ElizaOS Plugin Commands', () => {
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
     const result = bunExecSync(
-      `elizaos plugins`, 
-      getPlatformOptions({ 
-        encoding: 'utf8', 
-        timeout: TEST_TIMEOUTS.QUICK_COMMAND 
+      `elizaos plugins`,
+      getPlatformOptions({
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
       })
     );
     expect(result).toContain('Manage ElizaOS plugins');
@@ -93,10 +93,10 @@ describe('ElizaOS Plugin Commands', () => {
 
   it('plugins --help shows usage information', () => {
     const result = bunExecSync(
-      `elizaos plugins --help`, 
-      getPlatformOptions({ 
-        encoding: 'utf8', 
-        timeout: TEST_TIMEOUTS.QUICK_COMMAND 
+      `elizaos plugins --help`,
+      getPlatformOptions({
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
       })
     );
     expect(result).toContain('Manage ElizaOS plugins');
@@ -104,10 +104,10 @@ describe('ElizaOS Plugin Commands', () => {
 
   it('plugins list shows available plugins', () => {
     const result = bunExecSync(
-      `elizaos plugins list`, 
-      getPlatformOptions({ 
-        encoding: 'utf8', 
-        timeout: TEST_TIMEOUTS.NETWORK_OPERATION 
+      `elizaos plugins list`,
+      getPlatformOptions({
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
       })
     );
     expect(result).toContain('Available v1.x plugins');
@@ -121,9 +121,9 @@ describe('ElizaOS Plugin Commands', () => {
     for (const alias of aliases) {
       const result = bunExecSync(
         `elizaos plugins ${alias}`,
-        getPlatformOptions({ 
-          encoding: 'utf8', 
-          timeout: TEST_TIMEOUTS.NETWORK_OPERATION 
+        getPlatformOptions({
+          encoding: 'utf8',
+          timeout: TEST_TIMEOUTS.NETWORK_OPERATION,
         })
       );
       expect(result).toContain('Available v1.x plugins');
@@ -145,15 +145,17 @@ describe('ElizaOS Plugin Commands', () => {
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-openai');
       } catch (error: any) {
-        console.warn('[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -174,15 +176,17 @@ describe('ElizaOS Plugin Commands', () => {
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@elizaos/plugin-mcp');
       } catch (error: any) {
-        console.warn('[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -203,15 +207,17 @@ describe('ElizaOS Plugin Commands', () => {
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('@fleek-platform/eliza-plugin-mcp');
       } catch (error: any) {
-        console.warn('[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] Plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -249,15 +255,17 @@ describe('ElizaOS Plugin Commands', () => {
         const packageJson2 = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson2).toContain('plugin-openrouter');
       } catch (error: any) {
-        console.warn('[WARN] GitHub plugin installation failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] GitHub plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -299,15 +307,17 @@ describe('ElizaOS Plugin Commands', () => {
         packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).not.toContain('@elizaos/plugin-elevenlabs');
       } catch (error: any) {
-        console.warn('[WARN] Plugin remove failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] Plugin remove failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -349,15 +359,17 @@ describe('ElizaOS Plugin Commands', () => {
           });
         }
       } catch (error: any) {
-        console.warn('[WARN] Plugin remove aliases failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] Plugin remove aliases failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }
@@ -401,15 +413,17 @@ describe('ElizaOS Plugin Commands', () => {
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
         expect(packageJson).toContain('github:elizaos-plugins/plugin-farcaster#1.x');
       } catch (error: any) {
-        console.warn('[WARN] GitHub shorthand plugin installation failed - likely due to missing @elizaos/client dependency in NPM');
+        console.warn(
+          '[WARN] GitHub shorthand plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
+        );
         console.warn('[WARN] Error:', error.message);
-        
+
         // Skip test if it's a dependency issue (404 errors for @elizaos/client)
         if (error.message?.includes('@elizaos/client') || error.message?.includes('404')) {
           console.warn('[WARN] Skipping test due to missing dependencies in NPM registry');
           return; // Skip test gracefully
         }
-        
+
         // Re-throw other errors
         throw error;
       }

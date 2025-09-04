@@ -40,7 +40,7 @@ describe('port-handling', () => {
       // Port should be free on 0.0.0.0 but occupied on 127.0.0.1
       const resultOnDifferentHost = await isPortFree(9878, '0.0.0.0');
       const resultOnSameHost = await isPortFree(9878, '127.0.0.1');
-      
+
       // Note: This behavior may vary by OS
       // On some systems, binding to 127.0.0.1 may not block 0.0.0.0
       expect(resultOnSameHost).toBe(false);
@@ -78,7 +78,7 @@ describe('port-handling', () => {
     test('should skip multiple occupied ports', async () => {
       // Create multiple servers to occupy consecutive ports
       const servers: net.Server[] = [];
-      
+
       for (let p = 9883; p <= 9885; p++) {
         const server = net.createServer();
         await new Promise<void>((resolve) => {
@@ -106,7 +106,7 @@ describe('port-handling', () => {
       // Should find port as available on different host
       const portOnDifferentHost = await findNextAvailablePort(9887, '0.0.0.0');
       const portOnSameHost = await findNextAvailablePort(9887, '127.0.0.1');
-      
+
       // On same host, should find next port
       expect(portOnSameHost).toBe(9888);
     });

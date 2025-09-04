@@ -42,9 +42,9 @@ describe('ElizaOS Agent Commands', () => {
 
     // Verify elizaos command is available
     try {
-      const result = bunExecSync('elizaos --version', { 
-        encoding: 'utf8', 
-        timeout: TEST_TIMEOUTS.QUICK_COMMAND 
+      const result = bunExecSync('elizaos --version', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
       });
       console.log(`[DEBUG] elizaos version: ${result.trim()}`);
     } catch (error) {
