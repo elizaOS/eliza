@@ -517,7 +517,7 @@ jobs:
           # Extract base versions for comparison
           DEVELOP_BASE=$(echo "$DEVELOP_VERSION" | sed 's/-.*$//')
           
-          # Compare versions - develop should match or be ahead of production
+          # Compare versions and auto-advance if needed
           if [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
             # Develop is behind - update it to match production with alpha suffix
             NEXT_ALPHA="${BASE_VERSION}-alpha.0"
@@ -550,12 +550,45 @@ jobs:
               echo "⚠️ Could not push to develop (may be protected or already updated)"
             fi
           elif [[ "$DEVELOP_BASE" == "$BASE_VERSION" ]]; then
-            echo "✅ Develop base version (${DEVELOP_BASE}) matches release (${BASE_VERSION})"
-            # Develop is on same base version, which is correct
-            # It will continue with its alpha.X increments
+            # Develop is on same base as release - auto-advance to next patch
+            echo "Develop matches release base, auto-advancing to next patch version..."
+            
+            # Calculate next patch version
+            IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+            NEXT_PATCH="${major}.${minor}.$((patch + 1))"
+            NEXT_ALPHA="${NEXT_PATCH}-alpha.0"
+            
+            echo "Auto-advancing: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
+            
+            # Create a branch for the sync
+            git checkout -b auto-sync-${BASE_VERSION} origin/develop
+            
+            # Update version to next patch with alpha suffix
+            bunx lerna version ${NEXT_ALPHA} \
+              --force-publish \
+              --yes \
+              --no-private \
+              --no-git-tag-version \
+              --no-push
+            
+            # Update lockfile
+            bun install --no-frozen-lockfile
+            
+            # Commit
+            git add -A
+            git commit -m "chore: bump to v${NEXT_ALPHA} after v${BASE_VERSION} release [skip ci]" \
+              -m "Automated patch version bump from production release"
+            
+            # Push to develop
+            if git push origin HEAD:develop; then
+              echo "✅ Successfully auto-advanced develop to ${NEXT_ALPHA}"
+            else
+              echo "⚠️ Could not push to develop (may be protected or already updated)"
+            fi
           else
             echo "✅ Develop (${DEVELOP_VERSION}) is already ahead of release (${RELEASED_VERSION})"
             # Develop is ahead - this is fine, means a new version is being worked on
+            # Don't touch it - developer has manually set the next version
           fi
           
           # Also sync main branch to match production release
@@ -578,11 +611,28 @@ jobs:
           
           MAIN_BASE=$(echo "$MAIN_VERSION" | sed 's/-.*$//')
           
-          # Main should be updated to match production with beta suffix
-          if [[ "$MAIN_BASE" != "$BASE_VERSION" ]]; then
-            NEXT_BETA="${BASE_VERSION}-beta.0"
+          # Main should follow develop's base version
+          # First, get the new develop version that was just set
+          git fetch origin develop:refs/remotes/origin/develop || {
+            echo "⚠️ Could not fetch updated develop branch"
+            NEW_DEVELOP_BASE="$BASE_VERSION"
+          }
+          
+          if [[ -z "${NEW_DEVELOP_BASE}" ]]; then
+            git checkout origin/develop -- lerna.json 2>/dev/null || true
+            NEW_DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "${BASE_VERSION}-alpha.0")
+            NEW_DEVELOP_BASE=$(echo "$NEW_DEVELOP_VERSION" | sed 's/-.*$//')
+            git checkout HEAD -- lerna.json
+          fi
+          
+          echo "New develop base: ${NEW_DEVELOP_BASE}"
+          echo "Current main base: ${MAIN_BASE}"
+          
+          # Main should match develop's base version
+          if [[ "$MAIN_BASE" != "$NEW_DEVELOP_BASE" ]]; then
+            NEXT_BETA="${NEW_DEVELOP_BASE}-beta.0"
             
-            echo "Updating main: ${MAIN_VERSION} → ${NEXT_BETA}"
+            echo "Updating main to match develop base: ${MAIN_VERSION} → ${NEXT_BETA}"
             
             # Create a branch for the sync
             git checkout -b auto-sync-main-${BASE_VERSION} origin/main
@@ -601,7 +651,7 @@ jobs:
             # Commit
             git add -A
             git commit -m "chore: sync to v${NEXT_BETA} after v${BASE_VERSION} release [skip ci]" \
-              -m "Automated version sync from production release"
+              -m "Automated version sync from production release (following develop)"
             
             # Push to main
             if git push origin HEAD:main; then
@@ -610,7 +660,7 @@ jobs:
               echo "⚠️ Could not push to main (may be protected or already updated)"
             fi
           else
-            echo "✅ Main base version (${MAIN_BASE}) already matches release (${BASE_VERSION})"
+            echo "✅ Main base version (${MAIN_BASE}) already matches develop base (${NEW_DEVELOP_BASE})"
           fi
 
       # Handle failure - create issue if the workflow failed
