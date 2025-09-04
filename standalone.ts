@@ -1,41 +1,15 @@
 /**
- * ElizaOS Standalone Agent Runner
+ * ElizaOS Interactive Chat Interface
  *
- * This file demonstrates how to create and run a minimal ElizaOS agent outside of the
- * full CLI/server infrastructure. It's useful for:
- *
- * - Learning the core ElizaOS agent lifecycle and architecture
- * - Testing agent behaviors in isolation
- * - Integrating ElizaOS agents into custom applications
- * - Development and debugging without HTTP server overhead
- *
- * Quick Start:
- *   bun run standalone.ts
- *
- * Key Differences from Full Setup:
- * - No HTTP API server or web GUI
- * - No multi-agent orchestration
- * - Minimal plugin set (SQL, Bootstrap, OpenAI)
- * - Direct message processing via events
- * - Single conversation simulation
- *
- * Prerequisites:
- * - OPENAI_API_KEY environment variable
- * - Optional: POSTGRES_URL (defaults to in-memory PGLite)
- * - Optional: PGLITE_PATH (defaults to memory://)
+ * An interactive command-line chat interface using ElizaOS agents.
+ * Similar to AI SDK's streamText but using ElizaOS runtime and plugins.
  *
  * Usage:
  *   OPENAI_API_KEY=your_key bun run standalone.ts
- *   # or with Postgres:
- *   OPENAI_API_KEY=your_key POSTGRES_URL=postgresql://... bun run standalone.ts
- *
- * Architecture Flow:
- * 1. Initialize database adapter and run migrations
- * 2. Create AgentRuntime with core plugins
- * 3. Set up world/room/user mappings for conversation context
- * 4. Simulate a user message and process agent response
- * 5. Clean shutdown
  */
+
+// MUST be set before any imports to suppress ElizaOS logs
+process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
 
 import {
   AgentRuntime,
@@ -51,113 +25,199 @@ import {
 import bootstrapPlugin from '@elizaos/plugin-bootstrap';
 import openaiPlugin from '@elizaos/plugin-openai';
 import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
+import * as clack from '@clack/prompts';
 import 'node:crypto';
 import fs from 'node:fs';
 import { v4 as uuidv4 } from 'uuid';
 
-async function main(): Promise<void> {
-  // Basic env checks
-  const openaiKey = process.env.OPENAI_API_KEY || '';
-  if (!openaiKey) {
-    console.error(
-      'OPENAI_API_KEY is not set; set it in your environment to use @elizaos/plugin-openai.'
+/**
+ * Wrap text to specified width while preserving word boundaries
+ */
+function wrapText(text: string, maxWidth: number): string {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    if (currentLine.length === 0) {
+      currentLine = word;
+    } else if (currentLine.length + word.length + 1 <= maxWidth) {
+      currentLine += ' ' + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return lines.join('\n');
+}
+
+async function initializeAgent(): Promise<{
+  runtime: AgentRuntime;
+  userId: UUID;
+  roomId: UUID;
+  character: Character;
+}> {
+  const task = clack.spinner();
+
+  try {
+    task.start('Initializing ElizaOS...');
+
+    // Basic env checks
+    const openaiKey = process.env.OPENAI_API_KEY || '';
+    if (!openaiKey) {
+      task.stop('❌ OPENAI_API_KEY is not set');
+      process.exit(1);
+    }
+
+    // Database setup
+    task.message('Setting up database...');
+    const postgresUrl = process.env.POSTGRES_URL || '';
+    const pgliteDir = process.env.PGLITE_PATH || 'memory://';
+
+    if (!postgresUrl) {
+      fs.mkdirSync(pgliteDir, { recursive: true });
+    }
+
+    // Character definition
+    const character: Character = {
+      name: 'Eliza',
+      username: 'eliza',
+      bio: 'A helpful AI assistant powered by ElizaOS.',
+      adjectives: ['helpful', 'friendly', 'knowledgeable'],
+    };
+
+    // Initialize database
+    task.message('Initializing database...');
+    const agentId = stringToUuid(character.name);
+    const adapter = createDatabaseAdapter(
+      { dataDir: pgliteDir, postgresUrl: postgresUrl || undefined },
+      agentId
     );
-    process.exit(1);
-  }
+    await adapter.init();
 
-  // Database selection: prefer POSTGRES_URL if set, else PGLite at ./.eliza/.elizadb
-  const postgresUrl = process.env.POSTGRES_URL || '';
-  const pgliteDir = process.env.PGLITE_PATH || 'memory://';
+    task.message('Running migrations...');
+    const migrator = new DatabaseMigrationService();
+    // @ts-ignore getDatabase is available on the adapter base class
+    await migrator.initializeWithDatabase(adapter.getDatabase());
+    migrator.discoverAndRegisterPluginSchemas([sqlPlugin]);
+    await migrator.runAllPluginMigrations();
 
-  // Ensure local data directory exists for PGLite
-  if (!postgresUrl) {
-    fs.mkdirSync(pgliteDir, { recursive: true });
-  }
+    // Create runtime
+    task.message('Creating agent runtime...');
+    const runtime = new AgentRuntime({
+      character,
+      plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+      settings: {
+        OPENAI_API_KEY: openaiKey,
+        POSTGRES_URL: postgresUrl || undefined,
+        PGLITE_PATH: pgliteDir,
+        LOG_LEVEL: 'fatal',
+      },
+    });
 
-  // Character definition
-  const character: Character = {
-    name: 'StandaloneAgent',
-    username: 'standalone',
-    bio: 'An ElizaOS agent running without the HTTP server.',
-    adjectives: ['helpful', 'concise'],
-  };
+    runtime.registerDatabaseAdapter(adapter);
+    await runtime.initialize();
 
-  // Pre-create DB adapter and run migrations (server usually does this)
-  const agentId = stringToUuid(character.name);
-  const adapter = createDatabaseAdapter(
-    { dataDir: pgliteDir, postgresUrl: postgresUrl || undefined },
-    agentId
-  );
-  await adapter.init();
+    // Set up conversation context
+    task.message('Setting up conversation...');
+    const userId = uuidv4() as UUID;
+    const worldId = stringToUuid('chat-world');
+    const roomId = stringToUuid('chat-room');
 
-  const migrator = new DatabaseMigrationService();
-  // @ts-ignore getDatabase is available on the adapter base class
-  await migrator.initializeWithDatabase(adapter.getDatabase());
-  migrator.discoverAndRegisterPluginSchemas([sqlPlugin]);
-  await migrator.runAllPluginMigrations();
-
-  // Build the runtime with required plugins and settings
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
-    settings: {
-      OPENAI_API_KEY: openaiKey,
-      POSTGRES_URL: postgresUrl || undefined,
-      PGLITE_PATH: pgliteDir,
-    },
-  });
-
-  // Use the prepared adapter so the SQL plugin skips creating a second adapter
-  runtime.registerDatabaseAdapter(adapter);
-  await runtime.initialize();
-
-  // Ensure a basic DM world/room mapping exists for this conversation
-  const userId = uuidv4() as UUID;
-  const worldId = stringToUuid('standalone-world');
-  const roomId = stringToUuid('standalone-room');
-
-  await runtime.ensureConnection({
-    entityId: userId,
-    roomId,
-    worldId,
-    name: 'LocalUser',
-    source: 'cli',
-    channelId: 'standalone-channel',
-    serverId: 'standalone-server',
-    type: ChannelType.DM,
-  });
-
-  // Compose a test message from the user with proper metadata
-  const message: Memory = createMessageMemory({
-    id: uuidv4() as UUID,
-    entityId: userId,
-    roomId,
-    content: {
-      text: 'Hello! Who are you?',
+    await runtime.ensureConnection({
+      entityId: userId,
+      roomId,
+      worldId,
+      name: 'User',
       source: 'cli',
-      channelType: ChannelType.DM,
-    },
-  });
+      channelId: 'chat-channel',
+      serverId: 'chat-server',
+      type: ChannelType.DM,
+    });
 
-  console.log('User:', message.content.text);
+    task.stop('✅ ElizaOS initialized successfully');
+    return { runtime, userId, roomId, character };
+  } catch (error) {
+    task.stop(`❌ Initialization failed: ${error}`);
+    throw error;
+  }
+}
 
-  // Send the message through the bootstrap message handler and print the response(s)
-  await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-    runtime,
-    message,
-    callback: async (content: Content) => {
-      if (content?.text) {
-        console.log(`${character.name}:`, content.text);
-      } else if (content?.thought) {
-        console.log(`${character.name} (thought):`, content.thought);
-      }
-    },
-  });
+async function main(): Promise<void> {
+  const { runtime, userId, roomId, character } = await initializeAgent();
+
+  clack.intro('🤖 ElizaOS Interactive Chat');
+  clack.note(
+    `Ready to chat with ${character.name}!`,
+    'Type your messages below. Use Ctrl+C or type "quit"/"exit" to end.'
+  );
+
+  while (true) {
+    const userInput = await clack.text({
+      message: 'You:',
+      placeholder: 'Type your message here...',
+    });
+
+    if (clack.isCancel(userInput) || userInput === 'quit' || userInput === 'exit') {
+      clack.outro('Thanks for chatting! 👋');
+      break;
+    }
+
+    // Create message memory
+    const message: Memory = createMessageMemory({
+      id: uuidv4() as UUID,
+      entityId: userId,
+      roomId,
+      content: {
+        text: userInput,
+        source: 'cli',
+        channelType: ChannelType.DM,
+      },
+    });
+
+    // Show thinking spinner and track time
+    const spinner = clack.spinner();
+    const startTime = Date.now();
+    spinner.start(`${character.name} is thinking...`);
+
+    // Process message and collect response
+    let response = '';
+
+    try {
+      await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        runtime,
+        message,
+        callback: async (content: Content) => {
+          if (content?.text) {
+            response += content.text;
+          }
+        },
+      });
+    } finally {
+      // Calculate thinking time and stop spinner
+      const endTime = Date.now();
+      const thinkingTimeMs = endTime - startTime;
+      const thinkingTimeSec = (thinkingTimeMs / 1000).toFixed(1);
+
+      spinner.stop(`Thought for ${thinkingTimeSec} seconds`);
+    }
+
+    if (response) {
+      // Wrap long text for better readability
+      const wrappedResponse = wrapText(response, 80);
+      clack.note(wrappedResponse, `${character.name}:`);
+    }
+  }
 
   await runtime.stop();
 }
 
 main().catch((err) => {
-  console.error('Fatal error in standalone runtime:', err);
+  console.error('Fatal error:', err);
   process.exit(1);
 });
