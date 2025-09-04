@@ -11,10 +11,10 @@ env:
 
 on:
   workflow_run:
-    workflows: ["NPM Alpha Release"]
+    workflows: ['NPM Alpha Release']
     types:
       - completed
-  workflow_dispatch:  # Allow manual trigger for testing
+  workflow_dispatch: # Allow manual trigger for testing
 
 jobs:
   test:
@@ -67,23 +67,23 @@ jobs:
         run: |
           set -e
           echo "=== Running Basic CLI Smoke Tests ==="
-          
+
           # Test 1: Version command
           echo "Test 1: Testing elizaos -v"
           elizaos -v
           echo "✓ Version command works"
           echo ""
-          
+
           # Test 2: Create new agent
           echo "Test 2: Creating new agent"
           elizaos create test-new-agent -y
           echo "✓ Agent created successfully"
           echo ""
-          
+
           # Test 3: Start agent (timeout after 30s to ensure it starts properly)
           echo "Test 3: Starting agent"
           cd test-new-agent
-          
+
           # Create a cross-platform timeout wrapper
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows: Use PowerShell with timeout
@@ -113,7 +113,7 @@ jobs:
             timeout 30s elizaos start 2>&1 | tee start.log || true
             START_LOG="start.log"
           fi
-          
+
           # Check for success messages from AgentServer
           if grep -i "startup successful" "$START_LOG" || grep -i "listening on port" "$START_LOG" || grep -i "agentserver is listening" "$START_LOG" || grep -i "starting server" "$START_LOG"; then
             echo "✓ Agent started successfully"
@@ -124,17 +124,17 @@ jobs:
           fi
           cd ..
           echo ""
-          
+
           # Test 4: Create plugin
           echo "Test 4: Creating plugin"
           elizaos create -t plugin test-plugin
           echo "✓ Plugin created successfully"
           echo ""
-          
+
           # Test 5: Run plugin dev (timeout after 30s to ensure it starts)
           echo "Test 5: Starting plugin dev mode"
           cd plugin-test-plugin
-          
+
           # Create a cross-platform timeout wrapper
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
             # Windows: Use PowerShell with timeout
@@ -164,7 +164,7 @@ jobs:
             timeout 30s elizaos dev 2>&1 | tee dev.log || true
             DEV_LOG="dev.log"
           fi
-          
+
           # Check for success messages from dev server
           if grep -i "starting server" "$DEV_LOG" || grep -i "watching" "$DEV_LOG" || grep -i "startup successful" "$DEV_LOG" || grep -i "ready" "$DEV_LOG" || grep -i "development" "$DEV_LOG"; then
             echo "✓ Plugin dev mode started successfully"
@@ -175,5 +175,5 @@ jobs:
           fi
           cd ..
           echo ""
-          
+
           echo "=== All tests passed! ==="
