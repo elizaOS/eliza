@@ -524,8 +524,8 @@ jobs:
             
             echo "Develop is behind: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
             
-            # Create a branch for the sync
-            git checkout -b auto-sync-${BASE_VERSION} origin/develop
+            # Create a branch for the sync (using release/ prefix for lerna)
+            git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
             
             # Update version to match production base with alpha suffix
             bunx lerna version ${NEXT_ALPHA} \
@@ -533,7 +533,8 @@ jobs:
               --yes \
               --no-private \
               --no-git-tag-version \
-              --no-push
+              --no-push \
+              --allow-branch release/*
             
             # Update lockfile
             bun install --no-frozen-lockfile
@@ -560,8 +561,8 @@ jobs:
             
             echo "Auto-advancing: ${DEVELOP_VERSION} → ${NEXT_ALPHA}"
             
-            # Create a branch for the sync
-            git checkout -b auto-sync-${BASE_VERSION} origin/develop
+            # Create a branch for the sync (using release/ prefix for lerna)
+            git checkout -b release/sync-develop-${BASE_VERSION} origin/develop
             
             # Update version to next patch with alpha suffix
             bunx lerna version ${NEXT_ALPHA} \
@@ -569,7 +570,8 @@ jobs:
               --yes \
               --no-private \
               --no-git-tag-version \
-              --no-push
+              --no-push \
+              --allow-branch release/*
             
             # Update lockfile
             bun install --no-frozen-lockfile
@@ -634,8 +636,8 @@ jobs:
             
             echo "Updating main to match develop base: ${MAIN_VERSION} → ${NEXT_BETA}"
             
-            # Create a branch for the sync
-            git checkout -b auto-sync-main-${BASE_VERSION} origin/main
+            # Create a branch for the sync (using release/ prefix for lerna)
+            git checkout -b release/sync-main-${BASE_VERSION} origin/main
             
             # Update version
             bunx lerna version ${NEXT_BETA} \
@@ -643,7 +645,8 @@ jobs:
               --yes \
               --no-private \
               --no-git-tag-version \
-              --no-push
+              --no-push \
+              --allow-branch release/*
             
             # Update lockfile
             bun install --no-frozen-lockfile
