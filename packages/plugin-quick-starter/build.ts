@@ -22,38 +22,55 @@ async function build() {
     // Clean previous build
     await cleanBuild('dist');
 
-    // Build with Bun
-    console.log('Bundling with Bun...');
-    const result = await Bun.build({
-      entrypoints: ['./src/index.ts'],
-      outdir: './dist',
-      target: 'node',
-      format: 'esm',
-      sourcemap: true,
-      minify: false,
-      external: ['dotenv', 'fs', 'path', 'https', 'node:*', '@elizaos/core', '@elizaos/cli', 'zod'],
-      naming: {
-        entry: '[dir]/[name].[ext]',
-      },
-    });
+    // Run JavaScript build and TypeScript declarations in parallel
+    console.log('Starting parallel build tasks...');
+    
+    const [buildResult, tscResult] = await Promise.all([
+      // Task 1: Build with Bun
+      (async () => {
+        console.log('📦 Bundling with Bun...');
+        const result = await Bun.build({
+          entrypoints: ['./src/index.ts'],
+          outdir: './dist',
+          target: 'node',
+          format: 'esm',
+          sourcemap: true,
+          minify: false,
+          external: ['dotenv', 'fs', 'path', 'https', 'node:*', '@elizaos/core', '@elizaos/cli', 'zod'],
+          naming: {
+            entry: '[dir]/[name].[ext]',
+          },
+        });
 
-    if (!result.success) {
-      console.error('✗ Build failed:', result.logs);
+        if (!result.success) {
+          console.error('✗ Build failed:', result.logs);
+          return { success: false, outputs: [] };
+        }
+
+        const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
+        const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+        console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB`);
+        
+        return result;
+      })(),
+      
+      // Task 2: Generate TypeScript declarations
+      (async () => {
+        console.log('📝 Generating TypeScript declarations...');
+        try {
+          await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
+          console.log('✓ TypeScript declarations generated');
+          return { success: true };
+        } catch (error) {
+          console.warn('⚠ Failed to generate TypeScript declarations');
+          console.warn('  This is usually due to test files or type errors.');
+          return { success: false };
+        }
+      })()
+    ]);
+
+    if (!buildResult.success) {
       return false;
-    }
-
-    const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
-    const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-    console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB`);
-
-    // Generate TypeScript declarations
-    console.log('\nGenerating TypeScript declarations...');
-    try {
-      await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
-      console.log('✓ TypeScript declarations generated');
-    } catch (error) {
-      console.warn('⚠ Failed to generate TypeScript declarations');
-      console.warn('  This is usually due to test files or type errors.');
     }
 
     const elapsed = ((performance.now() - start) / 1000).toFixed(2);
