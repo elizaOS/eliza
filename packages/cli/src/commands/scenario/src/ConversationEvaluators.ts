@@ -201,8 +201,12 @@ export class UserSatisfactionEvaluator implements Evaluator {
             'frustrated', 'unhelpful', 'confused', 'angry', 'useless', 'waste of time'
         ];
 
-        const positiveCount = positive.filter(word => text.includes(word.toLowerCase())).length;
-        const negativeCount = negative.filter(word => text.includes(word.toLowerCase())).length;
+        const countOccurrences = (text: string, keyword: string): number => {
+            const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+            return (text.match(regex) || []).length;
+        };
+        const positiveCount = positive.reduce((sum: number, word: string) => sum + countOccurrences(text, word), 0);
+        const negativeCount = negative.reduce((sum: number, word: string) => sum + countOccurrences(text, word), 0);
 
         if (positiveCount === 0 && negativeCount === 0) return 0.5; // neutral
         return positiveCount / (positiveCount + negativeCount);
