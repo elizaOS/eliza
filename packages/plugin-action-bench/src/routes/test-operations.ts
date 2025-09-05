@@ -1,4 +1,4 @@
-import { IAgentRuntime, Route, UUID, ChannelType, SOCKET_MESSAGE_TYPE } from '@elizaos/core';
+import { IAgentRuntime, Route, UUID, ChannelType, SOCKET_MESSAGE_TYPE, createUniqueUuid } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { io } from 'socket.io-client';
 
@@ -182,7 +182,7 @@ async function sendSocketMessage(
 
           // Listen for messageBroadcast events (both user and agent messages)
           socket.on('messageBroadcast', (data) => {
-            const { senderId, senderName, text, channelId: messageChannelId } = data;
+            const { senderId, senderName, text, roomId: messageChannelId } = data;
             if (
               senderId === runtime.agentId &&
               messageChannelId === channelId
