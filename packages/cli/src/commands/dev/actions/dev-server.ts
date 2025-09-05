@@ -76,21 +76,27 @@ async function startClientDevServer(cwd: string): Promise<void> {
   // Use dev:client if available, otherwise try dev
   const devScript = hasDevClientScript ? 'dev:client' : hasDevScript ? 'dev' : null;
   
-  if (!devScript) {
-    console.warn('Client package does not have a dev:client or dev script, trying vite directly...');
-    // Try to run vite directly as fallback
-    clientDevServerProcess = Bun.spawn(['npx', 'vite', '--host', '0.0.0.0'], {
-      cwd: clientDir,
-      stdio: ['inherit', 'pipe', 'pipe'],
-      env: process.env,
-    });
-  } else {
-    // Start the Vite dev server using the script
-    clientDevServerProcess = Bun.spawn(['bun', 'run', devScript], {
-      cwd: clientDir,
-      stdio: ['inherit', 'pipe', 'pipe'],
-      env: process.env,
-    });
+  try {
+    if (!devScript) {
+      console.warn('Client package does not have a dev:client or dev script, trying vite directly...');
+      // Try to run vite via bunx as fallback
+      clientDevServerProcess = Bun.spawn(['bunx', 'vite', '--host', '0.0.0.0'], {
+        cwd: clientDir,
+        stdio: ['inherit', 'pipe', 'pipe'],
+        env: process.env,
+      });
+    } else {
+      // Start the Vite dev server using the script
+      clientDevServerProcess = Bun.spawn(['bun', 'run', devScript], {
+        cwd: clientDir,
+        stdio: ['inherit', 'pipe', 'pipe'],
+        env: process.env,
+      });
+    }
+  } catch (spawnError) {
+    console.error(`Failed to start client dev server: ${spawnError instanceof Error ? spawnError.message : String(spawnError)}`);
+    clientDevServerProcess = null;
+    return;
   }
 
   // Handle process output to capture the actual URL
@@ -186,23 +192,52 @@ async function stopClientDevServer(): Promise<void> {
  * Get the client dev server port (from Vite config or default)
  */
 async function getClientPort(cwd: string): Promise<number> {
-  // Try to read from vite config if it exists
   const possibleClientDirs = [
     path.join(cwd, 'packages', 'client'),
     path.join(path.dirname(cwd), 'client'),
     path.join(cwd, '..', 'client')
   ];
-  
+
+  // 1) Check dev:client or dev script for --port flag
   for (const clientDir of possibleClientDirs) {
-    const viteConfigPath = path.join(clientDir, 'vite.config.ts');
-    if (fs.existsSync(viteConfigPath)) {
-      // For now, return the default Vite port
-      // In a real implementation, we'd parse the config
-      return 5173;
+    const pkgPath = path.join(clientDir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const script = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
+        if (typeof script === 'string') {
+          const match = script.match(/--port\s+(\d{2,5})/);
+          if (match) {
+            const port = parseInt(match[1], 10);
+            if (!Number.isNaN(port)) return port;
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
   }
-  
-  // Default Vite port
+
+  // 2) Check vite.config.{ts,js} for server.port
+  for (const clientDir of possibleClientDirs) {
+    for (const cfg of ['vite.config.ts', 'vite.config.js']) {
+      const viteConfigPath = path.join(clientDir, cfg);
+      if (fs.existsSync(viteConfigPath)) {
+        try {
+          const content = fs.readFileSync(viteConfigPath, 'utf-8');
+          const match = content.match(/server:\s*\{[\s\S]*?port:\s*(\d{2,5})/);
+          if (match) {
+            const port = parseInt(match[1], 10);
+            if (!Number.isNaN(port)) return port;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  // 3) Fallback default
   return 5173;
 }
 

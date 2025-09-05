@@ -37,6 +37,12 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
   }
 };
 
+// Singleton watcher state
+let activeWatcher: chokidar.FSWatcher | null = null;
+let activeWatchRoot: string | null = null;
+let changeHandlerRef: ((event: string, filePath: string) => void) | null = null;
+let readyLogged = false;
+
 /**
  * Find TypeScript/JavaScript files in a directory
  */
@@ -99,20 +105,51 @@ export async function watchDirectory(
         path.join(srcDir, '**/*.jsx')
       );
     } else {
-      // Fallback to watching specific patterns in the root directory
+      // Fallback: watch recursively from project root for nested files
       watchPaths.push(
-        path.join(absoluteDir, '*.ts'),
-        path.join(absoluteDir, '*.js'),
-        path.join(absoluteDir, '*.tsx'),
-        path.join(absoluteDir, '*.jsx')
+        path.join(absoluteDir, '**/*.ts'),
+        path.join(absoluteDir, '**/*.js'),
+        path.join(absoluteDir, '**/*.tsx'),
+        path.join(absoluteDir, '**/*.jsx')
       );
     }
 
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };
 
+    // If an active watcher exists for the same root, reuse it
+    if (activeWatcher && activeWatchRoot === absoluteDir) {
+      // Replace change handler to avoid duplicate triggers
+      if (changeHandlerRef) {
+        activeWatcher.off('all', changeHandlerRef);
+      }
+      changeHandlerRef = (event: string, filePath: string) => {
+        if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
+        if (event === 'change') {
+          console.info(`File changed: ${path.relative(process.cwd(), filePath)}`);
+        }
+        debounceAndRun(onChange);
+      };
+      activeWatcher.on('all', changeHandlerRef);
+      return;
+    }
+
+    // Otherwise, close previous watcher (if any) and create new one
+    if (activeWatcher) {
+      try {
+        await activeWatcher.close();
+      } catch {
+        // ignore close errors
+      }
+      activeWatcher = null;
+      changeHandlerRef = null;
+      readyLogged = false;
+    }
+
     // Create watcher with specific file patterns
     const watcher = chokidar.watch(watchPaths, watchOptions);
+    activeWatcher = watcher;
+    activeWatchRoot = absoluteDir;
 
     // For debugging purposes - only log if DEBUG env is set
     if (process.env.DEBUG) {
@@ -121,41 +158,38 @@ export async function watchDirectory(
       console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
     }
 
-    let debounceTimer: any = null;
+    let debounceTimer: NodeJS.Timeout | null = null;
+
+    const debounceAndRun = (handler: () => void) => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        handler();
+        debounceTimer = null;
+      }, 300);
+    };
 
     // On ready handler
     watcher.on('ready', () => {
+      if (readyLogged) return;
+      readyLogged = true;
       // Log only once when watcher is initially set up
       const watchPath = existsSync(srcDir) 
         ? `${path.relative(process.cwd(), srcDir)}/**/*.{ts,js,tsx,jsx}`
-        : `${path.relative(process.cwd(), absoluteDir)}/*.{ts,js,tsx,jsx}`;
-      
+        : `${path.relative(process.cwd(), absoluteDir)}/**/*.{ts,js,tsx,jsx}`;
       console.log(`✓ Watching for file changes in ${watchPath}`);
     });
 
     // Set up file change handler
-    watcher.on('all', (event: string, filePath: string) => {
-      // The file type check is redundant since we're only watching specific extensions,
-      // but we'll keep it as a safety measure
-      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
-        return;
-      }
-
-      // Only log file changes if not the initial add events
+    changeHandlerRef = (event: string, filePath: string) => {
+      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
       if (event === 'change') {
         console.info(`File changed: ${path.relative(process.cwd(), filePath)}`);
       }
-
-      // Debounce the onChange handler to avoid multiple rapid rebuilds
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-
-      debounceTimer = setTimeout(() => {
-        onChange();
-        debounceTimer = null;
-      }, 300);
-    });
+      debounceAndRun(onChange);
+    };
+    watcher.on('all', changeHandlerRef);
 
     // Add an error handler
     watcher.on('error', (error) => {
@@ -166,8 +200,9 @@ export async function watchDirectory(
     process.on('SIGINT', () => {
       watcher.close().then(() => process.exit(0));
     });
-  } catch (error: any) {
-    console.error(`Error setting up file watcher: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`Error setting up file watcher: ${msg}`);
   }
 }
 
@@ -175,7 +210,7 @@ export async function watchDirectory(
  * Create a debounced file change handler
  */
 export function createDebouncedHandler(handler: () => void, delay: number = 300): () => void {
-  let timer: any = null;
+  let timer: NodeJS.Timeout | null = null;
 
   return () => {
     if (timer) {
