@@ -31,8 +31,9 @@ function ensureEnvLoaded(): RuntimeSettings {
 /**
  * Find an available port in the given range
  */
-async function findAvailablePort(startPort: number, endPort: number): Promise<number> {
-  console.log(`🔧 [DEBUG] Searching for available port in range ${startPort}-${endPort}...`);
+async function findAvailablePort(startPort: number, endPort: number, host?: string): Promise<number> {
+  const serverHost = host || process.env.SERVER_HOST || '0.0.0.0';
+  console.log(`🔧 [DEBUG] Searching for available port in range ${startPort}-${endPort} on host ${serverHost}...`);
 
   // Try ports in random order to avoid conflicts
   const ports = Array.from({ length: endPort - startPort + 1 }, (_, i) => startPort + i);
@@ -43,7 +44,7 @@ async function findAvailablePort(startPort: number, endPort: number): Promise<nu
 
   for (const port of ports) {
     try {
-      console.log(`🔧 [DEBUG] Testing port ${port}...`);
+      console.log(`🔧 [DEBUG] Testing port ${port} on host ${serverHost}...`);
       const server = createServer();
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -51,7 +52,7 @@ async function findAvailablePort(startPort: number, endPort: number): Promise<nu
           reject(new Error('Port check timeout'));
         }, 500); // Reduced timeout
 
-        server.listen(port, () => {
+        server.listen(port, serverHost, () => {
           clearTimeout(timeout);
           server.close();
           resolve();
