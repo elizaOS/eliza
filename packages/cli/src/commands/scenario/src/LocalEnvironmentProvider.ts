@@ -4,6 +4,7 @@ import { AgentServer } from '@elizaos/server';
 import { UUID, AgentRuntime } from '@elizaos/core';
 import { askAgentViaApi } from './runtime-factory';
 import { TrajectoryReconstructor } from './TrajectoryReconstructor';
+import { ConversationManager } from './ConversationManager';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -13,14 +14,15 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
-  // private runtime: AgentRuntime | null = null; // unused
+  private runtime: AgentRuntime | null = null; // FIXED: needed for ConversationManager
   private serverPort: number | null = null;
   private trajectoryReconstructor: TrajectoryReconstructor | null = null;
+  private conversationManager: ConversationManager | null = null;
 
   constructor(server?: AgentServer, agentId?: UUID, _runtime?: AgentRuntime, serverPort?: number) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
-    // this.runtime = _runtime ?? null; // unused property
+    this.runtime = _runtime ?? null; // FIXED: needed for ConversationManager
     this.serverPort = serverPort ?? null;
     this.trajectoryReconstructor = _runtime ? new TrajectoryReconstructor(_runtime) : null;
 
@@ -91,7 +93,58 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
     for (const step of scenario.run) {
       const startedAtMs = Date.now();
 
-      if (step.input) {
+      // NEW: Check if this is a conversation step
+      if (step.conversation) {
+        if (!this.server || !this.agentId) {
+          throw new Error(
+            'LocalEnvironmentProvider requires a pre-created server and agent for conversation steps'
+          );
+        }
+
+        // Initialize conversation manager if needed
+        if (!this.conversationManager) {
+          this.conversationManager = new ConversationManager(
+            this.runtime!,
+            this.server,
+            this.agentId,
+            this.serverPort!,
+            this.trajectoryReconstructor!
+          );
+        }
+
+        console.log(`🗣️  [LocalEnvironmentProvider] Executing conversation step: ${step.name || 'unnamed'}`);
+
+        const conversationResult = await this.conversationManager.executeConversation(
+          step.input || 'Hello, I need help.',
+          step.conversation
+        );
+
+        // Convert conversation result to ExecutionResult format
+        const endedAtMs = Date.now();
+        const durationMs = endedAtMs - startedAtMs;
+
+        const executionResult: ExecutionResult = {
+          exitCode: conversationResult.success ? 0 : 1,
+          stdout: conversationResult.conversationTranscript,
+          stderr: conversationResult.success ? '' : 'Conversation failed',
+          files: await this.captureFileSystem(),
+          startedAtMs,
+          endedAtMs,
+          durationMs,
+          trajectory: conversationResult.turns.flatMap(turn => turn.trajectory),
+        };
+
+        // Add conversation metadata to result for conversation evaluators
+        (executionResult as any).conversationMetadata = {
+          turnCount: conversationResult.turns.length,
+          terminatedEarly: conversationResult.terminatedEarly,
+          terminationReason: conversationResult.terminationReason,
+          finalEvaluations: conversationResult.finalEvaluations
+        };
+
+        results.push(executionResult);
+
+      } else if (step.input) {
         if (!this.server || !this.agentId) {
           throw new Error(
             'LocalEnvironmentProvider requires a pre-created server and agent for NL input'
@@ -101,7 +154,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           this.server,
           this.agentId,
           step.input,
-          30000, // timeout
+          90000, // timeout
           this.serverPort // Pass the actual server port
         );
 

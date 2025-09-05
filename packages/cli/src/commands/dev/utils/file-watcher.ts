@@ -1,4 +1,5 @@
 import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { WatcherConfig } from '../types';
@@ -7,14 +8,54 @@ import { WatcherConfig } from '../types';
  * Default watcher configuration
  */
 const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
-  ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
+  ignored: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/.git/**',
+    '**/.elizadb/**',
+    '**/coverage/**',
+    '**/__tests__/**',
+    '**/*.test.ts',
+    '**/*.test.js',
+    '**/*.spec.ts',
+    '**/*.spec.js',
+    '**/test/**',
+    '**/tests/**',
+    '**/.turbo/**',
+    '**/tmp/**',
+    '**/.cache/**',
+    '**/*.log'
+  ],
   ignoreInitial: true,
   persistent: true,
   followSymlinks: false,
-  depth: 99, // Set high depth to ensure we catch all nested files
+  depth: 10, // Reasonable depth to avoid deep node_modules traversal
   usePolling: false, // Only use polling if necessary
   interval: 1000, // Poll every second
+  awaitWriteFinish: {
+    stabilityThreshold: 100,
+    pollInterval: 100
+  }
 };
+
+// Singleton watcher state
+let activeWatcher: FSWatcher | null = null;
+let activeWatchRoot: string | null = null;
+let changeHandlerRef: ((event: string, filePath: string) => void) | null = null;
+let readyLogged = false;
+
+// Shared debounce timer to avoid stale timeouts across re-initializations
+let globalDebounceTimer: NodeJS.Timeout | null = null;
+
+function debounceAndRun(handler: () => void, delay: number = 300) {
+  if (globalDebounceTimer) {
+    clearTimeout(globalDebounceTimer);
+  }
+  globalDebounceTimer = setTimeout(() => {
+    handler();
+    globalDebounceTimer = null;
+  }, delay);
+}
 
 /**
  * Find TypeScript/JavaScript files in a directory
@@ -65,62 +106,103 @@ export async function watchDirectory(
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
 
-    // Use a simpler approach - watch the src directory directly
+    // Determine which directories to watch - prefer src if it exists
     const srcDir = path.join(absoluteDir, 'src');
-    const dirToWatch = existsSync(srcDir) ? srcDir : absoluteDir;
+    const watchPaths: string[] = [];
+    
+    if (existsSync(srcDir)) {
+      // Watch specific file patterns in src directory only
+      watchPaths.push(
+        path.join(srcDir, '**/*.ts'),
+        path.join(srcDir, '**/*.js'),
+        path.join(srcDir, '**/*.tsx'),
+        path.join(srcDir, '**/*.jsx')
+      );
+    } else {
+      // Fallback: watch recursively from project root for nested files
+      watchPaths.push(
+        path.join(absoluteDir, '**/*.ts'),
+        path.join(absoluteDir, '**/*.js'),
+        path.join(absoluteDir, '**/*.tsx'),
+        path.join(absoluteDir, '**/*.jsx')
+      );
+    }
 
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };
 
-    // Create a more direct and simple watcher pattern
-    const watcher = chokidar.watch(dirToWatch, watchOptions);
-
-    // Manually find TypeScript files to verify we should be watching them
-    const tsFiles = findTsFiles(dirToWatch, dirToWatch);
-
-    console.info(`Found ${tsFiles.length} TypeScript/JavaScript files in the watched directory`);
-    if (tsFiles.length > 0) {
-      console.info(
-        `Sample files: ${tsFiles.slice(0, 3).join(', ')}${tsFiles.length > 3 ? '...' : ''}`
-      );
+    // If an active watcher exists for the same root, reuse it
+    if (activeWatcher && activeWatchRoot === absoluteDir) {
+      // Replace change handler to avoid duplicate triggers
+      if (changeHandlerRef) {
+        activeWatcher.off('all', changeHandlerRef);
+      }
+      // Clear any pending rebuilds from prior handler
+      if (globalDebounceTimer) {
+        clearTimeout(globalDebounceTimer);
+        globalDebounceTimer = null;
+      }
+      changeHandlerRef = (event: string, filePath: string) => {
+        if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
+        const rel = path.relative(process.cwd(), filePath);
+        if (event === 'change' || event === 'add' || event === 'unlink') {
+          const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';
+          console.info(`File ${action}: ${rel}`);
+          debounceAndRun(onChange);
+        }
+      };
+      activeWatcher.on('all', changeHandlerRef);
+      return;
     }
 
-    let debounceTimer: any = null;
+    // Otherwise, close previous watcher (if any) and create new one
+    if (activeWatcher) {
+      try {
+        await activeWatcher.close();
+      } catch {
+        // ignore close errors
+      }
+      activeWatcher = null;
+      changeHandlerRef = null;
+      readyLogged = false;
+    }
+
+    // Create watcher with specific file patterns
+    const watcher = chokidar.watch(watchPaths, watchOptions);
+    activeWatcher = watcher;
+    activeWatchRoot = absoluteDir;
+
+    // For debugging purposes - only log if DEBUG env is set
+    if (process.env.DEBUG) {
+      const watchDir = existsSync(srcDir) ? srcDir : absoluteDir;
+      const tsFiles = findTsFiles(watchDir, watchDir);
+      console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
+    }
+
+    // debounceAndRun already defined above (shared)
 
     // On ready handler
     watcher.on('ready', () => {
-      const watchedPaths = watcher.getWatched();
-      const pathsCount = Object.keys(watchedPaths).length;
-
-      if (pathsCount === 0) {
-        console.warn('No directories are being watched! File watching may not be working.');
-
-        // Try an alternative approach with explicit file patterns
-        watcher.add(`${dirToWatch}/**/*.{ts,js,tsx,jsx}`);
-      }
-
-      console.log(`✓ Watching for file changes in ${path.relative(process.cwd(), dirToWatch)}`);
+      if (readyLogged) return;
+      readyLogged = true;
+      // Log only once when watcher is initially set up
+      const watchPath = existsSync(srcDir) 
+        ? `${path.relative(process.cwd(), srcDir)}/**/*.{ts,js,tsx,jsx}`
+        : `${path.relative(process.cwd(), absoluteDir)}/**/*.{ts,js,tsx,jsx}`;
+      console.log(`✓ Watching for file changes in ${watchPath}`);
     });
 
     // Set up file change handler
-    watcher.on('all', (_event: string, filePath: string) => {
-      // Only react to specific file types
-      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
-        return;
+    changeHandlerRef = (event: string, filePath: string) => {
+      if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
+      const rel = path.relative(process.cwd(), filePath);
+      if (event === 'change' || event === 'add' || event === 'unlink') {
+        const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';
+        console.info(`File ${action}: ${rel}`);
+        debounceAndRun(onChange);
       }
-
-      console.info(`File changed: ${path.relative(dirToWatch, filePath)}`);
-
-      // Debounce the onChange handler to avoid multiple rapid rebuilds
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-
-      debounceTimer = setTimeout(() => {
-        onChange();
-        debounceTimer = null;
-      }, 300);
-    });
+    };
+    watcher.on('all', changeHandlerRef);
 
     // Add an error handler
     watcher.on('error', (error) => {
@@ -131,8 +213,9 @@ export async function watchDirectory(
     process.on('SIGINT', () => {
       watcher.close().then(() => process.exit(0));
     });
-  } catch (error: any) {
-    console.error(`Error setting up file watcher: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`Error setting up file watcher: ${msg}`);
   }
 }
 
@@ -140,7 +223,7 @@ export async function watchDirectory(
  * Create a debounced file change handler
  */
 export function createDebouncedHandler(handler: () => void, delay: number = 300): () => void {
-  let timer: any = null;
+  let timer: NodeJS.Timeout | null = null;
 
   return () => {
     if (timer) {

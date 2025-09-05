@@ -19,6 +19,9 @@ function log(prefix, message) {
   console.log(`[${prefix}] ${new Date().toLocaleTimeString()} - ${message}`);
 }
 
+// Simple color helpers (avoid external deps)
+const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
+
 // Health check function to verify server is responding
 async function waitForServer(url = 'http://localhost:3000/api/server/ping', maxAttempts = 30) {
   log('HEALTH', `Waiting for server to be ready at ${url}...`);
@@ -123,8 +126,8 @@ function startCliServer() {
             log('DEV', '🔧 Backend server is ready!');
             startViteDevServer();
             log('DEV', '🚀 Development environment fully ready!');
-            log('DEV', '📱 Frontend: http://localhost:5173 (with HMR)');
-            log('DEV', '🔧 Backend API: http://localhost:3000');
+            log('DEV', `📱 Frontend: ${cyan('http://localhost:5173')} (with HMR)`);
+            log('DEV', `🔧 Backend API: ${cyan('http://localhost:3000')}`);
             log('DEV', '✨ All services are connected and ready!');
           } else if (!isShuttingDown) {
             log('CLI', 'Server failed to start properly, shutting down...');
