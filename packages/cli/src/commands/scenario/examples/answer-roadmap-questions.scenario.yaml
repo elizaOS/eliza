@@ -6,6 +6,10 @@ description: "Tests the agent's ability to search its own GitHub issues, code, a
 plugins:
   - name: '@elizaos/plugin-bootstrap'
     enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
   - name: '@elizaos/plugin-github'
     enabled: true
 

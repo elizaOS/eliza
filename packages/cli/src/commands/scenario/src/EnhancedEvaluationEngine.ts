@@ -28,7 +28,7 @@ export interface EnhancedEvaluator {
 /**
  * Adapter that can work with both legacy and enhanced evaluators
  */
-export interface DualEvaluator extends Evaluator, EnhancedEvaluator {}
+export interface DualEvaluator extends Evaluator, EnhancedEvaluator { }
 
 /**
  * Enhanced Evaluation Engine that provides structured JSON output
@@ -278,6 +278,10 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
     const actionName = params.action;
 
     try {
+      // Wait for action memories to be written to database (prevents race condition)
+      console.log(`🔧 [EnhancedTrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Get action memories from database
       const actionMemories = await runtime.getMemories({
         tableName: 'messages',
@@ -371,7 +375,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
 
     // Pick first available model
     let modelType: (typeof ModelType)[keyof typeof ModelType] =
-      candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
+      candidateModels.find((m) => runtime.getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Enhanced structured prompt for qualitative analysis with dynamic capabilities
     const capabilities = (params as any).capabilities; // Extract capabilities from params
@@ -393,7 +397,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
     const jsonSchema = this.getStructuredJudgmentSchema();
 
     try {
-      const modelHandler = (runtime as any).getModel(modelType);
+      const modelHandler = runtime.getModel(modelType);
       if (!modelHandler) {
         return {
           evaluator_type: 'llm_judge',
@@ -402,7 +406,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
           details: {
             error: 'no_model_available',
             attempted_models: candidateModels,
-            models_available: Object.keys((runtime as any).models || {}),
+            models_available: Array.from(runtime.models.keys()),
             prompt,
             expected,
           },
