@@ -15,7 +15,7 @@ export async function publishToNpm(
 
   // Update npmPackage field if it's a placeholder or not set
   if (!packageJson.npmPackage || packageJson.npmPackage === '${NPM_PACKAGE}') {
-    packageJson.npmPackage = packageJson.name;
+    packageJson.npmPackage = `@${npmUsername}/${packageJson.name}`;
     console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
 
     // Save updated package.json
