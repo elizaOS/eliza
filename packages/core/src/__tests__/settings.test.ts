@@ -3,6 +3,7 @@ import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
   getSalt,
+  clearSaltCache,
   encryptStringValue,
   decryptStringValue,
   saltSettingValue,
@@ -171,6 +172,7 @@ describe('settings utilities', () => {
     it('should use default salt when env variable is not set', () => {
       delete process.env.SECRET_SALT;
       getEnvironment().clearCache(); // Clear cache after deleting env var
+      clearSaltCache(); // Clear salt cache to ensure fresh read
       const salt = getSalt();
       expect(salt).toBe('secretsalt');
     });
