@@ -158,7 +158,7 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   const timer = getTimer();
   const { cp } = await import('node:fs/promises');
 
-  console.log(`Copying ${assets.length} asset(s) in parallel...`);
+  console.log('Copying assets...');
 
   // Process all assets in parallel
   const copyPromises = assets.map(async (asset) => {
@@ -199,7 +199,6 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 
   results.forEach(result => {
     if (result.success) {
-      console.log(`  ✓ ${result.message}`);
       successCount++;
     } else {
       console.warn(`  ⚠ ${result.message}`);
@@ -218,9 +217,9 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   const totalTime = timer.elapsed();
 
   if (failedAssets.length === 0) {
-    console.log(`✓ All assets copied successfully in parallel in ${totalTime}ms`);
+    console.log(`✓ Assets copied (${totalTime}ms)`);
   } else if (successCount > 0) {
-    console.warn(`⚠ Copied ${successCount}/${assets.length} assets in ${totalTime}ms`);
+    console.warn(`⚠ Copied ${successCount}/${assets.length} assets (${totalTime}ms)`);
     console.warn(`  Failed assets: ${failedAssets.map((f) => f.asset.from).join(', ')}`);
   } else {
     throw new Error(
@@ -474,15 +473,13 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
       `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
     );
 
-    // Run post-build tasks in parallel
+    // Run post-build tasks
     const postBuildTasks: Promise<void | null>[] = [];
     
     // Add TypeScript declarations generation if requested
     if (buildOptions.generateDts) {
-      console.log('\nScheduling TypeScript declarations generation...');
       postBuildTasks.push(
         generateDts('./tsconfig.build.json')
-          .then(() => console.log('✓ TypeScript declarations generated'))
           .catch((err) => {
             console.error('⚠ TypeScript declarations generation failed:', err);
             // Don't throw here, as it's often non-critical
@@ -493,10 +490,8 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
 
     // Add asset copying if specified
     if (buildOptions.assets?.length) {
-      console.log('Scheduling asset copying...');
       postBuildTasks.push(
         copyAssets(buildOptions.assets)
-          .then(() => console.log('✓ Assets copied'))
           .catch((err) => {
             console.error('✗ Asset copying failed:', err);
             throw err; // Asset copying failure is critical
@@ -504,16 +499,15 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
       );
     }
 
-    // Execute all post-build tasks in parallel
+    // Execute all post-build tasks
     if (postBuildTasks.length > 0) {
-      console.log(`\nRunning ${postBuildTasks.length} post-build task(s) in parallel...`);
       const postBuildTimer = getTimer();
       await Promise.all(postBuildTasks);
-      console.log(`✓ Post-build tasks completed in ${postBuildTimer.elapsed()}ms`);
+      console.log(`✓ Post-build tasks completed (${postBuildTimer.elapsed()}ms)`);
     }
 
     console.log(`\n✅ ${packageName} build complete!`);
-    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
+    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms`);
 
     onBuildComplete?.(true);
     return true;
