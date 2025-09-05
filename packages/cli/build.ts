@@ -5,14 +5,40 @@
 
 import { createBuildRunner, copyAssets } from '../../build-utils';
 import { $ } from 'bun';
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 
-// Custom pre-build step to copy templates
+// Custom pre-build step to copy templates and generate version
 async function preBuild() {
-  console.log('\nCopying templates...');
+  console.log('\nRunning pre-build tasks in parallel...');
   const start = performance.now();
-  await $`bun run src/scripts/copy-templates.ts`;
+
+  // Run both pre-build tasks in parallel
+  const [versionResult, templateResult] = await Promise.all([
+    $`bun run src/scripts/generate-version.ts`
+      .then(() => {
+        const taskTime = ((performance.now() - start) / 1000).toFixed(2);
+        console.log(`  ✓ Version file generated (${taskTime}s)`);
+        return true;
+      })
+      .catch((err) => {
+        console.error('  ✗ Version generation failed:', err);
+        throw err;
+      }),
+    $`bun run src/scripts/copy-templates.ts`
+      .then(() => {
+        const taskTime = ((performance.now() - start) / 1000).toFixed(2);
+        console.log(`  ✓ Templates copied (${taskTime}s)`);
+        return true;
+      })
+      .catch((err) => {
+        console.error('  ✗ Template copying failed:', err);
+        throw err;
+      })
+  ]);
+
   const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-  console.log(`✓ Templates copied (${elapsed}s)`);
+  console.log(`✅ Pre-build tasks completed in parallel (${elapsed}s)`);
 }
 
 // Create and run the standardized build runner
@@ -39,12 +65,55 @@ const run = createBuildRunner({
   },
   onBuildComplete: async (success) => {
     if (success) {
-      // Copy templates and migration guides to dist
-      console.log('\nCopying assets...');
-      await copyAssets([
-        { from: './templates', to: './dist/templates' },
-        { from: '../docs/docs/plugins/migration/claude-code', to: './dist/migration-guides' },
-      ]);
+      console.log('\nRunning post-build tasks in parallel...');
+      const postBuildStart = performance.now();
+      
+      // Prepare all post-build tasks
+      const postBuildTasks: Promise<void>[] = [];
+
+      // Task 1: Copy templates
+      postBuildTasks.push(
+        copyAssets([
+          { from: './templates', to: './dist/templates' },
+        ])
+          .then(() => console.log('  ✓ Templates copied to dist'))
+          .catch((err) => {
+            console.error('  ✗ Template copying failed:', err);
+            throw err;
+          })
+      );
+
+      // Task 2: Handle version file
+      const versionSrcPath = './src/version.ts';
+      const versionDistPath = './dist/version.js';
+      postBuildTasks.push(
+        (async () => {
+          if (existsSync(versionSrcPath)) {
+            // Read the TypeScript version file
+            const versionContent = await fs.readFile(versionSrcPath, 'utf-8');
+            // Convert to JavaScript by removing TypeScript-specific syntax
+            const jsContent = versionContent
+              .replace(/export const (\w+): string = /g, 'export const $1 = ')
+              .replace(/export default {/, 'export default {');
+            await fs.writeFile(versionDistPath, jsContent);
+            console.log('  ✓ Version file copied to dist/version.js');
+          } else {
+            console.warn('  ⚠️  Version file not found at src/version.ts - generating fallback');
+            // Generate a fallback version file if the source doesn't exist
+            const fallbackContent = `export const CLI_VERSION = '0.0.0';
+export const CLI_NAME = '@elizaos/cli';
+export const CLI_DESCRIPTION = 'elizaOS CLI';
+export default { version: '0.0.0', name: '@elizaos/cli', description: 'elizaOS CLI' };`;
+            await fs.writeFile(versionDistPath, fallbackContent);
+          }
+        })()
+      );
+
+      // Execute all post-build tasks in parallel
+      await Promise.all(postBuildTasks);
+      
+      const postBuildElapsed = ((performance.now() - postBuildStart) / 1000).toFixed(2);
+      console.log(`✅ Post-build tasks completed in parallel (${postBuildElapsed}s)`);
     }
   },
 });

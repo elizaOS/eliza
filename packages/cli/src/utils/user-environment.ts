@@ -2,7 +2,6 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import * as semver from 'semver';
-import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { resolveEnvFile } from './resolve-utils';
@@ -93,20 +92,21 @@ export class UserEnvironment {
   private async getCLIInfo(): Promise<CLIInfo> {
     logger.debug('[UserEnvironment] Getting CLI information');
     try {
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
-      const packageJsonPath = path.resolve(__dirname, '../package.json');
-
-      if (!existsSync(packageJsonPath)) {
-        throw new Error(`CLI package.json not found at ${packageJsonPath}`);
-      }
-
-      const packageJsonContent = await fs.readFile(packageJsonPath, 'utf-8');
-      const packageJson = JSON.parse(packageJsonContent);
+      // Try to import the generated version file
+      // This is generated at build time and avoids runtime package.json resolution
+      // @ts-ignore - This file is generated at build time
+      const { CLI_VERSION, CLI_NAME } = await import('../version.js').catch(() => {
+        // Fallback if version file doesn't exist (e.g., during development)
+        logger.debug('[UserEnvironment] Version file not found, using fallback values');
+        return {
+          CLI_VERSION: '0.0.0-dev',
+          CLI_NAME: '@elizaos/cli',
+        };
+      });
 
       return {
-        version: packageJson.version || '0.0.0',
-        name: packageJson.name || '@elizaos/cli',
+        version: CLI_VERSION,
+        name: CLI_NAME,
         path: process.argv[1] || '',
       };
     } catch (error) {

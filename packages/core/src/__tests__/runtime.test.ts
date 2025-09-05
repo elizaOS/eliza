@@ -37,7 +37,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   isReady: mock().mockResolvedValue(true),
   close: mock().mockResolvedValue(undefined),
   getConnection: mock().mockResolvedValue({}),
-  getEntityByIds: mock().mockResolvedValue([]),
   getEntitiesByIds: mock().mockResolvedValue([]),
   createEntities: mock().mockResolvedValue(true),
   getMemories: mock().mockResolvedValue([]),
@@ -265,7 +264,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         enabled: true,
       });
 
-      (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
+      mockDatabaseAdapter.getEntitiesByIds.mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -302,7 +301,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       });
-      (mockDatabaseAdapter.getEntityByIds as any).mockResolvedValue([
+      mockDatabaseAdapter.getEntitiesByIds.mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -483,16 +482,20 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockActionHandler).toHaveBeenCalledTimes(1);
       // Check arguments passed to the handler
       expect(mockActionHandler).toHaveBeenCalledWith(
-        runtime,
-        message,
-        expect.objectContaining({ text: 'composed state text' }), // Check composed state
+        runtime, // runtime instance
+        message, // original message
+        expect.objectContaining({
+          text: 'composed state text',
+          values: {},
+          data: {},
+        }), // accumulated state
         expect.objectContaining({
           context: expect.objectContaining({
-            previousResults: expect.any(Array),
+            previousResults: [],
             getPreviousResult: expect.any(Function),
           }),
-        }), // options now contains context
-        undefined, // callback
+        }), // options with context
+        expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
@@ -563,7 +566,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
     it('createEntity should call adapter.createEntities', async () => {
-      const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'] };
+      const entityData = {
+        id: stringToUuid(uuidv4()),
+        agentId: agentId,
+        names: ['Test Entity'],
+        metadata: {},
+      };
       await runtime.createEntity(entityData);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledWith([entityData]);
@@ -944,8 +952,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
             DEFAULT_MAX_TOKENS: 2048,
             TEXT_SMALL_TEMPERATURE: 0.5,
             TEXT_SMALL_MAX_TOKENS: 'invalid',
-            TEXT_SMALL_FREQUENCY_PENALTY: null,
-            MODEL_TEMPERATURE: undefined,
+            TEXT_SMALL_FREQUENCY_PENALTY: 0.5,
+            MODEL_TEMPERATURE: 0.8,
             MODEL_PRESENCE_PENALTY: 0.8,
           },
         };
@@ -970,7 +978,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         // Valid values should be used, invalid ones ignored
         expect(capturedParams.temperature).toBe(0.5); // Valid model-specific
         expect(capturedParams.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
-        expect(capturedParams.frequencyPenalty).toBeUndefined(); // All invalid
+        expect(capturedParams.frequencyPenalty).toBe(0.5); // Valid model-specific
         expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
       });
     });

@@ -144,7 +144,7 @@ export const generateImageAction = {
         contentType: ContentType.IMAGE,
       };
 
-      await callback(responseContent, [imageFile]); 
+      await callback(responseContent, [imageFile]);
 
       return {
         text: 'Generated image',
