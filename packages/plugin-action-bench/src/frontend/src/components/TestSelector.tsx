@@ -221,7 +221,11 @@ const TestSelector: React.FC = () => {
           <select
             id="test-select"
             value={selectedTest}
-            onChange={(e) => setSelectedTest(e.target.value)}
+            onChange={(e) => {
+              console.log('🔄 Test selection changed, clearing previous results')
+              setSelectedTest(e.target.value)
+              setLastResult(null) // Clear previous results when changing test
+            }}
             className="w-full px-3 py-2 bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-colors"
           >
             {testOptions.map((option) => (
