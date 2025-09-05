@@ -285,10 +285,11 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     const parsedPort = serverPort ? Number.parseInt(serverPort, 10) : NaN;
     desiredPort = Number.isNaN(parsedPort) ? 3000 : parsedPort;
   }
+  const serverHost = process.env.SERVER_HOST || '0.0.0.0';
   let availablePort: number;
 
   try {
-    availablePort = await findNextAvailablePort(desiredPort);
+    availablePort = await findNextAvailablePort(desiredPort, serverHost);
 
     if (availablePort !== desiredPort) {
       logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
