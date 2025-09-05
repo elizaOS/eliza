@@ -22,7 +22,7 @@
     },
     "packages/api-client": {
       "name": "@elizaos/api-client",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -35,7 +35,7 @@
     },
     "packages/app": {
       "name": "@elizaos/app",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/cli": "workspace:*",
@@ -57,7 +57,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -108,7 +108,7 @@
     },
     "packages/client": {
       "name": "@elizaos/client",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -207,7 +207,7 @@
     },
     "packages/config": {
       "name": "@elizaos/config",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "devDependencies": {
         "prettier": "^3.5.3",
         "typescript": "^5.8.2",
@@ -215,7 +215,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@sentry/browser": "^9.22.0",
         "@sentry/node": "^10.7.0",
@@ -240,7 +240,7 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -259,7 +259,7 @@
     },
     "packages/plugin-dummy-services": {
       "name": "@elizaos/plugin-dummy-services",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^9.0.0",
@@ -274,7 +274,7 @@
     },
     "packages/plugin-quick-starter": {
       "name": "@elizaos/plugin-quick-starter",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "^3.24.4",
@@ -288,7 +288,7 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -309,7 +309,7 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tanstack/react-query": "^5.80.7",
@@ -331,7 +331,7 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/client": "workspace:*",
@@ -358,7 +358,7 @@
     },
     "packages/project-tee-starter": {
       "name": "@elizaos/project-tee-starter",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -390,7 +390,7 @@
     },
     "packages/server": {
       "name": "@elizaos/server",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -416,7 +416,7 @@
     },
     "packages/test-utils": {
       "name": "@elizaos/test-utils",
-      "version": "1.5.8-alpha.4",
+      "version": "1.5.8-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "3.24.2",
