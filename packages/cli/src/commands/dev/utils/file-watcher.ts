@@ -7,13 +7,34 @@ import { WatcherConfig } from '../types';
  * Default watcher configuration
  */
 const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
-  ignored: ['**/node_modules/**', '**/dist/**', '**/.git/**'],
+  ignored: [
+    '**/node_modules/**',
+    '**/dist/**',
+    '**/.git/**',
+    '**/.elizadb/**',
+    '**/coverage/**',
+    '**/__tests__/**',
+    '**/*.test.ts',
+    '**/*.test.js',
+    '**/*.spec.ts',
+    '**/*.spec.js',
+    '**/test/**',
+    '**/tests/**',
+    '**/.turbo/**',
+    '**/tmp/**',
+    '**/.cache/**',
+    '**/*.log'
+  ],
   ignoreInitial: true,
   persistent: true,
   followSymlinks: false,
-  depth: 99, // Set high depth to ensure we catch all nested files
+  depth: 10, // Reasonable depth to avoid deep node_modules traversal
   usePolling: false, // Only use polling if necessary
   interval: 1000, // Poll every second
+  awaitWriteFinish: {
+    stabilityThreshold: 100,
+    pollInterval: 100
+  }
 };
 
 /**
@@ -65,51 +86,65 @@ export async function watchDirectory(
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
 
-    // Use a simpler approach - watch the src directory directly
+    // Determine which directories to watch - prefer src if it exists
     const srcDir = path.join(absoluteDir, 'src');
-    const dirToWatch = existsSync(srcDir) ? srcDir : absoluteDir;
+    const watchPaths: string[] = [];
+    
+    if (existsSync(srcDir)) {
+      // Watch specific file patterns in src directory only
+      watchPaths.push(
+        path.join(srcDir, '**/*.ts'),
+        path.join(srcDir, '**/*.js'),
+        path.join(srcDir, '**/*.tsx'),
+        path.join(srcDir, '**/*.jsx')
+      );
+    } else {
+      // Fallback to watching specific patterns in the root directory
+      watchPaths.push(
+        path.join(absoluteDir, '*.ts'),
+        path.join(absoluteDir, '*.js'),
+        path.join(absoluteDir, '*.tsx'),
+        path.join(absoluteDir, '*.jsx')
+      );
+    }
 
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };
 
-    // Create a more direct and simple watcher pattern
-    const watcher = chokidar.watch(dirToWatch, watchOptions);
+    // Create watcher with specific file patterns
+    const watcher = chokidar.watch(watchPaths, watchOptions);
 
-    // Manually find TypeScript files to verify we should be watching them
-    const tsFiles = findTsFiles(dirToWatch, dirToWatch);
-
-    console.info(`Found ${tsFiles.length} TypeScript/JavaScript files in the watched directory`);
-    if (tsFiles.length > 0) {
-      console.info(
-        `Sample files: ${tsFiles.slice(0, 3).join(', ')}${tsFiles.length > 3 ? '...' : ''}`
-      );
+    // For debugging purposes - only log if DEBUG env is set
+    if (process.env.DEBUG) {
+      const watchDir = existsSync(srcDir) ? srcDir : absoluteDir;
+      const tsFiles = findTsFiles(watchDir, watchDir);
+      console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
     }
 
     let debounceTimer: any = null;
 
     // On ready handler
     watcher.on('ready', () => {
-      const watchedPaths = watcher.getWatched();
-      const pathsCount = Object.keys(watchedPaths).length;
-
-      if (pathsCount === 0) {
-        console.warn('No directories are being watched! File watching may not be working.');
-
-        // Try an alternative approach with explicit file patterns
-        watcher.add(`${dirToWatch}/**/*.{ts,js,tsx,jsx}`);
-      }
-
-      console.log(`✓ Watching for file changes in ${path.relative(process.cwd(), dirToWatch)}`);
+      // Log only once when watcher is initially set up
+      const watchPath = existsSync(srcDir) 
+        ? `${path.relative(process.cwd(), srcDir)}/**/*.{ts,js,tsx,jsx}`
+        : `${path.relative(process.cwd(), absoluteDir)}/*.{ts,js,tsx,jsx}`;
+      
+      console.log(`✓ Watching for file changes in ${watchPath}`);
     });
 
     // Set up file change handler
-    watcher.on('all', (_event: string, filePath: string) => {
-      // Only react to specific file types
+    watcher.on('all', (event: string, filePath: string) => {
+      // The file type check is redundant since we're only watching specific extensions,
+      // but we'll keep it as a safety measure
       if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) {
         return;
       }
 
-      console.info(`File changed: ${path.relative(dirToWatch, filePath)}`);
+      // Only log file changes if not the initial add events
+      if (event === 'change') {
+        console.info(`File changed: ${path.relative(process.cwd(), filePath)}`);
+      }
 
       // Debounce the onChange handler to avoid multiple rapid rebuilds
       if (debounceTimer) {
