@@ -143,7 +143,8 @@ export async function runE2eTests(
       logger.info('Server properties set up');
 
       const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-      const serverPort = await findNextAvailablePort(desiredPort);
+      const serverHost = process.env.SERVER_HOST || '0.0.0.0';
+      const serverPort = await findNextAvailablePort(desiredPort, serverHost);
 
       if (serverPort !== desiredPort) {
         logger.warn(`Port ${desiredPort} is in use for testing, using port ${serverPort} instead.`);
