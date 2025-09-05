@@ -171,8 +171,6 @@ In each step, decide:
 2. **Which action (if any)** should be executed after providers return.
 3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
 
-⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action like. Wait for the action to complete before deciding the task is finished.
-
 You can select **multiple providers** and at most **one action** per step.
 
 If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
@@ -193,6 +191,8 @@ These are the actions or data provider calls that have already been used in this
 "providers" List of provider names to call in this step (can be empty if none are needed).
 "isFinish" Set to true only if the task is fully complete.
 </keys>
+
+⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action like. Wait for the action to complete before deciding the task is finished.
 
 <output>
 <response>
