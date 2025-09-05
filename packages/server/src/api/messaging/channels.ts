@@ -451,6 +451,7 @@ export function createChannelsRouter(
   // POST /central-channels (for creating group channels)
   (router as any).post('/central-channels', async (req: express.Request, res: express.Response) => {
     const {
+      id, // Extract the optional predetermined ID
       name,
       participantCentralUserIds,
       type = ChannelType.GROUP,
@@ -465,17 +466,19 @@ export function createChannelsRouter(
       !name ||
       !isValidServerId ||
       !Array.isArray(participantCentralUserIds) ||
-      participantCentralUserIds.some((id) => !validateUuid(id))
+      participantCentralUserIds.some((participantId) => !validateUuid(participantId)) ||
+      (id && !validateUuid(id)) // Validate id if provided
     ) {
       return res.status(400).json({
         success: false,
         error:
-          'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
+          'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: id (UUID), type, metadata.',
       });
     }
 
     try {
       const channelData = {
+        ...(id && { id: id as UUID }), // Include predetermined ID if provided
         messageServerId: server_id as UUID,
         name,
         type: type as ChannelType,
