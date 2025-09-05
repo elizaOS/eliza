@@ -44,6 +44,19 @@ let activeWatchRoot: string | null = null;
 let changeHandlerRef: ((event: string, filePath: string) => void) | null = null;
 let readyLogged = false;
 
+// Shared debounce timer to avoid stale timeouts across re-initializations
+let globalDebounceTimer: NodeJS.Timeout | null = null;
+
+function debounceAndRun(handler: () => void, delay: number = 300) {
+  if (globalDebounceTimer) {
+    clearTimeout(globalDebounceTimer);
+  }
+  globalDebounceTimer = setTimeout(() => {
+    handler();
+    globalDebounceTimer = null;
+  }, delay);
+}
+
 /**
  * Find TypeScript/JavaScript files in a directory
  */
@@ -118,30 +131,25 @@ export async function watchDirectory(
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };
 
-    // Prepare debounce (define before any early returns; function expressions are not hoisted)
-    let debounceTimer: NodeJS.Timeout | null = null;
-    const debounceAndRun = (handler: () => void) => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      debounceTimer = setTimeout(() => {
-        handler();
-        debounceTimer = null;
-      }, 300);
-    };
-
     // If an active watcher exists for the same root, reuse it
     if (activeWatcher && activeWatchRoot === absoluteDir) {
       // Replace change handler to avoid duplicate triggers
       if (changeHandlerRef) {
         activeWatcher.off('all', changeHandlerRef);
       }
+      // Clear any pending rebuilds from prior handler
+      if (globalDebounceTimer) {
+        clearTimeout(globalDebounceTimer);
+        globalDebounceTimer = null;
+      }
       changeHandlerRef = (event: string, filePath: string) => {
         if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
-        if (event === 'change') {
-          console.info(`File changed: ${path.relative(process.cwd(), filePath)}`);
+        const rel = path.relative(process.cwd(), filePath);
+        if (event === 'change' || event === 'add' || event === 'unlink') {
+          const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';
+          console.info(`File ${action}: ${rel}`);
+          debounceAndRun(onChange);
         }
-        debounceAndRun(onChange);
       };
       activeWatcher.on('all', changeHandlerRef);
       return;
@@ -171,7 +179,7 @@ export async function watchDirectory(
       console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
     }
 
-    // debounceAndRun already defined above
+    // debounceAndRun already defined above (shared)
 
     // On ready handler
     watcher.on('ready', () => {
@@ -187,10 +195,12 @@ export async function watchDirectory(
     // Set up file change handler
     changeHandlerRef = (event: string, filePath: string) => {
       if (!/\.(ts|js|tsx|jsx)$/.test(filePath)) return;
-      if (event === 'change') {
-        console.info(`File changed: ${path.relative(process.cwd(), filePath)}`);
+      const rel = path.relative(process.cwd(), filePath);
+      if (event === 'change' || event === 'add' || event === 'unlink') {
+        const action = event === 'add' ? 'added' : event === 'unlink' ? 'removed' : 'changed';
+        console.info(`File ${action}: ${rel}`);
+        debounceAndRun(onChange);
       }
-      debounceAndRun(onChange);
     };
     watcher.on('all', changeHandlerRef);
 
