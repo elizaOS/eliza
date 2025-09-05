@@ -79,8 +79,8 @@ async function startClientDevServer(cwd: string): Promise<void> {
   try {
     if (!devScript) {
       console.warn('Client package does not have a dev:client or dev script, trying vite directly...');
-      // Try to run vite via bunx as fallback
-      clientDevServerProcess = Bun.spawn(['bunx', 'vite', '--host', '0.0.0.0'], {
+      // Try to run vite via bun x as fallback
+      clientDevServerProcess = Bun.spawn(['bun', 'x', 'vite', '--host', '0.0.0.0'], {
         cwd: clientDir,
         stdio: ['inherit', 'pipe', 'pipe'],
         env: process.env,
@@ -191,7 +191,7 @@ async function stopClientDevServer(): Promise<void> {
 /**
  * Get the client dev server port (from Vite config or default)
  */
-async function getClientPort(cwd: string): Promise<number> {
+async function getClientPort(cwd: string): Promise<number | null> {
   const possibleClientDirs = [
     path.join(cwd, 'packages', 'client'),
     path.join(path.dirname(cwd), 'client'),
@@ -388,19 +388,21 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   // Display server information prominently
-  console.log('\n' + '═'.repeat(60));
-  console.log('🚀 Development servers are running:');
-  console.log('═'.repeat(60));
-  console.log(`\n  Backend Server: ${chalk.cyan(`http://localhost:${serverPort}`)}`);
-  console.log(`  API Endpoint:   ${chalk.cyan(`http://localhost:${serverPort}/api`)}`);
+  console.info('\n' + '═'.repeat(60));
+  console.info('🚀 Development servers are running:');
+  console.info('═'.repeat(60));
+  console.info(`\n  Backend Server: ${chalk.cyan(`http://localhost:${serverPort}`)}`);
+  console.info(`  API Endpoint:   ${chalk.cyan(`http://localhost:${serverPort}/api`)}`);
   
   // Display client dev server info if it was started
   if (clientDevServerProcess) {
     const clientPort = await getClientPort(cwd);
-    console.log(`  Client UI:      ${chalk.green(`http://localhost:${clientPort}`)}`);
+    if (clientPort) {
+      console.info(`  Client UI:      ${chalk.green(`http://localhost:${clientPort}`)}`);
+    }
   }
   
-  console.log('\n' + '─'.repeat(60));
+  console.info('\n' + '─'.repeat(60));
   
   // Set up file watching if we're in a project, plugin, or monorepo directory
   if (isProject || isPlugin || isMonorepo) {

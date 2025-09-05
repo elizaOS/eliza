@@ -1,4 +1,5 @@
 import chokidar from 'chokidar';
+import type { FSWatcher } from 'chokidar';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { WatcherConfig } from '../types';
@@ -38,7 +39,7 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
 };
 
 // Singleton watcher state
-let activeWatcher: chokidar.FSWatcher | null = null;
+let activeWatcher: FSWatcher | null = null;
 let activeWatchRoot: string | null = null;
 let changeHandlerRef: ((event: string, filePath: string) => void) | null = null;
 let readyLogged = false;
@@ -117,6 +118,18 @@ export async function watchDirectory(
     // Merge config with defaults
     const watchOptions = { ...DEFAULT_WATCHER_CONFIG, ...config };
 
+    // Prepare debounce (define before any early returns; function expressions are not hoisted)
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debounceAndRun = (handler: () => void) => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        handler();
+        debounceTimer = null;
+      }, 300);
+    };
+
     // If an active watcher exists for the same root, reuse it
     if (activeWatcher && activeWatchRoot === absoluteDir) {
       // Replace change handler to avoid duplicate triggers
@@ -158,17 +171,7 @@ export async function watchDirectory(
       console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
     }
 
-    let debounceTimer: NodeJS.Timeout | null = null;
-
-    const debounceAndRun = (handler: () => void) => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      debounceTimer = setTimeout(() => {
-        handler();
-        debounceTimer = null;
-      }, 300);
-    };
+    // debounceAndRun already defined above
 
     // On ready handler
     watcher.on('ready', () => {
