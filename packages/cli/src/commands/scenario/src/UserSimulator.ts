@@ -93,7 +93,7 @@ export class UserSimulator {
   private buildSimulationPrompt(
     history: ConversationTurn[],
     agentResponse: string,
-    context: SimulationContext
+    _context: SimulationContext
   ): string {
     const { persona, objective, style, constraints, emotional_state, knowledge_level } = this.config;
 
@@ -158,7 +158,7 @@ Respond as the user (20-100 words, natural conversation):`;
    * Generate a fallback response when LLM fails
    * @private
    */
-  private generateFallbackResponse(agentResponse: string, context: SimulationContext): string {
+  private generateFallbackResponse(_agentResponse: string, context: SimulationContext): string {
     const { persona, objective } = this.config;
 
     // Simple fallback responses based on persona type
