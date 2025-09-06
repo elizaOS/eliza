@@ -28,7 +28,11 @@ export async function publishToNpm(
       throw new Error('npm username is required for package scoping');
     }
 
-    packageJson.npmPackage = `@${npmUsername}/${packageJson.name}`;
+    // Strip any existing scope from packageJson.name
+    const unscopedName = packageJson.name.startsWith('@')
+      ? packageJson.name.split('/').slice(1).join('/')
+      : packageJson.name;
+    packageJson.npmPackage = `@${npmUsername}/${unscopedName}`;
     console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
 
     // Save updated package.json
