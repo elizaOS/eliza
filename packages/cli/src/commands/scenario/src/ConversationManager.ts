@@ -273,7 +273,7 @@ export class ConversationManager {
     private async executeTurn(
         userInput: string,
         turnNumber: number,
-        config: ConversationConfig,
+        _config: ConversationConfig,
         _previousTurns: ConversationTurn[]
     ): Promise<ConversationTurn> {
         const turnStartTime = Date.now();

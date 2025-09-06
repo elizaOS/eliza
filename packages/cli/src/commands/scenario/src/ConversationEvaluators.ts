@@ -12,8 +12,7 @@ import { Evaluation as EvaluationSchema } from './schema';
 export class ConversationLengthEvaluator implements Evaluator {
     async evaluate(
         params: EvaluationSchema,
-        runResult: ExecutionResult,
-        runtime: AgentRuntime
+        runResult: ExecutionResult
     ): Promise<EvaluationResult> {
         const metadata = (runResult as any).conversationMetadata;
         if (!metadata) {
@@ -124,7 +123,7 @@ export class ConversationFlowEvaluator implements Evaluator {
             'escalation_pattern': 'Does the conversation include appropriate escalation when needed?'
         };
 
-        const prompt = patternPrompts[pattern];
+        const prompt = (patternPrompts as Record<string, string>)[pattern];
         if (!prompt) {
             console.warn(`[ConversationFlowEvaluator] Unknown pattern: ${pattern}`);
             return false;

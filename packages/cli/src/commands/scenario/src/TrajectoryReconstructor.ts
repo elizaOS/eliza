@@ -252,7 +252,6 @@ export class TrajectoryReconstructor {
 
       // Determine if this is an agent message or user message
       const isAgentMessage = content?.type === 'agent' || (content?.thought && content?.actions);
-      const isUserMessage = content?.type === 'user' || content?.source === 'scenario_message';
 
       // Create thought step from agent messages
       if (isAgentMessage && content?.thought) {
