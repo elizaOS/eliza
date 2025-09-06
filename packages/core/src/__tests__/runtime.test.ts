@@ -487,7 +487,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect.objectContaining({
           text: 'composed state text',
           values: {},
-          data: {}
+          data: {},
         }), // accumulated state
         expect.objectContaining({
           context: expect.objectContaining({
@@ -566,7 +566,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
     it('createEntity should call adapter.createEntities', async () => {
-      const entityData = { id: stringToUuid(uuidv4()), agentId: agentId, names: ['Test Entity'], metadata: {} };
+      const entityData = {
+        id: stringToUuid(uuidv4()),
+        agentId: agentId,
+        names: ['Test Entity'],
+        metadata: {},
+      };
       await runtime.createEntity(entityData);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledTimes(1);
       expect(mockDatabaseAdapter.createEntities).toHaveBeenCalledWith([entityData]);

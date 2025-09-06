@@ -34,17 +34,34 @@ const run = createBuildRunner({
   },
   onBuildComplete: async (success) => {
     if (success) {
-      // Check if client assets exist and copy them
+      // Prepare asset copy tasks
+      const copyTasks: Promise<void>[] = [];
       const clientDistPath = join(process.cwd(), '../client/dist');
+      
+      // Check if client assets exist and add to copy tasks
       if (existsSync(clientDistPath)) {
         console.log('\nCopying client assets...');
-        await copyAssets([{ from: clientDistPath, to: './dist/client' }]);
+        copyTasks.push(
+          copyAssets([{ from: clientDistPath, to: './dist/client' }])
+            .then(() => console.log('✓ Client assets copied'))
+        );
       }
 
-      // Copy any static assets
+      // Check if static assets exist and add to copy tasks
       if (existsSync('./public')) {
-        console.log('\nCopying static assets...');
-        await copyAssets([{ from: './public', to: './dist/public' }]);
+        console.log('Copying static assets...');
+        copyTasks.push(
+          copyAssets([{ from: './public', to: './dist/public' }])
+            .then(() => console.log('✓ Static assets copied'))
+        );
+      }
+
+      // Copy all assets in parallel
+      if (copyTasks.length > 0) {
+        const copyStart = performance.now();
+        await Promise.all(copyTasks);
+        const copyDuration = ((performance.now() - copyStart) / 1000).toFixed(2);
+        console.log(`✅ All assets copied in parallel (${copyDuration}s)`);
       }
     }
   },

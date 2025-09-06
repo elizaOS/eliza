@@ -29,7 +29,7 @@ bun install
 # Run development server
 bun run dev
 
-# Build for production  
+# Build for production
 bun run build
 
 # Run tests

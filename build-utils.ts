@@ -133,7 +133,8 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
     outdir,
     target: target === 'node' ? 'node' : target,
     format,
-    splitting: format === 'esm' && entrypoints.length > 1,
+    // Note: 'splitting' option removed as it's not part of Bun's BuildConfig type
+    // splitting: format === 'esm' && entrypoints.length > 1,
     sourcemap,
     minify,
     external: [...nodeExternals, ...elizaExternals, ...cleanExternals],
@@ -149,7 +150,7 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
 }
 
 /**
- * Copy assets after build with proper error handling
+ * Copy assets after build with proper error handling (parallel processing)
  */
 export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   if (!assets.length) return;
@@ -157,43 +158,68 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   const timer = getTimer();
   const { cp } = await import('node:fs/promises');
 
-  console.log(`Copying ${assets.length} asset(s)...`);
+  console.log('Copying assets...');
 
-  let successCount = 0;
-  let failedAssets: Array<{ asset: { from: string; to: string }; error: string }> = [];
-
-  for (const asset of assets) {
+  // Process all assets in parallel
+  const copyPromises = assets.map(async (asset) => {
+    const assetTimer = getTimer();
     try {
       if (existsSync(asset.from)) {
-        const assetTimer = getTimer();
         await cp(asset.from, asset.to, { recursive: true });
-        console.log(`  ✓ Copied ${asset.from} to ${asset.to} (${assetTimer.elapsed()}ms)`);
-        successCount++;
+        return {
+          success: true,
+          message: `Copied ${asset.from} to ${asset.to} (${assetTimer.elapsed()}ms)`,
+          asset
+        };
       } else {
-        console.warn(`  ⚠ Source not found: ${asset.from}`);
-        failedAssets.push({ asset, error: 'Source not found' });
+        return {
+          success: false,
+          message: `Source not found: ${asset.from}`,
+          asset,
+          error: 'Source not found'
+        };
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`  ✗ Failed to copy ${asset.from} to ${asset.to}: ${errorMessage}`);
-
-      // Check for specific error types
-      if (errorMessage.includes('EACCES') || errorMessage.includes('EPERM')) {
-        console.error(`    Permission denied. Try running with elevated privileges.`);
-      } else if (errorMessage.includes('ENOSPC')) {
-        console.error(`    Insufficient disk space.`);
-      }
-
-      failedAssets.push({ asset, error: errorMessage });
+      return {
+        success: false,
+        message: `Failed to copy ${asset.from} to ${asset.to}: ${errorMessage}`,
+        asset,
+        error: errorMessage
+      };
     }
-  }
+  });
+
+  // Wait for all copies to complete
+  const results = await Promise.all(copyPromises);
+
+  // Process results
+  let successCount = 0;
+  let failedAssets: Array<{ asset: { from: string; to: string }; error: string }> = [];
+
+  results.forEach(result => {
+    if (result.success) {
+      successCount++;
+    } else {
+      console.warn(`  ⚠ ${result.message}`);
+      if (result.error) {
+        // Check for specific error types
+        if (result.error.includes('EACCES') || result.error.includes('EPERM')) {
+          console.error(`    Permission denied. Try running with elevated privileges.`);
+        } else if (result.error.includes('ENOSPC')) {
+          console.error(`    Insufficient disk space.`);
+        }
+        failedAssets.push({ asset: result.asset, error: result.error });
+      }
+    }
+  });
 
   const totalTime = timer.elapsed();
 
   if (failedAssets.length === 0) {
-    console.log(`✓ All assets copied successfully in ${totalTime}ms`);
+    console.log(`✓ Assets copied (${totalTime}ms)`);
   } else if (successCount > 0) {
-    console.warn(`⚠ Copied ${successCount}/${assets.length} assets in ${totalTime}ms`);
+    console.warn(`⚠ Copied ${successCount}/${assets.length} assets (${totalTime}ms)`);
     console.warn(`  Failed assets: ${failedAssets.map((f) => f.asset.from).join(', ')}`);
   } else {
     throw new Error(
@@ -447,18 +473,41 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
       `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
     );
 
-    // Generate TypeScript declarations if requested
+    // Run post-build tasks
+    const postBuildTasks: Promise<void | null>[] = [];
+    
+    // Add TypeScript declarations generation if requested
     if (buildOptions.generateDts) {
-      await generateDts('./tsconfig.build.json');
+      postBuildTasks.push(
+        generateDts('./tsconfig.build.json')
+          .catch((err) => {
+            console.error('⚠ TypeScript declarations generation failed:', err);
+            // Don't throw here, as it's often non-critical
+            return null;
+          })
+      );
     }
 
-    // Copy assets if specified
+    // Add asset copying if specified
     if (buildOptions.assets?.length) {
-      await copyAssets(buildOptions.assets);
+      postBuildTasks.push(
+        copyAssets(buildOptions.assets)
+          .catch((err) => {
+            console.error('✗ Asset copying failed:', err);
+            throw err; // Asset copying failure is critical
+          })
+      );
+    }
+
+    // Execute all post-build tasks
+    if (postBuildTasks.length > 0) {
+      const postBuildTimer = getTimer();
+      await Promise.all(postBuildTasks);
+      console.log(`✓ Post-build tasks completed (${postBuildTimer.elapsed()}ms)`);
     }
 
     console.log(`\n✅ ${packageName} build complete!`);
-    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms\n`);
+    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms`);
 
     onBuildComplete?.(true);
     return true;
