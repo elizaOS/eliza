@@ -22,10 +22,8 @@ import { v4 } from 'uuid';
 const imageGenerationTemplate = `# Task: Generate an image prompt based on the user's request.
   {{providers}}
   # Instructions:
-  Based on the user's message in the conversation, write a clear, concise, and visually descriptive prompt that should be used to generate the image the user is requesting.
-  
-  Focus on what the user wants to see, not on the agent. Extract the visual elements from the user's request and create a detailed prompt for image generation.
-  
+  Based on the user's message in the conversation, write a clear, concise, and visually descriptive prompt for image generation. Focus only on what the user wants to see, extract the key visual elements from the request, and formulate a detailed prompt suitable for image generation.
+
   # Recent conversation:
   {{recentMessages}}
   
