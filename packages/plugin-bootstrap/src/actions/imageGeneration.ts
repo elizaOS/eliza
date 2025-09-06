@@ -19,10 +19,15 @@ import { v4 } from 'uuid';
  *
  * @type {string}
  */
-const imageGenerationTemplate = `# Task: Generate an image prompt for {{agentName}}.
+const imageGenerationTemplate = `# Task: Generate an image prompt based on the user's request.
   {{providers}}
   # Instructions:
-  Write a clear, concise, and visually descriptive prompt that should be used to generate an image representing {{agentName}}'s next action or visualization for the conversation.
+  Based on the user's message in the conversation, write a clear, concise, and visually descriptive prompt that should be used to generate the image the user is requesting.
+  
+  Focus on what the user wants to see, not on the agent. Extract the visual elements from the user's request and create a detailed prompt for image generation.
+  
+  # Recent conversation:
+  {{recentMessages}}
   
   Your response should be formatted in XML like this:
   <response>
