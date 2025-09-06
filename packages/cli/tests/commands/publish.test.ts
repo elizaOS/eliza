@@ -440,7 +440,7 @@ describe('npmPackage Scoping', () => {
     // Test already scoped package name  
     const scopedPackage = { name: '@existing/plugin-test', version: '1.0.0' };
     await expect(publishToNpm(testTmpDir, scopedPackage as any, 'testuser'))
-      .rejects.toThrow('Package name is already scoped');
+      .rejects.toThrow('Package name is already scoped - this should not happen with current templates');
 
     // Test empty npm username
     const validPackage = { name: 'plugin-test', version: '1.0.0' };
